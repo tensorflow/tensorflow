@@ -2012,6 +2012,11 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
+  // TODO rename slice_size to partition_size in CompileOptions
+  if (options.slice_size > 0) {
+    module->mutable_config().set_partition_size(options.slice_size);
+  }
+
   const DebugOptions debug_opts = module->config().debug_options();
   TF_RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_opts));
   bool is_deviceless = options.target_config.has_value() ||
