@@ -166,7 +166,7 @@ absl::Status IsNodeOutputPortHostFriendly(const GraphView& graph,
   }
 
   // Check if the output_arg is pinned to Host.
-  for (const string& host_memory_arg : kernel->host_memory_arg()) {
+  for (const std::string& host_memory_arg : kernel->host_memory_arg()) {
     if (op->output_arg(output_arg_id).name() == host_memory_arg) {
       *is_candidate = true;
       break;
@@ -203,7 +203,7 @@ bool IsNodeInputPortHostFriendly(const NodeDef& node, int port_id) {
   }
 
   // Check if the input_arg is pinned to Host.
-  for (const string& host_memory_arg : kernel->host_memory_arg()) {
+  for (const std::string& host_memory_arg : kernel->host_memory_arg()) {
     if (op->input_arg(input_arg_id).name() == host_memory_arg) {
       return true;
     }
@@ -270,8 +270,8 @@ absl::Status IsNodeHostCandidate(const GraphView& graph,
 
 // Tries to find a Host device from `devices`. Returns empty string if no
 // matching Host device is found.
-string TryFindHostDevice(const gtl::FlatSet<string>& devices,
-                         bool has_device_cpu, const string& device) {
+std::string TryFindHostDevice(const gtl::FlatSet<std::string>& devices,
+                              bool has_device_cpu, const std::string& device) {
   // Force this node onto the CPU.
   if (device.empty() && has_device_cpu) {
     return "/device:CPU:0";
@@ -280,9 +280,9 @@ string TryFindHostDevice(const gtl::FlatSet<string>& devices,
     //   devices = {"/device:CPU:0", "/device:XLA_GPU:0"}
     // and we need to handle them properly.
     for (const auto& device_match :
-         {std::pair<string, string>("GPU", "CPU:0"),
-          std::pair<string, string>("/device", "/device:CPU:0")}) {
-      const string device_host =
+         {std::pair<std::string, std::string>("GPU", "CPU:0"),
+          std::pair<std::string, std::string>("/device", "/device:CPU:0")}) {
+      const std::string device_host =
           absl::StrCat(device.substr(0, device.rfind(device_match.first)),
                        device_match.second);
       if (devices.find(device_host) != devices.end()) {
@@ -309,9 +309,9 @@ absl::Status PinToHostOptimizer::Optimize(Cluster* cluster,
   GraphProperties properties(item);
   GraphView graph(optimized_graph);
 
-  gtl::FlatSet<string> devices;
+  gtl::FlatSet<std::string> devices;
   if (cluster) {
-    const std::vector<string> device_names = cluster->GetDeviceNames();
+    const std::vector<std::string> device_names = cluster->GetDeviceNames();
     devices.insert(device_names.begin(), device_names.end());
   } else {
     devices = {"/device:CPU:0"};
@@ -324,7 +324,7 @@ absl::Status PinToHostOptimizer::Optimize(Cluster* cluster,
   TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph));
 
   // All the Const nodes, and their original devices in topological order.
-  std::vector<std::pair<NodeDef*, string>> const_nodes;
+  std::vector<std::pair<NodeDef*, std::string>> const_nodes;
 
   for (auto& node : *optimized_graph->mutable_node()) {
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
@@ -335,7 +335,7 @@ absl::Status PinToHostOptimizer::Optimize(Cluster* cluster,
       continue;
     }
 
-    string device =
+    std::string device =
         internal::TryFindHostDevice(devices, has_device_cpu, node.device());
     if (!device.empty()) {
       // Keep track of all Const nodes that we swapped.
@@ -351,7 +351,7 @@ absl::Status PinToHostOptimizer::Optimize(Cluster* cluster,
   for (auto& it : const_nodes) {
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     NodeDef* node = it.first;
-    const string& device = it.second;
+    const std::string& device = it.second;
 
     // Check all the consumers of this node, if any of them are not on CPU, swap
     // this node back onto the original device.

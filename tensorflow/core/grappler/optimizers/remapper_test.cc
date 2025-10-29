@@ -742,7 +742,8 @@ class RemapperFuseConvWithBiasAndActivation : public RemapperTest {
   void RunTest() {
     using ::tensorflow::ops::Placeholder;
 
-    for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+    for (const std::string& activation :
+         {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
       tensorflow::Scope s = tensorflow::Scope::NewRootScope();
       auto input_shape = Placeholder::Shape({8, 32, 32, 3});
       auto filter_shape = Placeholder::Shape({1, 1, 3, 128});
@@ -898,7 +899,8 @@ class RemapperFuseConvWithBiasAndAddActivation : public RemapperTest {
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
 
-    for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+    for (const std::string& activation :
+         {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
       tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
       auto input_shape = Placeholder::Shape({8, 32, 32, 3});
@@ -1725,7 +1727,7 @@ class RemapperTensorToHashBucketTest : public RemapperTest {
 
     // For CPU tests, we place all nodes on CPU. For GPU tests, we place the
     // "input" node on GPU to determine the fused op to be on GPU.
-    const string input_device =
+    const std::string input_device =
         GetNumAvailableGPUs() > 0 ? "/device:GPU:0" : "/device:CPU:0";
     for (int i = 0; i < item.graph.node_size(); ++i) {
       if (item.graph.node(i).name() == "input") {
@@ -1796,7 +1798,7 @@ class RemapperFuseMatMulWithBiasTest : public RemapperTest {
     item.feed = {{"lhs", lhs_t}, {"rhs", rhs_t}, {"bias", bias_t}};
     TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
-    const string device =
+    const std::string device =
         GetNumAvailableGPUs() > 0 && (DTYPE == DT_HALF || DTYPE == DT_FLOAT)
             ? "/device:GPU:0"
             : "/device:CPU:0";
@@ -1950,13 +1952,14 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
   void RunTest() {
     using ::tensorflow::ops::Placeholder;
 
-    std::vector<string> activations = {"Relu", "Relu6", "Elu", "LeakyRelu"};
+    std::vector<std::string> activations = {"Relu", "Relu6", "Elu",
+                                            "LeakyRelu"};
 
 #if !defined(GOOGLE_CUDA)
     activations.push_back("Tanh");
 #endif  // !GOOGLE_CUDA
 
-    for (const string& activation : activations) {
+    for (const std::string& activation : activations) {
       if (DTYPE == DT_HALF && activation != "Relu") continue;
       tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
@@ -2005,11 +2008,12 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
       item.feed = {{"lhs", lhs_t}, {"rhs", rhs_t}, {"bias", bias_t}};
       TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
-      const string device = GetNumAvailableGPUs() > 0 &&
-                                    (DTYPE == DT_HALF || DTYPE == DT_FLOAT) &&
-                                    activation == "Relu"
-                                ? "/device:GPU:0"
-                                : "/device:CPU:0";
+      const std::string device =
+          GetNumAvailableGPUs() > 0 &&
+                  (DTYPE == DT_HALF || DTYPE == DT_FLOAT) &&
+                  activation == "Relu"
+              ? "/device:GPU:0"
+              : "/device:CPU:0";
 
       // Place all nodes on CPU.
       for (int i = 0; i < item.graph.node_size(); ++i) {
@@ -2174,7 +2178,7 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
 #endif
   using ops::Placeholder;
 
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+  for (const std::string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
     auto input_shape = ops::Placeholder::Shape({8, 32, 32, 3});
@@ -2803,7 +2807,7 @@ class RemapperFuseFusedConvWithFusedActivation : public RemapperTest {
 
     using ::tensorflow::ops::Placeholder;
 
-    for (const string& activation : {"LeakyRelu", "Mish"}) {
+    for (const std::string& activation : {"LeakyRelu", "Mish"}) {
       tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
       auto input_shape = ops::Placeholder::Shape({8, 32, 32, 3});
@@ -3077,7 +3081,7 @@ class XlaCpuJitDisableFusionTest : public RemapperTest {
     item.feed = {{"lhs", lhs_t}, {"rhs", rhs_t}, {"bias", bias_t}};
     TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
-    const string device = "/device:CPU:0";
+    const std::string device = "/device:CPU:0";
 
     // Place all nodes on CPU.
     for (int i = 0; i < item.graph.node_size(); ++i) {
