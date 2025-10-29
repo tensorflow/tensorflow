@@ -65,7 +65,7 @@ class DirectSession : public Session {
                 DirectSessionFactory* factory);
   ~DirectSession() override;
 
-  typedef std::vector<std::pair<string, Tensor>> NamedTensorList;
+  typedef std::vector<std::pair<std::string, Tensor>> NamedTensorList;
   typedef std::unordered_map<absl::string_view, Node*, StringPieceHasher>
       NameNodeMap;
 
@@ -74,39 +74,40 @@ class DirectSession : public Session {
   absl::Status Extend(const GraphDef& graph) override;
   absl::Status Extend(GraphDef&& graph) override;
   absl::Status Run(const NamedTensorList& inputs,
-                   const std::vector<string>& output_names,
-                   const std::vector<string>& target_nodes,
+                   const std::vector<std::string>& output_names,
+                   const std::vector<std::string>& target_nodes,
                    std::vector<Tensor>* outputs) override;
 
   // NOTE: Experimental and subject to change.
   absl::Status Run(const ::tensorflow::RunOptions& run_options,
                    const NamedTensorList& inputs,
-                   const std::vector<string>& output_names,
-                   const std::vector<string>& target_nodes,
+                   const std::vector<std::string>& output_names,
+                   const std::vector<std::string>& target_nodes,
                    std::vector<Tensor>* outputs,
                    RunMetadata* run_metadata) override;
 
   // NOTE: Experimental and subject to change.
   absl::Status Run(
       const ::tensorflow::RunOptions& run_options,
-      const NamedTensorList& inputs, const std::vector<string>& output_names,
-      const std::vector<string>& target_nodes, std::vector<Tensor>* outputs,
-      RunMetadata* run_metadata,
+      const NamedTensorList& inputs,
+      const std::vector<std::string>& output_names,
+      const std::vector<std::string>& target_nodes,
+      std::vector<Tensor>* outputs, RunMetadata* run_metadata,
       const thread::ThreadPoolOptions& threadpool_options) override;
 
   // NOTE: PRunSetup and PRun are added to support partial execution. This
   // feature is experimental and subject to change.
-  absl::Status PRunSetup(const std::vector<string>& input_names,
-                         const std::vector<string>& output_names,
-                         const std::vector<string>& target_nodes,
-                         string* handle) override;
-  absl::Status PRun(const string& handle, const NamedTensorList& inputs,
-                    const std::vector<string>& output_names,
+  absl::Status PRunSetup(const std::vector<std::string>& input_names,
+                         const std::vector<std::string>& output_names,
+                         const std::vector<std::string>& target_nodes,
+                         std::string* handle) override;
+  absl::Status PRun(const std::string& handle, const NamedTensorList& inputs,
+                    const std::vector<std::string>& output_names,
                     std::vector<Tensor>* outputs) override;
 
   // Reset clears 'containers' from the device_mgr of the DirectSession.
   // If 'containers' is empty, then Reset clears the default container.
-  absl::Status Reset(const std::vector<string>& containers);
+  absl::Status Reset(const std::vector<std::string>& containers);
 
   absl::Status ListDevices(std::vector<DeviceAttributes>* response) override;
   absl::Status Close() override;
@@ -166,10 +167,10 @@ class DirectSession : public Session {
     std::unique_ptr<Graph> graph;
     NameNodeMap name_to_node;
     std::vector<PerPartitionExecutorsAndLib> items;
-    std::unordered_map<string, size_t> input_name_to_index;
-    std::unordered_map<string, string> input_name_to_rendezvous_key;
-    std::unordered_map<string, size_t> output_name_to_index;
-    std::unordered_map<string, string> output_name_to_rendezvous_key;
+    std::unordered_map<std::string, size_t> input_name_to_index;
+    std::unordered_map<std::string, std::string> input_name_to_rendezvous_key;
+    std::unordered_map<std::string, size_t> output_name_to_index;
+    std::unordered_map<std::string, std::string> output_name_to_rendezvous_key;
 
     DataTypeVector input_types;
     DataTypeVector output_types;
@@ -214,12 +215,12 @@ class DirectSession : public Session {
   // fetches.
   struct PartialRunState : public RunState {
     absl::Notification executors_done;
-    std::unordered_map<string, bool> pending_inputs;   // true if fed
-    std::unordered_map<string, bool> pending_outputs;  // true if fetched
+    std::unordered_map<std::string, bool> pending_inputs;   // true if fed
+    std::unordered_map<std::string, bool> pending_outputs;  // true if fetched
     core::RefCountPtr<IntraProcessRendezvous> rendez = nullptr;
 
-    PartialRunState(const std::vector<string>& pending_input_names,
-                    const std::vector<string>& pending_output_names,
+    PartialRunState(const std::vector<std::string>& pending_input_names,
+                    const std::vector<std::string>& pending_output_names,
                     int64_t step_id, const std::vector<Device*>* devices);
 
     // Returns true if all pending inputs and outputs have been completed.
@@ -233,7 +234,7 @@ class DirectSession : public Session {
         : debug_options(options) {}
 
     bool is_partial_run = false;
-    string handle;
+    std::string handle;
     std::unique_ptr<Graph> graph;
     const DebugOptions& debug_options;
     int64_t collective_graph_key = BuildGraphOptions::kNoCollectiveGraphKey;
@@ -241,9 +242,9 @@ class DirectSession : public Session {
 
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
-  absl::Status GetOrCreateExecutors(absl::Span<const string> inputs,
-                                    absl::Span<const string> outputs,
-                                    absl::Span<const string> target_nodes,
+  absl::Status GetOrCreateExecutors(absl::Span<const std::string> inputs,
+                                    absl::Span<const std::string> outputs,
+                                    absl::Span<const std::string> target_nodes,
                                     ExecutorsAndKeys** executors_and_keys,
                                     RunStateArgs* run_state_args);
 
@@ -260,7 +261,7 @@ class DirectSession : public Session {
   // function library 'flib_def'.
   absl::Status CreateGraphs(
       const BuildGraphOptions& options,
-      std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
+      std::unordered_map<std::string, std::unique_ptr<Graph>>* outputs,
       std::unique_ptr<FunctionLibraryDefinition>* flib_def,
       RunStateArgs* run_state_args, DataTypeVector* input_types,
       DataTypeVector* output_types, int64_t* collective_graph_key);
@@ -284,23 +285,24 @@ class DirectSession : public Session {
 
   // Feeds more inputs to the executors, triggering further execution.
   absl::Status SendPRunInputs(
-      const std::vector<std::pair<string, Tensor>>& inputs,
+      const std::vector<std::pair<std::string, Tensor>>& inputs,
       const ExecutorsAndKeys* executors_and_keys,
       IntraProcessRendezvous* rendez);
 
   // Fetches more outputs from the executors. It waits until the output
   // tensors are computed.
-  absl::Status RecvPRunOutputs(const std::vector<string>& output_names,
+  absl::Status RecvPRunOutputs(const std::vector<std::string>& output_names,
                                const ExecutorsAndKeys* executors_and_keys,
                                PartialRunState* run_state,
                                std::vector<Tensor>* outputs);
 
   // Check if the specified fetches can be computed from the feeds
   // that we have already provided.
-  absl::Status CheckFetch(const std::vector<std::pair<string, Tensor>>& feeds,
-                          const std::vector<string>& fetches,
-                          const ExecutorsAndKeys* executors_and_keys,
-                          const PartialRunState* run_state);
+  absl::Status CheckFetch(
+      const std::vector<std::pair<std::string, Tensor>>& feeds,
+      const std::vector<std::string>& fetches,
+      const ExecutorsAndKeys* executors_and_keys,
+      const PartialRunState* run_state);
 
   // Use the appropriate WaitForNotification function based on whether
   // operation_timeout_in_ms is greater than 0.
@@ -342,7 +344,7 @@ class DirectSession : public Session {
   DeviceSet device_set_;
 
   // Unique session identifier.
-  string session_handle_;
+  std::string session_handle_;
   mutex graph_state_lock_;
   bool graph_created_ TF_GUARDED_BY(graph_state_lock_) = false;
   bool finalized_ TF_GUARDED_BY(graph_state_lock_) = false;
@@ -365,7 +367,7 @@ class DirectSession : public Session {
   // to guarantee address stability.
   // The map value is a shared_ptr since multiple map keys can point to the
   // same ExecutorsAndKey object.
-  std::unordered_map<string, std::shared_ptr<ExecutorsAndKeys>> executors_
+  std::unordered_map<std::string, std::shared_ptr<ExecutorsAndKeys>> executors_
       TF_GUARDED_BY(executor_lock_);
 
   class RunCallableCallFrame;
@@ -380,8 +382,8 @@ class DirectSession : public Session {
       TF_GUARDED_BY(callables_lock_);
 
   // Holds mappings from handle to partial run state.
-  std::unordered_map<string, std::unique_ptr<PartialRunState>> partial_runs_
-      TF_GUARDED_BY(executor_lock_);
+  std::unordered_map<std::string, std::unique_ptr<PartialRunState>>
+      partial_runs_ TF_GUARDED_BY(executor_lock_);
 
   // This holds all the tensors that are currently alive in the session.
   SessionState session_state_;
@@ -394,7 +396,7 @@ class DirectSession : public Session {
   // is true, such as "params" and "queue" nodes.  Once placed these
   // nodes can not be moved to a different device.  Maps node names to
   // device names.
-  std::unordered_map<string, string> stateful_placements_
+  std::unordered_map<std::string, std::string> stateful_placements_
       TF_GUARDED_BY(graph_state_lock_);
 
   // Execution_state; used when placing the entire graph.
