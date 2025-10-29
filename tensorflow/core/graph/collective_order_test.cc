@@ -32,11 +32,12 @@ REGISTER_OP("TestParams").Output("o: float");
 // `expected_collective_nodes`, and that the list of control edges between these
 // collective nodes matches `expected_collective_control_edges`.
 void VerifyGraph(const Graph& graph,
-                 const std::vector<string>& expected_collective_nodes,
-                 const std::vector<std::pair<string, string>>&
+                 const std::vector<std::string>& expected_collective_nodes,
+                 const std::vector<std::pair<std::string, std::string>>&
                      expected_collective_control_edges) {
-  std::vector<string> actual_collective_nodes;
-  std::vector<std::pair<string, string>> actual_collective_control_edges;
+  std::vector<std::string> actual_collective_nodes;
+  std::vector<std::pair<std::string, std::string>>
+      actual_collective_control_edges;
   for (const Node* src : graph.nodes()) {
     if (!src->IsCollective()) {
       continue;
@@ -63,13 +64,13 @@ void VerifyGraph(const Graph& graph,
 // `wait_for_map`.
 void VerifyAttrs(
     const Graph& graph,
-    const std::unordered_map<string, std::vector<int32>> wait_for_map) {
+    const std::unordered_map<std::string, std::vector<int32_t>> wait_for_map) {
   for (const Node* node : graph.nodes()) {
     if (node->IsCollective() ||
         wait_for_map.find(node->name()) == wait_for_map.end()) {
       continue;
     }
-    std::vector<int32> wait_for_actual;
+    std::vector<int32_t> wait_for_actual;
     TF_EXPECT_OK(GetNodeAttr(node->attrs(), "wait_for", &wait_for_actual));
     auto wait_for_expected = wait_for_map.at(node->name());
     EXPECT_THAT(wait_for_actual, UnorderedElementsAreArray(wait_for_expected));
@@ -77,7 +78,7 @@ void VerifyAttrs(
 }
 
 Node* CollectiveReduceNode(GraphDefBuilder* builder, Node* input,
-                           const string& name, const string& device,
+                           const std::string& name, const std::string& device,
                            int instance_key) {
   Node* collective_node =
       ops::UnaryOp("CollectiveReduce", input,
@@ -109,8 +110,8 @@ Node* CollectiveReduceNode(GraphDefBuilder* builder, Node* input,
 // inputs, `id` is identity node.
 std::unique_ptr<Graph> InitGraph() {
   GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
-  const string dev0 = "/job:localhost/replica:0/task:0/device:CPU:0";
-  const string dev1 = "/job:localhost/replica:0/task:0/device:CPU:1";
+  const std::string dev0 = "/job:localhost/replica:0/task:0/device:CPU:0";
+  const std::string dev1 = "/job:localhost/replica:0/task:0/device:CPU:1";
   Node* a = ops::SourceOp("TestParams",
                           builder.opts().WithName("a").WithDevice(dev0));
   Node* b = ops::SourceOp("TestParams",
@@ -165,7 +166,7 @@ TEST(CollectiveOrderTest, SimpleOrderAttr) {
 // `id` is identity node.
 std::unique_ptr<Graph> InitGraph2() {
   GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
-  const string dev0 = "/job:localhost/replica:0/task:0/device:CPU:0";
+  const std::string dev0 = "/job:localhost/replica:0/task:0/device:CPU:0";
   Node* a = ops::SourceOp("TestParams",
                           builder.opts().WithName("a").WithDevice(dev0));
   Node* c1 = CollectiveReduceNode(&builder, a, "c1", dev0, 1);
@@ -201,7 +202,7 @@ TEST(CollectiveOrderTest, SimpleOrder2) {
 //
 std::unique_ptr<Graph> InitGraphForPruning() {
   GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
-  const string dev0 = "/job:localhost/replica:0/task:0/device:CPU:0";
+  const std::string dev0 = "/job:localhost/replica:0/task:0/device:CPU:0";
   Node* w = ops::SourceOp("TestParams",
                           builder.opts().WithName("w").WithDevice(dev0));
   Node* x = ops::SourceOp("TestParams",

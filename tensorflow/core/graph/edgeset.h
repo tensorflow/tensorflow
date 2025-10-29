@@ -82,7 +82,7 @@ class EdgeSet {
 #ifdef NDEBUG
   void RegisterMutation() {}
 #else
-  uint32 mutations_ = 0;
+  uint32_t mutations_ = 0;
   void RegisterMutation() { mutations_++; }
 #endif
 
@@ -127,7 +127,7 @@ class EdgeSet::const_iterator {
     CHECK_EQ(init_mutations_, owner_->mutations_);
   }
   const EdgeSet* owner_ = nullptr;
-  uint32 init_mutations_ = 0;
+  uint32_t init_mutations_ = 0;
 #endif
 };
 
