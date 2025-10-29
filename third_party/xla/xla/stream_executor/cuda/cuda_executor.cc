@@ -832,6 +832,10 @@ absl::StatusOr<void*> CudaExecutor::VmmAllocateMemory(uint64_t bytes) {
       cuMemAddressReserve(&ptr, padded_size, granularity, 0, 0)));
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemMap(ptr, padded_size, 0, handle, 0)));
 
+  VLOG(3) << "[" << device_ordinal() << "] VMM allocated " << ptr
+          << " requested size: " << bytes << " padded size: " << padded_size
+          << " granularity: " << granularity;
+
   int device_count = 0;
   TF_RETURN_IF_ERROR(cuda::ToStatus(cudaGetDeviceCount(&device_count)));
   for (int peer = 0; peer < device_count; peer++) {
@@ -1861,12 +1865,13 @@ absl::Status CudaExecutor::CudaMulticastMemory::Initialize(
   TF_ASSIGN_OR_RETURN(CUmulticastObjectProp multicast_properties,
                       CreateMulticastObjectProperties(num_devices_, size));
 
+  TF_RETURN_IF_ERROR(stream_executor::cuda::ToStatus(
+      cuMulticastCreate(&handle_, &multicast_properties)));
   VLOG(3) << "[" << static_cast<int>(cuda_executor->device_)
-          << "] Create multicast memory: " << static_cast<uint64_t>(handle_)
+          << "] Created multicast memory: " << static_cast<uint64_t>(handle_)
           << " size: " << padded_size_ << " with granularity: " << granularity_
           << " for " << num_devices_ << " devices.";
-  return stream_executor::cuda::ToStatus(
-      cuMulticastCreate(&handle_, &multicast_properties));
+  return absl::OkStatus();
 }
 
 absl::Status CudaExecutor::CudaMulticastMemory::SubscribeDevice(
