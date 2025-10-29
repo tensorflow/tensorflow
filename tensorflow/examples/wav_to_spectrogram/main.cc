@@ -28,12 +28,12 @@ int main(int argc, char* argv[]) {
   // They define where the graph and input data is located, and what kind of
   // input the model expects. If you train your own model, or use something
   // other than inception_v3, then you'll need to update these.
-  tensorflow::string input_wav =
+  std::string input_wav =
       "tensorflow/core/kernels/spectrogram_test_data/short_test_segment.wav";
   int32_t window_size = 256;
   int32_t stride = 128;
   float brightness = 64.0f;
-  tensorflow::string output_image = "spectrogram.png";
+  std::string output_image = "spectrogram.png";
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("input_wav", &input_wav, "audio file to load"),
       tensorflow::Flag("window_size", &window_size,
@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
       tensorflow::Flag("output_image", &output_image,
                        "where to save the spectrogram image to"),
   };
-  tensorflow::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {
     LOG(ERROR) << usage;

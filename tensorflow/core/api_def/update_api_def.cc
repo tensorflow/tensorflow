@@ -124,7 +124,7 @@ bool CheckDocsMatch(const OpDef& op1, const OpDef& op2) {
 
 // Returns true if descriptions and summaries in op match a
 // given single doc-string.
-bool ValidateOpDocs(const OpDef& op, const string& doc) {
+bool ValidateOpDocs(const OpDef& op, const std::string& doc) {
   OpDefBuilder b(op.name());
   // We don't really care about type we use for arguments and
   // attributes. We just want to make sure attribute and argument names
@@ -146,28 +146,28 @@ bool ValidateOpDocs(const OpDef& op, const string& doc) {
 }
 }  // namespace
 
-string RemoveDoc(const OpDef& op, const string& file_contents,
-                 size_t start_location) {
+std::string RemoveDoc(const OpDef& op, const std::string& file_contents,
+                      size_t start_location) {
   // Look for a line starting with .Doc( after the REGISTER_OP.
   const auto doc_start_location = file_contents.find(kDocStart, start_location);
-  const string format_error = strings::Printf(
+  const std::string format_error = strings::Printf(
       "Could not find %s doc for removal. Make sure the doc is defined with "
       "'%s' prefix and '%s' suffix or remove the doc manually.",
       op.name().c_str(), kDocStart, kDocEnd);
-  if (doc_start_location == string::npos) {
+  if (doc_start_location == std::string::npos) {
     std::cerr << format_error << std::endl;
     LOG(ERROR) << "Didn't find doc start";
     return file_contents;
   }
   const auto doc_end_location = file_contents.find(kDocEnd, doc_start_location);
-  if (doc_end_location == string::npos) {
+  if (doc_end_location == std::string::npos) {
     LOG(ERROR) << "Didn't find doc start";
     std::cerr << format_error << std::endl;
     return file_contents;
   }
 
   const auto doc_start_size = sizeof(kDocStart) - 1;
-  string doc_text = file_contents.substr(
+  std::string doc_text = file_contents.substr(
       doc_start_location + doc_start_size,
       doc_end_location - doc_start_location - doc_start_size);
 
@@ -189,12 +189,12 @@ namespace {
 // Remove .Doc calls that follow REGISTER_OP calls for the given ops.
 // We search for REGISTER_OP calls in the given op_files list.
 void RemoveDocs(const std::vector<const OpDef*>& ops,
-                const std::vector<string>& op_files) {
+                const std::vector<std::string>& op_files) {
   // Set of ops that we already found REGISTER_OP calls for.
-  std::set<string> processed_ops;
+  std::set<std::string> processed_ops;
 
   for (const auto& file : op_files) {
-    string file_contents;
+    std::string file_contents;
     bool file_contents_updated = false;
     TF_CHECK_OK(ReadFileToString(Env::Default(), file, &file_contents));
 
@@ -203,11 +203,11 @@ void RemoveDocs(const std::vector<const OpDef*>& ops,
         // We already found REGISTER_OP call for this op in another file.
         continue;
       }
-      string register_call =
+      std::string register_call =
           strings::Printf("REGISTER_OP(\"%s\")", op->name().c_str());
       const auto register_call_location = file_contents.find(register_call);
       // Find REGISTER_OP(OpName) call.
-      if (register_call_location == string::npos) {
+      if (register_call_location == std::string::npos) {
         continue;
       }
       std::cout << "Removing .Doc call for " << op->name() << " from " << file
@@ -228,11 +228,11 @@ void RemoveDocs(const std::vector<const OpDef*>& ops,
 
 // Returns ApiDefs text representation in multi-line format
 // constructed based on the given op.
-string CreateApiDef(const OpDef& op) {
+std::string CreateApiDef(const OpDef& op) {
   ApiDefs api_defs;
   FillBaseApiDef(api_defs.add_op(), op);
 
-  const std::vector<string> multi_line_fields = {"description"};
+  const std::vector<std::string> multi_line_fields = {"description"};
   std::string new_api_defs_str;
   ::tensorflow::protobuf::TextFormat::PrintToString(api_defs,
                                                     &new_api_defs_str);
@@ -242,8 +242,8 @@ string CreateApiDef(const OpDef& op) {
 // Creates ApiDef files for any new ops.
 // If op_file_pattern is not empty, then also removes .Doc calls from
 // new op registrations in these files.
-void CreateApiDefs(const OpList& ops, const string& api_def_dir,
-                   const string& op_file_pattern) {
+void CreateApiDefs(const OpList& ops, const std::string& api_def_dir,
+                   const std::string& op_file_pattern) {
   auto* excluded_ops = GetExcludedOps();
   std::vector<const OpDef*> new_ops_with_docs;
 
@@ -252,8 +252,8 @@ void CreateApiDefs(const OpList& ops, const string& api_def_dir,
       continue;
     }
     // Form the expected ApiDef path.
-    string file_path =
-        io::JoinPath(tensorflow::string(api_def_dir), kApiDefFileFormat);
+    std::string file_path =
+        io::JoinPath(std::string(api_def_dir), kApiDefFileFormat);
     file_path = strings::Printf(file_path.c_str(), op.name().c_str());
 
     // Create ApiDef if it doesn't exist.
@@ -268,7 +268,7 @@ void CreateApiDefs(const OpList& ops, const string& api_def_dir,
     }
   }
   if (!op_file_pattern.empty()) {
-    std::vector<string> op_files;
+    std::vector<std::string> op_files;
     TF_CHECK_OK(Env::Default()->GetMatchingPaths(op_file_pattern, &op_files));
     RemoveDocs(new_ops_with_docs, op_files);
   }
