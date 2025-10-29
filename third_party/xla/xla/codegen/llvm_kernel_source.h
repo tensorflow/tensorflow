@@ -24,7 +24,6 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "xla/codegen/kernel_definition.h"
-#include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_source.h"
 
 namespace xla {
@@ -53,7 +52,6 @@ class LlvmKernelSource final : public KernelSource {
 };
 
 using LlvmKernelDefinition = KernelDefinition<LlvmKernelSource>;  // NOLINT
-using LlvmKernelEmitter = KernelEmitter<LlvmKernelSource>;        // NOLINT
 
 }  // namespace xla
 
