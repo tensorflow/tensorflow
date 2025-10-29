@@ -43,7 +43,7 @@ class StringStripOp : public OpKernel {
     for (int64_t i = 0; i < input.size(); ++i) {
       absl::string_view entry(input(i));
       str_util::RemoveWhitespaceContext(&entry);
-      output(i) = string(entry);
+      output(i) = std::string(entry);
     }
   }
 };

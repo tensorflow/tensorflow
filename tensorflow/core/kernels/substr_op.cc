@@ -39,7 +39,7 @@ template <typename T>
 class SubstrOp : public OpKernel {
  public:
   explicit SubstrOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    string unit;
+    std::string unit;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("unit", &unit));
     OP_REQUIRES_OK(ctx, ParseCharUnit(unit, &unit_));
   }
@@ -342,6 +342,6 @@ class SubstrOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                         \
       Name("Substr").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       SubstrOp<type>);
-REGISTER_SUBSTR(int32);
+REGISTER_SUBSTR(int32_t);
 REGISTER_SUBSTR(int64_t);
 }  // namespace tensorflow
