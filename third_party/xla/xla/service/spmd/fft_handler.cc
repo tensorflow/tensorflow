@@ -426,10 +426,7 @@ absl::Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
       partitioned_input.state().next_channel_id, module_,
       partitioned_input.state().b);
 
-  result->set_sharding(hlo->sharding());
-  auto partitioned_fft =
-      PartitionedHlo(result, hlo->shape(), partitioned_input.state());
-  SetPartitionedHlo(hlo, std::move(partitioned_fft));
+  SetPartitionedHlo(hlo, result);
   return absl::OkStatus();
 }
 
