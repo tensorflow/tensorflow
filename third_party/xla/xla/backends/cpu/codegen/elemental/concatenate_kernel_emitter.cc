@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -67,7 +66,7 @@ ConcatenateKernelEmitter::ConcatenateKernelEmitter(
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<LlvmKernelDefinition>
+absl::StatusOr<ConcatenateKernelEmitter::KernelDefinition>
 ConcatenateKernelEmitter::EmitKernelDefinition() {
   if (absl::Status status = CanDoFastConcatenate(instr_); !status.ok()) {
     VLOG(1) << "Could not emit fast concatenate for " << instr_->ToString()
@@ -122,7 +121,7 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return LlvmKernelDefinition(std::move(spec), std::move(source));
+  return KernelDefinition(std::move(spec), std::move(source));
 }
 
 }  // namespace xla::cpu

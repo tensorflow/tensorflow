@@ -168,7 +168,7 @@ ElementalKernelEmitter::ElementalKernelEmitter(
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<LlvmKernelDefinition>
+absl::StatusOr<ElementalKernelEmitter::KernelDefinition>
 ElementalKernelEmitter::EmitKernelDefinition() {
   VLOG(2) << "Emit elemental host kernel: " << instr_->name();
 
@@ -234,7 +234,7 @@ ElementalKernelEmitter::EmitKernelDefinition() {
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return LlvmKernelDefinition(std::move(spec), std::move(source));
+  return KernelDefinition(std::move(spec), std::move(source));
 }
 
 absl::StatusOr<NumWorkGroups> ElementalKernelEmitter::EmitElementalLoops(

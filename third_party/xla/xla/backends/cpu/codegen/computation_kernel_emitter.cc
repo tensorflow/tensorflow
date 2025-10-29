@@ -132,7 +132,7 @@ ComputationKernelEmitter::ComputationKernelEmitter(
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<LlvmKernelDefinition>
+absl::StatusOr<ComputationKernelEmitter::KernelDefinition>
 ComputationKernelEmitter::EmitKernelDefinition() {
   VLOG(2) << "Emit Computation host kernel: " << instr_->name();
 
@@ -221,7 +221,7 @@ ComputationKernelEmitter::EmitKernelDefinition() {
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return LlvmKernelDefinition(std::move(spec), std::move(source));
+  return KernelDefinition(std::move(spec), std::move(source));
 }
 
 absl::StatusOr<llvm::Function*> ComputationKernelEmitter::EmitNestedComputation(

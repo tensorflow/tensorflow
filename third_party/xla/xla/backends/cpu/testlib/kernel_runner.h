@@ -37,9 +37,9 @@ namespace xla::cpu {
 class KernelRunner final : public xla::KernelRunner {
  public:
   static absl::StatusOr<KernelRunner> Create(
-      LlvmKernelDefinition kernel_definition, JitCompiler compiler);
+      KernelDefinition<LlvmKernelSource> kernel, JitCompiler compiler);
   static absl::StatusOr<KernelRunner> Create(
-      MlirKernelDefinition kernel_definition, JitCompiler compiler);
+      KernelDefinition<MlirKernelSource> kernel, JitCompiler compiler);
 
   KernelRunner(KernelRunner&&) = default;
   KernelRunner& operator=(KernelRunner&&) = default;

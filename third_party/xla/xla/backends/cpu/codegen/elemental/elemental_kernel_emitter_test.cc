@@ -46,7 +46,7 @@ class ElementalKernelEmitterTest : public HloHardwareIndependentTestBase {
   ElementalKernelEmitterTest()
       : target_machine_features_([](int64_t size) { return 1; }) {}
 
-  absl::StatusOr<LlvmKernelDefinition> EmitKernelDefinition(
+  absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitKernelDefinition(
       const HloInstruction* instr, const BufferAssignment* buffer_assignment) {
     ElementalKernelEmitter emitter(instr, buffer_assignment,
                                    &target_machine_features_);

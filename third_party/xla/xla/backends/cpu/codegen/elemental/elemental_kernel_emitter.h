@@ -39,7 +39,7 @@ class ElementalKernelEmitter final : public KernelEmitter<LlvmKernelSource> {
                          const TargetMachineFeatures* target_machine);
 
   absl::string_view name() const final { return "elemental_kernel_emitter"; }
-  absl::StatusOr<LlvmKernelDefinition> EmitKernelDefinition() override;
+  absl::StatusOr<KernelDefinition> EmitKernelDefinition() override;
 
  private:
   // Emits LLVM IR using elemental loop emitter and the given element generator.

@@ -51,7 +51,7 @@ class ComputationKernelEmitter final : public KernelEmitter<LlvmKernelSource> {
                            const TargetMachineFeatures* target_machine);
 
   absl::string_view name() const final { return "computation_kernel_emitter"; }
-  absl::StatusOr<LlvmKernelDefinition> EmitKernelDefinition() final;
+  absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
 
  private:
   absl::StatusOr<llvm::Function*> EmitNestedComputation(

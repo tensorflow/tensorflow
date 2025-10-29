@@ -56,7 +56,8 @@ DotKernelEmitter::DotKernelEmitter(const HloInstruction* instr,
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<LlvmKernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
+absl::StatusOr<DotKernelEmitter::KernelDefinition>
+DotKernelEmitter::EmitKernelDefinition() {
   const HloModuleConfig& config = instr_->GetModule()->config();
 
   DotImplementationStrategy strategy = GetDotImplementationStrategy(
@@ -111,7 +112,7 @@ absl::StatusOr<LlvmKernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return LlvmKernelDefinition(std::move(spec), std::move(source));
+  return KernelDefinition(std::move(spec), std::move(source));
 }
 
 }  // namespace xla::cpu

@@ -16,12 +16,12 @@ limitations under the License.
 #include "xla/backends/cpu/testlib/kernel_runner.h"
 
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Module.h"
@@ -51,10 +51,9 @@ limitations under the License.
 namespace xla::cpu {
 
 absl::StatusOr<KernelRunner> KernelRunner::Create(
-    LlvmKernelDefinition kernel_definition, JitCompiler compiler) {
-  auto spec = kernel_definition.spec();
-  auto thread_safe_module =
-      std::move(kernel_definition).TakeSource().thread_safe_module();
+    KernelDefinition<LlvmKernelSource> kernel, JitCompiler compiler) {
+  auto spec = kernel.spec();
+  auto thread_safe_module = std::move(kernel).TakeSource().thread_safe_module();
   SetModuleMemoryRegionName(*thread_safe_module.getModuleUnlocked(),
                             "kernel_runner_test");
 
@@ -73,12 +72,12 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
 }
 
 absl::StatusOr<KernelRunner> KernelRunner::Create(
-    MlirKernelDefinition kernel_definition, JitCompiler compiler) {
-  auto spec = kernel_definition.spec();
-  auto source = std::move(kernel_definition).TakeSource();
+    KernelDefinition<MlirKernelSource> kernel, JitCompiler compiler) {
+  auto spec = kernel.spec();
+  auto source = std::move(kernel).TakeSource();
   TF_ASSIGN_OR_RETURN(LlvmKernelSource llvm_kernel_source, LowerToLlvm(source));
 
-  return Create(LlvmKernelDefinition(spec, std::move(llvm_kernel_source)),
+  return Create(KernelDefinition(spec, std::move(llvm_kernel_source)),
                 std::move(compiler));
 }
 

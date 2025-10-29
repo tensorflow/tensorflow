@@ -234,11 +234,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitEntryComputation(
 absl::StatusOr<std::vector<ThunkEmitter::EmittedKernel>>
 ThunkEmitter::ConsumeKernels() {
   tsl::profiler::TraceMe trace("ThunkEmitter::ConsumeKernels");
-  TF_ASSIGN_OR_RETURN(std::vector<LlvmKernelDefinition> fusion_kernels,
-                      parallel_fusion_emitter_.ConsumeKernels());
+  TF_ASSIGN_OR_RETURN(
+      std::vector<KernelDefinition<LlvmKernelSource>> fusion_kernels,
+      parallel_fusion_emitter_.ConsumeKernels());
 
   kernels_.reserve(kernels_.size() + fusion_kernels.size());
-  for (LlvmKernelDefinition& kernel : fusion_kernels) {
+  for (KernelDefinition<LlvmKernelSource>& kernel : fusion_kernels) {
     std::string name(kernel.spec().name());
     auto source = std::move(kernel).TakeSource();
     kernels_.push_back({name, std::move(source).thread_safe_module()});
@@ -688,7 +689,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
       maybe_small_call.has_value() && *maybe_small_call == "true") {
     ComputationKernelEmitter emitter(instruction, &buffer_assignment_,
                                      &target_machine_features_);
-    TF_ASSIGN_OR_RETURN(LlvmKernelDefinition kernel_definition,
+    TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                         emitter.EmitKernelDefinition());
 
     auto kernel_spec = kernel_definition.spec();
@@ -712,7 +713,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateKernelThunk(
     const HloInstruction* instruction) {
   ConcatenateKernelEmitter emitter(instruction, &buffer_assignment_,
                                    &target_machine_features_);
-  TF_ASSIGN_OR_RETURN(LlvmKernelDefinition kernel_definition,
+  TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                       emitter.EmitKernelDefinition());
 
   auto kernel_spec = kernel_definition.spec();
@@ -818,7 +819,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
     const HloInstruction* instruction) {
   ElementalKernelEmitter emitter(instruction, &buffer_assignment_,
                                  &target_machine_features_);
-  TF_ASSIGN_OR_RETURN(LlvmKernelDefinition kernel_definition,
+  TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                       emitter.EmitKernelDefinition());
 
   auto kernel_spec = kernel_definition.spec();
@@ -1062,7 +1063,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
     case DotImplementationStrategy::kTiledLlvmIrGemv: {
       DotKernelEmitter emitter(instruction, &buffer_assignment_,
                                &target_machine_features_);
-      TF_ASSIGN_OR_RETURN(LlvmKernelDefinition kernel_definition,
+      TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());
 
       auto kernel_spec = kernel_definition.spec();

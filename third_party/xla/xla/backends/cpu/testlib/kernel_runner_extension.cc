@@ -258,11 +258,12 @@ NB_MODULE(_extension, kernel_runner_module) {
             return *std::move(runner);
           })
       .def_static(
-          "create", [](std::unique_ptr<LlvmKernelDefinition,
-                                       nb::deleter<LlvmKernelDefinition>>
-                           kernel_definition,
-                       std::unique_ptr<JitCompiler, nb::deleter<JitCompiler>>
-                           jit_compiler) {
+          "create",
+          [](std::unique_ptr<KernelDefinition<LlvmKernelSource>,
+                             nb::deleter<KernelDefinition<LlvmKernelSource>>>
+                 kernel_definition,
+             std::unique_ptr<JitCompiler, nb::deleter<JitCompiler>>
+                 jit_compiler) {
             absl::StatusOr<KernelRunner> runner = KernelRunner::Create(
                 std::move(*kernel_definition), std::move(*jit_compiler));
 

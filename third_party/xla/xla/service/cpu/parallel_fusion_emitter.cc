@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
@@ -190,7 +191,7 @@ absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
   return spec;
 }
 
-absl::StatusOr<std::vector<LlvmKernelDefinition>>
+absl::StatusOr<std::vector<KernelDefinition<LlvmKernelSource>>>
 ParallelFusionEmitter::ConsumeKernels() {
   absl::MutexLock lock(kernels_mutex_);
 
@@ -203,8 +204,8 @@ ParallelFusionEmitter::ConsumeKernels() {
   }
 
   // Sort the kernels by name to ensure a deterministic order.
-  absl::c_sort(kernels_, [](const LlvmKernelDefinition& lhs,
-                            const LlvmKernelDefinition& rhs) {
+  absl::c_sort(kernels_, [](const KernelDefinition<LlvmKernelSource>& lhs,
+                            const KernelDefinition<LlvmKernelSource>& rhs) {
     return lhs.spec().name() < rhs.spec().name();
   });
 
@@ -212,12 +213,12 @@ ParallelFusionEmitter::ConsumeKernels() {
 }
 
 void ParallelFusionEmitter::CompileFusion(
-    std::shared_ptr<MlirKernelDefinition> mlir_kernel_definition,
+    std::shared_ptr<KernelDefinition<MlirKernelSource>> mlir_kernel,
     std::shared_ptr<CompilerInstance> compiler_instance) {
-  KernelSpec spec = mlir_kernel_definition->spec();
+  KernelSpec spec = mlir_kernel->spec();
   absl::StatusOr<LlvmKernelSource> llvm_kernel_source =
       compiler_instance->compiler->Compile(
-          std::move(*mlir_kernel_definition).TakeSource());
+          std::move(*mlir_kernel).TakeSource());
 
   absl::MutexLock lock(kernels_mutex_);
   outstanding_kernels_--;

@@ -58,14 +58,14 @@ class KernelEmitter : public KernelEmitterBase {
   static_assert(std::is_base_of_v<KernelSource, Source>,
                 "Source must be a subclass of KernelSource");
 
-  virtual absl::StatusOr<KernelDefinition<Source>> EmitKernelDefinition() = 0;
+  using KernelDefinition = ::xla::KernelDefinition<Source>;
+  virtual absl::StatusOr<KernelDefinition> EmitKernelDefinition() = 0;
 
  private:
   absl::StatusOr<std::unique_ptr<KernelDefinitionBase>>
   EmitKernelDefinitionBase() final {
     TF_ASSIGN_OR_RETURN(auto kernel_definition, EmitKernelDefinition());
-    return std::make_unique<KernelDefinition<Source>>(
-        std::move(kernel_definition));
+    return std::make_unique<KernelDefinition>(std::move(kernel_definition));
   }
 };
 

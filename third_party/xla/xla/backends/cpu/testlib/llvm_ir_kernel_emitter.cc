@@ -52,7 +52,7 @@ LlvmTestKernelEmitter::LlvmTestKernelEmitter(absl::string_view llvm_ir,
   }
 }
 
-absl::StatusOr<LlvmKernelDefinition>
+absl::StatusOr<LlvmTestKernelEmitter::KernelDefinition>
 LlvmTestKernelEmitter::EmitKernelDefinition() {
   auto context = std::make_unique<llvm::LLVMContext>();
 
@@ -84,7 +84,7 @@ LlvmTestKernelEmitter::EmitKernelDefinition() {
   KernelSpec kernel_spec(kernel_name_, num_workgroups_,
                          std::move(argument_buffers), std::move(result_buffers),
                          /*invariant_arguments=*/{});
-  return LlvmKernelDefinition(std::move(kernel_spec), std::move(source));
+  return KernelDefinition(std::move(kernel_spec), std::move(source));
 }
 
 }  // namespace xla::cpu

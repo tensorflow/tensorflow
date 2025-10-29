@@ -206,9 +206,9 @@ NB_MODULE(_extension, kernel_runner_module) {
           },
           nb::rv_policy::reference_internal);
 
-  nb::class_<MlirKernelDefinition, KernelDefinitionBase>(
+  nb::class_<KernelDefinition<MlirKernelSource>, KernelDefinitionBase>(
       kernel_runner_module, "MlirKernelDefinition");
-  nb::class_<LlvmKernelDefinition, KernelDefinitionBase>(
+  nb::class_<KernelDefinition<LlvmKernelSource>, KernelDefinitionBase>(
       kernel_runner_module, "LlvmKernelDefinition");
 
   nb::class_<KernelEmitterBase>(kernel_runner_module, "KernelEmitterBase")

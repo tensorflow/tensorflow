@@ -25,8 +25,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_kernel_source.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -52,14 +54,15 @@ class ParallelFusionEmitter {
 
   // Returns the kernels for all the added fusions, blocks until all kernels
   // have been compiled.
-  absl::StatusOr<std::vector<LlvmKernelDefinition>> ConsumeKernels();
+  absl::StatusOr<std::vector<KernelDefinition<LlvmKernelSource>>>
+  ConsumeKernels();
 
  private:
   struct CompilerInstance;
   class FusionCompilerPool;
 
   void CompileFusion(
-      std::shared_ptr<MlirKernelDefinition> mlir_kernel_definition,
+      std::shared_ptr<KernelDefinition<MlirKernelSource>> mlir_kernel,
       std::shared_ptr<CompilerInstance> compiler_instance);
 
   tsl::thread::ThreadPool& thread_pool_;
@@ -70,7 +73,8 @@ class ParallelFusionEmitter {
   absl::Mutex kernels_mutex_;
   int64_t outstanding_kernels_ ABSL_GUARDED_BY(kernels_mutex_) = 0;
   absl::Status kernels_status_ ABSL_GUARDED_BY(kernels_mutex_);
-  std::vector<LlvmKernelDefinition> kernels_ ABSL_GUARDED_BY(kernels_mutex_);
+  std::vector<KernelDefinition<LlvmKernelSource>> kernels_
+      ABSL_GUARDED_BY(kernels_mutex_);
 };
 
 }  // namespace xla::cpu
