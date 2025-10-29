@@ -89,7 +89,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(
         Iterator::Params{this, absl::StrCat(prefix, "::Random")},
         manager_->get().get());
@@ -106,7 +106,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
     return *shapes;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.op_version = op_version_;
     params.set_args(seeds_.input_seed(), seeds_.input_seed2());
@@ -271,7 +271,7 @@ void RandomDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, "seed2", &seed2));
   RandomSeeds seeds(seed, seed2);
   static std::atomic<int64_t> resource_id_counter(0);
-  const string& container = ctx->resource_manager()->default_container();
+  const std::string& container = ctx->resource_manager()->default_container();
   auto name = strings::StrCat(ctx->op_kernel().name(), "/", kSeedGenerator, "_",
                               resource_id_counter.fetch_add(1));
   SeedGeneratorManager* manager = nullptr;

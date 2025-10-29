@@ -95,9 +95,9 @@ class ComputeBatchSizeOp : public OpKernel {
     DatasetBase* dataset;
     OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
-    std::vector<std::pair<string, Tensor>> input_list;
+    std::vector<std::pair<std::string, Tensor>> input_list;
     GraphDef graph_def;
-    string dataset_node_name;
+    std::string dataset_node_name;
     OP_REQUIRES_OK(ctx, AsGraphDefForRewrite(ctx, dataset, &input_list,
                                              &graph_def, &dataset_node_name));
 
