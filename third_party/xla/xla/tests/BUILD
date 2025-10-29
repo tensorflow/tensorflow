@@ -627,7 +627,6 @@ xla_cc_test(
 xla_test(
     name = "while_test",
     srcs = ["while_test.cc"],
-    # placeholder for extra args for while_test
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
