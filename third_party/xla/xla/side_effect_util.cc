@@ -33,6 +33,8 @@ const char kXlaComputeTypeDense[] = "dense";
 
 const char kXlaComputeTypeHost[] = "host";
 
+const char kXlaComputeTypeSparseOffload[] = "sparseoffload";
+
 const char kXlaMaxIdsPerPartitionAttr[] = "_xla_max_ids_per_partition";
 
 const char kXlaMaxUniqueIdsPerPartitionAttr[] =
