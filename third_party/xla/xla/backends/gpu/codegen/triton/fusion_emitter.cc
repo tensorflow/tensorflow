@@ -331,36 +331,25 @@ absl::StatusOr<TileInfo> TileInfo::Construct(
 
 // Same as HLO BroadcastInDims. The sorted indices in `dims` specify the mapping
 // of the input dimensions to the output dimensions.
-ScalarOrTensor BroadcastInDims(EmitterLocOpBuilder b, ScalarOrTensor value,
-                               ArrayRef<int64_t> output_shape,
-                               ArrayRef<int64_t> dims) {
+TensorValue BroadcastInDims(EmitterLocOpBuilder b, TensorValue value,
+                            ArrayRef<int64_t> output_shape,
+                            ArrayRef<int64_t> dims) {
   CHECK(llvm::is_sorted(dims)) << "broadcast dims must be sorted";
 
-  mlir::TypedValue<mlir::RankedTensorType> broadcast_in_dim_input;
-
-  if (value.IsScalar()) {
-    CHECK(dims.empty()) << "scalar broadcast must have empty dims";
-    broadcast_in_dim_input = MakeTensor(b, value.UnwrapScalar());
-  } else {
-    broadcast_in_dim_input = value.UnwrapTensor();
-  }
-
   auto result_type = mlir::RankedTensorType::get(
-      output_shape, broadcast_in_dim_input.getType().getElementType());
+      output_shape, value.getType().getElementType());
 
-  return ScalarOrTensor(b.create<stablehlo::BroadcastInDimOp>(
-      result_type, broadcast_in_dim_input, dims));
+  return b.create<stablehlo::BroadcastInDimOp>(result_type, value, dims);
 }
 
-ScalarOrTensor Splat(EmitterLocOpBuilder b, ScalarOrTensor value,
-                     ArrayRef<int64_t> output_shape) {
-  return BroadcastInDims(b, value, output_shape, /*dims=*/{});
+TensorValue Splat(EmitterLocOpBuilder b, Value value,
+                  ArrayRef<int64_t> output_shape) {
+  return BroadcastInDims(b, MakeTensor(b, value), output_shape, /*dims=*/{});
 }
 
-ScalarOrTensor Iota(EmitterLocOpBuilder b, int32_t limit) {
+TensorValue Iota(EmitterLocOpBuilder b, int32_t limit) {
   auto type = mlir::RankedTensorType::get(limit, b.getI32Type());
-  return ScalarOrTensor(
-      b.create<stablehlo::IotaOp>(type, /*iota_dimension=*/0));
+  return b.create<stablehlo::IotaOp>(type, /*iota_dimension=*/0);
 }
 
 ScalarOrTensor EmitParameterExtract(EmitterLocOpBuilder b,
@@ -389,9 +378,8 @@ absl::StatusOr<ScalarOrTensor> EmitReduce(
   // dimension using a scalar as a neutral element.
   const HloReduceInstruction& hlo_reduce =
       *::xla::Cast<HloReduceInstruction>(tiled_hlo_reduce.hlo());
-  ScalarOrTensor input = values[tiled_hlo_reduce.operand(0)];
-  llvm::ArrayRef<int64_t> input_shape =
-      mlir::cast<ShapedType>(input.getType()).getShape();
+  TensorValue input = values[tiled_hlo_reduce.operand(0)].UnwrapTensor();
+  llvm::ArrayRef<int64_t> input_shape = input.getType().getShape();
   absl::Span<const int64_t> source_tensor_shape =
       hlo_reduce.operand(0)->shape().dimensions();
 
@@ -410,26 +398,26 @@ absl::StatusOr<ScalarOrTensor> EmitReduce(
   int64_t input_reduction_dimension_size = input_shape[reduction_dimension];
   if (input_reduction_dimension_size !=
       source_tensor_reduction_dimension_size) {
-    ScalarOrTensor range = Iota(b, input_reduction_dimension_size);
-    ScalarOrTensor bcast =
+    TensorValue range = Iota(b, input_reduction_dimension_size);
+    TensorValue bcast =
         BroadcastInDims(b, range, input_shape, {reduction_dimension});
     ScalarOrTensor constant = CreateConst(
         b, b.getI32Type(), source_tensor_reduction_dimension_size, input_shape);
-    Value mask =
-        b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, bcast.UnwrapUnsafe(),
-                                constant.UnwrapUnsafe());
+    Value mask = b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, bcast,
+                                         constant.UnwrapUnsafe());
 
-    ScalarOrTensor neutral = BroadcastInDims(
-        b, values[tiled_hlo_reduce.operand(1)], input_shape, /*dims=*/{});
-    input = ScalarOrTensor(b.create<arith::SelectOp>(mask, input.UnwrapUnsafe(),
-                                                     neutral.UnwrapUnsafe()));
+    TensorValue neutral = BroadcastInDims(
+        b, MakeTensor(b, values[tiled_hlo_reduce.operand(1)].UnwrapUnsafe()),
+        input_shape, /*dims=*/{});
+    input = mlir::cast<TensorValue>(
+        b.create<arith::SelectOp>(mask, input, neutral).getResult());
   }
 
   Value init_value =
       MakeTensor(b, values[tiled_hlo_reduce.operand(1)].UnwrapScalar());
 
-  stablehlo::ReduceOp reduction = b.create<stablehlo::ReduceOp>(
-      input.UnwrapTensor(), init_value, reduction_dimension);
+  stablehlo::ReduceOp reduction =
+      b.create<stablehlo::ReduceOp>(input, init_value, reduction_dimension);
   {
     TF_ASSIGN_OR_RETURN(Type result_ty,
                         TritonType(b, hlo_reduce.shape().element_type()));
@@ -521,7 +509,7 @@ ArrayRef<T> MakeArrayRef(const absl::Span<const T> span) {
   return ArrayRef(span.data(), span.size());
 }
 
-ScalarOrTensor EmitTiledBroadcast(
+TensorValue EmitTiledBroadcast(
     EmitterLocOpBuilder b, const TiledHloInstruction& tiled_broadcast,
     absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values) {
   const SmallVector<int64_t>& input_tile_shape =
@@ -529,19 +517,20 @@ ScalarOrTensor EmitTiledBroadcast(
   const SmallVector<int64_t>& output_tile_shape = tiled_broadcast.tile_sizes();
 
   if (input_tile_shape.empty() && output_tile_shape.empty()) {
-    return values[tiled_broadcast.operand(0)];
+    return MakeTensor(b, values[tiled_broadcast.operand(0)].UnwrapUnsafe());
   }
   CHECK(!output_tile_shape.empty());
 
   SmallVector<int64_t> padded_output_tile_shape =
       GetPaddedTileSizes(output_tile_shape);
 
-  ScalarOrTensor input = values[tiled_broadcast.operand(0)];
+  TensorValue input =
+      MakeTensor(b, values[tiled_broadcast.operand(0)].UnwrapUnsafe());
   return BroadcastInDims(b, input, padded_output_tile_shape,
                          MakeArrayRef(tiled_broadcast.hlo()->dimensions()));
 }
 
-absl::StatusOr<ScalarOrTensor> EmitTiledIota(
+absl::StatusOr<TensorValue> EmitTiledIota(
     EmitterLocOpBuilder b, Value pid, const TiledHloInstruction& tiled_iota) {
   const HloIotaInstruction* hlo_iota =
       ::xla::Cast<HloIotaInstruction>(tiled_iota.hlo());
@@ -563,17 +552,15 @@ absl::StatusOr<ScalarOrTensor> EmitTiledIota(
 
   // First, stride as needed between the iota components.
   Value range = b.create<arith::MulIOp>(
-      Iota(b, padded_tile_sizes[iota_dim]).UnwrapTensor(),
+      Iota(b, padded_tile_sizes[iota_dim]),
       Splat(b,
-            CreateConst(b, b.getI32Type(), tiled_iota.tile_strides()[iota_dim]),
-            padded_tile_sizes[iota_dim])
-          .UnwrapTensor());
+            CreateConst(b, b.getI32Type(), tiled_iota.tile_strides()[iota_dim])
+                .UnwrapUnsafe(),
+            padded_tile_sizes[iota_dim]));
 
   // Then, add the base offset to the iota components.
   range = b.create<arith::AddIOp>(
-      range,
-      Splat(b, ScalarOrTensor(iota_dim_offset), padded_tile_sizes[iota_dim])
-          .UnwrapTensor());
+      range, Splat(b, iota_dim_offset, padded_tile_sizes[iota_dim]));
 
   // Cast the result to the targeted type.
   TF_ASSIGN_OR_RETURN(Type iota_element_type,
@@ -583,7 +570,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledIota(
 
   // And finally, produce a broadcast along the non-iota dimensions in order to
   // produce the whole iota tile.
-  return BroadcastInDims(b, ScalarOrTensor(range), padded_tile_sizes,
+  return BroadcastInDims(b, mlir::cast<TensorValue>(range), padded_tile_sizes,
                          /*dims=*/{iota_dim});
 }
 
@@ -622,12 +609,13 @@ absl::StatusOr<TensorValue> EmitTiledReshape(EmitterLocOpBuilder b,
   return b.create<stablehlo::ReshapeOp>(output_tensor_type, input);
 }
 
-Value EmitTiledTranspose(EmitterLocOpBuilder b, ArrayRef<int64_t> tile_sizes,
-                         SmallVector<int64_t> dimensions, Value input) {
+TensorValue EmitTiledTranspose(EmitterLocOpBuilder b,
+                               ArrayRef<int64_t> tile_sizes,
+                               SmallVector<int64_t> dimensions,
+                               TensorValue input) {
   SmallVector<int64_t> padded_tile_sizes = GetPaddedTileSizes(tile_sizes);
 
-  Type input_element_type =
-      mlir::cast<ShapedType>(input.getType()).getElementType();
+  Type input_element_type = input.getType().getElementType();
   Type output_tensor_type =
       mlir::RankedTensorType::get(padded_tile_sizes, input_element_type);
 
@@ -636,9 +624,9 @@ Value EmitTiledTranspose(EmitterLocOpBuilder b, ArrayRef<int64_t> tile_sizes,
   return b.create<stablehlo::TransposeOp>(output_tensor_type, input, order);
 }
 
-absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
+absl::StatusOr<TensorValue> EmitTiledBitcast(
     EmitterLocOpBuilder b, const TiledHloInstruction& tiled_bitcast,
-    Value input) {
+    TensorValue input) {
   Shape input_shape = tiled_bitcast.hlo()->operand(0)->shape();
   const Shape& output_shape = tiled_bitcast.hlo()->shape();
   // If the bitcast changes the element type to an element type of the same
@@ -652,13 +640,11 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
     }
     TF_ASSIGN_OR_RETURN(Type output_element_type,
                         TritonType(b, output_shape.element_type()));
-    Type output_type =
-        mlir::isa<TensorValue>(input)
-            ? mlir::RankedTensorType::get(
-                  GetPaddedTileSizes(tiled_bitcast.operand(0)->tile_sizes()),
-                  output_element_type)
-            : output_element_type;
-    input = b.create<mlir::tensor::BitcastOp>(output_type, input);
+    auto output_type = mlir::RankedTensorType::get(
+        GetPaddedTileSizes(tiled_bitcast.operand(0)->tile_sizes()),
+        output_element_type);
+    input = mlir::cast<TensorValue>(
+        b.create<mlir::tensor::BitcastOp>(output_type, input).getResult());
     input_shape.set_element_type(output_shape.element_type());
   }
 
@@ -681,7 +667,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
   // the bitcast, so it's not possible to easily propagate them from the output.
   std::vector<int64_t> transpose1_tile_sizes =
       Permute(tiled_bitcast.operand(0)->tile_sizes(), trt->transpose1_dims);
-  Value normalized_input =
+  TensorValue normalized_input =
       trt->IsTranspose1Identity()
           ? input
           : EmitTiledTranspose(b, transpose1_tile_sizes,
@@ -694,7 +680,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
   // the inverse permutation.
   std::vector<int64_t> reshape_tile_sizes =
       PermuteInverse(tiled_bitcast.tile_sizes(), trt->transpose2_dims);
-  Value normalized_reshape;
+  TensorValue normalized_reshape;
   if (ShapeUtil::Equal(trt->transpose1_shape, trt->reshape_shape)) {
     normalized_reshape = normalized_input;
   } else {
@@ -705,12 +691,11 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
 
   // The final transpose simply uses the tile sizes computed for the original
   // bitcast by the tiling analysis.
-  return MakeScalarOrTensor(
-      b, trt->IsTranspose2Identity()
+  return trt->IsTranspose2Identity()
              ? normalized_reshape
              : EmitTiledTranspose(b, tiled_bitcast.tile_sizes(),
                                   llvm::to_vector(trt->transpose2_dims),
-                                  normalized_reshape));
+                                  normalized_reshape);
 }
 
 absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
@@ -749,18 +734,16 @@ absl::StatusOr<int64_t> GetDotLoopIterationCount(
 //
 // Note: we currently assume that contracting_dimension_tile_index is an i32
 // scalar.
-absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder b,
-                                     const TiledHloInstruction& dot_operand,
-                                     Value dot_operand_value,
-                                     Value contracting_dimension_tile_index,
-                                     int contraction_dimension_index) {
+absl::StatusOr<TensorValue> MaskDotOperand(
+    EmitterLocOpBuilder b, const TiledHloInstruction& dot_operand,
+    TensorValue dot_operand_value, Value contracting_dimension_tile_index,
+    int contraction_dimension_index) {
   if (contracting_dimension_tile_index.getType() != b.getI32Type()) {
     return absl::FailedPreconditionError(
         "contracting_dimension_tile_index must be an i32 scalar");
   }
 
-  llvm::ArrayRef<int64_t> tile_shape =
-      mlir::cast<ShapedType>(dot_operand_value.getType()).getShape();
+  llvm::ArrayRef<int64_t> tile_shape = dot_operand_value.getType().getShape();
 
   int64_t contracting_dimension_size =
       dot_operand.hlo()->shape().dimensions(contraction_dimension_index);
@@ -792,9 +775,8 @@ absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder b,
       // operand = select(broadcast(mask, operand.shape), operand, 0)
       Value tile_offset = b.create<arith::MulIOp>(
           contracting_dimension_tile_index, tile_size_value);
-      Value range = Iota(b, tile_size).UnwrapTensor();
-      Value broadcasted_tile_offset =
-          Splat(b, ScalarOrTensor(tile_offset), {tile_size}).UnwrapTensor();
+      TensorValue range = Iota(b, tile_size);
+      TensorValue broadcasted_tile_offset = Splat(b, tile_offset, {tile_size});
       Value indices = b.create<arith::AddIOp>(range, broadcasted_tile_offset);
 
       Value boundary = CreateConst(b, b.getI32Type(),
@@ -804,9 +786,8 @@ absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder b,
       Value mask =
           b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, indices, boundary);
 
-      mask = BroadcastInDims(b, ScalarOrTensor(mask), tile_shape,
-                             {contraction_dimension_index})
-                 .UnwrapTensor();
+      mask = BroadcastInDims(b, mlir::cast<TensorValue>(mask), tile_shape,
+                             {contraction_dimension_index});
       TF_ASSIGN_OR_RETURN(
           auto element_type,
           TritonType(b, dot_operand.hlo()->shape().element_type()));
@@ -823,7 +804,7 @@ absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder b,
       b.create<mlir::scf::YieldOp>(dot_operand_value);
     }
     b.setInsertionPointAfter(if_op);
-    return if_op.getResult(0);
+    return mlir::cast<TensorValue>(if_op.getResult(0));
   }
 
   return dot_operand_value;
@@ -861,15 +842,13 @@ enum class DotOperandSide { kLhs, kRhs };
 //   because the last one of the lhs operand is not equal to 1.
 //
 // Returns an error if canonicalization is not possible.
-absl::StatusOr<Value> CanonicalizeDotOperand(
-    EmitterLocOpBuilder b, Value operand, int64_t contracting_dim_idx,
-    DotOperandSide side, Value counterpart_operand = nullptr) {
-  llvm::ArrayRef<int64_t> shape =
-      mlir::cast<ShapedType>(operand.getType()).getShape();
+absl::StatusOr<TensorValue> CanonicalizeDotOperand(
+    EmitterLocOpBuilder b, TensorValue operand, int64_t contracting_dim_idx,
+    DotOperandSide side, TensorValue counterpart_operand = nullptr) {
+  llvm::ArrayRef<int64_t> shape = operand.getType().getShape();
   llvm::ArrayRef<int64_t> counterpart_shape =
-      counterpart_operand == nullptr
-          ? shape
-          : mlir::cast<ShapedType>(counterpart_operand.getType()).getShape();
+      counterpart_operand == nullptr ? shape
+                                     : counterpart_operand.getType().getShape();
 
   auto [shape_without_unit_dims, non_unit_dims_indices] =
       CollapseUnitDims(shape, counterpart_shape);
@@ -880,8 +859,8 @@ absl::StatusOr<Value> CanonicalizeDotOperand(
   }
 
   if (shape.size() != shape_without_unit_dims.size()) {
-    TF_ASSIGN_OR_RETURN(operand, EmitTiledReshape(b, shape_without_unit_dims,
-                                                  MakeTensor(b, operand)));
+    TF_ASSIGN_OR_RETURN(operand,
+                        EmitTiledReshape(b, shape_without_unit_dims, operand));
   }
 
   int expected_contracting_dim_position = side == DotOperandSide::kLhs ? 1 : 0;
@@ -1025,12 +1004,14 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
 
     Value ki_i32 = Cast(b, ki, b.getI32Type());
     TF_ASSIGN_OR_RETURN(
-        Value lhs, MaskDotOperand(b, *tiled_hlo_dot.operand(0), dot_args[0],
-                                  ki_i32, lhs_contracting_dim_idx));
+        TensorValue lhs,
+        MaskDotOperand(b, *tiled_hlo_dot.operand(0), dot_args[0], ki_i32,
+                       lhs_contracting_dim_idx));
 
     TF_ASSIGN_OR_RETURN(
-        Value rhs, MaskDotOperand(b, *tiled_hlo_dot.operand(1), dot_args[1],
-                                  ki_i32, rhs_contracting_dim_idx));
+        TensorValue rhs,
+        MaskDotOperand(b, *tiled_hlo_dot.operand(1), dot_args[1], ki_i32,
+                       rhs_contracting_dim_idx));
 
     // Canonicalize the dot operands to match Triton's/the hardware's
     // expectations.
@@ -1159,19 +1140,21 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
     // hinders performance for Triton.
     Value ki_i32 = Cast(b, ki, b.getI32Type());
     TF_ASSIGN_OR_RETURN(
-        Value lhs, MaskDotOperand(b, *tiled_hlo_dot.operand(0), dot_args[0],
-                                  ki_i32, lhs_contracting_dim_idx));
+        TensorValue lhs,
+        MaskDotOperand(b, *tiled_hlo_dot.operand(0), dot_args[0], ki_i32,
+                       lhs_contracting_dim_idx));
     TF_ASSIGN_OR_RETURN(
-        Value rhs, MaskDotOperand(b, *tiled_hlo_dot.operand(1), dot_args[1],
-                                  ki_i32, rhs_contracting_dim_idx));
+        TensorValue rhs,
+        MaskDotOperand(b, *tiled_hlo_dot.operand(1), dot_args[1], ki_i32,
+                       rhs_contracting_dim_idx));
 
     TF_ASSIGN_OR_RETURN(
-        Value lhs_scale,
+        TensorValue lhs_scale,
         MaskDotOperand(b, *tiled_hlo_dot.operand(2), dot_args[2], ki_i32,
                        lhs_contracting_dim_idx));
 
     TF_ASSIGN_OR_RETURN(
-        Value rhs_scale,
+        TensorValue rhs_scale,
         MaskDotOperand(b, *tiled_hlo_dot.operand(3), dot_args[3], ki_i32,
                        rhs_contracting_dim_idx));
 
@@ -1363,20 +1346,18 @@ absl::StatusOr<ScalarOrTensor> EmitPad(
     }
 
     // LHS for the compare is an iota broadcasted to the output shape.
-    ScalarOrTensor range = Iota(b, pad_output_dim_size);
-    ScalarOrTensor bcast = BroadcastInDims(b, range, padded_tile_sizes,
-                                           {static_cast<int64_t>(dim_index)});
+    TensorValue range = Iota(b, pad_output_dim_size);
+    TensorValue bcast = BroadcastInDims(b, range, padded_tile_sizes,
+                                        {static_cast<int64_t>(dim_index)});
 
     // RHS for the compare is splat(pad_input_dim_size - tile_offset).
     Value tile_offset_i32 = Cast(b, tile_offset, i32_type);
     Value threshold = b.create<arith::SubIOp>(
         CreateConst(b, i32_type, pad_input_dim_size).UnwrapScalar(),
         tile_offset_i32);
-    ScalarOrTensor threshold_splat =
-        Splat(b, ScalarOrTensor(threshold), padded_tile_sizes);
-    Value cmp =
-        b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, bcast.UnwrapTensor(),
-                                threshold_splat.UnwrapTensor());
+    TensorValue threshold_splat = Splat(b, threshold, padded_tile_sizes);
+    Value cmp = b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, bcast,
+                                        threshold_splat);
     mask = mask ? b.create<arith::AndIOp>(mask, cmp) : cmp;
   }
   if (!mask) {
@@ -1384,11 +1365,10 @@ absl::StatusOr<ScalarOrTensor> EmitPad(
   }
   const TiledHloInstruction* padding_value = tiled_pad.operand(1);
 
-  ScalarOrTensor pad_value_splat =
-      Splat(b, values[padding_value], padded_tile_sizes);
-  auto result = ScalarOrTensor(
-      b.create<arith::SelectOp>(mask, values[tiled_operand].UnwrapUnsafe(),
-                                pad_value_splat.UnwrapUnsafe()));
+  TensorValue pad_value_splat =
+      Splat(b, values[padding_value].UnwrapUnsafe(), padded_tile_sizes);
+  auto result = ScalarOrTensor(b.create<arith::SelectOp>(
+      mask, values[tiled_operand].UnwrapUnsafe(), pad_value_splat));
   return result;
 }
 
@@ -1471,11 +1451,13 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kIota) {
-    return EmitTiledIota(b, pid, tiled_hlo);
+    TF_ASSIGN_OR_RETURN(TensorValue iota_result,
+                        EmitTiledIota(b, pid, tiled_hlo));
+    return MakeScalarOrTensor(b, iota_result);
   }
 
   if (hlo->opcode() == HloOpcode::kBroadcast) {
-    return EmitTiledBroadcast(b, tiled_hlo, values);
+    return MakeScalarOrTensor(b, EmitTiledBroadcast(b, tiled_hlo, values));
   }
 
   if (hlo->opcode() == HloOpcode::kReduce) {
@@ -1504,16 +1486,22 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kBitcast) {
-    return EmitTiledBitcast(b, tiled_hlo,
-                            values[tiled_hlo.operand(0)].UnwrapUnsafe());
+    TF_ASSIGN_OR_RETURN(
+        TensorValue bitcast_value,
+        EmitTiledBitcast(
+            b, tiled_hlo,
+            MakeTensor(b, values[tiled_hlo.operand(0)].UnwrapUnsafe())));
+    return MakeScalarOrTensor(b, bitcast_value);
   }
 
   if (hlo->opcode() == HloOpcode::kTranspose) {
     auto transpose =
         ::xla::Cast<const HloTransposeInstruction>(tiled_hlo.hlo());
-    return ScalarOrTensor(EmitTiledTranspose(
-        b, tiled_hlo.tile_sizes(), llvm::to_vector(transpose->dimensions()),
-        values[tiled_hlo.operand(0)].UnwrapUnsafe()));
+    return MakeScalarOrTensor(
+        b,
+        EmitTiledTranspose(
+            b, tiled_hlo.tile_sizes(), llvm::to_vector(transpose->dimensions()),
+            MakeTensor(b, values[tiled_hlo.operand(0)].UnwrapUnsafe())));
   }
 
   // Slice is currently supported only as an operation on indices
