@@ -1,15 +1,23 @@
 From: Levi Zim <rsworktech@outlook.com>
-Date: Tue, 14 Oct 2025 19:45:36 +0800
-Subject: [PATCH] fix: Add linux_riscv64 to _pip_repository_impl
+Date: Sun, 26 Oct 2025 12:35:53 +0800
+Subject: [PATCH] fix: Add linux_riscv64 to _pip_repository_impl (#3350)
 
-Fix https://github.com/bazel-contrib/rules_python/discussions/2729
+Add `linux_riscv64` support for pulling pip dependencies. This is not
+adding any hermetic toolchain support - user has to provide a working
+toolchain.
+
+Fix #2729
+
+---------
+
+Co-authored-by: Ignas Anikevicius <240938+aignas@users.noreply.github.com>
 ---
- python/private/pypi/pip_repository.bzl                   | 1 +
- python/private/pypi/whl_installer/platform.py            | 3 +++
- python/private/pypi/whl_target_platforms.bzl             | 1 +
- tests/pypi/whl_installer/platform_test.py                | 6 +++---
- .../whl_target_platforms/whl_target_platforms_tests.bzl  | 9 +++++++++
- 5 files changed, 17 insertions(+), 3 deletions(-)
+ python/private/pypi/pip_repository.bzl                    | 1 +
+ python/private/pypi/whl_installer/platform.py             | 3 +++
+ python/private/pypi/whl_target_platforms.bzl              | 1 +
+ tests/pypi/whl_installer/platform_test.py                 | 6 +++---
+ .../whl_target_platforms/whl_target_platforms_tests.bzl   | 8 ++++++++
+ 5 files changed, 16 insertions(+), 3 deletions(-)
 
 diff --git a/python/private/pypi/pip_repository.bzl b/python/private/pypi/pip_repository.bzl
 index e9a4c44da3..d635651039 100644
@@ -82,7 +90,7 @@ index ad65650779..0d944bb196 100644
  
      def test_platform_sort(self):
 diff --git a/tests/pypi/whl_target_platforms/whl_target_platforms_tests.bzl b/tests/pypi/whl_target_platforms/whl_target_platforms_tests.bzl
-index a976a0cf95..8b7f0ad02b 100644
+index a976a0cf95..6bec26c10c 100644
 --- a/tests/pypi/whl_target_platforms/whl_target_platforms_tests.bzl
 +++ b/tests/pypi/whl_target_platforms/whl_target_platforms_tests.bzl
 @@ -34,6 +34,9 @@ def _test_simple(env):
@@ -105,15 +113,7 @@ index a976a0cf95..8b7f0ad02b 100644
          "win_amd64": [
              struct(os = "windows", cpu = "x86_64", abi = "cp311", target_platform = "cp311_windows_x86_64", version = (0, 0)),
          ],
-@@ -96,6 +102,7 @@ def _can_parse_existing_tags(env):
-         "manylinux2014_i686": 1,
-         "manylinux2014_ppc64": 1,
-         "manylinux2014_ppc64le": 1,
-+        "manylinux2014_riscv64": 1,
-         "manylinux2014_s390x": 1,
-         "manylinux2014_x86_64": 1,
-         "manylinux_11_12_aarch64": 1,
-@@ -103,6 +110,7 @@ def _can_parse_existing_tags(env):
+@@ -103,6 +109,7 @@ def _can_parse_existing_tags(env):
          "manylinux_11_12_i686": 1,
          "manylinux_11_12_ppc64": 1,
          "manylinux_11_12_ppc64le": 1,
@@ -121,7 +121,7 @@ index a976a0cf95..8b7f0ad02b 100644
          "manylinux_11_12_s390x": 1,
          "manylinux_11_12_x86_64": 1,
          "manylinux_1_2_aarch64": 1,
-@@ -111,6 +119,7 @@ def _can_parse_existing_tags(env):
+@@ -111,6 +118,7 @@ def _can_parse_existing_tags(env):
          "musllinux_11_12_armv7l": 1,
          "musllinux_11_12_i686": 1,
          "musllinux_11_12_ppc64le": 1,
