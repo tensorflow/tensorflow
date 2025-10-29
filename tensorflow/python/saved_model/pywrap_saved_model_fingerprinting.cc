@@ -184,8 +184,8 @@ void DefineFingerprintingModule(py::module main_module) {
 
   m.def(
       "Singleprint",
-      [](uint64 graph_def_program_hash, uint64 signature_def_hash,
-         uint64 saved_object_graph_hash, uint64 checkpoint_hash) {
+      [](uint64_t graph_def_program_hash, uint64_t signature_def_hash,
+         uint64_t saved_object_graph_hash, uint64_t checkpoint_hash) {
         absl::StatusOr<std::string> singleprint = fingerprinting::Singleprint(
             graph_def_program_hash, signature_def_hash, saved_object_graph_hash,
             checkpoint_hash);
