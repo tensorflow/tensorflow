@@ -35,8 +35,8 @@ namespace tensorflow {
 // thread safe if it's shared in multple threads.
 absl::Status PartitionFunctionGraph(
     const DeviceSet& device_set, std::unique_ptr<Graph> graph,
-    std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs,
-    std::function<string(const Edge*)> get_tensor_name_attr = nullptr);
+    std::unordered_map<std::string, std::unique_ptr<Graph>>* subgraphs,
+    std::function<std::string(const Edge*)> get_tensor_name_attr = nullptr);
 
 // Inserts send/recv ops to `graph` if nodes are assigned to multiple devices.
 // Returns the new graph with the added nodes. Moreover, the dependency between
@@ -90,17 +90,17 @@ class FunctionNameGenerator {
  public:
   // `flib_def` must outlive this.
   FunctionNameGenerator(const FunctionLibraryDefinition* flib_def,
-                        const string& name)
+                        const std::string& name)
       : flib_def_(flib_def), name_(name), counter_(0) {}
 
   // Returns a function name not present in `flib_def` using `name` as
   // the base and appending a numeric suffix.
-  string GetName();
+  std::string GetName();
 
  private:
   const FunctionLibraryDefinition* flib_def_;
-  const string name_;
-  uint32 counter_;
+  const std::string name_;
+  uint32_t counter_;
 };
 
 }  // namespace tensorflow
