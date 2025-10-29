@@ -89,6 +89,7 @@ limitations under the License.
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/trace_pass_instrumentation.h"
+#include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
@@ -311,6 +312,7 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
                           options_.fast_min_max);
 
   // Tiled passes.
+  tiled_pass_manager_.addPass(xtile::createVerifyLegalXTileOpsPass());
   AddTiledOptimizationPasses(tiled_pass_manager_);
   if (hooks_.post_optimization) {
     tiled_pass_manager_.addPass(

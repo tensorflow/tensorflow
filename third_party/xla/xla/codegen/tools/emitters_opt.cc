@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/transforms/pass_pipelines.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -70,6 +71,7 @@ int main(int argc, char** argv) {
   xla::gpu::registerGpuFusionTransformsPasses();
   xla::cpu::registerXlaCpuTransformsPasses();
   xla::cpu::registerXTileCpuTransformsPasses();
+  xla::xtile::registerXTileTransformsPasses();
   mlir::registerPassPipeline(
       "xla-test-optimize",
       "Test pipeline of passes up to inlining. No vectorization, also does not "

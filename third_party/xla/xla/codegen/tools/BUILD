@@ -16,6 +16,7 @@ xla_cc_binary(
     visibility = [
         "//xla/backends/cpu/codegen:__subpackages__",
         "//xla/backends/gpu/codegen:__subpackages__",
+        "//xla/codegen:__subpackages__",
         "//xla/codegen/emitters/ir/tests:__subpackages__",
         "//xla/codegen/emitters/tests:__pkg__",
         "//xla/codegen/emitters/transforms/tests:__subpackages__",
@@ -32,6 +33,7 @@ xla_cc_binary(
         "//xla/codegen/emitters/transforms:pass_pipelines",
         "//xla/codegen/emitters/transforms:passes",
         "//xla/codegen/xtile/ir:xtile",
+        "//xla/codegen/xtile/ir/transforms:passes",
         "//xla/mlir_hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "@llvm-project//llvm:Support",
