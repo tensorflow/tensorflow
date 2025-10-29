@@ -464,7 +464,7 @@ class TfCallbackDevice : public DeviceBase {
     set_tensorflow_accelerator_device_info(&accelerator_device_info_);
   }
 
-  const string& name() const override { return name_; }
+  const std::string& name() const override { return name_; }
 
   PerOpGpuDevice* MakeGpuDevice() override {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
