@@ -16,15 +16,13 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_ELEMENTAL_ELEMENTAL_KERNEL_EMITTER_H_
 #define XLA_BACKENDS_CPU_CODEGEN_ELEMENTAL_ELEMENTAL_KERNEL_EMITTER_H_
 
-#include <string>
-
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/work_group.h"
@@ -34,7 +32,7 @@ limitations under the License.
 
 namespace xla::cpu {
 
-class ElementalKernelEmitter final : public LlvmKernelEmitter {
+class ElementalKernelEmitter final : public KernelEmitter<LlvmKernelSource> {
  public:
   ElementalKernelEmitter(const HloInstruction* instr,
                          const BufferAssignment* buffer_assignment,
