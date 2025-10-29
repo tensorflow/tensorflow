@@ -241,7 +241,7 @@ GraphDebugInfo GraphDebugInfoBuilder::Build() const { return *debug_info_; }
 absl::Status GraphDebugInfoBuilder::AppendGraphDebugInfoStr(
     absl::string_view prefix, absl::string_view new_info_str) {
   GraphDebugInfo debug_info;
-  if (!debug_info.ParseFromArray(new_info_str.data(), new_info_str.size())) {
+  if (!debug_info.ParseFromString(new_info_str)) {
     return absl::InvalidArgumentError("Failed to parse GraphDebugInfo proto.");
   }
   AppendGraphDebugInfo(prefix, debug_info);
@@ -280,8 +280,7 @@ StackTracesMap LoadTracesFromDebugInfo(const GraphDebugInfo& debug_info) {
 absl::StatusOr<StackTracesMap> LoadTracesFromDebugInfoStr(
     absl::string_view debug_info_str) {
   GraphDebugInfo debug_info;
-  if (!debug_info.ParseFromArray(debug_info_str.data(),
-                                 debug_info_str.size())) {
+  if (!debug_info.ParseFromString(debug_info_str)) {
     return absl::InvalidArgumentError("Failed to parse GraphDebugInfo proto.");
   }
   return LoadTracesFromDebugInfo(debug_info);
