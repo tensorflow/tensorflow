@@ -60,22 +60,22 @@ class CurlHttpRequest : public HttpRequest {
   ~CurlHttpRequest() override;
 
   /// Sets the request URI.
-  void SetUri(const string& uri) override;
+  void SetUri(const std::string& uri) override;
 
   /// \brief Sets the Range header.
   ///
   /// Used for random seeks, for example "0-999" returns the first 1000 bytes
   /// (note that the right border is included).
-  void SetRange(uint64 start, uint64 end) override;
+  void SetRange(uint64_t start, uint64_t end) override;
 
   /// Sets a request header.
-  void AddHeader(const string& name, const string& value) override;
+  void AddHeader(const std::string& name, const std::string& value) override;
 
-  void AddResolveOverride(const string& hostname, int64_t port,
-                          const string& ip_addr) override;
+  void AddResolveOverride(const std::string& hostname, int64_t port,
+                          const std::string& ip_addr) override;
 
   /// Sets the 'Authorization' header to the value of 'Bearer ' + auth_token.
-  void AddAuthBearerHeader(const string& auth_token) override;
+  void AddAuthBearerHeader(const std::string& auth_token) override;
 
   void SetRequestStats(RequestStats* stats) override;
 
@@ -86,7 +86,7 @@ class CurlHttpRequest : public HttpRequest {
   ///
   /// The request body will be taken from the specified file starting from
   /// the given offset.
-  absl::Status SetPutFromFile(const string& body_filepath,
+  absl::Status SetPutFromFile(const std::string& body_filepath,
                               size_t offset) override;
 
   /// Makes the request a PUT request with an empty body.
@@ -132,10 +132,10 @@ class CurlHttpRequest : public HttpRequest {
   /// \brief Returns the response headers of a completed request.
   ///
   /// If the header is not found, returns an empty string.
-  string GetResponseHeader(const string& name) const override;
+  std::string GetResponseHeader(const std::string& name) const override;
 
   /// Returns the response code of a completed request.
-  uint64 GetResponseCode() const override;
+  uint64_t GetResponseCode() const override;
 
   /// \brief Sends the formed request.
   ///
@@ -144,9 +144,10 @@ class CurlHttpRequest : public HttpRequest {
   absl::Status Send() override;
 
   // Url encodes str and returns a new string.
-  string EscapeString(const string& str) override;
+  std::string EscapeString(const std::string& str) override;
 
-  void SetTimeouts(uint32 connection, uint32 inactivity, uint32 total) override;
+  void SetTimeouts(uint32_t connection, uint32_t inactivity,
+                   uint32_t total) override;
 
  private:
   /// A write callback in the form which can be accepted by libcurl.
@@ -200,23 +201,23 @@ class CurlHttpRequest : public HttpRequest {
 
   std::vector<char> default_response_buffer_;
 
-  std::unordered_map<string, string> response_headers_;
-  uint64 response_code_ = 0;
+  std::unordered_map<std::string, std::string> response_headers_;
+  uint64_t response_code_ = 0;
 
   // The timestamp of the last activity related to the request execution, in
   // seconds since epoch.
-  uint64 last_progress_timestamp_ = 0;
+  uint64_t last_progress_timestamp_ = 0;
   // The last progress in terms of bytes transmitted.
   curl_off_t last_progress_bytes_ = 0;
 
   // The maximum period of request inactivity.
-  uint32 inactivity_timeout_secs_ = 60;  // 1 minute
+  uint32_t inactivity_timeout_secs_ = 60;  // 1 minute
 
   // Timeout for the connection phase.
-  uint32 connect_timeout_secs_ = 120;  // 2 minutes
+  uint32_t connect_timeout_secs_ = 120;  // 2 minutes
 
   // Timeout for the whole request. Set only to prevent hanging indefinitely.
-  uint32 request_timeout_secs_ = 3600;  // 1 hour
+  uint32_t request_timeout_secs_ = 3600;  // 1 hour
 
   // Members to enforce the usage flow.
   bool is_uri_set_ = false;
@@ -224,7 +225,7 @@ class CurlHttpRequest : public HttpRequest {
   bool is_sent_ = false;
 
   // Store the URI to help disambiguate requests when errors occur.
-  string uri_;
+  std::string uri_;
   RequestMethod method_ = RequestMethod::kGet;
 
   // Limit the size of an http response that is copied into an error message.
@@ -243,7 +244,7 @@ class LibCurl {
 
   virtual CURL* curl_easy_init() = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                                    uint64 param) TF_MUST_USE_RESULT = 0;
+                                    uint64_t param) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                                     const char* param) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
@@ -262,7 +263,7 @@ class LibCurl {
                    curl_off_t ulnow)) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_perform(CURL* curl) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                                     uint64* value) TF_MUST_USE_RESULT = 0;
+                                     uint64_t* value) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                                      double* value) TF_MUST_USE_RESULT = 0;
   virtual void curl_easy_cleanup(CURL* curl) = 0;

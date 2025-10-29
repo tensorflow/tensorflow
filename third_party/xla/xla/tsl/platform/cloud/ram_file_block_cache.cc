@@ -169,7 +169,7 @@ absl::Status RamFileBlockCache::MaybeFetch(
       "Control flow should never reach the end of RamFileBlockCache::Fetch.");
 }
 
-absl::Status RamFileBlockCache::Read(const string& filename, size_t offset,
+absl::Status RamFileBlockCache::Read(const std::string& filename, size_t offset,
                                      size_t n, char* buffer,
                                      size_t* bytes_transferred) {
   *bytes_transferred = 0;
@@ -232,8 +232,8 @@ absl::Status RamFileBlockCache::Read(const string& filename, size_t offset,
   return absl::OkStatus();
 }
 
-bool RamFileBlockCache::ValidateAndUpdateFileSignature(const string& filename,
-                                                       int64_t file_signature) {
+bool RamFileBlockCache::ValidateAndUpdateFileSignature(
+    const std::string& filename, int64_t file_signature) {
   absl::MutexLock lock(mu_);
   auto it = file_signature_map_.find(filename);
   if (it != file_signature_map_.end()) {
@@ -258,7 +258,7 @@ void RamFileBlockCache::Prune() {
   while (
       !stop_pruning_thread_.WaitForNotificationWithTimeout(absl::Seconds(1))) {
     absl::MutexLock lock(mu_);
-    uint64 now = env_->NowSeconds();
+    uint64_t now = env_->NowSeconds();
     while (!lra_list_.empty()) {
       auto it = block_map_.find(lra_list_.back());
       if (now - it->second->timestamp <= max_staleness_) {
@@ -280,12 +280,12 @@ void RamFileBlockCache::Flush() {
   cache_size_ = 0;
 }
 
-void RamFileBlockCache::RemoveFile(const string& filename) {
+void RamFileBlockCache::RemoveFile(const std::string& filename) {
   absl::MutexLock lock(mu_);
   RemoveFile_Locked(filename);
 }
 
-void RamFileBlockCache::RemoveFile_Locked(const string& filename) {
+void RamFileBlockCache::RemoveFile_Locked(const std::string& filename) {
   Key begin = std::make_pair(filename, 0);
   auto it = block_map_.lower_bound(begin);
   while (it != block_map_.end() && it->first.first == filename) {
