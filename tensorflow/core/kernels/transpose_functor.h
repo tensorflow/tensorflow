@@ -34,7 +34,7 @@ namespace tensorflow {
 // REQUIRES: in.dim_size(perm[i]) == out->dim_size(i)
 template <typename Device>
 absl::Status DoTranspose(const Device& device, const Tensor& in,
-                         const absl::Span<const int32> perm, Tensor* out);
+                         const absl::Span<const int32_t> perm, Tensor* out);
 
 // Conjugate and transpose tensor 'in' into tensor 'out' according to dimension
 // permutation 'perm'.
@@ -45,7 +45,7 @@ absl::Status DoTranspose(const Device& device, const Tensor& in,
 // REQUIRES: in.dim_size(perm[i]) == out->dim_size(i)
 template <typename Device>
 absl::Status DoConjugateTranspose(const Device& device, const Tensor& in,
-                                  const absl::Span<const int32> perm,
+                                  const absl::Span<const int32_t> perm,
                                   Tensor* out);
 
 // Convenience versions of DoTranspose that only swap the last (inner) two
@@ -64,14 +64,14 @@ absl::Status DoConjugateMatrixTranspose(const Device& device, const Tensor& in,
 template <typename Device, typename T, bool conjugate = false>
 struct Transpose {
   static void run(const Device& d, const Tensor& in,
-                  const absl::Span<const int32> perm, Tensor* out);
+                  const absl::Span<const int32_t> perm, Tensor* out);
 };
 
 // Implementation details.
 namespace internal {
 
 typedef absl::InlinedVector<int64_t, 8UL> TransposeDimsVec;
-typedef absl::InlinedVector<int32, 8UL> TransposePermsVec;
+typedef absl::InlinedVector<int32_t, 8UL> TransposePermsVec;
 
 // Helper function that takes a tensor shape, a permutation, combines the
 // neighboring shapes if their indices in the permutation are consecutive.
@@ -79,7 +79,7 @@ typedef absl::InlinedVector<int32, 8UL> TransposePermsVec;
 // Example: Tensor shape {2, 3, 4, 5, 120} and permutation {0, 4, 1, 2, 3} will
 // produce new shape {2, 60, 120} and new permutation {0, 2, 1}.
 inline void ReduceTransposeDimensions(const TensorShape& shape,
-                                      absl::Span<const int32> perm,
+                                      absl::Span<const int32_t> perm,
                                       TransposePermsVec* new_perm,
                                       TransposeDimsVec* new_dims) {
   CHECK_EQ(shape.dims(), perm.size());
@@ -130,8 +130,8 @@ inline void ReduceTransposeDimensions(const TensorShape& shape,
 // That is, for all i, 0 <= perm[i] < input_shape.dims().
 // In practice, this is checked in TransposeOp::Compute prior to calling this
 // function, and the function sits here to facilitate unit testing.
-inline bool NonSingletonDimensionsAlign(const TensorShape& input_shape,
-                                        const std::vector<int32>& permutation) {
+inline bool NonSingletonDimensionsAlign(
+    const TensorShape& input_shape, const std::vector<int32_t>& permutation) {
   int last_nonsingleton_perm_dim = -1;
   for (int perm_dim : permutation) {
     if (input_shape.dim_size(perm_dim) == 1) {
@@ -148,7 +148,7 @@ inline bool NonSingletonDimensionsAlign(const TensorShape& input_shape,
 // Uses Eigen to transpose.
 template <typename Device, typename T, int NDIMS>
 void TransposeUsingEigen(const Device& d, const Tensor& in,
-                         const absl::Span<const int32> perm, bool conjugate,
+                         const absl::Span<const int32_t> perm, bool conjugate,
                          Tensor* out) {
   Eigen::array<int, NDIMS> p;
   for (int i = 0; i < NDIMS; ++i) p[i] = perm[i];
@@ -167,8 +167,8 @@ void TransposeUsingEigen(const Device& d, const Tensor& in,
 
 template <typename Device>
 absl::Status DoTransposeImpl(const Device& d, const Tensor& in,
-                             const absl::Span<const int32> perm, bool conjugate,
-                             Tensor* out) {
+                             const absl::Span<const int32_t> perm,
+                             bool conjugate, Tensor* out) {
   // log a msg
   CHECK_EQ(in.dims(), out->dims());
   CHECK_EQ(in.dims(), perm.size());
@@ -181,7 +181,7 @@ absl::Status DoTransposeImpl(const Device& d, const Tensor& in,
     case DT_UINT8:
     case DT_FLOAT8_E5M2:
     case DT_FLOAT8_E4M3FN:
-      Transpose<Device, uint8>::run(d, in, perm, out);
+      Transpose<Device, uint8_t>::run(d, in, perm, out);
       break;
 
     case DT_BFLOAT16:
@@ -190,20 +190,20 @@ absl::Status DoTransposeImpl(const Device& d, const Tensor& in,
     case DT_QINT16:
     case DT_QUINT16:
     case DT_UINT16:
-      Transpose<Device, uint16>::run(d, in, perm, out);
+      Transpose<Device, uint16_t>::run(d, in, perm, out);
       break;
 
     case DT_FLOAT:
     case DT_INT32:
     case DT_QINT32:
     case DT_UINT32:
-      Transpose<Device, uint32>::run(d, in, perm, out);
+      Transpose<Device, uint32_t>::run(d, in, perm, out);
       break;
 
     case DT_DOUBLE:
     case DT_INT64:
     case DT_UINT64:
-      Transpose<Device, uint64>::run(d, in, perm, out);
+      Transpose<Device, uint64_t>::run(d, in, perm, out);
       break;
 
     case DT_COMPLEX64:
@@ -217,7 +217,7 @@ absl::Status DoTransposeImpl(const Device& d, const Tensor& in,
         Transpose<Device, complex64, /*conjugate=*/true>::run(d, in, perm, out);
 #endif
       } else {
-        Transpose<Device, uint64>::run(d, in, perm, out);
+        Transpose<Device, uint64_t>::run(d, in, perm, out);
       }
       break;
 
