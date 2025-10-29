@@ -82,7 +82,7 @@ CpuAotCompilationResult::Create(
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     TargetMachineOptionsProto target_machine_options) {
   ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
-      &buffer_assignment->Allocations());
+      hlo_module, &buffer_assignment->Allocations());
   TF_ASSIGN_OR_RETURN(ThunkSequenceProto thunk_proto,
                       thunk_sequence_serdes.ToProto(thunks));
 
@@ -143,7 +143,7 @@ CpuAotCompilationResult::CpuAotCompilationResult(
   module_ = hlo_module->Clone();
 
   ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
-      &buffer_assignment->Allocations());
+      hlo_module, &buffer_assignment->Allocations());
   *proto_.mutable_thunk_sequence() = thunks;
 }
 
@@ -181,7 +181,7 @@ CpuAotCompilationResult::LoadExecutable(
   }
 
   ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
-      &buffer_assignment->Allocations());
+      module.get(), &buffer_assignment->Allocations());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<ThunkSequence> thunks,
                       thunk_sequence_serdes.FromProto(proto_.thunk_sequence()));
 

@@ -1,0 +1,11 @@
+edition = "2023";
+
+package xla;
+
+option java_multiple_files = true;
+
+enum TpuPlatformType {
+  TPU_PLATFORM_TYPE_INVALID = 0;
+  TPU_PLATFORM_TYPE_HARDWARE = 1;
+  TPU_PLATFORM_TYPE_GRM = 2;
+}

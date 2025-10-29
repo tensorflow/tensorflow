@@ -1690,7 +1690,8 @@ tf_proto_library(
     srcs = ["backend_config.proto"],
     protodeps = [
         ":onednn_config_proto",
-        "//xla/backends/cpu:xnnpack_config_proto",
+        "//xla/backends/cpu:xnn_fusion_options_proto",
+        "//xla/backends/cpu:ynn_fusion_options_proto",
     ],
 )
 

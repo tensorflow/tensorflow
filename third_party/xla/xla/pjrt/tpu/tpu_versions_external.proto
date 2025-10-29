@@ -1,0 +1,13 @@
+edition = "2023";
+
+package xla_external;
+
+option java_multiple_files = true;
+
+enum TpuVersion {
+  TPU_VERSION_INVALID = 0;
+  TPU_VERSION_V2 = 1;
+  TPU_VERSION_V3 = 2;
+  TPU_VERSION_V4 = 3;
+  TPU_VERSION_V5 = 4;
+}
