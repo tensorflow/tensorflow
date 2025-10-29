@@ -54,12 +54,12 @@ namespace {
 using ::mlir::ArrayAttr;
 using ::mlir::ModuleOp;
 using ::mlir::NamedAttribute;
+using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::SymbolTable;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
 
-using ::mlir::StringAttr;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::NamedComputationOp;
@@ -149,12 +149,11 @@ class ExportNamedComputationsPass
     this->dedupFunctionsFully = other.dedupFunctionsFully;
   }
 
-  llvm::SmallDenseMap<ComputationKey, StringAttr> funcCache;
-
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
     SymbolTable symbolTable(moduleOp);
     mlir::Block& moduleBlock = moduleOp.getRegion().front();
+    llvm::SmallDenseMap<ComputationKey, StringAttr> funcCache;
 
     if (dedupFunctionsFully) {
       using FuncNameKey = std::pair<StringRef, ManualAxesAttr>;
