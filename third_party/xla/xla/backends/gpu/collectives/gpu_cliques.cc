@@ -263,7 +263,7 @@ static absl::Status CheckCliqueKeyIsntStaleImpl(
 
 absl::Status CheckCliqueKeyIsntStale(const GpuCliqueKey& clique_key) {
   ProcessGpuCliques& cliques = GetProcessGpuCliques();
-  absl::MutexLock lock(&cliques.mu);
+  absl::MutexLock lock(cliques.mu);
   return CheckCliqueKeyIsntStaleImpl(cliques.task_state_infos, clique_key);
 }
 
