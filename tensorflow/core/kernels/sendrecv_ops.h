@@ -26,10 +26,11 @@ class SendOp : public OpKernel {
   explicit SendOp(OpKernelConstruction* ctx);
   void Compute(OpKernelContext* ctx) override;
 
-  string TraceString(const OpKernelContext& ctx, bool verbose) const override;
+  std::string TraceString(const OpKernelContext& ctx,
+                          bool verbose) const override;
 
  private:
-  string key_prefix_;
+  std::string key_prefix_;
   Rendezvous::ParsedKey parsed_key_;
   bool hostmem_sendrecv_;
 
@@ -42,10 +43,11 @@ class RecvOp : public AsyncOpKernel {
   explicit RecvOp(OpKernelConstruction* ctx);
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 
-  string TraceString(const OpKernelContext& ctx, bool verbose) const override;
+  std::string TraceString(const OpKernelContext& ctx,
+                          bool verbose) const override;
 
  private:
-  string key_prefix_;
+  std::string key_prefix_;
   Rendezvous::ParsedKey parsed_key_;
   bool hostmem_sendrecv_;
 

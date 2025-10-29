@@ -28,17 +28,16 @@ limitations under the License.
 
 namespace tensorflow {
 
-static string GetRendezvousKeyPrefix(const string& send_device,
-                                     const string& recv_device,
-                                     const uint64 send_device_incarnation,
-                                     const string& tensor_name) {
+static std::string GetRendezvousKeyPrefix(
+    const std::string& send_device, const std::string& recv_device,
+    const uint64_t send_device_incarnation, const std::string& tensor_name) {
   return strings::StrCat(send_device, ";",
                          strings::FpToString(send_device_incarnation), ";",
                          recv_device, ";", tensor_name);
 }
 
-static void GetRendezvousKey(const string& key_prefix,
-                             const FrameAndIter& frame_iter, string* key) {
+static void GetRendezvousKey(const std::string& key_prefix,
+                             const FrameAndIter& frame_iter, std::string* key) {
   key->clear();
   strings::StrAppend(key, key_prefix, ";", frame_iter.frame_id, ":",
                      frame_iter.iter_id);
@@ -51,22 +50,22 @@ static FrameAndIter GetFrameAndIter(OpKernelContext* ctx,
     // common_runtime/memory_types.cc.  When the pair of nodes are
     // added inside a function, we need to use the function call frame
     // to formulate the unique rendezvous key.
-    return FrameAndIter(reinterpret_cast<uint64>(ctx->call_frame()), 0);
+    return FrameAndIter(reinterpret_cast<uint64_t>(ctx->call_frame()), 0);
   } else {
     return ctx->frame_iter();
   }
 }
 
 SendOp::SendOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-  string send_device;
+  std::string send_device;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("send_device", &send_device));
-  string recv_device;
+  std::string recv_device;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("recv_device", &recv_device));
-  uint64 send_device_incarnation;
+  uint64_t send_device_incarnation;
   OP_REQUIRES_OK(
       ctx, ctx->GetAttr("send_device_incarnation",
                         reinterpret_cast<int64_t*>(&send_device_incarnation)));
-  string tensor_name;
+  std::string tensor_name;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("tensor_name", &tensor_name));
   key_prefix_ = GetRendezvousKeyPrefix(send_device, recv_device,
                                        send_device_incarnation, tensor_name);
@@ -114,13 +113,14 @@ void SendOp::Compute(OpKernelContext* ctx) {
   }
 }
 
-string SendOp::TraceString(const OpKernelContext& ctx, bool verbose) const {
+std::string SendOp::TraceString(const OpKernelContext& ctx,
+                                bool verbose) const {
   const auto& attr = def().attr();
   auto src_it = attr.find("_src");
   auto dst_it = attr.find("_dst");
-  const string& src = src_it != attr.end() ? src_it->second.s() : "";
-  const string& dst = dst_it != attr.end() ? dst_it->second.s() : "";
-  string op = tsl::profiler::TraceMeOp(name_view(), type_string_view());
+  const std::string& src = src_it != attr.end() ? src_it->second.s() : "";
+  const std::string& dst = dst_it != attr.end() ? dst_it->second.s() : "";
+  std::string op = tsl::profiler::TraceMeOp(name_view(), type_string_view());
   return tsl::profiler::TraceMeEncode(
       std::move(op),
       {{"from", src}, {"to", dst}, {"key", parsed_key_.FullKey()}});
@@ -139,15 +139,15 @@ REGISTER_KERNEL_BUILDER(
     Name("_HostSend").Device(DEVICE_DEFAULT).HostMemory("tensor"), SendOp);
 
 RecvOp::RecvOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
-  string send_device;
+  std::string send_device;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("send_device", &send_device));
-  string recv_device;
+  std::string recv_device;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("recv_device", &recv_device));
-  uint64 send_device_incarnation;
+  uint64_t send_device_incarnation;
   OP_REQUIRES_OK(
       ctx, ctx->GetAttr("send_device_incarnation",
                         reinterpret_cast<int64_t*>(&send_device_incarnation)));
-  string tensor_name;
+  std::string tensor_name;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("tensor_name", &tensor_name));
   key_prefix_ = GetRendezvousKeyPrefix(send_device, recv_device,
                                        send_device_incarnation, tensor_name);
@@ -160,13 +160,14 @@ RecvOp::RecvOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
   }
 }
 
-string RecvOp::TraceString(const OpKernelContext& ctx, bool verbose) const {
+std::string RecvOp::TraceString(const OpKernelContext& ctx,
+                                bool verbose) const {
   const auto& attr = def().attr();
   auto src_it = attr.find("_src");
   auto dst_it = attr.find("_dst");
-  const string& src = src_it != attr.end() ? src_it->second.s() : "";
-  const string& dst = dst_it != attr.end() ? dst_it->second.s() : "";
-  string op = tsl::profiler::TraceMeOp(name_view(), type_string_view());
+  const std::string& src = src_it != attr.end() ? src_it->second.s() : "";
+  const std::string& dst = dst_it != attr.end() ? dst_it->second.s() : "";
+  std::string op = tsl::profiler::TraceMeOp(name_view(), type_string_view());
   return tsl::profiler::TraceMeEncode(
       std::move(op),
       {{"from", src}, {"to", dst}, {"key", parsed_key_.FullKey()}});
