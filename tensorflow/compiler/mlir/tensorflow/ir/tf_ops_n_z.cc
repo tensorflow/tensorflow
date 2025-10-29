@@ -3611,8 +3611,8 @@ SmallVector<Region *> WhileRegionOp::getLoopRegions() { return {&getBody()}; }
 //===----------------------------------------------------------------------===//
 
 OperandRange WhileRegionOp::getEntrySuccessorOperands(
-    RegionBranchPoint point) {
-  if (point.isParent()) {
+    RegionSuccessor successor) {
+  if (successor.isParent()) {
     // WhileRegionOp branches to the condition, which branches to the body. But
     // the op itself doesn't branch back to itself. So this range is empty.
     auto end = this->getOperation()->operand_end();
@@ -3628,21 +3628,29 @@ OperandRange WhileRegionOp::getEntrySuccessorOperands(
 
 void WhileRegionOp::getSuccessorRegions(
     RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions) {
-  if (!point.isParent() && point == (*this)->getRegion(0)) {
+  if (!point.isParent() &&
+      (point.getTerminatorPredecessorOrNull() &&
+       point.getTerminatorPredecessorOrNull()->getParentRegion() ==
+           &(*this)->getRegion(0))) {
     // 'cond' branches to the body or returns.
     Operation *yield = getCond().front().getTerminator();
     if (yield->getOperands().size() ==
         1 + this->getOperation()->getOperands().size()) {
       regions.push_back(
           RegionSuccessor(&getBody(), getBody().front().getArguments()));
-      regions.push_back(getResults());
+      regions.push_back(RegionSuccessor(getOperation(), getResults()));
     } else {
       // For compatibility with older code, we allow the "yield" in a condition
       // to only yield a single boolean. In that case we can't forward any args.
       regions.push_back(RegionSuccessor(&getBody()));
-      regions.push_back(RegionSuccessor());  // branch back to parent, no args
+      regions.push_back(RegionSuccessor(
+          point.getTerminatorPredecessorOrNull()
+              ->getParentRegion()));  // branch back to parent, no args
     }
-  } else if (!point.isParent() && point == (*this)->getRegion(1)) {
+  } else if (!point.isParent() &&
+             (point.getTerminatorPredecessorOrNull() &&
+              point.getTerminatorPredecessorOrNull()->getParentRegion() ==
+                  &(*this)->getRegion(1))) {
     // 'body' branches back to 'cond'.
     regions.push_back(
         RegionSuccessor(&getCond(), getCond().front().getArguments()));
@@ -4510,7 +4518,7 @@ LogicalResult UniformQuantizedClipByValueOp::verify() {
 //===----------------------------------------------------------------------===//
 
 MutableOperandRange YieldOp::getMutableSuccessorOperands(
-    RegionBranchPoint point) {
+    RegionSuccessor successor) {
   if (auto whileOp =
           llvm::dyn_cast<WhileRegionOp>(this->getOperation()->getParentOp())) {
     if (&whileOp.getCond() == this->getOperation()->getParentRegion()) {
