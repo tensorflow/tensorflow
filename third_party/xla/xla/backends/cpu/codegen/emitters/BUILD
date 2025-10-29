@@ -38,6 +38,7 @@ cc_library(
         "//xla/backends/cpu/codegen:kernel_api_ir_builder",
         "//xla/backends/cpu/codegen:symbol_name_util",
         "//xla/codegen:kernel_definition",
+        "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/emitters:computation_partitioner",

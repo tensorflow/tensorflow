@@ -112,6 +112,7 @@ cc_library(
     deps = [
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/codegen:kernel_definition",
+        "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
         "//xla/codegen:mlir_kernel_source",
         "//xla/runtime:buffer_use",

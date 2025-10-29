@@ -27,7 +27,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Value.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
-#include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -38,14 +38,14 @@ namespace xla {
 namespace cpu {
 
 // Generic scatter fusion. Lowers to LLVM via MLIR.
-class CpuScatterFusion final : public MlirKernelEmitter {
+class CpuScatterFusion final : public KernelEmitter<MlirKernelSource> {
  public:
   CpuScatterFusion(const BufferAssignment& buffer_assignment,
                    const HloFusionInstruction* fusion,
                    gpu::SymbolicExprContext* symbolic_expr_context);
 
   absl::string_view name() const final { return "cpu_scatter_fusion"; }
-  absl::StatusOr<MlirKernelDefinition> EmitKernelDefinition() final;
+  absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
 
  private:
   absl::Status EmitEntryFunction(

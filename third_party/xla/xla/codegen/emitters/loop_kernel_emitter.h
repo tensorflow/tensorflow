@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/hlo_fusion_spec.h"
-#include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -38,7 +38,7 @@ limitations under the License.
 namespace xla::emitters {
 
 // Generic loop fusion.
-class LoopFusionKernelEmitter final : public MlirKernelEmitter {
+class LoopFusionKernelEmitter final : public KernelEmitter<MlirKernelSource> {
  public:
   LoopFusionKernelEmitter(gpu::SymbolicExprContext& symbolic_expr_context,
                           const HloFusionInstruction& fusion,
@@ -50,7 +50,7 @@ class LoopFusionKernelEmitter final : public MlirKernelEmitter {
                           BackendKind backend_kind);
 
   absl::string_view name() const final { return "loop_fusion_kernel_emitter"; }
-  absl::StatusOr<MlirKernelDefinition> EmitKernelDefinition() override;
+  absl::StatusOr<KernelDefinition> EmitKernelDefinition() override;
 
   static IndexingMap ComputeWorkItemIdToOutputIndexing(
       const WorkDimensions& work_dimensions, const Shape& root_shape,

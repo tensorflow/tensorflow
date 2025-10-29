@@ -100,10 +100,10 @@ NB_MODULE(_extension, kernel_runner_module) {
                                   {});
       });
 
-  nb::class_<MlirTestKernelEmitter, MlirKernelEmitter>(kernel_runner_module,
-                                                       "MlirTestKernelEmitter")
-      .def("__init__", [](MlirKernelEmitter* self, absl::string_view ir,
-                          absl::string_view kernel_name,
+  nb::class_<MlirTestKernelEmitter, KernelEmitter<MlirKernelSource>>(
+      kernel_runner_module, "MlirTestKernelEmitter")
+      .def("__init__", [](KernelEmitter<MlirKernelSource>* self,
+                          absl::string_view ir, absl::string_view kernel_name,
                           NbNumWorkGroups num_workgroups) {
         new (self)
             MlirTestKernelEmitter(ir, kernel_name,
@@ -189,8 +189,8 @@ NB_MODULE(_extension, kernel_runner_module) {
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());
 
-  nb::class_<CpuScatterFusion, MlirKernelEmitter>(kernel_runner_module,
-                                                  "ScatterKernelEmitter")
+  nb::class_<CpuScatterFusion, KernelEmitter<MlirKernelSource>>(
+      kernel_runner_module, "ScatterKernelEmitter")
       .def(
           "__init__",
           [](CpuScatterFusion* self, const HloFusionInstruction* instruction,
