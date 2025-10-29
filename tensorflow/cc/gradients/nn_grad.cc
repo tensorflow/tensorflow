@@ -54,7 +54,7 @@ absl::Status SoftmaxGrad(const Scope& scope, const Operation& op,
 REGISTER_GRADIENT_OP("Softmax", SoftmaxGrad);
 
 bool IsZero(const Scope& scope, const Output& grad) {
-  string op_type_name = grad.op().node()->type_string();
+  std::string op_type_name = grad.op().node()->type_string();
   if (op_type_name == "ZerosLike" || op_type_name == "Zeros") {
     return true;
   }
@@ -204,7 +204,7 @@ REGISTER_GRADIENT_OP("L2Loss", L2LossGrad);
 absl::Status BiasAddGradHelper(const Scope& scope, const Operation& op,
                                const std::vector<Output>& grad_inputs,
                                std::vector<Output>* grad_outputs) {
-  string data_format;
+  std::string data_format;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.output(0).node()->attrs(), "data_format", &data_format));
   auto dx_1 =
@@ -218,9 +218,9 @@ REGISTER_GRADIENT_OP("BiasAdd", BiasAddGradHelper);
 absl::Status Conv2DGrad(const Scope& scope, const Operation& op,
                         const std::vector<Output>& grad_inputs,
                         std::vector<Output>* grad_outputs) {
-  string data_format;
-  string padding;
-  std::vector<int32> strides;
+  std::string data_format;
+  std::string padding;
+  std::vector<int32_t> strides;
   bool use_cudnn_on_gpu;
   auto attrs = op.output(0).node()->attrs();
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
@@ -245,10 +245,10 @@ REGISTER_GRADIENT_OP("Conv2D", Conv2DGrad);
 absl::Status MaxPoolGradHelper(const Scope& scope, const Operation& op,
                                const std::vector<Output>& grad_inputs,
                                std::vector<Output>* grad_outputs) {
-  string data_format;
-  string padding;
-  std::vector<int32> strides;
-  std::vector<int32> ksize;
+  std::string data_format;
+  std::string padding;
+  std::vector<int32_t> strides;
+  std::vector<int32_t> ksize;
   auto attrs = op.output(0).node()->attrs();
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ksize", &ksize));
@@ -265,8 +265,8 @@ REGISTER_GRADIENT_OP("MaxPool", MaxPoolGradHelper);
 absl::Status MaxPoolGradV2Helper(const Scope& scope, const Operation& op,
                                  const std::vector<Output>& grad_inputs,
                                  std::vector<Output>* grad_outputs) {
-  string data_format;
-  string padding;
+  std::string data_format;
+  std::string padding;
   auto attrs = op.output(0).node()->attrs();
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
@@ -283,10 +283,10 @@ REGISTER_GRADIENT_OP("MaxPoolV2", MaxPoolGradV2Helper);
 absl::Status MaxPool3DGradHelper(const Scope& scope, const Operation& op,
                                  const std::vector<Output>& grad_inputs,
                                  std::vector<Output>* grad_outputs) {
-  std::vector<int32> ksize;
-  std::vector<int32> strides;
-  string padding;
-  string data_format;
+  std::vector<int32_t> ksize;
+  std::vector<int32_t> strides;
+  std::string padding;
+  std::string data_format;
   auto attrs = op.output(0).node()->attrs();
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ksize", &ksize));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &strides));
@@ -304,10 +304,10 @@ REGISTER_GRADIENT_OP("MaxPool3D", MaxPool3DGradHelper);
 absl::Status AvgPoolGradHelper(const Scope& scope, const Operation& op,
                                const std::vector<Output>& grad_inputs,
                                std::vector<Output>* grad_outputs) {
-  std::vector<int32> ksize;
-  std::vector<int32> strides;
-  string padding;
-  string data_format;
+  std::vector<int32_t> ksize;
+  std::vector<int32_t> strides;
+  std::string padding;
+  std::string data_format;
   auto attrs = op.output(0).node()->attrs();
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ksize", &ksize));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &strides));
@@ -325,10 +325,10 @@ REGISTER_GRADIENT_OP("AvgPool", AvgPoolGradHelper);
 absl::Status AvgPool3DGradHelper(const Scope& scope, const Operation& op,
                                  const std::vector<Output>& grad_inputs,
                                  std::vector<Output>* grad_outputs) {
-  std::vector<int32> ksize;
-  std::vector<int32> strides;
-  string padding;
-  string data_format;
+  std::vector<int32_t> ksize;
+  std::vector<int32_t> strides;
+  std::string padding;
+  std::string data_format;
   auto attrs = op.output(0).node()->attrs();
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ksize", &ksize));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &strides));
