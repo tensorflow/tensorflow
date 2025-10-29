@@ -42,7 +42,7 @@ class MockResource : public ResourceBase {
       *alive_ = false;
     }
   }
-  string DebugString() const override { return ""; }
+  std::string DebugString() const override { return ""; }
   bool* alive_;
   int payload_;
 };
@@ -103,7 +103,7 @@ TEST_F(MockHandleCreationOpTest, RefCounting) {
   // Feed and run
   AddInputFromArray<int64_t>(TensorShape({}),
                              {reinterpret_cast<int64_t>(&alive)});
-  AddInputFromArray<int32>(TensorShape({}), {payload});
+  AddInputFromArray<int32_t>(TensorShape({}), {payload});
   TF_ASSERT_OK(RunOpKernel());
   EXPECT_TRUE(alive);
 
