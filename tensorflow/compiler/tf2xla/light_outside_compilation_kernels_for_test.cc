@@ -211,7 +211,7 @@ class DynamicMultidimOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     TensorShape output_shape;
-    auto vec = ctx->input(0).flat<int32>();
+    auto vec = ctx->input(0).flat<int32_t>();
     for (int i = 0; i < vec.size(); i++) {
       OP_REQUIRES_OK(ctx, output_shape.AddDimWithStatus(vec(i)));
     }
