@@ -627,6 +627,7 @@ lit_test_suite_for_gpus(
             "offload_scan_output.hlo",
             "pad_to_static.hlo",
             "reduce_fold_zero_add.hlo",
+            "reduce-precision.hlo",
             "rng_get_and_update_state.hlo",
             "single_instruction.hlo",
             "slice_to_dynamic.hlo",
