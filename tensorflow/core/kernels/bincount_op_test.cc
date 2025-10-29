@@ -28,10 +28,10 @@ static Graph* Bincount(int arr_size, int nbins) {
   Graph* g = new Graph(OpRegistry::Global());
 
   Tensor arr(DT_INT32, TensorShape({arr_size}));
-  arr.flat<int32>() = arr.flat<int32>().setRandom().abs();
+  arr.flat<int32_t>() = arr.flat<int32_t>().setRandom().abs();
 
-  Tensor size(DT_INT32, TensorShape({static_cast<int32>(1)}));
-  size.flat<int32>()(0) = static_cast<int32>(nbins);
+  Tensor size(DT_INT32, TensorShape({static_cast<int32_t>(1)}));
+  size.flat<int32_t>()(0) = static_cast<int32_t>(nbins);
 
   Tensor weights(DT_INT32, TensorShape({0}));
 
