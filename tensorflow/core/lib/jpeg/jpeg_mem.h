@@ -87,19 +87,19 @@ struct UncompressFlags {
 // The function returns a pointer to the raw uncompressed data or NULL if
 // there was an error. The caller of the function is responsible for
 // freeing the memory (using delete []).
-uint8* Uncompress(const void* srcdata, int datasize,
-                  const UncompressFlags& flags, int* width, int* height,
-                  int* components,  // Output only: useful with autodetect
-                  int64_t* nwarn);
+uint8_t* Uncompress(const void* srcdata, int datasize,
+                    const UncompressFlags& flags, int* width, int* height,
+                    int* components,  // Output only: useful with autodetect
+                    int64_t* nwarn);
 
 // Version of Uncompress that allocates memory via a callback.  The callback
 // arguments are (width, height, components).  If the size is known ahead of
 // time this function can return an existing buffer; passing a callback allows
 // the buffer to be shaped based on the JPEG header.  The caller is responsible
 // for freeing the memory *even along error paths*.
-uint8* Uncompress(const void* srcdata, int datasize,
-                  const UncompressFlags& flags, int64_t* nwarn,
-                  std::function<uint8*(int, int, int)> allocate_output);
+uint8_t* Uncompress(const void* srcdata, int datasize,
+                    const UncompressFlags& flags, int64_t* nwarn,
+                    std::function<uint8_t*(int, int, int)> allocate_output);
 
 // Read jpeg header and get image information.  Returns true on success.
 // The width, height, and components points may be null.
