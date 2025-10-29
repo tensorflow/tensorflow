@@ -42,6 +42,5 @@ def python_init_rules(extra_patches = []):
             "@local_xla//third_party/py:rules_python_freethreaded.patch",
             "@local_xla//third_party/py:rules_python_versions.patch",
             "@local_xla//third_party/py:rules_python_riscv64_pypi.patch",
-            "@local_xla//third_party/py:rules_python_riscv64_lift_timeout.patch",
         ] + extra_patches,
     )
