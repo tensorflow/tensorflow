@@ -97,7 +97,7 @@ class QueueRunner : public RunnerInterface {
   absl::Status Init(const QueueRunnerDef& queue_runner_def);
 
   // The Run function for each thread.
-  void Run(Session* sess, const string& enqueue_op);
+  void Run(Session* sess, const std::string& enqueue_op);
 
   // Updates the internal status; it only keeps OK or the first unexpected error
   // status.
@@ -112,12 +112,12 @@ class QueueRunner : public RunnerInterface {
 
   void SetRunArgumentsAndCostGraph(const RunOptions& run_options);
 
-  absl::Status RealRun(Session* sess, const string& op, bool update_costs);
+  absl::Status RealRun(Session* sess, const std::string& op, bool update_costs);
 
-  string queue_name_;
-  std::vector<string> enqueue_op_names_;
-  string close_op_name_;
-  string cancel_op_name_;
+  std::string queue_name_;
+  std::vector<std::string> enqueue_op_names_;
+  std::string close_op_name_;
+  std::string cancel_op_name_;
   // code::Code casted to int to avoid a hash function.
   std::unordered_set<int> queue_closed_exception_types_;
 
