@@ -86,17 +86,17 @@ class XlaJitCompiledCpuFunction {
   std::vector<xla::cpu::BufferAllocationInfo> buffer_infos_;
 
   // The backing array for the arg index table.
-  std::vector<int32> arg_index_table_;
+  std::vector<int32_t> arg_index_table_;
 
   // The backing array for the result index table.
-  std::vector<int32> result_index_table_;
+  std::vector<int32_t> result_index_table_;
 
   // The backing arrays of arg and result names. We hold the actual strings in
   // nonempty_*_names_, and hold arrays of pointers in *_names_ for the static
   // data to refer to.
-  std::vector<string> nonempty_arg_names_;
-  std::vector<string> nonempty_variable_names_;
-  std::vector<string> nonempty_result_names_;
+  std::vector<std::string> nonempty_arg_names_;
+  std::vector<std::string> nonempty_variable_names_;
+  std::vector<std::string> nonempty_result_names_;
   std::vector<const char*> arg_names_;
   std::vector<const char*> variable_names_;
   std::vector<const char*> result_names_;
