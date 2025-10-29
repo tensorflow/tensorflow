@@ -156,6 +156,9 @@ absl::StatusOr<bool> AnnotateStreamAttributesForUsers(
   std::vector<HloInstruction*> all_consumers;
   for (auto user : instr->users()) {
     if (HloPredicateIsOp<HloOpcode::kGetTupleElement>(user)) {
+      if (user->user_count() == 0) {
+        continue;
+      }
       user = user->users()[0];
     }
     all_consumers.push_back(user);
