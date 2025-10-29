@@ -161,8 +161,8 @@ class GetKeyCounterAlgOp : public OpKernel {
     random::PhiloxRandom::Key key;
     random::PhiloxRandom::ResultType counter;
     OP_REQUIRES_OK(ctx, GenerateKey(seed_t, &key, &counter));
-    WriteKeyToMem(key, key_output->flat<uint64>().data());
-    WriteCounterToMem(counter, counter_output->flat<uint64>().data());
+    WriteKeyToMem(key, key_output->flat<uint64_t>().data());
+    WriteCounterToMem(counter, counter_output->flat<uint64_t>().data());
     alg_output->flat<int>()(0) = RNG_ALG_PHILOX;
   }
 };
@@ -188,8 +188,8 @@ class GetKeyCounterOp : public OpKernel {
     random::PhiloxRandom::Key key;
     random::PhiloxRandom::ResultType counter;
     OP_REQUIRES_OK(ctx, GenerateKey(seed_t, &key, &counter));
-    WriteKeyToMem(key, key_output->flat<uint64>().data());
-    WriteCounterToMem(counter, counter_output->flat<uint64>().data());
+    WriteKeyToMem(key, key_output->flat<uint64_t>().data());
+    WriteCounterToMem(counter, counter_output->flat<uint64_t>().data());
   }
 };
 

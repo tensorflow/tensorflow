@@ -31,11 +31,11 @@ namespace internal {
 // in the lower 16-bits of input
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet pexpand_bf16_l(const Packet& from) {
-  tensorflow::uint32 tmp;
+  uint32_t tmp;
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
   tmp = (reinterpret_cast<const tensorflow::uint32&>(from)) & 0xffff0000;
 #else
-  tmp = (reinterpret_cast<const tensorflow::uint32&>(from) << 16) & 0xffff0000;
+  tmp = (reinterpret_cast<const uint32_t&>(from) << 16) & 0xffff0000;
 #endif
   return reinterpret_cast<const float&>(tmp);
 }
@@ -44,11 +44,11 @@ EIGEN_DEVICE_FUNC inline Packet pexpand_bf16_l(const Packet& from) {
 // in the upper 16-bits of input
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet pexpand_bf16_u(const Packet& from) {
-  tensorflow::uint32 tmp;
+  uint32_t tmp;
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
   tmp = (reinterpret_cast<const tensorflow::uint32&>(from) << 16) & 0xffff0000;
 #else
-  tmp = (reinterpret_cast<const tensorflow::uint32&>(from)) & 0xffff0000;
+  tmp = (reinterpret_cast<const uint32_t&>(from)) & 0xffff0000;
 #endif
   return reinterpret_cast<const float&>(tmp);
 }
