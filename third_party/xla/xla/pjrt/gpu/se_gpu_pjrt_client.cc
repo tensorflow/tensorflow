@@ -1367,7 +1367,7 @@ StreamExecutorGpuClient::RunAsync(
 
   std::set<se::DeviceMemoryBase> buffers_in_result;
 
-  xla::ShapeTree<tsl::RCReference<RawSEDeviceMemory>> results(
+  xla::ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>> results(
       gpu_exec->result_shape());
 
   for (auto& p : results) {
@@ -1452,7 +1452,7 @@ StreamExecutorGpuClient::RunAsync(
   TF_RETURN_IF_ERROR(buffer_allocations.TearDown(buffers_in_result,
                                                  gpu_exec->GetAllocations()));
 
-  std::vector<tsl::RCReference<RawSEDeviceMemory>> to_be_released;
+  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
 
   // Free allocations for arguments.
   for (ShapeTree<PjRtStreamExecutorExecutionInput>& input : arguments) {
