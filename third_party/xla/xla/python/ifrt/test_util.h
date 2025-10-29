@@ -68,7 +68,7 @@ void AssertPerShardData(
               testing::ElementsAreArray(GetDeviceIds(expected_device_list)));
   TF_ASSERT_OK_AND_ASSIGN(auto actual_per_shard_arrays,
                           actual->DisassembleIntoSingleDeviceArrays(
-                              ArrayCopySemantics::kAlwaysCopy,
+                              ArrayCopySemantics::kReuseInput,
                               SingleDeviceShardSemantics::kAddressableShards));
   ASSERT_EQ(actual_per_shard_arrays.size(), expected_per_shard_data.size());
   for (int i = 0; i < actual_per_shard_arrays.size(); ++i) {
