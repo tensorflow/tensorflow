@@ -180,6 +180,7 @@ xla_cc_test(
 
 cc_library(
     name = "mesh_and_axis",
+    srcs = ["mesh_and_axis.cc"],
     hdrs = ["mesh_and_axis.h"],
     deps = [
         ":tile_assignment",
