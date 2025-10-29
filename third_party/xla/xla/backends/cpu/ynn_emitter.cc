@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 #include "xla/backends/cpu/ynn_support.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -206,6 +207,48 @@ static absl::StatusOr<uint32_t> DefineBinaryOp(ynn_subgraph_t subgraph,
   return out;
 }
 
+static absl::StatusOr<uint32_t> DefineReduceOp(ynn_subgraph_t subgraph,
+                                               TensorIdMap& tensor_ids,
+                                               const HloInstruction* instr) {
+  VLOG(3) << absl::StreamFormat("Define tensor value for reduce op: %s",
+                                instr->ToString());
+  CHECK_EQ(instr->opcode(), HloOpcode::kReduce);
+  const HloReduceInstruction* reduce_instr = Cast<HloReduceInstruction>(instr);
+  const HloInstruction* input = instr->operand(0);
+  const HloInstruction* init = instr->operand(1);
+  CHECK_EQ(input->shape().element_type(), instr->shape().element_type());
+  CHECK_EQ(init->shape().element_type(), instr->shape().element_type());
+
+  ynn_reduce_operator ynn_reduce_op = ynn_reduce_invalid;
+  CHECK_EQ(reduce_instr->to_apply()->num_parameters(), 2);
+  CHECK_EQ(reduce_instr->to_apply()->instruction_count(), 3);
+
+  switch (reduce_instr->to_apply()->root_instruction()->opcode()) {
+    case HloOpcode::kAdd:
+      ynn_reduce_op = ynn_reduce_sum;
+      break;
+    case HloOpcode::kMaximum:
+      ynn_reduce_op = ynn_reduce_max;
+      break;
+    case HloOpcode::kMinimum:
+      ynn_reduce_op = ynn_reduce_min;
+      break;
+    default:
+      LOG(FATAL) << "Unsupported reduction: " << instr->to_apply()->ToString();
+  }
+
+  const absl::Span<const int64_t> reduce_dims = reduce_instr->dimensions();
+  const std::vector<int32_t> dims(reduce_dims.begin(), reduce_dims.end());
+  TF_ASSIGN_OR_RETURN(auto in, FindTensorValue(tensor_ids, input));
+  TF_ASSIGN_OR_RETURN(auto init_id, FindTensorValue(tensor_ids, init));
+  TF_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
+
+  YNN_RETURN_IF_ERROR(
+      ynn_define_reduce(subgraph, ynn_reduce_op, /*num_axes=*/dims.size(),
+                        /*axes=*/dims.data(), in, init_id, &out, /*flags=*/0));
+  return out;
+}
+
 //===----------------------------------------------------------------------===//
 // Emit YNNPACK subgraph for the given HLO computation.
 //===----------------------------------------------------------------------===//
@@ -277,6 +320,11 @@ static absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
         }
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineBitcastOp(subgraph.get(), tensor_ids, instr));
+      } break;
+
+      case HloOpcode::kReduce: {
+        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+                            DefineReduceOp(subgraph.get(), tensor_ids, instr));
       } break;
 
       default: {

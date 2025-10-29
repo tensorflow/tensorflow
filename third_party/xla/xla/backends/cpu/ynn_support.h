@@ -62,6 +62,9 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
     const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
     const Shape& rhs_shape, const Shape& out_shape);
 
+// Returns true if the reduce op is supported by YNNPACK.
+bool IsReduceOpSupportedByYnn(const HloInstruction* hlo);
+
 }  // namespace xla::cpu
 
 #endif  // XLA_BACKENDS_CPU_YNN_SUPPORT_H_

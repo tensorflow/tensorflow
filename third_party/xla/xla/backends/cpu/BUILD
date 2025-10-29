@@ -239,6 +239,7 @@ cc_library(
         "//xla/backends/cpu/runtime:dot_lib",
         "//xla/backends/cpu/runtime/ynnpack:ynn_interop",
         "//xla/hlo/ir:hlo",
+        "//xla/service:pattern_matcher",
         "//xla/tsl/platform:statusor",
         "@XNNPACK//ynnpack",
         "@com_google_absl//absl/base:no_destructor",

@@ -27,9 +27,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -201,6 +204,38 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
   }
 
   return true;
+}
+
+bool IsReduceOpSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kReduce);
+  if (!YnnType(hlo->shape().element_type()).ok()) {
+    return false;
+  }
+  const HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
+  CHECK_NE(reduce, nullptr);
+  // TODO(ashaposhnikov): we can support this edge case,
+  // planning to come back to this later.
+  if (reduce->dimensions().empty()) {
+    return false;
+  }
+
+  HloInstruction* init = reduce->init_values().front();
+  const PrimitiveType type = init->shape().element_type();
+  // TODO(ashaposhnikov): The list of supported types can be extended.
+  if (type != F32) {
+    return false;
+  }
+  if (type != hlo->shape().element_type()) {
+    return false;
+  }
+
+  const HloComputation* to_apply = reduce->to_apply();
+  CHECK_NE(to_apply, nullptr);
+  return Match(to_apply->root_instruction(),
+               match::AnyOf<HloInstruction>(match::Add(), match::Maximum(),
+                                            match::Minimum())
+                   .WithBinaryOperandsAnyOrder(match::Parameter(0),
+                                               match::Parameter(1)));
 }
 
 }  // namespace xla::cpu

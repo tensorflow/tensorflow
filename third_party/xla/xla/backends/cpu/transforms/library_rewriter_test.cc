@@ -101,11 +101,16 @@ class CpuLibraryTest : public TargetMachineTestBase {
     tsl::protobuf::RepeatedField<int> empty_fusion_types;
     bool use_onednn = spec.lib == "onednn";
     bool use_xnnpack = spec.lib == "xnn";
+    bool use_ynnpack = spec.lib == "ynn";
     LibraryRewriterOptions options = {
-        use_onednn, use_xnnpack,
+        use_onednn,
+        use_xnnpack,
+        use_ynnpack,
         /*onednn_fusion_types=*/
         use_onednn ? &fusion_types : &empty_fusion_types,
-        /*xnn_fusion_types=*/use_xnnpack ? &fusion_types : &empty_fusion_types};
+        /*xnn_fusion_types=*/use_xnnpack ? &fusion_types : &empty_fusion_types,
+        /*ynn_fusion_types=*/use_ynnpack ? &fusion_types : &empty_fusion_types,
+    };
     LibraryRewriter rewriter(features.get(), options);
     EXPECT_EQ(expected.changed, rewriter.Run(module.get()).value());
     if (!expected.changed) {
