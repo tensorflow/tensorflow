@@ -45,6 +45,5 @@ def python_init_rules(extra_patches = []):
             Label("//third_party/py:rules_python_freethreaded.patch"),
             Label("//third_party/py:rules_python_versions.patch"),
             Label("//third_party/py:rules_python_riscv64_pypi.patch"),
-            Label("//third_party/py:rules_python_riscv64_lift_timeout.patch"),
         ] + extra_patches,
     )
