@@ -105,8 +105,7 @@ InPlaceDynamicUpdateSliceFusion::CreateMLIRModule(
       BackendKind::kGpu);
 
   TF_ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
-  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
-  return std::move(source).ReleaseStorage().module;
+  return std::move(kernel_definition).TakeSource().ReleaseStorage().module;
 }
 
 absl::Status InPlaceDynamicUpdateSliceFusion::EmitEntryFunction(

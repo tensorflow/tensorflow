@@ -214,9 +214,10 @@ ParallelFusionEmitter::ConsumeKernels() {
 void ParallelFusionEmitter::CompileFusion(
     std::shared_ptr<MlirKernelDefinition> mlir_kernel_definition,
     std::shared_ptr<CompilerInstance> compiler_instance) {
-  auto [spec, source] = std::move(*mlir_kernel_definition).ReleaseStorage();
+  KernelSpec spec = mlir_kernel_definition->spec();
   absl::StatusOr<LlvmKernelSource> llvm_kernel_source =
-      compiler_instance->compiler->Compile(std::move(source));
+      compiler_instance->compiler->Compile(
+          std::move(*mlir_kernel_definition).TakeSource());
 
   absl::MutexLock lock(kernels_mutex_);
   outstanding_kernels_--;

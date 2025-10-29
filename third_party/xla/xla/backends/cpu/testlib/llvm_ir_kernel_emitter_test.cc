@@ -28,10 +28,8 @@ limitations under the License.
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::cpu {
 
@@ -48,12 +46,11 @@ TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
   LlvmTestKernelEmitter::KernelArg arg{1024, BufferUse::MemoryAccess::kWrite};
   LlvmTestKernelEmitter emitter(kLlvmIr, "noop", {}, {arg});
 
-  TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
+  TF_ASSERT_OK_AND_ASSIGN(auto kernel_definition,
                           emitter.EmitKernelDefinition());
 
   // Check that LLVM IR was parsed and loaded as a LLVM IR kernel source.
-  auto [kernel_spec, kernel_source] =
-      std::move(kernel_definition).ReleaseStorage();
+  const KernelSpec& kernel_spec = kernel_definition.spec();
 
   EXPECT_EQ(kernel_spec.name(), "noop");
 
@@ -66,7 +63,7 @@ TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
   EXPECT_EQ(result_slice.size(), 1024);
 
   llvm::orc::ThreadSafeModule thread_safe_module =
-      std::move(kernel_source).thread_safe_module();
+      std::move(kernel_definition).TakeSource().thread_safe_module();
   const llvm::Module::FunctionListType& functions =
       thread_safe_module.getModuleUnlocked()->getFunctionList();
   EXPECT_THAT(functions,

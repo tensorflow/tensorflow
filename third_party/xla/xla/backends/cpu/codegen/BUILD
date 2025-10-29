@@ -631,6 +631,7 @@ cc_library(
         "//xla/backends/cpu:alignment",
         "//xla/codegen:hlo_fusion_spec",
         "//xla/codegen:ir_emission_utils",
+        "//xla/codegen:kernel_spec",
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/emitters:concatenate_kernel_emitter",
         "//xla/codegen/emitters:dynamic_update_slice_kernel_emitter",

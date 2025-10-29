@@ -52,9 +52,9 @@ namespace xla::cpu {
 
 absl::StatusOr<KernelRunner> KernelRunner::Create(
     LlvmKernelDefinition kernel_definition, JitCompiler compiler) {
-  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
-
-  auto thread_safe_module = std::move(source).thread_safe_module();
+  auto spec = kernel_definition.spec();
+  auto thread_safe_module =
+      std::move(kernel_definition).TakeSource().thread_safe_module();
   SetModuleMemoryRegionName(*thread_safe_module.getModuleUnlocked(),
                             "kernel_runner_test");
 
@@ -74,8 +74,8 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
 
 absl::StatusOr<KernelRunner> KernelRunner::Create(
     MlirKernelDefinition kernel_definition, JitCompiler compiler) {
-  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
-
+  auto spec = kernel_definition.spec();
+  auto source = std::move(kernel_definition).TakeSource();
   TF_ASSIGN_OR_RETURN(LlvmKernelSource llvm_kernel_source, LowerToLlvm(source));
 
   return Create(LlvmKernelDefinition(spec, std::move(llvm_kernel_source)),
