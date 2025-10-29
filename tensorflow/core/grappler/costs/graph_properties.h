@@ -130,24 +130,24 @@ class GraphProperties {
   // values strictly less than -1 to encode symbolic dimensions: although we
   // don't know the actual value of the symbolic dimension, we know that all the
   // dimensions denoted by the same negative value are the equal.
-  bool HasInputProperties(const string& node_name) const;
-  bool HasOutputProperties(const string& node_name) const;
+  bool HasInputProperties(const std::string& node_name) const;
+  bool HasOutputProperties(const std::string& node_name) const;
   const std::vector<OpInfo::TensorProperties>& GetInputProperties(
-      const string& node_name) const;
+      const std::string& node_name) const;
   const std::vector<OpInfo::TensorProperties>& GetOutputProperties(
-      const string& node_name) const;
+      const std::string& node_name) const;
 
   // Invalidate input/output properties for nodes modified during graph
   // optimization pass, to prevent potential optimizations, based on incorrect
   // shape information.
-  void ClearInputProperties(const string& node_name);
-  void ClearOutputProperties(const string& node_name);
+  void ClearInputProperties(const std::string& node_name);
+  void ClearOutputProperties(const std::string& node_name);
   // Returns true if we have *any* properties.
   bool has_properties() const {
     return !input_properties_.empty() || !output_properties_.empty();
   }
 
-  bool CheckShapeIncompatible(const string& node_name) const {
+  bool CheckShapeIncompatible(const std::string& node_name) const {
     return incompatible_shape_nodes_.find(node_name) !=
            incompatible_shape_nodes_.end();
   }
@@ -203,15 +203,15 @@ class GraphProperties {
 
   // Data members
   const GrapplerItem& item_;
-  absl::flat_hash_map<string, std::vector<OpInfo::TensorProperties>>
+  absl::flat_hash_map<std::string, std::vector<OpInfo::TensorProperties>>
       input_properties_;
-  absl::flat_hash_map<string, std::vector<OpInfo::TensorProperties>>
+  absl::flat_hash_map<std::string, std::vector<OpInfo::TensorProperties>>
       output_properties_;
   const std::vector<OpInfo::TensorProperties> missing_properties_;
 
   // Nodes with output shape incompatible between shape inference and
   // annotation.
-  std::unordered_set<string> incompatible_shape_nodes_;
+  std::unordered_set<std::string> incompatible_shape_nodes_;
 };
 
 // Helper function for GraphProperties.
