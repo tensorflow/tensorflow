@@ -151,10 +151,10 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
       case GPUCommunicationType::SINGLE_HOST:
         iota = IotaReplicaGroupList(num_hosts, kNumGpusPerHost);
         break;
-      case GPUCommunicationType::RAIL_ALIGNED:
+      case GPUCommunicationType::MULTI_HOST_WORLD_LEVEL:
         iota = IotaReplicaGroupList(1, num_hosts * kNumGpusPerHost);
         break;
-      case GPUCommunicationType::NON_RAIL_ALIGNED:
+      case GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL:
         iota = IotaReplicaGroupList(kNumGpusPerHost, num_hosts,
                                     {num_hosts, kNumGpusPerHost}, {1, 0});
         break;
@@ -169,56 +169,56 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
   std::vector<SpaceSpec> test_space_ = {
       {
           /*opcode=*/HloOpcode::kAllReduce,
-          /*comm=*/GPUCommunicationType::RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
           /*tensor_size=*/1024,
           /*num_nodes=*/2,
           /*network_througput_bytes=*/1024,
       },
       {
           /*opcode=*/HloOpcode::kAllReduce,
-          /*comm=*/GPUCommunicationType::RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
           /*tensor_size=*/2 * 1024,
           /*num_nodes=*/2,
           /*network_througput_bytes=*/2 * 1024,
       },
       {
           /*opcode=*/HloOpcode::kAllReduce,
-          /*comm=*/GPUCommunicationType::RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
           /*tensor_size=*/1024,
           /*num_nodes=*/4,
           /*network_througput_bytes=*/4 * 1024,
       },
       {
           /*opcode=*/HloOpcode::kAllReduce,
-          /*comm=*/GPUCommunicationType::RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
           /*tensor_size=*/2 * 1024,
           /*num_nodes=*/4,
           /*network_througput_bytes=*/5 * 1024,
       },
       {
           /*opcode=*/HloOpcode::kAllReduce,
-          /*comm=*/GPUCommunicationType::NON_RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
           /*tensor_size=*/1024,
           /*num_nodes=*/2,
           /*network_througput_bytes=*/512,
       },
       {
           /*opcode=*/HloOpcode::kAllReduce,
-          /*comm=*/GPUCommunicationType::NON_RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
           /*tensor_size=*/2 * 1024,
           /*num_nodes=*/2,
           /*network_througput_bytes=*/2 * 512,
       },
       {
           /*opcode=*/HloOpcode::kAllReduce,
-          /*comm=*/GPUCommunicationType::NON_RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
           /*tensor_size=*/1024,
           /*num_nodes=*/4,
           /*network_througput_bytes=*/4 * 512,
       },
       {
           /*opcode=*/HloOpcode::kAllReduce,
-          /*comm=*/GPUCommunicationType::NON_RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
           /*tensor_size=*/2 * 1024,
           /*num_nodes=*/4,
           /*network_througput_bytes=*/5 * 512,
@@ -253,56 +253,56 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
       },
       {
           /*opcode=*/HloOpcode::kReduceScatter,
-          /*comm=*/GPUCommunicationType::RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
           /*tensor_size=*/1024,
           /*num_nodes=*/2,
           /*network_througput_bytes=*/1024,
       },
       {
           /*opcode=*/HloOpcode::kReduceScatter,
-          /*comm=*/GPUCommunicationType::RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
           /*tensor_size=*/2 * 1024,
           /*num_nodes=*/2,
           /*network_througput_bytes=*/2 * 1024,
       },
       {
           /*opcode=*/HloOpcode::kReduceScatter,
-          /*comm=*/GPUCommunicationType::RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
           /*tensor_size=*/1024,
           /*num_nodes=*/4,
           /*network_througput_bytes=*/4 * 1024,
       },
       {
           /*opcode=*/HloOpcode::kReduceScatter,
-          /*comm=*/GPUCommunicationType::RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
           /*tensor_size=*/2 * 1024,
           /*num_nodes=*/4,
           /*network_througput_bytes=*/5 * 1024,
       },
       {
           /*opcode=*/HloOpcode::kReduceScatter,
-          /*comm=*/GPUCommunicationType::NON_RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
           /*tensor_size=*/1024,
           /*num_nodes=*/2,
           /*network_througput_bytes=*/512,
       },
       {
           /*opcode=*/HloOpcode::kReduceScatter,
-          /*comm=*/GPUCommunicationType::NON_RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
           /*tensor_size=*/2 * 1024,
           /*num_nodes=*/2,
           /*network_througput_bytes=*/2 * 512,
       },
       {
           /*opcode=*/HloOpcode::kReduceScatter,
-          /*comm=*/GPUCommunicationType::NON_RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
           /*tensor_size=*/1024,
           /*num_nodes=*/4,
           /*network_througput_bytes=*/4 * 512,
       },
       {
           /*opcode=*/HloOpcode::kReduceScatter,
-          /*comm=*/GPUCommunicationType::NON_RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
           /*tensor_size=*/2 * 1024,
           /*num_nodes=*/4,
           /*network_througput_bytes=*/5 * 512,
@@ -337,56 +337,56 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
       },
       {
           /*opcode=*/HloOpcode::kAllGather,
-          /*comm=*/GPUCommunicationType::RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
           /*tensor_size=*/1024,
           /*num_nodes=*/2,
           /*network_througput_bytes=*/1024,
       },
       {
           /*opcode=*/HloOpcode::kAllGather,
-          /*comm=*/GPUCommunicationType::RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
           /*tensor_size=*/2 * 1024,
           /*num_nodes=*/2,
           /*network_througput_bytes=*/2 * 1024,
       },
       {
           /*opcode=*/HloOpcode::kAllGather,
-          /*comm=*/GPUCommunicationType::RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
           /*tensor_size=*/1024,
           /*num_nodes=*/4,
           /*network_througput_bytes=*/4 * 1024,
       },
       {
           /*opcode=*/HloOpcode::kAllGather,
-          /*comm=*/GPUCommunicationType::RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
           /*tensor_size=*/2 * 1024,
           /*num_nodes=*/4,
           /*network_througput_bytes=*/5 * 1024,
       },
       {
           /*opcode=*/HloOpcode::kAllGather,
-          /*comm=*/GPUCommunicationType::NON_RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
           /*tensor_size=*/1024,
           /*num_nodes=*/2,
           /*network_througput_bytes=*/512,
       },
       {
           /*opcode=*/HloOpcode::kAllGather,
-          /*comm=*/GPUCommunicationType::NON_RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
           /*tensor_size=*/2 * 1024,
           /*num_nodes=*/2,
           /*network_througput_bytes=*/2 * 512,
       },
       {
           /*opcode=*/HloOpcode::kAllGather,
-          /*comm=*/GPUCommunicationType::NON_RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
           /*tensor_size=*/1024,
           /*num_nodes=*/4,
           /*network_througput_bytes=*/4 * 512,
       },
       {
           /*opcode=*/HloOpcode::kAllGather,
-          /*comm=*/GPUCommunicationType::NON_RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
           /*tensor_size=*/2 * 1024,
           /*num_nodes=*/4,
           /*network_througput_bytes=*/5 * 512,
@@ -428,14 +428,14 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
       },
       {
           /*opcode=*/HloOpcode::kAllToAll,
-          /*comm=*/GPUCommunicationType::RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
           /*tensor_size=*/1024,
           /*num_nodes=*/2,
           /*network_througput_bytes=*/2048,
       },
       {
           /*opcode=*/HloOpcode::kAllToAll,
-          /*comm=*/GPUCommunicationType::NON_RAIL_ALIGNED,
+          /*comm=*/GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
           /*tensor_size=*/1024,
           /*num_nodes=*/2,
           /*network_througput_bytes=*/4096,
@@ -459,7 +459,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllReduce,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/2,
             },
@@ -471,7 +471,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllReduce,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/8,
             },
@@ -483,7 +483,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllReduce,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/4 * 1024,
                 /*num_nodes=*/2,
             },
@@ -495,7 +495,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllReduce,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/3,
             },
@@ -507,7 +507,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllReduce,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/1024 + 256,
                 /*num_nodes=*/2,
             },
@@ -519,7 +519,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllReduce,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/2,
             },
@@ -531,7 +531,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllReduce,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/8,
             },
@@ -543,7 +543,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllReduce,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/4 * 1024,
                 /*num_nodes=*/2,
             },
@@ -555,7 +555,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllReduce,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/3,
             },
@@ -567,7 +567,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllReduce,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/1024 + 256,
                 /*num_nodes=*/2,
             },
@@ -639,7 +639,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kReduceScatter,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/2,
             },
@@ -651,7 +651,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kReduceScatter,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/8,
             },
@@ -663,7 +663,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kReduceScatter,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/4 * 1024,
                 /*num_nodes=*/2,
             },
@@ -675,7 +675,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kReduceScatter,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/3,
             },
@@ -687,7 +687,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kReduceScatter,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/1024 + 256,
                 /*num_nodes=*/2,
             },
@@ -699,7 +699,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kReduceScatter,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/2,
             },
@@ -711,7 +711,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kReduceScatter,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/8,
             },
@@ -723,7 +723,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kReduceScatter,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/4 * 1024,
                 /*num_nodes=*/2,
             },
@@ -735,7 +735,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kReduceScatter,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/1032,
                 /*num_nodes=*/3,
             },
@@ -747,7 +747,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kReduceScatter,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/1024 + 256,
                 /*num_nodes=*/2,
             },
@@ -807,7 +807,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllGather,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/2,
             },
@@ -819,7 +819,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllGather,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/8,
             },
@@ -831,7 +831,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllGather,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/4 * 1024,
                 /*num_nodes=*/2,
             },
@@ -843,7 +843,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllGather,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/1056,
                 /*num_nodes=*/3,
             },
@@ -855,7 +855,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllGather,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/1024 + 256,
                 /*num_nodes=*/2,
             },
@@ -867,7 +867,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllGather,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/2,
             },
@@ -879,7 +879,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllGather,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/8,
             },
@@ -891,7 +891,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllGather,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/4 * 1024,
                 /*num_nodes=*/2,
             },
@@ -903,7 +903,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllGather,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/1032,
                 /*num_nodes=*/3,
             },
@@ -915,7 +915,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllGather,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/1024 + 256,
                 /*num_nodes=*/2,
             },
@@ -986,7 +986,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllToAll,
                 /*comm=*/
-                GPUCommunicationType::RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/2,
             },
@@ -997,7 +997,7 @@ INSTANTIATE_TEST_SUITE_P(
             {
                 /*opcode=*/HloOpcode::kAllToAll,
                 /*comm=*/
-                GPUCommunicationType::NON_RAIL_ALIGNED,
+                GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL,
                 /*tensor_size=*/1024,
                 /*num_nodes=*/2,
             },

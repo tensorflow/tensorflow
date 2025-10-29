@@ -29,10 +29,10 @@ enum class GPUCommunicationType {
   UNDEFINED = 0,
   // Communication involves devices from multiple hosts, and every host
   // involved in the communication pattern has all of its devices participating.
-  RAIL_ALIGNED = 1,
+  MULTI_HOST_WORLD_LEVEL = 1,
   // Communication involves devices from multiple hosts, but at least one of
   // the involved hosts has only a subset of its devices participating.
-  NON_RAIL_ALIGNED = 2,
+  MULTI_HOST_NON_WORLD_LEVEL = 2,
   // All devices participating in the collective operation reside on the same
   // host machine.
   SINGLE_HOST = 3

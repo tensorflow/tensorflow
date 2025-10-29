@@ -204,13 +204,13 @@ absl::StatusOr<absl::Duration> DispatchEstimation(
                       GetReplicaGroupCountAndSize(&instr));
 
   switch (comm) {
-    case GPUCommunicationType::RAIL_ALIGNED: {
+    case GPUCommunicationType::MULTI_HOST_WORLD_LEVEL: {
       return DCNCollectiveDuration(
           num_groups_and_devices->second / sol_flags.gpus_per_node,
           /*num_communicators=*/num_groups_and_devices->first, instr,
           gpu_device_info, sol_flags, analysis, symbolic_expr_context);
     }
-    case GPUCommunicationType::NON_RAIL_ALIGNED: {
+    case GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL: {
       return DCNCollectiveDuration(
           num_groups_and_devices->second,
           /*num_communicators=*/num_groups_and_devices->first, instr,

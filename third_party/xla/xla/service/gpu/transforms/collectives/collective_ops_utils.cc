@@ -115,7 +115,7 @@ bool IsSingleHost(const CommunicationMetadata& pattern) {
          pattern.replica_count <= pattern.num_devices_per_host;
 }
 
-bool IsRailAligned(const CommunicationMetadata& pattern) {
+bool IsWorldLevelCommunication(const CommunicationMetadata& pattern) {
   if (!IsSingleHost(pattern) && pattern.node_to_participant_count.empty()) {
     return true;
   }
@@ -126,8 +126,8 @@ bool IsRailAligned(const CommunicationMetadata& pattern) {
       });
 }
 
-bool IsNonRailAligned(const CommunicationMetadata& pattern) {
-  return !IsSingleHost(pattern) && !IsRailAligned(pattern);
+bool IsNonWorldLevelCommunication(const CommunicationMetadata& pattern) {
+  return !IsSingleHost(pattern) && !IsWorldLevelCommunication(pattern);
 }
 
 }  // namespace
@@ -152,11 +152,11 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
   if (IsSingleHost(comm)) {
     return GPUCommunicationType::SINGLE_HOST;
   }
-  if (IsRailAligned(comm)) {
-    return GPUCommunicationType::RAIL_ALIGNED;
+  if (IsWorldLevelCommunication(comm)) {
+    return GPUCommunicationType::MULTI_HOST_WORLD_LEVEL;
   }
-  if (IsNonRailAligned(comm)) {
-    return GPUCommunicationType::NON_RAIL_ALIGNED;
+  if (IsNonWorldLevelCommunication(comm)) {
+    return GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL;
   }
 
   return GPUCommunicationType::UNDEFINED;
