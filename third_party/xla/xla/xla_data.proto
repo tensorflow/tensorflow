@@ -1192,6 +1192,19 @@ message ReplicaGroup {
   repeated int64 replica_ids = 1;
 }
 
+// Represents a list of replica groups (a list of list of devices) via a mesh
+// and list of axes. The replica groups correspond to the partitions of the
+// device ids which would arise if a collective operation was performed over the
+// specified axes.
+message MeshAxesReplicaGroupListProto {
+  // The mesh used to define the full set of axes and devices ids.
+  MeshProto mesh = 1;
+  // The axes defining the replica groups. These groups are implicitly defined
+  // by the device ids which would communicate together if a collective
+  // operation is performed over these axes.
+  repeated AxisRefProto axes = 2;
+}
+
 // Represents a list of replica groups (a list of list of devices) with
 // reshaping and transposing an iota array (iota tile assignment). Can be used
 // to represent certain common patterns of device lists in a compact, scalable
