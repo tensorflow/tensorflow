@@ -152,3 +152,8 @@ load(
 nvshmem_redist_init_repository(
     nvshmem_redistributions = NVSHMEM_REDISTRIBUTIONS,
 )
+
+# This is used for building nightly PJRT wheels.
+load("//build_tools/pjrt_wheels:nightly.bzl", "nightly_timestamp_repo")
+
+nightly_timestamp_repo(name = "nightly_timestamp")

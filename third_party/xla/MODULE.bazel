@@ -205,3 +205,6 @@ use_repo(rocm_configure, "local_config_rocm")
 
 tensorrt_configure = use_extension("//third_party/extensions:tensorrt_configure.bzl", "tensorrt_configure_ext")
 use_repo(tensorrt_configure, "local_config_tensorrt")
+
+pjrt_nightly_timestamp = use_extension("//build_tools/pjrt_wheels:nightly.bzl", "nightly_timestamp_repo_bzlmod")
+use_repo(pjrt_nightly_timestamp, "nightly_timestamp")

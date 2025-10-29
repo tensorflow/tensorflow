@@ -1,10 +1,13 @@
 load("@cuda_cudart//:version.bzl", cuda_major_version = "VERSION")
+load("@nightly_timestamp//:timestamp.bzl", "XLA_NIGHTLY_TIMESTAMP")
 load("@rules_python//python:packaging.bzl", "py_wheel")
 
 # This ensures we can only build plugins for selected CUDA versions.
 cuda_label = "cuda" + cuda_major_version if cuda_major_version else "null"
 
-wheel_version = "0.0.0.dev0"
+# If we're building a nightly, append .devYYYYMMDD to the version
+# If we're not, the timestamp is the empty string
+wheel_version = "0.0.0" + XLA_NIGHTLY_TIMESTAMP
 
 wheel_platform = select({
     "//conditions:default": "manylinux_2_27_x86_64",
