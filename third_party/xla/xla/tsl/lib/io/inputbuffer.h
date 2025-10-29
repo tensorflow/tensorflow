@@ -67,10 +67,10 @@ class InputBuffer {
                           size_t* bytes_read);
 
   // Reads a single varint32.
-  absl::Status ReadVarint32(uint32* result);
+  absl::Status ReadVarint32(uint32_t* result);
 
   // Reads a single varint64.
-  absl::Status ReadVarint64(uint64* result);
+  absl::Status ReadVarint64(uint64_t* result);
 
   // Like ReadNBytes() without returning the bytes read.
   absl::Status SkipNBytes(int64_t bytes_to_skip);
@@ -95,10 +95,10 @@ class InputBuffer {
   absl::Status FillBuffer();
 
   // Internal slow-path routine used by ReadVarint32().
-  absl::Status ReadVarint32Fallback(uint32* result);
+  absl::Status ReadVarint32Fallback(uint32_t* result);
 
   // Internal slow-path routine used by ReadVarint64().
-  absl::Status ReadVarint64Fallback(uint64* result);
+  absl::Status ReadVarint64Fallback(uint64_t* result);
 
   // Helper method for reading a varint which can span at max `max_bytes`.
   // If the varint is longer, a DataLoss error status is returned.
@@ -134,7 +134,7 @@ extern template Status InputBuffer::ReadLine<std::string>(std::string* result);
 extern template Status InputBuffer::ReadLine<tstring>(tstring* result);
 
 // Inlined for performance.
-inline absl::Status InputBuffer::ReadVarint32(uint32* result) {
+inline absl::Status InputBuffer::ReadVarint32(uint32_t* result) {
   if (pos_ + core::kMaxVarint32Bytes <= limit_) {
     // Fast path: directly parse from buffered data.
     // Reads strictly from the range [pos_, limit_).
@@ -149,7 +149,7 @@ inline absl::Status InputBuffer::ReadVarint32(uint32* result) {
 }
 
 // Inlined for performance.
-inline absl::Status InputBuffer::ReadVarint64(uint64* result) {
+inline absl::Status InputBuffer::ReadVarint64(uint64_t* result) {
   if (pos_ + core::kMaxVarint64Bytes <= limit_) {
     // Fast path: directly parse from buffered data.
     // Reads strictly from the range [pos_, limit_).
