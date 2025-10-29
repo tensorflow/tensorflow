@@ -141,3 +141,36 @@ func.func @reduce_outer_and_inner(%input : tensor<1024x32x8xf32>, %init : tensor
 // CHECK:   }
 // CHECK:   vector.transfer_read %[[BUFFER1]]{{.*}} : memref<32xf32>, vector<32xf32>
 // CHECK: }
+
+// -----
+
+func.func @broadcast_0D_tensor(%input : tensor<f32>) -> tensor<32xf32> {
+  %result = stablehlo.broadcast_in_dim %input, dims = [] : (tensor<f32>) -> tensor<32xf32>
+  return %result : tensor<32xf32>
+}
+
+// CHECK-LABEL: @broadcast_0D_tensor
+// CHECK-NOT: vector.shape_cast
+// CHECK: vector.broadcast {{.*}} : vector<f32> to vector<32xf32>
+
+// -----
+
+func.func @broadcast_2D_tensor_inner(%input : tensor<4xf32>) -> tensor<32x4xf32> {
+  %result = stablehlo.broadcast_in_dim %input, dims = [1] : (tensor<4xf32>) -> tensor<32x4xf32>
+  return %result : tensor<32x4xf32>
+}
+
+// CHECK-LABEL: @broadcast_2D_tensor_inner
+// CHECK-NOT: vector.shape_cast
+// CHECK: vector.broadcast {{.*}} : vector<4xf32> to vector<32x4xf32>
+
+// -----
+
+func.func @broadcast_2D_tensor_outer(%input : tensor<4xf32>) -> tensor<4x32xf32> {
+  %result = stablehlo.broadcast_in_dim %input, dims = [0] : (tensor<4xf32>) -> tensor<4x32xf32>
+  return %result : tensor<4x32xf32>
+}
+
+// CHECK-LABEL: @broadcast_2D_tensor_outer
+// CHECK: vector.shape_cast {{.*}} : vector<4xf32> to vector<4x1xf32>
+// CHECK: vector.broadcast {{.*}} : vector<4x1xf32> to vector<4x32xf32>

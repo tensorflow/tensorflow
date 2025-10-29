@@ -40,6 +40,7 @@ def compare_kernel(
     dtype,
     expected_output: Callable[[np.ndarray, ...], np.ndarray],
     maxulp: Optional[int] = None,
+    random_inputs: bool = False,
 ) -> None:
   mlir_emitter = cpu_testlib.MlirTestKernelEmitter(
       ir, kernel_name, (num_workgroups, 1, 1)
@@ -51,8 +52,14 @@ def compare_kernel(
       cpu_testlib.JitCompiler(base_testlib.HloModuleConfig()),
   )
 
-  # Simply use a all-ones arrays as inputs to make it easy to debug the kernel.
-  inputs = [np.ones(shape=shape, dtype=dtype) for shape in input_shapes]
+  # Simply use a all-ones arrays as inputs to make it easy to debug the kernel
+  # unless random inputs are requested.
+  def get_input(shape):
+    if random_inputs:
+      return get_random_array(shape, dtype)
+    return np.ones(shape=shape, dtype=dtype)
+
+  inputs = [get_input(shape) for shape in input_shapes]
 
   input_tensors = [create_literal(input) for input in inputs]
   # Use a random array as the output to ensure all values are written to.
@@ -405,6 +412,58 @@ class XtileLoweringTest(absltest.TestCase):
         (4,),
         np.float32,
         lambda input, init: np.sum(input, axis=(0, 2)) + init,
+    )
+
+  def test_broadcast_in_dim_inner(self):
+    ir = """
+      module @broadcast_in_dim_inner {
+        xtile.entry_func @broadcast_in_dim_inner(
+            %input: memref<4xf32>,
+            %output: memref<32x4xf32>,
+            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+          %input_tile = xtile.extract %input[%tile_id][4][1] : memref<4xf32> -> tensor<4xf32>
+          %result = stablehlo.broadcast_in_dim %input_tile, dims = [1] : (tensor<4xf32>) -> tensor<32x4xf32>
+          xtile.insert %result into %output[%tile_id, %tile_id][32,4][1,1] : tensor<32x4xf32> -> memref<32x4xf32>
+          xtile.return
+        }
+      }
+    """
+
+    compare_kernel(
+        ir,
+        "broadcast_in_dim_inner",
+        1,
+        [(4,)],
+        (32, 4),
+        np.float32,
+        lambda input: np.broadcast_to(input, (32, 4)),
+        random_inputs=True,
+    )
+
+  def test_broadcast_in_dim_outer(self):
+    ir = """
+      module @broadcast_in_dim_outer {
+        xtile.entry_func @broadcast_in_dim_outer(
+            %input: memref<4xf32>,
+            %output: memref<4x32xf32>,
+            %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:1, tiles_per_workgroup:1>} {
+          %input_tile = xtile.extract %input[%tile_id][4][1] : memref<4xf32> -> tensor<4xf32>
+          %result = stablehlo.broadcast_in_dim %input_tile, dims = [0] : (tensor<4xf32>) -> tensor<4x32xf32>
+          xtile.insert %result into %output[%tile_id, %tile_id][4,32][1,1] : tensor<4x32xf32> -> memref<4x32xf32>
+          xtile.return
+        }
+      }
+    """
+
+    compare_kernel(
+        ir,
+        "broadcast_in_dim_outer",
+        1,
+        [(4,)],
+        (4, 32),
+        np.float32,
+        lambda input: np.transpose(np.broadcast_to(input, (32, 4))),
+        random_inputs=True,
     )
 
 

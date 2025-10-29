@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -224,9 +225,6 @@ struct LowerTranspose : mlir::OpRewritePattern<mlir::stablehlo::TransposeOp> {
   }
 };
 
-// Lower stablehlo.reduce to vector operations.
-//
-
 struct LowerReduce : mlir::OpRewritePattern<mlir::stablehlo::ReduceOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -266,6 +264,42 @@ struct LowerReduce : mlir::OpRewritePattern<mlir::stablehlo::ReduceOp> {
   }
 };
 
+struct LowerBroadcastInDim
+    : mlir::OpRewritePattern<mlir::stablehlo::BroadcastInDimOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::stablehlo::BroadcastInDimOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    auto source_vector = CastToVector(rewriter, op.getOperand());
+    auto result_vector_type = GetVectorType(op.getType());
+
+    llvm::ArrayRef<int64_t> source_shape = source_vector.getType().getShape();
+    llvm::ArrayRef<int64_t> broadcast_dims = op.getBroadcastDimensions();
+
+    // First create an intermediate vector with the rank of the result vector
+    // but with the broadcasted dimensions set to the source shape with all
+    // additional dimensions set to 1.
+    llvm::SmallVector<int64_t> intermediate_shape(result_vector_type.getRank(),
+                                                  1);
+    for (auto [input_dim, result_dim] : llvm::enumerate(broadcast_dims)) {
+      intermediate_shape[result_dim] = source_shape[input_dim];
+    }
+    mlir::Value intermediate_vector = mlir::vector::ShapeCastOp::create(
+        rewriter, op->getLoc(),
+        mlir::VectorType::get(intermediate_shape,
+                              result_vector_type.getElementType()),
+        source_vector);
+    // Now that all the inserted dimensions are size 1 we can legally call
+    // broadcast even if they are not the most major dimensions.
+    mlir::Value broadcast_op = mlir::vector::BroadcastOp::create(
+        rewriter, op->getLoc(), result_vector_type, intermediate_vector);
+
+    rewriter.replaceOp(op, CastToTensor(rewriter, broadcast_op));
+    return mlir::success();
+  }
+};
+
 class ShloToVectorPass : public impl::ShloToVectorPassBase<ShloToVectorPass> {
  public:
   using ShloToVectorPassBase::ShloToVectorPassBase;
@@ -273,7 +307,9 @@ class ShloToVectorPass : public impl::ShloToVectorPassBase<ShloToVectorPass> {
   void runOnOperation() override {
     mlir::MLIRContext* context = &getContext();
     mlir::RewritePatternSet patterns(context);
-    patterns.add<LowerTranspose, LowerDotGeneral, LowerReduce>(context);
+    patterns
+        .add<LowerTranspose, LowerDotGeneral, LowerReduce, LowerBroadcastInDim>(
+            context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
