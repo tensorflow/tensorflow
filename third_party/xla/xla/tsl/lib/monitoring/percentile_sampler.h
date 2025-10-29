@@ -121,7 +121,7 @@ class PercentileSamplerCell {
   struct Sample {
     bool operator<(const Sample& rhs) const { return value < rhs.value; }
 
-    uint64 nstime = 0;
+    uint64_t nstime = 0;
     double value = NAN;
   };
 
@@ -227,7 +227,7 @@ class PercentileSampler {
 
   absl::Status status_;
 
-  using LabelArray = std::array<string, NumLabels>;
+  using LabelArray = std::array<std::string, NumLabels>;
   // we need a container here that guarantees pointer stability of the value,
   // namely, the pointer of the value should remain valid even after more cells
   // are inserted.
