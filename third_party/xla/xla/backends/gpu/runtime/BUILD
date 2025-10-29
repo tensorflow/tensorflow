@@ -2878,9 +2878,9 @@ xla_test(
 )
 
 cc_library(
-    name = "thunk_checksum_tracing_pass",
-    srcs = ["thunk_checksum_tracing_pass.cc"],
-    hdrs = ["thunk_checksum_tracing_pass.h"],
+    name = "thunk_buffer_debug_pass",
+    srcs = ["thunk_buffer_debug_pass.cc"],
+    hdrs = ["thunk_buffer_debug_pass.h"],
     deps = [
         ":buffers_checksum_thunk",
         ":custom_call_thunk",
@@ -2911,15 +2911,15 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "thunk_checksum_tracing_pass_test",
-    srcs = ["thunk_checksum_tracing_pass_test.cc"],
+    name = "thunk_buffer_debug_pass_test",
+    srcs = ["thunk_buffer_debug_pass_test.cc"],
     deps = [
         ":buffers_checksum_thunk",
         ":custom_call_thunk",
         ":sequential_thunk",
         ":thunk",
+        ":thunk_buffer_debug_pass",
         ":thunk_buffer_id",
-        ":thunk_checksum_tracing_pass",
         ":thunk_id",
         ":thunk_pass_pipeline",
         "//xla:literal_util",

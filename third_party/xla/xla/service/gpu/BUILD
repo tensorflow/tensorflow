@@ -738,7 +738,7 @@ cc_library(
         "//xla/backends/gpu/runtime:nvshmem_collective_thunk",
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",
-        "//xla/backends/gpu/runtime:thunk_checksum_tracing_pass",
+        "//xla/backends/gpu/runtime:thunk_buffer_debug_pass",
         "//xla/backends/gpu/runtime:thunk_pass_pipeline",
         "//xla/core/collectives:clique_key",
         "//xla/hlo/ir:hlo",

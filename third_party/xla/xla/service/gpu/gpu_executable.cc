@@ -45,7 +45,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk_checksum_tracing_pass.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_debug_pass.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/executable_run_options.h"
@@ -177,7 +177,7 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
                                    ThunkPassBufferAllocator& allocator) {
   ThunkPassPipeline pipeline("thunk-passes");
   if (debug_options.xla_gpu_experimental_enable_checksum_tracing_on_thunks()) {
-    pipeline.AddPass(std::make_unique<ThunkChecksumTracingPass>());
+    pipeline.AddPass(std::make_unique<ThunkBufferDebugPass>());
   }
   if (debug_options.xla_gpu_experimental_enable_command_buffer_on_thunks()) {
     pipeline.AddPass(std::make_unique<CommandBufferConversionPass>(

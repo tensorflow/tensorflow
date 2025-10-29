@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_THUNK_CHECKSUM_TRACING_PASS_H_
-#define XLA_BACKENDS_GPU_RUNTIME_THUNK_CHECKSUM_TRACING_PASS_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_THUNK_BUFFER_DEBUG_PASS_H_
+#define XLA_BACKENDS_GPU_RUNTIME_THUNK_BUFFER_DEBUG_PASS_H_
 
 #include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
@@ -27,12 +27,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Adds checksum tracing to thunks.
-class ThunkChecksumTracingPass : public ThunkPassInterface {
+// Adds buffer debug tracing to thunks.
+class ThunkBufferDebugPass : public ThunkPassInterface {
  public:
-  ThunkChecksumTracingPass() = default;
+  ThunkBufferDebugPass() = default;
 
-  absl::string_view name() const override { return "thunk-checksum-tracing"; }
+  absl::string_view name() const override { return "thunk-buffer-debug"; }
 
   absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
                            const DebugOptions& debug_options,
@@ -44,4 +44,4 @@ class ThunkChecksumTracingPass : public ThunkPassInterface {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_THUNK_CHECKSUM_TRACING_PASS_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_THUNK_BUFFER_DEBUG_PASS_H_

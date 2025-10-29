@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/thunk_checksum_tracing_pass.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_debug_pass.h"
 
 #include <cstddef>
 #include <cstring>
@@ -165,12 +165,12 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 
 }  // namespace
 
-absl::StatusOr<bool> ThunkChecksumTracingPass::Run(
+absl::StatusOr<bool> ThunkBufferDebugPass::Run(
     SequentialThunk* root_thunk, const DebugOptions& debug_options,
     const HloModule* absl_nullable hlo_module,
     const se::DeviceDescription& device_info,
     ThunkPassBufferAllocator& allocator) {
-  VLOG(1) << "ThunkChecksumTracingPass running";
+  VLOG(1) << "ThunkBufferDebugPass running";
   if (hlo_module == nullptr) {
     // We need the HLO module to dump the buffer debug log proto to a file. If
     // it's not available, there's no point in doing extra work.

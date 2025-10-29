@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/thunk_checksum_tracing_pass.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_debug_pass.h"
 
 #include <cstdint>
 #include <memory>
@@ -85,7 +85,7 @@ class FakeThunk : public Thunk {
   BufferUses buffer_uses_;
 };
 
-TEST(ThunkChecksumTracingPassTest, IsNoOpWhenHloModuleIsNull) {
+TEST(ThunkBufferDebugPassTest, IsNoOpWhenHloModuleIsNull) {
   DebugOptions debug_options;
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
@@ -101,7 +101,7 @@ TEST(ThunkChecksumTracingPassTest, IsNoOpWhenHloModuleIsNull) {
   auto root_thunk =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
 
-  ThunkChecksumTracingPass pass;
+  ThunkBufferDebugPass pass;
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed, pass.Run(root_thunk.get(), debug_options,
                              /*hlo_module=*/nullptr, device_info, allocator));
@@ -109,14 +109,14 @@ TEST(ThunkChecksumTracingPassTest, IsNoOpWhenHloModuleIsNull) {
   EXPECT_THAT(root_thunk->thunks(), ElementsAre(Pointer(fake_thunk_ptr)));
 }
 
-TEST(ThunkChecksumTracingPassTest, InsertsBuffersDebugChecksumThunks) {
+TEST(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
   static constexpr ThunkId kTestThunkId = ThunkId(123);
   DebugOptions debug_options;
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
   se::DeviceDescription device_info;
   FakeThunkPassBufferAllocator allocator;
-  // The callbacks created by ThunkChecksumTracingPass require a HloModule with
+  // The callbacks created by ThunkBufferDebugPass require a HloModule with
   // a non-null entry computation.
   auto builder = HloComputation::Builder("entry");
   HloInstruction* root = builder.AddInstruction(
@@ -152,7 +152,7 @@ TEST(ThunkChecksumTracingPassTest, InsertsBuffersDebugChecksumThunks) {
   auto root_thunk =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
 
-  ThunkChecksumTracingPass pass;
+  ThunkBufferDebugPass pass;
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           pass.Run(root_thunk.get(), debug_options, &hlo_module,
                                    device_info, allocator));
