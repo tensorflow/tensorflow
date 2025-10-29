@@ -38,8 +38,8 @@ namespace checkpoint {
 
 class TensorSliceWriteTestHelper {
  public:
-  static void CheckEntries(const string& fname);
-  static void GetData(TensorSliceReader::Table* table, const string& name,
+  static void CheckEntries(const std::string& fname);
+  static void GetData(TensorSliceReader::Table* table, const std::string& name,
                       const TensorSlice& slice, SavedSlice* ss);
 };
 
@@ -73,7 +73,7 @@ inline size_t ArraySize(const T (&v)[SIZE]) {
 // TODO(yangke): refactor into smaller tests: will do as we add more stuff to
 // the writer.
 TEST(TensorSliceWriteTest, SimpleWrite) {
-  const string filename = io::JoinPath(testing::TmpDir(), "checkpoint");
+  const std::string filename = io::JoinPath(testing::TmpDir(), "checkpoint");
 
   TensorSliceWriter writer(filename, CreateTableTensorSliceBuilder);
 
@@ -81,7 +81,7 @@ TEST(TensorSliceWriteTest, SimpleWrite) {
   {
     TensorShape shape({5, 10});
     TensorSlice slice = TensorSlice::ParseOrDie("-:0,1");
-    const int32 data[] = {0, 1, 2, 3, 4};
+    const int32_t data[] = {0, 1, 2, 3, 4};
     TF_CHECK_OK(writer.Add("test", shape, slice, data));
   }
 
@@ -89,7 +89,7 @@ TEST(TensorSliceWriteTest, SimpleWrite) {
   {
     TensorShape shape({5, 10});
     TensorSlice slice = TensorSlice::ParseOrDie("-:3,1");
-    const int32 data[] = {10, 11, 12, 13, 14};
+    const int32_t data[] = {10, 11, 12, 13, 14};
     TF_CHECK_OK(writer.Add("test", shape, slice, data));
   }
 
@@ -114,7 +114,7 @@ TEST(TensorSliceWriteTest, SimpleWrite) {
   {
     TensorShape shape({5, 10});
     TensorSlice slice = TensorSlice::ParseOrDie("-:3,1");
-    const int16 data[] = {10, 11, 12, 13, 14};
+    const int16_t data[] = {10, 11, 12, 13, 14};
     TF_CHECK_OK(writer.Add("int16", shape, slice, data));
   }
 
@@ -127,11 +127,11 @@ TEST(TensorSliceWriteTest, SimpleWrite) {
 }  // namespace
 
 void TensorSliceWriteTestHelper::GetData(TensorSliceReader::Table* table,
-                                         const string& name,
+                                         const std::string& name,
                                          const TensorSlice& slice,
                                          SavedSlice* ss) {
-  string key = EncodeTensorNameSlice(name, slice);
-  string value;
+  std::string key = EncodeTensorNameSlice(name, slice);
+  std::string value;
   EXPECT_TRUE(table->Get(key, &value));
   SavedTensorSlices sts;
   EXPECT_TRUE(ParseProtoUnlimited(&sts, value));
@@ -142,14 +142,14 @@ void TensorSliceWriteTestHelper::GetData(TensorSliceReader::Table* table,
   EXPECT_EQ(slice.DebugString(), slice2.DebugString());
 }
 
-void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
+void TensorSliceWriteTestHelper::CheckEntries(const std::string& fname) {
   TensorSliceReader::Table* tptr;
   TF_CHECK_OK(OpenTableTensorSliceReader(fname, &tptr));
   std::unique_ptr<TensorSliceReader::Table> table(tptr);
   CHECK_NOTNULL(table.get());
 
   // We expect a block of SavedTensorSlices
-  string value;
+  std::string value;
   ASSERT_TRUE(table->Get(kSavedTensorSlicesKey, &value));
   {
     SavedTensorSlices sts;
@@ -249,7 +249,7 @@ void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
     // Block 2: we expect it to be the first slice of the "test" tensor
     SavedSlice ss;
     GetData(table.get(), "test", TensorSlice({{0, -1}, {0, 1}}), &ss);
-    const int32 data[] = {0, 1, 2, 3, 4};
+    const int32_t data[] = {0, 1, 2, 3, 4};
     EXPECT_EQ(ArraySize(data), ss.data().int_val_size());
     ExpectIdenticalIntArrays(data, ArraySize(data), ss.data().int_val().data());
   }
@@ -258,7 +258,7 @@ void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
     // Block 3: we expect it to be the second slice of the "test" tensor
     SavedSlice ss;
     GetData(table.get(), "test", TensorSlice({{0, -1}, {3, 1}}), &ss);
-    const int32 data[] = {10, 11, 12, 13, 14};
+    const int32_t data[] = {10, 11, 12, 13, 14};
     EXPECT_EQ(ArraySize(data), ss.data().int_val_size());
     ExpectIdenticalIntArrays(data, ArraySize(data), ss.data().int_val().data());
   }
@@ -277,7 +277,7 @@ void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
     // Block 5: we expect it to be the slice of the "int16" tensor
     SavedSlice ss;
     GetData(table.get(), "int16", TensorSlice({{0, -1}, {3, 1}}), &ss);
-    const int16 data[] = {10, 11, 12, 13, 14};
+    const int16_t data[] = {10, 11, 12, 13, 14};
     EXPECT_EQ(ArraySize(data), ss.data().int_val_size());
     ExpectIdenticalIntArrays(data, ArraySize(data), ss.data().int_val().data());
   }
@@ -315,21 +315,23 @@ TEST(TensorSliceWriteTest, CheckpointSize) {
   EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_COMPLEX128),
             BytesPerElementHelper<complex128>(-1.0));
   EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_INT32),
-            BytesPerElementHelper<int32>(-1));
+            BytesPerElementHelper<int32_t>(-1));
   EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_INT64),
             BytesPerElementHelper<int64_t>(-1));
-  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_UINT16),
-            BytesPerElementHelper<uint16>(std::numeric_limits<uint16>::max()));
-  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_UINT8),
-            BytesPerElementHelper<uint8>(std::numeric_limits<uint8>::max()));
+  EXPECT_EQ(
+      TensorSliceWriter::MaxBytesPerElement(DT_UINT16),
+      BytesPerElementHelper<uint16_t>(std::numeric_limits<uint16_t>::max()));
+  EXPECT_EQ(
+      TensorSliceWriter::MaxBytesPerElement(DT_UINT8),
+      BytesPerElementHelper<uint8_t>(std::numeric_limits<uint8_t>::max()));
   EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_INT8),
-            BytesPerElementHelper<int8>(-1));
+            BytesPerElementHelper<int8_t>(-1));
   EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_INT16),
-            BytesPerElementHelper<int16>(-1));
+            BytesPerElementHelper<int16_t>(-1));
   EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_QINT8),
             BytesPerElementHelper<qint8>(-1));
   EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_QUINT8),
-            BytesPerElementHelper<quint8>(std::numeric_limits<uint8>::max()));
+            BytesPerElementHelper<quint8>(std::numeric_limits<uint8_t>::max()));
   EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_QINT32),
             BytesPerElementHelper<qint32>(-1));
   EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_HALF),
@@ -337,7 +339,7 @@ TEST(TensorSliceWriteTest, CheckpointSize) {
 }
 
 TEST(TensorSliceWriteTest, SizeErrors) {
-  const string filename = io::JoinPath(testing::TmpDir(), "checkpoint");
+  const std::string filename = io::JoinPath(testing::TmpDir(), "checkpoint");
 
   TensorSliceWriter writer(filename, CreateTableTensorSliceBuilder);
 
@@ -345,7 +347,7 @@ TEST(TensorSliceWriteTest, SizeErrors) {
   {
     TensorShape shape({300, 1000000});
     TensorSlice slice = TensorSlice::ParseOrDie("-:-");
-    const std::vector<int8> data(300000000, -1);
+    const std::vector<int8_t> data(300000000, -1);
     absl::Status s = writer.Add("test1", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
     EXPECT_TRUE(absl::StrContains(s.message(),
