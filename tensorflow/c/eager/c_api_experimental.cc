@@ -241,7 +241,7 @@ void TFE_MonitoringStringGaugeCellSet(TFE_MonitoringStringGaugeCell* cell,
 
 const void TFE_MonitoringStringGaugeCellValue(
     TFE_MonitoringStringGaugeCell* cell, TF_Buffer* buf) {
-  tensorflow::string value = cell->cell.value();
+  std::string value = cell->cell.value();
   void* data = tensorflow::port::Malloc(value.length());
   value.copy(static_cast<char*>(data), value.length(), 0);
   buf->data = data;
