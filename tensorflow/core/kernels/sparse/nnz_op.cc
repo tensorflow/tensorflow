@@ -53,7 +53,7 @@ class CSRNNZOp : public OpKernel {
           c, nnz_shape.AddDimWithStatus(csr_sparse_matrix->batch_size()));
     }
     OP_REQUIRES_OK(c, c->allocate_output(0, nnz_shape, &nnz_t));
-    auto nnz = nnz_t->flat<int32>();
+    auto nnz = nnz_t->flat<int32_t>();
     for (int i = 0; i < csr_sparse_matrix->batch_size(); ++i) {
       nnz(i) = csr_sparse_matrix->nnz(i);
     }
