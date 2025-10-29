@@ -362,12 +362,12 @@ const EventNode* EventNode::FindParent(int64_t event_type) const {
 
 void EventForest::FindEventNodeAndApply(
     const int64_t event_type, const std::vector<int64_t>& stat_types,
-    const std::function<void(EventNode&, const std::vector<uint64>&)>& cb) {
+    const std::function<void(EventNode&, const std::vector<uint64_t>&)>& cb) {
   if (auto* event_node_list = gtl::FindOrNull(event_node_map_, event_type)) {
     // Drop 'const' here because the event_node entry can be mutated by the
     // apply function 'cb'.
     for (EventNode& event_node : *event_node_list) {
-      std::vector<uint64> stats;
+      std::vector<uint64_t> stats;
       for (const auto stat_type : stat_types) {
         std::optional<XStatVisitor> stat =
             event_node.GetEventVisitor().GetStat(stat_type);
@@ -424,7 +424,7 @@ void EventForest::ConnectIntraThread(XPlane* plane, XPlaneVisitor* visitor,
 void EventForest::ConnectInterThread(
     const std::vector<InterThreadConnectInfo>& connect_info_list) {
   for (const auto& connect_info : connect_info_list) {
-    absl::flat_hash_map<std::vector<uint64>, EventNode*> connect_map;
+    absl::flat_hash_map<std::vector<uint64_t>, EventNode*> connect_map;
     const std::vector<int64_t>& parent_stat_types =
         connect_info.parent_stat_types;
     const std::vector<int64_t>* child_stat_types =
@@ -438,7 +438,7 @@ void EventForest::ConnectInterThread(
     // the parent node.
     FindEventNodeAndApply(connect_info.parent_event_type, parent_stat_types,
                           [&connect_map](EventNode& event_node,
-                                         const std::vector<uint64>& stats) {
+                                         const std::vector<uint64_t>& stats) {
                             connect_map[stats] = &event_node;
                           });
 
@@ -449,7 +449,7 @@ void EventForest::ConnectInterThread(
     FindEventNodeAndApply(
         connect_info.child_event_type, *child_stat_types,
         [&connect_map](EventNode& event_node,
-                       const std::vector<uint64>& stats) {
+                       const std::vector<uint64_t>& stats) {
           if (auto parent_event_node = gtl::FindPtrOrNull(connect_map, stats)) {
             parent_event_node->AddChild(&event_node);
           }
@@ -651,7 +651,7 @@ void EventForest::ConnectTfDataEvents() {
       std::pair<int64_t /*iterator_id*/, int64_t /*element_id*/>,
       std::vector<EventNode*>>
       produce_iterator_map;
-  uint64 num_producers = 0;
+  uint64_t num_producers = 0;
   for (HostEventType event_type :
        {HostEventType::kPrefetchProduce,
         HostEventType::kParallelInterleaveProduce,
@@ -681,7 +681,7 @@ void EventForest::ConnectTfDataEvents() {
     }
   }
   VLOG(1) << num_producers << " producer iterators found.";
-  uint64 num_matched = 0;
+  uint64_t num_matched = 0;
   for (HostEventType event_type :
        {HostEventType::kPrefetchConsume,
         HostEventType::kParallelInterleaveConsume,

@@ -220,7 +220,7 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
 }
 
 absl::Status ValidateHostPortPair(absl::string_view host_port) {
-  tsl::uint32 port;
+  uint32_t port;
   std::vector<absl::string_view> parts = absl::StrSplit(host_port, ':');
   // Must be host:port, port must be a number, host must not contain a '/',
   // host also must not be empty.
