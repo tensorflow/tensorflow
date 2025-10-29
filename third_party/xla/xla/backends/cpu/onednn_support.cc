@@ -84,9 +84,9 @@ absl::StatusOr<bool> IsOneDnnDotSupported(
   }
 
   // NOLINTNEXTLINE: Use dnnl.hpp for DNNL_MAX_NDIMS for now.
-  if (lhs_shape.dimensions_size() > DNNL_MAX_NDIMS ||
-      rhs_shape.dimensions_size() > DNNL_MAX_NDIMS ||
-      lhs_shape.dimensions_size() != rhs_shape.dimensions_size()) {
+  if (lhs_shape.dimensions().size() > DNNL_MAX_NDIMS ||
+      rhs_shape.dimensions().size() > DNNL_MAX_NDIMS ||
+      lhs_shape.dimensions().size() != rhs_shape.dimensions().size()) {
     return false;
   }
 
