@@ -31,12 +31,12 @@ namespace tsl {
 namespace {
 
 bool ParseStringFlag(absl::string_view arg, absl::string_view flag,
-                     const std::function<bool(string)>& hook,
+                     const std::function<bool(std::string)>& hook,
                      bool* value_parsing_ok) {
   *value_parsing_ok = true;
   if (absl::ConsumePrefix(&arg, "--") && absl::ConsumePrefix(&arg, flag) &&
       absl::ConsumePrefix(&arg, "=")) {
-    *value_parsing_ok = hook(string(arg));
+    *value_parsing_ok = hook(std::string(arg));
     return true;
   }
 
@@ -139,7 +139,7 @@ bool ParseFloatFlag(absl::string_view arg, absl::string_view flag,
 
 }  // namespace
 
-Flag::Flag(const char* name, int32_t* dst, const string& usage_text,
+Flag::Flag(const char* name, int32_t* dst, const std::string& usage_text,
            bool* dst_updated)
     : name_(name),
       type_(TYPE_INT32),
@@ -153,7 +153,7 @@ Flag::Flag(const char* name, int32_t* dst, const string& usage_text,
       int32_default_for_display_(*dst),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, int64_t* dst, const string& usage_text,
+Flag::Flag(const char* name, int64_t* dst, const std::string& usage_text,
            bool* dst_updated)
     : name_(name),
       type_(TYPE_INT64),
@@ -167,7 +167,7 @@ Flag::Flag(const char* name, int64_t* dst, const string& usage_text,
       int64_default_for_display_(*dst),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, float* dst, const string& usage_text,
+Flag::Flag(const char* name, float* dst, const std::string& usage_text,
            bool* dst_updated)
     : name_(name),
       type_(TYPE_FLOAT),
@@ -181,7 +181,7 @@ Flag::Flag(const char* name, float* dst, const string& usage_text,
       float_default_for_display_(*dst),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, bool* dst, const string& usage_text,
+Flag::Flag(const char* name, bool* dst, const std::string& usage_text,
            bool* dst_updated)
     : name_(name),
       type_(TYPE_BOOL),
@@ -195,11 +195,11 @@ Flag::Flag(const char* name, bool* dst, const string& usage_text,
       bool_default_for_display_(*dst),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, string* dst, const string& usage_text,
+Flag::Flag(const char* name, std::string* dst, const std::string& usage_text,
            bool* dst_updated)
     : name_(name),
       type_(TYPE_STRING),
-      string_hook_([dst, dst_updated](string value) {
+      string_hook_([dst, dst_updated](std::string value) {
         *dst = std::move(value);
         if (dst_updated) {
           *dst_updated = true;
@@ -210,7 +210,7 @@ Flag::Flag(const char* name, string* dst, const string& usage_text,
       usage_text_(usage_text) {}
 
 Flag::Flag(const char* name, std::function<bool(int32_t)> int32_hook,
-           int32_t default_value_for_display, const string& usage_text)
+           int32_t default_value_for_display, const std::string& usage_text)
     : name_(name),
       type_(TYPE_INT32),
       int32_hook_(std::move(int32_hook)),
@@ -218,7 +218,7 @@ Flag::Flag(const char* name, std::function<bool(int32_t)> int32_hook,
       usage_text_(usage_text) {}
 
 Flag::Flag(const char* name, std::function<bool(int64_t)> int64_hook,
-           int64_t default_value_for_display, const string& usage_text)
+           int64_t default_value_for_display, const std::string& usage_text)
     : name_(name),
       type_(TYPE_INT64),
       int64_hook_(std::move(int64_hook)),
@@ -226,7 +226,7 @@ Flag::Flag(const char* name, std::function<bool(int64_t)> int64_hook,
       usage_text_(usage_text) {}
 
 Flag::Flag(const char* name, std::function<bool(float)> float_hook,
-           float default_value_for_display, const string& usage_text)
+           float default_value_for_display, const std::string& usage_text)
     : name_(name),
       type_(TYPE_FLOAT),
       float_hook_(std::move(float_hook)),
@@ -234,22 +234,22 @@ Flag::Flag(const char* name, std::function<bool(float)> float_hook,
       usage_text_(usage_text) {}
 
 Flag::Flag(const char* name, std::function<bool(bool)> bool_hook,
-           bool default_value_for_display, const string& usage_text)
+           bool default_value_for_display, const std::string& usage_text)
     : name_(name),
       type_(TYPE_BOOL),
       bool_hook_(std::move(bool_hook)),
       bool_default_for_display_(default_value_for_display),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, std::function<bool(string)> string_hook,
-           string default_value_for_display, const string& usage_text)
+Flag::Flag(const char* name, std::function<bool(std::string)> string_hook,
+           std::string default_value_for_display, const std::string& usage_text)
     : name_(name),
       type_(TYPE_STRING),
       string_hook_(std::move(string_hook)),
       string_default_for_display_(std::move(default_value_for_display)),
       usage_text_(usage_text) {}
 
-bool Flag::Parse(string arg, bool* value_parsing_ok) const {
+bool Flag::Parse(std::string arg, bool* value_parsing_ok) const {
   bool result = false;
   if (type_ == TYPE_INT32) {
     result = ParseInt32Flag(arg, name_, int32_hook_, value_parsing_ok);
@@ -270,7 +270,7 @@ bool Flag::Parse(string arg, bool* value_parsing_ok) const {
   bool result = true;
   std::vector<char*> unknown_flags;
   for (int i = 1; i < *argc; ++i) {
-    if (string(argv[i]) == "--") {
+    if (std::string(argv[i]) == "--") {
       while (i < *argc) {
         unknown_flags.push_back(argv[i]);
         ++i;
@@ -326,9 +326,9 @@ bool Flag::Parse(string arg, bool* value_parsing_ok) const {
   return result;
 }
 
-/*static*/ string Flags::Usage(const string& cmdline,
-                               const std::vector<Flag>& flag_list) {
-  string usage_text;
+/*static*/ std::string Flags::Usage(const std::string& cmdline,
+                                    const std::vector<Flag>& flag_list) {
+  std::string usage_text;
   if (!flag_list.empty()) {
     strings::Appendf(&usage_text, "usage: %s\nFlags:\n", cmdline.c_str());
   } else {
@@ -336,7 +336,7 @@ bool Flag::Parse(string arg, bool* value_parsing_ok) const {
   }
   for (const Flag& flag : flag_list) {
     const char* type_name = "";
-    string flag_string;
+    std::string flag_string;
     if (flag.type_ == Flag::TYPE_INT32) {
       type_name = "int32";
       flag_string = strings::Printf("--%s=%d", flag.name_.c_str(),

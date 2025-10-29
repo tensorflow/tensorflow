@@ -63,15 +63,15 @@ namespace tsl {
 // text, and a pointer to the corresponding variable.
 class Flag {
  public:
-  Flag(const char* name, int32* dst, const string& usage_text,
+  Flag(const char* name, int32_t* dst, const std::string& usage_text,
        bool* dst_updated = nullptr);
-  Flag(const char* name, int64_t* dst, const string& usage_text,
+  Flag(const char* name, int64_t* dst, const std::string& usage_text,
        bool* dst_updated = nullptr);
-  Flag(const char* name, bool* dst, const string& usage_text,
+  Flag(const char* name, bool* dst, const std::string& usage_text,
        bool* dst_updated = nullptr);
-  Flag(const char* name, string* dst, const string& usage_text,
+  Flag(const char* name, std::string* dst, const std::string& usage_text,
        bool* dst_updated = nullptr);
-  Flag(const char* name, float* dst, const string& usage_text,
+  Flag(const char* name, float* dst, const std::string& usage_text,
        bool* dst_updated = nullptr);
 
   // These constructors invoke a hook on a match instead of writing to a
@@ -81,22 +81,22 @@ class Flag {
   // "default_value_for_display" is shown as the default value of this flag in
   // Flags::Usage().
   Flag(const char* name, std::function<bool(int32_t)> int32_hook,
-       int32_t default_value_for_display, const string& usage_text);
+       int32_t default_value_for_display, const std::string& usage_text);
   Flag(const char* name, std::function<bool(int64_t)> int64_hook,
-       int64_t default_value_for_display, const string& usage_text);
+       int64_t default_value_for_display, const std::string& usage_text);
   Flag(const char* name, std::function<bool(float)> float_hook,
-       float default_value_for_display, const string& usage_text);
+       float default_value_for_display, const std::string& usage_text);
   Flag(const char* name, std::function<bool(bool)> bool_hook,
-       bool default_value_for_display, const string& usage_text);
-  Flag(const char* name, std::function<bool(string)> string_hook,
-       string default_value_for_display, const string& usage_text);
+       bool default_value_for_display, const std::string& usage_text);
+  Flag(const char* name, std::function<bool(std::string)> string_hook,
+       std::string default_value_for_display, const std::string& usage_text);
 
  private:
   friend class Flags;
 
-  bool Parse(string arg, bool* value_parsing_ok) const;
+  bool Parse(std::string arg, bool* value_parsing_ok) const;
 
-  string name_;
+  std::string name_;
   enum {
     TYPE_INT32,
     TYPE_INT64,
@@ -106,7 +106,7 @@ class Flag {
   } type_;
 
   std::function<bool(int32_t)> int32_hook_;
-  int32 int32_default_for_display_;
+  int32_t int32_default_for_display_;
 
   std::function<bool(int64_t)> int64_hook_;
   int64_t int64_default_for_display_;
@@ -117,10 +117,10 @@ class Flag {
   std::function<bool(bool)> bool_hook_;
   bool bool_default_for_display_;
 
-  std::function<bool(string)> string_hook_;
-  string string_default_for_display_;
+  std::function<bool(std::string)> string_hook_;
+  std::string string_default_for_display_;
 
-  string usage_text_;
+  std::string usage_text_;
 };
 
 class Flags {
@@ -139,8 +139,8 @@ class Flags {
                     const std::vector<Flag>& flag_list);
   // Return a usage message with command line cmdline, and the
   // usage_text strings in flag_list[].
-  static string Usage(const string& cmdline,
-                      const std::vector<Flag>& flag_list);
+  static std::string Usage(const std::string& cmdline,
+                           const std::vector<Flag>& flag_list);
 };
 
 }  // namespace tsl
