@@ -166,7 +166,7 @@ class ExecutableClosureStore {
  public:
   ExecutableClosureStore() : key_counter_(0) {}
 
-  using KeyT = string;
+  using KeyT = std::string;
 
   KeyT Produce(ExecutableClosure<ExecutableType, ClientType> result) {
     mutex_lock l(mutex_);
@@ -230,7 +230,7 @@ XlaComputationLaunchContext GetLaunchContext(
 
 absl::Status GetTaskName(const absl::string_view device_name,
                          std::string* task_name) {
-  string ignored;
+  std::string ignored;
   if (!DeviceNameUtils::SplitDeviceName(device_name, task_name, &ignored)) {
     return errors::InvalidArgument("Unable to parse device name: ",
                                    device_name);
