@@ -64,9 +64,9 @@ class UnravelIndexOp : public OpKernel {
     double prod = 1;
     uint64_t limit;
     if (dtidx_ == DataType::DT_INT64) {
-      limit = kint64max;
+      limit = std::numeric_limits<int64_t>::max();
     } else {
-      limit = kint32max;
+      limit = std::numeric_limits<int32_t>::max();
     }
 
     for (int i = 0; i < dims.size(); i++) {
