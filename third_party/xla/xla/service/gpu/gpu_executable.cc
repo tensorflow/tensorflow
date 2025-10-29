@@ -179,7 +179,12 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
                                    ThunkPassBufferAllocator& allocator) {
   ThunkPassPipeline pipeline("thunk-passes");
   if (debug_options.xla_gpu_experimental_enable_checksum_tracing_on_thunks()) {
-    pipeline.AddPass(std::make_unique<ThunkBufferDebugPass>());
+    pipeline.AddPass(std::make_unique<ThunkBufferDebugPass>(
+        ThunkBufferDebugPass::Mode::kChecksum));
+  }
+  if (debug_options.xla_gpu_experimental_enable_nan_counter_on_thunks()) {
+    pipeline.AddPass(std::make_unique<ThunkBufferDebugPass>(
+        ThunkBufferDebugPass::Mode::kNanCounter));
   }
   if (debug_options.xla_gpu_experimental_enable_command_buffer_on_thunks()) {
     pipeline.AddPass(std::make_unique<CommandBufferConversionPass>(

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/buffers_checksum_thunk.h"
+#include "xla/backends/gpu/runtime/buffers_nan_count_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -65,7 +66,7 @@ namespace {
 // If the thunk got wrapped, the data dependencies between the thunks will be
 // configured to ensure `predecessor_thunk` executes before the wrapped thunk
 // and `successor_thunk` executes after.
-absl::StatusOr<std::unique_ptr<Thunk>> WrapThunk(
+absl::StatusOr<std::unique_ptr<Thunk>> WrapWithChecksumThunk(
     std::unique_ptr<Thunk> thunk, BufferAllocation::Slice log_slice,
     const Thunk& predecessor_thunk, Thunk& successor_thunk) {
   const auto& thunk_buffers = thunk->buffer_uses();
@@ -120,6 +121,79 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapThunk(
     thunk_and_checks.push_back(std::move(buffer_debug_after_thunk));
   }
 
+  auto wrapped_thunk = std::make_unique<SequentialThunk>(
+      Thunk::ThunkInfo(), std::move(thunk_and_checks));
+  wrapped_thunk->add_control_predecessor(&predecessor_thunk);
+  successor_thunk.add_control_predecessor(wrapped_thunk.get());
+  return wrapped_thunk;
+}
+
+absl::StatusOr<std::unique_ptr<Thunk>> WrapWithNanCounterThunk(
+    std::unique_ptr<Thunk> thunk, BufferAllocation::Slice log_slice,
+    const Thunk& predecessor_thunk, Thunk& successor_thunk) {
+  const auto& thunk_buffers = thunk->buffer_uses();
+  if (thunk_buffers.empty()) {
+    VLOG(1) << "No buffers in thunk " << thunk->thunk_info().thunk_id
+            << ", skipping";
+    return thunk;
+  }
+
+  absl::flat_hash_map<ThunkBufferId, BufferAllocation::Slice> buffers_to_check;
+  for (size_t buffer_idx = 0; buffer_idx < thunk_buffers.size(); ++buffer_idx) {
+    VLOG(1) << "Buffer " << buffer_idx << " in thunk "
+            << thunk->thunk_info().thunk_id;
+    const BufferUse& use = thunk_buffers[buffer_idx];
+    const BufferAllocation::Slice& slice = use.slice();
+    if (slice.allocation() == nullptr) {
+      VLOG(1) << "Buffer " << buffer_idx << " in thunk "
+              << thunk->thunk_info().thunk_id
+              << " has null allocation, skipping";
+      continue;
+    }
+    auto buffer_id =
+        ThunkBufferId::Create(thunk->thunk_info().thunk_id, buffer_idx);
+    if (!buffer_id.ok()) {
+      LOG(WARNING) << "ThunkBufferId::Create failed: Skipping buffer "
+                   << buffer_idx << " in thunk " << thunk->thunk_info().thunk_id
+                   << ": " << buffer_id.status();
+      continue;
+    }
+    if (slice.element_type() != PrimitiveType::F32 &&
+        slice.element_type() != PrimitiveType::BF16) {
+      VLOG(1) << "Buffer " << buffer_idx << " in thunk "
+              << thunk->thunk_info().thunk_id
+              << " has unsupported element type "
+              << PrimitiveType_Name(slice.element_type()) << ", skipping";
+      continue;
+    }
+    if (!use.HasDefinedContentsOnOutput()) {
+      VLOG(1) << "Buffer " << buffer_idx << " in thunk "
+              << thunk->thunk_info().thunk_id
+              << " has no defined contents on output, skipping";
+      continue;
+    }
+    buffers_to_check.emplace(buffer_id.value(), use.slice());
+    VLOG(1) << "Found buffer " << buffer_idx << " in thunk "
+            << thunk->thunk_info().thunk_id << " with element type "
+            << PrimitiveType_Name(slice.element_type()) << " and size "
+            << slice.size();
+  }
+
+  if (buffers_to_check.empty()) {
+    return thunk;
+  }
+
+  VLOG(1) << "Wrapping thunk " << thunk->thunk_info().thunk_id
+          << " with nan counter thunk due to presence of buffers: "
+          << buffers_to_check.size();
+  std::vector<std::unique_ptr<Thunk>> thunk_and_checks;
+  Thunk* thunk_ptr = thunk.get();
+  thunk_and_checks.push_back(std::move(thunk));
+  auto buffer_debug_nan_counter_thunk =
+      std::make_unique<BuffersDebugNanCountThunk>(Thunk::ThunkInfo(), log_slice,
+                                                  std::move(buffers_to_check));
+  buffer_debug_nan_counter_thunk->add_control_predecessor(thunk_ptr);
+  thunk_and_checks.push_back(std::move(buffer_debug_nan_counter_thunk));
   auto wrapped_thunk = std::make_unique<SequentialThunk>(
       Thunk::ThunkInfo(), std::move(thunk_and_checks));
   wrapped_thunk->add_control_predecessor(&predecessor_thunk);
@@ -207,10 +281,21 @@ absl::StatusOr<bool> ThunkBufferDebugPass::Run(
 
   ThunkSequence& thunks = root_thunk->thunks();
   for (auto& thunk : thunks) {
-    TF_ASSIGN_OR_RETURN(
-        thunk, WrapThunk(std::move(thunk), log_slice,
-                         /*predecessor_thunk=*/*buffer_debug_init_thunk.get(),
-                         /*successor_thunk=*/*buffer_debug_dump_thunk.get()));
+    if (mode_ == Mode::kChecksum) {
+      VLOG(1) << "Wrapping with checksum thunk";
+      TF_ASSIGN_OR_RETURN(
+          thunk, WrapWithChecksumThunk(
+                     std::move(thunk), log_slice,
+                     /*predecessor_thunk=*/*buffer_debug_init_thunk.get(),
+                     /*successor_thunk=*/*buffer_debug_dump_thunk.get()));
+    } else if (mode_ == Mode::kNanCounter) {
+      VLOG(1) << "Wrapping with nan counter thunk";
+      TF_ASSIGN_OR_RETURN(
+          thunk, WrapWithNanCounterThunk(
+                     std::move(thunk), log_slice,
+                     /*predecessor_thunk=*/*buffer_debug_init_thunk.get(),
+                     /*successor_thunk=*/*buffer_debug_dump_thunk.get()));
+    }
   }
 
   thunks.reserve(thunks.size() + 2);
