@@ -34,7 +34,7 @@ class ICpuUtilsHelper {
   // clock cycle counters from overflowing on some platforms.
   virtual void ResetClockCycle() = 0;
   // Return current clock cycle.
-  virtual uint64 GetCurrentClockCycle() = 0;
+  virtual uint64_t GetCurrentClockCycle() = 0;
   // Enable/Disable clock cycle profile
   // You can enable / disable profile if it's supported by the platform
   virtual void EnableClockCycleProfiling() = 0;
