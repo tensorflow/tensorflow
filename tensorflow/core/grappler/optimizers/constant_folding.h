@@ -40,11 +40,11 @@ class ConstantFolding : public GraphOptimizer {
  public:
   // The size limit will only be considered if the newly created node is greater
   // than original_size (optional).
-  static absl::Status CreateNodeDef(const string& name,
+  static absl::Status CreateNodeDef(const std::string& name,
                                     const TensorValue& tensor, NodeDef* node,
                                     size_t original_size = 0);
-  static string AddControlDependency(const string& input_name, GraphDef* graph,
-                                     NodeMap* node_map);
+  static std::string AddControlDependency(const std::string& input_name,
+                                          GraphDef* graph, NodeMap* node_map);
 
   explicit ConstantFolding(DeviceBase* cpu_device,
                            bool disable_compressed_tensor_optimization = false,
@@ -55,7 +55,7 @@ class ConstantFolding : public GraphOptimizer {
 
   ~ConstantFolding() override {}
 
-  string name() const override { return "constant_folding"; };
+  std::string name() const override { return "constant_folding"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -64,12 +64,14 @@ class ConstantFolding : public GraphOptimizer {
 
  private:
   bool ForwardInputs(NodeDef* node, absl::Span<const int> inputs_to_forward);
-  string OptimizedNodeName(const NodeDef& node, absl::string_view suffix) const;
+  std::string OptimizedNodeName(const NodeDef& node,
+                                absl::string_view suffix) const;
   bool OptimizedNodeExists(const NodeDef& node, absl::string_view suffix) const;
 
   bool IsReallyConstant(const NodeDef& node) const;
 
-  bool GetTensorFromConstNode(const string& node_name_or_input, Tensor* tensor);
+  bool GetTensorFromConstNode(const std::string& node_name_or_input,
+                              Tensor* tensor);
 
   absl::Status MaterializeShapes(const GraphProperties& properties);
 
@@ -130,14 +132,15 @@ class ConstantFolding : public GraphOptimizer {
                                                   GraphDef* graph);
 
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
-  absl::Status FoldGraph(const GraphProperties& properties, GraphDef* output,
-                         absl::flat_hash_set<string>* nodes_to_not_simplify);
+  absl::Status FoldGraph(
+      const GraphProperties& properties, GraphDef* output,
+      absl::flat_hash_set<std::string>* nodes_to_not_simplify);
 
   absl::Status IsSimplifiableReshape(const NodeDef& node,
                                      const GraphProperties& properties) const;
   absl::Status SimplifyGraph(
       GraphDef* optimized_graph, GraphProperties* properties,
-      absl::flat_hash_set<string>* nodes_to_not_simplify);
+      absl::flat_hash_set<std::string>* nodes_to_not_simplify);
   absl::Status SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
                             GraphProperties* properties);
 
@@ -342,11 +345,11 @@ class ConstantFolding : public GraphOptimizer {
   std::unique_ptr<ResourceMgr> resource_mgr_;
   GraphDef* graph_;
   std::unique_ptr<NodeMap> node_map_;
-  std::unordered_set<string> nodes_to_preserve_;
+  std::unordered_set<std::string> nodes_to_preserve_;
   // TODO(rmlarsen): Could these be keyed on absl::string_view?
-  absl::flat_hash_set<string> nodes_allowlist_;
-  absl::flat_hash_set<string> feed_nodes_;
-  absl::flat_hash_map<string, bool> maybe_foldable_nodes_;
+  absl::flat_hash_set<std::string> nodes_allowlist_;
+  absl::flat_hash_set<std::string> feed_nodes_;
+  absl::flat_hash_map<std::string, bool> maybe_foldable_nodes_;
   bool has_fetch_;
   bool graph_modified_;
   bool graph_contains_assign_or_inplace_op_;

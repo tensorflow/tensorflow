@@ -57,27 +57,27 @@ constexpr char kSimplifyAggregationMul[] =
     "ArithmeticOptimizer/SimplifyAggregation_Mul_";
 
 // Optimized name of outer Mul node by HoistCommonFactorOutOfAggregation.
-string HoistMulName(const string& name) {
+std::string HoistMulName(const std::string& name) {
   return AddPrefixToNodeName(name, kHoistFactorOptimizerMul, "");
 }
 
 // Optimized name of outer Div node by HoistCommonFactorOutOfAggregation.
-string HoistDivName(const string& name) {
+std::string HoistDivName(const std::string& name) {
   return AddPrefixToNodeName(name, kHoistFactorOptimizerDiv, "");
 }
 
 // Optimized name of inner Add node by HoistCommonFactorOutOfAggregation.
-string HoistAddName(const string& name) {
+std::string HoistAddName(const std::string& name) {
   return AddPrefixToNodeName(name, kHoistFactorOptimizerAdd, "");
 }
 
 // Optimized name of Const node by SimplifyAggregation.
-string AggregationConstName(const string& name) {
+std::string AggregationConstName(const std::string& name) {
   return AddPrefixToNodeName(name, kSimplifyAggregationConst, "");
 }
 
 // Optimized name of Mul node by SimplifyAggregation.
-string AggregationMulName(const string& name) {
+std::string AggregationMulName(const std::string& name) {
   return AddPrefixToNodeName(name, kSimplifyAggregationMul, "");
 }
 
@@ -97,7 +97,7 @@ void VerifyGraphsMatch(const GraphDef& original_graph,
 }
 
 void VerifyTensorContent(const TensorProto& proto,
-                         const string& expected_content) {
+                         const std::string& expected_content) {
   if (port::kLittleEndian) {
     EXPECT_EQ(proto.tensor_content(), expected_content);
   } else {
@@ -150,7 +150,7 @@ TEST_F(ArithmeticOptimizerTest, ReplaceMulWithBroadcastByTile) {
   ASSERT_EQ(CountOpNodes(g, "Tile"), 1);
 
   NodeMap node_map(&g);
-  const string p = "ArithmeticOptimizer/ReplaceMulWithBroadcastByTile";
+  const std::string p = "ArithmeticOptimizer/ReplaceMulWithBroadcastByTile";
   const NodeDef* t = node_map.GetNode(absl::StrCat(p, "_", "Tile_mul"));
   const NodeDef* c = node_map.GetNode(absl::StrCat(p, "_", "Const_mul"));
   ASSERT_NE(t, nullptr);
@@ -193,7 +193,7 @@ TEST_F(ArithmeticOptimizerTest, ReplaceMulWithBroadcastByTilePreserveControl) {
   ASSERT_EQ(CountOpNodes(g, "Tile"), 1);
 
   NodeMap node_map(&g);
-  const string p = "ArithmeticOptimizer/ReplaceMulWithBroadcastByTile";
+  const std::string p = "ArithmeticOptimizer/ReplaceMulWithBroadcastByTile";
   const NodeDef* c = node_map.GetNode(absl::StrCat(p, "_", "Const_mul"));
   ASSERT_NE(c, nullptr);
   ASSERT_EQ(c->input_size(), 1);
@@ -324,7 +324,7 @@ TEST_F(ArithmeticOptimizerTest, ReduceUpsamplingDims) {
   ASSERT_EQ(CountOpNodes(g, "Const"), 3);
 
   NodeMap node_map(&g);
-  const string p = "ArithmeticOptimizer/ReduceUpsamplingDims";
+  const std::string p = "ArithmeticOptimizer/ReduceUpsamplingDims";
   const NodeDef* ra =
       node_map.GetNode(absl::StrCat(p, "_", "Reshape_reshape_b"));
   const NodeDef* rb = node_map.GetNode("reshape_b");
@@ -381,7 +381,7 @@ TEST_F(ArithmeticOptimizerTest, ReplaceMulWithSquare) {
   EXPECT_EQ(output.node_size(), 6);
 
   NodeMap node_map(&output);
-  const string p = "ArithmeticOptimizer/ReplaceMulWithSquare";
+  const std::string p = "ArithmeticOptimizer/ReplaceMulWithSquare";
   const NodeDef* square_node = node_map.GetNode(absl::StrCat(p, "_", "mul"));
 
   ASSERT_NE(square_node, nullptr);
@@ -430,7 +430,7 @@ TEST_F(ArithmeticOptimizerTest, ReplacePackWithTileReshape) {
   EXPECT_EQ(CountOpNodes(g, "Reshape"), 1);
 
   NodeMap node_map(&g);
-  const string p = "ArithmeticOptimizer/ReplacePackWithTileReshape";
+  const std::string p = "ArithmeticOptimizer/ReplacePackWithTileReshape";
   const NodeDef* t_node = node_map.GetNode(absl::StrCat(p, "_", "Tile_c"));
   const NodeDef* c_node = node_map.GetNode(absl::StrCat(p, "_", "Multiples_c"));
   const NodeDef* s_node = node_map.GetNode(absl::StrCat(p, "_", "Shape_c"));
@@ -500,7 +500,7 @@ TEST_F(ArithmeticOptimizerTest, ReplacePackWithTileReshapeControlDeps) {
   EXPECT_EQ(CountOpNodes(g, "Identity"), 3);
 
   NodeMap node_map(&g);
-  const string p = "ArithmeticOptimizer/ReplacePackWithTileReshape";
+  const std::string p = "ArithmeticOptimizer/ReplacePackWithTileReshape";
   const NodeDef* t_node = node_map.GetNode(absl::StrCat(p, "_", "Tile_c"));
   const NodeDef* c_node = node_map.GetNode(absl::StrCat(p, "_", "Multiples_c"));
   const NodeDef* s_node = node_map.GetNode(absl::StrCat(p, "_", "Shape_c"));
@@ -633,7 +633,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveInvolutionAroundValuePreservingChain) {
   auto recip2 = ops::Reciprocal(s.WithOpName("recip2"), squeeze);
   auto id2 = ops::Identity(s.WithOpName("id2"), recip2);
 
-  std::vector<string> fetch = {"id2"};
+  std::vector<std::string> fetch = {"id2"};
 
   GrapplerItem item;
   item.fetch = fetch;
@@ -680,7 +680,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveInvolutionSkipControlDependencies) {
       s.WithOpName("recip2").WithControlDependencies(squeeze), c);
   auto id2 = ops::Identity(s.WithOpName("id2"), recip2);
 
-  std::vector<string> fetch = {"id2"};
+  std::vector<std::string> fetch = {"id2"};
 
   GrapplerItem item;
   item.fetch = fetch;
@@ -722,15 +722,15 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimple) {
 
   EXPECT_EQ(output.node_size(), 5);
 
-  const string optimized_const_name = AggregationConstName("add");
-  const string optimized_mul_name = AggregationMulName("add");
+  const std::string optimized_const_name = AggregationConstName("add");
+  const std::string optimized_mul_name = AggregationMulName("add");
 
   const NodeDef* new_const = node_map.GetNode(optimized_const_name);
   ASSERT_NE(new_const, nullptr);
   ASSERT_EQ(new_const->input_size(), 1);
   EXPECT_EQ(new_const->input(0), "^x");
   VerifyTensorContent(new_const->attr().at("value").tensor(),
-                      string("\0\0\0@", 4));
+                      std::string("\0\0\0@", 4));
 
   const NodeDef* new_mul = node_map.GetNode(optimized_mul_name);
   ASSERT_NE(new_mul, nullptr);
@@ -758,7 +758,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimpleWithControlDep) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  std::vector<string> fetch = {"id"};
+  std::vector<std::string> fetch = {"id"};
   auto tensors_expected = EvaluateNodes(item.graph, fetch);
   ASSERT_EQ(tensors_expected.size(), 1);
 
@@ -769,15 +769,15 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimpleWithControlDep) {
 
   EXPECT_EQ(output.node_size(), 6);
 
-  const string optimized_const_name = AggregationConstName("add");
-  const string optimized_mul_name = AggregationMulName("add");
+  const std::string optimized_const_name = AggregationConstName("add");
+  const std::string optimized_mul_name = AggregationMulName("add");
 
   const NodeDef* new_const = node_map.GetNode(optimized_const_name);
   ASSERT_NE(new_const, nullptr);
   ASSERT_EQ(new_const->input_size(), 1);
   EXPECT_EQ(new_const->input(0), "^x");
   VerifyTensorContent(new_const->attr().at("value").tensor(),
-                      string("\0\0\0@", 4));
+                      std::string("\0\0\0@", 4));
 
   const NodeDef* new_mul = node_map.GetNode(optimized_mul_name);
   ASSERT_NE(new_mul, nullptr);
@@ -811,7 +811,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
   item.fetch = {"id"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  const std::vector<string> devices{
+  const std::vector<std::string> devices{
       "/device:CPU:0", "/device:GPU:0", "/device:CPU:0", "/device:GPU:1",
       "/device:CPU:0", "/device:CPU:0", "/device:CPU:0",
   };
@@ -1028,7 +1028,7 @@ TEST_F(ArithmeticOptimizerTest, HoistFactorDiv) {
         auto tensors = EvaluateNodes(output, item.fetch);
         ASSERT_EQ(tensors.size(), 1);
         if (use_ints) {
-          test::ExpectTensorEqual<int32>(tensors[0], tensors_expected[0]);
+          test::ExpectTensorEqual<int32_t>(tensors[0], tensors_expected[0]);
         } else {
           test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
         }
@@ -1060,8 +1060,8 @@ TEST_F(ArithmeticOptimizerTest, FuseConjAndTranspose) {
 
   EXPECT_EQ(output.node_size(), 7);
 
-  const string p = "ArithmeticOptimizer/FoldConjugateIntoTranspose";
-  const string optimized_name = absl::StrCat(p, "_", "trans");
+  const std::string p = "ArithmeticOptimizer/FoldConjugateIntoTranspose";
+  const std::string optimized_name = absl::StrCat(p, "_", "trans");
 
   const NodeDef* trans_fused_node = node_map.GetNode(optimized_name);
   ASSERT_NE(trans_fused_node, nullptr);
@@ -1100,8 +1100,8 @@ TEST_F(ArithmeticOptimizerTest, FuseConjAndConjugateTranspose) {
 
   EXPECT_EQ(output.node_size(), 7);
 
-  const string p = "ArithmeticOptimizer/FoldConjugateIntoTranspose";
-  const string optimized_name = absl::StrCat(p, "_", "conjugate_trans");
+  const std::string p = "ArithmeticOptimizer/FoldConjugateIntoTranspose";
+  const std::string optimized_name = absl::StrCat(p, "_", "conjugate_trans");
 
   const NodeDef* conjugate_trans_fused_node = node_map.GetNode(optimized_name);
   ASSERT_NE(conjugate_trans_fused_node, nullptr);
@@ -1138,8 +1138,8 @@ TEST_F(ArithmeticOptimizerTest, FuseTransposeAndConj) {
 
   EXPECT_EQ(output.node_size(), 7);
 
-  const string p = "ArithmeticOptimizer/FoldConjugateIntoTranspose";
-  const string optimized_name = absl::StrCat(p, "_", "conj");
+  const std::string p = "ArithmeticOptimizer/FoldConjugateIntoTranspose";
+  const std::string optimized_name = absl::StrCat(p, "_", "conj");
 
   const NodeDef* conj_fused_node = node_map.GetNode(optimized_name);
   ASSERT_NE(conj_fused_node, nullptr);
@@ -1154,7 +1154,7 @@ TEST_F(ArithmeticOptimizerTest, FuseTransposeAndConj) {
 }
 
 TEST_F(ArithmeticOptimizerTest, FoldTransposeIntoMatMul) {
-  for (const string matmul_type :
+  for (const std::string matmul_type :
        {"MatMul", "SparseMatMul", "BatchMatMul", "BatchMatMulV2"}) {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
@@ -1193,8 +1193,8 @@ TEST_F(ArithmeticOptimizerTest, FoldTransposeIntoMatMul) {
 
     EXPECT_EQ(output.node_size(), 8);
 
-    const string p = "ArithmeticOptimizer/FoldTransposeIntoMatMul";
-    const string optimized_name = absl::StrCat(p, "_", "matmul");
+    const std::string p = "ArithmeticOptimizer/FoldTransposeIntoMatMul";
+    const std::string optimized_name = absl::StrCat(p, "_", "matmul");
 
     const NodeDef* matmul_fused_node = node_map.GetNode(optimized_name);
     ASSERT_NE(matmul_fused_node, nullptr);
@@ -1254,8 +1254,8 @@ TEST_F(ArithmeticOptimizerTest, FoldConjugateTransposeIntoBatchMatMul) {
   NodeMap node_map(&output);
   EXPECT_EQ(output.node_size(), 12);
 
-  const string p = "ArithmeticOptimizer/FoldTransposeIntoMatMul";
-  const string optimized_name = absl::StrCat(p, "_", "matmul");
+  const std::string p = "ArithmeticOptimizer/FoldTransposeIntoMatMul";
+  const std::string optimized_name = absl::StrCat(p, "_", "matmul");
 
   const NodeDef* optimized_matmul = node_map.GetNode(optimized_name);
   ASSERT_NE(optimized_matmul, nullptr);
@@ -1696,7 +1696,7 @@ TEST_F(ArithmeticOptimizerTest, ReorderTransposeCastProducerIsTranspose) {
   auto tensors =
       EvaluateNodes(item.graph, item.fetch, {{"Placeholder", input_t}});
   ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorEqual<uint8>(tensors[0], tensors_expected[0]);
+  test::ExpectTensorEqual<uint8_t>(tensors[0], tensors_expected[0]);
 }
 
 TEST_F(ArithmeticOptimizerTest, ReorderTransposeReverseCast) {
@@ -1834,12 +1834,12 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposes) {
   EnableOnlyRemoveIdentityTranspose(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
-  std::set<string> nodes_after_optimization;
+  std::set<std::string> nodes_after_optimization;
   for (const NodeDef& node : output.node()) {
     nodes_after_optimization.insert(node.name());
   }
   EXPECT_EQ(nodes_after_optimization,
-            std::set<string>({"id1", "id2", "inputs_shape", "inputs"}));
+            std::set<std::string>({"id1", "id2", "inputs_shape", "inputs"}));
 }
 
 TEST_F(ArithmeticOptimizerTest, RemoveIdentityConjugateTransposes) {
@@ -1863,8 +1863,8 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityConjugateTransposes) {
 
   EXPECT_EQ(output.node_size(), 5);
 
-  const string p = "ArithmeticOptimizer/RemoveIdentityTranspose";
-  const string optimized_name = absl::StrCat(p, "_", "trans");
+  const std::string p = "ArithmeticOptimizer/RemoveIdentityTranspose";
+  const std::string optimized_name = absl::StrCat(p, "_", "trans");
 
   const NodeDef* conj = node_map.GetNode(optimized_name);
   ASSERT_NE(conj, nullptr);
@@ -1999,7 +1999,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesThroughChain) {
   EnableOnlyRemoveIdentityTranspose(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
-  std::set<string> nodes_after_optimization;
+  std::set<std::string> nodes_after_optimization;
   for (const NodeDef& node : output.node()) {
     nodes_after_optimization.insert(node.name());
     if (node.name() == "id") {
@@ -2012,7 +2012,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesThroughChain) {
     }
   }
   EXPECT_EQ(nodes_after_optimization,
-            std::set<string>({"id", "id1", "inputs_shape", "inputs"}));
+            std::set<std::string>({"id", "id1", "inputs_shape", "inputs"}));
 }
 
 TEST_F(ArithmeticOptimizerTest, FoldMulToTransposeConv) {
@@ -2175,12 +2175,14 @@ TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
   NodeMap node_map(&output);
 
   // Expected names for reordered cast and transpose.
-  const string p = "ArithmeticOptimizer/ReorderCastLikeAndValuePreserving_";
-  const string optimized_cast_name = absl::StrCat(p, "float_Cast");
-  const string optimized_transpose_name = absl::StrCat(p, "uint8_Transpose");
+  const std::string p =
+      "ArithmeticOptimizer/ReorderCastLikeAndValuePreserving_";
+  const std::string optimized_cast_name = absl::StrCat(p, "float_Cast");
+  const std::string optimized_transpose_name =
+      absl::StrCat(p, "uint8_Transpose");
 
   // Expected names for folded multiply and conv.
-  const string optimized_weights =
+  const std::string optimized_weights =
       "ArithmeticOptimizer/FoldMultiplyIntoConv_scaled_Conv2D_weights";
 
   const NodeDef* inputs_node = node_map.GetNode("Placeholder");
@@ -2236,9 +2238,10 @@ TEST_F(ArithmeticOptimizerTest, OptimizeMultipleMulTransposeConv) {
   NodeMap node_map(&output);
 
   using absl::StrCat;
-  const string p = "ArithmeticOptimizer/FoldMultiplyIntoConv_";
-  const string optimized_weights = StrCat(p, "scaled_Conv2D_weights");
-  const string optimized_weights_1 = StrCat(p, "scaled_Conv2D_1_weights_1");
+  const std::string p = "ArithmeticOptimizer/FoldMultiplyIntoConv_";
+  const std::string optimized_weights = StrCat(p, "scaled_Conv2D_weights");
+  const std::string optimized_weights_1 =
+      StrCat(p, "scaled_Conv2D_1_weights_1");
 
   const NodeDef* weights_node = node_map.GetNode(optimized_weights);
   const NodeDef* weights_node_1 = node_map.GetNode(optimized_weights_1);
@@ -2287,7 +2290,7 @@ TEST_F(ArithmeticOptimizerTest, CombineBitcasts) {
 
   auto tensors = EvaluateNodes(output, item.fetch, item.feed);
   ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorEqual<int8>(tensors[0], tensors_expected[0]);
+  test::ExpectTensorEqual<int8_t>(tensors[0], tensors_expected[0]);
 }
 
 TEST_F(ArithmeticOptimizerTest, CombineAndRemoveBitcasts) {
@@ -2321,7 +2324,7 @@ TEST_F(ArithmeticOptimizerTest, CombineAndRemoveBitcasts) {
 
   auto tensors = EvaluateNodes(output, item.fetch, item.feed);
   ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorEqual<int8>(tensors[0], tensors_expected[0]);
+  test::ExpectTensorEqual<int8_t>(tensors[0], tensors_expected[0]);
 }
 
 TEST_F(ArithmeticOptimizerTest, RemoveRedundantCast) {
@@ -2354,7 +2357,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveRedundantCast) {
 
   auto tensors = EvaluateNodes(output, item.fetch, item.feed);
   ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorEqual<int8>(tensors[0], tensors_expected[0]);
+  test::ExpectTensorEqual<int8_t>(tensors[0], tensors_expected[0]);
 }
 
 TEST_F(ArithmeticOptimizerTest, AddOpsRewriteAddOpsOfIdenticalShape) {
@@ -2377,7 +2380,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteAddOpsOfIdenticalShape) {
   auto a_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
   auto b_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
   auto c_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
-  std::vector<std::pair<string, Tensor>> feed = {
+  std::vector<std::pair<std::string, Tensor>> feed = {
       {"a", a_t}, {"b", b_t}, {"c", c_t}};
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
   ASSERT_EQ(tensors_expected.size(), 1);
@@ -2449,7 +2452,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMultiplePasses) {
   auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
   auto y_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
   auto z_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
-  std::vector<std::pair<string, Tensor>> feed = {
+  std::vector<std::pair<std::string, Tensor>> feed = {
       {"a", a_t}, {"b", b_t}, {"c", c_t}, {"x", x_t}, {"y", y_t}, {"z", z_t}};
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
   ASSERT_EQ(tensors_expected.size(), 1);
@@ -2527,7 +2530,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteAddInputMultipleTimes) {
   auto a_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
   auto b_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
   auto c_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
-  std::vector<std::pair<string, Tensor>> feed = {
+  std::vector<std::pair<std::string, Tensor>> feed = {
       {"a", a_t}, {"b", b_t}, {"c", c_t}};
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
   ASSERT_EQ(tensors_expected.size(), 1);
@@ -2588,7 +2591,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteAddOpsOfSymbolicallyEqualShape) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
-  std::vector<std::pair<string, Tensor>> feed = {{"input", x_t}};
+  std::vector<std::pair<std::string, Tensor>> feed = {{"input", x_t}};
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
   ASSERT_EQ(tensors_expected.size(), 1);
 
@@ -2658,7 +2661,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMinimizeBCast) {
   auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32}));
   auto y_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32, 32}));
   auto z_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32, 32, 32}));
-  std::vector<std::pair<string, Tensor>> feed = {
+  std::vector<std::pair<std::string, Tensor>> feed = {
       {"a", a_t}, {"b", b_t}, {"c", c_t}, {"x", x_t}, {"y", y_t}, {"z", z_t}};
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
   ASSERT_EQ(tensors_expected.size(), 1);
@@ -2684,12 +2687,15 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMinimizeBCast) {
   NodeMap node_map(&output);
 
   // expected names of outer and inner nodes
-  string outer_add_name = "ArithmeticOptimizer/AddOpsRewrite_AddAll";
-  string outer_0_add_name =
+  std::string outer_add_name = "ArithmeticOptimizer/AddOpsRewrite_AddAll";
+  std::string outer_0_add_name =
       "ArithmeticOptimizer/AddOpsRewrite_Internal_0_AddAll";
-  string inner_0_add_name = "ArithmeticOptimizer/AddOpsRewrite_Leaf_0_AddAll";
-  string inner_1_add_name = "ArithmeticOptimizer/AddOpsRewrite_Leaf_1_AddAll";
-  string inner_2_add_name = "ArithmeticOptimizer/AddOpsRewrite_Leaf_2_AddAll";
+  std::string inner_0_add_name =
+      "ArithmeticOptimizer/AddOpsRewrite_Leaf_0_AddAll";
+  std::string inner_1_add_name =
+      "ArithmeticOptimizer/AddOpsRewrite_Leaf_1_AddAll";
+  std::string inner_2_add_name =
+      "ArithmeticOptimizer/AddOpsRewrite_Leaf_2_AddAll";
 
   // Add [a, x] first
   const NodeDef* add_ax_node = node_map.GetNode(inner_0_add_name);
@@ -2771,7 +2777,8 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMinimizeBCastWithSymbolicShapes) {
 
   auto s_t = GenerateRandomTensor<DT_DOUBLE>(TensorShape({8, 1, 1}));
   auto v_t = GenerateRandomTensor<DT_DOUBLE>(TensorShape({1, 32, 32}));
-  std::vector<std::pair<string, Tensor>> feed = {{"small", s_t}, {"v", v_t}};
+  std::vector<std::pair<std::string, Tensor>> feed = {{"small", s_t},
+                                                      {"v", v_t}};
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
   ASSERT_EQ(tensors_expected.size(), 1);
 
@@ -2792,8 +2799,9 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMinimizeBCastWithSymbolicShapes) {
   NodeMap node_map(&output);
 
   // expected names of outer and inner nodes
-  string outer_add_name = "ArithmeticOptimizer/AddOpsRewrite_Add_abc";
-  string inner_add_name = "ArithmeticOptimizer/AddOpsRewrite_Leaf_0_Add_abc";
+  std::string outer_add_name = "ArithmeticOptimizer/AddOpsRewrite_Add_abc";
+  std::string inner_add_name =
+      "ArithmeticOptimizer/AddOpsRewrite_Leaf_0_Add_abc";
 
   // outer Add node
   const NodeDef* outer_add = node_map.GetNode(outer_add_name);
@@ -2850,7 +2858,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
 
   auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
   auto y_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
-  std::vector<std::pair<string, Tensor>> feed = {{"x", x_t}, {"y", y_t}};
+  std::vector<std::pair<std::string, Tensor>> feed = {{"x", x_t}, {"y", y_t}};
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
   ASSERT_EQ(tensors_expected.size(), 1);
 
@@ -3342,7 +3350,7 @@ TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_SimpleSwap) {
   auto a_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32}));
   auto b_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32, 32}));
   auto c_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32}));
-  std::vector<std::pair<string, Tensor>> feed = {
+  std::vector<std::pair<std::string, Tensor>> feed = {
       {"a", a_t}, {"b", b_t}, {"c", c_t}};
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
   ASSERT_EQ(tensors_expected.size(), 1);
@@ -3404,7 +3412,7 @@ TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_FlattenTallGraph) {
   auto c_t = GenerateRandomTensor<DT_DOUBLE>(TensorShape({32}));
   auto d_t = GenerateRandomTensor<DT_DOUBLE>(TensorShape({32}));
   auto e_t = GenerateRandomTensor<DT_DOUBLE>(TensorShape({32}));
-  std::vector<std::pair<string, Tensor>> feed = {
+  std::vector<std::pair<std::string, Tensor>> feed = {
       {"a", a_t}, {"b", b_t}, {"c", c_t}, {"d", d_t}, {"e", e_t}};
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
   ASSERT_EQ(tensors_expected.size(), 1);
@@ -3481,7 +3489,7 @@ TEST_F(ArithmeticOptimizerTest, MinimizeBroadcasts_BuildTreeUp) {
   auto b_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32}));
   auto c_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32}));
   auto d_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({32, 32}));
-  std::vector<std::pair<string, Tensor>> feed = {
+  std::vector<std::pair<std::string, Tensor>> feed = {
       {"a", a_t}, {"b", b_t}, {"c", c_t}, {"D", d_t}};
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
   ASSERT_EQ(tensors_expected.size(), 1);
@@ -4625,7 +4633,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveStackSimpleSliceSameAxis) {
   EnableOnlyRemoveStackSliceSameAxis(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
-  const string kExpandDimsNamePrefix(
+  const std::string kExpandDimsNamePrefix(
       "ArithmeticOptimizer/RemoveStackStridedSliceSameAxis_p");
 
   for (const auto& node : output.node()) {
