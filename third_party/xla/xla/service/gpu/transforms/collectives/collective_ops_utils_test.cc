@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -266,6 +267,26 @@ TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermute) {
               IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
 }
 
+TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermuteSinglePair) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,7},{7,0}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloChannelInstruction* instr = Cast<HloChannelInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+}
+
 TEST_F(CommunicationTypeTest, DetectNonWorldLevelCollectivePermute) {
   absl::string_view kHlo = R"(
     HloModule m, num_partitions=16
@@ -304,7 +325,76 @@ TEST_F(CommunicationTypeTest, DetectWorldLevelCollectivePermute) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectsCrossHostCollectivePermuteMixed) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+       source_target_pairs={{0,7},
+                            {0,8},
+                            {1,9},
+                            {2,10},
+                            {3,11},
+                            {4,12},
+                            {5,13},
+                            {6,14},
+                            {7,15}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloChannelInstruction* instr = Cast<HloChannelInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
+}
+
+using P2PDirectionTypeTest = Test;
+
+TEST_F(P2PDirectionTypeTest, Bidirectional) {
+  absl::string_view kHlo = R"(
+HloModule m, num_partitions=16
+
+ENTRY main {
+  %param.2 = f32[262144,1024]{1,0} parameter(0)
+  %collective-permute-start = (f32[262144,1024]{1,0}, f32[262144,1024]{1,0}) collective-permute-start(%param.2), channel_id=1, 
+      source_target_pairs={{0,8},{8,0},{1,9},{9,1},{2,10},{10,2},{3,11},{11,3},{4,12},{12,4},{5,13},{13,5},{6,14},{14,6},{7,15},{15,7}}
+  ROOT %collective-permute-done = f32[262144,1024]{1,0} collective-permute-done(%collective-permute-start)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloInstruction* instr =
+      module->entry_computation()->root_instruction()->mutable_operand(0);
+  EXPECT_EQ(GetP2PDirectionType(*Cast<HloCollectivePermuteInstruction>(instr)),
+            P2PDirectionType::kBidirectional);
+}
+
+TEST_F(P2PDirectionTypeTest, Unidirectional) {
+  absl::string_view kHlo = R"(
+HloModule m, num_partitions=16
+
+ENTRY main {
+  %param.2 = f32[262144,1024]{1,0} parameter(0)
+  %collective-permute-start = (f32[262144,1024]{1,0}, f32[262144,1024]{1,0}) collective-permute-start(%param.2), channel_id=1,
+      source_target_pairs={{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}}
+  ROOT %collective-permute-done = f32[262144,1024]{1,0} collective-permute-done(%collective-permute-start)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloInstruction* instr =
+      module->entry_computation()->root_instruction()->mutable_operand(0);
+  EXPECT_EQ(GetP2PDirectionType(*Cast<HloCollectivePermuteInstruction>(instr)),
+            P2PDirectionType::kUnidirectional);
 }
 
 }  // namespace
