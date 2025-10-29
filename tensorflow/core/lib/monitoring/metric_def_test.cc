@@ -43,9 +43,9 @@ TEST(MetricDefTest, Simple) {
 
 TEST(MetricDefTest, StringsPersist) {
   // Ensure string attributes of the metric are copied into the metric
-  string name = "/tensorflow/metric0";
-  string description = "test description";
-  string label_description = "test label description";
+  std::string name = "/tensorflow/metric0";
+  std::string description = "test description";
+  std::string label_description = "test label description";
   const MetricDef<MetricKind::kCumulative, int64_t, 1> metric_def(
       name, description, label_description);
 
