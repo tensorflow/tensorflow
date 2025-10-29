@@ -959,38 +959,42 @@ message StatisticsViz {
   repeated Statistic statistics = 2;
 }
 
-// A mesh is a list of axes and an optional list of device IDs specifying
-// the device ordering.
-//
-// If the list of axes is empty, the mesh has an implicit unnamed axis of
-// size 1. In this case, if a device ID list is not provided, the implicit
-// device ID list is [0]; if a device ID list is provided, it must
-// contains a single integer of any non-negative value. We call this
-// maximal-sharding case.
-//
-// For all non-maximal-sharding cases, if a device ID list is specified,
-// the product of the axis sizes should match the number of devices. If a
-// device ID list is not specified, the implicit device ID list is
-// iota(product(axes)). For simplicity, we also disallow specifying a
-// device ID list that is the same as iota(product(axes)); in this case, a
-// device ID list shouldn't be specified.
-//
+// A mesh is a list of axes and an optional list of device IDs specifying the
+// device ordering.
+
+// If the list of axes is empty
+//   - If the `device_ids` is not provided, it is an empty mesh.
+//   - If the `device_ids` is provided, it must be a single non-negative
+//     integer, we call it a **maximal-sharding mesh**.
+
+// If the list of axes is provided
+//   - If a device ID list is specified, the product of the axis sizes should
+//     match the number of devices.
+//   - If a device ID list is not specified, the implicit device ID list is
+//     iota(product(axes)). For simplicity, we also disallow specifying a
+//     device ID list that is the same as iota(product(axes)); in this case, a
+//     device ID list shouldn't be specified.
+//   - It is not a maximal-sharding mesh even if the total size of axes is 1.
+
 // Here are some examples of meshes:
+
 // - An empty mesh represents a placeholder mesh that can be replaced during
-// propagation: <[]>
-// - A mesh with an unnamed axis and an explicit device ID, which is
-// typically used to represent maximal sharding: <[], device_ids=[3]>
+//   propagation: <[]>
+// - A mesh without axes list and a single non-negative device ID, which is a
+//   maximal-sharding mesh: <[], device_ids=[3]>
 // - A mesh with two axes and implicit device IDs iota(6): <["a"=2, "b"=3]>
 // - A mesh with two axes and explicit device IDs specifying the device
-// ordering: <["a"=3, "b"=2], device_ids=[0, 2, 4, 1, 3, 5]>
-//
-// Constraints:
-// - Elements in `axes` must not have duplicate names.
-// - If `device_ids` is specified:
-//   * The product of axis sizes must match the number of devices.
-//   * All of its elements must be non-negative.
-//   * `device_ids` should not be equal to `iota(product(axis_sizes))`.
-//   * Sorted `device_ids` must be `iota(product(axis_sizes))`.
+//   ordering: <["a"=3, "b"=2], device_ids=[0, 2, 4, 1, 3, 5]>
+
+// **Constraints:**
+// - Elements in `device_ids` should be non-negative.
+// - If `axes` is empty, the size of `device_ids` can be 0 (empty mesh) or 1
+//   (maximal-sharding mesh).
+// - If `axes` is not empty,
+//     - Elements in `axes` must not have duplicate names.
+//     - If `device_ids` is specified, the original `device_ids` is not
+//       `iota(product(axis_sizes))` and the sorted `device_ids` is
+//       `iota(product(axis_sizes))`.
 message MeshProto {
   message MeshAxis {
     string name = 1;

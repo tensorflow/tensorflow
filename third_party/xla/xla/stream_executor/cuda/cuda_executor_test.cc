@@ -185,7 +185,7 @@ TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithUnifiedMemory) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           unified_memory_allocator->Allocate(256));
   EXPECT_THAT(executor->GetPointerMemorySpace(allocation->opaque()),
-              IsOkAndHolds(MemoryType::kUnified));
+              absl_testing::IsOkAndHolds(MemoryType::kUnified));
 }
 
 TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithHostMemory) {
@@ -197,7 +197,7 @@ TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithHostMemory) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           executor->HostMemoryAllocate(256));
   EXPECT_THAT(executor->GetPointerMemorySpace(allocation->opaque()),
-              IsOkAndHolds(MemoryType::kHost));
+              absl_testing::IsOkAndHolds(MemoryType::kHost));
 }
 
 TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithDeviceMemory) {
