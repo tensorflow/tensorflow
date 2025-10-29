@@ -102,3 +102,28 @@ func.func @does_not_unroll_independent_vector_extract(%input: vector<8x2xf32>, %
 // CHECK-LABEL:    func.func @does_not_unroll_independent_vector_extract(
 // CHECK:            scf.for
 // CHECK-COUNT-1:     vector.extract
+
+// -----
+
+// Ensure that we don't unroll loops that have a vector that depends on the for
+// loop but the index itself does not.
+func.func @does_not_unroll_only_dependent_vector(
+    %input: memref<8x2xf32>, %arg_index: index) -> vector<2xf32> {
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c8 = arith.constant 8 : index
+  %c0_f32 = arith.constant 0. : f32
+  %init = vector.broadcast %c0_f32 : f32 to vector<2xf32>
+  %result = scf.for %index = %c0 to %c8 step %c2 iter_args(%carry = %init) -> vector<2xf32> {
+    %input_vector = vector.transfer_read %input[%index, %c0], %c0_f32  : memref<8x2xf32>, vector<2x2xf32>
+    %extract = vector.extract %input_vector[0] : vector<2xf32> from vector<2x2xf32>
+    %add = arith.addf %carry, %extract : vector<2xf32>
+    scf.yield %add : vector<2xf32>
+  }
+  return %result : vector<2xf32>
+}
+
+
+// CHECK-LABEL:    func.func @does_not_unroll_only_dependent_vector(
+// CHECK:            scf.for
+// CHECK-COUNT-1:     vector.extract

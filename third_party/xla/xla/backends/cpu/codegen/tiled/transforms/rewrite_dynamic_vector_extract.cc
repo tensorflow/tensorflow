@@ -16,6 +16,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h"
 
@@ -49,6 +51,38 @@ namespace xla::cpu {
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h.inc"
 
 namespace {
+
+// Check if the given extract operands depends on the given value.
+bool ExtractDependsOnValue(mlir::vector::ExtractOp extract_op,
+                           mlir::Value value) {
+  mlir::BackwardSliceOptions backward_slice_options;
+  backward_slice_options.omitUsesFromAbove = false;
+  backward_slice_options.inclusive = true;
+
+  for (mlir::Value dynamic_index : extract_op.getDynamicPosition()) {
+    // We have to explicitly check the index itself as getBackwardSlice only
+    // starts from the defining operation.
+    if (dynamic_index == value) {
+      return true;
+    }
+
+    llvm::SetVector<mlir::Operation*> backwardSlice;
+    if (mlir::failed(mlir::getBackwardSlice(dynamic_index, &backwardSlice,
+                                            backward_slice_options))) {
+      continue;
+    }
+
+    for (mlir::Operation* op : backwardSlice) {
+      for (mlir::Value operand : op->getOperands()) {
+        if (operand == value) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
 
 struct FoldExtractIntoTransferRead
     : mlir::OpRewritePattern<mlir::vector::ExtractOp> {
@@ -197,23 +231,27 @@ struct UnrollExtractLoops : mlir::OpRewritePattern<mlir::scf::ForOp> {
   using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
-      mlir::scf::ForOp op, mlir::PatternRewriter& rewriter) const override {
-    if (op.getRegion().getOps<mlir::vector::ExtractOp>().empty()) {
-      return rewriter.notifyMatchFailure(op,
-                                         "loop does not contain an extract");
-    }
-
-    llvm::SetVector<mlir::Operation*> slices;
-    mlir::getForwardSlice(op.getInductionVar(), &slices);
-
-    for (auto slice : slices) {
-      if (mlir::isa<mlir::vector::ExtractOp>(slice)) {
-        return mlir::loopUnrollFull(op);
+      mlir::scf::ForOp for_op, mlir::PatternRewriter& rewriter) const override {
+    std::optional<mlir::LogicalResult> unroll_result;
+    // Walk the body of the loop and unroll if we have a dependent extract.
+    for_op.getBody()->walk([&](mlir::vector::ExtractOp extract) {
+      if (!ExtractDependsOnValue(extract, for_op.getInductionVar())) {
+        return mlir::WalkResult::advance();
       }
+      unroll_result = mlir::loopUnrollFull(for_op);
+      return mlir::WalkResult::interrupt();
+    });
+
+    if (!unroll_result.has_value()) {
+      return rewriter.notifyMatchFailure(
+          for_op, "loop does not contain a dependent extract");
     }
 
-    return rewriter.notifyMatchFailure(
-        op, "loop does not contain a dependent extract");
+    if (mlir::failed(*unroll_result)) {
+      return rewriter.notifyMatchFailure(for_op, "failed to unroll loop");
+    }
+
+    return mlir::success();
   }
 };
 
