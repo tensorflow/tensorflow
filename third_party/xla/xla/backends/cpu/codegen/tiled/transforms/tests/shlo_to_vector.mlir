@@ -174,3 +174,14 @@ func.func @broadcast_2D_tensor_outer(%input : tensor<4xf32>) -> tensor<4x32xf32>
 // CHECK-LABEL: @broadcast_2D_tensor_outer
 // CHECK: vector.shape_cast {{.*}} : vector<4xf32> to vector<4x1xf32>
 // CHECK: vector.broadcast {{.*}} : vector<4x1xf32> to vector<4x32xf32>
+
+// -----
+
+func.func @reshape(%input : tensor<4xf32>) -> tensor<2x1x2xf32> {
+  %result = stablehlo.reshape %input : (tensor<4xf32>) -> tensor<2x1x2xf32>
+  return %result : tensor<2x1x2xf32>
+}
+
+// CHECK-LABEL: @reshape
+// CHECK:vector.shape_cast {{.*}} : vector<4xf32> to vector<2x1x2xf32>
+

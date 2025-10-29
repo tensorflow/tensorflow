@@ -300,6 +300,23 @@ struct LowerBroadcastInDim
   }
 };
 
+struct LowerReshape : mlir::OpRewritePattern<mlir::stablehlo::ReshapeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::stablehlo::ReshapeOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    auto source_vector = CastToVector(rewriter, op.getOperand());
+    auto result_vector_type = GetVectorType(op.getType());
+
+    mlir::Value reshaped_vector = mlir::vector::ShapeCastOp::create(
+        rewriter, op->getLoc(), result_vector_type, source_vector);
+
+    rewriter.replaceOp(op, CastToTensor(rewriter, reshaped_vector));
+    return mlir::success();
+  }
+};
+
 class ShloToVectorPass : public impl::ShloToVectorPassBase<ShloToVectorPass> {
  public:
   using ShloToVectorPassBase::ShloToVectorPassBase;
@@ -307,9 +324,8 @@ class ShloToVectorPass : public impl::ShloToVectorPassBase<ShloToVectorPass> {
   void runOnOperation() override {
     mlir::MLIRContext* context = &getContext();
     mlir::RewritePatternSet patterns(context);
-    patterns
-        .add<LowerTranspose, LowerDotGeneral, LowerReduce, LowerBroadcastInDim>(
-            context);
+    patterns.add<LowerTranspose, LowerDotGeneral, LowerReduce,
+                 LowerBroadcastInDim, LowerReshape>(context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
