@@ -42,12 +42,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 namespace {
 
-using gpu::SymbolicExprContext;
 using llvm::SmallVector;
 using llvm::SmallVectorImpl;
 using llvm::StringRef;
@@ -600,7 +599,7 @@ void PrintAffineExprImpl(const AffineExpr affine_expr,
 }  // namespace
 
 std::optional<IndexingMap> ParseIndexingMap(
-    llvm::StringRef input, gpu::SymbolicExprContext* symbolic_expr_context) {
+    llvm::StringRef input, SymbolicExprContext* symbolic_expr_context) {
   Parser parser(input);
 
   // Parse variable names.

@@ -19,9 +19,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/stream_executor/device_description.h"
 

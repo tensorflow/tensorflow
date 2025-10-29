@@ -157,13 +157,13 @@ tsl_pybind_extension(
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/testlib:kernel_runner",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:cpu_compiler_pure",
         "//xla/service/cpu:fusion_wrapper",
-        "//xla/service/gpu/model/experimental:symbolic_expr",
     ],
 )
 

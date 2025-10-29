@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/experimental/symbolic_map_converter.h"
+#include "xla/hlo/analysis/symbolic_map_converter.h"
 
 #include <string>
 
@@ -29,11 +29,10 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/interval.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
-#include "xla/service/gpu/model/experimental/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 using ::mlir::AffineMap;
@@ -174,5 +173,4 @@ TEST_F(SymbolicMapConverterTest, ConvertAffineToSymbolicExpr) {
 }
 
 }  // namespace
-}  // namespace gpu
 }  // namespace xla

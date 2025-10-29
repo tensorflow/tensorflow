@@ -21,12 +21,12 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/hlo_module_config.h"
 
 namespace xla::gpu {

@@ -25,12 +25,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -62,7 +62,7 @@ class TilingSpecificationTest : public HloHardwareIndependentTestBase {
   }
 
   mlir::MLIRContext mlir_context_;
-  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(TilingSpecificationTest, TilingSpecificationDerivesOutputParameters) {

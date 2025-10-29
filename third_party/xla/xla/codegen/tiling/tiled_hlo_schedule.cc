@@ -35,10 +35,10 @@ limitations under the License.
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -81,7 +81,7 @@ absl::Status ValidateIterationSpace(const IterationSpace& iteration_space,
 
 absl::StatusOr<IndexingMap> MajorToMinorScheduleImpl(
     const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
-    gpu::SymbolicExprContext* symbolic_expr_context) {
+    SymbolicExprContext* symbolic_expr_context) {
   mlir::MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   mlir::AffineExpr program_id = mlir::getAffineDimExpr(0, mlir_context);
 
@@ -126,7 +126,7 @@ CreateMajorToMinorTiledHloSchedule(
 
 absl::StatusOr<IndexingMap> MajorToMinorTiledHloSchedule::Schedule(
     const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
-    gpu::SymbolicExprContext* ctx) const {
+    SymbolicExprContext* ctx) const {
   TF_RETURN_IF_ERROR(
       ValidateIterationSpace(iteration_space, tile_offsets_indexing));
   return MajorToMinorScheduleImpl(tile_offsets_indexing, iteration_space, ctx);
@@ -207,7 +207,7 @@ TransposedDotTiledHloSchedule::Create(
 
 absl::StatusOr<IndexingMap> TransposedDotTiledHloSchedule::Schedule(
     const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
-    gpu::SymbolicExprContext* ctx) const {
+    SymbolicExprContext* ctx) const {
   TF_RETURN_IF_ERROR(
       ValidateIterationSpace(iteration_space, tile_offsets_indexing));
 

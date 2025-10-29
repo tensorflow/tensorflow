@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "xla/backends/gpu/codegen/tools/test_lib.h"
 #include "xla/codegen/tools/test_lib.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/statusor.h"
 

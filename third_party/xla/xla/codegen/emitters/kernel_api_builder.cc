@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/codegen/emitters/type_util.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "xla/runtime/work_group.h"
 #include "xla/runtime/work_item.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -221,7 +221,7 @@ void SetIndexDataLayout(mlir::ModuleOp module,
 
 IndexingMap GetDefaultWorkItemIndexingMap(
     const WorkDimensions& work_dimensions, const Shape& shape,
-    gpu::SymbolicExprContext* symbolic_expr_context) {
+    SymbolicExprContext* symbolic_expr_context) {
   std::vector<mlir::AffineExpr> output_dims(shape.dimensions().size());
 
   const NumWorkItems& num_work_items = work_dimensions.num_work_items;

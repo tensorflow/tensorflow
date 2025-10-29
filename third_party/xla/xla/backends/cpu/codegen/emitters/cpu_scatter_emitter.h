@@ -30,9 +30,9 @@ limitations under the License.
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 namespace cpu {
@@ -42,7 +42,7 @@ class CpuScatterFusion final : public KernelEmitter<MlirKernelSource> {
  public:
   CpuScatterFusion(const BufferAssignment& buffer_assignment,
                    const HloFusionInstruction* fusion,
-                   gpu::SymbolicExprContext* symbolic_expr_context);
+                   SymbolicExprContext* symbolic_expr_context);
 
   absl::string_view name() const final { return "cpu_scatter_fusion"; }
   absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
@@ -56,21 +56,21 @@ class CpuScatterFusion final : public KernelEmitter<MlirKernelSource> {
 
   std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
-      gpu::SymbolicExprContext* symbolic_expr_context) const;
+      SymbolicExprContext* symbolic_expr_context) const;
 
   mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
 
   // These two methods do not seem to be used @ecg?
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, gpu::SymbolicExprContext* ctx) const;
+      int64_t root_index, SymbolicExprContext* ctx) const;
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      gpu::SymbolicExprContext* ctx) const;
+      SymbolicExprContext* ctx) const;
 
   const BufferAssignment& buffer_assignment_;
   const HloFusionInstruction* fusion_;
-  gpu::SymbolicExprContext* symbolic_expr_context_;
+  SymbolicExprContext* symbolic_expr_context_;
 
   int64_t vector_size_;
   int64_t num_threads_;

@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout.h"
 #include "xla/permutation_util.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -64,7 +64,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using gpu::SymbolicExprContext;
 using llvm::SmallVector;
 using mlir::AffineExpr;
 using mlir::AffineMap;

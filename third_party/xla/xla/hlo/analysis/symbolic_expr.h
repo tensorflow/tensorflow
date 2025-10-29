@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_EXPR_H_
-#define XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_EXPR_H_
+#ifndef XLA_HLO_ANALYSIS_SYMBOLIC_EXPR_H_
+#define XLA_HLO_ANALYSIS_SYMBOLIC_EXPR_H_
 
 #include <cstdint>
 #include <functional>
@@ -32,7 +32,6 @@ limitations under the License.
 #include "mlir/Support/StorageUniquer.h"
 
 namespace xla {
-namespace gpu {
 
 class SymbolicExprContext;
 class SymbolicExprStorage;
@@ -168,32 +167,29 @@ class SymbolicExprContext {
   mlir::MLIRContext* mlir_context_;
 };
 
-}  // namespace gpu
 }  // namespace xla
 
 namespace llvm {
 
 // SymbolicExpr hash just like pointers
 template <>
-struct DenseMapInfo<xla::gpu::SymbolicExpr> {
-  static xla::gpu::SymbolicExpr getEmptyKey() {
+struct DenseMapInfo<xla::SymbolicExpr> {
+  static xla::SymbolicExpr getEmptyKey() {
     auto* pointer = llvm::DenseMapInfo<void*>::getEmptyKey();
-    return xla::gpu::SymbolicExpr(
-        static_cast<xla::gpu::SymbolicExprStorage*>(pointer));
+    return xla::SymbolicExpr(static_cast<xla::SymbolicExprStorage*>(pointer));
   }
-  static xla::gpu::SymbolicExpr getTombstoneKey() {
+  static xla::SymbolicExpr getTombstoneKey() {
     auto* pointer = llvm::DenseMapInfo<void*>::getTombstoneKey();
-    return xla::gpu::SymbolicExpr(
-        static_cast<xla::gpu::SymbolicExprStorage*>(pointer));
+    return xla::SymbolicExpr(static_cast<xla::SymbolicExprStorage*>(pointer));
   }
-  static unsigned getHashValue(xla::gpu::SymbolicExpr val) {
+  static unsigned getHashValue(xla::SymbolicExpr val) {
     return hash_value(val);
   }
-  static bool isEqual(xla::gpu::SymbolicExpr LHS, xla::gpu::SymbolicExpr RHS) {
+  static bool isEqual(xla::SymbolicExpr LHS, xla::SymbolicExpr RHS) {
     return LHS == RHS;
   }
 };
 
 }  // namespace llvm
 
-#endif  // XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_EXPR_H_
+#endif  // XLA_HLO_ANALYSIS_SYMBOLIC_EXPR_H_

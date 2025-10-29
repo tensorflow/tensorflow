@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 #include <algorithm>
 #include <cassert>
@@ -48,7 +48,6 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 std::string GetBinaryOpString(SymbolicExprType type) {
@@ -963,5 +962,4 @@ void SymbolicExpr::Walk(
   callback(*this);
 }
 
-}  // namespace gpu
 }  // namespace xla

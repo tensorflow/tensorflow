@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -194,7 +194,7 @@ class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
   mlir::MLIRContext mlir_context_;
   TiledHloScheduleBuilder default_schedule_builder_ =
       CreateMajorToMinorTiledHloSchedule;
-  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(SymbolicTileAnalysisTest, SimpleNormalizationDiamondIsSupported) {

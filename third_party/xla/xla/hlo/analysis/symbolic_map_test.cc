@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/experimental/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "llvm/ADT/SmallBitVector.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 namespace gpu {

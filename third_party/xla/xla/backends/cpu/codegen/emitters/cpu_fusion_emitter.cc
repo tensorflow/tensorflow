@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/codegen/emitters/type_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -72,7 +73,6 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -135,7 +135,7 @@ IndexingMap GetDefaultIndexingMap(
     absl::Span<const int64_t> thread_tile_sizes,
     absl::Span<const int64_t> shape,
     // TODO: b/451959933 - Use reference or absl_nullable pointer.
-    gpu::SymbolicExprContext* symbolic_expr_context) {
+    SymbolicExprContext* symbolic_expr_context) {
   CHECK_EQ(thread_tile_sizes.size(), shape.size())
       << "thread_tile_sizes and shape must have the same size";
   SmallVector<int64_t> thread_tile_counts;

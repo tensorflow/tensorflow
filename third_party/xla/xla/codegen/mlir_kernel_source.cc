@@ -30,7 +30,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -38,7 +38,7 @@ namespace xla {
 absl::StatusOr<MlirKernelSource> MlirKernelSource::ParseFromString(
     absl::string_view ir, std::unique_ptr<mlir::MLIRContext> mlir_context) {
   auto symbolic_expr_context =
-      std::make_unique<gpu::SymbolicExprContext>(mlir_context.get());
+      std::make_unique<SymbolicExprContext>(mlir_context.get());
   llvm::SourceMgr source_mgr;
 
   std::string error_string;

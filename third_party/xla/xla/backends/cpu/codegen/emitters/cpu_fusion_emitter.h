@@ -32,18 +32,17 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 namespace cpu {
 
-IndexingMap GetDefaultIndexingMap(
-    absl::Span<const int64_t> thread_tile_sizes,
-    absl::Span<const int64_t> shape,
-    gpu::SymbolicExprContext* symbolic_expr_context);
+IndexingMap GetDefaultIndexingMap(absl::Span<const int64_t> thread_tile_sizes,
+                                  absl::Span<const int64_t> shape,
+                                  SymbolicExprContext* symbolic_expr_context);
 
 absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
     mlir::ModuleOp fusion_module, const HloFusionInstruction& fusion,
@@ -73,11 +72,11 @@ class CpuFusionEmitterBase {
   virtual int64_t num_threads() const = 0;
 
   virtual std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, gpu::SymbolicExprContext* ctx) const = 0;
+      int64_t root_index, SymbolicExprContext* ctx) const = 0;
 
   virtual std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      gpu::SymbolicExprContext* ctx) const = 0;
+      SymbolicExprContext* ctx) const = 0;
 
   virtual std::string BackendExtraOptions() { return {}; }
 

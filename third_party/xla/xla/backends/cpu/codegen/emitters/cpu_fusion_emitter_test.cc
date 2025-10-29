@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/cpu/cpu_executable.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -117,7 +117,7 @@ TEST_F(CpuFusionEmitterTest, ScatterMlir) {
       hlo_module->entry_computation()->root_instruction());
   auto mlir_context = FusionCompiler::CreateContext();
   auto symbolic_expr_context =
-      std::make_unique<gpu::SymbolicExprContext>(mlir_context.get());
+      std::make_unique<SymbolicExprContext>(mlir_context.get());
   CpuScatterFusion emitter(*buffer_assignment, fusion,
                            symbolic_expr_context.get());
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
@@ -148,7 +148,7 @@ TEST_F(CpuFusionEmitterTest, ScatterLlvm) {
       hlo_module->entry_computation()->root_instruction());
   auto mlir_context = FusionCompiler::CreateContext();
   auto symbolic_expr_context =
-      std::make_unique<gpu::SymbolicExprContext>(mlir_context.get());
+      std::make_unique<SymbolicExprContext>(mlir_context.get());
   CpuScatterFusion emitter(*buffer_assignment, fusion,
                            symbolic_expr_context.get());
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,

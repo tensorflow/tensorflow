@@ -35,9 +35,9 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 
@@ -45,7 +45,7 @@ namespace xla::cpu {
 
 struct ParallelFusionEmitter::CompilerInstance {
   std::unique_ptr<mlir::MLIRContext> mlir_context;
-  std::unique_ptr<gpu::SymbolicExprContext> symbolic_expr_context;
+  std::unique_ptr<SymbolicExprContext> symbolic_expr_context;
   std::unique_ptr<FusionCompiler> compiler;
 };
 
@@ -102,7 +102,7 @@ auto ParallelFusionEmitter::FusionCompilerPool::GetInstance()
       FusionCompiler::CreateContext();
 
   auto symbolic_expr_context =
-      std::make_unique<gpu::SymbolicExprContext>(mlir_context.get());
+      std::make_unique<SymbolicExprContext>(mlir_context.get());
 
   auto compiler = std::make_unique<FusionCompiler>(mlir_context.get(), options_,
                                                    GetNestedHooks());

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_CONVERTER_H_
-#define XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_CONVERTER_H_
+#ifndef XLA_HLO_ANALYSIS_SYMBOLIC_MAP_CONVERTER_H_
+#define XLA_HLO_ANALYSIS_SYMBOLIC_MAP_CONVERTER_H_
 
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -22,32 +22,31 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/interval.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
-#include "xla/service/gpu/model/experimental/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 
 namespace xla {
-namespace gpu {
 
-// Converts an mlir::AffineExpr to xla::gpu::SymbolicExpr.
+// Converts an mlir::AffineExpr to xla::SymbolicExpr.
 SymbolicExpr AffineExprToSymbolicExpr(::mlir::AffineExpr affine_expr,
                                       SymbolicExprContext* context,
                                       int num_dims);
 
-// Converts a list of mlir::AffineExpr to xla::gpu::SymbolicExpr.
+// Converts a list of mlir::AffineExpr to xla::SymbolicExpr.
 llvm::SmallVector<SymbolicExpr> AffineExprsToSymbolicExprs(
     llvm::ArrayRef<mlir::AffineExpr> affine_exprs, SymbolicExprContext* context,
     int num_dims);
 
-// Converts an xla::gpu::SymbolicExpr to an mlir::AffineExpr.
+// Converts an xla::SymbolicExpr to an mlir::AffineExpr.
 mlir::AffineExpr SymbolicExprToAffineExpr(SymbolicExpr symbolic_expr,
                                           mlir::MLIRContext* context,
                                           int num_dims);
 
-// Converts an mlir::AffineMap to xla::gpu::SymbolicMap.
+// Converts an mlir::AffineMap to xla::SymbolicMap.
 SymbolicMap AffineMapToSymbolicMap(const mlir::AffineMap& affine_map,
                                    SymbolicExprContext* context);
 
-// Converts xla::gpu::SymbolicMap to an mlir::AffineMap.
+// Converts xla::SymbolicMap to an mlir::AffineMap.
 // Returns a null AffineMap if the conversion is not possible.
 mlir::AffineMap SymbolicMapToAffineMap(SymbolicMap symbolic_map,
                                        mlir::MLIRContext* context);
@@ -58,7 +57,6 @@ ConvertAffineConstraintsToSymbolicConstraints(
     const llvm::MapVector<mlir::AffineExpr, Interval>& affine_constraints,
     SymbolicExprContext* context, int num_dims);
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_CONVERTER_H_
+#endif  // XLA_HLO_ANALYSIS_SYMBOLIC_MAP_CONVERTER_H_

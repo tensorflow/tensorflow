@@ -21,8 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/service/compiler.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {

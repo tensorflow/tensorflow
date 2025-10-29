@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/experimental/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -29,11 +29,9 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
-namespace gpu {
-
 namespace {
 
 llvm::SmallVector<SymbolicExpr> CreateVariableRange(SymbolicExprContext* ctx,
@@ -305,5 +303,4 @@ SymbolicMap CompressSymbols(const SymbolicMap& map,
                                    new_num_symbols);
 }
 
-}  // namespace gpu
 }  // namespace xla

@@ -22,9 +22,9 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -37,7 +37,7 @@ using ::testing::HasSubstr;
 class TiledHloFusionInstructionTest : public HloHardwareIndependentTestBase {
  public:
   mlir::MLIRContext mlir_context_;
-  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(TiledHloFusionInstructionTest,

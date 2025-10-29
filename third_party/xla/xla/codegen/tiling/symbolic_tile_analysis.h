@@ -35,10 +35,10 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/instruction_fusion.h"
 
 namespace xla {
@@ -131,11 +131,11 @@ class SymbolicTileAnalysis {
   // fail to be tiled.
   static SymbolicTileAnalysisOrError AnalyzeComputation(
       const HloComputation& computation,
-      gpu::SymbolicExprContext* symbolic_expr_context,
+      SymbolicExprContext* symbolic_expr_context,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =
           nullptr);
   static SymbolicTileAnalysisOrError AnalyzeFusion(
-      const HloFusionAdaptor& fusion, gpu::SymbolicExprContext* ctx,
+      const HloFusionAdaptor& fusion, SymbolicExprContext* ctx,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =
           nullptr);
 
@@ -222,7 +222,7 @@ class SymbolicTileAnalysis {
       const RootIndexing& root_indexing,
       TilingSpecification tiling_specification,
       std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints,
-      gpu::SymbolicExprContext* symbolic_expr_context)
+      SymbolicExprContext* symbolic_expr_context)
       : symbolic_tiled_hlo_instructions_(
             std::move(symbolic_tiled_hlo_instructions)),
         root_indexing_(std::move(root_indexing)),
@@ -234,12 +234,12 @@ class SymbolicTileAnalysis {
   static absl::StatusOr<RootIndexing> GetRootIndexing(
       const HloFusionAdaptor& fusion,
       const TilingSpecification::ParameterMapping& parameter_mapping,
-      gpu::SymbolicExprContext* symbolic_expr_context);
+      SymbolicExprContext* symbolic_expr_context);
 
   static SymbolicTileAnalysisOrError AnalyzeFusionImpl(
       const HloFusionAdaptor& fusion,
       const TilingSpecification::ParameterMapping& parameter_mapping,
-      gpu::SymbolicExprContext* symbolic_expr_context,
+      SymbolicExprContext* symbolic_expr_context,
       const RootIndexing& root_indexing,
       IndexingMap::SimplifyPointDimensions simplification_mode,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
@@ -249,7 +249,7 @@ class SymbolicTileAnalysis {
   static SymbolicTileAnalysisOrError AnalyzeNestedFusion(
       const HloFusionAdaptor& fusion,
       const TilingSpecification::ParameterMapping& parameter_mapping,
-      gpu::SymbolicExprContext* symbolic_expr_context,
+      SymbolicExprContext* symbolic_expr_context,
       const IndexingMap& indexing_map,
       IndexingMap::SimplifyPointDimensions simplification_mode,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
@@ -270,7 +270,7 @@ class SymbolicTileAnalysis {
   // no builder was provided when constructing the analysis.
   std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints_;
 
-  gpu::SymbolicExprContext* symbolic_expr_context_;
+  SymbolicExprContext* symbolic_expr_context_;
 };
 
 namespace detail {

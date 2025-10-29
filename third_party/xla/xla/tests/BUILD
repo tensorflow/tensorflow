@@ -3834,7 +3834,7 @@ cc_library(
     hdrs = ["hlo_test_base_with_symbolic_expr_context.h"],
     deps = [
         ":hlo_test_base",
-        "//xla/service/gpu/model/experimental:symbolic_expr",
+        "//xla/hlo/analysis:symbolic_expr",
         "@llvm-project//mlir:IR",
     ],
 )

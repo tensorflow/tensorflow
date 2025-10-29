@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_H_
-#define XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_H_
+#ifndef XLA_HLO_ANALYSIS_SYMBOLIC_MAP_H_
+#define XLA_HLO_ANALYSIS_SYMBOLIC_MAP_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -23,12 +23,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
-namespace gpu {
-
-class SymbolicExprContext;
 
 // Maps a set of input variables to a set of output SymbolicExpr trees.
 class SymbolicMap {
@@ -131,7 +128,6 @@ SymbolicMap CompressDims(const SymbolicMap& map,
 SymbolicMap CompressSymbols(const SymbolicMap& map,
                             const llvm::SmallBitVector& unused_symbols);
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_H_
+#endif  // XLA_HLO_ANALYSIS_SYMBOLIC_MAP_H_

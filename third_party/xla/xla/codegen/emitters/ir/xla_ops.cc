@@ -57,12 +57,11 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_dialect.cc.inc"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 namespace {
 
-using gpu::SymbolicExprContext;
 using llvm::ArrayRef;
 using mlir::AffineExpr;
 using mlir::AffineMap;
@@ -1116,7 +1115,7 @@ std::optional<IndexingMap> parseChainOfStringsAsIndexingMap(
   while (parser.parseOptionalAttribute(indexing_map_attr).has_value()) {
     indexing_map_str.append(indexing_map_attr.getValue());
   }
-  gpu::SymbolicExprContext symbolic_expr_context(parser.getContext());
+  SymbolicExprContext symbolic_expr_context(parser.getContext());
   return ParseIndexingMap(indexing_map_str, &symbolic_expr_context);
 }
 

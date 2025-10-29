@@ -22,9 +22,9 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/codegen/tools/test_lib.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/init_main.h"
 
@@ -33,7 +33,7 @@ namespace xla::cpu {
 absl::Status Run(const std::string& filename) {
   auto mlir_context = FusionCompiler::CreateContext();
   auto symbolic_expr_context =
-      std::make_unique<gpu::SymbolicExprContext>(mlir_context.get());
+      std::make_unique<SymbolicExprContext>(mlir_context.get());
   TF_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
   auto fusion = DynCast<HloFusionInstruction>(
       module->entry_computation()->root_instruction());

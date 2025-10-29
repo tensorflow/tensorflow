@@ -27,11 +27,11 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape.h"
 
 namespace xla::emitters {
@@ -54,7 +54,7 @@ void SetIndexDataLayout(mlir::ModuleOp module,
 // and output shape.
 IndexingMap GetDefaultWorkItemIndexingMap(
     const WorkDimensions& work_dimensions, const Shape& shape,
-    gpu::SymbolicExprContext* symbolic_expr_context);
+    SymbolicExprContext* symbolic_expr_context);
 
 // Emits the work group id ops annotated with the range of each dimension.
 llvm::SmallVector<mlir::Value> EmitWorkGroupIds(

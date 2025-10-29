@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu {

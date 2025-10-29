@@ -42,8 +42,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/status_macros.h"
 #include "tsl/platform/errors.h"
 
@@ -142,7 +142,7 @@ HloInstructionIndexing IndexingTestBase::GetInputToOutputIndexing(
 }
 
 AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
-                         gpu::SymbolicExprContext* symbolic_expr_context) {
+                         SymbolicExprContext* symbolic_expr_context) {
   std::string full_affine_map_string =
       absl::StrCat("affine_map<", serialized_affine_map, ">");
   return mlir::cast<mlir::AffineMapAttr>(
@@ -154,7 +154,7 @@ AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
 // Since MLIR does not have AffineExprAttr, we construct an AffineMap and then
 // retrieve its first result.
 AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
-                           gpu::SymbolicExprContext* symbolic_expr_context) {
+                           SymbolicExprContext* symbolic_expr_context) {
   std::string full_affine_map_string = absl::StrCat(
       "affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9)"
       "[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (",

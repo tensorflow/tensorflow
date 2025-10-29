@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 #include <cstdint>
 #include <string>
@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_test_utils.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 using ::testing::Combine;
 using ::testing::Values;
@@ -322,5 +321,4 @@ TEST_F(SymbolicExprTest, Walk) {
 }
 
 }  // namespace
-}  // namespace gpu
 }  // namespace xla

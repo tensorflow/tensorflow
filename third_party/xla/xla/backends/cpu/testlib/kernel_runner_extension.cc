@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/fusion_wrapper.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/hlo_module_config.h"
 
 namespace xla::cpu {
@@ -153,8 +153,7 @@ NB_MODULE(_extension, kernel_runner_module) {
   nb::class_<mlir::MLIRContext>(kernel_runner_module, "MLIRContext")
       .def(nb::new_([] { return FusionCompiler::CreateContext(); }));
 
-  nb::class_<gpu::SymbolicExprContext>(kernel_runner_module,
-                                       "SymbolicExprContext")
+  nb::class_<SymbolicExprContext>(kernel_runner_module, "SymbolicExprContext")
       .def(nb::init<mlir::MLIRContext*>(), nb::keep_alive<1, 2>());
 
   nb::class_<TargetMachineFeatures>(kernel_runner_module,
@@ -195,7 +194,7 @@ NB_MODULE(_extension, kernel_runner_module) {
           "__init__",
           [](CpuScatterFusion* self, const HloFusionInstruction* instruction,
              const BufferAssignment* buffer_assignment,
-             gpu::SymbolicExprContext* symbolic_expr_context) {
+             SymbolicExprContext* symbolic_expr_context) {
             new (self) CpuScatterFusion(*buffer_assignment, instruction,
                                         symbolic_expr_context);
           },
@@ -204,7 +203,7 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   kernel_runner_module.def(
       "emit_fusion_kernel",
-      [](gpu::SymbolicExprContext& symbolic_expr_context,
+      [](SymbolicExprContext& symbolic_expr_context,
          const HloFusionInstruction& fusion,
          const BufferAssignment* buffer_assignment) {
         absl::StatusOr<MlirKernelDefinition> kernel_definition =

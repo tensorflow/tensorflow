@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "xla/service/gpu/fusion_dispatch_pipeline.h"
 
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/transforms/fusion_block_level_rewriter.h"
 #include "xla/service/gpu/transforms/fusion_dynamic_memcpy_rewriter.h"
 #include "xla/service/hlo_cost_analysis.h"

@@ -34,9 +34,9 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -59,7 +59,7 @@ class IndexingMapTest : public HloHardwareIndependentTestBase {
   }
 
   mlir::MLIRContext mlir_context_;
-  gpu::SymbolicExprContext symbolic_expr_context_;
+  SymbolicExprContext symbolic_expr_context_;
 };
 
 std::vector<bool> ConvertToSTL(const llvm::SmallBitVector& bit_vector) {

@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 
@@ -68,7 +68,7 @@ class TiledHloSchedule {
   //     results are generated, but may not change the results themselves);
   virtual absl::StatusOr<IndexingMap> Schedule(
       const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
-      gpu::SymbolicExprContext* ctx) const = 0;
+      SymbolicExprContext* ctx) const = 0;
 };
 
 // The indexing map returned by this schedule iterates over the iteration space
@@ -77,9 +77,9 @@ class TiledHloSchedule {
 // dimension).
 class MajorToMinorTiledHloSchedule : public TiledHloSchedule {
  public:
-  absl::StatusOr<IndexingMap> Schedule(
-      const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
-      gpu::SymbolicExprContext* ctx) const override;
+  absl::StatusOr<IndexingMap> Schedule(const IndexingMap& tile_offsets_indexing,
+                                       IterationSpace iteration_space,
+                                       SymbolicExprContext* ctx) const override;
 };
 
 // Convenience function to produce a `MajorToMinorTiledHloSchedule` that
@@ -102,9 +102,9 @@ CreateMajorToMinorTiledHloSchedule(
 // rely on the "dot" instruction being at the root).
 class TransposedDotTiledHloSchedule : public TiledHloSchedule {
  public:
-  absl::StatusOr<IndexingMap> Schedule(
-      const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
-      gpu::SymbolicExprContext* ctx) const override;
+  absl::StatusOr<IndexingMap> Schedule(const IndexingMap& tile_offsets_indexing,
+                                       IterationSpace iteration_space,
+                                       SymbolicExprContext* ctx) const override;
 
   static absl::StatusOr<std::unique_ptr<TransposedDotTiledHloSchedule>> Create(
       const TilingSpecification& tiling_specification);

@@ -56,13 +56,13 @@ limitations under the License.
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_item.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -73,7 +73,7 @@ limitations under the License.
 namespace xla::emitters {
 
 ConcatenateFusionKernelEmitter::ConcatenateFusionKernelEmitter(
-    gpu::SymbolicExprContext& symbolic_expr_context,
+    SymbolicExprContext& symbolic_expr_context,
     const HloFusionInstruction& fusion, const HloFusionSpec& fusion_spec,
     const BufferAssignment* buffer_assignment,
     KernelArguments::BufferAlignment buffer_alignment,
@@ -152,12 +152,12 @@ int ConcatenateFusionKernelEmitter::GetValidUnrollFactor(
 
 IndexingMap ConcatenateFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(
     const WorkDimensions& work_dimensions, const Shape& largest_shape,
-    gpu::SymbolicExprContext* ctx) {
+    SymbolicExprContext* ctx) {
   return GetDefaultWorkItemIndexingMap(work_dimensions, largest_shape, ctx);
 }
 
 IndexingMap ConcatenateFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(
-    gpu::SymbolicExprContext* ctx) const {
+    SymbolicExprContext* ctx) const {
   return ComputeWorkItemIdToOutputIndexing(work_dimensions_, largest_shape_,
                                            ctx);
 }
@@ -289,7 +289,7 @@ absl::Status ConcatenateFusionKernelEmitter::EmitEntryFunction(
 std::vector<emitters::EpilogueSpecification>
 ConcatenateFusionKernelEmitter::GetEpilogues(
     const HloFusionInstruction& fusion,
-    gpu::SymbolicExprContext* symbolic_expr_context) const {
+    SymbolicExprContext* symbolic_expr_context) const {
   return {emitters::EpilogueSpecification::FromIdentityIndexing(
       &fusion_spec_.fusion_hero(0).instruction(),
       &fusion_spec_.fusion_root(0).instruction(), symbolic_expr_context)};

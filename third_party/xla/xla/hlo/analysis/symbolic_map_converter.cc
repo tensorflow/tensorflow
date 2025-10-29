@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/experimental/symbolic_map_converter.h"
+#include "xla/hlo/analysis/symbolic_map_converter.h"
 
 #include <cstdint>
 
@@ -22,13 +22,12 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
-#include "xla/service/gpu/model/experimental/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 
 namespace xla {
-namespace gpu {
 
-// Helper function to convert xla::gpu::SymbolicExpr to mlir::AffineExpr.
+// Helper function to convert xla::SymbolicExpr to mlir::AffineExpr.
 mlir::AffineExpr SymbolicExprToAffineExpr(SymbolicExpr symbolic_expr,
                                           mlir::MLIRContext* context,
                                           int num_dims) {
@@ -168,5 +167,4 @@ ConvertAffineConstraintsToSymbolicConstraints(
   return symbolic_constraints;
 }
 
-}  // namespace gpu
 }  // namespace xla

@@ -20,13 +20,13 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/layout_util.h"
 #include "xla/runtime/work_cluster.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_group.h"
 #include "xla/runtime/work_item.h"
 #include "xla/runtime/work_tile_size.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
@@ -35,7 +35,7 @@ namespace {
 
 TEST(DefaultWorkItemIndexingMap, MultiDimensionTile) {
   mlir::MLIRContext mlir_context;
-  gpu::SymbolicExprContext symbolic_expr_context(&mlir_context);
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
   mlir_context.loadDialect<mlir::affine::AffineDialect>();
 
   WorkDimensions work_dimensions{NumWorkClusters{}, NumWorkGroups{2},
