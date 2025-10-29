@@ -45,13 +45,15 @@ class DummyDevice : public DeviceBase {
 };
 
 // Helper for comparing output and expected output
-void ExpectSummaryMatches(const Summary& actual, const string& expected_str) {
+void ExpectSummaryMatches(const Summary& actual,
+                          const std::string& expected_str) {
   Summary expected;
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(expected_str, &expected));
   EXPECT_EQ(expected.DebugString(), actual.DebugString());
 }
 
-void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_output,
+void TestScalarSummaryOp(Tensor* tags, Tensor* values,
+                         std::string expected_output,
                          error::Code expected_code) {
   // Initialize node used to fetch OpKernel
   absl::Status status;
