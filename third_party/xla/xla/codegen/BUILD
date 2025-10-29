@@ -63,6 +63,7 @@ cc_library(
     hdrs = ["kernel_emitter.h"],
     deps = [
         ":kernel_definition",
+        ":kernel_source",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

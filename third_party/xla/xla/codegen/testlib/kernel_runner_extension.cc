@@ -214,7 +214,7 @@ NB_MODULE(_extension, kernel_runner_module) {
   nb::class_<KernelEmitterBase>(kernel_runner_module, "KernelEmitterBase")
       .def("emit_kernel_definition", [](KernelEmitterBase* self) {
         absl::StatusOr<std::unique_ptr<KernelDefinitionBase>> definition =
-            self->EmitBaseKernelDefinition();
+            self->EmitKernelDefinitionBase();
         if (!definition.ok()) {
           throw std::runtime_error(std::string(definition.status().message()));
         }

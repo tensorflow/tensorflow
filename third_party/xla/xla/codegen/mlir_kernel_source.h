@@ -84,7 +84,7 @@ class MlirKernelSource final : public KernelSource {
 };
 
 using MlirKernelDefinition = KernelDefinition<MlirKernelSource>;  // NOLINT
-using MlirKernelEmitter = KernelEmitter<MlirKernelDefinition>;    // NOLINT
+using MlirKernelEmitter = KernelEmitter<MlirKernelSource>;        // NOLINT
 
 }  // namespace xla
 

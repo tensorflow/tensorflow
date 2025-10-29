@@ -53,7 +53,7 @@ class LlvmKernelSource final : public KernelSource {
 };
 
 using LlvmKernelDefinition = KernelDefinition<LlvmKernelSource>;  // NOLINT
-using LlvmKernelEmitter = KernelEmitter<LlvmKernelDefinition>;    // NOLINT
+using LlvmKernelEmitter = KernelEmitter<LlvmKernelSource>;        // NOLINT
 
 }  // namespace xla
 
