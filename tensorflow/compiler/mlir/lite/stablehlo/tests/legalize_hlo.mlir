@@ -3073,6 +3073,13 @@ func.func @convert_iota_ui64() -> tensor<123xui64> {
   func.return %0 : tensor<123xui64>
 }
 
+// CHECK-LABEL: func @no_convert_iota_ui8
+func.func @no_convert_iota_ui8() -> tensor<123xui8> {
+  // CHECK: "mhlo.iota"
+  %0 = "mhlo.iota"() <{ iota_dimension = 0 : i64 }> : () -> tensor<123xui8>
+  func.return %0 : tensor<123xui8>
+}
+
 // CHECK-LABEL:   func @convert_avgpool_valid(
 // CHECK-SAME:                                %[[VAL_0:.*]]: tensor<4x16x16x8xf32>) -> tensor<4x7x7x8xf32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.AvgPool"(%[[VAL_0]]) <{data_format = "NHWC", ksize = [1, 3, 3, 1], padding = "VALID", strides = [1, 2, 2, 1]}> : (tensor<4x16x16x8xf32>) -> tensor<4x7x7x8xf32>

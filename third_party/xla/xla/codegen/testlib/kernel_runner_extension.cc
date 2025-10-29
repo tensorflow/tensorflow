@@ -220,10 +220,10 @@ NB_MODULE(_extension, kernel_runner_module) {
         }
         return std::move(definition).value();
       });
-  nb::class_<MlirKernelEmitter, KernelEmitterBase>(kernel_runner_module,
-                                                   "MlirKernelEmitter");
-  nb::class_<LlvmKernelEmitter, KernelEmitterBase>(kernel_runner_module,
-                                                   "LlvmKernelEmitter");
+  nb::class_<KernelEmitter<MlirKernelSource>, KernelEmitterBase>(
+      kernel_runner_module, "MlirKernelEmitter");
+  nb::class_<KernelEmitter<LlvmKernelSource>, KernelEmitterBase>(
+      kernel_runner_module, "LlvmKernelEmitter");
 
   nb::class_<KernelRunner>(kernel_runner_module, "KernelRunner")
       .def("call", &KernelRunnerCall);
