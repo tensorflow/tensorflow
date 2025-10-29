@@ -419,6 +419,7 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegateImpl(
   // its original state.
   if (status == kTfLiteDelegateError) {
     TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
+    return kTfLiteOk;
   }
   return status;
 }
