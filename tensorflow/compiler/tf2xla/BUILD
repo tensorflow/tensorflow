@@ -139,6 +139,25 @@ cc_library(
 )
 
 cc_library(
+    name = "encoded_buffer_allocation_info",
+    hdrs = ["encoded_buffer_allocation_info.h"],
+    visibility = [":friends"],
+    deps = [
+        "@local_xla//xla/backends/cpu:buffer_allocation_info",
+    ],
+)
+
+tf_cc_test(
+    name = "encoded_buffer_allocation_info_test",
+    srcs = ["encoded_buffer_allocation_info_test.cc"],
+    deps = [
+        ":encoded_buffer_allocation_info",
+        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/backends/cpu:buffer_allocation_info",
+    ],
+)
+
+cc_library(
     name = "tf2xla",
     srcs = ["tf2xla.cc"],
     hdrs = ["tf2xla.h"],
@@ -218,6 +237,7 @@ filegroup(
     name = "xla_compiled_cpu_runtime_hdrs",
     srcs = [
         "allocator.h",
+        "encoded_buffer_allocation_info.h",
         "xla_compiled_cpu_function.h",
         "//tensorflow/core/kernels:xla_cpu_runtime_hdrs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
@@ -437,6 +457,7 @@ cc_library(
         ":allocator",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
+        ":encoded_buffer_allocation_info",
         "@local_xla//xla/service:custom_call_status_internal",
         "@local_xla//xla/backends/cpu/runtime:rng_state_lib",
         "@local_xla//xla/backends/cpu:alignment",
@@ -502,6 +523,7 @@ cc_library(
     hdrs = ["xla_jit_compiled_cpu_function.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":encoded_buffer_allocation_info",
         ":tf2xla",
         ":tf2xla_proto_cc",
         ":xla_compiled_cpu_function",

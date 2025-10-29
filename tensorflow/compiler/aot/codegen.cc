@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
 #include "tensorflow/compiler/aot/thunk_proto_execution_deserializer.h"
 #include "tensorflow/compiler/tf2xla/allocator.h"
+#include "tensorflow/compiler/tf2xla/encoded_buffer_allocation_info.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "xla/backends/cpu/buffer_allocation_info.h"

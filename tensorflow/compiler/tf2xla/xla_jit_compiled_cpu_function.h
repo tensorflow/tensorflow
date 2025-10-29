@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "tensorflow/compiler/tf2xla/encoded_buffer_allocation_info.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function_thunks.h"
 #include "xla/backends/cpu/buffer_allocation_info.h"
