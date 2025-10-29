@@ -62,11 +62,11 @@ absl::Status FunctionApiInfo::Init(const FunctionDef& function_def) {
   return absl::OkStatus();
 }
 
-const string& FunctionApiInfo::preferred_device() const {
+const std::string& FunctionApiInfo::preferred_device() const {
   return preferred_device_;
 }
 
-const string& FunctionApiInfo::interface_name() const {
+const std::string& FunctionApiInfo::interface_name() const {
   return interface_name_;
 }
 
@@ -74,7 +74,7 @@ const FunctionApiInfo::FunctionType FunctionApiInfo::function_type() const {
   return function_type_;
 }
 
-const string& FunctionApiInfo::pairing_function_name() const {
+const std::string& FunctionApiInfo::pairing_function_name() const {
   return pairing_function_name_;
 }
 
@@ -121,7 +121,7 @@ bool IsSameSignature(const FunctionDef& f1, const FunctionDef& f2,
 }
 
 absl::Status ValidateSignature(
-    const string& interface_name,
+    const std::string& interface_name,
     const std::vector<const FunctionDef*>& equiv_funcs,
     const FunctionApiInfo::FunctionType function_type) {
   if (equiv_funcs.size() < 2) return absl::OkStatus();
@@ -144,7 +144,7 @@ absl::Status ValidateSignature(
 }
 
 absl::Status ValidateSignatures(
-    const std::unordered_map<string, std::vector<const FunctionDef*>>&
+    const std::unordered_map<std::string, std::vector<const FunctionDef*>>&
         intf_to_func,
     const FunctionApiInfo::FunctionType function_type) {
   for (const auto& item : intf_to_func)
@@ -156,17 +156,17 @@ absl::Status ValidateSignatures(
 
 absl::Status FunctionLibraryApiInfo::Init(
     const FunctionDefLibrary& function_library) {
-  std::unordered_map<string, std::vector<const FunctionDef*>> infer_funcs;
-  std::unordered_map<string, std::vector<const FunctionDef*>> fwd_funcs;
-  std::unordered_map<string, std::vector<const FunctionDef*>> bwd_funcs;
+  std::unordered_map<std::string, std::vector<const FunctionDef*>> infer_funcs;
+  std::unordered_map<std::string, std::vector<const FunctionDef*>> fwd_funcs;
+  std::unordered_map<std::string, std::vector<const FunctionDef*>> bwd_funcs;
   for (const auto& function : function_library.function()) {
     std::unique_ptr<FunctionApiInfo> func_info(new FunctionApiInfo);
     TF_RETURN_IF_ERROR(func_info->Init(function));
     // Ignore the function if it does not implement any interface.
     if (func_info->interface_name().empty()) continue;
 
-    const string& function_name = function.signature().name();
-    const string& interface_name = func_info->interface_name();
+    const std::string& function_name = function.signature().name();
+    const std::string& interface_name = func_info->interface_name();
     VLOG(3) << "Got " << func_info->function_type()
             << " function: " << function_name
             << " with interface: " << interface_name;
@@ -199,12 +199,13 @@ absl::Status FunctionLibraryApiInfo::Init(
 }
 
 absl::Status FunctionLibraryApiInfo::GetEquivalentImplementations(
-    const string& function_name, std::vector<string>* other_functions) const {
+    const std::string& function_name,
+    std::vector<std::string>* other_functions) const {
   const auto func_it = func_info_.find(function_name);
   if (func_it == func_info_.end()) return absl::OkStatus();
   const FunctionApiInfo* func_info = func_it->second.get();
 
-  absl::flat_hash_map<string, std::vector<string>>::const_iterator it;
+  absl::flat_hash_map<std::string, std::vector<std::string>>::const_iterator it;
   switch (func_info->function_type()) {
     case FunctionApiInfo::FunctionType::INFERENCE:
       it = intf_to_inference_funcs_.find(func_info->interface_name());
@@ -228,7 +229,7 @@ absl::Status FunctionLibraryApiInfo::GetEquivalentImplementations(
 }
 
 const FunctionApiInfo* FunctionLibraryApiInfo::GetApiInfo(
-    const string& function_name) const {
+    const std::string& function_name) const {
   const auto it = func_info_.find(function_name);
   if (it == func_info_.end()) return nullptr;
   return it->second.get();

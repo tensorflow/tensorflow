@@ -29,7 +29,7 @@ namespace grappler {
 
 namespace {
 
-void CheckSameTransposerForOps(absl::Span<const string> ops,
+void CheckSameTransposerForOps(absl::Span<const std::string> ops,
                                TransposerFactory* factory,
                                absl::flat_hash_set<Transposer*>* transposers) {
   absl::flat_hash_set<Transposer*> created_transposers;
