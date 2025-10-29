@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/testing/temporary_directory.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "tsl/platform/path.h"
@@ -140,7 +141,9 @@ using absl_testing::StatusIs;
 using ::testing::_;
 using ::testing::AtMost;
 using ::testing::ByMove;
+using ::testing::MatchesRegex;
 using ::testing::Return;
+using ::testing::UnorderedElementsAre;
 using tsl::proto_utils::ToDurationProto;
 
 se::DeviceDescription CreateDummyDeviceDescription() {
@@ -150,21 +153,32 @@ se::DeviceDescription CreateDummyDeviceDescription() {
 }
 
 absl::StatusOr<std::unique_ptr<Autotuner>> SetupAutotunerWithExpectations(
-    HloOpcode instr_to_autotune,
+    std::vector<HloOpcode> instrs_to_autotune,
     std::vector<std::pair<HloOpcode, int>> instrs_to_apply_config_and_count,
-    std::unique_ptr<MockAutotunerCache> cache = nullptr) {
-  std::vector<std::unique_ptr<BackendConfig>> configs;
-  configs.push_back(GetTestConfig("another_config"));
-  configs.push_back(GetTestConfig("best_config"));
-
+    std::unique_ptr<MockAutotunerCache> cache = nullptr,
+    bool dump_hlos = false) {
   auto backend = std::make_unique<MockCodegenBackend>();
+  auto profiler = std::make_unique<MockProfiler>();
   EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
-  EXPECT_CALL(*backend,
-              GetSupportedConfigs(InstructionMatcher(instr_to_autotune)))
-      .WillOnce(Return(std::move(configs)));
+  for (const auto& instr_to_autotune : instrs_to_autotune) {
+    std::vector<std::unique_ptr<BackendConfig>> configs;
+    // Best config is just by notion here since profiler time is same for all.
+    configs.push_back(GetTestConfig("best_config"));
+    configs.push_back(GetTestConfig("another_config"));
+    EXPECT_CALL(*backend,
+                GetSupportedConfigs(InstructionMatcher(instr_to_autotune)))
+        .WillOnce(Return(std::move(configs)));
+  }
+  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+      .Times(instrs_to_autotune.size())
+      .WillRepeatedly([] { return std::make_unique<InputBuffers>(); });
   EXPECT_CALL(*backend, Compile(_, _))
-      .WillOnce(Return(std::unique_ptr<Executable>()))
-      .WillOnce(Return(std::unique_ptr<Executable>()));
+      .Times(2 * instrs_to_autotune.size())
+      .WillRepeatedly([] { return std::unique_ptr<Executable>(); });
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .Times(2 * instrs_to_autotune.size())
+      .WillRepeatedly([] { return ProfileResult({absl::Seconds(1)}); });
+
   for (const auto& [instr_to_apply_config, count] :
        instrs_to_apply_config_and_count) {
     EXPECT_CALL(*backend,
@@ -172,19 +186,12 @@ absl::StatusOr<std::unique_ptr<Autotuner>> SetupAutotunerWithExpectations(
         .Times(count)
         .WillRepeatedly(Return(absl::OkStatus()));
   }
-
-  auto profiler = std::make_unique<MockProfiler>();
-  auto device_description = CreateDummyDeviceDescription();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
-      .WillOnce(Return(std::make_unique<InputBuffers>()));
-  EXPECT_CALL(*profiler, Profile(_, _))
-      .WillOnce(Return(ProfileResult({absl::Seconds(2)})))
-      .WillOnce(Return(ProfileResult({absl::Seconds(1)})));
-
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend));
-  return Autotuner::Create(std::move(backends), std::move(profiler),
-                           GetTestAutotuneConfig(), std::move(cache));
+  AutotuneConfig config = GetTestAutotuneConfig();
+  config.dump_hlos = dump_hlos;
+  return Autotuner::Create(std::move(backends), std::move(profiler), config,
+                           std::move(cache));
 }
 
 constexpr absl::string_view kHlo = R"(
@@ -376,7 +383,7 @@ TEST_F(AutotunerTest, AutotuneModuleFollowsFilter) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Autotuner> autotuner,
       SetupAutotunerWithExpectations(
-          /*instr_to_autotune=*/HloOpcode::kCopy,
+          /*instrs_to_autotune=*/{HloOpcode::kCopy},
           /*instrs_to_apply_config_and_count=*/{{HloOpcode::kCopy, 1}}));
 
   EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune),
@@ -393,7 +400,7 @@ TEST_F(AutotunerTest, AutotuneModuleWithDuplicateInstructions) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Autotuner> autotuner,
       SetupAutotunerWithExpectations(
-          /*instr_to_autotune=*/HloOpcode::kAdd,
+          /*instrs_to_autotune=*/{HloOpcode::kAdd},
           /*instrs_to_apply_config_and_count=*/{{HloOpcode::kAdd, 2}}));
 
   EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune), IsOk());
@@ -585,7 +592,10 @@ TEST_F(AutotunerTest, ExpectAllInstructionsInCache) {
 }
 
 TEST_F(AutotunerTest, DumpLogsToFile) {
-  config_.dump_logs_to = tsl::io::JoinPath(tsl::testing::TmpDir(), "dump.log");
+  TF_ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  config_.dump_logs_to = tsl::io::JoinPath(temp_dir.path(), "dump.log");
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
@@ -804,7 +814,7 @@ TEST_F(AutotunerTest, ShardedAutotuning) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Autotuner> autotuner,
       SetupAutotunerWithExpectations(
-          /*instr_to_autotune=*/HloOpcode::kCopy,
+          /*instrs_to_autotune=*/{HloOpcode::kCopy},
           /*instrs_to_apply_config_and_count=*/
           {{HloOpcode::kCopy, 1}, {HloOpcode::kAdd, 2}}, std::move(cache)));
 
@@ -815,6 +825,43 @@ TEST_F(AutotunerTest, ShardedAutotuning) {
   EXPECT_THAT(
       autotuner->Autotune(module.get(), should_autotune, sharding_kv_store),
       IsOk());
+}
+
+TEST_F(AutotunerTest, DumpHlos) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory dump_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  module->mutable_config().mutable_debug_options().set_xla_dump_to(
+      dump_dir.path());
+  auto should_autotune = [](const HloInstruction& instruction) {
+    return instruction.opcode() == HloOpcode::kCopy ||
+           instruction.opcode() == HloOpcode::kAdd;
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Autotuner> autotuner,
+      SetupAutotunerWithExpectations(
+          /*instrs_to_autotune=*/{HloOpcode::kCopy, HloOpcode::kAdd},
+          // One apply config call per instruction is expected for dumping HLOs.
+          /*instrs_to_apply_config_and_count=*/
+          {{HloOpcode::kCopy, 2}, {HloOpcode::kAdd, 3}},
+          /*cache=*/nullptr,
+          /*dump_hlos=*/true));
+
+  EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune), IsOk());
+
+  std::vector<std::string> files;
+  EXPECT_THAT(tsl::Env::Default()->GetChildren(dump_dir.path(), &files),
+              IsOk());
+  EXPECT_THAT(files.size(), 4);
+  EXPECT_THAT(
+      files,
+      UnorderedElementsAre(
+          MatchesRegex(".*\\.test_module\\.autotuner_0\\.copy\\.before\\.txt"),
+          MatchesRegex(".*\\.test_module\\.autotuner_0\\.copy\\.after\\.txt"),
+          MatchesRegex(".*\\.test_module\\.autotuner_1\\.add\\.after\\.txt"),
+          MatchesRegex(".*\\.test_module\\.autotuner_1\\.add\\.before\\.txt")));
 }
 
 }  // namespace
