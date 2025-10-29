@@ -78,6 +78,21 @@ class GpuComputeCapability {
     return rocm_compute_capability()->ToString();
   }
 
+  GpuComputeCapabilityProto ToProto() const;
+
+  static absl::StatusOr<GpuComputeCapability> FromProto(
+      const GpuComputeCapabilityProto& proto);
+
+  friend bool operator==(const GpuComputeCapability& lhs,
+                         const GpuComputeCapability& rhs) {
+    return lhs.compute_capability_ == rhs.compute_capability_;
+  }
+
+  friend bool operator!=(const GpuComputeCapability& lhs,
+                         const GpuComputeCapability& rhs) {
+    return !(lhs == rhs);
+  }
+
  private:
   std::variant<CudaComputeCapability, RocmComputeCapability>
       compute_capability_;

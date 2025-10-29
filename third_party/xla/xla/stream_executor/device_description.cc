@@ -17,13 +17,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <variant>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -150,4 +151,33 @@ void CalculateDimensionality(const DeviceDescription &device_description,
   }
 }
 
+GpuComputeCapabilityProto GpuComputeCapability::ToProto() const {
+  GpuComputeCapabilityProto proto;
+  if (IsCuda()) {
+    *proto.mutable_cuda_compute_capability() =
+        cuda_compute_capability()->ToProto();
+  } else {
+    *proto.mutable_rocm_compute_capability() =
+        rocm_compute_capability()->ToProto();
+  }
+  return proto;
+}
+
+absl::StatusOr<GpuComputeCapability> GpuComputeCapability::FromProto(
+    const GpuComputeCapabilityProto& proto) {
+  if (proto.has_cuda_compute_capability()) {
+    TF_ASSIGN_OR_RETURN(
+        CudaComputeCapability cuda_compute_capability,
+        CudaComputeCapability::FromProto(proto.cuda_compute_capability()));
+    return GpuComputeCapability(cuda_compute_capability);
+  }
+
+  if (proto.has_rocm_compute_capability()) {
+    return GpuComputeCapability(
+        RocmComputeCapability::FromProto(proto.rocm_compute_capability()));
+  }
+
+  return absl::InvalidArgumentError(
+      "The serialized GpuComputeCapability has no compute capability set.");
+}
 }  // namespace stream_executor

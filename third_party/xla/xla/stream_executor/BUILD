@@ -68,6 +68,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -924,6 +925,9 @@ xla_cc_test(
     deps = [
         ":device_description",
         ":semantic_version",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
