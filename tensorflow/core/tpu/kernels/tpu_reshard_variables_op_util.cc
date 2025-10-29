@@ -80,7 +80,7 @@ bool IsDefaultKey(const Tensor& key) { return key.vec<tstring>()(0).empty(); }
 // Looks up the input `key` in the compilation cache, populating
 // `*rendezvous_key_base` and `*entry`.
 absl::Status GetComputationCacheEntry(
-    const Tensor& key, string* rendezvous_key_base,
+    const Tensor& key, std::string* rendezvous_key_base,
     std::unique_ptr<tpu::CompilationCacheEntryRef>* entry,
     tpu::CompilationCacheFetchTarget fetch_target) {
   tsl::profiler::TraceMe trace_me("TPUReshardVariablesOpKernel::LookupProto",

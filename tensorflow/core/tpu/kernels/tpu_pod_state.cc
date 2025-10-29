@@ -123,7 +123,7 @@ TpuPodState::~TpuPodState() {
   VLOG(1) << "Shutting down Compilation Cache Service done.";
 }
 
-string TpuPodState::DebugString() const {
+std::string TpuPodState::DebugString() const {
   return "Wrapper for distributed TPU state";
 }
 

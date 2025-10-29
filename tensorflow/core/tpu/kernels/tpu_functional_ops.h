@@ -84,18 +84,19 @@ GroupedEdges GroupTensorsForOutputPacking(Graph* graph,
                                           GraphShapeInfo* shape_info);
 
 absl::Status CreateConcatAndSplitNodesForInputTensor(
-    Graph* graph, const string& cluster_name, EdgeShapes* tpu_input_shapes,
+    Graph* graph, const std::string& cluster_name, EdgeShapes* tpu_input_shapes,
     const absl::flat_hash_map<std::string, std::vector<const Edge*>>&
         grouped_input_edges,
     int32_t minimum_input_tensors_packing, bool xla_spmd_input_sharded,
     const XlaShardingInfoMap& xla_sharding_info,
     const TpuReplicatedInputInfoMap& tpu_replicated_input_info);
 absl::Status CreateConcatAndSplitNodesForOutputTensor(
-    Graph* graph, const string& cluster_name, EdgeShapes* tpu_output_shapes,
-    GraphShapeInfo* tpu_inferred_info, GroupedEdges shape_to_output,
-    int32_t minimum_output_tensors_packing);
+    Graph* graph, const std::string& cluster_name,
+    EdgeShapes* tpu_output_shapes, GraphShapeInfo* tpu_inferred_info,
+    GroupedEdges shape_to_output, int32_t minimum_output_tensors_packing);
 
-absl::Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
+absl::Status InsertReshapeNodePairs(Graph* graph,
+                                    const std::string& cluster_name,
                                     EdgeShapes* tpu_input_shapes,
                                     int num_cores_per_replica);
 
@@ -172,7 +173,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   };
 
   // This method is thread-safe.
-  absl::Status GetTpuCoreOrdinal(OpKernelContext* ctx, uint64 input_hash,
+  absl::Status GetTpuCoreOrdinal(OpKernelContext* ctx, uint64_t input_hash,
                                  int64_t* ordinal_selector_req_id,
                                  int32_t* core_ordinal);
 
@@ -196,11 +197,10 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   // device_ordinal: The index of the TPU core that is scheduled to run
   //   the computation. In the case of XLA SPMD, it is the "primary" core, which
   //   is the smallest index of all the cores.
-  absl::Status InitializeShardedVarOnTPU(OpKernelContext* ctx,
-                                         const core::RefCountPtr<Var>& var,
-                                         std::vector<NodeDef>& ndefs,
-                                         int split_dim,
-                                         const std::vector<string>& tpu_devices)
+  absl::Status InitializeShardedVarOnTPU(
+      OpKernelContext* ctx, const core::RefCountPtr<Var>& var,
+      std::vector<NodeDef>& ndefs, int split_dim,
+      const std::vector<std::string>& tpu_devices)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Check if any of the immediate successors of node has attribute
@@ -250,7 +250,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   absl::Status PlacementHelper(
       const DeviceSet& device_set,
       const GraphOptimizationPassOptions& optimization_options,
-      const string& function_name);
+      const std::string& function_name);
   // Partitions `graph`, populates `subgraphs` with the partitions, and runs
   // the post-partitioning graph optimization passes.
   absl::Status PartitionHelper(
@@ -263,15 +263,15 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   // If `out_flib_def` is not null, it will be set to a copy of `flib_def_` and
   // used for instantiation.
   absl::Status InstantiatePartition(
-      const Graph& graph, const string& function_name,
-      const string& target_device, FHandle* handle,
+      const Graph& graph, const std::string& function_name,
+      const std::string& target_device, FHandle* handle,
       std::unique_ptr<FunctionLibraryDefinition>* out_flib_def)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Adds and instantiates functions for each subgraph in `subgraphs` after
   // rewriting nodes' `device_ordinal` attributes to match `replica_id` when
   // num_cores_per_replica == 1.
   absl::Status InstantiateFunctionsFromSubgraphs(
-      const DeviceSet& device_set, int replica_id, uint64 cache_hash,
+      const DeviceSet& device_set, int replica_id, uint64_t cache_hash,
       int num_cores_per_replica,
       std::unordered_map<std::string, std::unique_ptr<Graph>> subgraphs)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -344,7 +344,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   const std::string local_device_name_;
   // Maps from cache key to their corresponding functions, which are
   // represented as (device, handle) pairs.
-  gtl::FlatMap<uint64, std::vector<DeviceAndFHandle>> partition_cache_
+  gtl::FlatMap<uint64_t, std::vector<DeviceAndFHandle>> partition_cache_
       ABSL_GUARDED_BY(mu_);
 
   // A set contains seen ordinals. Used by variable initialization on TPU.
@@ -362,7 +362,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   FunctionLibraryRuntime* library_runtime_;
 
   // Used to uniquify function names in `flib_def_`.
-  uint32 suffix_ = 0;
+  uint32_t suffix_ = 0;
 
   // Minimum number of run steps (batches) necessary to trigger xla autotuner.
   int autotuner_thresh_ = 0;
@@ -371,7 +371,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   std::shared_ptr<tpu::TPUOrdinalSelector> ordinal_selector_;
 
   // Maps input hash to TF fingerprint.
-  absl::flat_hash_map<uint64, uint64> inputs_to_fingerprint_;
+  absl::flat_hash_map<uint64_t, uint64_t> inputs_to_fingerprint_;
 
   // List of TPU devices
   std::vector<Device*> tpu_devices_;

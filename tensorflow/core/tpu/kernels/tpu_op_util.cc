@@ -73,8 +73,8 @@ std::string CreateConfigPrefix(const TPUCompileMetadataProto& metadata) {
 }
 }  // namespace
 
-uint64 CreateFingerprintWithNameAndShapes(
-    uint64 name, const std::vector<tensorflow::TensorShape>& shapes) {
+uint64_t CreateFingerprintWithNameAndShapes(
+    uint64_t name, const std::vector<tensorflow::TensorShape>& shapes) {
   std::string shape_prefix = CreateShapePrefix(shapes);
   VLOG(2) << "CreateFingerprintWithNameAndShapes, name: " << name
           << ", shape_prefix: " << shape_prefix;
@@ -85,7 +85,7 @@ uint64 CreateFingerprintWithNameAndShapes(
 // Return fingerprint_in_metadata if it's not empty; otherwise read input tensor
 // data to compute the fingerprint.
 std::string GuaranteedConstFingerprint(
-    const string& fingerprint_in_metadata,
+    const std::string& fingerprint_in_metadata,
     const OpInputList& guaranteed_constants) {
   if (fingerprint_in_metadata.empty()) {
     uint64_t fingerprint = 0;
@@ -104,8 +104,8 @@ std::string GuaranteedConstFingerprint(
 // The `guaranteed_constants` must be passed as reference due to the lazy
 // evaluation of `guaranteed_const_fingerprint()` callback.
 TpuCompilationCacheKey CreateCompilationCacheKey(
-    absl::string_view function_name, uint64 function_library_fingerprint,
-    uint64 mlir_module_fingerprint, const OpInputList& guaranteed_constants,
+    absl::string_view function_name, uint64_t function_library_fingerprint,
+    uint64_t mlir_module_fingerprint, const OpInputList& guaranteed_constants,
     const std::vector<TensorShape>& dynamic_shapes,
     const TPUCompileMetadataProto& metadata,
     const TpuMeshStateInterface& mesh_state, uint64_t session_id,
@@ -151,7 +151,7 @@ TpuCompilationCacheKey CreateCompilationCacheKey(
     // reference based on the assumption that these variables lifetime is
     // managed through the `TPUCompileOpKernelImpl` that outlives the
     // lifetime of the compilation cache lookups.
-    string fingerprint;
+    std::string fingerprint;
     key.guaranteed_const_fingerprint = [&metadata, &guaranteed_constants,
                                         fingerprint]() mutable {
       if (fingerprint.empty()) {
