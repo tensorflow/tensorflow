@@ -39,7 +39,7 @@ namespace {
 
 std::string SendFunction(const std::string& send_device,
                          const std::string& recv_device,
-                         const tensorflow::int64 send_device_incarnation) {
+                         const int64_t send_device_incarnation) {
   tensorflow::FunctionDef def;
   CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
       absl::StrCat("    signature {"
@@ -100,7 +100,7 @@ std::string SendFunction(const std::string& send_device,
 
 std::string RecvFunction(const std::string& send_device,
                          const std::string& recv_device,
-                         const tensorflow::int64 send_device_incarnation) {
+                         const int64_t send_device_incarnation) {
   tensorflow::FunctionDef def;
   CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
       absl::StrCat("    signature {"
@@ -239,7 +239,7 @@ TEST_P(MultiClientSendRecvTest, TestMultiClientSendRecv) {
 
     std::vector<tensorflow::DeviceAttributes> device_attrs;
     tensorflow::unwrap(ctx)->ListDevices(&device_attrs);
-    tensorflow::uint64 send_device_incarnation = 0;
+    uint64_t send_device_incarnation = 0;
     for (const auto& device_attr : device_attrs) {
       if (device_attr.name() == send_device) {
         send_device_incarnation = device_attr.incarnation();
