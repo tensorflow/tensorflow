@@ -140,7 +140,7 @@ cc_library(
     name = "rocm_rpath",
     linkopts = select({
         ":build_hermetic": [
-            "-Wl,-rpath,%{rocm_toolkit_path}/lib",
+            "-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib",
         ],
         ":multiple_rocm_paths": [
             "-Wl,-rpath=%{rocm_lib_paths}",
@@ -164,7 +164,7 @@ cc_library(
 cc_library(
     name = "rocm_hip",
     srcs = glob([
-        "%{rocm_root}/lib/libamdhip*.so",
+        "%{rocm_root}/lib/libamdhip*.so*",
         "%{rocm_root}/lib/libhiprtc.so*",
         "%{rocm_root}/lib/libhiprtc-builtins.so*",
     ]),
@@ -189,9 +189,10 @@ cc_library(
 cc_library(
     name = "hip_runtime",
     srcs = glob([
-        "%{rocm_root}/lib/libamdhip*.so",
+        "%{rocm_root}/lib/libamdhip*.so*",
         "%{rocm_root}/lib/libhiprtc.so*",
         "%{rocm_root}/lib/libhiprtc-builtins.so*",
+        "%{rocm_root}/lib/libamd_comgr.so*",
     ]),
     hdrs = glob(["%{rocm_root}/include/hip/**"]),
     include_prefix = "rocm",
@@ -204,6 +205,7 @@ cc_library(
         ":rocm_config",
         ":rocprofiler_register",
         ":system_libs",
+        ":amd_comgr",
     ],
 )
 
@@ -220,15 +222,19 @@ cc_library(
     ],
     # workaround to  bring tensile files to the same fs layout as expected in the lib
     # rocblas assumes that tensile files are located in ../roblas/libraries directory
-    linkopts = ["-Wl,-rpath,local_config_rocm/rocm/rocm_dis/lib"],
+    linkopts = ["-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
-    deps = [":rocm_config"],
+    deps = [
+        ":rocm_config",
+        ":hipblaslt"
+    ],
 )
 
 cc_library(
     name = "rocfft",
-    srcs = glob(["%{rocm_root}/lib/librocfft*.so*"]),
+    data = glob(["%{rocm_root}/lib/librocfft*.so*"]),
+    linkopts = ["-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib"],
     include_prefix = "rocm",
     includes = [
         "%{rocm_root}/include",
@@ -240,7 +246,8 @@ cc_library(
 
 cc_library(
     name = "hipfft",
-    srcs = glob(["%{rocm_root}/lib/libhipfft*.so*"]),
+    data = glob(["%{rocm_root}/lib/libhipfft*.so*"]),
+    linkopts = ["-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib"],
     include_prefix = "rocm",
     includes = [
         "%{rocm_root}/include",
@@ -278,12 +285,12 @@ cc_library(
     ],
     # workaround to  bring miopen db files to the same fs layout as expected in the lib
     # rocblas assumes that miopen db files are located in ../share/miopen/db directory
-    linkopts = ["-Wl,-rpath,local_config_rocm/rocm/rocm_dis/lib"],
+    linkopts = ["-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [
-        ":rocm_config",
         ":rocm-core",
+        ":rocm_config",
     ],
 )
 
@@ -369,7 +376,7 @@ cc_library(
     includes = [
         "%{rocm_root}/include/",
     ],
-    linkopts = ["-Wl,-rpath,local_config_rocm/rocm/rocm_dis/lib"],
+    linkopts = ["-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [":rocm_config"],
@@ -408,9 +415,9 @@ cc_library(
     includes = [
         "%{rocm_root}/include/",
     ],
+    linkopts = ["-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
-    linkopts = ["-Wl,-rpath,local_config_rocm/rocm/rocm_dis/lib"],
     deps = [
         ":hipblas-common",
         ":rocm_config",
@@ -428,7 +435,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [":rocm_config"],
 )
-
 
 cc_library(
     name = "rocm-core",
@@ -452,10 +458,13 @@ cc_library(
     ],
     # workaround to  bring tensile files to the same fs layout as expected in the lib
     # hibplatslt assumes that tensile files are located in ../hipblaslt/library directory
-    linkopts = ["-Wl,-rpath,local_config_rocm/rocm/rocm_dis/lib"],
+    linkopts = ["-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
-    deps = [":rocm_config"],
+    deps = [
+        ":rocm_config",
+        ":hip_runtime",
+    ],
 )
 
 cc_library(
