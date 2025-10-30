@@ -385,6 +385,20 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
           value_to_use_intervals,
       std::vector<int64_t>& prefetch_end_times);
 
+  // Creates colocated allocations for values aliased to existing block
+  // prefetches and finalizes them.
+  void ColocateAndFinalizeValuesAliasedToExistingBlockPrefetches(
+      const HloValue* prefetch_done_value, const HloBuffer& buffer,
+      const Chunk& chunk_candidate, int64_t buffer_size,
+      AllocationBlock* first_colocated_repack_allocation,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_schedule,
+      const absl::flat_hash_map<const HloValue*, UseInterval>&
+          value_to_use_intervals,
+      absl::flat_hash_map<const HloValue*, HloInstruction*>&
+          prefetch_done_value_to_prefetch_start_instruction,
+      std::vector<int64_t>& prefetch_end_times);
+
   // Returns the maximum amount of scoped memory that is reserved at any time in
   // the program.
   int64_t MaxScopedMemoryOffset();

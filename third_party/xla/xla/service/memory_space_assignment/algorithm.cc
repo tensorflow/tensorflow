@@ -2245,9 +2245,11 @@ absl::Status MsaAlgorithm::AllocateAndScheduleExistingBlockPrefetches() {
   // 2. Update the operands in alternate memory map.
   // 3. Add the copy done and copy start values to the finalized values set.
   // 4. Add a repack allocation block to the repack allocation blocks list.
-  // 5. Serve the uses of the original value from the pinned allocation in the
+  // 5. If the prefetch done value is aliased with values other than the
+  //    prefetch start value, allocate the aliased values.
+  // 6. Serve the uses of the original value from the pinned allocation in the
   //    default memory.
-  // 6. Clear the pending chunks after the loop.
+  // 7. Clear the pending chunks after the loop.
   for (const HloValue* prefetch_done_value : block_prefetched_values) {
     UseInterval use_interval = value_to_use_intervals.at(prefetch_done_value);
     int64_t first_use_time = use_interval.first_use_time;
@@ -2357,21 +2359,162 @@ absl::Status MsaAlgorithm::AllocateAndScheduleExistingBlockPrefetches() {
         allocations_->back().get()));
     repack_allocation_blocks_.back().next_colocated =
         &(repack_allocation_blocks_.back());
+    const HloBuffer& buffer =
+        alias_analysis_.GetBufferContainingValue(*prefetch_done_value);
+
+    // 5. If the prefetch done value is aliased with values other than the
+    //    prefetch start value, allocate the aliased values.
+    if (buffer.values().size() > 2) {
+      ColocateAndFinalizeValuesAliasedToExistingBlockPrefetches(
+          prefetch_done_value, buffer, chunk_candidate, buffer_size,
+          &repack_allocation_blocks_.back(), instruction_schedule,
+          value_to_use_intervals,
+          prefetch_done_value_to_prefetch_start_instruction,
+          prefetch_end_times);
+    }
   }
 
-  // 5. Serve the uses of the original value from the pinned allocation in the
+  // 6. Serve the uses of the original value from the pinned allocation in the
   //    default memory.
   for (auto [_, original_value] : prefetch_done_value_to_original_value) {
-    Allocation* allocation = value_to_pinned_allocation[original_value];
-    for (const HloUse& use : original_value->GetUses()) {
-      allocation->AddUse(use);
+    // Finalize all values aliased to the original value.
+    // Note: We do not need to add pinned allocations for the aliased values,
+    // just finalizing them is sufficient to ensure that they will be served
+    // from default memory.
+    const HloBuffer& buffer =
+        alias_analysis_.GetBufferContainingValue(*original_value);
+    for (const HloValue* aliased_value : buffer.values()) {
+      if (finalized_values_.contains(aliased_value)) {
+        continue;
+      }
+      // If a pinned allocation already exists for the aliased value, add the
+      // uses of the original value to the pinned allocation.
+      auto it = value_to_pinned_allocation.find(aliased_value);
+      if (it != value_to_pinned_allocation.end()) {
+        Allocation* allocation = it->second;
+        for (const HloUse& use : original_value->GetUses()) {
+          allocation->AddUse(use);
+        }
+      }
+      finalized_values_.insert(aliased_value);
     }
-    finalized_values_.insert(original_value);
   }
 
-  // 6. Clear the pending chunks.
+  // 7. Clear the pending chunks.
   ClearPendingChunks();
   return absl::OkStatus();
+}
+
+void MsaAlgorithm::ColocateAndFinalizeValuesAliasedToExistingBlockPrefetches(
+    const HloValue* prefetch_done_value, const HloBuffer& buffer,
+    const Chunk& chunk_candidate, int64_t buffer_size,
+    AllocationBlock* first_colocated_repack_allocation,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_schedule,
+    const absl::flat_hash_map<const HloValue*, UseInterval>&
+        value_to_use_intervals,
+    absl::flat_hash_map<const HloValue*, HloInstruction*>&
+        prefetch_done_value_to_prefetch_start_instruction,
+    std::vector<int64_t>& prefetch_end_times) {
+  VLOG(1) << "HloBuffer for block prefetched value: "
+          << prefetch_done_value->ToShortString()
+          << " aliases with: " << (buffer.values().size() - 1)
+          << " other values";
+
+  std::vector<const HloValue*> colocated_values;
+  for (const HloValue* aliased_value : buffer.values()) {
+    colocated_values.push_back(aliased_value);
+  }
+  absl::c_sort(colocated_values, [&](const HloValue* a, const HloValue* b) {
+    return instruction_schedule.at(a->defining_instruction()) <
+           instruction_schedule.at(b->defining_instruction());
+  });
+
+  // After sorting by schedule time, the first two values in the colocated
+  // values list should be the prefetch start and prefetch done values, followed
+  // by their uses which might be aliased.
+  CHECK_EQ(
+      colocated_values[0]->instruction(),
+      prefetch_done_value_to_prefetch_start_instruction[prefetch_done_value]);
+  CHECK_EQ(colocated_values[1], prefetch_done_value);
+
+  int64_t prev_last_use_time =
+      value_to_use_intervals.at(prefetch_done_value).last_use_time;
+
+  std::vector<AllocationBlock*> colocations;
+  colocations.push_back(first_colocated_repack_allocation);
+
+  int64_t maybe_sliced_value_definition_time =
+      instruction_schedule.at(prefetch_done_value->defining_instruction());
+
+  // For each of the colocated values that follow the block prefetched value,
+  // extend the chunk candidate to the right and add a pinned allocation in
+  // the alternate memory. We start from index 2, since the first two values
+  // in the colocated values list are the prefetch start and prefetch done
+  // values.
+  for (int i = 2; i < colocated_values.size(); ++i) {
+    const HloValue* aliased_value = colocated_values[i];
+    CHECK(!finalized_values_.contains(aliased_value));
+    int64_t aliased_value_definition_time =
+        instruction_schedule.at(aliased_value->defining_instruction());
+    CHECK_LT(maybe_sliced_value_definition_time, aliased_value_definition_time);
+    // The last use time of the previous value in the colocated values list
+    // should be the definition time of the current value in the colocated
+    // values list. This is because only the last use of a value can be
+    // aliased.
+    CHECK_EQ(prev_last_use_time, aliased_value_definition_time);
+    int64_t aliased_value_last_use_time = std::numeric_limits<int64_t>::min();
+    for (const HloUse& use : aliased_value->GetUses()) {
+      aliased_value_last_use_time =
+          std::max(aliased_value_last_use_time,
+                   instruction_schedule.at(use.instruction));
+    }
+    prev_last_use_time = aliased_value_last_use_time;
+
+    MsaBufferInterval aliased_interval = MsaBufferInterval{
+        /*buffer=*/aliased_value,
+        /*size=*/buffer_size,
+        /*start=*/aliased_value_definition_time +
+            1,  // We need to add 1 because a chunk is already reserved till
+                // the prev_last_use_time which is equal to the
+                // aliased_value_definition_time.
+        /*end=*/aliased_value_last_use_time,
+        /*colocations=*/{},
+        /*need_allocation=*/true};
+    Chunk aliased_chunk_candidate = FindChunkCandidate(
+        aliased_interval, /*preferred_offset=*/chunk_candidate.offset);
+    // The aliased chunk candidate should be the same as the chunk candidate,
+    // since they are colocated and aliased. We are in principle extending the
+    // same chunk candidate to the right and we should always be able to do
+    // that because we are processing the values from left to right and we
+    // have checked that the prefetched value is only aliased to the right.
+    CHECK_EQ(aliased_chunk_candidate, chunk_candidate);
+    allocations_->push_back(std::make_unique<PinnedAllocation>(
+        aliased_value->defining_position(), MemorySpace::kAlternate,
+        aliased_chunk_candidate, aliased_value_definition_time,
+        aliased_value_last_use_time));
+    AddToPendingChunks(aliased_interval, aliased_chunk_candidate);
+    for (const HloUse& use : aliased_value->GetUses()) {
+      allocations_->back()->AddUse(use);
+      operands_in_alternate_memory_map_[use.instruction].insert(
+          std::make_pair(use.operand_number, use.operand_index));
+    }
+    auto const sorted_position =
+        std::lower_bound(prefetch_end_times.begin(), prefetch_end_times.end(),
+                         aliased_value_last_use_time);
+    prefetch_end_times.insert(sorted_position, aliased_value_last_use_time);
+    finalized_values_.insert(aliased_value);
+    repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
+        aliased_value_definition_time, aliased_value_last_use_time,
+        aliased_chunk_candidate.size, aliased_chunk_candidate.offset,
+        allocations_->back().get()));
+    repack_allocation_blocks_.back().next_colocated =
+        &(repack_allocation_blocks_.back());
+    colocations.push_back(&repack_allocation_blocks_.back());
+  }
+
+  // Mark repack allocation blocks as colocated.
+  MarkRepackAllocationBlocksColocated(colocations);
 }
 
 absl::Status MsaAlgorithm::CreateNewBlockPrefetches() {
