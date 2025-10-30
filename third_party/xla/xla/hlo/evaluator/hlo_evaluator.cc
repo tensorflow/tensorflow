@@ -35,7 +35,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/internal/endian.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -236,10 +235,15 @@ absl::Status MakeEvalErrorDueToParamOrInfeed(
       eval_instruction.parent()->name(), ")."));
   std::string error_payload;
   error_payload.resize(sizeof(internal::EvalErrorDetail));
-  absl::little_endian::Store32(
-      const_cast<char*>(error_payload.data()),
-      static_cast<uint32_t>(
-          internal::EvalErrorDetail::kDynamicValueDependence));
+
+  uint32_t error_detail =
+      static_cast<uint32_t>(internal::EvalErrorDetail::kDynamicValueDependence);
+  // Ensure that the error detail is also in little endian.
+  if constexpr (absl::endian::native != absl::endian::little) {
+    DCHECK(absl::endian::native == absl::endian::big);
+    error_detail = absl::byteswap(error_detail);
+  }
+  (*error_payload.data()) = error_detail;
   error.SetPayload(internal::kEvalErrorDetailUrl, absl::Cord(error_payload));
   return error;
 }

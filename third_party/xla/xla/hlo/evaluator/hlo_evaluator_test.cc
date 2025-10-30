@@ -27,9 +27,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/internal/endian.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -7662,10 +7662,16 @@ TEST(EvalErrorTest, Payload) {
   absl::Status s = absl::InternalError("hmm");
   std::string payload;
   payload.resize(sizeof(internal::EvalErrorDetail));
-  absl::little_endian::Store32(
-      const_cast<char*>(payload.data()),
-      static_cast<uint32_t>(
-          internal::EvalErrorDetail::kDynamicValueDependence));
+
+  uint32_t error_detail =
+      static_cast<uint32_t>(internal::EvalErrorDetail::kDynamicValueDependence);
+  // Ensure that the error detail is also in little endian.
+  if constexpr (absl::endian::native != absl::endian::little) {
+    DCHECK(absl::endian::native == absl::endian::big);
+    error_detail = absl::byteswap(error_detail);
+  }
+  (*payload.data()) = error_detail;
+
   s.SetPayload(internal::kEvalErrorDetailUrl, absl::Cord(payload));
 
   EXPECT_EQ(internal::ParseEvalErrorDetail(s),
