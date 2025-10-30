@@ -10,3 +10,9 @@ xtile.entry_func @fails_illegal_op(%arg0: memref<2xf32>, %arg1: index) {
 }
 
 // -----
+
+func.func @iota_2d_fails() -> tensor<2x2xi32> {
+  // expected-error @+1 {{Only 1D iota is supported}}
+  %0 = stablehlo.iota dim = 0 :  tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
