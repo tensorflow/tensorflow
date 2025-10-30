@@ -46,11 +46,12 @@ def ShloToVectorPass : Pass<"xtile-cpu-shlo-to-vector", "mlir::ModuleOp"> {
   let constructor = "CreateShloToVectorPass()";
 
   let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::scf::SCFDialect",
+    "mlir::stablehlo::StablehloDialect",
     "mlir::tensor::TensorDialect",
     "mlir::vector::VectorDialect",
-    "mlir::stablehlo::StablehloDialect",
-    "mlir::scf::SCFDialect",
-    "mlir::memref::MemRefDialect",
   ];
 }
 
