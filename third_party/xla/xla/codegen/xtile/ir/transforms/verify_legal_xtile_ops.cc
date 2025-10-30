@@ -83,8 +83,16 @@ std::optional<absl::string_view> IsLegalTensorOp(mlir::Operation* op) {
 std::optional<absl::string_view> IsLegalStablehloOp(mlir::Operation* op) {
   if (mlir::isa<mlir::stablehlo::BroadcastInDimOp, mlir::stablehlo::ReduceOp,
                 mlir::stablehlo::ReturnOp, mlir::stablehlo::TransposeOp,
-                mlir::stablehlo::IotaOp, mlir::stablehlo::DotGeneralOp,
-                mlir::stablehlo::ReshapeOp>(op)) {
+                mlir::stablehlo::DotGeneralOp, mlir::stablehlo::ReshapeOp>(
+          op)) {
+    return std::nullopt;
+  }
+
+  if (auto iota = mlir::dyn_cast<mlir::stablehlo::IotaOp>(op)) {
+    if (iota.getType().getRank() != 1) {
+      return "Only 1D iota is supported";
+    }
+
     return std::nullopt;
   }
 
