@@ -127,13 +127,27 @@ SymbolicMap SymbolicMap::ReplaceDimsAndSymbols(
     absl::Span<const SymbolicExpr> dim_replacements,
     absl::Span<const SymbolicExpr> sym_replacements, int64_t num_result_dims,
     int64_t num_result_symbols) const {
-  CHECK_EQ(dim_replacements.size(), num_dimensions_);
-  CHECK_EQ(sym_replacements.size(), num_symbols_);
+  CHECK(dim_replacements.empty() || dim_replacements.size() == num_dimensions_);
+  CHECK(sym_replacements.empty() || sym_replacements.size() == num_symbols_);
 
   llvm::SmallVector<SymbolicExpr> all_replacements;
   all_replacements.reserve(num_dimensions_ + num_symbols_);
-  absl::c_copy(dim_replacements, std::back_inserter(all_replacements));
-  absl::c_copy(sym_replacements, std::back_inserter(all_replacements));
+
+  if (!dim_replacements.empty()) {
+    absl::c_copy(dim_replacements, std::back_inserter(all_replacements));
+  } else {
+    for (int i = 0; i < num_dimensions_; ++i) {
+      all_replacements.push_back(ctx_->CreateVariable(i));
+    }
+  }
+
+  if (!sym_replacements.empty()) {
+    absl::c_copy(sym_replacements, std::back_inserter(all_replacements));
+  } else {
+    for (int i = 0; i < num_symbols_; ++i) {
+      all_replacements.push_back(ctx_->CreateVariable(num_dimensions_ + i));
+    }
+  }
 
   llvm::SmallVector<SymbolicExpr> new_exprs;
   new_exprs.reserve(exprs_.size());

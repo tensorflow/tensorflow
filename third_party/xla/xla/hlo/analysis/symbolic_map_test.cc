@@ -150,6 +150,42 @@ TEST_F(SymbolicMapTest, ReplaceDimsAndSymbols) {
               ElementsAre((new_d0 * c1 + new_d1) + new_s0 * c2));
 }
 
+TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsOnlyDims) {
+  SymbolicExpr d0 = CreateDimExpr(&ctx, 0);
+  SymbolicExpr d1 = CreateDimExpr(&ctx, 1);
+  int num_dims = 2;
+  SymbolicExpr s0 = CreateSymbolExpr(&ctx, 0, num_dims);
+  SymbolicExpr s1 = CreateSymbolExpr(&ctx, 1, num_dims);
+  int num_symbols = 2;
+  SymbolicExpr c1 = ctx.CreateConstant(10);
+  SymbolicExpr c2 = ctx.CreateConstant(20);
+
+  SymbolicMap map =
+      SymbolicMap::Get(&ctx, num_dims, num_symbols, {d0 + s0, d1 * s1});
+  SymbolicMap replaced = map.ReplaceDimsAndSymbols(
+      /*dim_replacements=*/{c1, c2}, /*sym_replacements=*/{}, num_dims,
+      num_symbols);
+  EXPECT_THAT(replaced.GetResults(), ElementsAre(c1 + s0, c2 * s1));
+}
+
+TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsOnlySymbols) {
+  SymbolicExpr d0 = CreateDimExpr(&ctx, 0);
+  SymbolicExpr d1 = CreateDimExpr(&ctx, 1);
+  int num_dims = 2;
+  SymbolicExpr s0 = CreateSymbolExpr(&ctx, 0, num_dims);
+  SymbolicExpr s1 = CreateSymbolExpr(&ctx, 1, num_dims);
+  int num_symbols = 2;
+  SymbolicExpr c1 = ctx.CreateConstant(10);
+  SymbolicExpr c2 = ctx.CreateConstant(20);
+
+  SymbolicMap map =
+      SymbolicMap::Get(&ctx, num_dims, num_symbols, {d0 + s0, d1 * s1});
+  SymbolicMap replaced = map.ReplaceDimsAndSymbols(
+      /*dim_replacements=*/{}, /*sym_replacements=*/{c1, c2}, num_dims,
+      num_symbols);
+  EXPECT_THAT(replaced.GetResults(), ElementsAre(d0 + c1, d1 * c2));
+}
+
 TEST_F(SymbolicMapTest, Compose) {
   SymbolicExpr d0 = CreateDimExpr(&ctx, 0);
   SymbolicExpr d1 = CreateDimExpr(&ctx, 1);
@@ -207,8 +243,8 @@ TEST_F(SymbolicMapTest, Compose) {
 }
 
 TEST_F(SymbolicMapTest, Replace) {
-  SymbolicExpr d0 = ctx.CreateVariable(0);
-  SymbolicExpr d1 = ctx.CreateVariable(1);
+  SymbolicExpr d0 = CreateDimExpr(&ctx, 0);
+  SymbolicExpr d1 = CreateDimExpr(&ctx, 1);
   SymbolicExpr c2 = ctx.CreateConstant(2);
   SymbolicExpr c5 = ctx.CreateConstant(5);
 
