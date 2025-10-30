@@ -83,7 +83,7 @@ class XStatsBuilder {
   void ParseAndAddStatValue(const XStatMetadata& metadata,
                             absl::string_view value) {
     int64_t int_value;
-    uint64 uint_value;
+    uint64_t uint_value;
     double double_value;
     if (absl::SimpleAtoi(value, &int_value)) {
       AddStatValue(metadata, int_value);
@@ -116,7 +116,7 @@ class XStatsBuilder {
     return nullptr;
   }
 
-  static uint64 IntOrUintValue(const XStat& stat) {
+  static uint64_t IntOrUintValue(const XStat& stat) {
     return stat.value_case() == XStat::kUint64Value ? stat.uint64_value()
                                                     : stat.int64_value();
   }

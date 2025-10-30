@@ -441,7 +441,7 @@ TEST(GroupEventsTest, SemanticArgTest) {
   constexpr int64_t kIsRoot = 1;
   constexpr int64_t kStepNum = 100;
   constexpr int64_t kContextType = 123;
-  constexpr uint64 kContextId = 456;
+  constexpr uint64_t kContextId = 456;
 
   XSpace raw_space;
   XPlane* raw_plane = raw_space.add_planes();
@@ -479,8 +479,8 @@ TEST(GroupEventsTest, SemanticIntArgNoMatchTest) {
   constexpr int64_t kIsRoot = 1;
   constexpr int64_t kStepNum = 100;
   constexpr int64_t kContextType = 123;
-  constexpr uint64 kProducerId = 456;
-  constexpr uint64 kConsumerId = 789;
+  constexpr uint64_t kProducerId = 456;
+  constexpr uint64_t kConsumerId = 789;
 
   XSpace raw_space;
   XPlane* raw_plane = raw_space.add_planes();
@@ -522,8 +522,8 @@ TEST(GroupEventsTest, SemanticUintArgNoMatchTest) {
   constexpr int64_t kIsRoot = 1;
   constexpr int64_t kStepNum = 100;
   constexpr int64_t kContextType = 123;
-  constexpr uint64 kProducerId = UINT64_MAX;
-  constexpr uint64 kConsumerId = UINT64_MAX - 1;
+  constexpr uint64_t kProducerId = UINT64_MAX;
+  constexpr uint64_t kConsumerId = UINT64_MAX - 1;
 
   XSpace raw_space;
   XPlane* raw_plane = raw_space.add_planes();
@@ -641,7 +641,7 @@ TEST(GroupEventsTest, BatchingSessionTest) {
   EXPECT_EQ(group_metadata_map.at(1).children.size(), 1);
   EXPECT_EQ(group_metadata_map.at(2).children.size(), 1);
   // Check that the events have the selected_group_ids stat set.
-  uint64 num_checked = 0;
+  uint64_t num_checked = 0;
   CreateTfXPlaneVisitor(raw_plane).ForEachLine([&](const XLineVisitor& line) {
     line.ForEachEvent([&](const XEventVisitor& event) {
       std::optional<int64_t> group_id;
