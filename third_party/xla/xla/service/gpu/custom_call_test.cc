@@ -21,6 +21,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_map.h"
+#include "xla/literal_util.h"
+
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
@@ -776,6 +780,92 @@ TEST_F(CustomCallTest, FfiExecutionState) {
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
   TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+}
+
+//===----------------------------------------------------------------------===//
+// Asynchronous custom calls example.
+//===----------------------------------------------------------------------===//
+
+// This is an example of how to implement an asynchronous custom call:
+//
+//   1. Start custom call initiates async operations and extends the lifetime of
+//      the input buffer by aliasing it with the output.
+//   2. Done custom call waits for the async operations to complete and returns
+//      the result.
+//
+// Because HLO type system doesn't allow to express arbitrary values passed
+// between operations, we rely on a "side channel" to communicate between
+// start and done custom calls. In this example, this side channel is
+// implemented as a global static map.
+static absl::NoDestructor<absl::flat_hash_map<int32_t, void*>> async_work_map;
+
+static absl::Status AsyncStartCustomCall(ffi::AnyBuffer arg,
+                                         ffi::Result<ffi::AnyBuffer> ret,
+                                         int32_t channel) {
+  // Inside that start custom call we alias input with output and by doing that
+  // extend the lifetime of the input buffer until the linked done custom call.
+  EXPECT_EQ(arg.untyped_data(), ret->untyped_data());
+  EXPECT_EQ(arg.element_type(), F32);
+  EXPECT_EQ(ret->element_type(), F32);
+
+  EXPECT_TRUE(async_work_map->empty());
+  async_work_map->insert({channel, arg.untyped_data()});
+
+  return absl::OkStatus();
+}
+
+static absl::Status AsyncDoneCustomCall(ffi::AnyBuffer arg,
+                                        ffi::Result<ffi::AnyBuffer> ret,
+                                        int32_t channel) {
+  // In done custom call we "allocate" real result buffer.
+  EXPECT_NE(arg.untyped_data(), ret->untyped_data());
+  EXPECT_EQ(arg.element_type(), F32);
+
+  // Chat that argument is the same as the one we put into a map earlier.
+  EXPECT_EQ(async_work_map->at(channel), arg.untyped_data());
+
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(
+    kAsyncStartCustomCall, AsyncStartCustomCall,
+    ffi::Ffi::Bind().Arg<ffi::AnyBuffer>().Ret<ffi::AnyBuffer>().Attr<int32_t>(
+        "channel"));
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.async_start_custom_call",
+                         PLATFORM, kAsyncStartCustomCall);
+
+XLA_FFI_DEFINE_HANDLER(
+    kAsyncDoneCustomCall, AsyncDoneCustomCall,
+    ffi::Ffi::Bind().Arg<ffi::AnyBuffer>().Ret<ffi::AnyBuffer>().Attr<int32_t>(
+        "channel"));
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.async_done_custom_call",
+                         PLATFORM, kAsyncDoneCustomCall);
+
+TEST_F(CustomCallTest, AsyncCustomCalls) {
+  auto shape = ShapeUtil::MakeShape(F32, {});
+
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, shape, "p0");
+
+  auto start = CustomCall(
+      &b, "xla.gpu.async_start_custom_call",
+      /*operands=*/{Copy(p0)}, ShapeUtil::MakeShape(F32, {}),
+      /*opaque=*/"{channel = 0 : i32}",
+      /*has_side_effect=*/false,
+      /*output_operand_aliasing=*/{{{}, {0, {}}}}, /*literal=*/nullptr,
+      /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+
+  CustomCall(&b, "xla.gpu.async_done_custom_call",
+             /*operands=*/{start}, ShapeUtil::MakeShape(F32, {}),
+             /*opaque=*/"{channel = 0 : i32}",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+
+  Literal literal = LiteralUtil::CreateR0<float>(42.0f);
+  TF_ASSERT_OK(ExecuteAndTransfer(&b, {&literal}).status());
 }
 
 //===----------------------------------------------------------------------===//
