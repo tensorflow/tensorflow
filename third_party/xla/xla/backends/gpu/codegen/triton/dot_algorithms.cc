@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -160,8 +161,8 @@ absl::StatusOr<Value> ScaledDot(EmitterLocOpBuilder b,
   Value rhs_scale;
   if (rhs_dot_elem_type != ttir::ScaleDotElemType::BF16) {
     rhs_scale = Bitcast(b, operands.rhs_scale, b.getI8Type());
-    rhs_scale =
-        b.create<ttir::TransOp>(rhs_scale, mlir::ArrayRef<int32_t>{1, 0});
+    rhs_scale = b.create<mlir::stablehlo::TransposeOp>(
+        rhs_scale, b.getDenseI64ArrayAttr({1, 0}));
   }
 
   // make type with the same shape as the scale but with i8 type

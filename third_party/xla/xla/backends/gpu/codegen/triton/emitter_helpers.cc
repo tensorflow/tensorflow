@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -501,7 +502,7 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
                   mh::ComparisonDirection::NE),
           inputs[1], inputs[2]);
     case HloOpcode::kReducePrecision:
-      return mh::reducePrecision<mt::BitcastOp>(
+      return mh::reducePrecision<mlir::tensor::BitcastOp>(
           b.getLoc(), inputs[0], hlo.exponent_bits(), hlo.mantissa_bits(), &b);
     default:
       return absl::InvalidArgumentError(
