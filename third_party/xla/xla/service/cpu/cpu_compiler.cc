@@ -1988,8 +1988,20 @@ CpuCompiler::CompileCpuExecutable(
   target_machine_options_proto.set_triple(
       target_machine->getTargetTriple().getTriple());
   target_machine_options_proto.set_cpu(target_machine->getTargetCPU());
+
+  // TODO(basioli): Target machine features are returning an empty string at the
+  // moment so for now we are using the host CPU features. This should be
+  // updated to use the target machine features of the target we are actually
+  // compiling for as we might want to support cross-compilation.
+  auto host_machine_features = llvm::sys::getHostCPUFeatures();
+  std::vector<absl::string_view> enabled_features;
+  for (const auto& feature : host_machine_features) {
+    if (feature.getValue()) {
+      enabled_features.push_back(feature.getKey());
+    }
+  }
   target_machine_options_proto.set_features(
-      target_machine->getTargetFeatureString());
+      absl::StrJoin(enabled_features, ","));
 
   TF_ASSIGN_OR_RETURN(
       auto cpu_executable,

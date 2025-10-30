@@ -22,13 +22,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/TargetParser/Host.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
@@ -182,6 +183,21 @@ CpuAotLoader::LoadAotCompilationResult(
   if (triple.getArchName() != expected_triple.getArchName()) {
     return Internal("Target arch mismatch expected %s got %s.",
                     expected_triple.getArchName(), triple.getArchName());
+  }
+
+  auto compile_machine_features =
+      absl::StrSplit(aot_result_proto.target_machine_options().features(), ',');
+
+  auto host_machine_features = llvm::sys::getHostCPUFeatures();
+
+  for (const auto& feature : compile_machine_features) {
+    if (!host_machine_features.contains(feature) ||
+        !host_machine_features[feature]) {
+      return Internal(
+          "Cannot load AOT result. Target machine feature %s is not supported "
+          "on the host machine.",
+          feature);
+    }
   }
 
   std::vector<SymbolProto> compiled_symbols_proto;

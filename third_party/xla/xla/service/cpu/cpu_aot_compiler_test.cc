@@ -18,9 +18,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/StringMap.h"  // IWYU pragma: keep
+#include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/compiler.h"
@@ -169,6 +170,17 @@ ENTRY main {
       llvm::Triple(cpu_aot_result->proto().target_machine_options().triple())
           .getArchName(),
       llvm::Triple(kTargetTripleForHost).getArchName());
+
+  auto host_machine_features = llvm::sys::getHostCPUFeatures();
+  std::vector<absl::string_view> enabled_features;
+  for (const auto& feature : host_machine_features) {
+    if (feature.getValue()) {
+      enabled_features.push_back(feature.getKey());
+    }
+  }
+
+  EXPECT_EQ(cpu_aot_result->proto().target_machine_options().features(),
+            absl::StrJoin(enabled_features, ","));
 }
 
 }  // namespace
