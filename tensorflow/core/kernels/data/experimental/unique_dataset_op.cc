@@ -47,7 +47,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(
         Iterator::Params{this, absl::StrCat(prefix, "::Unique")});
   }
@@ -60,7 +60,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return absl::StrCat("UniqueDatasetOp::Dataset");
   }
 
@@ -173,7 +173,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
         } else {
           DCHECK_EQ(DT_STRING, t.dtype());
           auto flat_t = t.flat<tstring>();
-          uint64 hash = 0;
+          uint64_t hash = 0;
           for (int64_t i = 0; i < t.NumElements(); ++i) {
             hash = Hash64Combine(hash, Hash64(flat_t(i)));
           }
