@@ -16,7 +16,10 @@ limitations under the License.
 #include "xla/backends/autotuner/autotuner.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -25,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "google/protobuf/any.pb.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
@@ -41,6 +45,7 @@ limitations under the License.
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/executable.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/tsl/platform/env.h"
@@ -50,7 +55,6 @@ limitations under the License.
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -72,6 +76,38 @@ std::string UnpackedAnyShortDebugString(const google::protobuf::Any& any) {
   std::string type_url = absl::StrCat(" [", any.type_url(), "] ");
   absl::StrReplaceAll({{type_url, ""}}, &s);
   return s;
+}
+
+// It is important to fingerprint the entire module not just the autotuning
+// candidates, to avoid collisions in the key-value store when several
+// distinct modules have the same fusions, and are compiled at different
+// times by the same PjRt client.
+//
+// TODO(b/394763704): Eliminate the sharding feature when we have offline
+// autotuning. See below for an explanation of some issues.
+//
+// Theoretically, we also want to include the hash of the module config
+// to ensure that a module compiled twice with different configs is
+// autotuned twice.
+//
+// This is important since the config could e.g. affect codegen, or the
+// space of possible parameters for autotuning. As a result, the autotuning
+// results could look very different for the same module.
+//
+// Why is it not done here? Well, proto serialization is non-deterministic
+// and may change across different builds. Which means that users who run
+// on several hosts with different CPUs may end up generating different
+// fingerprints for the same module config. They would then fail to
+// exchange results through the key value store, which would lead to
+// deadlocks. Therefore, we don't hash the module config here.
+//
+// The flip side is this: if we compile the same module twice in the same
+// client, but with a different module config each time, we may hit the
+// cache the second time and recover potentially inferior, or incomplete
+// autotuning results.
+std::string GetKvStoreKey(const HloModule* module, int shard_index) {
+  return absl::StrCat("autotune_results_", module->GetFingerprint128(), "_",
+                      shard_index);
 }
 
 }  // namespace
@@ -110,15 +146,15 @@ absl::StatusOr<std::unique_ptr<Autotuner>> Autotuner::Create(
 
 absl::Status Autotuner::Autotune(HloModule* module,
                                  const InstructionFilterFn& should_autotune) {
-  InstructionsByFingerprint instrunctions_by_fingerprint =
+  InstructionsByFingerprint instructions_by_fingerprint =
       GetAutotuningCandidates(module, should_autotune);
-  if (instrunctions_by_fingerprint.empty()) {
+  if (instructions_by_fingerprint.empty()) {
     VLOG(1) << "No instructions to autotune.";
     return absl::OkStatus();
   }
-  VLOG(1) << "Finding configs for " << instrunctions_by_fingerprint.size()
+  VLOG(1) << "Finding configs for " << instructions_by_fingerprint.size()
           << " unique instructions.";
-  for (auto& [_, instructions] : instrunctions_by_fingerprint) {
+  for (auto& [_, instructions] : instructions_by_fingerprint) {
     CHECK(!instructions.empty());
     TF_ASSIGN_OR_RETURN(Config config, GetConfig(instructions[0]));
     CodegenBackend* codegen_backend = config.codegen_backend;
@@ -128,6 +164,101 @@ absl::Status Autotuner::Autotune(HloModule* module,
     }
   }
   return DumpLogsToFile();
+}
+
+absl::Status Autotuner::Autotune(HloModule* module,
+                                 const InstructionFilterFn& should_autotune,
+                                 MultiProcessKeyValueStore& sharding_kv_store) {
+  CHECK(cache_ != nullptr) << "Sharding autotuning requires a cache.";
+  int total_shards = sharding_kv_store.process_count;
+  int my_shard_index = sharding_kv_store.process_index;
+
+  // 1. Get all the instructions that could be autotuned.
+  InstructionsByFingerprint all_instructions_by_fingerprint =
+      GetAutotuningCandidates(module, should_autotune);
+  if (all_instructions_by_fingerprint.empty()) {
+    VLOG(1) << "No instructions to autotune.";
+    return absl::OkStatus();
+  }
+
+  // 2. Shard and get instructions to autotune for current shard.
+  const size_t bucket_size =
+      std::ceil(static_cast<double>(all_instructions_by_fingerprint.size()) /
+                static_cast<double>(total_shards));
+  const size_t start = bucket_size * my_shard_index;
+  const size_t end =
+      std::min(start + bucket_size, all_instructions_by_fingerprint.size());
+  InstructionsByFingerprint instructions_by_fingerprint(
+      std::next(all_instructions_by_fingerprint.begin(), start),
+      std::next(all_instructions_by_fingerprint.begin(), end));
+
+  // 3. Autotune instructions for this shard. Use cached configs if available,
+  // otherwise autotune and cache the best config.
+  VLOG(1) << "Shard " << my_shard_index << "/" << total_shards
+          << ": finding configs for " << instructions_by_fingerprint.size()
+          << "/" << all_instructions_by_fingerprint.size()
+          << " unique instructions ";
+  std::vector<const HloInstruction*> autotuned_instructions;
+  for (auto& [_, instructions] : instructions_by_fingerprint) {
+    CHECK(!instructions.empty());
+    TF_ASSIGN_OR_RETURN(Config config, GetConfig(instructions[0]));
+    autotuned_instructions.push_back(instructions[0]);
+  }
+  TF_RETURN_IF_ERROR(DumpLogsToFile());
+
+  // 4. Store the results for this shard as a serialized string to the KV store.
+  KeyValueStoreInterface& kv_store = *sharding_kv_store.key_value_store;
+  const std::string local_key = GetKvStoreKey(module, my_shard_index);
+  std::string local_results;
+  if (!autotuned_instructions.empty()) {
+    TF_ASSIGN_OR_RETURN(local_results,
+                        cache_->Serialize(autotuned_instructions));
+  }
+  absl::StatusOr<std::string> stored_result = kv_store.TryGet(local_key);
+  if (stored_result.status().code() == absl::StatusCode::kNotFound) {
+    VLOG(2) << "Storing results for " << local_key;
+    TF_RETURN_IF_ERROR(kv_store.Set(local_key, local_results));
+    VLOG(2) << "Shard " << my_shard_index << " stored results at " << local_key;
+  } else if (!stored_result.ok()) {
+    return stored_result.status();
+  } else {
+    VLOG(2) << "Results already exist for " << local_key << ", skipping store.";
+  }
+
+  // 5. Load the autotune results of other shards from the KV store and update
+  // the current shard's cache by deserializing the results.
+  for (int i = 0; i < total_shards; ++i) {
+    if (i == my_shard_index) {
+      continue;
+    }
+    const std::string remote_key = GetKvStoreKey(module, i);
+    VLOG(2) << "Shard " << my_shard_index << ": waiting for results from shard "
+            << i << " / " << total_shards << " at " << remote_key;
+    // TODO(b/361009609): reset to infinite duration once issue with MPI is
+    // fixed. https://github.com/google/jax/issues/22995.
+    TF_ASSIGN_OR_RETURN(std::string remote_results,
+                        kv_store.Get(remote_key, absl::Hours(24)));
+    if (!remote_results.empty()) {
+      TF_RETURN_IF_ERROR(cache_->Deserialize(remote_results));
+    }
+  }
+
+  // 6. Apply the results to all candidate instructions, must be already in
+  // cache_ due to step 3 and 5 above.
+  for (auto& [_, instructions] : all_instructions_by_fingerprint) {
+    CHECK(!instructions.empty());
+    std::optional<Config> cached_config = LookUp(instructions[0]);
+    CHECK(cached_config.has_value())
+        << "Sharding autotuning failed: no config found for HLO: " +
+               instructions[0]->ToString();
+    CodegenBackend* codegen_backend = cached_config->codegen_backend;
+    for (auto* instr : instructions) {
+      TF_RETURN_IF_ERROR(
+          codegen_backend->ApplyConfig(*instr, *cached_config->backend_config));
+    }
+  }
+
+  return absl::OkStatus();
 }
 
 absl::Status Autotuner::Autotune(HloInstruction* instr) {
@@ -221,15 +352,15 @@ absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
 
 Autotuner::InstructionsByFingerprint Autotuner::GetAutotuningCandidates(
     const HloModule* module, const InstructionFilterFn& should_autotune) {
-  InstructionsByFingerprint instrunctions_by_fingerprint;
+  InstructionsByFingerprint instructions_by_fingerprint;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
       if (should_autotune(*instr)) {
-        instrunctions_by_fingerprint[GetFingerprint(instr)].push_back(instr);
+        instructions_by_fingerprint[GetFingerprint(instr)].push_back(instr);
       }
     }
   }
-  return instrunctions_by_fingerprint;
+  return instructions_by_fingerprint;
 }
 
 std::optional<Autotuner::Config> Autotuner::LookUp(

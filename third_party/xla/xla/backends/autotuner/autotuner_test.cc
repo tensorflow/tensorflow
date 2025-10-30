@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/shaped_buffer.h"
@@ -66,6 +68,7 @@ MATCHER_P(ConfigMatcher, name, "") {
 }
 
 MATCHER_P(InstructionMatcher, opcode, "") { return arg.opcode() == opcode; }
+MATCHER_P(InstrPtrMatcher, opcode, "") { return arg->opcode() == opcode; }
 
 std::unique_ptr<google::protobuf::Any> GetTestConfig(std::string name) {
   TestConfig config;
@@ -125,6 +128,11 @@ class MockAutotunerCache : public AutotunerCacheInterface {
               (const HloInstruction* instr,
                const AutotunerCacheInterface::Config& best_config),
               (override));
+  MOCK_METHOD(absl::StatusOr<std::string>, Serialize,
+              (absl::Span<const HloInstruction* const> instructions),
+              (override));
+  MOCK_METHOD(absl::Status, Deserialize, (absl::string_view serialized_cache),
+              (override));
 };
 
 using absl_testing::IsOk;
@@ -143,29 +151,27 @@ se::DeviceDescription CreateDummyDeviceDescription() {
 
 absl::StatusOr<std::unique_ptr<Autotuner>> SetupAutotunerWithExpectations(
     HloOpcode instr_to_autotune,
-    std::pair<HloOpcode, int> instr_to_apply_config_and_count) {
-  auto cache_manager = std::make_unique<MockAutotunerCache>();
-  EXPECT_CALL(*cache_manager, Lookup(_)).WillRepeatedly(Return(std::nullopt));
-  EXPECT_CALL(*cache_manager, Insert(_, _))
-      .WillRepeatedly(Return(absl::OkStatus()));
-
+    std::vector<std::pair<HloOpcode, int>> instrs_to_apply_config_and_count,
+    std::unique_ptr<MockAutotunerCache> cache = nullptr) {
   std::vector<std::unique_ptr<BackendConfig>> configs;
-  configs.push_back(GetTestConfig("test_config_1"));
-  configs.push_back(GetTestConfig("test_config_2"));
+  configs.push_back(GetTestConfig("another_config"));
+  configs.push_back(GetTestConfig("best_config"));
 
   auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
   EXPECT_CALL(*backend,
               GetSupportedConfigs(InstructionMatcher(instr_to_autotune)))
       .WillOnce(Return(std::move(configs)));
   EXPECT_CALL(*backend, Compile(_, _))
       .WillOnce(Return(std::unique_ptr<Executable>()))
       .WillOnce(Return(std::unique_ptr<Executable>()));
-  HloOpcode instr_to_apply_config = instr_to_apply_config_and_count.first;
-  int count = instr_to_apply_config_and_count.second;
-  EXPECT_CALL(*backend,
-              ApplyConfig(InstructionMatcher(instr_to_apply_config), _))
-      .Times(count)
-      .WillRepeatedly(Return(absl::OkStatus()));
+  for (const auto& [instr_to_apply_config, count] :
+       instrs_to_apply_config_and_count) {
+    EXPECT_CALL(*backend,
+                ApplyConfig(InstructionMatcher(instr_to_apply_config), _))
+        .Times(count)
+        .WillRepeatedly(Return(absl::OkStatus()));
+  }
 
   auto profiler = std::make_unique<MockProfiler>();
   auto device_description = CreateDummyDeviceDescription();
@@ -178,7 +184,7 @@ absl::StatusOr<std::unique_ptr<Autotuner>> SetupAutotunerWithExpectations(
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend));
   return Autotuner::Create(std::move(backends), std::move(profiler),
-                           GetTestAutotuneConfig(), std::move(cache_manager));
+                           GetTestAutotuneConfig(), std::move(cache));
 }
 
 constexpr absl::string_view kHlo = R"(
@@ -371,7 +377,7 @@ TEST_F(AutotunerTest, AutotuneModuleFollowsFilter) {
       std::unique_ptr<Autotuner> autotuner,
       SetupAutotunerWithExpectations(
           /*instr_to_autotune=*/HloOpcode::kCopy,
-          /*instr_to_apply_config_and_count=*/{HloOpcode::kCopy, 1}));
+          /*instrs_to_apply_config_and_count=*/{{HloOpcode::kCopy, 1}}));
 
   EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune),
               absl_testing::IsOk());
@@ -388,7 +394,7 @@ TEST_F(AutotunerTest, AutotuneModuleWithDuplicateInstructions) {
       std::unique_ptr<Autotuner> autotuner,
       SetupAutotunerWithExpectations(
           /*instr_to_autotune=*/HloOpcode::kAdd,
-          /*instr_to_apply_config_and_count=*/{HloOpcode::kAdd, 2}));
+          /*instrs_to_apply_config_and_count=*/{{HloOpcode::kAdd, 2}}));
 
   EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune), IsOk());
 }
@@ -743,6 +749,72 @@ TEST_F(AutotunerTest, UseDefaultConfigUnimplemented) {
   auto dummy_instr = module->entry_computation()->root_instruction();
   EXPECT_DEATH(autotuner->Autotune(dummy_instr).IgnoreError(),
                "GetDefaultConfig is not implemented for mock_backend");
+}
+
+class MockKeyValueStore : public KeyValueStoreInterface {
+ public:
+  MOCK_METHOD(absl::Status, Set,
+              (absl::string_view key, absl::string_view value), (override));
+  MOCK_METHOD(absl::StatusOr<std::string>, Get,
+              (absl::string_view key, absl::Duration timeout), (override));
+  MOCK_METHOD(absl::StatusOr<std::string>, TryGet, (absl::string_view key),
+              (override));
+};
+
+AutotunerCacheInterface::Config GetCacheConfig(absl::string_view name) {
+  AutotunerCacheInterface::Config config;
+  config.codegen_backend_name = "mock_backend";
+  config.backend_config = *GetTestConfig(std::string(name));
+  return config;
+};
+
+TEST_F(AutotunerTest, ShardedAutotuning) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  constexpr int kShardCount = 2;
+  auto should_autotune = [](const HloInstruction& instruction) {
+    return instruction.opcode() == HloOpcode::kAdd ||
+           instruction.opcode() == HloOpcode::kCopy;
+  };
+  auto kv_store = std::make_shared<MockKeyValueStore>();
+  auto cache = std::make_unique<MockAutotunerCache>();
+
+  // Shard 0 autotunes kCopy instructions, updates the cache and serializes the
+  // result to a string "kCopy_autotune_result".
+  EXPECT_CALL(*cache, Lookup(InstrPtrMatcher(HloOpcode::kCopy)))
+      .WillOnce(Return(std::nullopt))                    // During autotuning.
+      .WillOnce(Return(GetCacheConfig("best_config")));  // Config application.
+  EXPECT_CALL(*cache, Insert(InstrPtrMatcher(HloOpcode::kCopy), _))
+      .WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*cache, Serialize(_)).WillOnce(Return("kCopy_autotune_result"));
+  // Stores the serialized results to the KV store if it does not exist.
+  EXPECT_CALL(*kv_store, TryGet(testing::HasSubstr("_0")))
+      .WillOnce(Return(absl::NotFoundError("not found")));
+  EXPECT_CALL(*kv_store, Set(testing::HasSubstr("_0"), "kCopy_autotune_result"))
+      .WillOnce(Return(absl::OkStatus()));
+
+  // Shard 0 reads the KV store entry for shard 1 and updates the current cache.
+  EXPECT_CALL(*kv_store, Get(testing::HasSubstr("_1"), _))
+      .WillOnce(Return("kAdd_autotune_result"));
+  EXPECT_CALL(*cache, Deserialize("kAdd_autotune_result"))
+      .WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*cache, Lookup(InstrPtrMatcher(HloOpcode::kAdd)))
+      .WillOnce(Return(GetCacheConfig("best_config")));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Autotuner> autotuner,
+      SetupAutotunerWithExpectations(
+          /*instr_to_autotune=*/HloOpcode::kCopy,
+          /*instrs_to_apply_config_and_count=*/
+          {{HloOpcode::kCopy, 1}, {HloOpcode::kAdd, 2}}, std::move(cache)));
+
+  MultiProcessKeyValueStore sharding_kv_store;
+  sharding_kv_store.key_value_store = kv_store;
+  sharding_kv_store.process_count = kShardCount;
+  sharding_kv_store.process_index = 0;
+  EXPECT_THAT(
+      autotuner->Autotune(module.get(), should_autotune, sharding_kv_store),
+      IsOk());
 }
 
 }  // namespace

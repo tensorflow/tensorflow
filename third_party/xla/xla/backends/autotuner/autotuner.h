@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/executable.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -102,6 +103,13 @@ class Autotuner {
   // ignored.
   absl::Status Autotune(HloModule* module,
                         const InstructionFilterFn& should_autotune);
+
+  // Same as above, but also takes a sharding KV store which helps to shard
+  // the autotuning work across multiple processes.
+  // This is used for distributed autotuning.
+  absl::Status Autotune(HloModule* module,
+                        const InstructionFilterFn& should_autotune,
+                        MultiProcessKeyValueStore& sharding_kv_store);
 
  private:
   using InstructionsByFingerprint =
