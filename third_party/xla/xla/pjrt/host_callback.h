@@ -64,7 +64,7 @@ class ThreadSafePjRtChunkQueue {
  public:
   // Push a PjRtChunk into the queue.
   void Push(PjRtChunk chunk) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (promises_.empty()) {
       queue_.push_back(std::move(chunk));
       return;
@@ -76,7 +76,7 @@ class ThreadSafePjRtChunkQueue {
 
   // Pop a PjRtChunk future from the queue.
   Future<PjRtChunk> Pop() {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (queue_.empty()) {
       auto [promise, future] = Future<PjRtChunk>::MakePromise();
       promises_.push_back(std::move(promise));
