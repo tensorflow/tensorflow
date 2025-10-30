@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/resource_requests.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/platform.h"
@@ -44,6 +46,7 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+using absl_testing::IsOk;
 using absl_testing::StatusIs;
 using ::testing::HasSubstr;
 
@@ -196,6 +199,125 @@ TEST(CustomCallThunkTest, ResolvesLegacyCustomCall) {
   EXPECT_THAT(thunk->ExecuteOnStream(params),
               StatusIs(absl::StatusCode::kInternal,
                        HasSubstr("Legacy Custom call was executed!")));
+}
+
+TEST(CustomCallThunkTest, CustomCallWithOwnedHandlers) {
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          executor->CreateStream());
+  int instantiate_calls = 0;
+  int prepare_calls = 0;
+  int initialize_calls = 0;
+  int execute_calls = 0;
+  CustomCallThunk::OwnedHandlerBundle bundle;
+  bundle.instantiate =
+      ffi::Ffi::Bind<ffi::ExecutionStage::kInstantiate>().To([&]() {
+        ++instantiate_calls;
+        return absl::OkStatus();
+      });
+  bundle.prepare = ffi::Ffi::Bind<ffi::ExecutionStage::kPrepare>().To([&]() {
+    ++prepare_calls;
+    return absl::OkStatus();
+  });
+  bundle.initialize =
+      ffi::Ffi::Bind<ffi::ExecutionStage::kInitialize>().To([&]() {
+        ++initialize_calls;
+        return absl::OkStatus();
+      });
+  bundle.execute = ffi::Ffi::Bind<ffi::ExecutionStage::kExecute>().To([&]() {
+    ++execute_calls;
+    return absl::OkStatus();
+  });
+  se::StreamExecutorMemoryAllocator allocator(executor);
+  Thunk::PrepareParams prepare_params = Thunk::PrepareParams{};
+  ResourceRequests resource_requests;
+  BufferAllocations buffer_allocations({}, 0, &allocator);
+  Thunk::InitializeParams initialize_params;
+  initialize_params.stream = stream.get();
+  initialize_params.buffer_allocations = &buffer_allocations;
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+      ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
+      stream.get(), stream.get(), nullptr, nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CustomCallThunk> thunk,
+      CustomCallThunk::Create(Thunk::ThunkInfo(), "target_name",
+                              std::move(bundle),
+                              /*operands=*/{},
+                              /*results=*/{}, /*attributes=*/{},
+                              /*called_computation=*/nullptr));
+  EXPECT_EQ(instantiate_calls, 1);
+  EXPECT_EQ(prepare_calls, 0);
+  EXPECT_EQ(initialize_calls, 0);
+  EXPECT_EQ(execute_calls, 0);
+
+  EXPECT_THAT(thunk->Prepare(prepare_params, resource_requests), IsOk());
+  EXPECT_EQ(instantiate_calls, 1);
+  EXPECT_EQ(prepare_calls, 1);
+  EXPECT_EQ(initialize_calls, 0);
+  EXPECT_EQ(execute_calls, 0);
+
+  EXPECT_THAT(thunk->Initialize(initialize_params), IsOk());
+  EXPECT_EQ(instantiate_calls, 1);
+  EXPECT_EQ(prepare_calls, 1);
+  EXPECT_EQ(initialize_calls, 1);
+  EXPECT_EQ(execute_calls, 0);
+
+  EXPECT_THAT(thunk->ExecuteOnStream(execute_params), IsOk());
+  EXPECT_EQ(initialize_calls, 1);
+  EXPECT_EQ(instantiate_calls, 1);
+  EXPECT_EQ(prepare_calls, 1);
+  EXPECT_EQ(execute_calls, 1);
+}
+
+TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutOptionalOnes) {
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          executor->CreateStream());
+  int execute_calls = 0;
+  CustomCallThunk::OwnedHandlerBundle bundle;
+  bundle.execute = ffi::Ffi::Bind().To([&]() {
+    ++execute_calls;
+    return absl::OkStatus();
+  });
+  se::StreamExecutorMemoryAllocator allocator(executor);
+  Thunk::PrepareParams prepare_params = Thunk::PrepareParams{};
+  ResourceRequests resource_requests;
+  Thunk::InitializeParams initialize_params = Thunk::InitializeParams{};
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+      ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
+      stream.get(), stream.get(), nullptr, nullptr);
+
+  // Optional handlers are null and shouldn't be invoked.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CustomCallThunk> thunk,
+      CustomCallThunk::Create(Thunk::ThunkInfo(), "target_name",
+                              std::move(bundle),
+                              /*operands=*/{},
+                              /*results=*/{}, /*attributes=*/{},
+                              /*called_computation=*/nullptr));
+  EXPECT_THAT(thunk->Prepare(prepare_params, resource_requests), IsOk());
+  EXPECT_THAT(thunk->Initialize(initialize_params), IsOk());
+  EXPECT_THAT(thunk->ExecuteOnStream(execute_params), IsOk());
+  EXPECT_EQ(execute_calls, 1);
+}
+
+TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutExecute) {
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          executor->CreateStream());
+  CustomCallThunk::OwnedHandlerBundle bundle;  // all handlers null
+  se::StreamExecutorMemoryAllocator allocator(executor);
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+      ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
+      stream.get(), stream.get(), nullptr, nullptr);
+
+  EXPECT_THAT(CustomCallThunk::Create(Thunk::ThunkInfo(), "target_name",
+                                      std::move(bundle),
+                                      /*operands=*/{},
+                                      /*results=*/{}, /*attributes=*/{},
+                                      /*called_computation=*/nullptr),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace
