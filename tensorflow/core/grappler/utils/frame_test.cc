@@ -53,7 +53,7 @@ class FrameViewTest : public ::testing::Test {
       frame_name.set_s(frame);
       node.mutable_attr()->insert({"frame_name", frame_name});
     }
-    for (const string& input : inputs) {
+    for (const std::string& input : inputs) {
       node.add_input(input);
     }
     return node;

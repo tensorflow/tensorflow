@@ -45,7 +45,7 @@ struct InputArgInstantiation {
 // Function output instantiated into a '_Retval' node in the function body
 // graph, with an 'index' attribute corresponding to the output position.
 struct OutputArgInstantiation {
-  OutputArgInstantiation(string node_name, DataType data_type)
+  OutputArgInstantiation(std::string node_name, DataType data_type)
       : node_name(std::move(node_name)), data_type(data_type) {}
   string node_name;
   DataType data_type;

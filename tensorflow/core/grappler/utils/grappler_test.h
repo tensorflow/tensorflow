@@ -78,7 +78,7 @@ class GrapplerTest : public ::testing::Test {
 
   // Checks if node 'src' is directly connected to the input($position) of
   // 'dst'.
-  bool IsNodesDirectlyConnected(const NodeMap& node_map, const string& src,
+  bool IsNodesDirectlyConnected(const NodeMap& node_map, const std::string& src,
                                 const string& dst, int position = 0);
 
   // Counts nodes of the given op-type in a graph.

@@ -411,7 +411,7 @@ TEST_F(PatternMatcherTest, MatMulBiasAddGeluExternalDependent) {
   auto root_node_view = graph_view.GetNode("gelu");
 
   SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(&graph_view);
-  std::map<string, int> matched_nodes_map;  // label to node index map
+  std::map<std::string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
       pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);

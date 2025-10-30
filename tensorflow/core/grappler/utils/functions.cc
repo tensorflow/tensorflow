@@ -431,7 +431,7 @@ class MakeFunctionDefHelper {
   // Converts input name from GraphDef format (name[:position]) to the
   // FunctionDef input format (name[:output][:position]) using registered input
   // arg instantiations and function body outputs.
-  absl::Status AsFunctionDefInput(const string& graph_def_input,
+  absl::Status AsFunctionDefInput(const std::string& graph_def_input,
                                   string* func_def_input) const;
 
   // Updates Node inputs from GraphDef to FunctionDef format.

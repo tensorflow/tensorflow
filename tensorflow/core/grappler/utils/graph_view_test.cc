@@ -136,7 +136,7 @@ TYPED_TEST(TypedGraphViewTest, GetNodeWithName) {
   TypeParam graph_view(&graph, &s);
   TF_ASSERT_OK(s);
 
-  std::vector<string> node_names = {"a", "b", "c", "d"};
+  std::vector<std::string> node_names = {"a", "b", "c", "d"};
   for (int i = 0; i < node_names.size(); ++i) {
     const string& node_name = node_names[i];
     const auto* node = graph_view.GetNode(node_name);

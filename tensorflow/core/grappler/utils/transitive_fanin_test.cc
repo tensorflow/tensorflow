@@ -30,7 +30,7 @@ namespace {
 class TransitiveFaninTest : public ::testing::Test {
  protected:
   struct NodeConfig {
-    NodeConfig(string name, std::vector<string> inputs)
+    NodeConfig(string name, std::vector<std::string> inputs)
         : name(std::move(name)), inputs(std::move(inputs)) {}
     NodeConfig(string name, string op, std::vector<string> inputs)
         : name(std::move(name)), op(std::move(op)), inputs(std::move(inputs)) {}

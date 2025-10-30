@@ -483,7 +483,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithControlOutputs) {
       },
       {}, {{"side_effects", "update"}});
 
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<std::string, AttrValue> func_instantiation_attr;
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;

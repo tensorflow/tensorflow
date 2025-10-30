@@ -60,7 +60,7 @@ string GetColocationGroupRoot(std::unordered_map<string, string>* map,
 // Merge two colocation groups into one.
 // left and right is the root node of two colocation groups respectively.
 void MergeColocationGroup(std::unordered_map<string, string>* map,
-                          const string& left, const string& right) {
+                          const string& left, const std::string& right) {
   // Do nothing if left or right node is not in the map.
   if (map->find(left) == map->end() || map->find(right) == map->end()) {
     return;
