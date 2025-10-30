@@ -2572,8 +2572,8 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
 
     if (instr->shape().IsTuple()) {
       for (auto user : instr->users()) {
-        auto user_get_tuple =
-            dynamic_cast<HloGetTupleElementInstruction*>(user);
+        HloGetTupleElementInstruction* user_get_tuple =
+            DynCast<HloGetTupleElementInstruction>(user);
         TF_RET_CHECK(user_get_tuple);
         HloInstruction* get_output =
             instr->AddInstruction(HloInstruction::CreateGetTupleElement(

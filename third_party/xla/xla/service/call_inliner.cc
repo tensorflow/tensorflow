@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -421,13 +422,13 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
   }
   if (did_node_mutate && uniquify_channel_ids_) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (!dynamic_cast<HloChannelInstruction*>(instruction)) {
+      if (!HloChannelInstruction::ClassOf(instruction)) {
         continue;
       }
       // Channel IDs for host transfers are part of the ABI, and can never be
       // uniquified.
       HloSendRecvInstruction* send_recv =
-          dynamic_cast<HloSendRecvInstruction*>(instruction);
+          DynCast<HloSendRecvInstruction>(instruction);
       if (send_recv && send_recv->is_host_transfer()) {
         continue;
       }
@@ -448,7 +449,7 @@ absl::StatusOr<bool> CallInliner::RunWithInlineMap(
     for (HloComputation* computation : module->computations()) {
       for (HloInstruction* instruction : computation->instructions()) {
         HloChannelInstruction* channel_instruction =
-            dynamic_cast<HloChannelInstruction*>(instruction);
+            DynCast<HloChannelInstruction>(instruction);
         if (channel_instruction &&
             channel_instruction->channel_id().has_value()) {
           next_unique_channel_id_ =

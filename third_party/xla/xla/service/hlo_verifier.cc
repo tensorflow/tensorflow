@@ -3210,7 +3210,7 @@ int64_t CountWriters(const HloInstruction* inst,
 int64_t CountWritersInUser(const HloInstruction* inst,
                            absl::Span<const int64_t> shape_index,
                            const HloInstruction* user) {
-  if (dynamic_cast<const HloCallableInstruction*>(user) ||
+  if (HloCallableInstruction::ClassOf(user) ||
       user->opcode() == HloOpcode::kWhile ||
       user->opcode() == HloOpcode::kConditional) {
     // For HloCallableInstruction, we may overcount here if we will allow

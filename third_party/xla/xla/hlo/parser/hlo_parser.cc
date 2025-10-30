@@ -2296,7 +2296,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
 
-      if (dynamic_cast<const HloChannelInstruction*>(operands[0]) != nullptr) {
+      if (HloChannelInstruction::ClassOf(operands[0])) {
         if (channel_id != operands[0]->channel_id()) {
           return nullptr;
         }
@@ -2333,7 +2333,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
 
-      if (dynamic_cast<const HloChannelInstruction*>(operands[0]) != nullptr) {
+      if (DynCast<const HloChannelInstruction>(operands[0]) != nullptr) {
         if (channel_id != operands[0]->channel_id()) {
           return nullptr;
         }

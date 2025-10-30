@@ -1964,7 +1964,7 @@ void SortClonedInstructions(
       continue;
     }
     ++num_mapped_instructions;
-    if (!dynamic_cast<const HloParameterInstruction*>(instruction.get())) {
+    if (!HloParameterInstruction::ClassOf(instruction.get())) {
       continue;
     }
     mapped_index_of_last_parameter_plus_one = num_mapped_instructions;
@@ -1972,7 +1972,7 @@ void SortClonedInstructions(
   auto unmapped_ptr_index =
       [num_mapped_instructions,
        mapped_index_of_last_parameter_plus_one](const HloInstruction* i) {
-        if (dynamic_cast<const HloParameterInstruction*>(i)) {
+        if (HloParameterInstruction::ClassOf(i)) {
           if (num_mapped_instructions > 0 &&
               mapped_index_of_last_parameter_plus_one > 0) {
             return mapped_index_of_last_parameter_plus_one - 1;

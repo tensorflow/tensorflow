@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -980,8 +981,7 @@ ENTRY main {
   ASSERT_THAT(call_inliner.Run(m.get()), absl_testing::IsOkAndHolds(true));
   HloComputation* entry = m->entry_computation();
   for (HloInstruction* inst : entry->instructions()) {
-    HloSendRecvInstruction* send_recv =
-        dynamic_cast<HloSendRecvInstruction*>(inst);
+    HloSendRecvInstruction* send_recv = DynCast<HloSendRecvInstruction>(inst);
     if (send_recv && send_recv->is_host_transfer()) {
       EXPECT_EQ(send_recv->channel_id(), 1);
     }
@@ -1025,8 +1025,7 @@ ENTRY main {
   absl::flat_hash_set<int64_t> channel_ids;
   for (HloComputation* comp : m->computations()) {
     for (HloInstruction* inst : comp->instructions()) {
-      HloChannelInstruction* channel =
-          dynamic_cast<HloChannelInstruction*>(inst);
+      HloChannelInstruction* channel = DynCast<HloChannelInstruction>(inst);
       if (channel && channel->channel_id().has_value()) {
         channel_ids.insert(channel->channel_id().value());
       }

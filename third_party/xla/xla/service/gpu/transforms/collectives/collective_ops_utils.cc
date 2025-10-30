@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -69,8 +70,8 @@ absl::StatusOr<CommunicationMetadata> CommunicationContext(
     const HloChannelInstruction& instr, int num_devices_per_host) {
   absl::flat_hash_map<int64_t, size_t> node_to_participant_count;
 
-  if (auto* collective =
-          dynamic_cast<const HloCollectiveInstruction*>(&instr)) {
+  if (const HloCollectiveInstruction* collective =
+          DynCast<HloCollectiveInstruction>(&instr)) {
     for (const ReplicaGroup& replica_group :
          collective->device_list().replica_groups()) {
       absl::flat_hash_map<int64_t, size_t> buffer;
@@ -88,9 +89,10 @@ absl::StatusOr<CommunicationMetadata> CommunicationContext(
         node_to_participant_count = buffer;
       }
     }
-  } else if (auto* permute =
-                 dynamic_cast<const HloCollectivePermuteInstruction*>(&instr)) {
-    for (const auto& [source, target] : permute->source_target_pairs()) {
+  } else if (const HloCollectivePermuteInstruction* collective_permute =
+                 DynCast<HloCollectivePermuteInstruction>(&instr)) {
+    for (const auto& [source, target] :
+         collective_permute->source_target_pairs()) {
       int64_t source_node = source / num_devices_per_host;
       int64_t target_node = target / num_devices_per_host;
       node_to_participant_count[source_node]++;

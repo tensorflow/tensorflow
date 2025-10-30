@@ -848,7 +848,7 @@ HloSendDoneInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
-  HloSendInstruction* send = dynamic_cast<HloSendInstruction*>(new_operands[0]);
+  HloSendInstruction* send = DynCast<HloSendInstruction>(new_operands[0]);
   if (send != nullptr) {
     return std::make_unique<HloSendDoneInstruction>(send, is_host_transfer());
   }
@@ -907,7 +907,7 @@ HloRecvDoneInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
-  HloRecvInstruction* recv = dynamic_cast<HloRecvInstruction*>(new_operands[0]);
+  HloRecvInstruction* recv = DynCast<HloRecvInstruction>(new_operands[0]);
   if (recv != nullptr) {
     return std::make_unique<HloRecvDoneInstruction>(recv, is_host_transfer());
   }

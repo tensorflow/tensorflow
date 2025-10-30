@@ -2812,7 +2812,7 @@ TEST_F(CollectivePipelinerTest, TransformRecvSendBackwards) {
   auto should_pipeline = [](const HloInstruction* instruction) {
     if (!HloPredicateIsOp<HloOpcode::kRecvDone>(instruction)) return false;
     const HloRecvDoneInstruction* recv_done =
-        dynamic_cast<const HloRecvDoneInstruction*>(instruction);
+        DynCast<const HloRecvDoneInstruction>(instruction);
     if (recv_done->is_host_transfer()) return false;
     // Check that the recv-done is used for non-trivial computation, which can
     // also help avoid repeatedly pipelining a loop.
@@ -2910,7 +2910,7 @@ TEST_F(CollectivePipelinerTest,
         !HloPredicateIsOp<HloOpcode::kSend>(instr))
       return false;
     const HloSendRecvInstruction* send_recv =
-        dynamic_cast<const HloSendRecvInstruction*>(instr);
+        DynCast<const HloSendRecvInstruction>(instr);
     // Check that the Send or Recv is used for non-trivial computation, which
     // also help avoid repeatedly pipelining a loop.
     return (send_recv->user_count() == 1 && send_recv->parent() != nullptr &&

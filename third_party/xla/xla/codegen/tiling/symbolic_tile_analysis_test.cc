@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -104,7 +105,7 @@ absl::flat_hash_map<int64_t, const TiledHloInstruction*> GetParametersTiling(
   absl::flat_hash_map<int64_t, const TiledHloInstruction*> result;
   for (const auto& instruction : tiled_hlo_computation->instructions()) {
     const HloParameterInstruction* parameter =
-        dynamic_cast<const HloParameterInstruction*>(instruction->hlo());
+        DynCast<const HloParameterInstruction>(instruction->hlo());
     if (!parameter) {
       continue;
     }
