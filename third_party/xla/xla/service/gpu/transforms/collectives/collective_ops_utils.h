@@ -46,6 +46,17 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
 // Returns true if instruction is a synchronous collective op.
 bool IsGPUSyncCollective(const HloInstruction& instr);
 
+enum class P2PDirectionType {
+  kBidirectional,
+  kUnidirectional,
+};
+
+// Returns the P2P direction type. A collective permute is bidirectional if for
+// every source-target-pair (A,B), there is also a (B,A) pair. Otherwise, it is
+// unidirectional.
+P2PDirectionType GetP2PDirectionType(
+    const HloCollectivePermuteInstruction& collective_permute);
+
 }  // namespace gpu
 }  // namespace xla
 
