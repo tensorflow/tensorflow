@@ -167,6 +167,23 @@ class SymbolicExprContext {
   mlir::MLIRContext* mlir_context_;
 };
 
+// Free function to create a constant SymbolicExpr.
+inline SymbolicExpr GetSymbolicConstantExpr(int64_t constant,
+                                            SymbolicExprContext* context) {
+  return context->CreateConstant(constant);
+}
+
+// Free function to create a vector of constant SymbolicExprs.
+inline llvm::SmallVector<SymbolicExpr> GetSymbolicConstantExprs(
+    llvm::ArrayRef<int64_t> constants, SymbolicExprContext* context) {
+  llvm::SmallVector<SymbolicExpr> exprs;
+  exprs.reserve(constants.size());
+  for (int64_t constant : constants) {
+    exprs.push_back(GetSymbolicConstantExpr(constant, context));
+  }
+  return exprs;
+}
+
 }  // namespace xla
 
 namespace llvm {
