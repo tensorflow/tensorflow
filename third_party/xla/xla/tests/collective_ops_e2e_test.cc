@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/error_spec.h"
@@ -3564,7 +3565,9 @@ INSTANTIATE_TEST_SUITE_P(
                           RaggedAllToAllImplTypeName(std::get<1>(info.param)));
     });
 
-class RaggedAllToAllMultiHostDecomposerTest : public RaggedAllToAllTestBase {
+class RaggedAllToAllMultiHostDecomposerTest
+    : public RaggedAllToAllTestBase,
+      public ::testing::WithParamInterface<std::tuple<int64_t, int64_t>> {
  public:
   RaggedAllToAllMultiHostDecomposerTest()
       : RaggedAllToAllTestBase(/*enable_async=*/false,
@@ -3582,21 +3585,25 @@ class RaggedAllToAllMultiHostDecomposerTest : public RaggedAllToAllTestBase {
   }
 };
 
-TEST_F(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_2GPUs_SliceSize1) {
-  absl::string_view kModuleReplicatedStr = R"(
+TEST_P(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_2GPUs_SliceSize1) {
+  auto [num_input_rows, num_output_rows] = GetParam();
+
+  std::string kModuleReplicatedStr =
+      absl::Substitute(R"(
   HloModule module, num_partitions=1
 
   ENTRY entry {
-    input = f32[512,5,32] parameter(0)
-    output = f32[512,5,32] parameter(1)
+    input = f32[$0,5,32] parameter(0)
+    output = f32[$1,5,32] parameter(1)
     input_offsets = s32[32] parameter(2)
     send_sizes = s32[32] parameter(3)
     output_offsets = s32[32] parameter(4)
     recv_sizes = s32[32] parameter(5)
-    ROOT ra2a = f32[512,5,32] ragged-all-to-all(input, output,
-      input_offsets, send_sizes, output_offsets, recv_sizes), 
+    ROOT ra2a = f32[$1,5,32] ragged-all-to-all(input, output,
+      input_offsets, send_sizes, output_offsets, recv_sizes),
       replica_groups={{0,1}}
-  })";
+  })",
+                       num_input_rows, num_output_rows);
 
   const int64_t kNumReplicas = 2;
   const int64_t kNumPartitions = 1;
@@ -3633,21 +3640,25 @@ TEST_F(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_2GPUs_SliceSize1) {
   }
 }
 
-TEST_F(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_8GPUs_SliceSize4) {
-  absl::string_view kModuleReplicatedStr = R"(
+TEST_P(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_8GPUs_SliceSize4) {
+  auto [num_input_rows, num_output_rows] = GetParam();
+
+  std::string kModuleReplicatedStr =
+      absl::Substitute(R"(
   HloModule module, num_partitions=1
 
   ENTRY entry {
-    input = f32[512,5,32] parameter(0)
-    output = f32[512,5,32] parameter(1)
+    input = f32[$0,5,32] parameter(0)
+    output = f32[$1,5,32] parameter(1)
     input_offsets = s32[32] parameter(2)
     send_sizes = s32[32] parameter(3)
     output_offsets = s32[32] parameter(4)
     recv_sizes = s32[32] parameter(5)
-    ROOT ra2a = f32[512,5,32] ragged-all-to-all(input, output,
-      input_offsets, send_sizes, output_offsets, recv_sizes), 
+    ROOT ra2a = f32[$1,5,32] ragged-all-to-all(input, output,
+      input_offsets, send_sizes, output_offsets, recv_sizes),
       replica_groups={{0,1,2,3,4,5,6,7}}
-  })";
+  })",
+                       num_input_rows, num_output_rows);
 
   const int64_t kNumReplicas = 8;
   const int64_t kNumPartitions = 1;
@@ -3669,7 +3680,7 @@ TEST_F(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_8GPUs_SliceSize4) {
 
   Array<int64_t> input_sizes(
       {kNumReplicas, kNumReplicas, kNumUpdatesPerReplica});
-  input_sizes.FillRandomUniform(0, 10);
+  input_sizes.FillRandomUniform(0, 16);
 
   TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
@@ -3686,22 +3697,26 @@ TEST_F(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_8GPUs_SliceSize4) {
   }
 }
 
-TEST_F(RaggedAllToAllMultiHostDecomposerTest,
+TEST_P(RaggedAllToAllMultiHostDecomposerTest,
        RaggedAllToAll_8GPUs_SliceSize4_2ReplicaGroups) {
-  absl::string_view kModuleReplicatedStr = R"(
+  auto [num_input_rows, num_output_rows] = GetParam();
+
+  std::string kModuleReplicatedStr =
+      absl::Substitute(R"(
   HloModule module, num_partitions=1
 
   ENTRY entry {
-    input = f32[512,5,32] parameter(0)
-    output = f32[512,5,32] parameter(1)
+    input = f32[$0,5,32] parameter(0)
+    output = f32[$1,5,32] parameter(1)
     input_offsets = s32[32] parameter(2)
     send_sizes = s32[32] parameter(3)
     output_offsets = s32[32] parameter(4)
     recv_sizes = s32[32] parameter(5)
-    ROOT ra2a = f32[512,5,32] ragged-all-to-all(input, output,
-      input_offsets, send_sizes, output_offsets, recv_sizes), 
+    ROOT ra2a = f32[$1,5,32] ragged-all-to-all(input, output,
+      input_offsets, send_sizes, output_offsets, recv_sizes),
       replica_groups={{0,2,4,6},{1,3,5,7}}
-  })";
+  })",
+                       num_input_rows, num_output_rows);
 
   const int64_t kNumReplicas = 8;
   const int64_t kNumReplicasPerGroup = 4;
@@ -3740,6 +3755,19 @@ TEST_F(RaggedAllToAllMultiHostDecomposerTest,
     EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[i], results[i]));
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    RaggedAllToAllMultiHostDecomposerTest,
+    RaggedAllToAllMultiHostDecomposerTest,
+    ::testing::Values(std::make_tuple(512, 4096), std::make_tuple(4096, 512)),
+    [](const ::testing::TestParamInfo<std::tuple<int64_t, int64_t>>& info) {
+      if (std::get<0>(info.param) > std::get<1>(info.param)) {
+        return absl::StrCat("combine_", std::get<0>(info.param), "_",
+                            std::get<1>(info.param));
+      }
+      return absl::StrCat("dispatch_", std::get<0>(info.param), "_",
+                          std::get<1>(info.param));
+    });
 
 TEST_F(CollectiveOpsTestE2E, MemcpyP2pWhileLoopCorrectness) {
   absl::string_view hlo_string = R"(
