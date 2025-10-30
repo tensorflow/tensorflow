@@ -242,4 +242,14 @@ def TritonXLAMathToLibdevicePass
   ];
 }
 
+def CustomCallLowerToTritonPass
+    : Pass<"custom-call-lower-to-triton", "mlir::ModuleOp"> {
+  let summary = "Lowers custom call operations to their Triton equivalent.";
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "triton::TritonDialect"
+  ];
+  let constructor = "CreateCustomCallLowerToTritonPass()";
+}
+
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

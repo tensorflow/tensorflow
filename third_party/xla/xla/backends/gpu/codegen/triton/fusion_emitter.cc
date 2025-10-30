@@ -2344,6 +2344,7 @@ absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
     // Disable verifier because the Triton code may be invalid due to the
     // unsupported types.
     pm.enableVerifier(/*enabled=*/false);
+    pm.addPass(mlir::triton::xla::CreateCustomCallLowerToTritonPass());
     pm.addPass(mlir::triton::xla::CreateTensorLowerToTritonPass());
     pm.addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass());
 
