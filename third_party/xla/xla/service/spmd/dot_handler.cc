@@ -4349,7 +4349,7 @@ absl::Status SpmdPartitioningVisitor::HandleDotHelper(
                      num_partitions_, create_sharded_dot, conv_window, module_,
                      hlo, options_, &b_, &windowed_dot_general_loops_, this));
   }
-  SetPartitionedHlo(hlo, [partitioned_dot] { return partitioned_dot; });
+  SetPartitionedHlo(hlo, partitioned_dot);
   return absl::OkStatus();
 }
 
