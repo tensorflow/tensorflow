@@ -406,7 +406,7 @@ class GrpcPollingThread {
 class RpcClient : public ResourceBase {
  public:
   explicit RpcClient(std::string address, std::string resource_name,
-                     int64 timeout_in_ms)
+                     int64_t timeout_in_ms)
       : server_address_(address),
         thread_(resource_name),
         timeout_in_ms_(timeout_in_ms) {
@@ -428,7 +428,7 @@ class RpcClient : public ResourceBase {
 
   void CallAsync(const std::string& method_name,
                  const std::vector<Tensor>& inputs, CallResponse* response,
-                 StatusCallback callback, int64 timeout_in_ms) {
+                 StatusCallback callback, int64_t timeout_in_ms) {
     CallRequest request;
     request.set_method(method_name);
     for (const auto& t : inputs) {
@@ -436,7 +436,7 @@ class RpcClient : public ResourceBase {
     }
     ::grpc::ClientContext context;
     // Use per call timeout if specified, otherwise use default client timeout.
-    int64 timeout = timeout_in_ms > 0 ? timeout_in_ms : timeout_in_ms_;
+    int64_t timeout = timeout_in_ms > 0 ? timeout_in_ms : timeout_in_ms_;
     new RPCState<CallResponse>(
         stub_.get(), cq_, "/tensorflow.rpc.RpcService/Call", request, response,
         /*done=*/std::move(callback),
@@ -468,7 +468,7 @@ class RpcClient : public ResourceBase {
   ::grpc::CompletionQueue* cq_;
   GrpcPollingThread thread_;
   std::unique_ptr<thread::ThreadPool> callback_threadpool_;
-  int64 timeout_in_ms_;
+  int64_t timeout_in_ms_;
 };
 
 class RpcFutureResource : public ResourceBase {
@@ -685,7 +685,7 @@ void RpcServerRegisterOp::Compute(OpKernelContext* ctx) {
     instantiate_opts.input_devices.push_back(ctx->device()->name());
   }
 
-  absl::flat_hash_map<string, std::vector<string>> composite_devices;
+  absl::flat_hash_map<std::string, std::vector<std::string>> composite_devices;
   for (int i = 0; i < captured.size(); ++i) {
     if (captured[i].dtype() == DT_RESOURCE) {
       instantiate_opts.input_devices.push_back(GetFunctionResourceInputDevice(
