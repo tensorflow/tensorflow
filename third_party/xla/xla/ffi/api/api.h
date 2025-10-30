@@ -488,6 +488,10 @@ namespace internal {
 // parameter packs. We need this to be able to pattern match FFI handler
 // signature at compile time.
 
+// A type tag for decoding argument.
+template <typename T>
+struct ArgTag {};
+
 // A type tag for decoding optional argument.
 template <typename T>
 struct OptionalArgTag {};
@@ -524,23 +528,23 @@ template <typename T>
 struct CtxTag {};
 
 //----------------------------------------------------------------------------//
-// A template for counting tagged arguments in the Ts pack (i.e. attributes).
+// A template for counting tagged arguments in the Ts pack.
 //----------------------------------------------------------------------------//
 
-template <template <typename> class Tag, typename... Ts>
+template <template <typename> typename Tag, typename... Ts>
 struct NumTagged;
 
-template <template <typename> class Tag>
+template <template <typename> typename Tag>
 struct NumTagged<Tag> {
   static constexpr int64_t value = 0;
 };
 
-template <template <typename> class Tag, typename T, typename... Ts>
+template <template <typename> typename Tag, typename T, typename... Ts>
 struct NumTagged<Tag, Tag<T>, Ts...> {
   static constexpr int64_t value = 1 + NumTagged<Tag, Ts...>::value;
 };
 
-template <template <typename> class Tag, typename T, typename... Ts>
+template <template <typename> typename Tag, typename T, typename... Ts>
 struct NumTagged<Tag, T, Ts...> {
   static constexpr int64_t value = 0 + NumTagged<Tag, Ts...>::value;
 };
@@ -622,7 +626,7 @@ template <ExecutionStage stage, typename... Ts>
 class Binding {
  public:
   template <typename T>
-  Binding<stage, Ts..., T> Arg() && {
+  Binding<stage, Ts..., internal::ArgTag<T>> Arg() && {
     static_assert(!internal::HasOptionalArgTag<Ts...>::value,
                   "argument can't be passed after optional argument");
     static_assert(!internal::HasRemainingArgsTag<Ts...>::value,
@@ -1159,7 +1163,10 @@ struct DecodingContext {
 };
 
 template <typename T>
-struct Decode {
+struct Decode;
+
+template <typename T>
+struct Decode<ArgTag<T>> {
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<T> call(DecodingOffsets& offsets, DecodingContext& ctx,
                                DiagnosticEngine& diagnostic) {
@@ -1178,7 +1185,7 @@ struct Decode<OptionalArgTag<T>> {
     if (XLA_FFI_PREDICT_FALSE(offsets.args >= ctx.call_frame->args.size)) {
       return std::optional<T>(std::nullopt);
     }
-    return Decode<T>::call(offsets, ctx, diagnostic);
+    return Decode<ArgTag<T>>::call(offsets, ctx, diagnostic);
   }
 };
 
@@ -1464,7 +1471,10 @@ class RemainingRets;
 namespace internal {
 // A helper struct to extract the type of the handler argument.
 template <typename T>
-struct FnArgType {
+struct FnArgType;
+
+template <typename T>
+struct FnArgType<internal::ArgTag<T>> {
   using Type = T;
 };
 
@@ -1508,44 +1518,6 @@ struct FnArgType<internal::CtxTag<T>> {
   using Type = typename CtxDecoding<T>::Type;
 };
 
-// A template for checking if type in a parameter pack is a tagged one and has
-// a special decoding rule defined by template specialization.
-template <typename>
-struct IsTagged : std::false_type {};
-
-template <typename T>
-struct IsTagged<OptionalArgTag<T>> : std::true_type {};
-template <typename T>
-struct IsTagged<RetTag<T>> : std::true_type {};
-template <typename T>
-struct IsTagged<OptionalRetTag<T>> : std::true_type {};
-template <typename T>
-struct IsTagged<AttrTag<T>> : std::true_type {};
-template <typename T>
-struct IsTagged<AttrsTag<T>> : std::true_type {};
-template <typename T>
-struct IsTagged<CtxTag<T>> : std::true_type {};
-
-template <>
-struct IsTagged<RemainingArgsTag> : std::true_type {};
-template <>
-struct IsTagged<RemainingRetsTag> : std::true_type {};
-
-// A template for counting regular arguments in the Ts pack (arguments that are
-// not wrapped into a special tag).
-template <typename... Ts>
-struct NumArgs;
-
-template <>
-struct NumArgs<> {
-  static constexpr int64_t value = 0;
-};
-
-template <typename T, typename... Ts>
-struct NumArgs<T, Ts...> {
-  static constexpr int64_t value = !IsTagged<T>::value + NumArgs<Ts...>::value;
-};
-
 // A template to detect result encodings that are state constructors. We use
 // this to report back the TypeId of the state as a part of the metadata.
 template <typename ResultEnconding, typename = void>
@@ -1574,7 +1546,8 @@ template <ExecutionStage stage, typename Fn, typename... Ts>
 class Handler : public Ffi {
   static constexpr int64_t kSize = sizeof...(Ts);
 
-  static constexpr int64_t kNumArgs = internal::NumArgs<Ts...>::value;
+  static constexpr int64_t kNumArgs =
+      internal::NumTagged<internal::ArgTag, Ts...>::value;
 
   static constexpr int64_t kNumOptionalArgs =
       internal::NumTagged<internal::OptionalArgTag, Ts...>::value;

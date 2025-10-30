@@ -61,6 +61,15 @@ limitations under the License.
 
 namespace xla::ffi {
 
+using xla::ffi::internal::ArgTag;
+using xla::ffi::internal::NumTagged;
+using xla::ffi::internal::RetTag;
+
+// Compile-time test for the template metaprogramming for counting tags.
+static_assert(NumTagged<ArgTag, RetTag<int32_t>>::value == 0);
+static_assert(NumTagged<ArgTag, ArgTag<int32_t>>::value == 1);
+static_assert(NumTagged<ArgTag, ArgTag<int32_t>, RetTag<int32_t>>::value == 1);
+
 enum class Int32BasedEnum : int32_t {
   kOne = 1,
   kTwo = 2,
