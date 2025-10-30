@@ -68,17 +68,17 @@ namespace port {
 
 void InitMain(const char* usage, int* argc, char*** argv) {}
 
-string Hostname() {
+std::string Hostname() {
   char hostname[1024];
   gethostname(hostname, sizeof hostname);
   hostname[sizeof hostname - 1] = 0;
-  return string(hostname);
+  return std::string(hostname);
 }
 
-string JobName() {
+std::string JobName() {
   const char* job_name_cs = std::getenv("TF_JOB_NAME");
   if (job_name_cs != nullptr) {
-    return string(job_name_cs);
+    return std::string(job_name_cs);
   }
   return "";
 }
@@ -166,7 +166,7 @@ int NumHyperthreadsPerCore() {
   return (ht_per_core > 0) ? ht_per_core : 1;
 }
 
-bool Snappy_Compress(const char* input, size_t length, string* output) {
+bool Snappy_Compress(const char* input, size_t length, std::string* output) {
 #ifdef TF_USE_SNAPPY
   output->resize(snappy::MaxCompressedLength(length));
   size_t outlen;
@@ -179,7 +179,7 @@ bool Snappy_Compress(const char* input, size_t length, string* output) {
 }
 
 bool Snappy_CompressFromIOVec(const struct iovec* iov,
-                              size_t uncompressed_length, string* output) {
+                              size_t uncompressed_length, std::string* output) {
 #ifdef TF_USE_SNAPPY
   output->resize(snappy::MaxCompressedLength(uncompressed_length));
   size_t outlen;
@@ -219,7 +219,7 @@ bool Snappy_UncompressToIOVec(const char* compressed, size_t compressed_length,
 #endif
 }
 
-static void DemangleToString(const char* mangled, string* out) {
+static void DemangleToString(const char* mangled, std::string* out) {
   int status = 0;
   char* demangled = nullptr;
 #if TENSORFLOW_HAS_CXA_DEMANGLE
@@ -233,8 +233,8 @@ static void DemangleToString(const char* mangled, string* out) {
   }
 }
 
-string Demangle(const char* mangled) {
-  string demangled;
+std::string Demangle(const char* mangled) {
+  std::string demangled;
   DemangleToString(mangled, &demangled);
   return demangled;
 }

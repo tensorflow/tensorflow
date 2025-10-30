@@ -55,10 +55,10 @@ namespace {
 
 ABSL_CONST_INIT absl::Mutex name_mutex(absl::kConstInit);
 
-std::map<std::thread::id, string>& GetThreadNameRegistry()
+std::map<std::thread::id, std::string>& GetThreadNameRegistry()
     TF_EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
   static auto* const thread_name_registry =
-      new std::map<std::thread::id, string>();
+      new std::map<std::thread::id, std::string>();
   return *thread_name_registry;
 }
 
@@ -125,11 +125,11 @@ class PosixEnv : public Env {
 
   ~PosixEnv() override { LOG(FATAL) << "Env::Default() must not be destroyed"; }
 
-  bool MatchPath(const string& path, const string& pattern) override {
+  bool MatchPath(const std::string& path, const std::string& pattern) override {
     return fnmatch(pattern.c_str(), path.c_str(), FNM_PATHNAME) == 0;
   }
 
-  void SleepForMicroseconds(int64 micros) override {
+  void SleepForMicroseconds(int64_t micros) override {
     while (micros > 0) {
       timespec sleep_time;
       sleep_time.tv_sec = 0;
@@ -150,12 +150,13 @@ class PosixEnv : public Env {
     }
   }
 
-  Thread* StartThread(const ThreadOptions& thread_options, const string& name,
+  Thread* StartThread(const ThreadOptions& thread_options,
+                      const std::string& name,
                       absl::AnyInvocable<void()> fn) override {
     return new PThread(thread_options, name, std::move(fn));
   }
   void StartDetachedThread(const ThreadOptions& thread_options,
-                           const string& name,
+                           const std::string& name,
                            absl::AnyInvocable<void()> fn) override {
     PThread detached(thread_options, name, std::move(fn), /*detached=*/true);
   }
@@ -166,7 +167,7 @@ class PosixEnv : public Env {
     return current_thread_id;
   }
 
-  bool GetCurrentThreadName(string* name) override {
+  bool GetCurrentThreadName(std::string* name) override {
     {
       absl::MutexLock l(name_mutex);
       auto thread_name =
@@ -202,7 +203,7 @@ class PosixEnv : public Env {
     closure_thread.detach();
   }
 
-  void SchedClosureAfter(int64 micros,
+  void SchedClosureAfter(int64_t micros,
                          absl::AnyInvocable<void()> closure) override {
     // TODO(b/27290852): Consuming a thread here is wasteful, but this
     // code is (currently) only used in the case where a step fails
@@ -223,14 +224,14 @@ class PosixEnv : public Env {
     return internal::GetSymbolFromLibrary(handle, symbol_name, symbol);
   }
 
-  string FormatLibraryFileName(const string& name,
-                               const string& version) override {
+  std::string FormatLibraryFileName(const std::string& name,
+                                    const std::string& version) override {
     return internal::FormatLibraryFileName(name, version);
   }
 
-  string GetRunfilesDir() override {
-    string bin_path = this->GetExecutablePath();
-    string runfiles_suffix = ".runfiles/org_tensorflow";
+  std::string GetRunfilesDir() override {
+    std::string bin_path = this->GetExecutablePath();
+    std::string runfiles_suffix = ".runfiles/org_tensorflow";
     std::size_t pos = bin_path.find(runfiles_suffix);
 
     // Sometimes (when executing under python) bin_path returns the full path to
@@ -241,7 +242,7 @@ class PosixEnv : public Env {
 
     // See if we have the executable path. if executable.runfiles exists, return
     // that folder.
-    string runfiles_path = bin_path + runfiles_suffix;
+    std::string runfiles_path = bin_path + runfiles_suffix;
     absl::Status s = this->IsDirectory(runfiles_path);
     if (s.ok()) {
       return runfiles_path;
@@ -252,7 +253,7 @@ class PosixEnv : public Env {
   }
 
  private:
-  void GetLocalTempDirectories(std::vector<string>* list) override;
+  void GetLocalTempDirectories(std::vector<std::string>* list) override;
 
   int64_t GetCurrentThreadIdInternal() {
 #ifdef __APPLE__
@@ -282,7 +283,7 @@ Env* Env::Default() {
 }
 #endif
 
-void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
+void PosixEnv::GetLocalTempDirectories(std::vector<std::string>* list) {
   list->clear();
   // Directories, in order of preference. If we find a dir that
   // exists, we stop adding other less-preferred dirs
@@ -307,7 +308,7 @@ void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
     if (!d || d[0] == '\0') continue;  // Empty env var
     paths.push_back(d);
     // Make sure we don't surprise anyone who's expecting a '/'
-    string dstr = d;
+    std::string dstr = d;
     if (dstr[dstr.size() - 1] != '/') {
       dstr += "/";
     }
