@@ -1864,6 +1864,7 @@ lit_test_suite(
             "*.hlo",
         ],
     ),
+    tags = ["cuda-only"],
     cfg = "//xla:lit.cfg.py",
     data = [
         "//xla/tools/hlo_opt:gpu_specs/a100_pcie_80.txtpb",

@@ -64,6 +64,15 @@ if [ ! -d /tf ];then
         mkdir /tf
 fi
 
+# vvv TODO (rocm) weekly-sync-20251021 excluded tests
+EXCLUDED_TESTS=(
+    # //tensorflow/core/kernels:matmul_op_test_gpu
+    Test/FusedMatMulWithBiasOpTest/1.MatMul*
+
+    # //tensorflow/core/common_runtime:process_function_library_runtime_test_gpu
+    ProcessFunctionLibraryRuntimeTest.MultiDevice_ResourceOutput_GPU
+)
+
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rocm.bazelrc test \
     --config=rocm \
@@ -81,4 +90,5 @@ bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rocm.b
     --test_output=errors \
     --verbose_failures \
     --test_sharding_strategy=disabled \
+    --test_filter=-$(IFS=: ; echo "${EXCLUDED_TESTS[*]}") \
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute

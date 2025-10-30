@@ -54,7 +54,7 @@ class BufferDebugLogTest : public ::testing::Test {
  protected:
   void SetUp() override {
     TF_ASSERT_OK_AND_ASSIGN(platform_,
-                            PlatformManager::PlatformWithName("CUDA"));
+                            PlatformManager::PlatformWithName("ROCM"));
     TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =

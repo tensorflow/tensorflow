@@ -257,7 +257,6 @@ py_strict_test(
     ],
     shard_count = 20,
     tags = [
-        "cuda-only",  #TODO(rocm): weekly-sync 24-12-10
         "gpu",
         "no_pip",
         "requires-gpu-nvidia",

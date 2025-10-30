@@ -29,8 +29,10 @@ namespace xla::gpu {
 namespace {
 
 std::string TestIRFile() {
-  return tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
-                           "llvm_gpu_backend", "tests_data", "amdgpu.ll");
+  auto path = tsl::testing::XlaSrcRoot();
+  path = path.erase(path.length() - 4);
+  return tsl::io::JoinPath(path, "external/local_xla/xla",
+          "service", "gpu", "llvm_gpu_backend", "tests_data", "amdgpu.ll");
 }
 
 bool HasUndefinedFunctions(const llvm::Module& M) {

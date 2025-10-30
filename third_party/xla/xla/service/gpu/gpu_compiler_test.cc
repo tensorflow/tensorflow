@@ -615,8 +615,11 @@ ENTRY main {
 class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
  public:
   void SetUp() override {
+    auto tmp_path = tsl::testing::XlaSrcRoot();
+    tmp_path = tmp_path.erase(tmp_path.length() - 4);
     std::string path =
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
+        tsl::io::JoinPath(tmp_path, "external/local_xla/xla/",
+                          "service", "gpu",
                           "gpu_compiler_test_autotune_db.textproto");
 
     tsl::Env* env = tsl::Env::Default();

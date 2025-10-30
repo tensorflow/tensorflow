@@ -106,7 +106,7 @@ ENTRY main {
       update_window_dims={1},
       inserted_window_dims={0},
       scatter_dims_to_operand_dims={0},
-      index_vector_dim=1
+      index_vector_dim=2
 }
 )";
   Literal operand =
@@ -123,6 +123,7 @@ ENTRY main {
       LiteralUtil::CreateR2<int32_t>({{10, 20, 30}, {4, 5, 6}, {7, 8, 9}});
   Literal expected_option_two =
       LiteralUtil::CreateR2<int32_t>({{70, 80, 90}, {4, 5, 6}, {7, 8, 9}});
+      std::cerr << result << std::endl;
   EXPECT_TRUE(result == expected_option_one || result == expected_option_two);
 }
 

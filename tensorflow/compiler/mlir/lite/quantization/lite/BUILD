@@ -32,7 +32,6 @@ cc_library(
     ],
     tags = [
         "no_mac",
-        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite:common",

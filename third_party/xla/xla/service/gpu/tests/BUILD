@@ -236,7 +236,7 @@ xla_test(
         "gpu_too_many_blocks_test.cc",
     ],
     backends = ["gpu"],
-    tags = ["cuda-only",], #(TODO)(rocm): weekly sync 24-11-05
+    #tags = ["cuda-only",], #(TODO)(rocm): weekly sync 24-11-05
     deps = [
         ":gpu_codegen_test",
         "//xla/hlo/ir:hlo",
@@ -599,7 +599,7 @@ xla_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    tags = ["cuda-only"], #TODO(rocm): weekly-sync-250514
+    tags = ["cuda-only"],
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -806,8 +806,7 @@ xla_test(
     backends = ["gpu"],
     shard_count = 15,
     tags = [
-        "nodebug",
-        "cuda-only"], #TODO(rocm): weekly-sync-250514
+        "nodebug"],
     deps = [
         "//xla:error_spec",
         "//xla:shape_util",

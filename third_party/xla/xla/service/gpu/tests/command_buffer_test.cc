@@ -70,6 +70,10 @@ class CommandBufferTest
     debug_options.set_xla_gpu_command_buffer_scheduling_mode(GetParam());
     return debug_options;
   }
+ public:
+  bool IsRocm() {
+    return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
+  }
 };
 
 // Test fixture that enables loop unrolling for command buffers.
@@ -79,11 +83,6 @@ class CommandBufferUnrollTest : public CommandBufferTest {
     debug_options.set_xla_gpu_command_buffer_scheduling_mode(GetParam());
     debug_options.set_xla_gpu_command_buffer_unroll_loops(true);
     return debug_options;
-  }
-
- public:
-  bool IsRocm() {
-    return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
   }
 };
 

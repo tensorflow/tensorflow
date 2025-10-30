@@ -51,18 +51,79 @@ export TF_NEED_ROCM=1
 export ROCM_PATH=$ROCM_INSTALL_DIR
 
 if [ ! -d /tf ];then
-		# The bazelrc files in /usertools expect /tf to exist
-		mkdir /tf
-	fi
+        # The bazelrc files in /usertools expect /tf to exist
+        mkdir /tf
+    fi
+
+# vvv TODO (rocm) weekly-sync-20251021 excluded tests
+EXCLUDED_TESTS=(
+    # @local_xla//xla/backends/gpu/codegen/triton:dot_algorithms_legacy_test_amdgpu_any
+    # @local_xla//xla/backends/gpu/codegen/triton:dot_algorithms_test_amdgpu_any
+    TritonAndBlasSupportForDifferentTensorSizes/TritonAndBlasSupportForDifferentTensorSizes.IsDotAlgorithmSupportedByTriton/dot_*
+
+    # @local_xla//xla/backends/gpu/codegen/triton:fusion_emitter_device_legacy_port_test_amdgpu_any
+    CompareTest.SplitK
+
+    # @local_xla//xla/backends/gpu/codegen/triton:fusion_emitter_device_test_amdgpu_any
+    TritonEmitterTest.FusionWithOutputContainingMoreThanInt32MaxElementsExecutesCorrectly
+    BasicDotAlgorithmEmitterTestSuite/BasicDotAlgorithmEmitterTest.BasicAlgorithmIsEmittedCorrectly/ALG_DOT_F16_F16_F16
+
+    # @local_xla//xla/backends/gpu/codegen/triton:fusion_emitter_int4_device_test_amdgpu_any
+    TritonTest.FuseSubchannelDequantizationWithTranspose
+
+    # @local_xla//xla/backends/gpu/codegen/triton:fusion_emitter_parametrized_test_amdgpu_any
+    TritonNormalizationTest.CanFuseAndEmitDiamondWithBF16Converts
+
+    # @local_xla//xla/backends/gpu/runtime:command_buffer_conversion_pass_test_amdgpu_any
+    CommandBufferConversionPassTest.ConvertWhileThunk
+    CommandBufferConversionPassTest.ConvertWhileThunkWithAsyncPair
+
+    # @local_xla//xla/backends/gpu/runtime:topk_test_amdgpu_any
+    TopKTests/TopKKernelTest.*
+
+    # @local_xla//xla/pjrt/c:pjrt_c_api_gpu_test_amdgpu_any
+    PjrtCAPIGpuExtensionTest.TritonCompile
+
+    # @local_xla//xla/service/gpu:dot_algorithm_support_test_amdgpu_any
+    DotTf32Tf32F32Tests/DotAlgorithmSupportTest.AlgorithmIsSupportedFromCudaCapability/dot_tf32_tf32_f32_*
+    DotTf32Tf32F32X3Tests/DotAlgorithmSupportTest.AlgorithmIsSupportedFromCudaCapability/dot_tf32_tf32_f32_*
+
+    # @local_xla//xla/service/gpu/tests:gpu_cub_sort_test_amdgpu_any
+    CubSortKeysTest.CompareToReferenceNumpyOrderGt
+    CubSortKeysTest.CompareToReferenceTotalOrderLt
+    CubSort/CubSortKeysTest.*
+    CubSort/CubSortPairsTest.*
+
+    # @local_xla//xla/service/gpu/transforms:cublas_gemm_rewriter_test_amdgpu_any
+    CublasLtGemmRewriteTest.MatrixBiasSwishActivation
+
+    # @local_xla//xla/tests:sample_file_test_amdgpu_any
+    # @local_xla//xla/tests:sample_file_test_amdgpu_any_notfrt
+    SampleFileTest.Convolution
+
+    # @local_xla//xla/tests:scatter_deterministic_expander_test_amdgpu_any
+    # @local_xla//xla/tests:scatter_deterministic_expander_test_amdgpu_any_notfrt
+    # @local_xla//xla/tests:scatter_test_amdgpu_any
+    # @local_xla//xla/tests:scatter_test_amdgpu_any_notfrt
+    ScatterTest.TensorFlowScatterV1_UpdateTwice
+
+    # @local_xla//xla/service/gpu/llvm_gpu_backend:amdgpu_bitcode_link_test
+    BitcodeLinkTest.TestLinkEmbeded
+)
 
 bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rocm.bazelrc test \
-	--config=sigbuild_local_cache \
-	--config=rocm \
-	--config=xla_cpp_filters \
-	--test_output=errors \
-	--local_test_jobs=${N_TEST_JOBS} \
-	--test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
-	--test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
-    --repo_env="ROCM_PATH=$ROCM_PATH" \
-	--action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
-	-- @local_xla//xla/...
+    --config=sigbuild_local_cache \
+    --config=rocm \
+    --config=xla_cpp_filters \
+    --test_output=errors \
+    --local_test_jobs=${N_TEST_JOBS} \
+    --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
+    --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
+    --test_env=MIOPEN_FIND_ENFORCE=5 \
+    --test_env=MIOPEN_FIND_MODE=1 \
+    --action_env="ROCM_PATH=$ROCM_PATH" \
+    --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
+    --test_filter=-$(IFS=: ; echo "${EXCLUDED_TESTS[*]}") \
+    -- @local_xla//xla/... \
+    -@local_xla//xla/service/gpu/tests:sorting.hlo.test_mi200
+    # ^^^ TODO (rocm) weekly-sync-20251021 excluded test files

@@ -55,8 +55,10 @@ class SampleFileTest : public HloRunnerAgnosticReferenceMixin<HloPjRtTestBase> {
 };
 
 TEST_F(SampleFileTest, Convolution) {
+  auto path = tsl::testing::XlaSrcRoot();
+  path = path.erase(path.length() - 4);
   const std::string filename = tsl::io::JoinPath(
-      tsl::testing::XlaSrcRoot(), "tests", "isolated_convolution.hlo");
+      path, "external/local_xla/xla/tests", "isolated_convolution.hlo");
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ReadModuleFromHloTextFile(filename));
   module->mutable_config()

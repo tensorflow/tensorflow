@@ -75,22 +75,3 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
     ],
 )
-
-cc_library(
-    name = "test_lib",
-    testonly = True,
-    srcs = ["test_lib.cc"],
-    hdrs = ["test_lib.h"],
-    visibility = [
-        "//xla/backends/cpu/codegen/tools:__subpackages__",
-        "//xla/backends/gpu/codegen/tools:__subpackages__",
-    ],
-    deps = [
-        "//xla:status_macros",
-        "//xla/hlo/ir:hlo",
-        "//xla/tools:hlo_module_loader",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)

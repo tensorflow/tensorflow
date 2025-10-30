@@ -536,7 +536,6 @@ xla_test(
     shard_count = 20,
     tags = [
         "no_mac",
-        "cuda-only", #TODO(rocm): weekly-sync 24-10-01
     ],
     deps = [
         ":fusion_emitter",

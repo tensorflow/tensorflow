@@ -1041,9 +1041,6 @@ ENTRY main {
 }
 
 TEST_F(TritonNormalizationTest, CanFuseAndEmitDiamondWithBF16Converts) {
-  if(std::holds_alternative<se::RocmComputeCapability>(GpuComputeCapability())) {
-    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250714";
-  }
   const std::string hlo_text = R"(
 HloModule softmax
 max_computation {

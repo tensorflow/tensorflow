@@ -74,7 +74,6 @@ cc_library(
     ]) + if_cuda([
         "//xla/backends/profiler/gpu:cupti_tracer",
         "//xla/stream_executor:cuda_platform",
-        "//xla/backends/profiler/gpu:cupti_tracer",
     ] + if_google(
         [
             "//third_party/py/jax/jaxlib/cuda:cuda_gpu_kernels",  # fixdeps: keep

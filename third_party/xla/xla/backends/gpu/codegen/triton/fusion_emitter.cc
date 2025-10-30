@@ -2216,8 +2216,13 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
       << "Expected a single LLVMFuncOp in the module for the entry function.";
   mlir::LLVM::LLVMFuncOp func_op = func_ops[0];
 
-  TF_ASSIGN_OR_RETURN(se::ThreadDim thread_dims,
-                      xgt::ExtractThreadDims(triton_module, func_op));
+  //TODO (rocm) weekly-sync-20251021 Remove this logic once it is upstreamed.
+   se::ThreadDim thread_dims;
+   if (hlo_config.debug_options()
+         .xla_gpu_experimental_enable_triton_warp_specialization()) {
+     TF_ASSIGN_OR_RETURN(thread_dims,
+                         xgt::ExtractThreadDims(triton_module, func_op));
+  }
   TF_ASSIGN_OR_RETURN(stream_executor::gpu::TmaMetadata tma_metadata,
                       xgt::ExtractTmaMetadata(func_op));
 

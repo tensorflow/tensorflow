@@ -442,7 +442,7 @@ class KernelThunkTmaPTXTest : public ::testing::TestWithParam<bool> {
 
 TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName("cuda"));
+                          se::PlatformManager::PlatformWithName("rocm"));
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,

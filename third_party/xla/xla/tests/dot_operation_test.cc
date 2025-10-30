@@ -335,18 +335,6 @@ class ParametricDotTest : public DotOperationTest,
         // to set it deterministically.
         propagate_grad_xy_ = param.dot_lhs_row_major ? 1 : 2;
       }
-      if (name.find("TestF32/270x270x520_MajorToMinorTT") != std::string::npos) {
-        GTEST_SKIP() << "Currently disabled on ROCm."; // TODO(rocm): weekly-sync 25-02-21
-      }
-      if (name.find("TestF32/270x270x520_MajorToMinorTF") != std::string::npos) {
-        GTEST_SKIP() << "Currently disabled on ROCm."; // TODO(rocm): weekly-sync 25-02-21
-      }
-      if (name.find("TestF32/270x270x520_MajorToMinorFT") != std::string::npos) {
-        GTEST_SKIP() << "Currently disabled on ROCm."; // TODO(rocm): weekly-sync 25-02-21
-      }
-      if (name.find("TestF32/270x270x520_MajorToMinorFF") != std::string::npos) {
-        GTEST_SKIP() << "Currently disabled on ROCm."; // TODO(rocm): weekly-sync 25-02-21
-      }
     }
   }
 
@@ -1731,13 +1719,6 @@ class EinsumTest : public DotOperationTest,
                                .default_stream_executor()
                                ->GetDeviceDescription()
                                .gpu_compute_capability();
-    if (std::holds_alternative<se::RocmComputeCapability>(gpu_comp)) {
-      absl::string_view name(
-          ::testing::UnitTest::GetInstance()->current_test_info()->name());
-      if (name.find("SimpleEinsumTest/5") != std::string::npos) {
-        GTEST_SKIP() << "Currently disabled on ROCm."; // TODO(rocm): weekly-sync 25-02-21
-      }
-    }
   }
 };
 
@@ -1836,13 +1817,6 @@ class BatchDotTest : public DotOperationTest,
                                 .default_stream_executor()
                                 ->GetDeviceDescription()
                                 .gpu_compute_capability();
-    if (std::holds_alternative<se::RocmComputeCapability>(gpu_comp)) {
-      absl::string_view name(
-          ::testing::UnitTest::GetInstance()->current_test_info()->name());
-      if (name.find("BroadcastingBatchDotTest/6") != std::string::npos) {
-        GTEST_SKIP() << "Currently disabled on ROCm."; // TODO(rocm): weekly-sync 25-02-21
-      }
-    }
   }
 };
 
@@ -1939,10 +1913,6 @@ ENTRY %test {
 }
 
 TEST_F(DotOperationTextTest, Einsum) {
-  // TODO(rocm): weekly-sync 25-02-21
-  if (std::holds_alternative<stream_executor::RocmComputeCapability>(GpuComputeComp())) {
-    GTEST_SKIP() << "Currently disabled on ROCm.";
-  }
   absl::string_view hlo_string =
       R"(
 HloModule Einsum
@@ -2170,10 +2140,6 @@ ENTRY SmallIntegerDot {
 }
 
 TEST_F(DotOperationTextTest, GpuTransposeOutput) {
-  // TODO(rocm): weekly-sync 25-02-21
-  if (std::holds_alternative<stream_executor::RocmComputeCapability>(GpuComputeComp())) {
-    GTEST_SKIP() << "Currently disabled on ROCm.";
-  }
   absl::string_view hlo_string =
       R"(
 HloModule TransposeOutput
