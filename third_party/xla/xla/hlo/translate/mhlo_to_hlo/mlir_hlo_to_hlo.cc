@@ -4428,6 +4428,15 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
   if (op->getNumResults() == 1 && !return_tuple) {
     value_map[op.getResult(0)] = custom_call;
+  } else if (op.getCallTargetName() ==
+                 xla::sdy::kGlobalToLocalShapeCallTargetName ||
+             op.getCallTargetName() ==
+                 xla::sdy::kLocalToGlobalShapeCallTargetName) {
+    // We will convert HLO to StableHLO in the ShardyXLA pipeline. These
+    // get-tuple-elements does not need to hold the frontend attributes.
+    xla::XlaScopedFrontendAttributesAssignment frontend_attributes_scope(
+        ctx.builder, xla::FrontendAttributes());
+    BuildGetTupleElementsForTupleResults(op, custom_call, ctx);
   } else {
     BuildGetTupleElementsForTupleResults(op, custom_call, ctx);
   }
