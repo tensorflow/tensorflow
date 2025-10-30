@@ -64,7 +64,12 @@ class SocketServer {
     void Pull(uint64_t uuid, absl::Span<const int> buffer_ids,
               std::vector<tsl::RCReference<ChunkDestination>> dests);
 
-    void InjectFailure();
+    enum FailureKind {
+      kPoison,
+      kProtocolFailure,
+    };
+
+    void InjectFailure(FailureKind kind = kProtocolFailure);
 
    private:
     SocketNetworkState* local_;

@@ -420,12 +420,16 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
     }
   }
 
-  void InjectFailure() {
-    uint32_t header = 12341024;
-    std::string opacket = std::string(absl::string_view(
-        reinterpret_cast<const char*>(&header), sizeof(header)));
-    opacket += "Injected Failure.";
-    SendRawFrame(std::move(opacket));
+  void InjectFailure(Connection::FailureKind kind) {
+    if (kind == Connection::kProtocolFailure) {
+      uint32_t header = 12341024;
+      std::string opacket = std::string(absl::string_view(
+          reinterpret_cast<const char*>(&header), sizeof(header)));
+      opacket += "Injected Failure.";
+      SendRawFrame(std::move(opacket));
+    } else {
+      Poison(absl::InternalError("RECOVERABLE InjectFailure"));
+    }
   }
 
   static void Accept(std::shared_ptr<PullTable> table,
@@ -495,7 +499,9 @@ void SocketServer::Connection::Pull(
   local_->Pull(uuid, buffer_ids, std::move(dests));
 }
 
-void SocketServer::Connection::InjectFailure() { local_->InjectFailure(); }
+void SocketServer::Connection::InjectFailure(FailureKind kind) {
+  local_->InjectFailure(kind);
+}
 
 absl::Status SocketServer::Start(
     const SocketAddress& addr,
