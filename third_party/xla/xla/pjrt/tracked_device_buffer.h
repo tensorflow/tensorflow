@@ -51,6 +51,7 @@ limitations under the License.
 
 namespace xla {
 
+// TODO(parkers): Implement PjRtRawBuffer API.
 class RawSEDeviceMemory : public tsl::ReferenceCounted<RawSEDeviceMemory> {
  public:
   explicit RawSEDeviceMemory(se::DeviceMemoryBase value) : value_(value) {}
@@ -69,10 +70,10 @@ class RawSEDeviceMemory : public tsl::ReferenceCounted<RawSEDeviceMemory> {
   ShapedBuffer AsShapedBuffer(PjRtDevice* device,
                               const Shape& on_device_shape) const;
 
-  static tsl::AsyncValueRef<RawSEDeviceMemory> Create(
+  static tsl::RCReference<RawSEDeviceMemory> Create(
       se::DeviceMemoryBase value, LocalDeviceState* local_device,
       se::DeviceMemoryAllocator* allocator);
-  static tsl::AsyncValueRef<RawSEDeviceMemory> CreateForeign(
+  static tsl::RCReference<RawSEDeviceMemory> CreateForeign(
       se::DeviceMemoryBase value,
       absl::AnyInvocable<void() &&> on_delete_callback);
 
@@ -129,7 +130,7 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
       ExecutionInput* execution_input,
       se::DeviceMemoryAllocator* allocator) const;
 
-  const tsl::AsyncValueRef<RawSEDeviceMemory>& device_memory() const {
+  const tsl::RCReference<RawSEDeviceMemory>& device_memory() const {
     return device_memory_;
   }
 
@@ -167,7 +168,7 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   StreamAndEventContainer LockUseAndTransferUsageEvents();
 
   TrackedDeviceBuffer(
-      PjRtDevice* device, tsl::AsyncValueRef<RawSEDeviceMemory> device_memory,
+      PjRtDevice* device, tsl::RCReference<RawSEDeviceMemory> device_memory,
       absl::Span<const BufferSequencingEventRef> definition_events);
   ~TrackedDeviceBuffer() override;
 
@@ -198,7 +199,7 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   PjRtDevice* device_;
 
   // Each host-side buffer may have several buffers on-device.
-  tsl::AsyncValueRef<RawSEDeviceMemory> device_memory_;
+  tsl::RCReference<RawSEDeviceMemory> device_memory_;
 
   // Events that are triggered when the content of one or more buffers is ready
   // during multistream execution. May be nullptr, which is used in the

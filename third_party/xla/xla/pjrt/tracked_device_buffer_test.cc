@@ -83,7 +83,7 @@ class TestDevice : public PjRtDevice {
 
 absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(
     const Shape& shape, LocalClient* client, PjRtDevice* device) {
-  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> device_buffers;
+  std::vector<tsl::RCReference<RawSEDeviceMemory>> device_buffers;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
       [&](const Shape& subshape, const ShapeIndex&) -> absl::Status {
