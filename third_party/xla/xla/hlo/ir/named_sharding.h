@@ -31,8 +31,6 @@ class NamedSharding {
     bool is_closed;
   };
 
-  std::vector<NamedSharding> tuple_shardings_;
-
   Mesh mesh_;
   std::vector<DimensionSharding> dim_shardings_;
   std::vector<AxisRef> replicated_axes_;

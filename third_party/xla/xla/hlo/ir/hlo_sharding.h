@@ -774,6 +774,13 @@ class HloSharding {
   // or else are ignored. This is to facilitate migration from the old sharding
   // format.
   //
+  // Note that for tuple NamedShardings, we reuse HloSharding's tuple_elements_
+  // field. If named sharding format is enabled each element in tuple_elements_
+  // will be an HloSharding, which itself can be a tuple or should only have
+  // named_sharding_ populated. This approach is taken to maintain backward
+  // compatibility with the existing `tuple_elements()` method, which provides a
+  // modifiable reference to a `std::vector<HloSharding>`.
+  //
   // Note that instead of reusing HloSharding's fields like metadata, we have
   // separate fields in NamedSharding to treat it as a standalone message which
   // is more clear and will help in future cleanup.
