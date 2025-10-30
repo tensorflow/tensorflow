@@ -73,7 +73,7 @@ typedef std::function<absl::Status(
 // dep from B. Originally D must run after C, post-transformation this
 // dependency is lost.
 absl::Status EncapsulateSubgraphsInFunctions(
-    string group_attribute, const Graph& graph_in,
+    std::string group_attribute, const Graph& graph_in,
     const RewriteSubgraphFn& rewrite_subgraph_fn, bool reuse_existing_functions,
     std::unique_ptr<Graph>* graph_out, FunctionLibraryDefinition* library);
 

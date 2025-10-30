@@ -172,7 +172,7 @@ RecursiveCompilabilityChecker::FindUncompilableNodes(
 }
 
 bool RecursiveCompilabilityChecker::HasXLAKernel(
-    const Node& node, string* uncompilable_reason) const {
+    const Node& node, std::string* uncompilable_reason) const {
   // There is a SymbolicGradient kernel on the XLA_JIT device, but the gradient
   // is really a kind of function call and will be handled by
   // IsCompilableCall().
@@ -424,7 +424,7 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     return false;
   }
 
-  string uncompilable_reason;
+  std::string uncompilable_reason;
   if (IsFunctionCall(*lib_runtime->GetFunctionLibraryDefinition(), node)) {
     if (!IsCompilableCall(node.def(), lib_runtime, stack_trace,
                           encapsulating_function, uncompilable_nodes)) {

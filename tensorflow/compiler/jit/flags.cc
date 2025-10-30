@@ -46,7 +46,7 @@ std::vector<Flag>* jitrt_flag_list;
 std::vector<Flag>* flag_list;
 absl::once_flag flags_init;
 
-bool SetterForXlaAutoJitFlag(const string& value) {
+bool SetterForXlaAutoJitFlag(const std::string& value) {
   int32_t opt_level;
   // We need to use the mark_for_compilation_flags directly here instead of
   // going via GetMarkForCompilationPassFlags() to avoid infinite recursion. The
@@ -81,7 +81,7 @@ bool SetterForXlaAutoJitFlag(const string& value) {
   return true;
 }
 
-bool SetterForXlaCallModuleDisabledChecks(const string& value) {
+bool SetterForXlaCallModuleDisabledChecks(const std::string& value) {
   auto directives = absl::StrSplit(value, ',', absl::SkipEmpty());
   call_module_flags->disabled_checks.insert(directives.begin(),
                                             directives.end());
@@ -231,7 +231,7 @@ void AllocateAndParseFlags() {
   mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_general = 0;
   mark_for_compilation_flags->tf_xla_min_cluster_size = 4;
   mark_for_compilation_flags->tf_xla_max_cluster_size =
-      std::numeric_limits<int32>::max();
+      std::numeric_limits<int32_t>::max();
   mark_for_compilation_flags->tf_xla_clustering_debug = false;
   mark_for_compilation_flags->tf_xla_cpu_global_jit = false;
   mark_for_compilation_flags->tf_xla_clustering_fuel =
@@ -463,7 +463,7 @@ void ResetFlags() {
 
 }  // namespace
 
-bool SetXlaAutoJitFlagFromFlagString(const string& value) {
+bool SetXlaAutoJitFlagFromFlagString(const std::string& value) {
   absl::call_once(flags_init, &AllocateAndParseFlags);
   return SetterForXlaAutoJitFlag(value);
 }
