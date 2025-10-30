@@ -1191,7 +1191,7 @@ IfrtBackend::HandleDisassembleIntoSingleDeviceArraysRequest(
   // TODO(b/282757875): Consider other ArrayCopySemantics.
   TF_ASSIGN_OR_RETURN(auto single_device_arrays,
                       array->DisassembleIntoSingleDeviceArrays(
-                          xla::ifrt::ArrayCopySemantics::kAlwaysCopy,
+                          xla::ifrt::ArrayCopySemantics::kReuseInput,
                           single_device_shard_semantics));
 
   std::vector<uint64_t> response_handles =
