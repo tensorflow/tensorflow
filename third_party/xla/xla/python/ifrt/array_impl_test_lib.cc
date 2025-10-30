@@ -462,7 +462,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferReplicated) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
                           array->DisassembleIntoSingleDeviceArrays(
-                              ArrayCopySemantics::kAlwaysCopy,
+                              ArrayCopySemantics::kReuseInput,
                               SingleDeviceShardSemantics::kAddressableShards));
   ASSERT_EQ(single_device_arrays.size(), devices.size());
   for (int i = 0; i < single_device_arrays.size(); ++i) {
@@ -547,7 +547,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
     TF_ASSERT_OK_AND_ASSIGN(
         auto single_device_arrays,
         arrays[i]->DisassembleIntoSingleDeviceArrays(
-            ArrayCopySemantics::kAlwaysCopy,
+            ArrayCopySemantics::kReuseInput,
             SingleDeviceShardSemantics::kAddressableShards));
     ASSERT_EQ(single_device_arrays.size(), devices.size());
     for (int j = 0; j < single_device_arrays.size(); ++j) {
@@ -845,7 +845,7 @@ TEST(ArrayImplTest,
     TF_ASSERT_OK_AND_ASSIGN(
         auto single_device_arrays,
         arrays[i]->DisassembleIntoSingleDeviceArrays(
-            ArrayCopySemantics::kAlwaysCopy,
+            ArrayCopySemantics::kReuseInput,
             SingleDeviceShardSemantics::kAddressableShards));
     ASSERT_EQ(single_device_arrays.size(), devices.size());
     for (int j = 0; j < single_device_arrays.size(); ++j) {
@@ -904,7 +904,7 @@ TEST(ArrayImplTest, HostBufferRoundTripAllMemoryKinds) {
     std::vector<float> new_data(6);
     tsl::Future<> future = array->CopyToHostBuffer(
         static_cast<void*>(new_data.data()), /*byte_strides=*/std::nullopt,
-        ArrayCopySemantics::kReuseInput);
+        ArrayCopySemantics::kAlwaysCopy);
     TF_ASSERT_OK(future.Await());
     EXPECT_THAT(new_data, ElementsAreArray(data));
   }
@@ -1124,7 +1124,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
     TF_ASSERT_OK_AND_ASSIGN(
         auto single_device_arrays,
         assembled_array->DisassembleIntoSingleDeviceArrays(
-            ArrayCopySemantics::kAlwaysCopy,
+            ArrayCopySemantics::kReuseInput,
             SingleDeviceShardSemantics::kAddressableShards));
 
     ASSERT_THAT(single_device_arrays, SizeIs(2));
@@ -1180,7 +1180,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleSingleDeviceArray) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
                           assembled_array->DisassembleIntoSingleDeviceArrays(
-                              ArrayCopySemantics::kAlwaysCopy,
+                              ArrayCopySemantics::kReuseInput,
                               SingleDeviceShardSemantics::kAddressableShards));
 
   ASSERT_THAT(single_device_arrays, SizeIs(1));
@@ -1276,7 +1276,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleNonAddressableArray) {
     TF_ASSERT_OK_AND_ASSIGN(
         auto single_device_arrays,
         assembled_array->DisassembleIntoSingleDeviceArrays(
-            ArrayCopySemantics::kAlwaysCopy,
+            ArrayCopySemantics::kReuseInput,
             SingleDeviceShardSemantics::kAddressableShards));
 
     ASSERT_THAT(single_device_arrays, SizeIs(0));
@@ -1351,7 +1351,7 @@ TEST(ArrayImplTest, CopyToDifferentDevice) {
 
     TF_ASSERT_OK_AND_ASSIGN(
         auto shards, arrays[i]->DisassembleIntoSingleDeviceArrays(
-                         ArrayCopySemantics::kAlwaysCopy,
+                         ArrayCopySemantics::kReuseInput,
                          SingleDeviceShardSemantics::kAddressableShards));
     for (const auto& shard : shards) {
       std::vector<float> out_data(6);
