@@ -1058,10 +1058,6 @@ message NamedShardingProto {
     bool is_closed = 2;
   }
 
-  // If this is non-empty, then all the other fields are ignored and this
-  // represents a tuple sharding.
-  repeated NamedShardingProto tuple_shardings = 1;
-
   MeshProto mesh = 2;
   // The dimension shardings tell us for each dimension of the tensor, along
   // which axes it is sharded from major to minor.
@@ -1077,6 +1073,8 @@ message NamedShardingProto {
   // combined with other shardings. Metadata should be set on individual tuple
   // elements and not tuple_sharding.
   repeated OpMetadata metadata = 6;
+
+  reserved 1;
 }
 
 // LINT.IfChange
@@ -1171,6 +1169,13 @@ message OpSharding {
   // If this field is populated, all other fields in OpSharding should be empty
   // or else are ignored. This is to facilitate migration from the old sharding
   // format.
+  //
+  // Note that for tuple NamedShardings, we reuse HloSharding's tuple_elements_
+  // field. If named sharding format is enabled each element in tuple_elements_
+  // will be an HloSharding, which itself can be a tuple or should only have
+  // named_sharding_ populated. This approach is taken to maintain backward
+  // compatibility with the existing `tuple_elements()` method, which provides a
+  // modifiable reference to a `std::vector<HloSharding>`.
   //
   // Note that instead of reusing OpSharding's fields like metadata, we have
   // separate fields in NamedSharding to treat it as a standalone message which

@@ -62,9 +62,9 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/lazy_op_runner.h"
-#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -155,7 +155,7 @@ absl::StatusOr<se::DeviceMemory<uint8_t>> ScratchAllocator::AllocateBytes(
 
 absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
     const GpuConvConfig& config, se::Stream* stream, bool use_fallback,
-    const se::NumericOptions& numeric_options) {
+    const se::EngineOptions& engine_options) {
   TF_ASSIGN_OR_RETURN(se::dnn::DataType input_type,
                       GetDNNDataTypeFromPrimitiveType(config.input_type));
 
@@ -189,7 +189,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
           /* leakyrelu_alpha = */ config.fusion->leakyrelu_alpha, stream,
           config.input_descriptor, config.filter_descriptor,
           config.bias_descriptor, config.output_descriptor, config.conv_desc,
-          use_fallback, config.fusion->mode, numeric_options, &runners));
+          use_fallback, config.fusion->mode, engine_options, &runners));
       for (auto& runner : runners) {
         TF_ASSIGN_OR_RETURN(
             auto runner_cache,
@@ -207,7 +207,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
       TF_RETURN_IF_ERROR(dnn->GetGraphConvolveRunners(
           kind, input_type, output_type, stream, config.input_descriptor,
           config.filter_descriptor, config.output_descriptor, config.conv_desc,
-          use_fallback, numeric_options, &runners, config.serialized_graph));
+          use_fallback, engine_options, &runners, config.serialized_graph));
       for (auto& runner : runners) {
         TF_ASSIGN_OR_RETURN(
             auto runner_cache,
@@ -231,7 +231,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
           /* filter_data = */ DeviceMemoryBase(nullptr),
           config.output_descriptor,
           /* output_data = */ DeviceMemoryBase(nullptr), config.conv_desc,
-          use_fallback, nullptr, numeric_options, &runners));
+          use_fallback, nullptr, engine_options, &runners));
 
       for (auto& runner : runners) {
         TF_ASSIGN_OR_RETURN(
@@ -253,7 +253,7 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
                     absl::Span<se::DeviceMemoryBase> result_buffers,
                     se::StreamExecutor* stream_exec,
                     ScratchAllocator* scratch_allocator, se::Stream* stream,
-                    const se::NumericOptions& numeric_options) {
+                    const se::EngineOptions& engine_options) {
   TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
 
   TF_ASSIGN_OR_RETURN(se::dnn::DataType dtype,
@@ -274,8 +274,7 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
       params.config->filter_descriptor, params.filter_buf,
       params.config->output_descriptor, params.output_buf,
       params.config->conv_desc,
-      /* use_fallback = */ false, scratch_allocator, numeric_options,
-      &runners));
+      /* use_fallback = */ false, scratch_allocator, engine_options, &runners));
 
   return runners;
 }
@@ -812,8 +811,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
         instr->precision_config().operand_precision(),
         [](int precision) { return precision <= PrecisionConfig::HIGH; });
   }
-  const se::NumericOptions numeric_options{
-      RequireDeterminism(instr->GetModule()->config()), allow_tf32};
+  const se::EngineOptions engine_options{
+      RequireDeterminism(instr->GetModule()->config()), allow_tf32,
+      /*require_command_buffer=*/false};
 
   // Use the first algorithm that's supported as reference. There isn't a
   // particular reason to use it, as any algorithm suffices. It doesn't make
@@ -827,7 +827,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   TF_ASSIGN_OR_RETURN(
       std::vector<GenericConvRunner> runners,
       GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
-                    /* use_fallback = */ false, numeric_options));
+                    /* use_fallback = */ false, engine_options));
 
   std::vector<AutotuneResult> profile_results;
   for (auto& runner_cache : runners) {
@@ -850,7 +850,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     TF_ASSIGN_OR_RETURN(
         std::vector<GenericConvRunner> fallback_runners,
         GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
-                      /* use_fallback = */ true, numeric_options));
+                      /* use_fallback = */ true, engine_options));
 
     for (auto& runner_cache : fallback_runners) {
       TF_ASSIGN_OR_RETURN(
@@ -915,8 +915,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
   const bool allow_tf32 = absl::c_all_of(
       instr->precision_config().operand_precision(),
       [](int precision) { return precision <= PrecisionConfig::HIGH; });
-  const se::NumericOptions numeric_options{
-      RequireDeterminism(instr->GetModule()->config()), allow_tf32};
+  const se::EngineOptions engine_options{
+      RequireDeterminism(instr->GetModule()->config()), allow_tf32,
+      /*require_command_buffer=*/false};
 
   se::StreamExecutor* stream_exec = config_.GetExecutor();
   const auto device_ordinal = stream_exec->device_ordinal();
@@ -970,7 +971,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners,
       GetMIOpenAlgorithms(instr, absl::MakeSpan(operand_buffers),
                           absl::MakeSpan(result_buffers), stream_exec,
-                          &scratch_allocator, stream, numeric_options));
+                          &scratch_allocator, stream, engine_options));
 
   std::vector<AutotuneResult> profile_results;
 
