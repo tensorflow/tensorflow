@@ -442,7 +442,7 @@ struct CallFrame::FixUpAttribute {
       array.array.size = value.size();
       array.array.data = value.data();
     };
-    std::visit(visitor, array.value);
+    std::visit(visitor, array.value.AsVariant());
   }
 
   void operator()(CallFrame::Scalar& scalar) {
@@ -451,7 +451,7 @@ struct CallFrame::FixUpAttribute {
       scalar.scalar.dtype = internal::NativeTypeToCApiDataType<T>();
       scalar.scalar.value = &value;
     };
-    std::visit(visitor, scalar.value);
+    std::visit(visitor, scalar.value.AsVariant());
   }
 
   void operator()(CallFrame::String& str) {
@@ -506,7 +506,8 @@ std::unique_ptr<CallFrame::Attributes> CallFrame::CreateAttrs(
   // Convert call frame builder attributes to a collection of named attributes.
   attrs->attributes.reserve(battrs.size());
   for (auto& [name, battr] : battrs) {
-    NamedAttribute attr = {String{name}, std::visit(ConvertAttribute(), battr)};
+    NamedAttribute attr = {String{name},
+                           std::visit(ConvertAttribute(), battr.AsVariant())};
     attrs->attributes.push_back(std::move(attr));
   }
 

@@ -1,4 +1,5 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -198,8 +199,10 @@ cc_library(
     srcs = ["attribute_map.cc"],
     hdrs = ["attribute_map.h"],
     deps = [
+        ":attribute_map_proto_cc",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -209,6 +212,24 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
+)
+
+xla_cc_test(
+    name = "attribute_map_test",
+    srcs = ["attribute_map_test.cc"],
+    deps = [
+        ":attribute_map",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_proto_library(
+    name = "attribute_map_proto",
+    srcs = ["attribute_map.proto"],
 )
 
 xla_cc_test(
