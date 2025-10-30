@@ -47,6 +47,7 @@ static bool InstructionIsUnavailable(const HloInstruction* instr) {
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kScatter:
+    case HloOpcode::kSort:
     case HloOpcode::kFft:
       return true;
     default:
