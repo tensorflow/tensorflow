@@ -244,9 +244,10 @@ struct TopKFunctor<CPUDevice, T, Tidx> {
     const double sort_cost = (k == num_cols) ? base_cost : 4 * base_cost;
     const double copy_cost = 2 * k * Eigen::TensorOpCost::AddCost<T>();
     const double total_cost = sort_cost + copy_cost;
-    const int64_t final_cost = (total_cost >= static_cast<double>(kint64max))
-                                   ? kint64max
-                                   : static_cast<int64_t>(total_cost);
+    const int64_t final_cost =
+        (total_cost >= static_cast<double>(std::numeric_limits<int64_t>::max()))
+            ? std::numeric_limits<int64_t>::max()
+            : static_cast<int64_t>(total_cost);
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, num_rows,
           final_cost, SortIndices);
