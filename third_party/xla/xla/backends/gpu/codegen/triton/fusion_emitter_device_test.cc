@@ -1999,10 +1999,19 @@ ENTRY main {
   const bool is_tma_allowed = GetParam();
   const std::string hlo_text =
       absl::Substitute(kHloTextTemplate, is_tma_allowed);
-  TF_EXPECT_OK(
-      CreateTritonIrAndFileCheck(this, hlo_text, "triton_computation", R"(
-CHECK: tt.reshape
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto xtile_module_and_hlo_module,
+      CreateXTileIrAndFileCheck(this, hlo_text, "triton_computation", R"(
+CHECK: stablehlo.reshape
 )"));
+
+  TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(
+      this, xtile_module_and_hlo_module.first.get(), R"(
+CHECK: tt.reshape
+)",
+      GetFusionInstruction(*xtile_module_and_hlo_module.second,
+                           "triton_computation")));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, kExactMatch));
 }
@@ -2158,10 +2167,18 @@ ENTRY main {
           "num_ctas":"1",
           "num_stages":"1"}}}
 })";
-  TF_EXPECT_OK(
-      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
-CHECK: tt.reshape
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto xtile_module_and_hlo_module,
+      CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK: stablehlo.reshape
 )"));
+
+  TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(
+      this, xtile_module_and_hlo_module.first.get(), R"(
+CHECK: tt.reshape
+)",
+      GetFusionInstruction(*xtile_module_and_hlo_module.second,
+                           "triton_computation")));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
@@ -2341,7 +2358,7 @@ ENTRY entry_computation {
       CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
 CHECK:     xtile.extract
 CHECK-NOT: stablehlo.transpose
-CHECK:     tt.reshape
+CHECK:     stablehlo.reshape
 CHECK-NOT: stablehlo.transpose
 CHECK:     xtile.insert
           )"));
@@ -2388,7 +2405,7 @@ CHECK-SAME: memref<48x16xi32, #triton_xla.layout<[0, 1]>>
 CHECK-SAME: memref<16x16x3xi32>,
 CHECK:      xtile.extract
 CHECK:      stablehlo.transpose
-CHECK:      tt.reshape
+CHECK:      stablehlo.reshape
 CHECK-NOT:  stablehlo.transpose
 CHECK:      xtile.insert
           )"));
@@ -2432,7 +2449,7 @@ ENTRY entry_computation {
       CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
 CHECK:     xtile.extract
 CHECK-NOT: stablehlo.transpose
-CHECK:     tt.reshape
+CHECK:     stablehlo.reshape
 CHECK:     stablehlo.transpose
 CHECK:     xtile.insert
           )"));
@@ -2477,7 +2494,7 @@ ENTRY entry_computation {
       CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
 CHECK:     xtile.extract
 CHECK:     stablehlo.transpose
-CHECK:     tt.reshape
+CHECK:     stablehlo.reshape
 CHECK:     stablehlo.transpose
 CHECK:     xtile.insert
           )"));
@@ -2521,7 +2538,7 @@ ENTRY entry_computation {
       CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
 CHECK:     xtile.extract
 CHECK:     stablehlo.transpose
-CHECK-NOT: tt.reshape
+CHECK-NOT: stablehlo.reshape
 CHECK-NOT: stablehlo.transpose
 CHECK:     xtile.insert
           )"));
@@ -3136,7 +3153,7 @@ ENTRY entry_computation {
       auto xtile_module_and_hlo_module,
       CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
 CHECK:     xtile.extract
-CHECK:     tt.reshape
+CHECK:     stablehlo.reshape
 CHECK:     stablehlo.reduce
 CHECK:     stablehlo.reduce
 CHECK:     xtile.insert

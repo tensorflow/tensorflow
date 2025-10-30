@@ -313,6 +313,22 @@ class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
   }
 };
 
+class LowerReshape : public mlir::OpRewritePattern<stablehlo::ReshapeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::ReshapeOp op, mlir::PatternRewriter& rewriter) const override {
+    // Conservatively prevent Triton from reordering elements within the tile.
+    // TODO(b/353637689): see if this restriction can be lifted.
+    bool allow_reorder = false;
+    rewriter.replaceOpWithNewOp<ttir::ReshapeOp>(
+        op, op.getResult().getType(), op.getOperand(), allow_reorder);
+    return mlir::success();
+  }
+};
+
 class StableHLOLowerToTritonPass
     : public impl::StableHLOLowerToTritonPassBase<StableHLOLowerToTritonPass> {
  public:
@@ -320,7 +336,7 @@ class StableHLOLowerToTritonPass
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
     patterns.add<LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim,
-                 LowerReduce>(mlir_context);
+                 LowerReduce, LowerReshape>(mlir_context);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {

@@ -651,11 +651,8 @@ absl::StatusOr<ScalarOrTensor> EmitTiledReshape(EmitterLocOpBuilder b,
                      absl::StrJoin(output_tensor_type.getShape(), "x")));
   }
 
-  // Conservatively prevent Triton from reordering elements within the tile.
-  // TODO(b/353637689): see if this restriction can be lifted.
-  bool allow_reorder = false;
-  auto reshape = b.create<ttir::ReshapeOp>(output_tensor_type,
-                                           input.UnwrapUnsafe(), allow_reorder);
+  auto reshape =
+      b.create<stablehlo::ReshapeOp>(output_tensor_type, input.UnwrapUnsafe());
   return ScalarOrTensor(reshape.getResult());
 }
 

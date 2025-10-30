@@ -229,6 +229,35 @@ CHECK: }
 )"));
 }
 
+TEST_F(XTileDialectTest, HloReshapeIsLoweredToStableHloReshape) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t, is_scheduled=true
+
+reshape_fusion {
+  p0 = s32[150] parameter(0)
+  ROOT reshape = s32[15, 10] reshape(p0)
+}
+
+ENTRY e {
+  p0 = s32[150] parameter(0)
+  ROOT custom-call = s32[15, 10] fusion(p0), kind=kCustom,
+    calls=reshape_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{1, 16}};
+
+  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+      this, *module->GetComputationWithName("reshape_fusion"),
+      block_level_parameters,
+      R"(
+CHECK: %[[RES:.*]] = stablehlo.reshape %[[ARG:.*]] : (tensor<16xi32>) -> tensor<1x16xi32>
+)"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
