@@ -579,37 +579,14 @@ SmallVector<Value> GetRuntimeValues(
 // Reshapes a non-0D tensor of shape [1, 1, 1, ...] to a scalar.
 ScalarOrTensor ReshapeTensorToScalar(EmitterLocOpBuilder b, Value input) {
   auto element_type = mlir::cast<ShapedType>(input.getType()).getElementType();
+  auto shaped_type = mlir::cast<ShapedType>(input.getType());
 
-  // First, reshape to a 1D tensor if not already the case. This is needed
-  // because triton::ReduceOp can only reduce 1 dimension at a time.
-  auto single_dim_tensor = input;
-  if (mlir::cast<ShapedType>(input.getType()).getRank() > 1) {
-    Type output_tensor_type = mlir::RankedTensorType::get({1}, element_type);
-    single_dim_tensor = b.create<ttir::ReshapeOp>(output_tensor_type, input,
-                                                  /*allow_reorder=*/true);
-  }
+  SmallVector<Value> zero_indices;
+  zero_indices.assign(shaped_type.getRank(),
+                      b.create<mlir::arith::ConstantIndexOp>(0));
 
-  // Second, reduce to a scalar.
-  ttir::ReduceOp reduction =
-      b.create<ttir::ReduceOp>(single_dim_tensor, /*axis*/ 0);
-
-  mlir::Location loc = b.getLoc();
-  mlir::Block* reducer = b.createBlock(
-      &reduction->getRegion(0), /*insertPt=*/{},
-      /*argTypes=*/{element_type, element_type}, /*locs=*/{loc, loc});
-
-  b.setInsertionPointToStart(reducer);
-  Value result = mlir::isa<mlir::IntegerType>(element_type)
-                     ? b.create<arith::AddIOp>(reducer->getArgument(0),
-                                               reducer->getArgument(1))
-                           .getResult()
-                     : b.create<arith::AddFOp>(reducer->getArgument(0),
-                                               reducer->getArgument(1))
-                           .getResult();
-  b.create<ttir::ReduceReturnOp>(SmallVector<Value>({result}));
-  b.setInsertionPointAfter(reduction);
-
-  return ScalarOrTensor(reduction.getResult().front());
+  return ScalarOrTensor(
+      b.create<mlir::tensor::ExtractOp>(element_type, input, zero_indices));
 }
 
 absl::StatusOr<ScalarOrTensor> EmitTiledReshape(EmitterLocOpBuilder b,
