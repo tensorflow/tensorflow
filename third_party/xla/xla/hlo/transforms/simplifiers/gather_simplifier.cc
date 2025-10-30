@@ -132,7 +132,6 @@ bool GatherSimplifier::IsSimplifiedGather(const HloGatherInstruction* gather) {
   const auto& dims = gather->gather_dimension_numbers();
   return start_indices->shape().dimensions().size() == 2 &&
          dims.index_vector_dim() == 1 &&
-         IsIdentityPermutation(dims.start_index_map()) &&
          dims.collapsed_slice_dims().empty() &&
          *dims.offset_dims().begin() == 1 &&
          *dims.offset_dims().rbegin() == dims.offset_dims().size();

@@ -602,34 +602,40 @@ HloInstructionIndexing ComputeOutputToInputGatherOpIndexing(
       /*rt_vars=*/{}};
 
   // A map for the `operand` operand of gather, from which we extract slices.
-  // (d0, ... d{rank - 1}) -> (d1 + rt0, d2 + rt1, ...),
-  // where rt{i} are RTVars that extract indices from the `indices` operand.
+  // If operand dimension `i` corresponds to `start_index_map[j]`, then i-th
+  // dimension of operand is indexed as d_{offset_dims[i]} + start_indices[d0,
+  // j], otherwise it's d_{offset_dims[i]}.
   std::vector<HLORTVar> rt_vars;
   std::vector<AffineExpr> exprs;
   exprs.reserve(operand_shape.dimensions().size());
+  const auto& start_index_map = dimension_numbers.start_index_map();
   for (auto [operand_dim_id, slice_size] :
        llvm::enumerate(gather->gather_slice_sizes())) {
     int64_t output_dim_id = dimension_numbers.offset_dims(operand_dim_id);
     exprs.push_back(getAffineDimExpr(output_dim_id, mlir_context));
 
-    if (operand_dim_id >= index_vector_length) {
+    int64_t start_index_map_idx =
+        absl::c_find(start_index_map, operand_dim_id) - start_index_map.begin();
+    if (start_index_map_idx == start_index_map.size()) {
       continue;
     }
     AffineMap rt_var_map = AffineMap::get(
         output_rank, /*symbolCount=*/0,
-        {indices_id_dim, getAffineConstantExpr(operand_dim_id, mlir_context)},
+        {indices_id_dim,
+         getAffineConstantExpr(start_index_map_idx, mlir_context)},
         mlir_context);
     rt_vars.push_back(HLORTVar{
         Interval{0, operand_shape.dimensions(operand_dim_id) - slice_size},
         gather->operand(1), rt_var_map,
         ShapeUtil::CreateDimensionVectorFromShape(output_shape)});
     exprs.back() =
-        exprs.back() + getAffineSymbolExpr(operand_dim_id, mlir_context);
+        exprs.back() + getAffineSymbolExpr(rt_vars.size() - 1, mlir_context);
   }
   OperandIndexing operand_indexing = CreateOperandIndexingWithRTVars(
       AffineMap::get(/*dimCount=*/output_rank,
-                     /*symbolCount=*/index_vector_length, exprs, mlir_context),
-      std::move(dim_vars), std::move(rt_vars));
+                     /*symbolCount=*/start_index_map.size(), exprs,
+                     mlir_context),
+      dim_vars, std::move(rt_vars));
 
   return HloInstructionIndexing::FromOperandIndexing(
       {operand_indexing, OperandIndexing(indices_map)});
