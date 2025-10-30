@@ -42,18 +42,20 @@ using ::testing::NotNull;
 
 template <typename T>
 absl::StatusOr<stream_executor::DeviceMemoryBase> AllocateInitializedMemory(
-    CudaExecutor* executor, size_t size, T value) {
-  size_t num_elements = size / sizeof(T);
+    CudaExecutor* executor, size_t size, size_t offset, T value) {
   stream_executor::DeviceMemoryBase device_memory = executor->Allocate(
-      size, static_cast<int64_t>(stream_executor::MemoryType::kP2P));
+      size + offset, static_cast<int64_t>(stream_executor::MemoryType::kP2P));
   if (device_memory.opaque() == nullptr) {
     return absl::InternalError("Failed to allocate memory.");
   }
-  std::vector<T> device_memory_vector(num_elements, value);
 
+  size_t num_initialized_elements = size / sizeof(T);
+  std::vector<T> device_memory_vector(num_initialized_elements, value);
+
+  auto stride_memory = device_memory.GetByteSlice(offset, size);
   TF_RETURN_IF_ERROR(executor->SynchronousMemcpy(
-      &device_memory, device_memory_vector.data(), size));
-  return device_memory;
+      &stride_memory, device_memory_vector.data(), size));
+  return stride_memory;
 }
 
 template <typename T>
@@ -105,10 +107,10 @@ TEST(CudaExecutorMultiGpuTest, AllDevicesMustBeSubscribedBeforeMapping) {
   TF_ASSERT_OK_AND_ASSIGN(multicast_memory,
                           executors[0]->CreateMulticastMemory(1024, 2));
   EXPECT_THAT(multicast_memory->SubscribeDevice(0), IsOk());
-  EXPECT_THAT(
-      multicast_memory->MapMemory(reinterpret_cast<void*>(1), executors[0]),
-      StatusIs(absl::StatusCode::kFailedPrecondition,
-               "All devices should be subscribed."));
+  DeviceMemoryBase device_memory(reinterpret_cast<void*>(1), 1);
+  EXPECT_THAT(multicast_memory->MapMemory(device_memory, executors[0]),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       "All devices should be subscribed."));
   ;
 }
 
@@ -146,7 +148,7 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryUsingNonVmmMemory) {
 
   DeviceMemoryBase device_memory = executors[0]->Allocate(8, 0);
   EXPECT_THAT(
-      multicast_memory->MapMemory(device_memory.opaque(), executors[0]),
+      multicast_memory->MapMemory(device_memory, executors[0]),
       StatusIs(absl::StatusCode::kInternal,
                "CUDA error: : CUDA_ERROR_INVALID_VALUE: invalid argument"));
 }
@@ -170,20 +172,19 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryUsingVmmMemory) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       stream_executor::DeviceMemoryBase first_device_memory,
-      AllocateInitializedMemory(executors[0], kMemorySize, kValue));
+      AllocateInitializedMemory(executors[0], kMemorySize, 0, kValue));
 
   TF_ASSERT_OK_AND_ASSIGN(
       stream_executor::DeviceMemoryBase output_device_memory,
-      AllocateInitializedMemory(executors[0], kMemorySize, 0));
+      AllocateInitializedMemory(executors[0], kMemorySize, 0, 0));
   TF_ASSERT_OK_AND_ASSIGN(
       void* first_device_multicast_ptr,
-      multicast_memory->MapMemory(first_device_memory.opaque(), executors[0]));
+      multicast_memory->MapMemory(first_device_memory, executors[0]));
   TF_ASSERT_OK_AND_ASSIGN(
       stream_executor::DeviceMemoryBase second_device_memory,
-      AllocateInitializedMemory(executors[1], kMemorySize, kValue));
-  EXPECT_THAT(
-      multicast_memory->MapMemory(second_device_memory.opaque(), executors[1]),
-      IsOkAndHolds(NotNull()));
+      AllocateInitializedMemory(executors[1], kMemorySize, 0, kValue));
+  EXPECT_THAT(multicast_memory->MapMemory(second_device_memory, executors[1]),
+              IsOkAndHolds(NotNull()));
 
   EXPECT_THAT(
       MulticastReduce((int*)first_device_multicast_ptr,
@@ -195,5 +196,87 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryUsingVmmMemory) {
               IsOk());
 }
 
+TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryMapDifferentSlicesUnaligned) {
+  std::vector<CudaExecutor*> executors = {
+      static_cast<CudaExecutor*>(GetGpuExecutor(0)),
+      static_cast<CudaExecutor*>(GetGpuExecutor(1))};
+  if (!executors[0]->is_multicast_supported()) {
+    GTEST_SKIP() << "Test requires multicast support.";
+  }
+  const int64_t kNumDevices = 2;
+  const int64_t kNumElements = 8;
+  const int64_t kMappedMemorySize = kNumElements * sizeof(int);
+  const int kValue = 2;
+  std::unique_ptr<CudaExecutor::MulticastMemory> multicast_memory;
+  TF_ASSERT_OK_AND_ASSIGN(
+      multicast_memory,
+      executors[0]->CreateMulticastMemory(kMappedMemorySize, kNumDevices));
+  EXPECT_THAT(multicast_memory->SubscribeDevice(0), IsOk());
+  EXPECT_THAT(multicast_memory->SubscribeDevice(1), IsOk());
+
+  TF_ASSERT_OK_AND_ASSIGN(size_t vmm_granularity,
+                          executors[0]->GetVmmGranularity());
+  // Allocate memory with unaligned offset.
+  TF_ASSERT_OK_AND_ASSIGN(
+      stream_executor::DeviceMemoryBase first_device_mapped_memory,
+      AllocateInitializedMemory(
+          executors[0],
+          // Add granularity to make sure that there is
+          // enough memory after adding offset to map with multicast object.
+          kMappedMemorySize + vmm_granularity, kMappedMemorySize, kValue));
+  EXPECT_THAT(
+      multicast_memory->MapMemory(first_device_mapped_memory, executors[0]),
+      StatusIs(absl::StatusCode::kInternal,
+               "CUDA error: : CUDA_ERROR_INVALID_VALUE: invalid argument"));
+}
+
+// Slices mapping works only when offset is aligned with the VMM granularity.
+TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryMapDifferentSlices) {
+  std::vector<CudaExecutor*> executors = {
+      static_cast<CudaExecutor*>(GetGpuExecutor(0)),
+      static_cast<CudaExecutor*>(GetGpuExecutor(1))};
+  if (!executors[0]->is_multicast_supported()) {
+    GTEST_SKIP() << "Test requires multicast support.";
+  }
+  const int64_t kNumDevices = 2;
+  const int64_t kNumElements = 8;
+  const int64_t kMappedMemorySize = kNumElements * sizeof(int);
+  const int kValue = 2;
+  std::unique_ptr<CudaExecutor::MulticastMemory> multicast_memory;
+  TF_ASSERT_OK_AND_ASSIGN(
+      multicast_memory,
+      executors[0]->CreateMulticastMemory(kMappedMemorySize, kNumDevices));
+  EXPECT_THAT(multicast_memory->SubscribeDevice(0), IsOk());
+  EXPECT_THAT(multicast_memory->SubscribeDevice(1), IsOk());
+
+  TF_ASSERT_OK_AND_ASSIGN(size_t vmm_granularity,
+                          executors[0]->GetVmmGranularity());
+  TF_ASSERT_OK_AND_ASSIGN(
+      stream_executor::DeviceMemoryBase first_device_mapped_memory,
+      AllocateInitializedMemory(executors[0], kMappedMemorySize,
+                                vmm_granularity, kValue));
+  TF_ASSERT_OK_AND_ASSIGN(
+      stream_executor::DeviceMemoryBase output_device_memory,
+      AllocateInitializedMemory(executors[0], kMappedMemorySize, 0, 0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      void* first_device_multicast_ptr,
+      multicast_memory->MapMemory(first_device_mapped_memory, executors[0]));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      stream_executor::DeviceMemoryBase second_device_mapped_memory,
+      AllocateInitializedMemory(executors[1], kMappedMemorySize, 0, kValue));
+  EXPECT_THAT(
+      multicast_memory->MapMemory(second_device_mapped_memory, executors[1]),
+      IsOkAndHolds(NotNull()));
+
+  EXPECT_THAT(
+      MulticastReduce((int*)first_device_multicast_ptr,
+                      (int*)output_device_memory.opaque(), kNumElements),
+      IsOk());
+
+  const int kExpectedValue = kValue * kNumDevices;
+  EXPECT_THAT(CheckMemory(executors[0], output_device_memory, kExpectedValue),
+              IsOk());
+}
 }  // namespace
 }  // namespace stream_executor::gpu

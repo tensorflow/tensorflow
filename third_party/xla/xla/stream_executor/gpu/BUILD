@@ -168,6 +168,7 @@ cc_library(
     name = "gpu_executor_header",
     hdrs = ["gpu_executor.h"],
     deps = [
+        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_common",
         "//xla/stream_executor:stream_executor_h",

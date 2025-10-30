@@ -163,9 +163,9 @@ class AllReduceKernelTest : public ::testing::Test,
         stream_executor::gpu::GpuExecutor* gpu_executor =
             dynamic_cast<stream_executor::gpu::GpuExecutor*>(executors[i]);
         TF_RET_CHECK(gpu_executor != nullptr);
-        TF_ASSIGN_OR_RETURN(void* mapped_memory,
-                            multicast_memory->MapMemory(
-                                allocated_buffers[i].opaque(), gpu_executor));
+        TF_ASSIGN_OR_RETURN(
+            void* mapped_memory,
+            multicast_memory->MapMemory(allocated_buffers[i], gpu_executor));
         metadata.multicast_buffer_ptr = (uint64_t)mapped_memory;
       } else {
         metadata.multicast_buffer_ptr = 0;
