@@ -795,15 +795,19 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   void SetPartitionedHlo(const HloInstruction* hlo,
                          PartitionedHlo&& partitioned_hlo);
 
-  // Convenient wrapper that creates PartitionedHlo from the result of the func
-  // and maps it to the given original hlo.
-  void SetPartitionedHlo(const HloInstruction* hlo,
-                         absl::FunctionRef<HloInstruction*()> func) {
-    HloInstruction* new_hlo = func();
+  // Convenient wrapper that creates PartitionedHlo from `new_hlo`.
+  void SetPartitionedHlo(const HloInstruction* hlo, HloInstruction* new_hlo) {
     new_hlo->set_sharding(hlo->sharding());
     SetPartitionedHlo(
         hlo, PartitionedHlo(new_hlo, hlo->shape(), MakePartitioningState()));
     changed_ = true;
+  }
+
+  // Convenient wrapper that creates PartitionedHlo from the result of the func
+  // and maps it to the given original hlo.
+  void SetPartitionedHlo(const HloInstruction* hlo,
+                         absl::FunctionRef<HloInstruction*()> func) {
+    return SetPartitionedHlo(hlo, func());
   }
 
   int64_t NewChannel() { return (*next_channel_id_)++; }

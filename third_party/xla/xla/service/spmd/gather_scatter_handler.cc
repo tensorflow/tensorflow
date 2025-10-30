@@ -1009,8 +1009,7 @@ absl::Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
       PartitionGather(gather, operand, indices, gather->shape(),
                       gather->sharding(), absl::MakeConstSpan(batch_dims),
                       gather->gather_slice_sizes(), this));
-  SetPartitionedHlo(gather, PartitionedHlo(pgather, gather->shape(),
-                                           MakePartitioningState()));
+  SetPartitionedHlo(gather, pgather);
   return absl::OkStatus();
 }
 
@@ -1904,8 +1903,7 @@ absl::Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   if (!pscatter) {
     return DefaultAction(hlo);
   }
-  SetPartitionedHlo(scatter, PartitionedHlo(pscatter, scatter->shape(),
-                                            MakePartitioningState()));
+  SetPartitionedHlo(scatter, pscatter);
   return absl::OkStatus();
 }
 
