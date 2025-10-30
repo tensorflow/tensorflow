@@ -159,16 +159,18 @@ struct HlosAndRequirements {
 };
 
 // Clones the hero kDot operation into the fusion.
-HloInstruction& FuseDot(const HloDotInstruction& dot,
-                        const HloInstruction& fused_lhs,
-                        const HloInstruction& fused_rhs,
+HloInstruction& FuseDot(const HloInstruction& dot,
+                        const std::vector<HlosAndRequirements>& hlos_and_reqs,
                         HloComputation::Builder& builder  // append
 ) {
   VLOG(3) << "Fusing " << dot.ToString();
 
-  std::vector<HloInstruction*> hlo_new_operands = {
-      const_cast<HloInstruction*>(&fused_lhs),
-      const_cast<HloInstruction*>(&fused_rhs)};
+  std::vector<HloInstruction*> hlo_new_operands;
+  hlo_new_operands.reserve(dot.operand_count());
+  for (int i = 0; i < hlos_and_reqs.size(); ++i) {
+    hlo_new_operands.push_back(
+        const_cast<HloInstruction*>(hlos_and_reqs[i].fused_hlo));
+  }
   return *builder.AddInstruction(
       dot.CloneWithNewOperands(dot.shape(), hlo_new_operands));
 }
@@ -672,14 +674,17 @@ absl::StatusOr<Decision> CreateDotFusion(
     return Decision::Deny(is_supported.Explain());
   }
 
+  std::vector<HlosAndRequirements> hlos_and_reqs;
+  hlos_and_reqs.reserve(dot.operand_count());
   TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
                       FuseDotOperand(dot, /*operand_index=*/0, gpu_version,
                                      builder, fusion_inputs));
+  hlos_and_reqs.push_back(lhs_hlos_and_reqs);
   TF_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
                       FuseDotOperand(dot, /*operand_index=*/1, gpu_version,
                                      builder, fusion_inputs));
-  HloInstruction& fused_dot = FuseDot(dot, *lhs_hlos_and_reqs.fused_hlo,
-                                      *rhs_hlos_and_reqs.fused_hlo, builder);
+  hlos_and_reqs.push_back(rhs_hlos_and_reqs);
+  HloInstruction& fused_dot = FuseDot(dot, hlos_and_reqs, builder);
   // For now the RHS doesn't support splits, so it also doesn't impose any
   // requirements.
   HlosAndRequirements fused_output_and_reqs =
@@ -860,29 +865,38 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     HloComputation::Builder builder(
         absl::StrCat("fusion_", scaled_dot->name()));
 
-    auto create_parameter = [&](int64_t parameter_number,
-                                absl::string_view name) {
-      return builder.AddInstruction(HloInstruction::CreateParameter(
-          parameter_number, scaled_dot->operand(parameter_number)->shape(),
-          name));
-    };
-    std::vector<HloInstruction*> new_operands{
-        create_parameter(0, "lhs"),
-        create_parameter(1, "rhs"),
-        create_parameter(2, "lhs_scale"),
-        create_parameter(3, "rhs_scale"),
-    };
-    builder.AddInstruction(
-        scaled_dot->CloneWithNewOperands(scaled_dot->shape(), new_operands));
+    std::vector<HloInstruction*> fusion_inputs;
+
+    std::vector<HlosAndRequirements> hlos_and_reqs;
+    hlos_and_reqs.reserve(scaled_dot->operand_count());
+    TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
+                        FuseDotOperand(*scaled_dot, /*operand_index=*/0,
+                                       gpu_version_, builder, fusion_inputs));
+    hlos_and_reqs.push_back(lhs_hlos_and_reqs);
+    TF_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
+                        FuseDotOperand(*scaled_dot, /*operand_index=*/1,
+                                       gpu_version_, builder, fusion_inputs));
+    hlos_and_reqs.push_back(rhs_hlos_and_reqs);
+    TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_scale_hlos_and_reqs,
+                        FuseDotOperand(*scaled_dot, /*operand_index=*/2,
+                                       gpu_version_, builder, fusion_inputs));
+    hlos_and_reqs.push_back(lhs_scale_hlos_and_reqs);
+    TF_ASSIGN_OR_RETURN(HlosAndRequirements rhs_scale_hlos_and_reqs,
+                        FuseDotOperand(*scaled_dot, /*operand_index=*/3,
+                                       gpu_version_, builder, fusion_inputs));
+    hlos_and_reqs.push_back(rhs_scale_hlos_and_reqs);
+
+    FuseDot(*scaled_dot, hlos_and_reqs, builder);
 
     HloComputation* computation =
         scaled_dot->GetModule()->AddComputationAndUnifyNamesAndIds(
             builder.Build(),
             /*is_entry=*/false);
-    HloInstruction* fusion = scaled_dot->parent()->AddInstruction(
-        HloInstruction::CreateFusion(computation->root_instruction()->shape(),
-                                     HloInstruction::FusionKind::kCustom,
-                                     scaled_dot->operands(), computation));
+
+    HloInstruction* fusion =
+        scaled_dot->parent()->AddInstruction(HloInstruction::CreateFusion(
+            computation->root_instruction()->shape(),
+            HloInstruction::FusionKind::kCustom, fusion_inputs, computation));
 
     TF_ASSIGN_OR_RETURN(auto gpu_config,
                         fusion->backend_config<GpuBackendConfig>());
