@@ -91,7 +91,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.op_version = op_version_;
     return std::make_unique<Iterator>(Iterator::Params{
@@ -106,7 +106,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.op_version = op_version_;
     params.set_args(batch_size_);
