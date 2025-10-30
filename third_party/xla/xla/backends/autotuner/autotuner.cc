@@ -46,8 +46,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -158,6 +160,9 @@ absl::Status Autotuner::Autotune(HloModule* module,
     CHECK(!instructions.empty());
     TF_ASSIGN_OR_RETURN(Config config, GetConfig(instructions[0]));
     CodegenBackend* codegen_backend = config.codegen_backend;
+    if (autotune_config_.dump_hlos) {
+      TF_RETURN_IF_ERROR(DumpHlo(instructions[0], config));
+    }
     for (auto* instr : instructions) {
       TF_RETURN_IF_ERROR(
           codegen_backend->ApplyConfig(*instr, *config.backend_config));
@@ -251,6 +256,9 @@ absl::Status Autotuner::Autotune(HloModule* module,
     CHECK(cached_config.has_value())
         << "Sharding autotuning failed: no config found for HLO: " +
                instructions[0]->ToString();
+    if (autotune_config_.dump_hlos) {
+      TF_RETURN_IF_ERROR(DumpHlo(instructions[0], *cached_config));
+    }
     CodegenBackend* codegen_backend = cached_config->codegen_backend;
     for (auto* instr : instructions) {
       TF_RETURN_IF_ERROR(
@@ -264,6 +272,9 @@ absl::Status Autotuner::Autotune(HloModule* module,
 absl::Status Autotuner::Autotune(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(Config config, GetConfig(instr));
   CodegenBackend* codegen_backend = config.codegen_backend;
+  if (autotune_config_.dump_hlos) {
+    TF_RETURN_IF_ERROR(DumpHlo(instr, config));
+  }
   TF_RETURN_IF_ERROR(
       codegen_backend->ApplyConfig(*instr, *config.backend_config));
   return DumpLogsToFile();
@@ -529,6 +540,22 @@ absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
   }
 
   return std::move(*best_result);
+}
+
+absl::Status Autotuner::DumpHlo(HloInstruction* instr, const Config& config) {
+  const HloModule* parent_module = instr->GetModule();
+  std::unique_ptr<HloModule> module = ExtractInstructionIntoNewModule(*instr);
+  module->set_name(std::string(instr->name()));
+  std::string id =
+      absl::StrCat("autotuner_", dump_counter_++, ".", instr->name());
+  DumpToFileInDirOrStdout(*parent_module, "", absl::StrCat(id, ".before.txt"),
+                          module->ToString());
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  TF_RETURN_IF_ERROR(
+      config.codegen_backend->ApplyConfig(*root, *config.backend_config));
+  DumpToFileInDirOrStdout(*parent_module, "", absl::StrCat(id, ".after.txt"),
+                          module->ToString());
+  return absl::OkStatus();
 }
 
 absl::StatusOr<ScopedShapedBuffer> Autotuner::GetReferenceOutput(
