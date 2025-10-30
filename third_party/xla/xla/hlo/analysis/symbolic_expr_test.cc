@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
@@ -318,6 +319,37 @@ TEST_F(SymbolicExprTest, Walk) {
 
   EXPECT_THAT(visited_exprs, ::testing::ElementsAre("v0", "42", "(v0 + 42)",
                                                     "v1", "((v0 + 42) * v1)"));
+}
+
+TEST_F(SymbolicExprTest, Hashing) {
+  absl::flat_hash_set<SymbolicExpr> set;
+
+  SymbolicExpr c42_1 = ctx.CreateConstant(42);
+  SymbolicExpr c42_2 = ctx.CreateConstant(42);
+  SymbolicExpr c3 = ctx.CreateConstant(3);
+
+  set.insert(c42_1);
+  set.insert(c42_2);
+  set.insert(c3);
+  EXPECT_EQ(set.size(), 2);
+
+  SymbolicExpr v0_1 = ctx.CreateVariable(0);
+  SymbolicExpr v0_2 = ctx.CreateVariable(0);
+  SymbolicExpr v1 = ctx.CreateVariable(1);
+
+  set.insert(v0_1);
+  set.insert(v0_2);
+  set.insert(v1);
+  EXPECT_EQ(set.size(), 4);
+
+  SymbolicExpr add1 = v0_1 + c42_1;
+  SymbolicExpr add2 = v0_2 + c42_2;
+  SymbolicExpr add3 = v1 + c3;
+
+  set.insert(add1);
+  set.insert(add2);
+  set.insert(add3);
+  EXPECT_EQ(set.size(), 6);
 }
 
 }  // namespace

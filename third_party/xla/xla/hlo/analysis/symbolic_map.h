@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -95,6 +96,18 @@ class SymbolicMap {
   bool operator==(const SymbolicMap& other) const;
   bool operator!=(const SymbolicMap& other) const { return !(*this == other); }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const SymbolicMap& map) {
+    return H::combine(std::move(h), map.num_dimensions_, map.num_symbols_,
+                      map.exprs_);
+  }
+
+  friend ::llvm::hash_code hash_value(const SymbolicMap& map) {
+    return ::llvm::hash_combine(
+        map.num_dimensions_, map.num_symbols_,
+        ::llvm::hash_combine_range(map.exprs_.begin(), map.exprs_.end()));
+  }
+
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const SymbolicMap& map) {
     sink.Append(map.ToString());
@@ -127,6 +140,11 @@ SymbolicMap CompressDims(const SymbolicMap& map,
 // Expressions are updated to use the new symbol indices.
 SymbolicMap CompressSymbols(const SymbolicMap& map,
                             const llvm::SmallBitVector& unused_symbols);
+
+template <typename H>
+H AbslHashValue(H h, const llvm::SmallVector<SymbolicExpr>& vec) {
+  return H::combine(std::move(h), absl::MakeSpan(vec));
+}
 
 }  // namespace xla
 

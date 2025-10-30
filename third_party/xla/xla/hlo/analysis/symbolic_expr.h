@@ -147,6 +147,11 @@ inline ::llvm::hash_code hash_value(SymbolicExpr expr) {
   return ::llvm::hash_value(expr.GetImpl());
 }
 
+template <typename H>
+H AbslHashValue(H h, const SymbolicExpr& expr) {
+  return H::combine(std::move(h), hash_value(expr));
+}
+
 class SymbolicExprContext {
  public:
   explicit SymbolicExprContext(mlir::MLIRContext* mlir_context);

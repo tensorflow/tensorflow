@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -326,6 +327,27 @@ TEST_F(SymbolicMapTest, CompressSymbols) {
   unused_symbols[2] = true;
   EXPECT_DEATH(CompressSymbols(map, unused_symbols),
                "Attempting to compress a used symbol: 2");
+}
+
+TEST_F(SymbolicMapTest, Hashing) {
+  absl::flat_hash_set<SymbolicMap> set;
+
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr d1 = ctx.CreateVariable(1);
+  SymbolicExpr s0 = ctx.CreateVariable(2);
+  SymbolicExpr c42 = ctx.CreateConstant(42);
+  SymbolicExpr c99 = ctx.CreateConstant(99);
+
+  SymbolicMap map1 = SymbolicMap::Get(&ctx, 2, 1, {d0 + s0, d1 * c42});
+  SymbolicMap map2 = SymbolicMap::Get(&ctx, 2, 1, {d0 + s0, d1 * c42});
+  SymbolicMap map3 = SymbolicMap::Get(&ctx, 2, 1, {d0 + s0, d1 * c99});
+
+  set.insert(map1);
+  EXPECT_EQ(set.size(), 1);
+  set.insert(map2);
+  EXPECT_EQ(set.size(), 1);
+  set.insert(map3);
+  EXPECT_EQ(set.size(), 2);
 }
 
 }  // namespace
