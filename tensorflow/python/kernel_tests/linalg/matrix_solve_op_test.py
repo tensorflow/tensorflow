@@ -123,6 +123,33 @@ class MatrixSolveOpTest(test.TestCase):
       self.evaluate(linalg_ops.matrix_solve(matrix, matrix))
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  @test_util.run_cuda_only
+  def testGpuFloat64SingularMatrixRaises(self):
+    singular = [[1.0, 2.0, 3.0], [2.0, 5.0, 6.0], [3.0, 6.0, 9.0]]
+    with ops.device(test_util.gpu_device_name()):
+      matrix = constant_op.constant(singular, dtype=dtypes.float64)
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Input matrix is not invertible."):
+        self.evaluate(linalg_ops.matrix_solve(matrix, matrix))
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  @test_util.run_cuda_only
+  def testGpuNearSingularMatrixRaises(self):
+    with ops.device(test_util.gpu_device_name()):
+      for dtype in (dtypes.float32, dtypes.float64):
+        real_dtype = np.float32 if dtype == dtypes.float32 else np.float64
+        eps = np.finfo(real_dtype).eps
+        small = eps / 6.0  # Ensures cond_est >= n/eps for n=3.
+        matrix = constant_op.constant([[small, 0.0, 0.0],
+                                       [0.0, 1.0, 0.0],
+                                       [0.0, 0.0, 1.0]],
+                                      dtype=dtype)
+        rhs = constant_op.constant([[1.0], [1.0], [1.0]], dtype=dtype)
+        with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                    "Input matrix is not invertible."):
+          self.evaluate(linalg_ops.matrix_solve(matrix, rhs))
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testConcurrent(self):
     seed = [42, 24]
     matrix_shape = [3, 3]
