@@ -199,6 +199,16 @@ void WhileThunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
   body_thunk_sequence_->ForAllThunksMutable(fn);
 }
 
+void WhileThunk::TransformAllNestedThunks(
+    absl::FunctionRef<std::unique_ptr<Thunk>(std::unique_ptr<Thunk>)> fn) {
+  condition_thunk_sequence_->TransformAllNestedThunks(fn);
+  condition_thunk_sequence_ =
+      SequentialThunk::FromThunk(fn(std::move(condition_thunk_sequence_)));
+  body_thunk_sequence_->TransformAllNestedThunks(fn);
+  body_thunk_sequence_ =
+      SequentialThunk::FromThunk(fn(std::move(body_thunk_sequence_)));
+}
+
 std::string WhileThunk::ToString(int indent) const {
   std::string indent_str(indent * 2, ' ');
   std::string result;

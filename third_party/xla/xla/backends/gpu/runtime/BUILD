@@ -268,6 +268,7 @@ xla_test(
         ":dynamic_slice_thunk",
         ":dynamic_slice_thunk_proto_cc",
         ":gemm_thunk",
+        ":sequential_thunk",
         ":thunk",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
