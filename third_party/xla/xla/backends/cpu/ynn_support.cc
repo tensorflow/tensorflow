@@ -153,7 +153,9 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
   static const absl::NoDestructor<absl::flat_hash_set<
       std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
       kAllowedTypes({
-          {F32, F32, F32},
+          // TODO(b/452693819): We plan to enable this in stages, starting with
+          // bf16 and int8, and enable f32 later.
+          // {F32, F32, F32},
           // TODO(b/449998002): We don't have fast fp16 kernels yet.
           // {F16, F16, F32},
           {BF16, BF16, F32},
