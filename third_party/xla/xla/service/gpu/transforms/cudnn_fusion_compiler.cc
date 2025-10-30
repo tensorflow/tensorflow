@@ -865,9 +865,9 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
     return absl::InternalError("Construction of cuDNN graph failed.");
   }
   TF_RETURN_IF_ERROR(graph->Prepare(
-      dnn_support,
-      se::NumericOptions{RequireDeterminism(hlo.GetModule()->config()),
-                         /*allow_tf32=*/true}));
+      dnn_support, se::EngineOptions{
+                       RequireDeterminism(hlo.GetModule()->config()),
+                       /*allow_tf32=*/true, /*require_command_buffer=*/false}));
   return *graph;
 }
 
