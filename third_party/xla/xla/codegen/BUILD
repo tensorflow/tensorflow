@@ -126,6 +126,7 @@ cc_library(
         ":kernel_source",
         "//xla:util",
         "//xla/hlo/analysis:symbolic_expr",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",

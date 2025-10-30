@@ -116,7 +116,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoopFusion::CreateMLIRModule(
       BackendKind::kGpu);
 
   TF_ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
-  return std::move(kernel_definition).TakeSource().ReleaseStorage().module;
+  return std::move(kernel_definition).TakeSource().TakeModule();
 }
 
 absl::Status LoopFusion::EmitEntryFunction(
