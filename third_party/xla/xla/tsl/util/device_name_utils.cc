@@ -36,7 +36,7 @@ static bool IsJobName(absl::string_view in) {
          std::all_of(in.begin(), in.end(), IsAlphaNumOrUnderscore);
 }
 
-static bool ConsumePrefix(absl::string_view* in, string* out,
+static bool ConsumePrefix(absl::string_view* in, std::string* out,
                           absl::string_view prefix_terminators) {
   if (in->empty() || !IsAlpha(in->front())) {
     return false;
@@ -53,20 +53,20 @@ static bool ConsumePrefix(absl::string_view* in, string* out,
 }
 
 // Returns true and fills in "*job" iff "*in" starts with a job name.
-static bool ConsumeJobName(absl::string_view* in, string* job) {
+static bool ConsumeJobName(absl::string_view* in, std::string* job) {
   return ConsumePrefix(in, job, "/");
 }
 
 // Returns true and fills in "*device_type" iff "*in" starts with a device type
 // name.
-static bool ConsumeDeviceType(absl::string_view* in, string* device_type) {
+static bool ConsumeDeviceType(absl::string_view* in, std::string* device_type) {
   return ConsumePrefix(in, device_type, "/:");
 }
 
 // Returns true and fills in "*val" iff "*in" starts with a decimal
 // number.
 static bool ConsumeNumber(absl::string_view* in, int* val) {
-  uint64 tmp;
+  uint64_t tmp;
   if (str_util::ConsumeLeadingDigits(in, &tmp)) {
     *val = tmp;
     return true;
@@ -75,9 +75,9 @@ static bool ConsumeNumber(absl::string_view* in, int* val) {
 }
 
 // Returns a fully qualified device name given the parameters.
-static string DeviceName(const string& job, int replica, int task,
-                         const string& device_prefix, const string& device_type,
-                         int id) {
+static std::string DeviceName(const std::string& job, int replica, int task,
+                              const std::string& device_prefix,
+                              const std::string& device_type, int id) {
   CHECK(IsJobName(job)) << job;
   CHECK_LE(0, replica);
   CHECK_LE(0, task);
@@ -88,14 +88,15 @@ static string DeviceName(const string& job, int replica, int task,
 }
 
 /* static */
-string DeviceNameUtils::FullName(const string& job, int replica, int task,
-                                 const string& type, int id) {
+std::string DeviceNameUtils::FullName(const std::string& job, int replica,
+                                      int task, const std::string& type,
+                                      int id) {
   return DeviceName(job, replica, task, "/device:", type, id);
 }
 
 namespace {
-string LegacyName(const string& job, int replica, int task, const string& type,
-                  int id) {
+std::string LegacyName(const std::string& job, int replica, int task,
+                       const std::string& type, int id) {
   return DeviceName(job, replica, task, "/", absl::AsciiStrToLower(type), id);
 }
 }  // anonymous namespace
@@ -207,9 +208,9 @@ void CompleteName(const DeviceNameUtils::ParsedName& parsed_basename,
 }  // namespace
 
 /* static */
-absl::Status DeviceNameUtils::CanonicalizeDeviceName(absl::string_view fullname,
-                                                     absl::string_view basename,
-                                                     string* canonical_name) {
+absl::Status DeviceNameUtils::CanonicalizeDeviceName(
+    absl::string_view fullname, absl::string_view basename,
+    std::string* canonical_name) {
   *canonical_name = "";
   ParsedName parsed_basename;
   if (!ParseFullName(basename, &parsed_basename)) {
@@ -240,8 +241,8 @@ absl::Status DeviceNameUtils::CanonicalizeDeviceName(absl::string_view fullname,
 }
 
 /* static */
-string DeviceNameUtils::ParsedNameToString(const ParsedName& pn) {
-  string buf;
+std::string DeviceNameUtils::ParsedNameToString(const ParsedName& pn) {
+  std::string buf;
   if (pn.has_job) {
     absl::StrAppend(&buf, "/job:", pn.job);
   }
@@ -526,20 +527,20 @@ const DeviceNameUtils::ParsedName DeviceNameUtils::AddressSpace(
 }
 
 /* static */
-string DeviceNameUtils::LocalName(absl::string_view type, int id) {
+std::string DeviceNameUtils::LocalName(absl::string_view type, int id) {
   return absl::StrCat("/device:", type, ":", id);
 }
 
 namespace {
 // Returns the legacy local device name given its "type" and "id" (which is
 // '/device:type:id').
-string LegacyLocalName(absl::string_view type, int id) {
+std::string LegacyLocalName(absl::string_view type, int id) {
   return absl::StrCat(type, ":", id);
 }
 }  // anonymous namespace
 
 /* static */
-string DeviceNameUtils::LocalName(absl::string_view fullname) {
+std::string DeviceNameUtils::LocalName(absl::string_view fullname) {
   ParsedName x;
   CHECK(ParseFullName(fullname, &x)) << fullname;
   return LocalName(x.type, x.id);
@@ -562,8 +563,8 @@ bool DeviceNameUtils::ParseLocalName(absl::string_view name, ParsedName* p) {
 }
 
 /* static */
-bool DeviceNameUtils::SplitDeviceName(absl::string_view name, string* task,
-                                      string* device) {
+bool DeviceNameUtils::SplitDeviceName(absl::string_view name, std::string* task,
+                                      std::string* device) {
   ParsedName pn;
   if (ParseFullName(name, &pn) && pn.has_type && pn.has_id) {
     task->clear();
@@ -588,7 +589,7 @@ bool DeviceNameUtils::SplitDeviceName(absl::string_view name, string* task,
 }
 
 /* static */
-bool DeviceNameUtils::GetTaskName(const ParsedName& pn, string* task) {
+bool DeviceNameUtils::GetTaskName(const ParsedName& pn, std::string* task) {
   if (pn.has_job && pn.has_replica && pn.has_task) {
     task->clear();
     task->reserve((5 + pn.job.size()) +
@@ -602,7 +603,7 @@ bool DeviceNameUtils::GetTaskName(const ParsedName& pn, string* task) {
   return false;
 }
 
-std::vector<string> DeviceNameUtils::GetNamesForDeviceMappings(
+std::vector<std::string> DeviceNameUtils::GetNamesForDeviceMappings(
     const ParsedName& pn) {
   if (pn.has_job && pn.has_replica && pn.has_task && pn.has_type && pn.has_id) {
     return {
@@ -612,7 +613,7 @@ std::vector<string> DeviceNameUtils::GetNamesForDeviceMappings(
   return {};
 }
 
-std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
+std::vector<std::string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
     const ParsedName& pn) {
   if (pn.has_type && pn.has_id) {
     return {DeviceNameUtils::LocalName(pn.type, pn.id),
@@ -622,7 +623,7 @@ std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
 }
 
 /*static*/ absl::Status DeviceNameUtils::DeviceNameToCpuDeviceName(
-    const string& device_name, string* host_device_name) {
+    const std::string& device_name, std::string* host_device_name) {
   DeviceNameUtils::ParsedName device;
   if (!DeviceNameUtils::ParseFullName(device_name, &device)) {
     return errors::Internal("Could not parse device name ", device_name);
