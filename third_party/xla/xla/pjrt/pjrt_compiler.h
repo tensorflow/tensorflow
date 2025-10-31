@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
@@ -121,20 +122,41 @@ class PjRtTopologyDescription {
     return absl::UnimplementedError("ProcessCount is unsupported.");
   }
 
+  // Returns the number of chips per process.
+  virtual absl::StatusOr<int> ChipsPerProcess() const {
+    return absl::UnimplementedError("ChipsPerProcess is unsupported.");
+  }
+
   // Returns the number of chips.
   virtual absl::StatusOr<int> ChipCount() const {
-    return absl::UnimplementedError("ChipCount is unsupported.");
+    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    return process_count * chips_per_process;
   }
 
   // Returns the total number of cores of the default type.
   virtual absl::StatusOr<int> CoreCountOfDefaultType() const {
-    return absl::UnimplementedError("CoreCountOfDefaultType is unsupported.");
+    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    TF_ASSIGN_OR_RETURN(int cores_per_process,
+                        CoreCountOfDefaultTypePerProcess());
+    return process_count * cores_per_process;
+  }
+
+  // As above, but returns the number of logical devices per host.
+  virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerProcess()
+      const {
+    TF_ASSIGN_OR_RETURN(int logical_devices_per_chip,
+                        LogicalDeviceCountOfDefaultTypePerChip());
+    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    return chips_per_process * logical_devices_per_chip;
   }
 
   // Returns the total number of logical devices of the default type.
   virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const {
-    return absl::UnimplementedError(
-        "LogicalDeviceCountOfDefaultType is unsupported.");
+    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    TF_ASSIGN_OR_RETURN(int logical_devices_per_process,
+                        LogicalDeviceCountOfDefaultTypePerProcess());
+    return process_count * logical_devices_per_process;
   }
 
   // Returns the number of logical devices of the default type per chip.
@@ -145,8 +167,9 @@ class PjRtTopologyDescription {
 
   // Returns the number of cores of the default type per process.
   virtual absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const {
-    return absl::UnimplementedError(
-        "CoreCountOfDefaultTypePerProcess is unsupported.");
+    TF_ASSIGN_OR_RETURN(int cores_per_chip, CoreCountOfDefaultTypePerChip());
+    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    return cores_per_chip * chips_per_process;
   }
 
   // Returns the number of cores per chip for the default type.
@@ -178,6 +201,8 @@ class PjRtTopologyDescription {
   }
 
   // Returns the total bounds of all chips in the topology.
+  // Usually this equals to the product of `ChipsPerHostBounds()` and
+  // `HostBounds()`.
   virtual absl::StatusOr<PjRtDeviceDimensions> ChipBounds() const {
     return absl::UnimplementedError("ChipBounds is unsupported.");
   }

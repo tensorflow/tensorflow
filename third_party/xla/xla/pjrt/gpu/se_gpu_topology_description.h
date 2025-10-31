@@ -86,19 +86,15 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
     return gpu_topology_->number_of_hosts();
   }
 
-  absl::StatusOr<int> CoreCountOfDefaultType() const override {
-    return gpu_topology_->number_of_devices();
-  }
-
-  absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const override {
-    return gpu_topology_->number_of_devices();
-  }
-
-  absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override {
-    return gpu_topology_->number_of_devices();
+  absl::StatusOr<int> ChipsPerProcess() const override {
+    return gpu_topology_->num_devices_per_host();
   }
 
   absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override {
+    return 1;
+  }
+
+  absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerChip() const override {
     return 1;
   }
 
