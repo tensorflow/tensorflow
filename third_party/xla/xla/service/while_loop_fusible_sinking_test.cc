@@ -471,11 +471,11 @@ ENTRY entry {
   HloInstruction* while_instr = FindInstruction(module.get(), "while");
   ASSERT_NE(while_instr->original_value(), nullptr);
   EXPECT_EQ(while_instr->original_value()->ToString(),
-            "({\"while\" {0}}, {\"while\" {1}}, {\"parameter\"})");
+            R"(({"while" {0}}, {"while" {1}}, {"parameter"}))");
   HloInstruction* while_init = while_instr->while_init();
   ASSERT_NE(while_init->original_value(), nullptr);
   EXPECT_EQ(while_init->original_value()->ToString(),
-            "({\"constant\"}, {\"mask\"}, {\"parameter\"})");
+            R"(({"constant"}, {"mask"}, {"parameter"}))");
 }
 
 TEST_F(WhileLoopFusibleSinkingTest, PlumbSingleBroadcastWithOriginalValue) {
@@ -518,11 +518,11 @@ TEST_F(WhileLoopFusibleSinkingTest, PlumbSingleBroadcastWithOriginalValue) {
   HloInstruction* while_instr = FindInstruction(module.get(), "while");
   ASSERT_NE(while_instr->original_value(), nullptr);
   EXPECT_EQ(while_instr->original_value()->ToString(),
-            "({\"while\" {0}}, {\"while\" {1}}, {\"while\" {2}}, {\"zero\"})");
+            R"(({"while" {0}}, {"while" {1}}, {"while" {2}}, {"zero"}))");
   HloInstruction* while_init = while_instr->while_init();
   ASSERT_NE(while_init->original_value(), nullptr);
   EXPECT_EQ(while_init->original_value()->ToString(),
-            "({\"zero\"}, {\"zeros32\"}, {\"broadcast\"}, {\"zero\"})");
+            R"(({"zero"}, {"zeros32"}, {"broadcast"}, {"zero"}))");
 }
 
 }  // namespace
