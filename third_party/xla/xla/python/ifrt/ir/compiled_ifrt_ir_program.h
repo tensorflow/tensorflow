@@ -60,6 +60,9 @@ struct CompiledIfrtIrProgram {
   // ids obtained from IFRT client.
   std::vector<xla::ifrt::DeviceId> device_assignments;
 
+  // The compile options used to compile the program.
+  std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options;
+
   // Compiles an IFRT IR program.
   static absl::StatusOr<CompiledIfrtIrProgram> Create(
       std::unique_ptr<xla::ifrt::IfrtIRProgram> ifrt_ir_program,
