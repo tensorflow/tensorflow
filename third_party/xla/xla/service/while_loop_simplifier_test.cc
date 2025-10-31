@@ -1535,5 +1535,51 @@ ENTRY %main (arg.0: f32[3], arg.1: f32[2]) -> (f32[3], f32[2], f32[2], f32[3]) {
             R"(({"arg.0"}, {"arg.1"}, {"constant.0"}))");
 }
 
+TEST_F(WhileLoopSimplifierTest, FlattenNestedTupleWithOriginalValue) {
+  const std::string hlo_string = R"(
+  HloModule Test
+  Body {
+    param = ((s32[1]), (s32[2], s32[3], (s32[4]))) parameter(0)
+    ta = (s32[1]) get-tuple-element(param), index=0
+    a = s32[1] get-tuple-element(ta), index=0
+    a.1 = s32[1] add(a, a)
+    tbcd = (s32[2], s32[3], (s32[4])) get-tuple-element(param), index=1
+    ROOT tuple = ((s32[1]), (s32[2], s32[3], (s32[4]))) tuple(ta, tbcd)
+  }
+  Cond {
+    param = ((s32[1]), (s32[2], s32[3], (s32[4]))) parameter(0)
+    ROOT cond = pred[] constant(true)
+  }
+  ENTRY Loop {
+    a = s32[1] constant({0})
+    b = s32[2] constant({0,1})
+    c = s32[3] constant({0,1,2})
+    d = s32[4] constant({0,1,2,3})
+    ta = (s32[1]) tuple(a)
+    td = (s32[4]) tuple(d)
+    tbcd = (s32[2], s32[3], (s32[4])) tuple(b, c, td)
+    init = ((s32[1]), (s32[2], s32[3], (s32[4]))) tuple(ta, tbcd), origin={(({"a"}), (
+      {"b"}, {"c"}, ({"d"})))}
+    ROOT while = ((s32[1]), (s32[2], s32[3], (s32[4]))) while(init),
+      condition=Cond, body=Body, origin={(({"while.116" {0}}), (
+      {"while.116" {1}}, {"while.116" {2}}, ({"while.116" {3}})))}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          WhileLoopSimplifier().Run(module.get()));
+  EXPECT_TRUE(changed);
+  HloInstruction* while_instr = FindFirstWhile(module.get());
+  ASSERT_NE(while_instr->original_value(), nullptr);
+  EXPECT_EQ(
+      while_instr->original_value()->ToString(),
+      R"(({"while.116" {0}}, {"while.116" {1}}, {"while.116" {2}}, {"while.116" {3}}))");
+  HloInstruction* while_init = while_instr->while_init();
+  ASSERT_NE(while_init->original_value(), nullptr);
+  EXPECT_EQ(while_init->original_value()->ToString(),
+            R"(({"a"}, {"b"}, {"c"}, {"d"}))");
+}
+
 }  // namespace
 }  // namespace xla

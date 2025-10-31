@@ -151,7 +151,7 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
     HloInstruction* while_op, absl::flat_hash_set<int64_t>& used_tuple_indices,
     std::optional<absl::flat_hash_map<int32_t, int32_t>>
         dead_to_surviving_index = std::nullopt) {
-  auto copy_original_value =
+  auto copy_remaining_original_arrays =
       [&](const HloInstruction* src_instruction,
           HloInstruction* dest_instruction,
           const absl::flat_hash_map<int64_t, int64_t>& old_to_new_tuple_idx) {
@@ -305,8 +305,9 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   CopyFrontendAttributes(while_op, new_while_op);
   CopyMetadata(while_op, new_while_op);
 
-  copy_original_value(while_init, new_while_init, old_to_new_tuple_idx);
-  copy_original_value(while_op, new_while_op, old_to_new_tuple_idx);
+  copy_remaining_original_arrays(while_init, new_while_init,
+                                 old_to_new_tuple_idx);
+  copy_remaining_original_arrays(while_op, new_while_op, old_to_new_tuple_idx);
 
   // Create a tuple op that recreates the output of the old while op.  That is,
   // we transform to
@@ -1193,6 +1194,20 @@ static std::vector<HloInstruction*> GetFlatTupleElems(
 }
 
 static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
+  auto flatten_original_value = [&](HloInstruction* old_instr,
+                                    HloInstruction* new_instr) {
+    if (old_instr->original_value()) {
+      auto new_original_value =
+          std::make_shared<OriginalValue>(new_instr->shape());
+      int64_t i = 0;
+      for (auto& [shape_index, original_array] :
+           old_instr->original_value()->tree().leaves()) {
+        *new_original_value->mutable_tree()->mutable_element({i++}) =
+            original_array;
+      }
+      new_instr->set_original_value(new_original_value);
+    }
+  };
   HloModule* module = while_op->GetModule();
   HloComputation* computation = while_op->parent();
   auto* while_init = while_op->mutable_operand(0);
@@ -1294,6 +1309,9 @@ static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
   for (auto& instr : new_instrs) {
     computation->AddInstruction(std::move(instr));
   }
+
+  flatten_original_value(while_init, new_while_op->mutable_operand(0));
+  flatten_original_value(while_op, new_while_op);
   return true;
 }
 
