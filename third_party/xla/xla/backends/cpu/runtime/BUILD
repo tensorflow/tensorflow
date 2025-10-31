@@ -1203,6 +1203,7 @@ cc_library(
         "//xla/backends/cpu/runtime/xnnpack:xnn_convolution_thunk",
         "//xla/backends/cpu/runtime/xnnpack:xnn_dot_thunk",
         "//xla/backends/cpu/runtime/xnnpack:xnn_fusion_thunk",
+        "//xla/hlo/ir:hlo",
         "//xla/runtime:resource_use",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
