@@ -54,12 +54,13 @@ class CubSortRunnerInterface {
 
 class CubSortThunk : public Thunk {
  public:
-  CubSortThunk(ThunkInfo thunk_info, PrimitiveType type,
-               std::optional<PrimitiveType> value_type,
-               absl::InlinedVector<BufferAllocation::Slice, 2> operands,
-               absl::InlinedVector<BufferAllocation::Slice, 2> results,
-               BufferAllocation::Slice scratch, bool descending,
-               int64_t batch_size, absl::string_view platform_name);
+  static absl::StatusOr<std::unique_ptr<CubSortThunk>> Create(
+      ThunkInfo thunk_info, PrimitiveType type,
+      std::optional<PrimitiveType> value_type,
+      absl::InlinedVector<BufferAllocation::Slice, 2> operands,
+      absl::InlinedVector<BufferAllocation::Slice, 2> results,
+      BufferAllocation::Slice scratch, bool descending, int64_t batch_size,
+      absl::string_view platform_name);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return runner_->Run(params, this);
@@ -72,6 +73,12 @@ class CubSortThunk : public Thunk {
   int64_t batch_size() const { return batch_size_; }
 
  private:
+  CubSortThunk(ThunkInfo thunk_info,
+               std::unique_ptr<CubSortRunnerInterface> runner,
+               absl::InlinedVector<BufferAllocation::Slice, 2> operands,
+               absl::InlinedVector<BufferAllocation::Slice, 2> results,
+               BufferAllocation::Slice scratch, bool descending,
+               int64_t batch_size);
   std::unique_ptr<CubSortRunnerInterface> runner_;
   absl::InlinedVector<BufferAllocation::Slice, 2> operands_;
   absl::InlinedVector<BufferAllocation::Slice, 2> results_;

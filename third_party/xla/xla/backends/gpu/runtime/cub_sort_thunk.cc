@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -283,16 +284,29 @@ CubSortRunnerInterface::Create(PrimitiveType type,
              : CreateCubSortRunner(type, platform_name);
 }
 
-CubSortThunk::CubSortThunk(
+absl::StatusOr<std::unique_ptr<CubSortThunk>> CubSortThunk::Create(
     ThunkInfo thunk_info, PrimitiveType type,
     std::optional<PrimitiveType> value_type,
     absl::InlinedVector<BufferAllocation::Slice, 2> operands,
     absl::InlinedVector<BufferAllocation::Slice, 2> results,
     BufferAllocation::Slice scratch, bool descending, int64_t batch_size,
-    absl::string_view platform_name)
+    absl::string_view platform_name) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<CubSortRunnerInterface> runner,
+      CubSortRunnerInterface::Create(type, value_type, platform_name));
+
+  return absl::WrapUnique<CubSortThunk>(
+      new CubSortThunk(thunk_info, std::move(runner), std::move(operands),
+                       std::move(results), scratch, descending, batch_size));
+}
+
+CubSortThunk::CubSortThunk(
+    ThunkInfo thunk_info, std::unique_ptr<CubSortRunnerInterface> runner,
+    absl::InlinedVector<BufferAllocation::Slice, 2> operands,
+    absl::InlinedVector<BufferAllocation::Slice, 2> results,
+    BufferAllocation::Slice scratch, bool descending, int64_t batch_size)
     : Thunk(Thunk::kCubSort, thunk_info),
-      runner_(CubSortRunnerInterface::Create(type, value_type, platform_name)
-                  .value()),
+      runner_(std::move(runner)),
       operands_(std::move(operands)),
       results_(std::move(results)),
       scratch_(scratch),
