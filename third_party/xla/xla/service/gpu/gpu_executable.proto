@@ -2,15 +2,79 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "xla/backends/gpu/runtime/thunk.proto";
+import "xla/service/gpu/ir_emission_utils.proto";
 import "xla/service/hlo.proto";
+import "xla/shape_util.proto";
+import "xla/stream_executor/cuda/cuda_compute_capability.proto";
+import "xla/stream_executor/device_description.proto";
+import "xla/xla.proto";
+import "xla/xla_data.proto";
 
-message OutputInfoProto {
-  // This output is part of the following buffer allocation
-  int64 allocation_index = 1;
+message GpuExecutableProto {
+  // The binary of the executable.
+  //
+  // For CUDA, this is a cubin binary.
+  // For ROCm, this is a hsaco binary.
+  bytes binary = 1;
 
-  // True when this output is passed through from an input parameter
-  bool passthrough = 2;
+  // The PTX of the executable. (Only applicable to CUDA)
+  string asm_text = 2;
 
-  // Describes whether and how this output aliases with an input parameter
-  optional xla.HloInputOutputAliasProto.AliasEntryProto alias_config = 3;
+  // The DNN compiled graphs of the executable.
+  //
+  // The key is the DNN kernel name, and the value is the compiled graph
+  // serialized to JSON. (Only applicable to cuDNN)
+  map<string, string> dnn_compiled_graphs = 3;
+
+  // The target compute capability of the executable.
+  stream_executor.GpuComputeCapabilityProto gpu_compute_capability = 4;
+
+  // The HLO module of the executable - for debugging purposes only.
+  xla.HloModuleProtoWithConfig hlo_module = 5;
+
+  // The thunk tree of the executable.
+  ThunkProto thunk = 6;
+
+  // The name of the HLO module - for debugging purposes only.
+  string module_name = 7;
+
+  // The shape of the program (parameters and result).
+  xla.ProgramShapeProto program_shape = 8;
+
+  // The buffer allocations of the executable.
+  repeated BufferAllocationProto buffer_allocations = 9;
+
+  message OutputInfoProto {
+    // This output is part of the following buffer allocation
+    int64 allocation_index = 1;
+
+    // True when this output is passed through from an input parameter
+    bool passthrough = 2;
+
+    // Describes whether and how this output aliases with an input parameter
+    optional xla.HloInputOutputAliasProto.AliasEntryProto alias_config = 3;
+  }
+
+  message OutputInfoMapEntry {
+    xla.ShapeIndexProto shape_index = 1;
+    OutputInfoProto output_info = 2;
+  }
+
+  // Map from output shape index to output info.
+  repeated OutputInfoMapEntry output_info_map = 10;
+
+  message ConstantInfoProto {
+    // The name of the constant in the HLO module.
+    string symbol_name = 1;
+
+    // The content of the constant - this can be large.
+    DenseDataIntermediateProto content = 2;
+
+    // The index of the buffer allocation for this constant.
+    int64 allocation_index = 3;
+  }
+
+  // The constants used by the executable.
+  repeated ConstantInfoProto constants = 11;
 }

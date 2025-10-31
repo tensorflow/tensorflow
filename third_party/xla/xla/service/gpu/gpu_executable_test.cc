@@ -62,8 +62,11 @@ namespace xla::gpu {
 namespace {
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::Pair;
+using ::testing::Pointee;
 using ::testing::Property;
 using ::testing::SizeIs;
+using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 
 TEST(GpuExecutableTest, OuputInfoToAndFromProto) {
@@ -431,6 +434,57 @@ TEST(GpuExecutableTest, DumpsMetadataListProto) {
                   thunk_kind: "kCopy"
                 }
               )pb"));
+}
+
+TEST(GpuExecutableTest, ProtoConversion) {
+  se::DeviceDescription device_description;
+  device_description.set_gpu_compute_capability(
+      se::GpuComputeCapability{se::CudaComputeCapability::Volta()});
+  device_description.set_driver_version({12, 3, 0});
+  device_description.set_runtime_version({12, 3, 0});
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.thunk_id = 123;
+
+  ThunkSequence thunk_sequence;
+  thunk_sequence.push_back(std::make_unique<KernelThunk>(
+      thunk_info,
+      /*kernel_name=*/"test_kernel", emitters::KernelArguments({}),
+      LaunchDimensions(),
+      /*cluster_dim=*/std::nullopt,
+      /*shmem_bytes=*/0, se::gpu::TmaMetadata()));
+
+  GpuExecutable::Params params;
+  params.asm_text = "test_asm_text";
+  params.binary = {1, 2, 3};
+  params.dnn_compiled_graphs = {{"test_dnn_compiled_graph", "test_json"}};
+
+  thunk_info.thunk_id = 456;
+  params.executable =
+      std::make_unique<SequentialThunk>(thunk_info, std::move(thunk_sequence));
+  params.device_description = device_description;
+
+  params.module_name = "test_module";
+  params.enable_debug_info_manager = false;
+  params.mlir_allocations = {BufferAllocation(0, 1024, 0)};
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> reference_executable,
+                          GpuExecutable::Create(std::move(params)));
+  TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto,
+                          reference_executable->ToProto());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuExecutable> reconstructed_executable,
+      GpuExecutable::FromProto(proto, device_description));
+  EXPECT_THAT(reconstructed_executable->text(), "test_asm_text");
+  EXPECT_THAT(reconstructed_executable->binary(), ElementsAre(1, 2, 3));
+  EXPECT_THAT(
+      reconstructed_executable->dnn_compiled_graphs(),
+      UnorderedElementsAre(Pair("test_dnn_compiled_graph", "test_json")));
+  EXPECT_THAT(reconstructed_executable->GetThunk().thunks(),
+              ElementsAre(Pointee(Property(&Thunk::kind, Thunk::kKernel))));
+  EXPECT_THAT(reconstructed_executable->GetAllocations(),
+              ElementsAre(Pointee(Property(&BufferAllocation::size, 1024))));
+  EXPECT_THAT(reconstructed_executable->name(), "test_module");
 }
 
 }  // namespace
