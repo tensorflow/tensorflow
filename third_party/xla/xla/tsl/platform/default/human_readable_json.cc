@@ -60,7 +60,8 @@ absl::Status HumanReadableJsonToProto(const string& str,
     // tsl::StringPiece.
     auto error_msg = status.message();
     return errors::Internal(
-        absl::StrCat("Could not convert JSON string to proto: ", error_msg));
+        absl::StrCat("Could not convert JSON string to proto type ",
+                     proto->GetTypeName(), ": ", error_msg));
   }
   return absl::OkStatus();
 }
