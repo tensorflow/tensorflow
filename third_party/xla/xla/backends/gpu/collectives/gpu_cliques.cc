@@ -496,7 +496,6 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     // creating new communicators.
     std::vector<Communicator*> parent_comms;
     std::vector<RankId> keys;
-
     for (auto& [parent_rank, split_rank] : rank_mapping) {
       auto parent_comm = (*parent_clique)->comm(parent_rank);
       if (!parent_comm.has_value()) {
@@ -507,6 +506,12 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
 
       parent_comms.push_back(*parent_comm);
       keys.push_back(split_rank);
+    }
+
+    std::vector<DeviceRank> ranks;
+    ranks.reserve(rank_pairs.size());
+    for (auto& rank_pair : rank_pairs) {
+      ranks.emplace_back(rank_pair->second);
     }
 
     // Get a globally consistent color value for newly created clique.
@@ -520,11 +525,6 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     } else {
       // The parent clique is not local, but this clique can be local. We need
       // to check if peer access is possible between all devices in this clique.
-      std::vector<DeviceRank> ranks;
-      ranks.reserve(rank_pairs.size());
-      for (auto& rank_pair : rank_pairs) {
-        ranks.emplace_back(rank_pair->second);
-      }
       TF_ASSIGN_OR_RETURN(peer_access_enabled,
                           EnablePeerAccess(clique_key, ranks));
     }
@@ -547,9 +547,9 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     }
 
     VLOG(5) << "Splitting communicators";
-    TF_ASSIGN_OR_RETURN(
-        auto splitted_comms,
-        collectives->SplitCommunicators(parent_comms, color, keys, config));
+    TF_ASSIGN_OR_RETURN(auto splitted_comms,
+                        collectives->SplitCommunicators(parent_comms, color,
+                                                        keys, config, ranks));
 
     absl::btree_map<RankId, std::unique_ptr<Communicator>> comms;
     for (size_t i = 0; i < splitted_comms.size(); ++i) {
