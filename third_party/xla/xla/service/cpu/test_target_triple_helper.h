@@ -23,6 +23,9 @@ static const char kTargetTripleForHost[] = "aarch64-unknown-linux-gnu";
        defined(__ppc__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
 static const char kTargetCpuForHost[] = "ppc";
 static const char kTargetTripleForHost[] = "ppc64le-ibm-linux-gnu";
+#elif defined(__riscv) && (__riscv_xlen == 64)
+static const char kTargetCpuForHost[] = "";
+static const char kTargetTripleForHost[] = "riscv64-unknown-linux-gnu";
 #elif defined(__s390x__)
 static const char kTargetCpuForHost[] = "s390x";
 static const char kTargetTripleForHost[] = "systemz-none-linux-gnu";

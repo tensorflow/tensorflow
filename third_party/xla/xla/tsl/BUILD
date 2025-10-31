@@ -317,6 +317,16 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_riscv64",
+    constraint_values =
+        [
+            "@platforms//cpu:riscv64",
+            "@platforms//os:linux",
+        ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_s390x",
     constraint_values =
         [
@@ -377,6 +387,15 @@ selects.config_setting_group(
     name = "ppc64le_or_cross",
     match_any = [
         ":linux_ppc64le",
+        ":with_cross_compiler_support",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "riscv64_or_cross",
+    match_any = [
+        ":linux_riscv64",
         ":with_cross_compiler_support",
     ],
     visibility = ["//visibility:public"],
@@ -453,6 +472,7 @@ selects.config_setting_group(
         ":linux_aarch64",
         ":linux_armhf",
         ":linux_ppc64le",
+        ":linux_riscv64",
         ":linux_s390x",
         ":linux_x86_64",
     ],
