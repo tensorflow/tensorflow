@@ -2377,7 +2377,7 @@ CommandBufferCmd::BufferUseVector CollectiveBroadcastCmd::buffers() const {
 DynamicSliceFusionCmd::DynamicSliceFusionCmd(
     CommandBufferCmdExecutor embedded_commands,
     std::vector<std::optional<BufferAllocation::Slice>> arguments,
-    std::vector<std::unique_ptr<BufferAllocation>> fake_allocations,
+    std::vector<BufferAllocation> fake_allocations,
     std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets,
     std::vector<std::optional<Shape>> orig_shapes,
     std::vector<std::optional<Shape>> sliced_shapes,

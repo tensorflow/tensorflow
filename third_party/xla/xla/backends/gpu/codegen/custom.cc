@@ -613,7 +613,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   // different offset by creating new fake allocations so each operand will
   // have a different buffer index. The slices can thus always start at offset
   // 0. DynamicSliceThunk will take care of the offset adjustment.
-  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
+  std::vector<BufferAllocation> fake_allocations(4, {0, 0, 0});
   if (fusion.shape().IsArray()) {
     TF_ASSIGN_OR_RETURN(
         output, GetResultSlice(buffer_assignment, adaptor, fusion, custom_call,
@@ -645,10 +645,10 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
         offset_buffer_indices, orig_shapes, sliced_shapes, offset_byte_sizes,
         extracted_offset_modules, arg_idx, can_compute_indvar_on_host, while_op,
         indvar_idx, inlined_module));
-    fake_allocations[arg_idx] = std::make_unique<BufferAllocation>(
+    fake_allocations[arg_idx] = BufferAllocation(
         /*index=*/arg_idx, workspace->size(), /*color=*/0);
-    slice_workspace_fake = BufferAllocation::Slice(
-        fake_allocations[arg_idx].get(), 0, workspace->size());
+    slice_workspace_fake = BufferAllocation::Slice(&fake_allocations[arg_idx],
+                                                   0, workspace->size());
   }
 
   if (absl::c_all_of(slice_instrs, [&](auto slice_instr) {
@@ -676,27 +676,27 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
     unsigned fake_arg_idx = 0;
     int64_t lhs_byte_size =
         ShapeUtil::ByteSizeOf(custom_call.operand(fake_arg_idx)->shape());
-    fake_allocations[fake_arg_idx] = std::make_unique<BufferAllocation>(
+    fake_allocations[fake_arg_idx] = BufferAllocation(
         /*index=*/fake_arg_idx, lhs_byte_size, /*color=*/0);
-    BufferAllocation::Slice slice_lhs_fake(fake_allocations[fake_arg_idx].get(),
-                                           0, lhs_byte_size);
+    BufferAllocation::Slice slice_lhs_fake(&fake_allocations[fake_arg_idx], 0,
+                                           lhs_byte_size);
 
     fake_arg_idx++;
     int64_t rhs_byte_size =
         ShapeUtil::ByteSizeOf(custom_call.operand(fake_arg_idx)->shape());
-    fake_allocations[fake_arg_idx] = std::make_unique<BufferAllocation>(
+    fake_allocations[fake_arg_idx] = BufferAllocation(
         /*index=*/fake_arg_idx, rhs_byte_size, /*color=*/0);
-    BufferAllocation::Slice slice_rhs_fake(fake_allocations[fake_arg_idx].get(),
-                                           0, rhs_byte_size);
+    BufferAllocation::Slice slice_rhs_fake(&fake_allocations[fake_arg_idx], 0,
+                                           rhs_byte_size);
 
     fake_arg_idx++;
     int64_t out_fake_byte_size = ShapeUtil::ByteSizeOf(
         custom_call.shape().IsArray() ? custom_call.shape()
                                       : custom_call.shape().tuple_shapes(0));
-    fake_allocations[fake_arg_idx] = std::make_unique<BufferAllocation>(
+    fake_allocations[fake_arg_idx] = BufferAllocation(
         /*index=*/fake_arg_idx, out_fake_byte_size, /*color=*/0);
-    BufferAllocation::Slice slice_out_fake(fake_allocations[fake_arg_idx].get(),
-                                           0, out_fake_byte_size);
+    BufferAllocation::Slice slice_out_fake(&fake_allocations[fake_arg_idx], 0,
+                                           out_fake_byte_size);
     ThunkSequence seq;
     seq.emplace_back(std::make_unique<GemmThunk>(
         thunk_info, std::move(config), slice_lhs_fake, slice_rhs_fake,
@@ -962,7 +962,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
                                    ir_emitter_context.platform_name());
   };
 
-  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(num_args);
+  std::vector<BufferAllocation> fake_allocations(num_args, {0, 0, 0});
   if (absl::c_any_of(slice_instrs, IsDynamicSliceOrDynamicUpdateSlice)) {
     // Creating embedded custom call thunk.
     unsigned fake_arg_idx = 0;
@@ -982,10 +982,10 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
             }
 
             int64_t operand_byte_size = ShapeUtil::ByteSizeOf(subshape);
-            fake_allocations[fake_arg_idx] = std::make_unique<BufferAllocation>(
+            fake_allocations[fake_arg_idx] = BufferAllocation(
                 /*index=*/fake_arg_idx, operand_byte_size, /*color=*/0);
-            BufferAllocation::Slice fake_slice(
-                fake_allocations[fake_arg_idx].get(), 0, operand_byte_size);
+            BufferAllocation::Slice fake_slice(&fake_allocations[fake_arg_idx],
+                                               0, operand_byte_size);
 
             fake_arg_idx++;
             fake_operands.push_back(ShapedSlice{fake_slice, subshape});
@@ -1007,10 +1007,10 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
           }
 
           int64_t result_byte_size = ShapeUtil::ByteSizeOf(subshape);
-          fake_allocations[fake_arg_idx] = std::make_unique<BufferAllocation>(
+          fake_allocations[fake_arg_idx] = BufferAllocation(
               /*index=*/fake_arg_idx, result_byte_size, /*color=*/0);
-          BufferAllocation::Slice fake_slice(
-              fake_allocations[fake_arg_idx].get(), 0, result_byte_size);
+          BufferAllocation::Slice fake_slice(&fake_allocations[fake_arg_idx], 0,
+                                             result_byte_size);
 
           fake_arg_idx++;
           fake_results.push_back(ShapedSlice{fake_slice, subshape});
@@ -1065,7 +1065,7 @@ using Slices = std::vector<Slice>;
 // fake_arguments: the fake slices of the inputs/outputs of the hero
 // instruction, when the slicing is dynamic.
 struct SliceDataForCollectives {
-  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations;
+  std::vector<BufferAllocation> fake_allocations;
   std::vector<HloInstruction*> slice_instrs;
   Slices arguments, fake_arguments;
   std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>>
@@ -1076,7 +1076,7 @@ struct SliceDataForCollectives {
   std::unique_ptr<HloModule> init_module, update_module;
   bool isDynamic, can_compute_indvar_on_host;
   explicit SliceDataForCollectives(int num_args)
-      : fake_allocations(num_args),
+      : fake_allocations(num_args, {0, 0, 0}),
         slice_instrs(num_args),
         arguments(num_args, std::nullopt),
         fake_arguments(num_args, std::nullopt),
@@ -1197,11 +1197,10 @@ CollectSliceArgumentMetadataForCollectives(
     unsigned fake_arg_idx = 0;
     for (HloInstruction* operand : instr->operands()) {
       int64_t operand_byte_size = ShapeUtil::ByteSizeOf(operand->shape());
-      slice_data.fake_allocations[fake_arg_idx] =
-          std::make_unique<BufferAllocation>(
-              /*index=*/fake_arg_idx, operand_byte_size, /*color=*/0);
+      slice_data.fake_allocations[fake_arg_idx] = BufferAllocation(
+          /*index=*/fake_arg_idx, operand_byte_size, /*color=*/0);
       BufferAllocation::Slice fake_slice(
-          /*allocation=*/slice_data.fake_allocations[fake_arg_idx].get(),
+          /*allocation=*/&slice_data.fake_allocations[fake_arg_idx],
           /*offset=*/0,
           /*size=*/operand_byte_size);
       slice_data.fake_arguments[fake_arg_idx] = fake_slice;
@@ -1217,12 +1216,11 @@ CollectSliceArgumentMetadataForCollectives(
     }
     for (const HloInstruction* user : collective_results) {
       int64_t out_fake_byte_size = ShapeUtil::ByteSizeOf(user->shape());
-      slice_data.fake_allocations[fake_arg_idx] =
-          std::make_unique<BufferAllocation>(
-              /*index=*/fake_arg_idx, /*size=*/out_fake_byte_size,
-              /*color=*/0);
+      slice_data.fake_allocations[fake_arg_idx] = BufferAllocation(
+          /*index=*/fake_arg_idx, /*size=*/out_fake_byte_size,
+          /*color=*/0);
       BufferAllocation::Slice fake_slice(
-          /*allocation=*/slice_data.fake_allocations[fake_arg_idx].get(),
+          /*allocation=*/&slice_data.fake_allocations[fake_arg_idx],
           /*offset=*/0, /*size=*/out_fake_byte_size);
       slice_data.fake_arguments[fake_arg_idx] = fake_slice;
       fake_arg_idx++;

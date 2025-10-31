@@ -949,24 +949,22 @@ TEST(CommandBufferThunkTest, DISABLED_DynamicSliceFusionCmd) {
   TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
   // Prepare buffer allocations for recording command buffer.
-  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
-  fake_allocations[0] = std::make_unique<BufferAllocation>(
+  std::vector<BufferAllocation> fake_allocations;
+  fake_allocations.reserve(4);
+  fake_allocations.emplace_back(
       /*index=*/0, fake_lhs_length, /*color=*/0);
-  fake_allocations[1] =
-      std::make_unique<BufferAllocation>(/*index=*/1, rhs_length, /*color=*/0);
-  fake_allocations[2] =
-      std::make_unique<BufferAllocation>(/*index=*/2, out_length,
-                                         /*color=*/0);
+  fake_allocations.emplace_back(
+      /*index=*/1, rhs_length, /*color=*/0);
+  fake_allocations.emplace_back(/*index=*/2, out_length,
+                                /*color=*/0);
 
-  fake_allocations[3] =
-      std::make_unique<BufferAllocation>(/*index=*/3, 1024 * 1024,
-                                         /*color=*/0);
-  BufferAllocation::Slice fake_slice_lhs(fake_allocations[0].get(), 0,
+  fake_allocations.emplace_back(/*index=*/3, 1024 * 1024,
+                                /*color=*/0);
+  BufferAllocation::Slice fake_slice_lhs(&fake_allocations[0], 0,
                                          fake_lhs_length);
-  BufferAllocation::Slice slice_rhs(fake_allocations[1].get(), 0, rhs_length);
-  BufferAllocation::Slice slice_out(fake_allocations[2].get(), 0, out_length);
-  BufferAllocation::Slice slice_workspace(fake_allocations[3].get(), 0,
-                                          1024 * 1024);
+  BufferAllocation::Slice slice_rhs(&fake_allocations[1], 0, rhs_length);
+  BufferAllocation::Slice slice_out(&fake_allocations[2], 0, out_length);
+  BufferAllocation::Slice slice_workspace(&fake_allocations[3], 0, 1024 * 1024);
   auto config = GemmConfig::For(
       ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
       ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},

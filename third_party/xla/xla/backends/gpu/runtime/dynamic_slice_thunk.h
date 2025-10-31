@@ -114,7 +114,7 @@ class DynamicSliceThunk : public Thunk {
   DynamicSliceThunk(
       ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
       std::vector<std::optional<BufferAllocation::Slice>> arguments,
-      std::vector<std::unique_ptr<BufferAllocation>> fake_allocations,
+      std::vector<BufferAllocation> fake_allocations,
       std::vector<std::optional<std::vector<Offset>>> offsets,
       std::vector<std::optional<Shape>> orig_shapes,
       std::vector<std::optional<Shape>> sliced_shapes,
@@ -150,8 +150,7 @@ class DynamicSliceThunk : public Thunk {
     return arguments_;
   }
 
-  const std::vector<std::unique_ptr<BufferAllocation>>& get_fake_allocations()
-      const {
+  const std::vector<BufferAllocation>& get_fake_allocations() const {
     return fake_allocations_;
   }
 
@@ -204,7 +203,7 @@ class DynamicSliceThunk : public Thunk {
  private:
   std::unique_ptr<SequentialThunk> embedded_thunk_;
   std::vector<std::optional<BufferAllocation::Slice>> arguments_;
-  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_;
+  std::vector<BufferAllocation> fake_allocations_;
   std::vector<std::optional<std::vector<Offset>>> offsets_;
   std::vector<std::optional<Shape>> orig_shapes_;
   std::vector<std::optional<Shape>> sliced_shapes_;

@@ -175,7 +175,7 @@ std::string DynamicSliceThunk::SliceDef::ToString() const {
 DynamicSliceThunk::DynamicSliceThunk(
     ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
     std::vector<std::optional<BufferAllocation::Slice>> arguments,
-    std::vector<std::unique_ptr<BufferAllocation>> fake_allocations,
+    std::vector<BufferAllocation> fake_allocations,
     std::vector<std::optional<std::vector<Offset>>> offsets,
     std::vector<std::optional<Shape>> orig_shapes,
     std::vector<std::optional<Shape>> sliced_shapes,
@@ -687,8 +687,8 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
   return std::make_unique<DynamicSliceThunk>(
       thunk_info, std::make_unique<ThunkSequence>(std::move(embedded_thunks)),
       std::move(arguments),
-      /*fake_allocations=*/std::vector<std::unique_ptr<BufferAllocation>>(),
-      std::move(offsets), std::move(orig_shapes), std::move(sliced_shapes),
+      /*fake_allocations=*/std::vector<BufferAllocation>(), std::move(offsets),
+      std::move(orig_shapes), std::move(sliced_shapes),
       std::move(offset_byte_sizes),
       std::move(offset_as_function_of_indvar_metadata));
 }
