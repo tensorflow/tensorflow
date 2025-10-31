@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace stream_executor {
 namespace {
@@ -40,24 +41,34 @@ using ::testing::SizeIs;
 using tsl::proto_testing::EqualsProto;
 using tsl::proto_testing::ParseTextProtoOrDie;
 
+// This function creates a `DeviceMemoryBase` with an opaque pointer that
+// contains the given value. The size of the device memory is set to 0 since
+// it's unused.
+// Note that this device pointer is not a valid pointer to device memory, it
+// is only used for testing and can't be dereferenced.
+DeviceMemoryBase MakeDevicePointer(uint32_t value) {
+  // To construct a pointer that works both on 32bit and 64bit platforms and
+  // does not invoke undefined behaviour, we first cast our integer to uintptr_t
+  // and then cast it to void*.
+  return DeviceMemoryBase(
+      tsl::safe_reinterpret_cast<void*>(static_cast<uintptr_t>(value)),
+      /*size=*/0);
+}
+
 TEST(SingleArgumentPackingSpecTest, WriteArgumentAddress) {
   SingleArgumentPackingSpec first_arg;
   first_arg.WriteArgumentAddress(/*argument_index=*/2);
 
   // We fail if not enough arguments are provided.Since we are referencing
   // argument #2, we will need to provide 3 arguments.
-  EXPECT_THAT(first_arg.BuildArgument({DeviceMemoryBase(nullptr, /*size=*/0),
-                                       DeviceMemoryBase(nullptr, /*size=*/0)}),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(
+      first_arg.BuildArgument({MakeDevicePointer(0), MakeDevicePointer(0)}),
+      StatusIs(absl::StatusCode::kInvalidArgument));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<char> first_arg_storage,
-      first_arg.BuildArgument(
-          {DeviceMemoryBase(nullptr, /*size=*/0),
-           DeviceMemoryBase(nullptr, /*size=*/0),
-           DeviceMemoryBase(
-               absl::bit_cast<void*>(static_cast<uintptr_t>(0xff42)),
-               /*size=*/0)}));
+      first_arg.BuildArgument({MakeDevicePointer(0), MakeDevicePointer(0),
+                               MakeDevicePointer(0xff42)}));
   EXPECT_THAT(first_arg_storage,
               ElementsAre(0x42, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00));
 }
@@ -70,12 +81,7 @@ TEST(SingleArgumentPackingSpecTest, WriteMultipleArgumentAddresses) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<char> first_arg_storage,
       first_arg.BuildArgument(
-          {DeviceMemoryBase(
-               absl::bit_cast<void*>(static_cast<uintptr_t>(0xff42)),
-               /*size=*/0),
-           DeviceMemoryBase(
-               absl::bit_cast<void*>(static_cast<uintptr_t>(0xaabbccdd)),
-               /*size=*/0)}));
+          {MakeDevicePointer(0xff42), MakeDevicePointer(0xaabbccdd)}));
   EXPECT_THAT(first_arg_storage,
               ElementsAre(0x42, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xdd,
                           0xcc, 0xbb, 0xaa, 0x00, 0x00, 0x00, 0x00));
@@ -83,8 +89,8 @@ TEST(SingleArgumentPackingSpecTest, WriteMultipleArgumentAddresses) {
 
 TEST(SingleArgumentPackingSpecTest, WriteConstant) {
   SingleArgumentPackingSpec first_arg;
-  first_arg.WriteConstant(0x1348);
-  first_arg.WriteConstant(0x2389ul);
+  first_arg.WriteConstant(static_cast<uint32_t>(0x1348));
+  first_arg.WriteConstant(static_cast<uint64_t>(0x2389));
 
   TF_ASSERT_OK_AND_ASSIGN(std::vector<char> first_arg_storage,
                           first_arg.BuildArgument(/*args=*/{}));
@@ -100,12 +106,10 @@ TEST(SingleArgumentPackingSpecTest, WriteConstant) {
 TEST(SingleArgumentPackingSpecTest, WriteConstantAndAddress) {
   SingleArgumentPackingSpec first_arg;
   first_arg.WriteArgumentAddress(/*argument_index=*/0);
-  first_arg.WriteConstant(0x1234);
+  first_arg.WriteConstant(static_cast<uint32_t>(0x1234));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<char> first_arg_storage,
-      first_arg.BuildArgument({DeviceMemoryBase(
-          absl::bit_cast<void*>(static_cast<uintptr_t>(0xff42)), 0)}));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<char> first_arg_storage,
+                          first_arg.BuildArgument({MakeDevicePointer(0xff42)}));
 
   EXPECT_THAT(first_arg_storage,
               ElementsAre(0x42, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34,
@@ -133,8 +137,7 @@ TEST(SingleArgumentPackingSpecTest, FromProto) {
 
   TF_ASSERT_OK_AND_ASSIGN(SingleArgumentPackingSpec spec,
                           SingleArgumentPackingSpec::FromProto(proto));
-  EXPECT_THAT(spec.BuildArgument({DeviceMemoryBase(
-                  absl::bit_cast<void*>(static_cast<uintptr_t>(0xff42)), 0)}),
+  EXPECT_THAT(spec.BuildArgument({MakeDevicePointer(0xff42)}),
               IsOkAndHolds(ElementsAre(0x34, 0x12, 0x00, 0x00, 0x42, 0xff, 0x00,
                                        0x00, 0x00, 0x00, 0x00, 0x00)));
 }
@@ -144,12 +147,9 @@ TEST(KernelArgumentsPackingSpecTest, BuildArguments) {
   spec.AddAddressArgument(/*argument_index=*/0);
   spec.AddConstantArgument(0x1234);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<KernelArgsPackedVector> packed_args,
-      spec.BuildArguments(
-          {DeviceMemoryBase(
-              absl::bit_cast<void*>(static_cast<uintptr_t>(0xff42)), 0)},
-          /*shared_memory_bytes=*/8989));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelArgsPackedVector> packed_args,
+                          spec.BuildArguments({MakeDevicePointer(0xff42)},
+                                              /*shared_memory_bytes=*/8989));
   // We expect 3 arguments: 2 parameters and the shared memory which counts as
   // an argument.
   EXPECT_EQ(packed_args->number_of_arguments(), 3);
@@ -197,12 +197,9 @@ TEST(KernelArgumentsPackingSpecTest, FromProto) {
 
   TF_ASSERT_OK_AND_ASSIGN(KernelArgumentsPackingSpec spec,
                           KernelArgumentsPackingSpec::FromProto(proto));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<KernelArgsPackedVector> arguments,
-      spec.BuildArguments(
-          {DeviceMemoryBase(
-              absl::bit_cast<void*>(static_cast<uintptr_t>(0xff42)), 0)},
-          /*shared_memory_bytes=*/8989));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelArgsPackedVector> arguments,
+                          spec.BuildArguments({MakeDevicePointer(0xff42)},
+                                              /*shared_memory_bytes=*/8989));
   // We expect 3 arguments: 2 parameters and the shared memory which counts as
   // an argument.
   EXPECT_EQ(arguments->number_of_arguments(), 3);

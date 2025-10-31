@@ -647,6 +647,7 @@ cc_library(
         ":kernel_args_packed_vector",
         ":kernel_argument_packing_spec_proto_cc",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -669,6 +670,7 @@ xla_cc_test(
         ":kernel_args_packed_vector",
         ":kernel_argument_packing_spec",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/base",
@@ -676,7 +678,6 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@com_google_protobuf//:protobuf",
     ],
 )
 

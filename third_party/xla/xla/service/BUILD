@@ -1566,6 +1566,7 @@ cc_library(
     visibility = internal_visibility([
         "//xla/internal:hwi_internal",
         "//xla/backends/gpu/runtime:__subpackages__",
+        "//platforms/xla/benchmarks/computation_benchmarker:__subpackages__",
     ]),
     deps = [
         ":buffer_assignment",

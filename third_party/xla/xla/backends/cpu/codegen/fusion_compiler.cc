@@ -64,6 +64,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/Transforms/AllocationOpInterfaceImpl.h"
@@ -93,6 +94,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
+#include "stablehlo/conversions/linalg/transforms/Passes.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
@@ -310,14 +312,18 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
   pm.addPass(CreateShloToVectorPass());
   pm.addPass(CreateXTileToVectorPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(CreateElementalTensorToVectorPass());
   pm.addPass(CreateLowerXTileEntryPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::vector::createLowerVectorMultiReductionPass(
           mlir::vector::VectorMultiReductionLowering::InnerParallel));
   pm.addPass(CreateTensorOpsToVectorPass());
 
+  pm.addPass(mlir::createConvertElementwiseToLinalgPass());
+  pm.addPass(mlir::createLinalgElementwiseOpFusionPass());
+
   AddBufferizationPasses(pm);
+
+  pm.addPass(CreateLinalgElementwiseToVectorPass());
 }
 
 // Lowering passes for the tiled emitter.
