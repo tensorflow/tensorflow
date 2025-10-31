@@ -356,8 +356,8 @@ class ThunkSerDesProtobuf : public SerDesBase<Thunk> {
       const ThunkProto& proto) const;
 
  private:
-  const HloModule* hlo_module_;
-  const std::vector<BufferAllocation>* buffer_allocations_;
+  // TODO(basiol) remove NOLINT when this actually gets used
+  const std::vector<BufferAllocation>* buffer_allocations_;  // NOLINT
 
   const std::vector<std::shared_ptr<Resource>>* thunk_resources_;
 };
@@ -1087,10 +1087,9 @@ ReduceScatterThunkFromProto(
 }
 
 static absl::StatusOr<std::unique_ptr<CallThunk>> CallThunkFromProto(
-    const ThunkProto& proto, const HloModule* hlo_module,
-    const std::vector<BufferAllocation>* buffer_allocations) {
-  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(hlo_module,
-                                                    buffer_allocations);
+    const ThunkProto& proto,
+    const std::vector<BufferAllocation>& buffer_allocations) {
+  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(&buffer_allocations);
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ThunkSequence> call_sequence,
@@ -1102,10 +1101,9 @@ static absl::StatusOr<std::unique_ptr<CallThunk>> CallThunkFromProto(
 
 static absl::StatusOr<std::unique_ptr<ConditionalThunk>>
 ConditionalThunkFromProto(
-    const ThunkProto& proto, const HloModule* hlo_module,
-    const std::vector<BufferAllocation>* buffer_allocations) {
-  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(hlo_module,
-                                                    buffer_allocations);
+    const ThunkProto& proto,
+    const std::vector<BufferAllocation>& buffer_allocations) {
+  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(&buffer_allocations);
 
   std::vector<ThunkSequence> branch_sequences;
   for (const ThunkSequenceProto& branch_sequence_proto :
@@ -1116,10 +1114,10 @@ ConditionalThunkFromProto(
   }
   TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice branch_index_buffer,
-                      BufferAllocation::Slice::FromProto(
-                          proto.conditional_thunk().branch_index_buffer(),
-                          *buffer_allocations));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice branch_index_buffer,
+      BufferAllocation::Slice::FromProto(
+          proto.conditional_thunk().branch_index_buffer(), buffer_allocations));
 
   return ConditionalThunk::Create(std::move(info),
                                   std::move(branch_index_buffer),
@@ -1482,10 +1480,9 @@ static absl::StatusOr<std::unique_ptr<TopKThunk>> TopKThunkFromProto(
 }
 
 static absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunkFromProto(
-    const ThunkProto& proto, const HloModule* hlo_module,
-    const std::vector<BufferAllocation>* buffer_allocations) {
-  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(hlo_module,
-                                                    buffer_allocations);
+    const ThunkProto& proto,
+    const std::vector<BufferAllocation>& buffer_allocations) {
+  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(&buffer_allocations);
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ThunkSequence> cond_sequence,
@@ -1499,7 +1496,7 @@ static absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunkFromProto(
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice cond_buffer,
       BufferAllocation::Slice::FromProto(proto.while_thunk().cond_buffer(),
-                                         *buffer_allocations));
+                                         buffer_allocations));
 
   std::optional<int64_t> trip_count = std::nullopt;
   if (proto.while_thunk().trip_count().contains_value()) {
@@ -1665,9 +1662,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
       }
     }
     case Thunk::Kind::kCall:
-      return CallThunkFromProto(proto, hlo_module_, buffer_allocations_);
+      return CallThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kConditional:
-      return ConditionalThunkFromProto(proto, hlo_module_, buffer_allocations_);
+      return ConditionalThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kConvolution:
       return ConvolutionThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kCopy:
@@ -1691,7 +1688,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
     case Thunk::Kind::kTopK:
       return TopKThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kWhile:
-      return WhileThunkFromProto(proto, hlo_module_, buffer_allocations_);
+      return WhileThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kXnnFusion: {
       TF_ASSIGN_OR_RETURN(
           auto xnn_fusion_kind,
@@ -1718,9 +1715,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
 }
 
 ThunkSequenceSerDesProtobuf::ThunkSequenceSerDesProtobuf(
-    const HloModule* hlo_module,
     const std::vector<BufferAllocation>* buffer_allocations)
-    : hlo_module_(hlo_module), buffer_allocations_(buffer_allocations) {}
+    : buffer_allocations_(buffer_allocations) {}
 
 absl::StatusOr<std::string> ThunkSequenceSerDesProtobuf::Serialize(
     const ThunkSequence& thunk_sequence) {
