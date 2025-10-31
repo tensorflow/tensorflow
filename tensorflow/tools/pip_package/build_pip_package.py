@@ -158,25 +158,25 @@ def prepare_headers(headers: list[str], srcs_dir: str) -> None:
   )
 
   shutil.copytree(
-      os.path.join(srcs_dir, "external/local_config_cuda/cuda"),
+      os.path.join(srcs_dir, "external/rules_ml_toolchain~~cuda_configure_ext~local_config_cuda/cuda"),
       os.path.join(srcs_dir, "third_party/gpus"),
   )
-  _copy_cuda_tree(srcs_dir, "external/cuda_cccl", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cublas", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cudart", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cudnn", "third_party/gpus/cudnn")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cufft", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/rules_ml_toolchain~~cuda_redist_init_ext~cuda_cccl", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/rules_ml_toolchain~~cuda_redist_init_ext~cuda_cublas", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/rules_ml_toolchain~~cuda_redist_init_ext~cuda_cudart", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/rules_ml_toolchain~~cuda_redist_init_ext~cuda_cudnn", "third_party/gpus/cudnn")
+  _copy_cuda_tree(srcs_dir, "external/rules_ml_toolchain~~cuda_redist_init_ext~cuda_cufft", "third_party/gpus/cuda")
   _copy_cuda_tree(
-      srcs_dir, "external/cuda_cupti", "third_party/gpus/cuda/extras/CUPTI"
+      srcs_dir, "external/rules_ml_toolchain~~cuda_configure_ext~cuda_cupti", "third_party/gpus/cuda/extras/CUPTI"
   )
-  _copy_cuda_tree(srcs_dir, "external/cuda_curand", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cusolver", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cusparse", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvcc", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvjitlink", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvml", "third_party/gpus/cuda/nvml")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvrtc", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvtx", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/rules_ml_toolchain~~cuda_configure_ext~cuda_curand", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/rules_ml_toolchain~~cuda_configure_ext~cuda_cusolver", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/rules_ml_toolchain~~cuda_configure_ext~cuda_cusparse", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/rules_ml_toolchain~~cuda_configure_ext~cuda_nvcc", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/rules_ml_toolchain~~cuda_configure_ext~cuda_nvjitlink", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/rules_ml_toolchain~~cuda_configure_ext~cuda_nvml", "third_party/gpus/cuda/nvml")
+  _copy_cuda_tree(srcs_dir, "external/rules_ml_toolchain~~cuda_configure_ext~cuda_nvrtc", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/rules_ml_toolchain~~cuda_configure_ext~cuda_nvtx", "third_party/gpus/cuda")
 
   shutil.copytree(
       os.path.join(srcs_dir, "tensorflow/compiler/xla"),
@@ -402,6 +402,7 @@ def create_local_config_python(dst_dir: str) -> None:
   numpy_include_dir = "external/pypi_numpy/site-packages/numpy/_core/include"
   if not os.path.exists(numpy_include_dir):
     numpy_include_dir = "external/pypi_numpy/site-packages/numpy/core/include"
+  print(numpy_include_dir)
   shutil.copytree(
       numpy_include_dir,
       os.path.join(dst_dir, "numpy_include"),
@@ -409,7 +410,8 @@ def create_local_config_python(dst_dir: str) -> None:
   if is_windows():
     path = "external/python_*/include"
   else:
-    path = "external/python_*/include/python*"
+    # path = "external/rules_python_*python_*/include/python*"
+    path = "external/rules_python~~python~python_3_11_x86_64-unknown-linux-gnu/include/python*"
   shutil.copytree(glob.glob(path)[0], os.path.join(dst_dir, "python_include"))
 
 

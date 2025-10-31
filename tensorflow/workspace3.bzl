@@ -77,6 +77,11 @@ def workspace():
         ],
     )
 
+def workspace_bzlmod():
+    tf_vendored(name = "local_xla", path = "third_party/xla")
+    tf_vendored(name = "local_tsl", path = "third_party/xla/third_party/tsl")
+    tf_runtime()
+
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.
 tf_workspace3 = workspace

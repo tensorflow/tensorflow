@@ -20,3 +20,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = ["nlohmann_json_lib"],
 )
+
+alias(
+    name = "json",
+    actual = ":nlohmann_json_lib",
+    visibility = ["//visibility:public"],
+)

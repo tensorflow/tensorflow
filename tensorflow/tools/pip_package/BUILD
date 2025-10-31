@@ -104,7 +104,7 @@ filegroup(
         "@XNNPACK//:LICENSE",
         "@com_google_absl//:LICENSE",
         "@com_google_protobuf//:LICENSE",
-        "@curl//:COPYING",
+        # "@curl//:COPYING",
         "@ducc//:LICENSE",
         "@flatbuffers//:LICENSE",
         "@gemmlowp//:LICENSE",
@@ -117,7 +117,7 @@ filegroup(
         "@pasta//:LICENSE",
         "@png//:LICENSE",
         "@ruy//:LICENSE",
-        "@snappy//:COPYING",
+        # "@snappy//:COPYING",
         "@stablehlo//:LICENSE",
         "@tf_runtime//:LICENSE",
     ] + select({

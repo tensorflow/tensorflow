@@ -1,0 +1,53 @@
+diff --git a/bazel/cc_grpc_library.bzl b/bazel/cc_grpc_library.bzl
+index 3f4f5347fb..e3241a4e52 100644
+--- a/bazel/cc_grpc_library.bzl
++++ b/bazel/cc_grpc_library.bzl
+@@ -28,6 +28,7 @@ def cc_grpc_library(
+         allow_deprecated = False,
+         use_external = False,  # @unused
+         grpc_only = False,
++        plugin_flags = [],
+         **kwargs):
+     """Generates C++ grpc classes for services defined in a proto file.
+ 
+@@ -109,6 +110,7 @@ def cc_grpc_library(
+             well_known_protos = well_known_protos,
+             generate_mocks = generate_mocks,
+             allow_deprecated = allow_deprecated,
++            flags = plugin_flags,
+             **kwargs
+         )
+ 
+diff --git a/bazel/cython_library.bzl b/bazel/cython_library.bzl
+index dc2ef7a890..93e99962db 100644
+--- a/bazel/cython_library.bzl
++++ b/bazel/cython_library.bzl
+@@ -72,7 +72,10 @@ def pyx_library(name, deps = [], py_deps = [], srcs = [], **kwargs):
+         native.cc_binary(
+             name = shared_object_name,
+             srcs = [stem + ".cpp"],
+-            deps = deps + ["@local_config_python//:python_headers"],
++            deps = deps + [
++                "@rules_python//python/cc:current_py_cc_headers",
++                "@rules_python//python/cc:current_py_cc_libs",
++            ],
+             defines = defines,
+             linkshared = 1,
+         )
+diff --git a/bazel/python_rules.bzl b/bazel/python_rules.bzl
+index e6cf84dca2..cf4be5b528 100644
+--- a/bazel/python_rules.bzl
++++ b/bazel/python_rules.bzl
+@@ -209,11 +209,7 @@ def _generate_pb2_grpc_src_impl(context):
+     arguments = []
+     tools = [context.executable._protoc, context.executable._grpc_plugin]
+     out_dir = get_out_dir(protos, context)
+-    if out_dir.import_path:
+-        # is virtual imports
+-        out_path = get_include_directory(out_files[0])
+-    else:
+-        out_path = out_dir.path
++    out_path = out_dir.path
+     arguments += get_plugin_args(
+         context.executable._grpc_plugin,
+         plugin_flags,

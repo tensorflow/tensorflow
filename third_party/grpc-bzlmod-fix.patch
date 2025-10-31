@@ -1,0 +1,74 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Yicheng Luo <ethanluoyc@gmail.com>
+Date: Mon, 27 Oct 2025 10:10:43 +0000
+Subject: Patch for bzlmod
+
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 30e5d02ec9..fc581ec95d 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -44,6 +44,7 @@ bazel_dep(name = "rules_cc", version = "0.0.17")
+ bazel_dep(name = "rules_proto", version = "7.0.2")
+ bazel_dep(name = "xds", version = "0.0.0-20240423-555b57e", repo_name = "com_github_cncf_xds")  # mismatched 20231116
+ bazel_dep(name = "zlib", version = "1.3.1.bcr.5")
++bazel_dep(name = "google_cloud_cpp", version = "3.0.0-rc1")
+ 
+ switched_rules = use_extension("@com_google_googleapis//:extensions.bzl", "switched_rules")
+ switched_rules.use_languages(
+diff --git a/bazel/cc_grpc_library.bzl b/bazel/cc_grpc_library.bzl
+index 3f4f5347fb..e3241a4e52 100644
+--- a/bazel/cc_grpc_library.bzl
++++ b/bazel/cc_grpc_library.bzl
+@@ -28,6 +28,7 @@ def cc_grpc_library(
+         allow_deprecated = False,
+         use_external = False,  # @unused
+         grpc_only = False,
++        plugin_flags = [],
+         **kwargs):
+     """Generates C++ grpc classes for services defined in a proto file.
+ 
+@@ -109,6 +110,7 @@ def cc_grpc_library(
+             well_known_protos = well_known_protos,
+             generate_mocks = generate_mocks,
+             allow_deprecated = allow_deprecated,
++            flags = plugin_flags,
+             **kwargs
+         )
+ 
+diff --git a/bazel/cython_library.bzl b/bazel/cython_library.bzl
+index dc2ef7a890..93e99962db 100644
+--- a/bazel/cython_library.bzl
++++ b/bazel/cython_library.bzl
+@@ -72,7 +72,10 @@ def pyx_library(name, deps = [], py_deps = [], srcs = [], **kwargs):
+         native.cc_binary(
+             name = shared_object_name,
+             srcs = [stem + ".cpp"],
+-            deps = deps + ["@local_config_python//:python_headers"],
++            deps = deps + [
++                "@rules_python//python/cc:current_py_cc_headers",
++                "@rules_python//python/cc:current_py_cc_libs",
++            ],
+             defines = defines,
+             linkshared = 1,
+         )
+diff --git a/src/python/grpcio/grpc/BUILD.bazel b/src/python/grpcio/grpc/BUILD.bazel
+index e142f82b4a..8233674812 100644
+--- a/src/python/grpcio/grpc/BUILD.bazel
++++ b/src/python/grpcio/grpc/BUILD.bazel
+@@ -104,9 +104,9 @@ py_library(
+ py_library(
+     name = "grpcio",
+     srcs = ["__init__.py"],
+-    data = [
+-        "//:grpc",
+-    ],
++    # data = [
++    #     "//:grpc",
++    # ],
+     imports = ["../"],
+     deps = [
+         ":_observability",
+-- 
+2.39.5 (Apple Git-154)
+

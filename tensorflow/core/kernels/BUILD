@@ -4786,7 +4786,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/status",
-        "@net_zstd//:zstdlib",
+        "@net_zstd//:zstd",
     ] + PARSING_DEPS,
 )
 
