@@ -1512,7 +1512,7 @@ inline constexpr XLA_FFI_TypeInfo MakeTypeInfo() {
   };
 }
 
-// TODO(ezhulenev): Remove this once everyone migrates to MakeTypeInfo.
+// // TODO(ezhulenev): Remove this once everyone migrates to MakeTypeInfo.
 template <typename T>
 inline constexpr XLA_FFI_TypeInfo TypeInfo() {
   return MakeTypeInfo<T>();
