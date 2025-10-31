@@ -1033,6 +1033,46 @@ TEST(PjRtCpuClientTest, CustomAllocator) {
   EXPECT_THAT(data, ElementsAreArray(literal.data<float>()));
 }
 
+TEST(PjRtCpuClientTest, SerializeYnnFusions) {
+  constexpr absl::string_view kProgram = R"(
+    HloModule add_and_multiply
+
+    ynn_fusion {
+      %lhs = f32[4] parameter(0)
+      %rhs = f32[4] parameter(1)
+      %add = f32[4] add(%lhs, %rhs)
+      ROOT %mul = f32[4] multiply(%add, %add)
+    }
+
+    ENTRY entry {
+      %p0 = f32[4] parameter(0)
+      %p1 = f32[4] parameter(1)
+      ROOT %fusion = f32[4] fusion(%p0, %p1), kind=kCustom, calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(kProgram, {}));
+
+  XlaComputation xla_computation(m->ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          client->CompileAndLoad(xla_computation, {}));
+
+  Literal literal = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  TF_ASSERT_OK_AND_ASSIGN(auto buf, client->BufferFromHostLiteral(
+                                        literal, client->memory_spaces()[0]));
+
+  ExecuteOptions opts;
+  auto result =
+      executable->Execute(/*argument_handles=*/{{buf.get(), buf.get()}}, opts);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                          result->at(0).at(0)->ToLiteralSync());
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({4.0f, 16.0f, 36.0f, 64.0f}),
+      *result_literal));
+}
+
 }  // namespace
 
 //===----------------------------------------------------------------------===//
