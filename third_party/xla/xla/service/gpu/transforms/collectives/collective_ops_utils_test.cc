@@ -266,6 +266,26 @@ TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermute) {
               IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
 }
 
+TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermuteSinglePair) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,7},{7,0}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloChannelInstruction* instr = Cast<HloChannelInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+}
+
 TEST_F(CommunicationTypeTest, DetectNonWorldLevelCollectivePermute) {
   absl::string_view kHlo = R"(
     HloModule m, num_partitions=16
@@ -304,7 +324,35 @@ TEST_F(CommunicationTypeTest, DetectWorldLevelCollectivePermute) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectsCrossHostCollectivePermuteMixed) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+       source_target_pairs={{0,7},
+                            {0,8},
+                            {1,9},
+                            {2,10},
+                            {3,11},
+                            {4,12},
+                            {5,13},
+                            {6,14},
+                            {7,15}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloChannelInstruction* instr = Cast<HloChannelInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
 }
 
 }  // namespace
