@@ -1,0 +1,49 @@
+// Copyright 2025 The OpenXLA Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+edition = "2023";
+
+package ifrt_proxy_contrib_pathways;
+
+import "xla/tsl/protobuf/status.proto";
+
+option java_multiple_files = true;
+
+// Summarizes a Pathways worker-side ObjectStore in a way relevant to users
+// debugging an HBM OOM.
+message ObjectStoreDumpProto {
+  // TODO(b/456800998): Rename 'ErrorContext' to 'UserContext'.
+  message PerErrorContext {
+    message PerCreator {
+      string creator = 1;  // The kind of operation that created this object.
+
+      // Count and size of all objects whose `GetReadyFuture().ready()` is true.
+      uint64 ready_obj_count = 2;
+      uint64 ready_total_size = 3;
+
+      // Count and size of objects whose `GetReadyFuture().ready()` is false.
+      uint64 not_ready_obj_count = 4;
+      uint64 not_ready_total_size = 5;
+    }
+    uint64 error_context_id = 1;
+    repeated PerCreator per_creator = 2;
+  }
+
+  string device = 1;
+  fixed64 dump_timestamp_ns = 2;
+
+  // One of 'dump_failed' or 'per_error_context' is filled.
+  tensorflow.StatusProto dump_failed = 3;
+  repeated PerErrorContext per_error_context = 4;
+}
