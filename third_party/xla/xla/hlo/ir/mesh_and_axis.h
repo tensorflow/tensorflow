@@ -24,6 +24,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"
@@ -73,6 +75,28 @@ class Mesh {
            axes_names_ == other.axes_names_;
   }
 
+  std::string ToString() const {
+    std::string mesh_str = "@mesh";
+    // Add the mesh axes names and sizes.
+    std::vector<std::string> formatted_axes_names;
+    formatted_axes_names.reserve(axes_names_.size());
+    for (int64_t i = 0; i < axes_names_.size(); ++i) {
+      formatted_axes_names.push_back(
+          absl::StrCat(axes_names_[i], "=", device_assignment_.dim(i)));
+    }
+
+    // Add the device assignment if it is not an iota case.
+    std::optional<IotaTileAssignment> iota = device_assignment_.iota();
+    std::string device_assignment_str = "";
+    if (!(iota.has_value() && iota->reshape_dims().size() == 1)) {
+      device_assignment_str =
+          absl::StrCat("(", device_assignment_.ArrayToString(), ")");
+    }
+    absl::StrAppend(&mesh_str, "<", absl::StrJoin(formatted_axes_names, ","),
+                    ">", device_assignment_str);
+    return mesh_str;
+  }
+
   bool operator!=(const Mesh& other) const { return !(*this == other); }
 
   bool DeviceAssignmentEquals(const Mesh& other) const {
@@ -84,6 +108,7 @@ class Mesh {
   static Mesh FromProto(const MeshProto& proto);
 
   TileAssignment device_assignment() const { return device_assignment_; }
+  std::vector<std::string> axis_names() const { return axes_names_; }
 
  private:
   // Dimensions of the `device_assignment_` array correspond to the axes of the
@@ -133,6 +158,17 @@ class AxisRef {
              sub_axis_info_->size == other.sub_axis_info_->size;
     }
     return true;
+  }
+
+  std::string ToString(const Mesh& mesh) const {
+    CHECK_GE(mesh_axis_index_, 0);
+    CHECK_LT(mesh_axis_index_, mesh.axis_names().size());
+    std::string axis_str = mesh.axis_names()[mesh_axis_index()];
+    if (sub_axis_info_.has_value()) {
+      absl::StrAppend(&axis_str, ":(", sub_axis_info_->pre_size, ")",
+                      sub_axis_info_->size);
+    }
+    return axis_str;
   }
 
   bool operator!=(const xla::AxisRef& other) const { return !(*this == other); }
