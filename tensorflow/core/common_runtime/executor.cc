@@ -134,9 +134,9 @@ void SetMemory(NodeExecStatsInterface* stats, OpKernelContext* ctx) {
 // Time the execution of kernels (in CPU cycles).  Used to dynamically identify
 // inexpensive kernels which can be dispatched inline.
 struct KernelTimer {
-  uint64 start_cycles = profile_utils::CpuUtils::GetCurrentClockCycle();
+  uint64_t start_cycles = profile_utils::CpuUtils::GetCurrentClockCycle();
 
-  uint64 ElapsedCycles() {
+  uint64_t ElapsedCycles() {
     return profile_utils::CpuUtils::GetCurrentClockCycle() - start_cycles;
   }
 };
@@ -197,14 +197,14 @@ class ExecutorImpl : public Executor {
     // given node is expensive. The new cost estimate is a weighted average of
     // the old cost estimate and the latest cost. We only update cost estimates
     // for kernels for which IsExpensive() return true.
-    void UpdateCostEstimate(const NodeItem& node, uint64 elapsed_cycles) {
+    void UpdateCostEstimate(const NodeItem& node, uint64_t elapsed_cycles) {
       // N.B. Updates to `cost_estimate` are atomic but unlocked.  Simultaneous
       // updates may result in one or more updates being ignored.  This does not
       // affect correctness but may slow down the update frequency.
       std::atomic_uint_fast64_t& cost_estimate = cost_estimates_[node.node_id];
       auto prev_estimate = cost_estimate.load(std::memory_order_relaxed);
 
-      uint64 new_estimate =
+      uint64_t new_estimate =
           ((kCostDecay - 1) * prev_estimate + elapsed_cycles) / kCostDecay;
 
       cost_estimate.store(new_estimate, std::memory_order_relaxed);
@@ -214,9 +214,9 @@ class ExecutorImpl : public Executor {
     // Initial time (in CPU cycles) we expect an operation to take.  Used to
     // determine whether an operation should be place in a threadpool.
     // Operations start out "expensive".
-    static constexpr uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
-    static constexpr uint64 kOpIsExpensiveThresholdCycles = 8000;
-    static constexpr uint64 kCostDecay = 10;
+    static constexpr uint64_t kInitialCostEstimateCycles = 100 * 1000 * 1000;
+    static constexpr uint64_t kOpIsExpensiveThresholdCycles = 8000;
+    static constexpr uint64_t kCostDecay = 10;
 
     std::vector<bool> is_expensive_;
     // std::unique_ptr<std::atomic<bool>[]> is_expensive_;
@@ -369,14 +369,14 @@ class ExecutorState {
   // Maximum number of kernels that can be scheduled inline. If lots of kernels
   // are ready at the same time, scheduling them in one thread can be very slow.
   // TODO(fishx): Make it configurable if necessary.
-  static constexpr uint64 kInlineScheduleReadyThreshold = 500;
+  static constexpr uint64_t kInlineScheduleReadyThreshold = 500;
 
   // Not owned.
   RendezvousInterface* rendezvous_;
   CollectiveExecutor* collective_executor_ = nullptr;
   const ConfigProto* const session_config_;
   SessionState* session_state_;
-  string session_handle_;
+  std::string session_handle_;
   const SessionMetadata* session_metadata_ = nullptr;
   TensorStore* tensor_store_;
   // Step-local container.
@@ -1099,7 +1099,7 @@ absl::Status ExecutorState<PropagatorStateType>::ProcessOutputs(
     }
     if (s.code() == error::RESOURCE_EXHAUSTED) {
       if (stats_collector_) {
-        string err =
+        std::string err =
             stats_collector_->ReportAllocsOnResourceExhausted(s.message());
         s = errors::CreateWithUpdatedMessage(s, absl::StrCat(s.message(), err));
       } else {
