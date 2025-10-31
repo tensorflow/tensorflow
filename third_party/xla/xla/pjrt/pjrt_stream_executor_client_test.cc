@@ -162,7 +162,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
       ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
   bool got_literal = false;
   blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     TF_ASSERT_OK(s);
     got_literal = true;
   });
@@ -174,7 +174,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
   EXPECT_TRUE(future.IsReady());
 
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&got_literal));
   }
 
