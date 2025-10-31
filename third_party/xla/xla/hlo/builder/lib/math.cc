@@ -213,7 +213,19 @@ XlaOp IsNegZero(XlaOp operand) {
 
 XlaOp Square(XlaOp operand) { return operand * operand; }
 
-XlaOp Reciprocal(XlaOp operand) { return ScalarLike(operand, 1.0) / operand; }
+XlaOp Reciprocal(XlaOp operand) {
+  XlaBuilder* b = operand.builder();
+  return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(operand));
+    if (primitive_util::IsComplexType(shape.element_type())) {
+      XlaOp is_finite = And(IsFinite(Real(operand)), IsFinite(Imag(operand)));
+      XlaOp is_inf = And(Not(is_finite), Eq(operand, operand));
+      return Select(is_inf, ZerosLike(operand),
+                    ScalarLike(operand, 1.0) / operand);
+    }
+    return ScalarLike(operand, 1.0) / operand;
+  });
+}
 
 // Computes an approximation of the error function complement (1 - erf(x)).
 //
