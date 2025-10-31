@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_XNN_GEMM_CONFIG_H_
 #define XLA_BACKENDS_CPU_XNN_GEMM_CONFIG_H_
 
+#include <functional>
+
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
-#include "xla/primitive_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {

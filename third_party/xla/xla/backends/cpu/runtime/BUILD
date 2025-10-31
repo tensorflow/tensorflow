@@ -148,7 +148,8 @@ tf_proto_library(
     create_grpc_library = True,
     make_default_target_header_only = True,
     protodeps = [
-        "//xla/backends/cpu:xnnpack_config_proto",
+        "//xla/backends/cpu:xnn_fusion_options_proto",
+        "//xla/backends/cpu:ynn_fusion_options_proto",
         "//xla/service:buffer_assignment_proto",
         "//xla:xla_data_proto",
         "//xla/service:hlo_proto",
@@ -1197,7 +1198,8 @@ cc_library(
         ":while_thunk",
         "//xla:shape_util",
         "//xla:util",
-        "//xla/backends/cpu:xnnpack_config_proto_cc",
+        "//xla/backends/cpu:xnn_fusion_options_proto_cc",
+        "//xla/backends/cpu:ynn_fusion_options_proto_cc",
         "//xla/backends/cpu/runtime/xnnpack:xnn_convolution_thunk",
         "//xla/backends/cpu/runtime/xnnpack:xnn_dot_thunk",
         "//xla/backends/cpu/runtime/xnnpack:xnn_fusion_thunk",
@@ -1216,7 +1218,9 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:casts",
-    ],
+    ] + if_ynnpack([
+        "//xla/backends/cpu/runtime/ynnpack:ynn_fusion_thunk",
+    ]),
 )
 
 cc_library(

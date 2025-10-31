@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/cpu/autotuner/cpu_codegen_backend.h"
-#include "xla/backends/cpu/xnnpack_config.pb.h"
+#include "xla/backends/cpu/xnn_fusion_options.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
 
@@ -36,8 +36,6 @@ class XnnpackBackend : public CpuCodegenBackend {
  public:
   static absl::StatusOr<std::unique_ptr<CodegenBackend>> Create(
       Compiler* compiler);
-
-  using Config = XnnFusionBackendConfig;
 
   bool IsSupported(const HloInstruction& instr);
 

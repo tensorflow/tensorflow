@@ -111,8 +111,8 @@ onednn_graph_cc_library(
 )
 
 tf_proto_library(
-    name = "xnnpack_config_proto",
-    srcs = ["xnnpack_config.proto"],
+    name = "xnn_fusion_options_proto",
+    srcs = ["xnn_fusion_options.proto"],
 )
 
 cc_library(
@@ -217,6 +217,11 @@ xla_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+tf_proto_library(
+    name = "ynn_fusion_options_proto",
+    srcs = ["ynn_fusion_options.proto"],
 )
 
 cc_library(
