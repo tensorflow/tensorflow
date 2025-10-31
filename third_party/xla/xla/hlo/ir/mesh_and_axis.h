@@ -75,6 +75,8 @@ class Mesh {
            axes_names_ == other.axes_names_;
   }
 
+  bool operator!=(const Mesh& other) const { return !(*this == other); }
+
   std::string ToString() const {
     std::string mesh_str = "@mesh";
     // Add the mesh axes names and sizes.
@@ -96,8 +98,6 @@ class Mesh {
                     ">", device_assignment_str);
     return mesh_str;
   }
-
-  bool operator!=(const Mesh& other) const { return !(*this == other); }
 
   bool DeviceAssignmentEquals(const Mesh& other) const {
     return device_assignment_ == other.device_assignment_;
@@ -167,6 +167,8 @@ class AxisRef {
     return true;
   }
 
+  bool operator!=(const xla::AxisRef& other) const { return !(*this == other); }
+
   std::string ToString(const Mesh& mesh) const {
     CHECK_GE(mesh_axis_index_, 0);
     CHECK_LT(mesh_axis_index_, mesh.axis_names().size());
@@ -177,8 +179,6 @@ class AxisRef {
     }
     return axis_str;
   }
-
-  bool operator!=(const xla::AxisRef& other) const { return !(*this == other); }
 
   AxisRefProto ToProto() const;
 

@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/ir/mesh_and_axis.h"
 
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -123,9 +122,8 @@ TEST(MeshAndAxisTest, MeshToProtoIotaTilingWithReshapeDims) {
 
   std::vector<std::string> axes_names = {"axis1", "axis2", "axis3"};
   EXPECT_THAT(
-      Mesh(TileAssignment(IotaTileAssignment::Create(
-               /*dims=*/{4, 4, 1},
-               /*reshape_dims=*/{4, 2, 2}, /*transpose_perm=*/{1, 0, 2})),
+      Mesh(TileAssignment(/*dims=*/{4, 4, 1}, /*reshape_dims=*/{4, 2, 2},
+                          /*transpose_perm=*/{1, 0, 2}),
            axes_names)
           .ToProto(),
       EqualsProto(expected));
@@ -180,15 +178,15 @@ TEST(MeshAxesReplicaGroupListTest, MeshAxesToString) {
   Mesh mesh_uvw({10, 12, 15}, {"u", "v", "w"});
   EXPECT_EQ(mesh_uvw.ToString(), "@mesh<u=10,v=12,w=15>");
 
-  Mesh mesh_abcd(TileAssignment(IotaTileAssignment::Create(
-                     /*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},
-                     /*transpose_perm=*/{2, 3, 0, 1})),
-                 /*axes_names=*/{"a", "b", "c", "d"});
+  Mesh mesh_abcd(
+      TileAssignment(/*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},
+                     /*transpose_perm=*/{2, 3, 0, 1}),
+      {"a", "b", "c", "d"});
   EXPECT_EQ(mesh_abcd.ToString(), "@mesh<a=2,b=4,c=4,d=2>([4,16]T(1,0))");
 
   Array<int64_t> array({{8, 3, 7, 5, 4, 2, 6, 0, 1, 9}});
   array.Reshape({10});
-  Mesh mesh_ooo(array, /*axes_names=*/{"ooo"});
+  Mesh mesh_ooo(array, {"ooo"});
   EXPECT_EQ(mesh_ooo.ToString(), "@mesh<ooo=10>(8,3,7,5,4,2,6,0,1,9)");
 }
 
