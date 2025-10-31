@@ -789,7 +789,7 @@ PjRtStreamExecutorClient::CreateErrorBuffer(absl::Status error,
 
   // Create an empty buffer.
   auto dummy_device_buffer = std::make_unique<TrackedDeviceBuffer>(
-      device, tsl::RCReference<RawSEDeviceMemory>(),
+      device, tsl::AsyncValueRef<RawSEDeviceMemory>(),
       absl::MakeSpan(&definition_event, 1));
 
   return std::make_unique<CommonPjRtBufferImpl>(
@@ -1168,13 +1168,13 @@ MakeTupleHelper(PjRtStreamExecutorClient* client,
 // Converts a ScopedShapedBuffer returned from an execution into a
 // PjRtBuffer.
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> OutputBufferHelper(
-    ShapeTree<tsl::RCReference<RawSEDeviceMemory>> result_buffer,
+    ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>> result_buffer,
     BufferSequencingEventRef definition_event, PjRtClient* client,
     PjRtDevice* device, LocalDeviceState* local_device) {
   if (result_buffer.shape().IsTuple()) {
     return absl::InternalError("OutputBufferHelper called on tuple.");
   }
-  absl::InlinedVector<tsl::RCReference<RawSEDeviceMemory>, 1> buffers;
+  absl::InlinedVector<tsl::AsyncValueRef<RawSEDeviceMemory>, 1> buffers;
   for (auto& item : result_buffer) {
     buffers.push_back(std::move(item.second));
   }
@@ -1641,7 +1641,7 @@ PjRtStreamExecutorClient::RunAsync(
       ExecutionOutput output,
       exec.RunAsync(std::move(xla_arguments), std::move(run_options)));
   ScopedShapedBuffer ssb = output.ConsumeResult();
-  xla::ShapeTree<tsl::RCReference<RawSEDeviceMemory>> results(
+  xla::ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>> results(
       ssb.on_device_shape());
   auto it = results.begin();
   se::DeviceMemoryAllocator* allocator = ssb.memory_allocator();
@@ -1672,7 +1672,7 @@ PjRtStreamExecutorClient::RunAsync(
 // converted on success.
 // When `options` has non-zero `launch_id`, use `launch_id` instead of `run_id`
 // to initialize `run_options`.
-absl::StatusOr<ShapeTree<tsl::RCReference<RawSEDeviceMemory>>>
+absl::StatusOr<ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>>>
 PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     int executable_idx, const RunId& run_id, const ExecuteOptions& options,
@@ -1930,7 +1930,7 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtStreamExecutorLoadedExecutable::MakeOutputBuffers(
     int device_ordinal, const ExecuteOptions& options,
-    ShapeTree<tsl::RCReference<RawSEDeviceMemory>> result_buffer,
+    ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>> result_buffer,
     BufferSequencingEventRef definition_event, PjRtDevice* device,
     std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks) const {
   tsl::profiler::TraceMe traceme("MakeOutputBuffers");
@@ -1943,7 +1943,7 @@ PjRtStreamExecutorLoadedExecutable::MakeOutputBuffers(
     // in result_buffer.
     for (int i = 0; i < tuple_count; ++i) {
       TF_ASSIGN_OR_RETURN(
-          ShapeTree<tsl::RCReference<RawSEDeviceMemory>> tuple_buffer,
+          ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>> tuple_buffer,
           result_buffer.SubShapeTree({i}));
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<PjRtBuffer> buffer,
@@ -2050,7 +2050,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
   std::vector<absl::AnyInvocable<void() &&>> compute_callbacks;
   std::vector<CommonPjRtBuffer::ScopedHold> device_buffers;
   device_buffers.reserve(argument_handles.size());
-  absl::StatusOr<ShapeTree<tsl::RCReference<RawSEDeviceMemory>>>
+  absl::StatusOr<ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>>>
       result_buffer_or_status =
           EnqueueExecution(argument_handles, replica, partition, executable_idx,
                            run_id, options, device, &device_buffers,
@@ -2061,7 +2061,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
                << " failed: " << result_buffer_or_status.status();
     return result_buffer_or_status.status();
   }
-  ShapeTree<tsl::RCReference<RawSEDeviceMemory>> result_buffer =
+  ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>> result_buffer =
       std::move(result_buffer_or_status).value();
 
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
@@ -2081,14 +2081,14 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
     }
     return definition_event_or.status();
   }
-  std::vector<tsl::RCReference<RawSEDeviceMemory>> leaves_to_release;
+  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> leaves_to_release;
   if (device_state->allocation_model() == LocalDeviceState::kSynchronous) {
     leaves_to_release.reserve(result_buffer.leaf_count());
     for (auto& node : result_buffer.leaves()) {
       leaves_to_release.push_back(node.second);
     }
   }
-  std::vector<tsl::RCReference<RawSEDeviceMemory>> buffers_to_release;
+  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> buffers_to_release;
   auto definition_event = tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
       *definition_event_or, "PjRtStreamExecutorLoadedExecutable", "Execute");
   TF_ASSIGN_OR_RETURN(
