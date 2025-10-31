@@ -24,6 +24,8 @@
 // Version 3c: Move constant tensor buffers & custom op buffers outside from
 //             Flatbuffers. Has backward compatibility with version 3, 3a and
 //             3b.
+// Version 3d: Add ExternalBuffer tables and tensor.external_buffer field for
+//             referencing immutable data stored in external files.
 
 namespace tflite;
 
@@ -263,6 +265,11 @@ table Tensor {
   // Currently only 1 subtype is supported. The field is defined as an array for
   // flexibility of supporting multiple subtypes in the future.
   variant_tensors:[VariantSubType];
+
+  // Optional reference to an ExternalBuffer entry that stores constant tensor
+  // data outside of the FlatBuffer. A value of 0 indicates that the tensor uses
+  // the traditional embedded buffer field instead.
+  external_buffer:uint;
 }
 
 // A list of builtin operators. Builtin operators are slightly faster than custom
@@ -1613,6 +1620,22 @@ table Buffer {
   size: ulong;
 }
 
+// Groups external buffers by file/URI.
+table ExternalBufferGroup {
+  name:string;
+}
+
+// Describes an immutable data slice stored in an external file.
+table ExternalBuffer {
+  // Unique identifier for this external buffer.
+  id:uint;
+  // Index into the external_buffer_groups array.
+  group:uint;
+  offset:ulong;
+  length:ulong;
+  packing:string;
+}
+
 table Metadata {
   // A human readable string to uniquely identify a Metadata.
   name:string;
@@ -1680,6 +1703,12 @@ table Model {
 
   // Optional SignatureDefs for the model.
   signature_defs:[SignatureDef];
+
+  // Optional groups for external weight buffers.
+  external_buffer_groups:[ExternalBufferGroup];
+
+  // Optional list of external weight buffers referenced by tensors.
+  external_buffers:[ExternalBuffer];
 }
 
 root_type Model;
