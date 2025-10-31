@@ -15,12 +15,22 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_util.h"
 
+#include <algorithm>
 #include <cmath>
+#include <complex>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <type_traits>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_traits.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
