@@ -192,7 +192,7 @@ class StreamExecutor {
   // for the given DeviceMemoryBase, such that location is contained within the
   // returned range.
   virtual absl::StatusOr<DeviceMemoryBase> GetMemoryRange(
-      const DeviceMemoryBase& location) {
+      const DeviceMemoryBase& location) const {
     return absl::UnimplementedError("Not implemented for this executor.");
   }
 

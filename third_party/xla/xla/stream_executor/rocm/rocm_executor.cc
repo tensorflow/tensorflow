@@ -522,7 +522,7 @@ bool RocmExecutor::UnloadModule(ModuleHandle module_handle) {
 }
 
 absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetMemoryRange(
-    const DeviceMemoryBase& location) {
+    const DeviceMemoryBase& location) const {
   hipDeviceptr_t device_pointer;
   size_t size;
   hipError_t result = wrap::hipMemGetAddressRange(

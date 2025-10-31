@@ -84,7 +84,7 @@ class RocmExecutor : public GpuExecutor {
       Stream* stream, absl::Span<const uint8_t> content) override;
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
   absl::StatusOr<DeviceMemoryBase> GetMemoryRange(
-      const DeviceMemoryBase& location) override;
+      const DeviceMemoryBase& location) const override;
   void Deallocate(DeviceMemoryBase* mem) override;
   bool SynchronizeAllActivity() override;
   absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(

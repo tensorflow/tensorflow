@@ -80,13 +80,13 @@ class GpuExecutor : public StreamExecutorCommon {
     }
 
     virtual absl::StatusOr<void*> MapMemory(const DeviceMemoryBase& location,
-                                            GpuExecutor* gpu_executor) {
+                                            const GpuExecutor* gpu_executor) {
       return absl::UnimplementedError("MapMemory is not implemented.");
     }
   };
 
   virtual absl::StatusOr<std::unique_ptr<MulticastMemory>>
-  CreateMulticastMemory(uint64_t size, int num_devices) {
+  CreateMulticastMemory(uint64_t size, int num_devices) const {
     return absl::UnimplementedError(
         "CreateMulticastMemory is not implemented.");
   };
