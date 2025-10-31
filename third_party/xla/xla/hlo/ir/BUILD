@@ -199,6 +199,7 @@ cc_library(
     deps = [
         ":mesh_and_axis",
         "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -435,6 +436,17 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_cc_test(
+    name = "named_sharding_test",
+    srcs = ["named_sharding_test.cc"],
+    deps = [
+        ":mesh_and_axis",
+        ":named_sharding",
+        "//xla:xla_data_proto_cc",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

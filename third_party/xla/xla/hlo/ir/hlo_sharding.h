@@ -447,7 +447,8 @@ class HloSharding {
            tuple_elements_ == other.tuple_elements_ &&
            replicate_on_last_tile_dim_ == other.replicate_on_last_tile_dim_ &&
            subgroup_types_ == other.subgroup_types_ &&
-           shard_group_ == other.shard_group_;
+           shard_group_ == other.shard_group_ &&
+           named_sharding_ == other.named_sharding_;
   }
   bool operator!=(const HloSharding& other) const { return !(*this == other); }
 

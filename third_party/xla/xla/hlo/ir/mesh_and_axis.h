@@ -75,6 +75,10 @@ class Mesh {
 
   bool operator!=(const Mesh& other) const { return !(*this == other); }
 
+  bool DeviceAssignmentEquals(const Mesh& other) const {
+    return device_assignment_ == other.device_assignment_;
+  }
+
   MeshProto ToProto() const;
 
   static Mesh FromProto(const MeshProto& proto);

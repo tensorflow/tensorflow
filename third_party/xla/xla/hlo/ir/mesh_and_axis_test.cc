@@ -51,6 +51,16 @@ TEST(MeshAndAxisTest, MeshEquality) {
   EXPECT_NE(Mesh({1, 2, 3}, axes_abc), Mesh({1, 2, 3, 4}, axes_abcd));
 }
 
+TEST(MeshAndAxisTest, DeviceAssignmentEquality) {
+  std::vector<std::string> axes_abcd = {"a", "b", "c", "d"};
+  std::vector<std::string> axes_efgh = {"e", "f", "g", "h"};
+  Mesh mesh({1, 2, 3, 4}, axes_abcd);
+  Mesh mesh_diff_axis_names({1, 2, 3, 4}, axes_efgh);
+  EXPECT_TRUE(mesh.DeviceAssignmentEquals(mesh_diff_axis_names));
+  Mesh mesh_other({2, 1, 4, 3}, axes_efgh);
+  EXPECT_FALSE(mesh.DeviceAssignmentEquals(mesh_other));
+}
+
 TEST(MeshAndAxisTest, AxesToProto) {
   AxisRefProto expected;
   expected.set_mesh_axis_index(123);
