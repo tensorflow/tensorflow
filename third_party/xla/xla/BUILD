@@ -1212,6 +1212,7 @@ cc_library(
     name = "debug_options_flags",
     srcs = [
         "debug_options_flags.cc",
+        "debug_options_parsers.cc",
         "debug_options_parsers.h",
     ],
     hdrs = ["debug_options_flags.h"],
@@ -1234,6 +1235,7 @@ cc_library(
             "@com_google_absl//absl/algorithm:container",
             "@com_google_absl//absl/base",
             "@com_google_absl//absl/base:no_destructor",
+            "@com_google_absl//absl/base:nullability",
             "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/container:flat_hash_set",
             "@com_google_absl//absl/container:node_hash_map",
@@ -1277,6 +1279,7 @@ xla_cc_test(
             "//xla/tsl/platform:env",
             "//xla/tsl/platform:test",
             "//xla/tsl/util:command_line_flags",
+            "@com_google_absl//absl/base:nullability",
             "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/status",
             "@com_google_absl//absl/status:status_matchers",

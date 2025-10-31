@@ -26,6 +26,24 @@ message CompilationEnvironmentsProto {
   repeated google.protobuf.Any environments = 1;
 }
 
+// A [first; last] range of integers, inclusive on both ends.
+message IntRangeInclusive {
+  int64 first = 1;
+  int64 last = 2;
+}
+
+// Set of filters for limiting the thunk buffer debug instrumentation to
+// specific thunks. Only meaningful in combination with either
+// `xla_gpu_experimental_enable_checksum_tracing_on_thunks` or
+// `xla_gpu_experimental_enable_checksum_validation_on_thunks`.
+message ThunkBufferDebugFilter {
+  // If set, only thunk IDs matching one or more of the ranges will be included.
+  repeated IntRangeInclusive thunk_id_ranges = 1;
+  // If set, only thunks with profile annotations matching one or more of the
+  // regexes will be included.
+  repeated string profile_annotation_regexes = 2;
+}
+
 // Debugging options for XLA. These options may change at any time - there are
 // no guarantees about backward or forward compatibility for these fields with
 // the exception of few stable GPU feature flags (see `GetFlagStatus` in
@@ -327,6 +345,10 @@ message DebugOptions {
     // implementation.
     reserved 2;  // Was PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER
   }
+
+  // Limits the thunk buffer debug instrumentation to specific thunks.
+  optional ThunkBufferDebugFilter
+      xla_gpu_experimental_thunk_buffer_debug_filter = 423;
 
   // If true, every time an HLO module is run, we will dump an
   // HloUnoptimizedSnapshot (essentially, a serialized unoptimizedmodule plus
@@ -1366,7 +1388,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 423
+  // Next id: 424
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
