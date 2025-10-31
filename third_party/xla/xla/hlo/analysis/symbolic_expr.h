@@ -65,6 +65,7 @@ class SymbolicExpr {
 
   SymbolicExprContext* GetContext() const;
   SymbolicExprType GetType() const;
+  bool IsBinaryOp() const;
   SymbolicExpr GetLHS() const;
   SymbolicExpr GetRHS() const;
   int64_t GetValue() const;
