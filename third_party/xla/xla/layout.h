@@ -292,12 +292,13 @@ class Layout {
 
     Equal& MinorToMajorOnly() {
       return IgnoreTiles()
+          .IgnoreTailPaddingAlignmentInElements()
+          .IgnoreElementSize()
           .IgnoreIndexPrimitiveType()
           .IgnorePointerPrimitiveType()
           .IgnoreMemorySpace()
-          .IgnorePhysicalShape()
-          .IgnoreElementSize()
-          .IgnoreTailPaddingAlignmentInElements();
+          .IgnoreSplitConfigs()
+          .IgnorePhysicalShape();
     }
 
    private:
