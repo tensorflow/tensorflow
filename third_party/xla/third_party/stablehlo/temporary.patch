@@ -1,3 +1,88 @@
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir b/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+@@ -768,7 +768,7 @@
+ // CHECK-PRIMITIVE: %[[MAP:.+]] = linalg.map
+ // CHECK-PRIMITIVE-SAME: ins(%[[ARG0]], %[[ARG1]]
+ // CHECK-PRIMITIVE-SAME: outs(%[[INIT]] : tensor<?xi1>)
+-// CHECK-PRIMITIVE-NEXT: (%[[A:.+]]: complex<f32>, %[[B:.+]]: complex<f32>) {
++// CHECK-PRIMITIVE-NEXT: (%[[A:.+]]: complex<f32>, %[[B:.+]]: complex<f32>, %{{.+}}: i1) {
+ // CHECK-PRIMITIVE: %[[RE1:.+]] = complex.re %[[A]] : complex<f32>
+ // CHECK-PRIMITIVE: %[[RE2:.+]] = complex.re %[[B]] : complex<f32>
+ // CHECK-PRIMITIVE: %[[CMP:.+]] = arith.cmpf oeq, %[[RE1]], %[[RE2]] : f32
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir b/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
+@@ -714,7 +714,7 @@
+ // CHECK-PRIMITIVE: linalg.map
+ // CHECK-PRIMITIVE-SAME: ins(
+ // CHECK-PRIMITIVE-SAME: outs(
+-// CHECK-PRIMITIVE-NEXT: (%[[LHS_IN:[a-zA-Z0-9]*]]: bf16, %[[RHS_IN:.*]]: bf16) {
++// CHECK-PRIMITIVE-NEXT: (%[[LHS_IN:[a-zA-Z0-9]*]]: bf16, %[[RHS_IN:.*]]: bf16, %[[RESULT_OUT:.*]]: i1) {
+ // CHECK-PRIMITIVE-NEXT:   %[[LHS_INT:.*]] = arith.bitcast %[[LHS_IN]] : bf16 to i16
+ // CHECK-PRIMITIVE-NEXT:   %[[LHS_CMP:.*]] = arith.cmpi slt, %[[LHS_INT]], %[[C0]] : i16
+ // CHECK-PRIMITIVE-NEXT:   %[[LHS_SUB:.*]] = arith.subi %[[C32767]], %[[LHS_INT]] : i16
+@@ -937,7 +937,7 @@
+ // CHECK-PRIMITIVE-SAME:   ins(%[[LHS]], %[[RHS]] : tensor<2x?xf32>, tensor<2x?xf32>)
+ // CHECK-PRIMITIVE-SAME:   outs(%[[DST]] : tensor<2x?xf32>)
+ // CHECK-PRIMITIVE-SAME:   {someattr}
+-// CHECK-PRIMITIVE:      (%[[LHS_:.*]]: f32, %[[RHS_:.*]]: f32) {
++// CHECK-PRIMITIVE:      (%[[LHS_:.*]]: f32, %[[RHS_:.*]]: f32, %[[RESULT_OUT:.*]]: f32) {
+ // CHECK-PRIMITIVE:        %[[RES:.*]] = arith.select %[[PRED_ELEM]], %[[LHS_]], %[[RHS_]] : f32
+ // CHECK-PRIMITIVE:        linalg.yield %[[RES]]
+ 
+@@ -978,7 +978,7 @@
+ // CHECK-PRIMITIVE-SAME:   ins(%[[LHS]], %[[RHS]] : tensor<2x?xf32>, tensor<2x?xf32>)
+ // CHECK-PRIMITIVE-SAME:   outs(%[[DST]] : tensor<2x?xf32>)
+ // CHECK-PRIMITIVE-SAME:   {someattr}
+-// CHECK-PRIMITIVE:      (%[[LHS_:.*]]: f32, %[[RHS_:.*]]: f32) {
++// CHECK-PRIMITIVE:      (%[[LHS_:.*]]: f32, %[[RHS_:.*]]: f32, %[[RESULT_OUT:.*]]: f32) {
+ // CHECK-PRIMITIVE:        linalg.yield %[[LHS_]]
+ 
+ // -----
+@@ -1416,7 +1416,7 @@
+ 
+ // CHECK-PRIMITIVE: %[[INIT:.*]] = tensor.empty
+ // CHECK-PRIMITIVE: %[[RESULT:.*]] = linalg.map ins(%[[LB]], %[[X]], %[[UB]] : tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) outs(%[[INIT]] : tensor<4xf32>)
+-// CHECK-PRIMITIVE: (%[[SCALAR_LB:.*]]: f32, %[[SCALAR_X:.*]]: f32, %[[SCALAR_UB:.*]]: f32)
++// CHECK-PRIMITIVE: (%[[SCALAR_LB:.*]]: f32, %[[SCALAR_X:.*]]: f32, %[[SCALAR_UB:.*]]: f32, %[[RESULT_OUT:.*]]: f32)
+ // CHECK-PRIMITIVE:   %[[MAX:.*]] = arith.maximumf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
+ // CHECK-PRIMITIVE:   %[[MIN:.*]] = arith.minimumf %[[MAX]], %[[SCALAR_UB]] : f32
+ // CHECK-PRIMITIVE:   linalg.yield %[[MIN]]
+@@ -1478,7 +1478,7 @@
+ // CHECK-PRIMITIVE-DAG: %[[SCALAR_LB:.*]] = tensor.extract %[[LB]]
+ // CHECK-PRIMITIVE-DAG: %[[SCALAR_UB:.*]] = tensor.extract %[[UB]]
+ // CHECK-PRIMITIVE: %[[RESULT:.*]] = linalg.map ins(%[[X]] : tensor<?xf32>) outs(%[[INIT]] : tensor<?xf32>)
+-// CHECK-PRIMITIVE: (%[[SCALAR_X:.*]]: f32)
++// CHECK-PRIMITIVE: (%[[SCALAR_X:.*]]: f32, %[[RESULT_OUT:.*]]: f32)
+ // CHECK-PRIMITIVE:   %[[MAX:.*]] = arith.maximumf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
+ // CHECK-PRIMITIVE:   %[[MIN:.*]] = arith.minimumf %[[MAX]], %[[SCALAR_UB]] : f32
+ // CHECK-PRIMITIVE:   linalg.yield %[[MIN]]
+@@ -1554,7 +1554,7 @@
+   // CHECK:   linalg.yield %[[V_NOT]] : i32
+   // CHECK-PRIMITIVE: %[[CST_N1:.+]] = arith.constant -1 : i32
+   // CHECK-PRIMITIVE: linalg.map
+-  // CHECK-PRIMITIVE:   (%[[IN:.+]]: i32)
++  // CHECK-PRIMITIVE:   (%[[IN:.+]]: i32, %[[RESULT_OUT:.+]]: i32)
+   // CHECK-PRIMITIVE:   %[[V_NOT:.+]] = arith.xori %[[IN]], %[[CST_N1]] : i32
+   // CHECK-PRIMITIVE:   linalg.yield %[[V_NOT]] : i32
+   %0 = "stablehlo.not"(%arg) : (tensor<2x2xi32>) -> tensor<2x2xi32>
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+@@ -1748,6 +1748,12 @@
+ 
+     rewriter.applySignatureConversion(&region.front(), signatureConverter,
+                                       getTypeConverter());
++    auto& blocks = linalgOp.getMapper().getBlocks();
++    if (blocks.empty()) {
++      return rewriter.notifyMatchFailure(op, "expected at least one block");
++    }
++    blocks.front().addArgument(resultType.getElementType(), loc);
++
+     auto result = rewriter.createOrFold<tensor::CastOp>(loc, resultType,
+                                                         linalgOp.getResults());
+     rewriter.replaceOp(op, result);
 diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
 --- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
 +++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
