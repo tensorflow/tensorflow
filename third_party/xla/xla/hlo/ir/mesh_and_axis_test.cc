@@ -176,23 +176,4 @@ TEST(MeshAndAxisTest, MeshRoundtripProto) {
   EXPECT_THAT(mesh_non_iota, Mesh::FromProto(mesh_non_iota.ToProto()));
 }
 
-TEST(MeshAxesReplicaGroupListTest, MeshAxesToString) {
-  Mesh mesh_uvw(TileAssignment(IotaTileAssignment::Create(
-                    /*dims=*/{10, 12, 15})),
-                /*axes_names=*/{"u", "v", "w"});
-  EXPECT_EQ(mesh_uvw.ToString(), "@mesh<u=10,v=12,w=15>");
-
-  Mesh mesh_abcd(TileAssignment(IotaTileAssignment::Create(
-                     /*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},
-                     /*transpose_perm=*/{2, 3, 0, 1})),
-                 /*axes_names=*/{"a", "b", "c", "d"});
-  EXPECT_EQ(mesh_abcd.ToString(), "@mesh<a=2,b=4,c=4,d=2>([4,16]T(1,0))");
-
-  Array<int64_t> array({{8, 3, 7, 5, 4, 2, 6, 0, 1, 9}});
-  array.Reshape({10});
-  TileAssignment tile_assignment(std::make_shared<Array<int64_t>>(array));
-  Mesh mesh_ooo(tile_assignment, /*axes_names=*/{"ooo"});
-  EXPECT_EQ(mesh_ooo.ToString(), "@mesh<ooo=10>(8,3,7,5,4,2,6,0,1,9)");
-}
-
 }  // namespace xla
