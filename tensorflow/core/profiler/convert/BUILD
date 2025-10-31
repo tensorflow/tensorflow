@@ -38,7 +38,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [
         "//learning/deepmind/jax/statix:__subpackages__",
-        "//platforms/xla/tools/shardy_migration:__subpackages__",
+        "//platforms/xla/tools:__subpackages__",
         "//smartass/brain/tpu_worker:__subpackages__",
         "//tensorflow/core/profiler:internal",
     ],
