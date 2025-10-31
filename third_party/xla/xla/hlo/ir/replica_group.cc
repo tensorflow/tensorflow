@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "xla/hlo/ir/replica_group.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
@@ -33,7 +39,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -49,6 +54,145 @@ std::string ReplicaGroupsToString(
 }
 
 /************** MeshAxesReplicaGroupList implementation ***********************/
+
+void HandleSingleAxisRefPerDimension(const AxisRef& axis,
+                                     int64_t full_axis_size,
+                                     std::vector<int64_t>& out_reshape_dims,
+                                     std::vector<int64_t>& out_aggregate_axes) {
+  if (axis.sub_axis_info().has_value()) {
+    out_reshape_dims = {axis.sub_axis_info()->pre_size,
+                        axis.sub_axis_info()->size,
+                        full_axis_size / axis.sub_axis_info()->next_pre_size()};
+    // The aggregation axis is the second dimension.
+    out_aggregate_axes = {1};
+  } else {
+    out_reshape_dims = {full_axis_size};
+    out_aggregate_axes = {0};
+  }
+}
+
+void HandleMultiAxisRefPerDimension(std::vector<AxisRef>& axes,
+                                    int64_t full_axis_size,
+                                    std::vector<int64_t>& out_reshape_dims,
+                                    std::vector<int64_t>& out_aggregate_axes) {
+  // --- 1. Sort Axes and Original Indices Together ---
+  // Sort both the axes and the original indices based on
+  // sub_axis_info()->pre_size. This allows us to maintain user specified order
+  // of AxisRef while still building the reshape and aggregate axes.
+  std::vector<int> original_order(axes.size());
+  std::iota(original_order.begin(), original_order.end(), 0);
+  std::sort(original_order.begin(), original_order.end(),
+            [&axes](int i, int j) {
+              return axes[i].sub_axis_info()->pre_size <
+                     axes[j].sub_axis_info()->pre_size;
+            });
+  std::sort(axes.begin(), axes.end(), [](const AxisRef& a, const AxisRef& b) {
+    return a.sub_axis_info()->pre_size < b.sub_axis_info()->pre_size;
+  });
+
+  // --- 2. Build Reshape Dims and Aggregation Axes ---
+  int64_t current_dim_index = 0;  // Index in the new reshaped tensor
+  int64_t prefix_product = 1;     // Product of the size of all prior dimensions
+
+  for (const AxisRef& axis : axes) {
+    int64_t pre_size = axis.sub_axis_info()->pre_size;
+    int64_t size = axis.sub_axis_info()->size;
+
+    // Insert "padding" dimension if the current prefix product doesn't match
+    // the required pre_size
+    if (pre_size != prefix_product) {
+      int64_t padding_size = pre_size / prefix_product;
+      out_reshape_dims.push_back(padding_size);
+      current_dim_index++;
+      prefix_product *= padding_size;
+    }
+
+    // Insert the sharded size (the part to aggregate)
+    out_reshape_dims.push_back(size);
+    out_aggregate_axes.push_back(
+        current_dim_index);  // This is the axis we aggregate over
+    current_dim_index++;
+    prefix_product *= size;
+  }
+
+  // Insert "suffix" dimension if the full size hasn't been reached
+  if (prefix_product != full_axis_size) {
+    out_reshape_dims.push_back(full_axis_size / prefix_product);
+  }
+
+  // --- 3. Permute Aggregate Axes back to Original Order ---
+  // The aggregate axes were calculated based on the sorted list.
+  // We must map them back to the original order to compute the correct
+  // flattened replica groups.
+  std::vector<int64_t> permuted_aggregate_axes(original_order.size());
+  for (int64_t i = 0; i < original_order.size(); ++i) {
+    permuted_aggregate_axes[original_order[i]] = out_aggregate_axes[i];
+  }
+  out_aggregate_axes = permuted_aggregate_axes;
+}
+
+bool ValidateSingleDimensionAxes(int64_t dim, std::vector<AxisRef>& axes,
+                                 const Mesh& mesh_) {
+  // If there's only one axis, nothing to check.
+  if (axes.size() <= 1) {
+    return true;
+  }
+  // --- Step 1: Deduplication ---
+  // If one is a "full" axis (no sub_axis_info), it subsumes all other AxisRefs
+  // with sub_axis_info.
+  for (const AxisRef& axis : axes) {
+    if (!axis.sub_axis_info().has_value()) {
+      LOG(WARNING) << "MeshAxesReplicaGroupList: Redundant axis definition at "
+                      "dimension: "
+                   << dim
+                   << ". Keeping only the full axis: " << axis.ToString(mesh_);
+      axes = {axis};
+      return true;
+    }
+  }
+  // --- Step 2: Overlap Check ---
+  // At this point, all remaining axes MUST have sub_axis_info().
+  // Verify that the remaining multiple sub-axes do not overlap.
+  for (int64_t i = 0; i < axes.size() - 1; ++i) {
+    for (int64_t j = i + 1; j < axes.size(); ++j) {
+      // CHECK will terminate the program on failure, matching original
+      // behavior.
+      CHECK(axes[i].CanCoexist(axes[j]))
+          << "Overlapping sub-axes detected: " << axes[i].ToString(mesh_)
+          << " and " << axes[j].ToString(mesh_);
+    }
+  }
+  return true;  // Passed all checks for this dimension.
+}
+
+MeshAxesReplicaGroupList::MeshAxesReplicaGroupList(Mesh mesh,
+                                                   std::vector<AxisRef> axes)
+    : mesh_(std::move(mesh)), axes_(std::move(axes)) {
+  if (num_devices_per_group() == 1) {
+    LOG(ERROR) << "MeshAxesReplicaGroupList: " << ToString()
+               << " has only one device per replica group.";
+  }
+
+  absl::flat_hash_set<int64_t> dimensions;
+  absl::flat_hash_map<int64_t, std::vector<AxisRef>> dim_to_axes;
+  for (const AxisRef& axis : axes_) {
+    dim_to_axes[axis.mesh_axis_index()].push_back(axis);
+    dimensions.insert(axis.mesh_axis_index());
+    if (axis.sub_axis_info().has_value()) {
+      CHECK(mesh_.axis_size(axis.mesh_axis_index()) %
+                axis.sub_axis_info()->next_pre_size() ==
+            0)
+          << "Next pre-size must divide the full axis size.";
+    }
+  }
+
+  // Validate input AxisRefs.
+  for (int64_t dim : dimensions) {
+    std::vector<AxisRef>& axes = dim_to_axes[dim];
+    CHECK(ValidateSingleDimensionAxes(dim, axes, mesh_));
+  }
+}
+
 int64_t MeshAxesReplicaGroupList::num_replica_groups() const {
   return mesh_.device_assignment().num_elements() / num_devices_per_group();
 }
@@ -58,13 +202,103 @@ int64_t MeshAxesReplicaGroupList::num_devices_per_group() const {
   // all axes.
   int64_t devices_per_group = 1;
   for (const AxisRef& axis : axes_) {
-    int64_t axis_size =
-        axis.sub_axis_info().has_value()
-            ? axis.sub_axis_info()->size
-            : mesh_.device_assignment().dim(axis.mesh_axis_index());
+    int64_t axis_size = axis.sub_axis_info().has_value()
+                            ? axis.sub_axis_info()->size
+                            : mesh_.axis_size(axis.mesh_axis_index());
     devices_per_group *= axis_size;
   }
   return devices_per_group;
+}
+
+std::vector<std::vector<int64_t>> get_replica_groups_for_full_axes(
+    const Mesh& mesh, absl::Span<const int64_t> axis_sizes,
+    const absl::Span<const int64_t> grouped_axes,
+    const int64_t num_replica_groups, const int64_t num_devices_per_group) {
+  // Reshape the device assignment array bases on the axis sizes and transpose
+  // grouped axes to the end.
+  std::vector<int> transpose_axes;
+  transpose_axes.reserve(axis_sizes.size());
+  for (int64_t i = 0; i < axis_sizes.size(); ++i) {
+    if (!absl::c_linear_search(grouped_axes, i)) {
+      transpose_axes.push_back(i);
+    }
+  }
+  for (int64_t grouped_axis : grouped_axes) {
+    transpose_axes.push_back(grouped_axis);
+  }
+
+  TileAssignment device_assignment =
+      mesh.device_assignment().Reshape(axis_sizes).Transpose(transpose_axes);
+
+  std::vector<std::vector<int64_t>> replica_groups;
+  replica_groups.reserve(num_replica_groups);
+  for (auto it = device_assignment.array().begin();
+       it != device_assignment.array().end(); it += num_devices_per_group) {
+    std::vector<int64_t> group(it, it + num_devices_per_group);
+    replica_groups.emplace_back(std::move(group));
+  }
+  return replica_groups;
+}
+
+void MeshAxesReplicaGroupList::InitializeDimToReshapeAndAggregateAxes() {
+  absl::flat_hash_map<int64_t, std::vector<AxisRef>> dim_to_axes;
+  for (const AxisRef& axis : axes_) {
+    dim_to_axes[axis.mesh_axis_index()].push_back(axis);
+  }
+  absl::flat_hash_map<int64_t, ReshapeAndAggregateAxes> dim_map;
+  // For each dimension determine the reshape that is consistent with it's
+  // AxisRef(s). Then maintain this reshape and the aggregated dims for easier
+  // computation of replica groups. As an example for @mesh<"a"=8>
+  // {a}               -> no reshape, aggregate over [0]
+  // {a:(1)2}          -> reshape [8]->[1,2,4], aggregate over [1]
+  // {a:(1)2, a:(4)2}  -> reshape [8]->[2,2,2], aggregate over [0,2]
+  for (auto& [dim, axes] : dim_to_axes) {
+    int64_t full_axis_size = mesh_.axis_size(dim);
+    ReshapeAndAggregateAxes reshape_and_aggregate_axes;
+    if (axes.size() == 1) {
+      HandleSingleAxisRefPerDimension(
+          axes[0], full_axis_size, reshape_and_aggregate_axes.reshape_dims,
+          reshape_and_aggregate_axes.aggregate_axes);
+    } else {
+      // Otherwise dimension is a set of axes with sub-axes info.
+      HandleMultiAxisRefPerDimension(axes, full_axis_size,
+                                     reshape_and_aggregate_axes.reshape_dims,
+                                     reshape_and_aggregate_axes.aggregate_axes);
+    }
+    dim_map[dim] = reshape_and_aggregate_axes;
+  }
+  dim_to_reshape_and_aggregate_axes_ = dim_map;
+}
+
+std::vector<std::vector<int64_t>>
+MeshAxesReplicaGroupList::flattened_replica_groups() {
+  if (!dim_to_reshape_and_aggregate_axes_.has_value()) {
+    InitializeDimToReshapeAndAggregateAxes();
+  }
+
+  absl::flat_hash_map<int64_t, ReshapeAndAggregateAxes> dim_map =
+      dim_to_reshape_and_aggregate_axes_.value();
+  std::vector<int64_t> reindex_axis_sizes;
+  std::vector<int64_t> reindexed_grouped_axes;
+  for (int64_t i = 0; i < mesh_.axis_sizes().size(); ++i) {
+    int64_t axis_size = mesh_.axis_size(i);
+    auto it = dim_map.find(i);
+    if (it == dim_map.end()) {
+      reindex_axis_sizes.push_back(axis_size);
+      continue;
+    }
+    int64_t offset_index = reindex_axis_sizes.size();
+    const ReshapeAndAggregateAxes& reshape_and_aggregate_axes = it->second;
+    for (int64_t reshape_dim : reshape_and_aggregate_axes.reshape_dims) {
+      reindex_axis_sizes.push_back(reshape_dim);
+    }
+    for (int64_t aggregate_dim : reshape_and_aggregate_axes.aggregate_axes) {
+      reindexed_grouped_axes.push_back(aggregate_dim + offset_index);
+    }
+  }
+  return get_replica_groups_for_full_axes(
+      mesh_, reindex_axis_sizes, reindexed_grouped_axes, num_replica_groups(),
+      num_devices_per_group());
 }
 
 void MeshAxesReplicaGroupList::Print(Printer* printer) const {

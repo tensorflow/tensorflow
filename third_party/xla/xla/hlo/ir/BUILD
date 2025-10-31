@@ -422,6 +422,7 @@ xla_cc_test(
         ":mesh_and_axis",
         ":tile_assignment",
         "//xla:array",
+        "//xla:array2d",
         "//xla:xla_data_proto_cc",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:test_main",

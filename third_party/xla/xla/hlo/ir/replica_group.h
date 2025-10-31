@@ -16,14 +16,19 @@ limitations under the License.
 #ifndef XLA_HLO_IR_REPLICA_GROUP_H_
 #define XLA_HLO_IR_REPLICA_GROUP_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "google/protobuf/repeated_ptr_field.h"
@@ -38,14 +43,13 @@ limitations under the License.
 namespace xla {
 
 class MeshAxesReplicaGroupList {
+  struct ReshapeAndAggregateAxes {
+    std::vector<int64_t> reshape_dims;
+    std::vector<int64_t> aggregate_axes;
+  };
+
  public:
-  explicit MeshAxesReplicaGroupList(Mesh mesh, std::vector<AxisRef> axes)
-      : mesh_(std::move(mesh)), axes_(std::move(axes)) {
-    if (num_devices_per_group() == 1) {
-      LOG(ERROR) << "MeshAxesReplicaGroupList: " << ToString()
-                 << " has only one device per replica group.";
-    }
-  }
+  explicit MeshAxesReplicaGroupList(Mesh mesh, std::vector<AxisRef> axes);
 
   bool operator==(const MeshAxesReplicaGroupList& other) const {
     return mesh_ == other.mesh_ && axes_ == other.axes_;
@@ -58,6 +62,7 @@ class MeshAxesReplicaGroupList {
 
   int64_t num_replica_groups() const;
   int64_t num_devices_per_group() const;
+  std::vector<std::vector<int64_t>> flattened_replica_groups();
 
   void Print(Printer* printer) const;
 
@@ -69,8 +74,11 @@ class MeshAxesReplicaGroupList {
       const MeshAxesReplicaGroupListProto& proto);
 
  private:
+  void InitializeDimToReshapeAndAggregateAxes();
   Mesh mesh_;
   std::vector<AxisRef> axes_;
+  std::optional<absl::flat_hash_map<int64_t, ReshapeAndAggregateAxes>>
+      dim_to_reshape_and_aggregate_axes_;
 };
 
 std::string ReplicaGroupsToString(

@@ -109,6 +109,12 @@ class Mesh {
 
   TileAssignment device_assignment() const { return device_assignment_; }
   std::vector<std::string> axis_names() const { return axes_names_; }
+  absl::Span<const int64_t> axis_sizes() const {
+    return device_assignment_.dimensions();
+  }
+  int64_t axis_size(int64_t axis_index) const {
+    return device_assignment_.dim(axis_index);
+  }
 
  private:
   // Dimensions of the `device_assignment_` array correspond to the axes of the
@@ -127,6 +133,7 @@ class AxisRef {
   struct SubAxis {
     int64_t pre_size;
     int64_t size;
+    int64_t next_pre_size() const { return pre_size * size; }
   };
 
   // Index corresponding to axis in the mesh. It should be a valid index into
@@ -176,6 +183,8 @@ class AxisRef {
   AxisRefProto ToProto() const;
 
   static AxisRef FromProto(const AxisRefProto& proto);
+
+  bool CanCoexist(const AxisRef& other) const;
 
   int64_t mesh_axis_index() const { return mesh_axis_index_; }
   std::optional<SubAxis> sub_axis_info() const { return sub_axis_info_; }

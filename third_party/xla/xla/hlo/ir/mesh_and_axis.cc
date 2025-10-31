@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/mesh_and_axis.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -99,6 +100,44 @@ AxisRef AxisRef::FromProto(const AxisRefProto& proto) {
                                proto.sub_axis_info().size()};
   }
   return axis_ref;
+}
+
+bool canSubAxesCoexist(int64_t minPreSize, int64_t maxPreSize,
+                       int64_t minNextPreSize, int64_t maxNextPreSize) {
+  if (minNextPreSize > maxPreSize) {
+    // Sub-axes overlap, check if overlapping and non-overlapping parts are
+    // valid.
+    return minNextPreSize % maxPreSize == 0 && maxPreSize % minPreSize == 0 &&
+           maxNextPreSize % minNextPreSize == 0;
+  }
+  // Sub-axes don't overlap, check if the gap is valid.
+  return maxPreSize % minNextPreSize == 0;
+}
+
+bool AxisRef::CanCoexist(const AxisRef& other) const {
+  if (mesh_axis_index() != other.mesh_axis_index()) {
+    return true;
+  }
+  if (!sub_axis_info_.has_value() || !other.sub_axis_info_.has_value()) {
+    // If one is a full axis and the other is a sub-axis, they can coexist.
+    return true;
+  }
+
+  const SubAxis& this_sub_axis = sub_axis_info_.value();
+  const SubAxis& other_sub_axis = other.sub_axis_info_.value();
+
+  int64_t this_pre_size = this_sub_axis.pre_size;
+  int64_t other_pre_size = other_sub_axis.pre_size;
+  int64_t this_next_pre_size = this_sub_axis.next_pre_size();
+  int64_t other_next_pre_size = other_sub_axis.next_pre_size();
+
+  auto [min_pre_size, max_pre_size] =
+      std::minmax(this_pre_size, other_pre_size);
+  auto [min_next_pre_size, max_next_pre_size] =
+      std::minmax(this_next_pre_size, other_next_pre_size);
+
+  return canSubAxesCoexist(min_pre_size, max_pre_size, min_next_pre_size,
+                           max_next_pre_size);
 }
 
 }  // namespace xla
