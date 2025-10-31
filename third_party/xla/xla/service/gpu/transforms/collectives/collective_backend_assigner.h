@@ -43,11 +43,12 @@ class CollectiveBackendAssigner : public HloModulePass {
  public:
   explicit CollectiveBackendAssigner(
       const se::GpuComputeCapability& gpu_version,
-      int num_visible_devices_per_process,
+      int num_visible_devices_per_process, int64_t slice_size = 0,
       int64_t threshold_in_bytes = kDefaultThresholdInBytes)
       : gpu_version_(gpu_version),
         num_visible_devices_per_process_(num_visible_devices_per_process),
-        threshold_in_bytes_(threshold_in_bytes) {}
+        threshold_in_bytes_(threshold_in_bytes),
+        slice_size_(slice_size) {}
 
   absl::string_view name() const override {
     return "collective-backend-assigner";
@@ -61,6 +62,7 @@ class CollectiveBackendAssigner : public HloModulePass {
   se::GpuComputeCapability gpu_version_;
   int num_visible_devices_per_process_;
   int64_t threshold_in_bytes_;
+  int64_t slice_size_;
 };
 
 }  // namespace gpu

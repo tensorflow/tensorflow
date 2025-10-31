@@ -136,6 +136,7 @@ cc_library(
     srcs = ["gpu_collective_combiner_utils.cc"],
     hdrs = ["gpu_collective_combiner_utils.h"],
     deps = [
+        ":collective_ops_utils",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",

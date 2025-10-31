@@ -92,14 +92,17 @@ absl::StatusOr<bool> CollectiveBackendAssigner::Run(
           GPUCommunicationType comm_type,
           GetCommunicationType(instr, num_visible_devices_per_process_,
                                gpu_version_));
+      int64_t shape_size = GetShapeSize(instr->shape());
       VLOG(1) << "CollectiveBackendAssigner: comm_type="
-              << static_cast<int>(comm_type)
-              << " shape_size=" << GetShapeSize(instr->shape())
-              << " threshold_in_bytes_=" << threshold_in_bytes_;
-      bool use_nvshmem = (num_visible_devices_per_process_ == 1 ||
-                          comm_type == GPUCommunicationType::SINGLE_HOST) &&
-                         (!IsAllReduceOp(instr) ||
-                          GetShapeSize(instr->shape()) < threshold_in_bytes_);
+              << static_cast<int>(comm_type) << " shape_size=" << shape_size
+              << " threshold_in_bytes_=" << threshold_in_bytes_
+              << " slice_size_=" << slice_size_;
+      bool use_nvshmem =
+          (num_visible_devices_per_process_ == 1 ||
+           comm_type == GPUCommunicationType::SINGLE_HOST ||
+           (slice_size_ > 0 &&
+            IsIntraNVLinkDomain(module->config(), slice_size_))) &&
+          (!IsAllReduceOp(instr) || shape_size < threshold_in_bytes_);
       if (!use_nvshmem) {
         continue;
       }

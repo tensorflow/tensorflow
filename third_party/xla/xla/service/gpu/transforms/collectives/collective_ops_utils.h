@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -45,6 +46,9 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
 
 // Returns true if instruction is a synchronous collective op.
 bool IsGPUSyncCollective(const HloInstruction& instr);
+
+// Returns true if all devices are within the same NVLink domain (slice).
+bool IsIntraNVLinkDomain(const HloModuleConfig& config, int64_t slice_size);
 
 }  // namespace gpu
 }  // namespace xla

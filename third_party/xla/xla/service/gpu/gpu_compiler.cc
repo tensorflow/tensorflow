@@ -975,7 +975,7 @@ absl::Status RunCollectiveOptimizationPasses(
 
   if (debug_options.xla_gpu_experimental_enable_nvshmem()) {
     collectives_pipeline.AddPass<CollectiveBackendAssigner>(
-        gpu_version, num_visible_devices_per_process);
+        gpu_version, num_visible_devices_per_process, options.slice_size);
   }
 
   if (debug_options.xla_gpu_unsupported_enable_ragged_all_to_all_decomposer()) {

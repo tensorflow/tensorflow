@@ -186,5 +186,13 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
   return GPUCommunicationType::UNDEFINED;
 }
 
+bool IsIntraNVLinkDomain(const HloModuleConfig& config, int64_t slice_size) {
+  int device_count = config.num_partitions() * config.replica_count();
+  bool is_intra = device_count <= slice_size;
+  VLOG(1) << "IsIntraNVLinkDomain: device_count=" << device_count
+          << " slice_size=" << slice_size << " is_intra=" << is_intra;
+  return is_intra;
+}
+
 }  // namespace gpu
 }  // namespace xla
