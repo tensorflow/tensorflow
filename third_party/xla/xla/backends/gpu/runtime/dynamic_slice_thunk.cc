@@ -610,14 +610,19 @@ absl::StatusOr<ThunkProto> DynamicSliceThunk::ToProto() const {
              ->mutable_offset_as_function_of_indvar_modules_metadata(),
         offset_as_function_of_indvar_metadata_->ToProto());
   }
+
+  // fake_allocations
+  for (const auto& fake_allocation : fake_allocations_) {
+    *dynamic_slice_proto->add_fake_allocations() = fake_allocation.ToProto();
+  }
+
   return proto;
 }
 
 absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
     ThunkInfo thunk_info, const DynamicSliceThunkProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations,
-    absl::Span<const BufferAllocation> fake_allocations,
-    const Deserializer& deserializer) {
+    const DeserializerWithCustomAllocations& deserializer) {
   // offset_as_function_of_indvar_metadata
   std::optional<OffsetAsFunctionOfIndvarModulesMetadata>
       offset_as_function_of_indvar_metadata;
@@ -674,20 +679,24 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
     }
   }
 
+  // fake_allocations
+  std::vector<BufferAllocation> fake_allocations;
+  for (const auto& fake_allocation_proto : proto.fake_allocations()) {
+    fake_allocations.push_back(
+        BufferAllocation::FromProto(fake_allocation_proto));
+  }
+
   // embedded_thunk
   std::vector<std::unique_ptr<Thunk>> embedded_thunks;
   for (const auto& thunk_proto : proto.embedded_thunk().thunks()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> embedded_thunk,
-                        deserializer(thunk_proto));
+                        deserializer(thunk_proto, fake_allocations));
     embedded_thunks.push_back(std::move(embedded_thunk));
   }
 
-  // leave fake_allocations empty, because we manage their lifetime outside
-  // of this function.
   return std::make_unique<DynamicSliceThunk>(
       thunk_info, std::make_unique<ThunkSequence>(std::move(embedded_thunks)),
-      std::move(arguments),
-      /*fake_allocations=*/std::vector<BufferAllocation>(), std::move(offsets),
+      std::move(arguments), std::move(fake_allocations), std::move(offsets),
       std::move(orig_shapes), std::move(sliced_shapes),
       std::move(offset_byte_sizes),
       std::move(offset_as_function_of_indvar_metadata));

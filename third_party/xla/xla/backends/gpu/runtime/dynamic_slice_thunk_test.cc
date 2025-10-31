@@ -110,16 +110,17 @@ void CheckProtoRoundTrip(const DynamicSliceThunk& thunk,
     }
   }
 
-  Thunk::Deserializer deserializer =
-      [&buffer_allocations](const ThunkProto& thunk_proto)
+  Thunk::DeserializerWithCustomAllocations deserializer =
+      [](const ThunkProto& thunk_proto,
+         absl::Span<const BufferAllocation> fake_allocations_span)
       -> absl::StatusOr<std::unique_ptr<Thunk>> {
-    return DeserializeThunkProto(thunk_proto, buffer_allocations);
+    return DeserializeThunkProto(thunk_proto, fake_allocations_span);
   };
+
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk_from_proto,
       DynamicSliceThunk::FromProto(Thunk::ThunkInfo(), proto,
                                    /*buffer_allocations=*/buffer_allocations,
-                                   /*fake_allocations=*/fake_allocations_span,
                                    deserializer));
   TF_ASSERT_OK_AND_ASSIGN(auto proto_roundtrip, thunk_from_proto->ToProto());
   auto dynamic_slice_thunk_proto_roundtrip =

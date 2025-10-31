@@ -181,17 +181,11 @@ class DynamicSliceThunk : public Thunk {
   // `buffer_allocations`: the actual buffer allocations; required to parse the
   // `arguments` (BufferAllocation::Slice) -- the tensors that we are later
   // slicing from.
-  // `fake_allocations`: The fake allocations that are used as
-  // placeholders during creation of the embedded thunk. These are being
-  // replaced during execution in `ExecuteOnStream` with the actual (dynamic)
-  // slices. We have to create these outside of this method to manage their
-  // lifetime correctly.
   // `deserializer`: The deserializer is used to deserialize the embedded thunk.
   static absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> FromProto(
       ThunkInfo thunk_info, const DynamicSliceThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations,
-      absl::Span<const BufferAllocation> fake_allocations,
-      const Deserializer& deserializer);
+      const DeserializerWithCustomAllocations& deserializer);
 
   std::optional<const OffsetAsFunctionOfIndvarModulesMetadata*>
   get_offset_function() const {

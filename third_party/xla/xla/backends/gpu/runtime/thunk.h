@@ -571,6 +571,10 @@ class Thunk {
       absl::AnyInvocable<absl::StatusOr<std::unique_ptr<Thunk>>(
           const ThunkProto&) const>;
 
+  using DeserializerWithCustomAllocations =
+      absl::AnyInvocable<absl::StatusOr<std::unique_ptr<Thunk>>(
+          const ThunkProto&, absl::Span<const BufferAllocation>) const>;
+
   void add_control_predecessor(const Thunk* control_predecessor) {
     control_predecessors_.push_back(control_predecessor);
   }
