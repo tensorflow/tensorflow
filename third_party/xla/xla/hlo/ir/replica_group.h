@@ -24,8 +24,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/types/span.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/array.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
@@ -33,6 +36,42 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
+
+class MeshAxesReplicaGroupList {
+ public:
+  explicit MeshAxesReplicaGroupList(Mesh mesh, std::vector<AxisRef> axes)
+      : mesh_(std::move(mesh)), axes_(std::move(axes)) {
+    if (num_devices_per_group() == 1) {
+      LOG(ERROR) << "MeshAxesReplicaGroupList: " << ToString()
+                 << " has only one device per replica group.";
+    }
+  }
+
+  bool operator==(const MeshAxesReplicaGroupList& other) const {
+    return mesh_ == other.mesh_ && axes_ == other.axes_;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const MeshAxesReplicaGroupList& c) {
+    return H::combine(std::move(h), c.mesh_, c.axes_);
+  }
+
+  int64_t num_replica_groups() const;
+  int64_t num_devices_per_group() const;
+
+  void Print(Printer* printer) const;
+
+  std::string ToString() const;
+
+  MeshAxesReplicaGroupListProto ToProto() const;
+
+  static MeshAxesReplicaGroupList FromProto(
+      const MeshAxesReplicaGroupListProto& proto);
+
+ private:
+  Mesh mesh_;
+  std::vector<AxisRef> axes_;
+};
 
 std::string ReplicaGroupsToString(
     absl::Span<const ReplicaGroup> replica_groups);

@@ -26,7 +26,7 @@ class MemmappedTensorAllocator : public Allocator {
  public:
   MemmappedTensorAllocator() {}
 
-  absl::Status InitializeFromRegion(const string& name, Env* env) {
+  absl::Status InitializeFromRegion(const std::string& name, Env* env) {
     const auto status =
         env->NewReadOnlyMemoryRegionFromFile(name, &memory_region_);
     if (!status.ok()) {
@@ -34,7 +34,7 @@ class MemmappedTensorAllocator : public Allocator {
     }
     return absl::OkStatus();
   }
-  string Name() override { return "MemmappedTensorAllocator"; }
+  std::string Name() override { return "MemmappedTensorAllocator"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     if ((reinterpret_cast<intptr_t>(memory_region_->data())) % alignment != 0) {
