@@ -33,3 +33,22 @@ xla_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+xla_test(
+    name = "ynn_fusion_test",
+    srcs = ["ynn_fusion_test.cc"],
+    backends = ["cpu"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
+    deps = [
+        "//xla:error_spec",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:platform_port",
+    ],
+)
