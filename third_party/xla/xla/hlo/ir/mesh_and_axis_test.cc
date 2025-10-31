@@ -46,12 +46,9 @@ TEST(MeshAndAxisTest, MeshEquality) {
   std::vector<std::string> axes_abc = {"a", "b", "c"};
   std::vector<std::string> axes_abcd = {"a", "b", "c", "d"};
   std::vector<std::string> axes_efgh = {"e", "f", "g", "h"};
-  EXPECT_EQ(Mesh(TileAssignment({{1, 2, 3}}), axes_abc),
-            Mesh(TileAssignment({{1, 2, 3}}), axes_abc));
-  EXPECT_NE(Mesh(TileAssignment({{1, 2, 3, 4}}), axes_abcd),
-            Mesh(TileAssignment({{1, 2, 3, 4}}), axes_efgh));
-  EXPECT_NE(Mesh(TileAssignment({{1, 2, 3}}), axes_abc),
-            Mesh(TileAssignment({{1, 2, 3, 4}}), axes_abcd));
+  EXPECT_EQ(Mesh({1, 2, 3}, axes_abc), Mesh({1, 2, 3}, axes_abc));
+  EXPECT_NE(Mesh({1, 2, 3, 4}, axes_abcd), Mesh({1, 2, 3, 4}, axes_efgh));
+  EXPECT_NE(Mesh({1, 2, 3}, axes_abc), Mesh({1, 2, 3, 4}, axes_abcd));
 }
 
 TEST(MeshAndAxisTest, AxesToProto) {
@@ -91,9 +88,7 @@ TEST(MeshAndAxisTest, MeshToAndFromProtoIotaTiling) {
   proto.mutable_axes(1)->set_size(3);
   proto.mutable_axes(2)->set_size(6);
 
-  IotaTileAssignment iota = IotaTileAssignment::Create({2, 3, 6});
-  std::vector<std::string> axes_abc = {"a", "b", "c"};
-  Mesh mesh(TileAssignment(iota), axes_abc);
+  Mesh mesh({2, 3, 6}, {"a", "b", "c"});
 
   EXPECT_THAT(mesh.ToProto(), EqualsProto(proto));
   EXPECT_EQ(mesh, Mesh::FromProto(proto));
@@ -117,12 +112,13 @@ TEST(MeshAndAxisTest, MeshToProtoIotaTilingWithReshapeDims) {
   }
 
   std::vector<std::string> axes_names = {"axis1", "axis2", "axis3"};
-  EXPECT_THAT(Mesh(TileAssignment(IotaTileAssignment::Create(
-                       /*dims=*/{4, 4, 1}, /*reshape_dims=*/{4, 2, 2},
-                       /*transpose_perm=*/{1, 0, 2})),
-                   axes_names)
-                  .ToProto(),
-              EqualsProto(expected));
+  EXPECT_THAT(
+      Mesh(TileAssignment(IotaTileAssignment::Create(
+               /*dims=*/{4, 4, 1},
+               /*reshape_dims=*/{4, 2, 2}, /*transpose_perm=*/{1, 0, 2})),
+           axes_names)
+          .ToProto(),
+      EqualsProto(expected));
 }
 
 TEST(MeshAndAxisTest, MeshToProtoNonIotaTiling) {
@@ -138,10 +134,7 @@ TEST(MeshAndAxisTest, MeshToProtoNonIotaTiling) {
 
   Array2D<int64_t> array({{6, 3}, {0, 1}, {5, 2}, {7, 4}});
   std::vector<std::string> axes_xy = {"x", "y"};
-  EXPECT_THAT(
-      Mesh(TileAssignment(std::make_shared<Array<int64_t>>(array)), axes_xy)
-          .ToProto(),
-      EqualsProto(expected));
+  EXPECT_THAT(Mesh(array, axes_xy).ToProto(), EqualsProto(expected));
 }
 
 TEST(MeshAndAxisTest, MeshFromProtoNonIotaTiling) {
@@ -157,22 +150,19 @@ TEST(MeshAndAxisTest, MeshFromProtoNonIotaTiling) {
 
   Array2D<int64_t> array({{0, 1}, {6, 3}, {7, 4}, {5, 2}});
   std::vector<std::string> axes_xy = {"x", "y"};
-  EXPECT_EQ(
-      Mesh(TileAssignment(std::make_shared<Array<int64_t>>(array)), axes_xy),
-      Mesh::FromProto(expected));
+  EXPECT_EQ(Mesh(array, axes_xy), Mesh::FromProto(expected));
 }
 
 TEST(MeshAndAxisTest, MeshRoundtripProto) {
   // Iota tiling.
   std::vector<std::string> axes_xy = {"data", "model"};
-  Mesh mesh_iota(TileAssignment(IotaTileAssignment::Create({5, 3})), axes_xy);
+  Mesh mesh_iota({5, 3}, axes_xy);
   EXPECT_THAT(mesh_iota, Mesh::FromProto(mesh_iota.ToProto()));
 
   // Non-iota tiling.
   Array2D<int64_t> array(
       {{14, 7, 6}, {12, 0, 8}, {11, 10, 5}, {11, 9, 3}, {2, 13, 4}});
-  Mesh mesh_non_iota(TileAssignment(std::make_shared<Array<int64_t>>(array)),
-                     axes_xy);
+  Mesh mesh_non_iota(array, axes_xy);
   EXPECT_THAT(mesh_non_iota, Mesh::FromProto(mesh_non_iota.ToProto()));
 }
 

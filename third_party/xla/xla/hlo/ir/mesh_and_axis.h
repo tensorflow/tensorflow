@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_IR_MESH_AND_AXIS_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -24,6 +25,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/xla_data.pb.h"
 
@@ -36,11 +38,27 @@ namespace xla {
 // optimized array representation in iota based cases which is the most common
 // case.
 //
-// Example: device_assignment {{3, 0, 2}, {1, 4, 5}} with axes names
-// {"data", "model"} represents a 2 * 3 mesh of 6 devices, with "data" axis of
-// size 2 and "model" axis of size 3.
+// Example: device_assignment {{3, 0, 2}, {1, 4, 5}} with axes names {"data",
+// "model"} represents the mesh ["data"=2, "model"=3].
 class Mesh {
  public:
+  // Constructs an iota device assignment mesh with given axes sizes and names.
+  //
+  // Example: axes_sizes {2, 3} and axes_names {"data", "model"} represent the
+  // mesh ["data"=2, "model"=3] with iota device list. We use `TileAssignment`
+  // optimized for iota based cases which will not store the entire array.
+  explicit Mesh(absl::Span<const int64_t> axes_sizes,
+                absl::Span<const std::string> axes_names)
+      : Mesh(TileAssignment(axes_sizes), axes_names) {}
+
+  // Constructs a mesh with given device assignment and axes names. This ctor
+  // should **ONLY** be used for non-iota based device assignments.
+  explicit Mesh(Array<int64_t> device_assignment,
+                absl::Span<const std::string> axes_names)
+      : Mesh(TileAssignment(std::make_shared<Array<int64_t>>(
+                 std::move(device_assignment))),
+             axes_names) {}
+
   explicit Mesh(TileAssignment device_assignment,
                 absl::Span<const std::string> axes_names)
       : device_assignment_(std::move(device_assignment)),
