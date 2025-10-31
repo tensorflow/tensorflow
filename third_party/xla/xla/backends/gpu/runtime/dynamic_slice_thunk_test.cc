@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
@@ -108,11 +109,18 @@ void CheckProtoRoundTrip(const DynamicSliceThunk& thunk,
           BufferAllocation(i, arguments[i].value().allocation()->size(), 0));
     }
   }
+
+  Thunk::Deserializer deserializer =
+      [&buffer_allocations](const ThunkProto& thunk_proto)
+      -> absl::StatusOr<std::unique_ptr<Thunk>> {
+    return DeserializeThunkProto(thunk_proto, buffer_allocations);
+  };
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk_from_proto,
       DynamicSliceThunk::FromProto(Thunk::ThunkInfo(), proto,
                                    /*buffer_allocations=*/buffer_allocations,
-                                   /*fake_allocations=*/fake_allocations_span));
+                                   /*fake_allocations=*/fake_allocations_span,
+                                   deserializer));
   TF_ASSERT_OK_AND_ASSIGN(auto proto_roundtrip, thunk_from_proto->ToProto());
   auto dynamic_slice_thunk_proto_roundtrip =
       proto_roundtrip.dynamic_slice_thunk();

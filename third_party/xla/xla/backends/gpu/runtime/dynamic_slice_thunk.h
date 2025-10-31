@@ -186,10 +186,12 @@ class DynamicSliceThunk : public Thunk {
   // replaced during execution in `ExecuteOnStream` with the actual (dynamic)
   // slices. We have to create these outside of this method to manage their
   // lifetime correctly.
+  // `deserializer`: The deserializer is used to deserialize the embedded thunk.
   static absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> FromProto(
       ThunkInfo thunk_info, const DynamicSliceThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations,
-      absl::Span<const BufferAllocation> fake_allocations);
+      absl::Span<const BufferAllocation> fake_allocations,
+      const Deserializer& deserializer);
 
   std::optional<const OffsetAsFunctionOfIndvarModulesMetadata*>
   get_offset_function() const {

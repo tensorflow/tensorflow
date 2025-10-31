@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
@@ -617,7 +616,8 @@ absl::StatusOr<ThunkProto> DynamicSliceThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
     ThunkInfo thunk_info, const DynamicSliceThunkProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations,
-    absl::Span<const BufferAllocation> fake_allocations) {
+    absl::Span<const BufferAllocation> fake_allocations,
+    const Deserializer& deserializer) {
   // offset_as_function_of_indvar_metadata
   std::optional<OffsetAsFunctionOfIndvarModulesMetadata>
       offset_as_function_of_indvar_metadata;
@@ -677,9 +677,9 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
   // embedded_thunk
   std::vector<std::unique_ptr<Thunk>> embedded_thunks;
   for (const auto& thunk_proto : proto.embedded_thunk().thunks()) {
-    TF_ASSIGN_OR_RETURN(auto thunk,
-                        DeserializeThunkProto(thunk_proto, fake_allocations));
-    embedded_thunks.push_back(std::move(thunk));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> embedded_thunk,
+                        deserializer(thunk_proto));
+    embedded_thunks.push_back(std::move(embedded_thunk));
   }
 
   // leave fake_allocations empty, because we manage their lifetime outside
