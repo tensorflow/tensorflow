@@ -45,11 +45,9 @@ CollectiveDeviceListProto CreateDeviceListProto(
 TEST(MeshAxesReplicaGroupListTest, MaterializedReplicaGroups) {
   Mesh mesh_xy({2, 2}, {"x", "y"});
 
-  MeshAxesReplicaGroupList replica_group_none(mesh_xy, {});
-  std::vector<std::vector<int64_t>> expected_replica_groups_none = {
-      {0}, {1}, {2}, {3}};
-  EXPECT_EQ(replica_group_none.flattened_replica_groups(),
-            expected_replica_groups_none);
+  EXPECT_DEATH(
+      { MeshAxesReplicaGroupList replica_group_none(mesh_xy, {}); },
+      "has only one device per replica group");
 
   MeshAxesReplicaGroupList replica_group_x(mesh_xy, {AxisRef(0)});
   std::vector<std::vector<int64_t>> expected_replica_groups_x = {{0, 2},
@@ -264,11 +262,6 @@ TEST(MeshAxesReplicaGroupListTest, NumReplicaGroups) {
   EXPECT_EQ(replica_group_across_a.num_devices_per_group(), 3);
   EXPECT_EQ(replica_group_across_b.num_replica_groups(), 3);
   EXPECT_EQ(replica_group_across_b.num_devices_per_group(), 5);
-
-  Mesh no_axes({2, 3, 5}, {"p1", "p2", "p3"});
-  MeshAxesReplicaGroupList replica_group_across_no_axes(no_axes, /*axes=*/{});
-  EXPECT_EQ(replica_group_across_no_axes.num_replica_groups(), 2 * 3 * 5);
-  EXPECT_EQ(replica_group_across_no_axes.num_devices_per_group(), 1);
 }
 
 TEST(MeshAxesReplicaGroupListTest, ValidateSubAxesCoexistenceCheck) {
@@ -284,7 +277,7 @@ TEST(MeshAxesReplicaGroupListTest, ValidateSubAxesCoexistenceCheck) {
         MeshAxesReplicaGroupList overlapping_subaxes(
             overlap_mesh, {AxisRef(0, {6, 5}), AxisRef(0, {10, 3})});
       },
-      "Overlapping sub-axes");
+      "Axes cannot coexist or axes overlap.");
 }
 
 TEST(MeshAxesReplicaGroupListTest, ReplicaGroupsCountAndSizeForSubaxes) {
@@ -319,8 +312,6 @@ TEST(MeshAxesReplicaGroupListTest, ReplicaGroupsCountAndSizeForSubaxes) {
 TEST(MeshAxesReplicaGroupListTest, MeshAxesToString) {
   // No subaxes and iota device assignment.
   Mesh mesh_uvw({10, 12, 15}, {"u", "v", "w"});
-  MeshAxesReplicaGroupList replica_group_across_none(mesh_uvw, {});
-  EXPECT_EQ(replica_group_across_none.ToString(), "@mesh<u=10,v=12,w=15> {}");
   MeshAxesReplicaGroupList replica_group_across_uv(mesh_uvw,
                                                    {AxisRef(0), AxisRef(1)});
   EXPECT_EQ(replica_group_across_uv.ToString(), "@mesh<u=10,v=12,w=15> {u,v}");
@@ -330,9 +321,6 @@ TEST(MeshAxesReplicaGroupListTest, MeshAxesToString) {
       TileAssignment(/*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},
                      /*transpose_perm=*/{2, 3, 0, 1}),
       {"a", "b", "c", "d"});
-  MeshAxesReplicaGroupList rg_abcd_across_none(mesh_abcd, {});
-  EXPECT_EQ(rg_abcd_across_none.ToString(),
-            "@mesh<a=2,b=4,c=4,d=2>([4,16]T(1,0)) {}");
   MeshAxesReplicaGroupList rg_abcd_across_multiple_axes_and_subaxes(
       mesh_abcd, {AxisRef(0), AxisRef(1, {1, 2}), AxisRef(3)});
   EXPECT_EQ(rg_abcd_across_multiple_axes_and_subaxes.ToString(),
@@ -343,9 +331,6 @@ TEST(MeshAxesReplicaGroupListTest, MeshAxesToString) {
   array.Reshape({10});
   TileAssignment tile_assignment(std::make_shared<Array<int64_t>>(array));
   Mesh mesh_ooo(tile_assignment, {"ooo"});
-  MeshAxesReplicaGroupList rg_ooo_across_none(mesh_ooo, {});
-  EXPECT_EQ(rg_ooo_across_none.ToString(),
-            "@mesh<ooo=10>(8,3,7,5,4,2,6,0,1,9) {}");
   MeshAxesReplicaGroupList rg_ooo_across_ooo_5_2(mesh_ooo,
                                                  {AxisRef(0, {5, 2})});
   EXPECT_EQ(rg_ooo_across_ooo_5_2.ToString(),
