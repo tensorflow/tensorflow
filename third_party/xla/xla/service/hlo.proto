@@ -667,6 +667,7 @@ message BufferAllocationProto {
     int64 logical_buffer_id = 1;
     int64 offset = 2;
     int64 size = 3;
+    xla.PrimitiveType element_type = 4;
   }
 
   int64 index = 1;

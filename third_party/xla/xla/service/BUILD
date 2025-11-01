@@ -5866,6 +5866,9 @@ tf_proto_library(
     name = "buffer_assignment_proto",
     srcs = ["buffer_assignment.proto"],
     make_default_target_header_only = True,
+    protodeps = [
+        "//xla:xla_data_proto",
+    ],
 )
 
 cc_library(

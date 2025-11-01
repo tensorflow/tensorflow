@@ -190,15 +190,22 @@ class BufferAllocation {
   class Slice {
    public:
     Slice() = default;
-    Slice(const BufferAllocation* allocation, int64_t offset, int64_t size)
-        : allocation_(allocation), offset_(offset), size_(size) {}
+    Slice(const BufferAllocation* allocation, int64_t offset, int64_t size,
+          PrimitiveType element_type = PrimitiveType::PRIMITIVE_TYPE_INVALID)
+        : allocation_(allocation),
+          offset_(offset),
+          size_(size),
+          element_type_(element_type) {}
 
     const BufferAllocation* allocation() const { return allocation_; }
     Index index() const { return allocation_->index(); }
     int64_t offset() const { return offset_; }
     int64_t size() const { return size_; }
+    PrimitiveType element_type() const { return element_type_; }
 
     bool operator==(const Slice& other) const {
+      // We don't compare element_type_ because it's not always set, and it's
+      // not relevant for the comparison here.
       return index() == other.index() && offset_ == other.offset_ &&
              size_ == other.size_;
     }
@@ -252,6 +259,7 @@ class BufferAllocation {
     const BufferAllocation* allocation_ = nullptr;
     int64_t offset_ = 0;
     int64_t size_ = 0;
+    PrimitiveType element_type_ = PrimitiveType::PRIMITIVE_TYPE_INVALID;
   };
 
   // GetSlice returns the Slice of contiguous memory that holds the value
