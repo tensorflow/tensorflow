@@ -33,11 +33,11 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchNodesIntoOne) {
   NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
   NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
-  std::vector<string> range_inputs(3);
+  std::vector<std::string> range_inputs(3);
   range_inputs[0] = start_node->name();
   range_inputs[1] = stop_node->name();
   range_inputs[2] = step_node->name();
-  std::vector<std::pair<string, AttrValue>> range_attrs;
+  std::vector<std::pair<std::string, AttrValue>> range_attrs;
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
   NodeDef *captured_input_node =
@@ -45,10 +45,10 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchNodesIntoOne) {
 
   NodeDef *map_node;
   {
-    std::vector<string> map_inputs(2);
+    std::vector<std::string> map_inputs(2);
     map_inputs[0] = range_node->name();
     map_inputs[1] = captured_input_node->name();
-    std::vector<std::pair<string, AttrValue>> map_attrs(2);
+    std::vector<std::pair<std::string, AttrValue>> map_attrs(2);
     AttrValue f_attr;
     SetAttrValue("f", &f_attr);
     map_attrs[0] = std::make_pair("f", f_attr);
@@ -63,10 +63,10 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchNodesIntoOne) {
       graph_utils::AddScalarConstNode<int64_t>(5, &graph);
   NodeDef *batch_node;
   {
-    std::vector<string> batch_inputs(2);
+    std::vector<std::string> batch_inputs(2);
     batch_inputs[0] = map_node->name();
     batch_inputs[1] = batch_size_node->name();
-    std::vector<std::pair<string, AttrValue>> batch_attrs(2);
+    std::vector<std::pair<std::string, AttrValue>> batch_attrs(2);
     AttrValue shapes_attr;
     SetAttrValue("output_shapes", &shapes_attr);
     batch_attrs[0] = std::make_pair("output_shapes", shapes_attr);
@@ -116,11 +116,11 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchV2NodesIntoOne) {
   NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
   NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
-  std::vector<string> range_inputs(3);
+  std::vector<std::string> range_inputs(3);
   range_inputs[0] = start_node->name();
   range_inputs[1] = stop_node->name();
   range_inputs[2] = step_node->name();
-  std::vector<std::pair<string, AttrValue>> range_attrs;
+  std::vector<std::pair<std::string, AttrValue>> range_attrs;
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
   NodeDef *captured_input_node =
@@ -128,10 +128,10 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchV2NodesIntoOne) {
 
   NodeDef *map_node;
   {
-    std::vector<string> map_inputs(2);
+    std::vector<std::string> map_inputs(2);
     map_inputs[0] = range_node->name();
     map_inputs[1] = captured_input_node->name();
-    std::vector<std::pair<string, AttrValue>> map_attrs(2);
+    std::vector<std::pair<std::string, AttrValue>> map_attrs(2);
     AttrValue f_attr;
     SetAttrValue("f", &f_attr);
     map_attrs[0] = std::make_pair("f", f_attr);
@@ -148,11 +148,11 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchV2NodesIntoOne) {
       graph_utils::AddScalarConstNode<bool>(true, &graph);
   NodeDef *batch_node;
   {
-    std::vector<string> batch_inputs(3);
+    std::vector<std::string> batch_inputs(3);
     batch_inputs[0] = map_node->name();
     batch_inputs[1] = batch_size_node->name();
     batch_inputs[2] = drop_remainder_node->name();
-    std::vector<std::pair<string, AttrValue>> batch_attrs(2);
+    std::vector<std::pair<std::string, AttrValue>> batch_attrs(2);
     AttrValue shapes_attr;
     SetAttrValue("output_shapes", &shapes_attr);
     batch_attrs[0] = std::make_pair("output_shapes", shapes_attr);
@@ -200,11 +200,11 @@ TEST(MapAndBatchFusionTest, FuseParallelMapAndBatchNodesIntoOne) {
   NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
   NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
-  std::vector<string> range_inputs(3);
+  std::vector<std::string> range_inputs(3);
   range_inputs[0] = start_node->name();
   range_inputs[1] = stop_node->name();
   range_inputs[2] = step_node->name();
-  std::vector<std::pair<string, AttrValue>> range_attrs;
+  std::vector<std::pair<std::string, AttrValue>> range_attrs;
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
   NodeDef *captured_input_node =
@@ -214,11 +214,11 @@ TEST(MapAndBatchFusionTest, FuseParallelMapAndBatchNodesIntoOne) {
 
   NodeDef *map_node;
   {
-    std::vector<string> map_inputs(3);
+    std::vector<std::string> map_inputs(3);
     map_inputs[0] = range_node->name();
     map_inputs[1] = captured_input_node->name();
     map_inputs[2] = num_parallel_calls_node->name();
-    std::vector<std::pair<string, AttrValue>> map_attrs(2);
+    std::vector<std::pair<std::string, AttrValue>> map_attrs(2);
     AttrValue f_attr;
     SetAttrValue("f", &f_attr);
     map_attrs[0] = std::make_pair("f", f_attr);
@@ -233,10 +233,10 @@ TEST(MapAndBatchFusionTest, FuseParallelMapAndBatchNodesIntoOne) {
       graph_utils::AddScalarConstNode<int64_t>(5, &graph);
   NodeDef *batch_node;
   {
-    std::vector<string> batch_inputs(2);
+    std::vector<std::string> batch_inputs(2);
     batch_inputs[0] = map_node->name();
     batch_inputs[1] = batch_size_node->name();
-    std::vector<std::pair<string, AttrValue>> batch_attrs(2);
+    std::vector<std::pair<std::string, AttrValue>> batch_attrs(2);
     AttrValue shapes_attr;
     SetAttrValue("output_shapes", &shapes_attr);
     batch_attrs[0] = std::make_pair("output_shapes", shapes_attr);
@@ -286,11 +286,11 @@ TEST(MapAndBatchFusionTest, FuseParallelMapV2AndBatchNodesIntoOne) {
   NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
   NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
-  std::vector<string> range_inputs(3);
+  std::vector<std::string> range_inputs(3);
   range_inputs[0] = start_node->name();
   range_inputs[1] = stop_node->name();
   range_inputs[2] = step_node->name();
-  std::vector<std::pair<string, AttrValue>> range_attrs;
+  std::vector<std::pair<std::string, AttrValue>> range_attrs;
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
   NodeDef *captured_input_node =
@@ -300,11 +300,11 @@ TEST(MapAndBatchFusionTest, FuseParallelMapV2AndBatchNodesIntoOne) {
 
   NodeDef *map_node;
   {
-    std::vector<string> map_inputs(3);
+    std::vector<std::string> map_inputs(3);
     map_inputs[0] = range_node->name();
     map_inputs[1] = captured_input_node->name();
     map_inputs[2] = num_parallel_calls_node->name();
-    std::vector<std::pair<string, AttrValue>> map_attrs(2);
+    std::vector<std::pair<std::string, AttrValue>> map_attrs(2);
     AttrValue f_attr;
     SetAttrValue("f", &f_attr);
     map_attrs[0] = std::make_pair("f", f_attr);
@@ -319,10 +319,10 @@ TEST(MapAndBatchFusionTest, FuseParallelMapV2AndBatchNodesIntoOne) {
       graph_utils::AddScalarConstNode<int64_t>(5, &graph);
   NodeDef *batch_node;
   {
-    std::vector<string> batch_inputs(2);
+    std::vector<std::string> batch_inputs(2);
     batch_inputs[0] = map_node->name();
     batch_inputs[1] = batch_size_node->name();
-    std::vector<std::pair<string, AttrValue>> batch_attrs(2);
+    std::vector<std::pair<std::string, AttrValue>> batch_attrs(2);
     AttrValue shapes_attr;
     SetAttrValue("output_shapes", &shapes_attr);
     batch_attrs[0] = std::make_pair("output_shapes", shapes_attr);
@@ -373,20 +373,20 @@ TEST(MapAndBatchFusionTest, NoChange) {
   NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
   NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
-  std::vector<string> range_inputs(3);
+  std::vector<std::string> range_inputs(3);
   range_inputs[0] = start_node->name();
   range_inputs[1] = stop_node->name();
   range_inputs[2] = step_node->name();
-  std::vector<std::pair<string, AttrValue>> range_attrs;
+  std::vector<std::pair<std::string, AttrValue>> range_attrs;
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
 
   NodeDef *batch_size_node =
       graph_utils::AddScalarConstNode<int64_t>(5, &graph);
-  std::vector<string> batch_inputs(2);
+  std::vector<std::string> batch_inputs(2);
   batch_inputs[0] = range_node->name();
   batch_inputs[1] = batch_size_node->name();
-  std::vector<std::pair<string, AttrValue>> batch_attrs(2);
+  std::vector<std::pair<std::string, AttrValue>> batch_attrs(2);
   AttrValue shapes_attr;
   SetAttrValue("output_shapes", &shapes_attr);
   batch_attrs[0] = std::make_pair("output_shapes", shapes_attr);
@@ -409,11 +409,11 @@ TEST(MapAndBatchFusionTest, NoChange_UnboundedThreadpoolParallelMap) {
   NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
   NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
-  std::vector<string> range_inputs(3);
+  std::vector<std::string> range_inputs(3);
   range_inputs[0] = start_node->name();
   range_inputs[1] = stop_node->name();
   range_inputs[2] = step_node->name();
-  std::vector<std::pair<string, AttrValue>> range_attrs;
+  std::vector<std::pair<std::string, AttrValue>> range_attrs;
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
   NodeDef *captured_input_node =
@@ -423,11 +423,11 @@ TEST(MapAndBatchFusionTest, NoChange_UnboundedThreadpoolParallelMap) {
 
   NodeDef *map_node;
   {
-    std::vector<string> map_inputs(3);
+    std::vector<std::string> map_inputs(3);
     map_inputs[0] = range_node->name();
     map_inputs[1] = captured_input_node->name();
     map_inputs[2] = num_parallel_calls_node->name();
-    std::vector<std::pair<string, AttrValue>> map_attrs(3);
+    std::vector<std::pair<std::string, AttrValue>> map_attrs(3);
     AttrValue f_attr;
     SetAttrValue("f", &f_attr);
     map_attrs[0] = std::make_pair("f", f_attr);
@@ -446,10 +446,10 @@ TEST(MapAndBatchFusionTest, NoChange_UnboundedThreadpoolParallelMap) {
       graph_utils::AddScalarConstNode<int64_t>(5, &graph);
   NodeDef *batch_node;
   {
-    std::vector<string> batch_inputs(2);
+    std::vector<std::string> batch_inputs(2);
     batch_inputs[0] = map_node->name();
     batch_inputs[1] = batch_size_node->name();
-    std::vector<std::pair<string, AttrValue>> batch_attrs(2);
+    std::vector<std::pair<std::string, AttrValue>> batch_attrs(2);
     AttrValue shapes_attr;
     SetAttrValue("output_shapes", &shapes_attr);
     batch_attrs[0] = std::make_pair("output_shapes", shapes_attr);

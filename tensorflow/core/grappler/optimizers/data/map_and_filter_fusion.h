@@ -35,7 +35,7 @@ class MapAndFilterFusion : public TFDataOptimizerBase {
   MapAndFilterFusion() = default;
   ~MapAndFilterFusion() override = default;
 
-  string name() const override { return "map_and_filter_fusion"; };
+  std::string name() const override { return "map_and_filter_fusion"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
