@@ -99,7 +99,7 @@ absl::StatusOr<bool> CollectiveBackendAssigner::Run(
               << " slice_size_=" << slice_size_;
       bool use_nvshmem =
           (num_visible_devices_per_process_ == 1 ||
-           comm_type == GPUCommunicationType::SINGLE_HOST ||
+           comm_type == GPUCommunicationType::SINGLE_PARTITION ||
            (slice_size_ > 0 &&
             IsIntraNVLinkDomain(module->config(), slice_size_))) &&
           (!IsAllReduceOp(instr) || shape_size < threshold_in_bytes_);

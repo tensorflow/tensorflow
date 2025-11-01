@@ -70,6 +70,11 @@ constexpr char kSolChunkSizeBytes[] = "chunk_size_bytes";
 // cost model.
 constexpr char kSolGpusPerNode[] = "gpus_per_node";
 
+// Defines the partition size (number of devices per fast-interconnect domain)
+// used by the SoL cost model. This is necessary for AOT compilation when the
+// partition is larger than a node.
+constexpr char kSolPartitionSize[] = "partition_size";
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_COLLECTIVE_UTILS_H_

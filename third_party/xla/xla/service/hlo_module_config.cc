@@ -110,6 +110,9 @@ std::string HloModuleConfig::compilation_cache_key() const {
     StrAppend(&key, "::device_memory_size=", device_memory_size());
   }
   StrAppend(&key, "::use_shardy_partitioner=", use_shardy_partitioner());
+  if (partition_size() != 0) {
+    StrAppend(&key, "::partition_size=", partition_size());
+  }
   return key;
 }
 
@@ -339,6 +342,7 @@ HloModuleConfigProto HloModuleConfig::ToProto() const {
   proto.set_fdo_profile(fdo_profile_);
   proto.set_device_memory_size(device_memory_size_);
   proto.set_use_shardy_partitioner(use_shardy_partitioner_);
+  proto.set_partition_size(partition_size_);
   *proto.mutable_sharding_config() = ShardingConfig::ToProto(sharding_config_);
   *proto.mutable_schedule_config() = ScheduleConfig::ToProto(schedule_config_);
   return proto;
@@ -418,6 +422,7 @@ HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
   config->fdo_profile_ = proto.fdo_profile();
   config->device_memory_size_ = proto.device_memory_size();
   config->use_shardy_partitioner_ = proto.use_shardy_partitioner();
+  config->partition_size_ = proto.partition_size();
   config->sharding_config_ = ShardingConfig::FromProto(proto.sharding_config());
   config->schedule_config_ = ScheduleConfig::FromProto(proto.schedule_config());
   return std::move(config);
