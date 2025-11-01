@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/types.h"
 
 namespace xla::gpu {
 namespace {
@@ -85,12 +86,19 @@ TEST_F(BuffersDebugNanCountThunkTest, CalculatesNanCounts) {
   BufferAllocation alloc(/*index=*/0,
                          /*size=*/kTotalDeviceMemoryBytes,
                          /*color=*/0);
+  int64_t input_offset = kLogSize;
   BufferAllocation::Slice log_slice(&alloc, /*offset=*/0, kLogSize);
+  input_offset += kLogSize;
+
   BufferAllocation::Slice inputs[2];
-  for (int i = 0; i < 2; ++i) {
-    inputs[i] = BufferAllocation::Slice(
-        &alloc, /*offset=*/kLogSize + i * kInputSizeInBytes, kInputSizeInBytes);
-  }
+  int64_t input_size_bf16 = kInputElems * sizeof(Eigen::bfloat16);
+  inputs[0] = BufferAllocation::Slice(&alloc, input_offset, input_size_bf16,
+                                      PrimitiveType::BF16);
+  input_offset += input_size_bf16;
+
+  inputs[1] = BufferAllocation::Slice(
+      &alloc, input_offset, kInputElems * sizeof(float), PrimitiveType::F32);
+
   BufferAllocations allocations(
       {executor_->AllocateArray<uint8_t>(kTotalDeviceMemoryBytes)},
       executor_->device_ordinal(), allocator_.get());
@@ -102,13 +110,18 @@ TEST_F(BuffersDebugNanCountThunkTest, CalculatesNanCounts) {
                           BufferDebugLog::CreateOnDevice(
                               *stream_, se::DeviceMemory<uint8_t>(log_mem)));
   // Fill inputs with some data
-  std::vector<float> data(kInputElems, 0);
-  data[123] = std::numeric_limits<float>::quiet_NaN();
-  TF_ASSERT_OK(stream_->Memcpy(&inputs0_mem, data.data(), kInputSizeInBytes));
-  data[123] = 0;
-  data[456] = std::numeric_limits<float>::quiet_NaN();
-  data[789] = std::numeric_limits<float>::quiet_NaN();
-  TF_ASSERT_OK(stream_->Memcpy(&inputs1_mem, data.data(), kInputSizeInBytes));
+  {
+    std::vector<Eigen::bfloat16> data(kInputElems, Eigen::bfloat16(0));
+    data[123] = std::numeric_limits<Eigen::bfloat16>::quiet_NaN();
+    TF_ASSERT_OK(stream_->Memcpy(&inputs0_mem, data.data(), kInputSizeInBytes));
+  }
+  {
+    std::vector<float> data(kInputElems, 0);
+    data[456] = std::numeric_limits<float>::quiet_NaN();
+    data[789] = std::numeric_limits<float>::quiet_NaN();
+    TF_ASSERT_OK(stream_->Memcpy(&inputs1_mem, data.data(), kInputSizeInBytes));
+  }
+
   // Setup parameters for Initialize/Prepare/ExecuteOnStream
   Thunk::InitializeParams init_params;
   init_params.executor = executor_;
@@ -121,10 +134,8 @@ TEST_F(BuffersDebugNanCountThunkTest, CalculatesNanCounts) {
 
   BuffersDebugNanCountThunk thunk(
       Thunk::ThunkInfo(), log_slice,
-      {{ThunkBufferId::Create(ThunkId(123), 4).value(),
-        {inputs[0], PrimitiveType::F32}},
-       {ThunkBufferId::Create(ThunkId(456), 8).value(),
-        {inputs[1], PrimitiveType::F32}}});
+      {{ThunkBufferId::Create(ThunkId(123), 4).value(), inputs[0]},
+       {ThunkBufferId::Create(ThunkId(456), 8).value(), inputs[1]}});
   TF_ASSERT_OK(thunk.Initialize(init_params));
   TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}, resource_requests));
   TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));

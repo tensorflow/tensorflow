@@ -30,7 +30,12 @@ namespace gpu {
 // Adds buffer debug tracing to thunks.
 class ThunkBufferDebugPass : public ThunkPassInterface {
  public:
-  ThunkBufferDebugPass() = default;
+  enum class Mode {
+    kChecksum,
+    kNanCounter,
+  };
+
+  explicit ThunkBufferDebugPass(Mode mode) : mode_(mode) {}
 
   absl::string_view name() const override { return "thunk-buffer-debug"; }
 
@@ -39,6 +44,9 @@ class ThunkBufferDebugPass : public ThunkPassInterface {
                            const HloModule* absl_nullable hlo_module,
                            const se::DeviceDescription& device_info,
                            ThunkPassBufferAllocator& allocator) override;
+
+ private:
+  Mode mode_;
 };
 
 }  // namespace gpu

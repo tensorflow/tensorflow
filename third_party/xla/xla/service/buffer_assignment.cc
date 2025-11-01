@@ -245,6 +245,7 @@ BufferAllocation::Slice::ToProto() const {
   proto.set_offset(offset());
   proto.set_size(size());
   proto.set_buffer_allocation_index(allocation() == nullptr ? -1 : index());
+  proto.set_element_type(element_type());
   return proto;
 }
 
@@ -259,13 +260,14 @@ absl::StatusOr<BufferAllocation::Slice> BufferAllocation::Slice::FromProto(
   }
   const BufferAllocation& allocation =
       buffer_allocations[proto.buffer_allocation_index()];
-  return BufferAllocation::Slice(&allocation, proto.offset(), proto.size());
+  return BufferAllocation::Slice(&allocation, proto.offset(), proto.size(),
+                                 proto.element_type());
 }
 
 BufferAllocation::Slice BufferAllocation::GetSlice(
     const HloValue& buffer) const {
   const OffsetSize os = FindOrDie(assigned_buffers_, &buffer);
-  return Slice(this, os.offset, os.size);
+  return Slice(this, os.offset, os.size, buffer.shape().element_type());
 }
 
 absl::Status BufferAllocation::AddAssignment(const HloValue& buffer,
@@ -331,6 +333,8 @@ BufferAllocationProto BufferAllocation::ToProto() const {
     proto_assigned->set_logical_buffer_id(buffer_offset_size.first->id());
     proto_assigned->set_offset(buffer_offset_size.second.offset);
     proto_assigned->set_size(buffer_offset_size.second.size);
+    proto_assigned->set_element_type(
+        buffer_offset_size.first->shape().element_type());
   }
   absl::c_sort(*proto.mutable_assigned(),
                [](const BufferAllocationProto::Assigned& assign1,

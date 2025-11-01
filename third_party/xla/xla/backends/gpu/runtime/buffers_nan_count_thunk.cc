@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
@@ -88,18 +87,21 @@ absl::Status BuffersDebugNanCountThunk::ExecuteOnStream(
   se::gpu::BufferDebugLog buffer_debug_log =
       se::gpu::BufferDebugLog::FromDeviceMemoryUnchecked(log_ptr);
 
-  for (const auto& [entry_id, buffer_slice_pair] : buffers_) {
-    BufferAllocation::Slice buffer = buffer_slice_pair.buffer;
-    PrimitiveType buffer_type = buffer_slice_pair.element_type;
+  for (const auto& [entry_id, buffer] : buffers_) {
+    PrimitiveType buffer_type = buffer.element_type();
     se::DeviceMemoryBase device_buffer =
         params.buffer_allocations->GetDeviceAddress(buffer);
     if (buffer_type == PrimitiveType::F32) {
+      VLOG(1) << "F32 buffer detected with id: " << entry_id
+              << " and size: " << device_buffer.size();
       se::DeviceMemory<float> f32_buffer(device_buffer);
       TF_RETURN_IF_ERROR(kernel_f32_->Launch(
           thread_dim, se::BlockDim(1, 1, 1), params.stream, entry_id,
           f32_buffer, f32_buffer.size(), buffer_debug_log.GetDeviceHeader(),
           buffer_debug_log.GetDeviceEntries()));
     } else if (buffer_type == PrimitiveType::BF16) {
+      VLOG(1) << "BF16 buffer detected with id: " << entry_id
+              << " and size: " << device_buffer.size();
       se::DeviceMemory<Eigen::bfloat16> bf16_buffer(device_buffer);
       TF_RETURN_IF_ERROR(kernel_bf16_->Launch(
           thread_dim, se::BlockDim(1, 1, 1), params.stream, entry_id,
@@ -117,10 +119,9 @@ absl::Status BuffersDebugNanCountThunk::ExecuteOnStream(
 std::string BuffersDebugNanCountThunk::ToString(int indent) const {
   std::string result;
   absl::StrAppend(&result, ", buffers = ", buffers_.size());
-  for (const auto& [buffer_id, buffer_slice_pair] : buffers_) {
+  for (const auto& [buffer_id, buffer] : buffers_) {
     absl::StrAppend(&result, "\n", std::string(indent + 2, ' '),
-                    "buffer_id: ", buffer_id,
-                    ", buffer: ", buffer_slice_pair.buffer.ToString());
+                    "buffer_id: ", buffer_id, ", buffer: ", buffer.ToString());
   }
   return result;
 }

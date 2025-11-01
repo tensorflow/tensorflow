@@ -2902,6 +2902,7 @@ cc_library(
     hdrs = ["thunk_buffer_debug_pass.h"],
     deps = [
         ":buffers_checksum_thunk",
+        ":buffers_nan_count_thunk",
         ":custom_call_thunk",
         ":sequential_thunk",
         ":thunk",
@@ -2934,6 +2935,7 @@ xla_cc_test(
     srcs = ["thunk_buffer_debug_pass_test.cc"],
     deps = [
         ":buffers_checksum_thunk",
+        ":buffers_nan_count_thunk",
         ":custom_call_thunk",
         ":sequential_thunk",
         ":thunk",
@@ -3096,6 +3098,7 @@ xla_test(
         ":thunk",
         ":thunk_buffer_id",
         ":thunk_id",
+        "//xla:types",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
         "//xla/service/gpu:buffer_allocations",

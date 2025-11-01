@@ -31,14 +31,9 @@ namespace xla::gpu {
 
 class BuffersDebugNanCountThunk : public Thunk {
  public:
-  struct BufferToCount {
-    BufferAllocation::Slice buffer;
-    PrimitiveType element_type;
-  };
-
   explicit BuffersDebugNanCountThunk(
       ThunkInfo info, BufferAllocation::Slice log_slice,
-      absl::flat_hash_map<ThunkBufferId, BufferToCount> buffers)
+      absl::flat_hash_map<ThunkBufferId, BufferAllocation::Slice> buffers)
       : Thunk(Thunk::Kind::kBuffersDebugNanCount, std::move(info)),
         log_slice_(log_slice),
         buffers_(std::move(buffers)) {}
@@ -53,6 +48,11 @@ class BuffersDebugNanCountThunk : public Thunk {
     return {};
   }
 
+  const absl::flat_hash_map<ThunkBufferId, BufferAllocation::Slice>&
+  buffer_slices() const {
+    return buffers_;
+  }
+
  private:
   // Loaded in Initialize.
   std::optional<stream_executor::gpu::BufferDebugNanCountF32Kernel::KernelType>
@@ -60,7 +60,7 @@ class BuffersDebugNanCountThunk : public Thunk {
   std::optional<stream_executor::gpu::BufferDebugNanCountBf16Kernel::KernelType>
       kernel_bf16_;
   BufferAllocation::Slice log_slice_;
-  absl::flat_hash_map<ThunkBufferId, BufferToCount> buffers_;
+  absl::flat_hash_map<ThunkBufferId, BufferAllocation::Slice> buffers_;
 };
 
 }  // namespace xla::gpu
