@@ -47,7 +47,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 void completion(const char* buf, linenoiseCompletions* lc) {
-  string buf_str = buf;
+  std::string buf_str = buf;
   if (buf_str.find(' ') == buf_str.npos) {
     for (const char* opt : kCmds) {
       if (absl::StartsWith(opt, buf_str)) {
@@ -57,11 +57,12 @@ void completion(const char* buf, linenoiseCompletions* lc) {
     return;
   }
 
-  string prefix;
+  std::string prefix;
   int last_dash = buf_str.find_last_of(' ');
-  if (last_dash != string::npos) {
+  if (last_dash != std::string::npos) {
     prefix = buf_str.substr(0, last_dash + 1);
-    buf_str = buf_str.substr(last_dash + 1, kint32max);
+    buf_str =
+        buf_str.substr(last_dash + 1, std::numeric_limits<int32_t>::max());
   }
   for (const char* opt : kOptions) {
     if (absl::StartsWith(opt, buf_str)) {
@@ -71,11 +72,11 @@ void completion(const char* buf, linenoiseCompletions* lc) {
 }
 
 int Run(int argc, char** argv) {
-  string FLAGS_profile_path = "";
-  string FLAGS_graph_path = "";
-  string FLAGS_run_meta_path = "";
-  string FLAGS_op_log_path = "";
-  string FLAGS_checkpoint_path = "";
+  std::string FLAGS_profile_path = "";
+  std::string FLAGS_graph_path = "";
+  std::string FLAGS_run_meta_path = "";
+  std::string FLAGS_op_log_path = "";
+  std::string FLAGS_checkpoint_path = "";
   int32_t FLAGS_max_depth = 10;
   int64_t FLAGS_min_bytes = 0;
   int64_t FLAGS_min_peak_bytes = 0;
@@ -88,15 +89,15 @@ int Run(int argc, char** argv) {
   int64_t FLAGS_min_float_ops = 0;
   int64_t FLAGS_min_occurrence = 0;
   int64_t FLAGS_step = -1;
-  string FLAGS_order_by = "name";
-  string FLAGS_account_type_regexes = ".*";
-  string FLAGS_start_name_regexes = ".*";
-  string FLAGS_trim_name_regexes = "";
-  string FLAGS_show_name_regexes = ".*";
-  string FLAGS_hide_name_regexes;
+  std::string FLAGS_order_by = "name";
+  std::string FLAGS_account_type_regexes = ".*";
+  std::string FLAGS_start_name_regexes = ".*";
+  std::string FLAGS_trim_name_regexes = "";
+  std::string FLAGS_show_name_regexes = ".*";
+  std::string FLAGS_hide_name_regexes;
   bool FLAGS_account_displayed_op_only = false;
-  string FLAGS_select = "micros";
-  string FLAGS_output = "";
+  std::string FLAGS_select = "micros";
+  std::string FLAGS_output = "";
   for (int i = 0; i < argc; i++) {
     absl::FPrintF(stderr, "%s\n", argv[i]);
   }
@@ -137,7 +138,7 @@ int Run(int argc, char** argv) {
       Flag("select", &FLAGS_select, "select"),
       Flag("output", &FLAGS_output, "output"),
   };
-  string usage = Flags::Usage(argv[0], flag_list);
+  std::string usage = Flags::Usage(argv[0], flag_list);
   bool parse_ok = Flags::Parse(&argc, argv, flag_list);
   if (!parse_ok) {
     absl::PrintF("%s", usage);
@@ -153,37 +154,37 @@ int Run(int argc, char** argv) {
     return 1;
   }
 
-  std::vector<string> account_type_regexes =
+  std::vector<std::string> account_type_regexes =
       absl::StrSplit(FLAGS_account_type_regexes, ',', absl::SkipEmpty());
-  std::vector<string> start_name_regexes =
+  std::vector<std::string> start_name_regexes =
       absl::StrSplit(FLAGS_start_name_regexes, ',', absl::SkipEmpty());
-  std::vector<string> trim_name_regexes =
+  std::vector<std::string> trim_name_regexes =
       absl::StrSplit(FLAGS_trim_name_regexes, ',', absl::SkipEmpty());
-  std::vector<string> show_name_regexes =
+  std::vector<std::string> show_name_regexes =
       absl::StrSplit(FLAGS_show_name_regexes, ',', absl::SkipEmpty());
-  std::vector<string> hide_name_regexes =
+  std::vector<std::string> hide_name_regexes =
       absl::StrSplit(FLAGS_hide_name_regexes, ',', absl::SkipEmpty());
-  std::vector<string> select =
+  std::vector<std::string> select =
       absl::StrSplit(FLAGS_select, ',', absl::SkipEmpty());
 
-  string output_type;
-  std::map<string, string> output_options;
+  std::string output_type;
+  std::map<std::string, std::string> output_options;
   absl::Status s = ParseOutput(FLAGS_output, &output_type, &output_options);
   CHECK(s.ok()) << s;
 
-  string cmd = "";
+  std::string cmd = "";
   if (argc == 1 && FLAGS_graph_path.empty() && FLAGS_profile_path.empty() &&
       FLAGS_run_meta_path.empty()) {
     PrintHelp();
     return 0;
   } else if (argc > 1) {
-    if (string(argv[1]) == kCmds[6]) {
+    if (std::string(argv[1]) == kCmds[6]) {
       PrintHelp();
       return 0;
     }
-    if (string(argv[1]) == kCmds[0] || string(argv[1]) == kCmds[1] ||
-        string(argv[1]) == kCmds[2] || string(argv[1]) == kCmds[3] ||
-        string(argv[1]) == kCmds[4]) {
+    if (std::string(argv[1]) == kCmds[0] || std::string(argv[1]) == kCmds[1] ||
+        std::string(argv[1]) == kCmds[2] || std::string(argv[1]) == kCmds[3] ||
+        std::string(argv[1]) == kCmds[4]) {
       cmd = argv[1];
     }
   }
@@ -221,7 +222,7 @@ int Run(int argc, char** argv) {
 
     std::unique_ptr<OpLogProto> op_log = std::make_unique<OpLogProto>();
     if (!FLAGS_op_log_path.empty()) {
-      string op_log_str;
+      std::string op_log_str;
       s = ReadFileToString(Env::Default(), FLAGS_op_log_path, &op_log_str);
       if (!s.ok()) {
         absl::FPrintF(stderr, "Failed to read op_log_path: %s\n", s.ToString());
@@ -235,7 +236,7 @@ int Run(int argc, char** argv) {
     tf_stat = std::make_unique<TFStats>(
         std::move(graph), nullptr, std::move(op_log), std::move(ckpt_reader));
 
-    std::vector<string> run_meta_files =
+    std::vector<std::string> run_meta_files =
         absl::StrSplit(FLAGS_run_meta_path, ',', absl::SkipEmpty());
     for (int i = 0; i < run_meta_files.size(); ++i) {
       std::unique_ptr<RunMetadata> run_meta = std::make_unique<RunMetadata>();
@@ -292,7 +293,7 @@ int Run(int argc, char** argv) {
       break;
     }
     looped = true;
-    string line_s = line;
+    std::string line_s = line;
     free(line);
 
     if (line_s.empty()) {
