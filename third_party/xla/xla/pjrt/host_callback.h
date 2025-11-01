@@ -182,6 +182,8 @@ CreateHostCallbackStateAndAppendSendRecvCallbacks(
 
 struct FfiLoadedHostCallbacks {
   static ffi::TypeId id;
+  static ffi::TypeInfo info;
+
   void** callbacks;
   uint32_t num_callbacks;
 };
