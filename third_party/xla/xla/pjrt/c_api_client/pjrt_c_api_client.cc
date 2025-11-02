@@ -2344,7 +2344,7 @@ static absl::StatusOr<PJRT_ExecuteContext*> ForwardExecuteContext(
         PJRT_FFI_UserData_Add_Args_STRUCT_SIZE,
         nullptr,
         create_args.context,
-        PJRT_FFI_UserData{type_id.value(), data, /*deleter=*/nullptr},
+        PJRT_FFI_UserData{type_id.value(), data},
     };
     RETURN_STATUS_IF_PJRT_ERROR(ffi_extension->user_data_add(&add_args), c_api);
     return absl::OkStatus();

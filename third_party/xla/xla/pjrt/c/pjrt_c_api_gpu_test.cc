@@ -359,7 +359,6 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
   add_args.extension_start = nullptr;
   add_args.user_data.type_id = 42;
   add_args.user_data.data = &string_data;
-  add_args.user_data.deleter = nullptr;
   add_args.context = create_arg.context;
   EXPECT_EQ(ffi_extension->user_data_add(&add_args), nullptr);
 

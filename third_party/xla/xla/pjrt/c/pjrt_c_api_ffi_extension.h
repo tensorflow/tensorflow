@@ -55,12 +55,10 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_Type_Register_Args, type_info);
 // id for the given type name.
 typedef PJRT_Error* PJRT_FFI_Type_Register(PJRT_FFI_Type_Register_Args* args);
 
-// User-data that will be forwarded to the FFI handlers. Deleter is optional,
-// and can be nullptr. Deleter will be called when the context is destroyed.
+// User-data that will be forwarded to the FFI handlers.
 typedef struct PJRT_FFI_UserData {
   int64_t type_id;
   void* data;
-  void (*deleter)(void* data);
 } PJRT_FFI_UserData;
 
 struct PJRT_FFI_UserData_Add_Args {
