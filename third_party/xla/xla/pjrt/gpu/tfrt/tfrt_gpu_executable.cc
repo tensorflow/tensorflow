@@ -427,6 +427,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   // the single definition event.
   std::vector<tsl::RCReference<tsl::AsyncValue>> prepare_input_deps;
   std::vector<tsl::RCReference<tsl::AsyncValue>> input_deps;
+  std::vector<tsl::RCReference<tsl::AsyncValue>> ready_deps;
   input_deps.reserve(argument_handles.size() + 1);
 
   absl::Span<int const> donated_params =
@@ -512,6 +513,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                 << definition_event.GetAsyncValue();
         input_deps.push_back(definition_event.CopyRCRef());
       }
+      ready_deps.push_back(tracked_buffer->ready_event().CopyRCRef());
     }
   }
 
@@ -610,6 +612,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        gpu_executable(std::move(gpu_executable)),
        device_assignment(device_assignment), executable_name(name()),
        ffi_context(ffi_context), inputs_avs(CopyAsyncValues(input_deps)),
+       ready_deps(std::move(ready_deps)),
        execution_profile(options.execution_profile),
        send_device_memory(std::move(send_device_memory)),
        recv_device_memory(std::move(recv_device_memory)),
@@ -793,6 +796,28 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
               << executable_name << " on device " << device->DebugString()
               << ", status = " << status;
           complete_event.SetError(status);
+          return;
+        }
+
+        // Propagate errors (if any) from dependencies.
+        absl::Status ready_deps_status;
+        for (const tsl::RCReference<tsl::AsyncValue>& ready : ready_deps) {
+          tsl::BlockUntilReady(ready.get());
+          if (!ready->IsError()) {
+            continue;
+          }
+          absl::Status err = ready->GetError();
+          LOG(ERROR) << "Computation has failed dependency: " << err;
+          if (ready_deps_status.ok()) {
+            ready_deps_status = err;
+          } else {
+            ready_deps_status = absl::Status(
+                err.code(),
+                absl::StrCat(ready_deps_status.message(), "; ", err.message()));
+          }
+        }
+        if (!ready_deps_status.ok()) {
+          complete_event.SetError(ready_deps_status);
           return;
         }
 

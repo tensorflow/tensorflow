@@ -485,6 +485,12 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
               promise.Set(status);
               return;
             }
+
+            tsl::BlockUntilReady(device_buffer->ready_event());
+            if (device_buffer->ready_event().IsError()) {
+              promise.Set(device_buffer->ready_event().GetError());
+              return;
+            }
           }
           void* buffer;
           if (should_unpack) {
