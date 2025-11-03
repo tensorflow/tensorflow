@@ -80,7 +80,7 @@ AnonymousMemoryCacheHandleOp::AnonymousMemoryCacheHandleOp(
                                               /* ref_counting */ true,
                                               /* return_deleter */ true) {}
 
-string AnonymousMemoryCacheHandleOp::name() { return kMemoryCache; }
+std::string AnonymousMemoryCacheHandleOp::name() { return kMemoryCache; }
 
 absl::Status AnonymousMemoryCacheHandleOp::CreateResource(
     OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,

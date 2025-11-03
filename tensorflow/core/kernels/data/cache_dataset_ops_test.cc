@@ -32,10 +32,10 @@ constexpr char kMemoryDatasetPrefix[] = "Memory";
 class CacheDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  CacheDatasetParams(T input_dataset_params, string filename,
+  CacheDatasetParams(T input_dataset_params, std::string filename,
                      DataTypeVector output_dtypes,
                      std::vector<PartialTensorShape> output_shapes,
-                     string node_name)
+                     std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         filename_(filename) {
@@ -51,7 +51,8 @@ class CacheDatasetParams : public DatasetParams {
     return {filename_tensor};
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     *input_names = {CacheDatasetOp::kInputDataset, CacheDatasetOp::kFileName};
     return absl::OkStatus();
   }
@@ -63,12 +64,14 @@ class CacheDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override { return CacheDatasetOp::kDatasetType; }
+  std::string dataset_type() const override {
+    return CacheDatasetOp::kDatasetType;
+  }
 
-  string filename() const { return filename_; }
+  std::string filename() const { return filename_; }
 
  private:
-  string filename_;
+  std::string filename_;
 };
 
 class CacheDatasetOpTest : public DatasetOpsTestBase {
@@ -82,14 +85,14 @@ class CacheDatasetOpTest : public DatasetOpsTestBase {
 
   ~CacheDatasetOpTest() override {
     if (!cache_filename_.empty()) {
-      std::vector<string> cache_files;
+      std::vector<std::string> cache_files;
       absl::Status s = device_->env()->GetMatchingPaths(
           absl::StrCat(cache_filename_, "*"), &cache_files);
       if (!s.ok()) {
         LOG(WARNING) << "Failed to get matching files on " << cache_filename_
                      << "* : " << s;
       }
-      for (const string& path : cache_files) {
+      for (const std::string& path : cache_files) {
         s = device_->env()->DeleteFile(path);
         if (!s.ok()) {
           LOG(WARNING) << "Failed to delete " << path << " : " << s;
