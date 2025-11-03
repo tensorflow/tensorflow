@@ -317,12 +317,8 @@ ScalarOrTensor BroadcastInDims(EmitterLocOpBuilder b, ScalarOrTensor value,
 
   if (value.IsScalar()) {
     CHECK(dims.empty()) << "scalar broadcast must have empty dims";
-    auto scalar_tensor_type =
-        mlir::RankedTensorType::get(/*shape=*/{}, value.getType());
-
-    broadcast_in_dim_input = b.create<mlir::tensor::FromElementsOp>(
-                                  scalar_tensor_type, value.UnwrapScalar())
-                                 .getResult();
+    broadcast_in_dim_input =
+        b.create<xtile::ToTensorOp>(value.UnwrapScalar()).getResult();
   } else {
     broadcast_in_dim_input = value.UnwrapTensor();
   }
@@ -357,7 +353,7 @@ ScalarOrTensor EmitParameterExtract(EmitterLocOpBuilder b,
   if (tensor_type.getRank() == 0) {
     // Triton does not support 0-D tensors so we must extract the scalar value.
     // TODO(csigg): This should be handled in the extract/insert rewrite.
-    return ScalarOrTensor(b.create<mlir::tensor::ExtractOp>(extracted_tensor));
+    return ScalarOrTensor(b.create<xtile::ToScalarOp>(extracted_tensor));
   }
 
   return ScalarOrTensor(extracted_tensor);
@@ -413,9 +409,7 @@ absl::StatusOr<ScalarOrTensor> EmitReduce(
                                                      neutral.UnwrapUnsafe()));
   }
 
-  Value init_value = b.create<mlir::tensor::FromElementsOp>(
-      mlir::RankedTensorType::get(
-          /*shape=*/{}, values[tiled_hlo_reduce.operand(1)].getType()),
+  Value init_value = b.create<xtile::ToTensorOp>(
       values[tiled_hlo_reduce.operand(1)].UnwrapScalar());
 
   stablehlo::ReduceOp reduction = b.create<stablehlo::ReduceOp>(
@@ -446,12 +440,10 @@ absl::StatusOr<ScalarOrTensor> EmitReduce(
           return Internal("Expected reducer argument to be a tensor.");
         }
 
-        // Emit extract op so that the reducer can be lowered to triton, as the
-        // triton reducer can only work with scalars.
+        // Emit from tensor op so that the reducer can be lowered to triton, as
+        // the triton reducer can only work with scalars.
         auto extracted_argument =
-            ScalarOrTensor(b.create<mlir::tensor::ExtractOp>(
-                                argument.getType().getElementType(), argument)
-                               .getResult());
+            ScalarOrTensor(b.create<xtile::ToScalarOp>(argument));
         TF_RET_CHECK(region_values.insert({instr, extracted_argument}).second);
       } else {
         to_emit.push_back(instr);
@@ -465,16 +457,14 @@ absl::StatusOr<ScalarOrTensor> EmitReduce(
                                   region_values));
     // Emit from_elements op so that the reducer can be lowered to triton, as
     // the triton reducer can only work with scalars.
-    auto result_as_scalar = b.create<mlir::tensor::FromElementsOp>(
-        result_ty, result.UnwrapUnsafe());
+    auto result_as_scalar = b.create<xtile::ToTensorOp>(result.UnwrapUnsafe());
     b.create<stablehlo::ReturnOp>(SmallVector<Value>({result_as_scalar}));
     b.setInsertionPointAfter(reduction);
   }
 
   auto result = reduction.getResult(0);
   if (mlir::cast<ShapedType>(result.getType()).getRank() == 0) {
-    result = b.create<mlir::tensor::ExtractOp>(
-        mlir::cast<ShapedType>(result.getType()).getElementType(), result);
+    result = b.create<xtile::ToScalarOp>(result);
   }
 
   return ScalarOrTensor(result);
@@ -1856,10 +1846,7 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
     if (result.IsScalar()) {
       // TODO(csigg): Handle this in extract/insert rewrite.
       mlir::Value scalar_value = result.UnwrapScalar();
-      auto tensor_type =
-          mlir::RankedTensorType::get({}, scalar_value.getType());
-      input_tensor =
-          b.create<mlir::tensor::FromElementsOp>(tensor_type, scalar_value);
+      input_tensor = b.create<xtile::ToTensorOp>(scalar_value);
     } else {
       input_tensor = result.UnwrapTensor();
     }

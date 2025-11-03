@@ -211,8 +211,9 @@ def StableHLOLowerToTritonPass
     : Pass<"stablehlo-lower-to-triton", "mlir::ModuleOp"> {
   let summary = "Lowers StableHLO operations to their Triton equivalent.";
   let dependentDialects = [
-    "stablehlo::StablehloDialect",
-    "triton::TritonDialect"
+    "::mlir::stablehlo::StablehloDialect",
+    "::mlir::triton::TritonDialect",
+    "::xla::xtile::XTileDialect",
   ];
   let constructor = "CreateStableHLOLowerToTritonPass()";
 }

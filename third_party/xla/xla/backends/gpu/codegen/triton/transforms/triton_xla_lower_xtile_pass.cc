@@ -212,8 +212,8 @@ class XTileExtractToTriton
           extract_op->getLoc(), memref_to_ptr, ttir::CacheModifier::NONE,
           ttir::EvictionPolicy::NORMAL, /*isVolatile=*/false);
 
-      rewriter.replaceOpWithNewOp<mlir::tensor::FromElementsOp>(
-          extract_op, extract_op.getType(), scalar_value);
+      rewriter.replaceOpWithNewOp<::xla::xtile::ToTensorOp>(extract_op,
+                                                            scalar_value);
       return mlir::success();
     }
 
@@ -250,8 +250,8 @@ class XTileInsertToTriton
         CreateMemrefToPtr(rewriter, insert_op.getDestination());
 
     if (insert_op.getSource().getType().getRank() == 0) {
-      mlir::Value scalar_value = rewriter.create<mlir::tensor::ExtractOp>(
-          insert_op.getLoc(), insert_op.getSource());
+      mlir::Value scalar_value = ::xla::xtile::ToScalarOp::create(
+          rewriter, insert_op.getLoc(), insert_op.getSource());
 
       rewriter.replaceOpWithNewOp<ttir::StoreOp>(
           insert_op, memref_to_ptr, scalar_value, /*mask=*/nullptr);
