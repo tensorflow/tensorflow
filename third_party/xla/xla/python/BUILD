@@ -124,6 +124,7 @@ cc_library(
     deps = [
         ":nb_numpy",
         ":safe_static_init",
+        ":strides",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
