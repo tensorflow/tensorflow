@@ -155,20 +155,6 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
   return false;
 }
 
-bool IsSupportedByCudnn(const HloInstruction& instr,
-                        se::StreamExecutor* stream_executor,
-                        const DebugOptions& debug_options) {
-  if (instr.opcode() == HloOpcode::kFusion) {
-    return IsSupportedCudnnFusion(instr, stream_executor, debug_options);
-  }
-
-  if (instr.opcode() == HloOpcode::kCustomCall) {
-    return IsCustomCallToDnnConvolution(instr);
-  }
-
-  return false;
-}
-
 absl::StatusOr<std::vector<CudnnBackendConfig>> GetAlgorithms(
     se::dnn::DnnSupport* dnn, se::dnn::ConvolutionKind conv_kind,
     se::dnn::DataType input_type, se::dnn::DataType output_type,
@@ -338,6 +324,18 @@ absl::Status ApplyConfigToCudnnCustomCall(HloInstruction& instr,
 
 }  // namespace
 
+bool CudnnBackend::IsSupported(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kFusion) {
+    return IsSupportedCudnnFusion(instr, stream_executor(), debug_options());
+  }
+
+  if (instr.opcode() == HloOpcode::kCustomCall) {
+    return IsCustomCallToDnnConvolution(instr);
+  }
+
+  return false;
+}
+
 absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
     const HloInstruction& instr) {
   if (IsCustomCallToDnnConvolution(instr)) {
@@ -358,7 +356,7 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 CudnnBackend::GetSupportedConfigs(const HloInstruction& instr) {
-  if (!IsSupportedByCudnn(instr, stream_executor(), debug_options())) {
+  if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
   if (instr.opcode() == HloOpcode::kFusion) {

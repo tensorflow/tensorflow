@@ -53,11 +53,12 @@ class TritonBackend : public GpuCodegenBackend {
   bool CanProduceWrongResults() const override { return true; }
 
  private:
+  bool IsSupported(const HloInstruction& instr) override;
+
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> hlo_module,
       const Compiler::CompileOptions& options) override;
 
-  bool IsSupported(const HloInstruction& instr);
   SymbolicExprContext* symbolic_expr_context_;
 };
 

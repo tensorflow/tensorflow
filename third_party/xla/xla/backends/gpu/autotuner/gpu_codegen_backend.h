@@ -121,6 +121,10 @@ class GpuCodegenBackend : public CodegenBackend {
     return hlo_module;
   };
 
+  virtual bool IsSupported(const HloInstruction& instr) = 0;
+
+  friend class FissionBackend;
+
   std::string name_;
   stream_executor::StreamExecutor* stream_executor_;
   const Compiler::TargetConfig& target_config_;

@@ -60,6 +60,9 @@ class CublasBackend : public GpuCodegenBackend {
 
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
+
+ private:
+  bool IsSupported(const HloInstruction& instr) override;
 };
 
 }  // namespace gpu

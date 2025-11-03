@@ -72,6 +72,9 @@ class CudnnBackend : public GpuCodegenBackend {
   // apply the configs with non-zero workspace size.
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
+
+ private:
+  bool IsSupported(const HloInstruction& instr) override;
 };
 
 }  // namespace gpu

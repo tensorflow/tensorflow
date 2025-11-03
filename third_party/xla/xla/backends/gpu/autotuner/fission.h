@@ -65,6 +65,11 @@ class FissionBackend : public GpuCodegenBackend {
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
 
+ private:
+  bool IsSupported(const HloInstruction& instr) override {
+    return instr.opcode() == HloOpcode::kFusion;
+  }
+
   CublasBackend cublas_backend_;
   CublasLtBackend cublaslt_backend_;
   CustomKernelBackend custom_kernel_backend_;

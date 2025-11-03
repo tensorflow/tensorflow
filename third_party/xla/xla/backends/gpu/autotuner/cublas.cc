@@ -153,5 +153,9 @@ absl::Status CublasBackend::ApplyConfig(HloInstruction& instr,
   return absl::OkStatus();
 }
 
+bool CublasBackend::IsSupported(const HloInstruction& instr) {
+  return IsLegacyCublasMatmul(instr);
+}
+
 }  // namespace gpu
 }  // namespace xla
