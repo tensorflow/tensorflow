@@ -16,14 +16,18 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_BUFFERS_NAN_COUNT_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_BUFFERS_NAN_COUNT_THUNK_H_
 
+#include <atomic>
+#include <cstddef>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/gpu/buffer_debug_nan_count_kernel.h"
 
@@ -33,10 +37,17 @@ class BuffersDebugNanCountThunk : public Thunk {
  public:
   explicit BuffersDebugNanCountThunk(
       ThunkInfo info, BufferAllocation::Slice log_slice,
-      absl::flat_hash_map<ThunkBufferId, BufferAllocation::Slice> buffers)
+      ThunkId checked_thunk_id,
+      absl::flat_hash_map<size_t, BufferAllocation::Slice>
+          checked_thunk_buffers,
+      bool runs_before_checked_thunk,
+      std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store)
       : Thunk(Thunk::Kind::kBuffersDebugNanCount, std::move(info)),
         log_slice_(log_slice),
-        buffers_(std::move(buffers)) {}
+        checked_thunk_id_(checked_thunk_id),
+        checked_thunk_buffers_(std::move(checked_thunk_buffers)),
+        runs_before_checked_thunk_(runs_before_checked_thunk),
+        metadata_store_(std::move(metadata_store)) {}
 
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
@@ -48,9 +59,9 @@ class BuffersDebugNanCountThunk : public Thunk {
     return {};
   }
 
-  const absl::flat_hash_map<ThunkBufferId, BufferAllocation::Slice>&
-  buffer_slices() const {
-    return buffers_;
+  const absl::flat_hash_map<size_t, BufferAllocation::Slice>& buffer_slices()
+      const {
+    return checked_thunk_buffers_;
   }
 
  private:
@@ -60,7 +71,11 @@ class BuffersDebugNanCountThunk : public Thunk {
   std::optional<stream_executor::gpu::BufferDebugNanCountBf16Kernel::KernelType>
       kernel_bf16_;
   BufferAllocation::Slice log_slice_;
-  absl::flat_hash_map<ThunkBufferId, BufferAllocation::Slice> buffers_;
+  ThunkId checked_thunk_id_;
+  absl::flat_hash_map<size_t, BufferAllocation::Slice> checked_thunk_buffers_;
+  bool runs_before_checked_thunk_;
+  std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store_;
+  std::atomic<size_t> execution_count_ = 0;
 };
 
 }  // namespace xla::gpu

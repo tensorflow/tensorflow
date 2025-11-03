@@ -20,23 +20,22 @@ limitations under the License.
 #include <cstdint>
 #include <tuple>
 
-#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
+#include "absl/strings/str_format.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
 
-// TODO: b/447080910 - use this instead of ThunkBufferId.
 TSL_LIB_GTL_DEFINE_INT_TYPE(BufferDebugLogEntryId, uint32_t)
 
 struct BufferDebugLogEntry {
-  // An ID that uniquely identifies a thunk and its specific input or output
-  // buffer.
-  ThunkBufferId entry_id;
+  // An ID that uniquely identifies a log entry within a HLO module execution.
+  BufferDebugLogEntryId entry_id;
   uint32_t value;
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const BufferDebugLogEntry& entry) {
-    absl::Format(&sink, "{entry_id: %v, value: %u}", entry.entry_id,
+    absl::Format(&sink, "{entry_id: %v, value: %u}", entry.entry_id.value(),
                  entry.value);
   }
 

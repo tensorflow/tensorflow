@@ -19,13 +19,15 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -46,7 +48,44 @@ namespace {
 namespace se = stream_executor;
 
 using ::stream_executor::gpu::BufferDebugLog;
+using Metadata = BufferDebugLogEntryMetadataStore::Metadata;
+
+using ::testing::AllOf;
+using ::testing::Field;
 using ::testing::UnorderedElementsAre;
+
+MATCHER_P2(IsEntryWithMetadata, store, metadata, "") {
+  std::optional<Metadata> actual_metadata =
+      store->GetEntryMetadata(arg.entry_id);
+  if (!actual_metadata.has_value()) {
+    *result_listener << "metadata not found for entry_id "
+                     << arg.entry_id.value();
+    return false;
+  }
+
+  return ExplainMatchResult(
+      AllOf(Field(&Metadata::thunk_id, metadata.thunk_id),
+            Field(&Metadata::buffer_idx, metadata.buffer_idx),
+            Field(&Metadata::execution_id, metadata.execution_id),
+            Field(&Metadata::is_input, metadata.is_input)),
+      *actual_metadata, result_listener);
+}
+
+class FakeThunk : public Thunk {
+ public:
+  explicit FakeThunk(ThunkInfo info, BufferUses buffer_uses)
+      : Thunk(Thunk::Kind::kGemm, std::move(info)),
+        buffer_uses_(std::move(buffer_uses)) {}
+
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override {
+    return absl::OkStatus();
+  }
+
+  BufferUses buffer_uses() const override { return buffer_uses_; }
+
+ private:
+  BufferUses buffer_uses_;
+};
 
 class BuffersDebugChecksumThunkTest : public ::testing::Test {
  protected:
@@ -115,11 +154,13 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
       ServiceExecutableRunOptions(), allocations, stream_.get(),
       /*command_buffer_trace_stream=*/stream_.get(),
       /*collective_params=*/nullptr, /*collective_cliques=*/nullptr);
+  auto metadata_store = std::make_shared<BufferDebugLogEntryMetadataStore>();
 
   BuffersDebugChecksumThunk thunk(
       Thunk::ThunkInfo(), log_slice,
-      {{ThunkBufferId::Create(ThunkId(123), 4).value(), inputs[0]},
-       {ThunkBufferId::Create(ThunkId(456), 8).value(), inputs[1]}});
+      /*checked_thunk_id=*/ThunkId(123),
+      {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
+      /*runs_before_checked_thunk=*/true, metadata_store);
   TF_ASSERT_OK(thunk.Initialize(init_params));
   TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}, resource_requests));
   TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));
@@ -128,17 +169,24 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
 
   // BuffersDebugChecksumThunk launches a kernel for each input buffer, they may
   // complete in any order.
-  EXPECT_THAT(
-      entries,
-      UnorderedElementsAre(
-          BufferDebugLogEntry{
-              /*entry_id=*/ThunkBufferId::Create(ThunkId(123), 4).value(),
-              /*value=*/12341234,
-          },
-          BufferDebugLogEntry{
-              /*entry_id=*/ThunkBufferId::Create(ThunkId(456), 8).value(),
-              /*value=*/56785678,
-          }));
+  EXPECT_THAT(entries,
+              UnorderedElementsAre(
+                  AllOf(IsEntryWithMetadata(metadata_store,
+                                            Metadata{
+                                                /*thunk_id=*/ThunkId(123),
+                                                /*buffer_idx=*/0,
+                                                /*execution_id=*/0,
+                                                /*is_input=*/true,
+                                            }),
+                        Field(&BufferDebugLogEntry::value, 12341234)),
+                  AllOf(IsEntryWithMetadata(metadata_store,
+                                            Metadata{
+                                                /*thunk_id=*/ThunkId(123),
+                                                /*buffer_idx=*/1,
+                                                /*execution_id=*/0,
+                                                /*is_input=*/true,
+                                            }),
+                        Field(&BufferDebugLogEntry::value, 56785678))));
 }
 
 }  // namespace

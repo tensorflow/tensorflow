@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -74,6 +75,7 @@ absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
   }
 
   VLOG(1) << "BuffersDebugChecksumThunk::ExecuteOnStream";
+  const uint32_t execution_id = execution_count_.fetch_add(1);
 
   const se::ThreadDim thread_dim(
       executor->GetDeviceDescription().threads_per_block_limit(), 1, 1);
@@ -83,12 +85,19 @@ absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
   se::gpu::BufferDebugLog buffer_debug_log =
       se::gpu::BufferDebugLog::FromDeviceMemoryUnchecked(log_ptr);
 
-  for (const auto& [entry_id, buffer] : buffers_) {
+  for (const auto& [buffer_idx, buffer] : checked_thunk_buffers_) {
+    const BufferDebugLogEntryId log_entry_id = metadata_store_->AssignId({
+        checked_thunk_id_,
+        buffer_idx,
+        execution_id,
+        /*is_input=*/runs_before_checked_thunk_,
+    });
+
     se::DeviceMemory<uint8_t> device_buffer(
         params.buffer_allocations->GetDeviceAddress(buffer));
 
     TF_RETURN_IF_ERROR(kernel_->Launch(
-        thread_dim, se::BlockDim(1, 1, 1), params.stream, entry_id,
+        thread_dim, se::BlockDim(1, 1, 1), params.stream, log_entry_id,
         device_buffer, device_buffer.size(), buffer_debug_log.GetDeviceHeader(),
         buffer_debug_log.GetDeviceEntries()));
   }
@@ -98,10 +107,11 @@ absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
 
 std::string BuffersDebugChecksumThunk::ToString(int indent) const {
   std::string result;
-  absl::StrAppend(&result, ", buffers = ", buffers_.size());
-  for (const auto& [buffer_id, buffer] : buffers_) {
+  absl::StrAppend(&result, ", buffers = ", checked_thunk_buffers_.size());
+  for (const auto& [buffer_idx, buffer] : checked_thunk_buffers_) {
     absl::StrAppend(&result, "\n", std::string(indent + 2, ' '),
-                    "buffer_id: ", buffer_id, ", buffer: ", buffer.ToString());
+                    "buffer_idx: ", buffer_idx,
+                    ", buffer: ", buffer.ToString());
   }
   return result;
 }

@@ -21,7 +21,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
-#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
@@ -76,13 +75,11 @@ TEST(BufferDebugLogEntryMetadataStoreTest, EntriesToProto) {
   });
   std::vector<BufferDebugLogEntry> entries = {
       {
-          // TODO: b/447080910 - use BufferDebugLogEntryId directly.
-          /*entry_id=*/reinterpret_cast<const ThunkBufferId&>(entry_id1),
+          /*entry_id=*/entry_id1,
           /*checksum=*/12341234,
       },
       {
-          // TODO: b/447080910 - use BufferDebugLogEntryId directly.
-          /*entry_id=*/reinterpret_cast<const ThunkBufferId&>(entry_id2),
+          /*entry_id=*/entry_id2,
           /*checksum=*/56785678,
       },
   };

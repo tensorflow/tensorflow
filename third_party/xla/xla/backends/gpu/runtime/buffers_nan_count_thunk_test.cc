@@ -24,9 +24,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -47,8 +47,29 @@ namespace {
 
 namespace se = stream_executor;
 
+using Metadata = BufferDebugLogEntryMetadataStore::Metadata;
+
 using ::stream_executor::gpu::BufferDebugLog;
+using ::testing::AllOf;
+using ::testing::Field;
 using ::testing::UnorderedElementsAre;
+
+MATCHER_P2(IsEntryWithMetadata, store, metadata, "") {
+  std::optional<Metadata> actual_metadata =
+      store->GetEntryMetadata(arg.entry_id);
+  if (!actual_metadata.has_value()) {
+    *result_listener << "metadata not found for entry_id "
+                     << arg.entry_id.value();
+    return false;
+  }
+
+  return ExplainMatchResult(
+      AllOf(Field(&Metadata::thunk_id, metadata.thunk_id),
+            Field(&Metadata::buffer_idx, metadata.buffer_idx),
+            Field(&Metadata::execution_id, metadata.execution_id),
+            Field(&Metadata::is_input, metadata.is_input)),
+      *actual_metadata, result_listener);
+}
 
 class BuffersDebugNanCountThunkTest : public ::testing::Test {
  protected:
@@ -131,11 +152,13 @@ TEST_F(BuffersDebugNanCountThunkTest, CalculatesNanCounts) {
       ServiceExecutableRunOptions(), allocations, stream_.get(),
       /*command_buffer_trace_stream=*/stream_.get(),
       /*collective_params=*/nullptr, /*collective_cliques=*/nullptr);
+  auto metadata_store = std::make_shared<BufferDebugLogEntryMetadataStore>();
 
   BuffersDebugNanCountThunk thunk(
       Thunk::ThunkInfo(), log_slice,
-      {{ThunkBufferId::Create(ThunkId(123), 4).value(), inputs[0]},
-       {ThunkBufferId::Create(ThunkId(456), 8).value(), inputs[1]}});
+      /*checked_thunk_id=*/ThunkId(123),
+      {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
+      /*runs_before_checked_thunk=*/true, metadata_store);
   TF_ASSERT_OK(thunk.Initialize(init_params));
   TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}, resource_requests));
   TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));
@@ -147,14 +170,18 @@ TEST_F(BuffersDebugNanCountThunkTest, CalculatesNanCounts) {
   EXPECT_THAT(
       entries,
       UnorderedElementsAre(
-          BufferDebugLogEntry{
-              /*entry_id=*/ThunkBufferId::Create(ThunkId(123), 4).value(),
-              /*value=*/1,
-          },
-          BufferDebugLogEntry{
-              /*entry_id=*/ThunkBufferId::Create(ThunkId(456), 8).value(),
-              /*value=*/2,
-          }));
+          IsEntryWithMetadata(metadata_store, Metadata{
+                                                  /*thunk_id=*/ThunkId(123),
+                                                  /*buffer_idx=*/0,
+                                                  /*execution_id=*/0,
+                                                  /*is_input=*/true,
+                                              }),
+          IsEntryWithMetadata(metadata_store, Metadata{
+                                                  /*thunk_id=*/ThunkId(123),
+                                                  /*buffer_idx=*/1,
+                                                  /*execution_id=*/0,
+                                                  /*is_input=*/true,
+                                              })));
 }
 
 }  // namespace

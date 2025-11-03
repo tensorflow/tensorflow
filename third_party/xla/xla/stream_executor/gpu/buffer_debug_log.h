@@ -81,12 +81,6 @@ class BufferDebugLog {
   absl::StatusOr<std::vector<xla::gpu::BufferDebugLogEntry>> ReadFromDevice(
       Stream& stream) const;
 
-  // Reads all entries from the device log into a proto dump.
-  //
-  // `stream` must be associated with the same device as the one used to create
-  // the log.
-  absl::StatusOr<xla::gpu::BufferDebugLogProto> ReadProto(Stream& stream) const;
-
   // Returns a view of the `BufferDebugLogHeader`.
   //
   // The returned `DeviceMemory` gets invalidated when the `BufferDebugLog` is

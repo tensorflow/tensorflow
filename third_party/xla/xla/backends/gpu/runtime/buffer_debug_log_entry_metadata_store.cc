@@ -63,9 +63,7 @@ BufferDebugLogProto BufferDebugLogEntryMetadataStore::EntriesToProto(
 
   BufferDebugLogProto proto;
   for (const BufferDebugLogEntry& entry : entries) {
-    // TODO: b/447080910 - simplify once entry_id is a BufferDebugLogEntryId.
-    std::optional<Metadata> metadata =
-        GetEntryMetadataLocked(BufferDebugLogEntryId{entry.entry_id.value()});
+    std::optional<Metadata> metadata = GetEntryMetadataLocked(entry.entry_id);
     if (!metadata.has_value()) {
       continue;
     }

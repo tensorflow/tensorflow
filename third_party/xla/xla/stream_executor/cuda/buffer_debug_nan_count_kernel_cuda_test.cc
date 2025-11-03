@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
@@ -49,7 +49,7 @@ namespace se = stream_executor;
 namespace stream_executor::cuda {
 namespace {
 
-using xla::gpu::ThunkBufferId;
+using xla::gpu::BufferDebugLogEntryId;
 using xla::gpu::ThunkId;
 
 class NanCountKernelTest : public ::testing::Test {
@@ -83,7 +83,7 @@ class NanCountKernelTest : public ::testing::Test {
 
   template <typename Kernel, typename T>
   absl::Status AppendNanCountOnDevice(
-      ThunkBufferId entry_id, const std::vector<T>& input,
+      BufferDebugLogEntryId entry_id, const std::vector<T>& input,
       se::gpu::BufferDebugLog& buffer_debug_log,
       stream_executor::ThreadDim dim = stream_executor::ThreadDim(1, 1, 1)) {
     // Load kernel
@@ -127,7 +127,7 @@ TEST_F(NanCountKernelTest, CountsNansForF32) {
       se::gpu::BufferDebugLog::CreateOnDevice(*stream_, mem));
 
   TF_EXPECT_OK(AppendNanCountOnDevice<gpu::BufferDebugNanCountF32Kernel>(
-      ThunkBufferId(), input, device_log));
+      BufferDebugLogEntryId{123}, input, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
@@ -146,7 +146,7 @@ TEST_F(NanCountKernelTest, CountsNansForBf16) {
       se::gpu::BufferDebugLog::CreateOnDevice(*stream_, mem));
 
   TF_EXPECT_OK(AppendNanCountOnDevice<gpu::BufferDebugNanCountBf16Kernel>(
-      ThunkBufferId(), input, device_log));
+      BufferDebugLogEntryId{0}, input, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
@@ -165,9 +165,9 @@ TEST_F(NanCountKernelTest, CountsNansInParallel) {
       se::gpu::BufferDebugLog::CreateOnDevice(*stream_, mem));
 
   TF_EXPECT_OK(AppendNanCountOnDevice<gpu::BufferDebugNanCountF32Kernel>(
-      ThunkBufferId(), input, device_log, se::ThreadDim(2, 4, 8)));
+      BufferDebugLogEntryId{0}, input, device_log, se::ThreadDim(2, 4, 8)));
   TF_EXPECT_OK(AppendNanCountOnDevice<gpu::BufferDebugNanCountF32Kernel>(
-      ThunkBufferId(), input, device_log, se::ThreadDim(2, 4, 8)));
+      BufferDebugLogEntryId{0}, input, device_log, se::ThreadDim(2, 4, 8)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 2);

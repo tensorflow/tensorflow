@@ -433,7 +433,6 @@ cuda_library(
     deps = [
         ":cuda_platform",
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",
-        "//xla/backends/gpu/runtime:thunk_buffer_id",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:buffer_debug_xor_checksum_kernel",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
@@ -452,8 +451,6 @@ xla_test(
     deps = [
         ":buffer_debug_xor_checksum_kernel_cuda",
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",
-        "//xla/backends/gpu/runtime:thunk_buffer_id",
-        "//xla/backends/gpu/runtime:thunk_id",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
@@ -489,7 +486,6 @@ cuda_library(
     deps = [
         ":cuda_platform",
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",
-        "//xla/backends/gpu/runtime:thunk_buffer_id",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:buffer_debug_nan_count_kernel",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
@@ -509,7 +505,6 @@ xla_test(
         ":buffer_debug_nan_count_kernel_cuda",
         "//xla:types",
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",
-        "//xla/backends/gpu/runtime:thunk_buffer_id",
         "//xla/backends/gpu/runtime:thunk_id",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:launch_dim",

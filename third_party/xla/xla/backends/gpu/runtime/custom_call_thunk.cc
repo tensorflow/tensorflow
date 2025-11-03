@@ -358,6 +358,12 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
+// Builds a call frame for the custom call.
+//
+// If `buffer_allocations` is provided, the call frame will contain the actual
+// device memory addresses of the buffers. Otherwise, the call frame will
+// contain placeholders - this should only be the case when calling Prepare()
+// stage handler.
 absl::StatusOr<ObjectPool<CallFrame>::BorrowedObject>
 CustomCallThunk::BuildCallFrame(
     const BufferAllocations* absl_nullable buffer_allocations) {
@@ -395,6 +401,10 @@ CustomCallThunk::BuildCallFrame(
   return call_frame;
 }
 
+// Builds call options object for the custom call.
+//
+// `stream` and `buffer_allocations may only be non-null for options passed to
+// Prepare()_stage handler.
 CallOptions CustomCallThunk::BuildCallOptions(
     RunId run_id, se::Stream* absl_nullable stream,
     const BufferAllocations* absl_nullable buffer_allocations,

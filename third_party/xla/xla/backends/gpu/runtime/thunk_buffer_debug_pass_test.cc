@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -191,19 +190,13 @@ TEST(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
 
   const BuffersDebugChecksumThunk& buffer_debug_before_fake_thunk =
       static_cast<const BuffersDebugChecksumThunk&>(*sub_thunks[0]);
-  EXPECT_THAT(
-      buffer_debug_before_fake_thunk.buffer_slices(),
-      UnorderedElementsAre(
-          Pair(ThunkBufferId::Create(kTestThunkId, 0).value(), slice_i),
-          Pair(ThunkBufferId::Create(kTestThunkId, 2).value(), slice_io)));
+  EXPECT_THAT(buffer_debug_before_fake_thunk.buffer_slices(),
+              UnorderedElementsAre(Pair(0, slice_i), Pair(2, slice_io)));
 
   const BuffersDebugChecksumThunk& buffer_debug_after_fake_thunk =
       static_cast<const BuffersDebugChecksumThunk&>(*sub_thunks[2]);
-  EXPECT_THAT(
-      buffer_debug_after_fake_thunk.buffer_slices(),
-      UnorderedElementsAre(
-          Pair(ThunkBufferId::Create(kTestThunkId, 1).value(), slice_o),
-          Pair(ThunkBufferId::Create(kTestThunkId, 2).value(), slice_io)));
+  EXPECT_THAT(buffer_debug_after_fake_thunk.buffer_slices(),
+              UnorderedElementsAre(Pair(1, slice_o), Pair(2, slice_io)));
 }
 
 TEST(ThunkBufferDebugPassTest, InsertsBuffersDebugNanCounterThunks) {
@@ -284,11 +277,8 @@ TEST(ThunkBufferDebugPassTest, InsertsBuffersDebugNanCounterThunks) {
 
   const BuffersDebugNanCountThunk& buffer_debug_after_fake_thunk =
       static_cast<const BuffersDebugNanCountThunk&>(*sub_thunks[1]);
-  EXPECT_THAT(
-      buffer_debug_after_fake_thunk.buffer_slices(),
-      UnorderedElementsAre(
-          Pair(ThunkBufferId::Create(kTestThunkId, 1).value(), slice_o),
-          Pair(ThunkBufferId::Create(kTestThunkId, 2).value(), slice_io)));
+  EXPECT_THAT(buffer_debug_after_fake_thunk.buffer_slices(),
+              UnorderedElementsAre(Pair(1, slice_o), Pair(2, slice_io)));
 }
 
 }  // namespace

@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
-#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/types.h"
@@ -32,16 +31,16 @@ namespace stream_executor::gpu {
 // This kernel MUST execute on a single thread block.
 struct BufferDebugNanCountF32Kernel {
   using KernelType =
-      TypedKernel<xla::gpu::ThunkBufferId, DeviceMemory<float>, uint64_t,
-                  DeviceMemory<xla::gpu::BufferDebugLogHeader>,
+      TypedKernel<xla::gpu::BufferDebugLogEntryId, DeviceMemory<float>,
+                  uint64_t, DeviceMemory<xla::gpu::BufferDebugLogHeader>,
                   DeviceMemory<xla::gpu::BufferDebugLogEntry>>;
 };
 
 struct BufferDebugNanCountBf16Kernel {
-  using KernelType =
-      TypedKernel<xla::gpu::ThunkBufferId, DeviceMemory<Eigen::bfloat16>,
-                  uint64_t, DeviceMemory<xla::gpu::BufferDebugLogHeader>,
-                  DeviceMemory<xla::gpu::BufferDebugLogEntry>>;
+  using KernelType = TypedKernel<xla::gpu::BufferDebugLogEntryId,
+                                 DeviceMemory<Eigen::bfloat16>, uint64_t,
+                                 DeviceMemory<xla::gpu::BufferDebugLogHeader>,
+                                 DeviceMemory<xla::gpu::BufferDebugLogEntry>>;
 };
 
 }  // namespace stream_executor::gpu
