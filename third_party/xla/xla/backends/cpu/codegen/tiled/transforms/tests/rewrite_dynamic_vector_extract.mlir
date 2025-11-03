@@ -31,14 +31,57 @@ func.func @fold_vector_extract_into_transfer_read(
 // CHECK:        %[[SHIFT_IDX0:.*]] = arith.subi %[[C7]], %[[IDX0]] : index
 // CHECK:        %[[SHIFT_SUBIDX1:.*]] = arith.subi %[[C3]], %[[IDX1]] : index
 // CHECK:        %[[SHIFT_MASK:.*]] = vector.create_mask
-// CHECK-SAME:     %[[SHIFT_IDX0]], %[[SHIFT_SUBIDX1]], %[[C1]] : vector<8x4x2xi1>
+// CHECK-SAME:     %[[SHIFT_IDX0]], %[[SHIFT_SUBIDX1]], %[[C1]] : vector<1x1x2xi1>
 // CHECK:        %[[SUBMASK:.*]] = vector.extract %[[SHIFT_MASK]][0, 0]
-// CHECK-SAME:     : vector<2xi1> from vector<8x4x2xi1>
+// CHECK-SAME:     : vector<2xi1> from vector<1x1x2xi1>
 // CHECK:        %[[SUBVECTOR:.*]] = vector.transfer_read
 // CHECK-SAME:     %[[BUFFER]][%[[IDX0]], %[[IDX1]], %[[C0]]], %[[PAD]], %[[SUBMASK]]
 // CHECK-SAME:     {in_bounds = [true]} : memref<8x4x2xf32>, vector<2xf32>
 // CHECK:        return %[[SUBVECTOR]] : vector<2xf32>
 // CHECK:      }
+
+
+// -----
+
+func.func @extract_scalar_folds_correctly(
+  %buffer: memref<8x4x2xf32>,
+  %idx0: index,
+  %idx1: index,
+  %idx2: index) -> f32 {
+  %c0 = arith.constant 0 : index
+  %c0_f32 = arith.constant 0.0 : f32
+  %c1 = arith.constant 1 : index
+  %c3 = arith.constant 3 : index
+  %c7 = arith.constant 7 : index
+  %mask = vector.create_mask %c7, %c3, %c1 : vector<8x4x2xi1>
+  %original_vector = vector.transfer_read %buffer[%c0, %c0, %c0],
+    %c0_f32, %mask : memref<8x4x2xf32>, vector<8x4x2xf32>
+  %scalar = vector.extract %original_vector[%idx0, %idx1, %idx2]
+    : f32 from vector<8x4x2xf32>
+  return %scalar : f32
+}
+
+// CHECK: func.func @extract_scalar_folds_correctly(
+// CHECK-SAME: %[[BUFFER:[^ ]*]]: memref<8x4x2xf32>,
+// CHECK-SAME: %[[IDX0:[^ ]*]]: index,
+// CHECK-SAME: %[[IDX1:[^ ]*]]: index,
+// CHECK-SAME: %[[IDX2:[^ ]*]]: index) -> f32 {
+// CHECK:   %[[PAD:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK:   %[[C1:.*]] = arith.constant 1 : index
+// CHECK:   %[[C3:.*]] = arith.constant 3 : index
+// CHECK:   %[[C7:.*]] = arith.constant 7 : index
+// CHECK:   %[[SHIFT_IDX0:.*]] = arith.subi %[[C7]], %[[IDX0]] : index
+// CHECK:   %[[SHIFT_IDX1:.*]] = arith.subi %[[C3]], %[[IDX1]] : index
+// CHECK:   %[[SHIFT_IDX2:.*]] = arith.subi %[[C1]], %[[IDX2]] : index
+// CHECK:   %[[MASK:.*]] = vector.create_mask %0, %1, %2 : vector<1x1x1xi1>
+// CHECK:   %[[SUBMASK:.*]] = vector.extract %[[MASK]][0, 0, 0]
+// CHECK-SAME: : vector<1xi1> from vector<1x1x1xi1>
+// CHECK:   %[[READ:.*]] = vector.transfer_read %[[BUFFER]]
+// CHECK-SAME: [%[[IDX0]], %[[IDX1]], %[[IDX2]]], %[[PAD]], %[[SUBMASK]]
+// CHECK-SAME: : memref<8x4x2xf32>, vector<1xf32>
+// CHECK:   %[[SCALAR:.*]] = vector.extract %[[READ]][0] : f32 from vector<1xf32>
+// CHECK:   return %[[SCALAR]] : f32
+// CHECK: }
 
 
 // -----

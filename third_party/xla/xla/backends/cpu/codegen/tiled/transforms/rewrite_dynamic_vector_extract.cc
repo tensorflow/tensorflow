@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
@@ -103,11 +104,6 @@ struct FoldExtractIntoTransferRead
       return rewriter.notifyMatchFailure(op,
                                          "source is not a transfer_read op");
     }
-    auto vector_type = mlir::dyn_cast<mlir::VectorType>(op.getType());
-    if (!vector_type) {
-      // TODO(willfroom): Support scalars types.
-      return rewriter.notifyMatchFailure(op, "Output is not a vector type");
-    }
 
     mlir::ValueRange transfer_read_indices = transfer_read_op.getIndices();
 
@@ -137,19 +133,28 @@ struct FoldExtractIntoTransferRead
       }
     }
 
+    // Output of extract can be either a vector or a scalar.
+    auto maybe_vector_type = mlir::dyn_cast<mlir::VectorType>(op.getType());
+
     mlir::Value submask;
     if (auto mask = transfer_read_op.getMask()) {
-      submask = mlir::vector::ExtractOp::create(rewriter, op.getLoc(), mask,
-                                                op.getMixedPosition());
+      // Transfer read result and mask must be non-0D vectors.
+      auto sub_mask_type = mlir::VectorType::get(
+          maybe_vector_type ? maybe_vector_type.getShape() : 1,
+          rewriter.getI1Type());
+      submask = mlir::vector::ExtractOp::create(
+          rewriter, op.getLoc(), sub_mask_type, mask, op.getDynamicPosition(),
+          op.getStaticPosition());
     }
 
-    int64_t rank = transfer_read_op.getBase().getType().getRank();
+    int64_t input_rank = transfer_read_op.getBase().getType().getRank();
+    int64_t output_rank = maybe_vector_type ? maybe_vector_type.getRank() : 1;
 
     // Drop major dimensions which reflects the behaviour of vector::ExtractOp.
-    int64_t num_dropped_dims = rank - vector_type.getRank();
+    int64_t num_dropped_dims = input_rank - output_rank;
     mlir::AffineMap new_permutation_map =
         mlir::AffineMap::getFilteredIdentityMap(
-            rewriter.getContext(), rank, [&](mlir::AffineDimExpr expr) {
+            rewriter.getContext(), input_rank, [&](mlir::AffineDimExpr expr) {
               return expr.getPosition() >= num_dropped_dims;
             });
 
@@ -157,10 +162,20 @@ struct FoldExtractIntoTransferRead
         transfer_read_op.getInBounds().begin() + num_dropped_dims,
         transfer_read_op.getInBounds().end());
 
-    rewriter.replaceOpWithNewOp<mlir::vector::TransferReadOp>(
-        op, vector_type, transfer_read_op.getBase(), new_offsets,
-        new_permutation_map, transfer_read_op.getPadding(), submask,
-        rewriter.getArrayAttr(in_bounds));
+    auto output_type = mlir::VectorType::get(
+        maybe_vector_type ? maybe_vector_type.getShape() : 1,
+        mlir::getElementTypeOrSelf(op.getType()));
+    auto new_transfer_read = mlir::vector::TransferReadOp::create(
+        rewriter, op.getLoc(), output_type, transfer_read_op.getBase(),
+        new_offsets, new_permutation_map, transfer_read_op.getPadding(),
+        submask, rewriter.getArrayAttr(in_bounds));
+
+    if (maybe_vector_type) {
+      rewriter.replaceOp(op, new_transfer_read);
+    } else {
+      rewriter.replaceOpWithNewOp<mlir::vector::ExtractOp>(
+          op, new_transfer_read, 0);
+    }
 
     return mlir::success();
   }
@@ -213,13 +228,27 @@ struct FoldExtractIntoCreateMask
       }
     }
 
+    // As we are going to extract only the output shape vector from the minor
+    // dimensions we only need to create a mask of size 1 for the remaining
+    // dimensions.
+    llvm::SmallVector<int64_t> new_mask_shape;
+    if (auto output_shape = mlir::dyn_cast<mlir::ShapedType>(op.getType())) {
+      new_mask_shape.assign(
+          mask_op.getType().getRank() - output_shape.getRank(), 1);
+      new_mask_shape.append(output_shape.getShape().begin(),
+                            output_shape.getShape().end());
+    } else {
+      new_mask_shape.assign(mask_op.getType().getRank(), 1);
+    }
+
     auto shifted_mask = mlir::vector::CreateMaskOp::create(
-        rewriter, op.getLoc(), mask_op.getType(), new_bounds);
+        rewriter, op.getLoc(),
+        mlir::VectorType::get(new_mask_shape, rewriter.getI1Type()),
+        new_bounds);
 
     llvm::SmallVector<int64_t> zero_index(op.getMixedPosition().size(), 0);
-
-    rewriter.replaceOpWithNewOp<mlir::vector::ExtractOp>(op, shifted_mask,
-                                                         zero_index);
+    rewriter.replaceOpWithNewOp<mlir::vector::ExtractOp>(
+        op, op.getType(), shifted_mask, mlir::ValueRange{}, zero_index);
 
     return mlir::success();
   }
