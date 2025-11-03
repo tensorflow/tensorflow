@@ -6043,7 +6043,13 @@ void HloInstruction::set_output_to_operand_aliasing(
 }
 
 std::shared_ptr<OriginalValue> HloInstruction::original_value() const {
-  return original_value_;
+  if (original_value_ != nullptr || opcode_ != HloOpcode::kGetTupleElement) {
+    return original_value_;
+  }
+  const HloInstruction* tuple = operand(0);
+  return tuple->opcode() == HloOpcode::kTuple
+             ? tuple->operand(tuple_index())->original_value()
+             : nullptr;
 }
 
 void HloInstruction::set_original_value(

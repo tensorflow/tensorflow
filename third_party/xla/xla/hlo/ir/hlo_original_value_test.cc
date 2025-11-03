@@ -435,5 +435,24 @@ ENTRY main {
   EXPECT_EQ(p0->original_value(), p1->original_value());
 }
 
+TEST_F(OriginalValueHloTest, InferGetTupleElementOriginalValue) {
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[] parameter(0), origin={{"p0"}}
+  p1 = f32[] parameter(1)
+  tuple = (f32[], f32[]) tuple(p0, p1)
+  ROOT gte = f32[] get-tuple-element(tuple), index=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* gte = module->entry_computation()->root_instruction();
+
+  EXPECT_NE(gte->original_value(), nullptr);
+  EXPECT_EQ(gte->original_value()->ToString(), R"({"p0"})");
+}
+
 }  // namespace
 }  // namespace xla
