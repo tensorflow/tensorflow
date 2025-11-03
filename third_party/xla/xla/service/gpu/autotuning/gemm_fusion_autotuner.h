@@ -93,6 +93,10 @@ class GemmFusionAutotuner : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
+  absl::StatusOr<bool> RunViaNewInfra(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
  private:
   AutotuneConfig config_;
   se::SemanticVersion toolkit_version_;
