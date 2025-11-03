@@ -53,7 +53,7 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
 // with an assigned 'buffer_id'.
 struct DmaCopyChunk {
   absl::AnyInvocable<xla::Future<>(void* dst, int64_t offset,
-                                   int64_t transfer_size)>
+                                   int64_t transfer_size) &&>
       copy_fn;
   size_t buffer_id;
   size_t offset;

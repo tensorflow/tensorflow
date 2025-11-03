@@ -170,7 +170,8 @@ PremappedCopierState::WorkList PremappedCopierState::FindWorkLocked() {
 void PremappedCopierState::StartWorkUnlocked(const WorkList& work_list) {
   for (WorkQueueItem* work_item : work_list) {
     auto& wu = work_item->work;
-    wu.copy_fn(work_item->dest_buffer, wu.offset, wu.size)
+    auto copy_fn = std::move(wu.copy_fn);
+    std::move(copy_fn)(work_item->dest_buffer, wu.offset, wu.size)
         .OnReady([this, this_shared = shared_from_this(),
                   work_item](absl::Status s) {
           WorkList work_list2;
