@@ -285,23 +285,25 @@ absl::StatusOr<bool> ThunkBufferDebugPass::Run(
                                               /*results=*/{}, /*attributes=*/{},
                                               hlo_module->entry_computation()));
 
-  ThunkSequence& thunks = root_thunk->thunks();
-  for (auto& thunk : thunks) {
-    if (mode_ == Mode::kChecksum) {
-      VLOG(1) << "Wrapping with checksum thunk";
-      thunk = WrapWithChecksumThunk(
-          std::move(thunk), log_slice,
-          /*predecessor_thunk=*/*buffer_debug_init_thunk,
-          /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store);
-    } else if (mode_ == Mode::kNanCounter) {
-      VLOG(1) << "Wrapping with nan counter thunk";
-      thunk = WrapWithNanCounterThunk(
-          std::move(thunk), log_slice,
-          /*predecessor_thunk=*/*buffer_debug_init_thunk,
-          /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store);
+  root_thunk->TransformAllNestedThunks([&](std::unique_ptr<Thunk> thunk) {
+    switch (mode_) {
+      case Mode::kChecksum:
+        VLOG(1) << "Wrapping with checksum thunk";
+        return WrapWithChecksumThunk(
+            std::move(thunk), log_slice,
+            /*predecessor_thunk=*/*buffer_debug_init_thunk,
+            /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store);
+      case Mode::kNanCounter:
+        VLOG(1) << "Wrapping with nan counter thunk";
+        return WrapWithNanCounterThunk(
+            std::move(thunk), log_slice,
+            /*predecessor_thunk=*/*buffer_debug_init_thunk,
+            /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store);
     }
-  }
+    return thunk;
+  });
 
+  ThunkSequence& thunks = root_thunk->thunks();
   thunks.reserve(thunks.size() + 2);
   thunks.insert(thunks.begin(), std::move(buffer_debug_init_thunk));
   thunks.push_back(std::move(buffer_debug_dump_thunk));
