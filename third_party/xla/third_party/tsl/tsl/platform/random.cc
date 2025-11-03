@@ -33,20 +33,20 @@ std::mt19937_64 InitRngWithDefaultSeed() { return std::mt19937_64(); }
 
 }  // anonymous namespace
 
-uint64 New64() {
+uint64_t New64() {
   static std::mt19937_64* rng = InitRngWithRandomSeed();
   static mutex mu(LINKER_INITIALIZED);
   mutex_lock l(mu);
   return (*rng)();
 }
 
-uint64 ThreadLocalNew64() {
+uint64_t ThreadLocalNew64() {
   static thread_local std::unique_ptr<std::mt19937_64> rng =
       std::unique_ptr<std::mt19937_64>(InitRngWithRandomSeed());
   return (*rng)();
 }
 
-uint64 New64DefaultSeed() {
+uint64_t New64DefaultSeed() {
   static std::mt19937_64 rng = InitRngWithDefaultSeed();
   static mutex mu(LINKER_INITIALIZED);
   mutex_lock l(mu);

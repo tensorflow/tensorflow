@@ -24,9 +24,9 @@ limitations under the License.
 namespace tsl {
 namespace {
 
-typedef std::vector<std::tuple<string, absl::Status>> ExpectedCalls;
+typedef std::vector<std::tuple<std::string, absl::Status>> ExpectedCalls;
 
-ExpectedCalls CreateRetriableErrors(const string& method, int n) {
+ExpectedCalls CreateRetriableErrors(const std::string& method, int n) {
   ExpectedCalls expected_calls;
   expected_calls.reserve(n);
   for (int i = 0; i < n; i++) {
@@ -47,7 +47,7 @@ class MockCallSequence {
         << "the next expected call: " << std::get<0>(calls_.front());
   }
 
-  absl::Status ConsumeNextCall(const string& method) {
+  absl::Status ConsumeNextCall(const std::string& method) {
     EXPECT_FALSE(calls_.empty()) << "No more calls were expected.";
     auto call = calls_.front();
     calls_.erase(calls_.begin());
@@ -65,7 +65,7 @@ class MockRandomAccessFile : public RandomAccessFile {
   absl::Status Name(absl::string_view* result) const override {
     return calls_.ConsumeNextCall("Name");
   }
-  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
+  absl::Status Read(uint64_t offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     return calls_.ConsumeNextCall("Read");
   }
@@ -102,82 +102,84 @@ class MockFileSystem : public FileSystem {
   TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
   absl::Status NewRandomAccessFile(
-      const string& fname, TransactionToken* token,
+      const std::string& fname, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override {
     *result = std::move(random_access_file_to_return);
     return calls_.ConsumeNextCall("NewRandomAccessFile");
   }
 
-  absl::Status NewWritableFile(const string& fname, TransactionToken* token,
+  absl::Status NewWritableFile(const std::string& fname,
+                               TransactionToken* token,
                                std::unique_ptr<WritableFile>* result) override {
     *result = std::move(writable_file_to_return);
     return calls_.ConsumeNextCall("NewWritableFile");
   }
 
   absl::Status NewAppendableFile(
-      const string& fname, TransactionToken* token,
+      const std::string& fname, TransactionToken* token,
       std::unique_ptr<WritableFile>* result) override {
     *result = std::move(writable_file_to_return);
     return calls_.ConsumeNextCall("NewAppendableFile");
   }
 
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, TransactionToken* token,
+      const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     return calls_.ConsumeNextCall("NewReadOnlyMemoryRegionFromFile");
   }
 
-  absl::Status FileExists(const string& fname,
+  absl::Status FileExists(const std::string& fname,
                           TransactionToken* token) override {
     return calls_.ConsumeNextCall("FileExists");
   }
 
-  absl::Status GetChildren(const string& dir, TransactionToken* token,
-                           std::vector<string>* result) override {
+  absl::Status GetChildren(const std::string& dir, TransactionToken* token,
+                           std::vector<std::string>* result) override {
     return calls_.ConsumeNextCall("GetChildren");
   }
 
-  absl::Status GetMatchingPaths(const string& dir, TransactionToken* token,
-                                std::vector<string>* result) override {
+  absl::Status GetMatchingPaths(const std::string& dir, TransactionToken* token,
+                                std::vector<std::string>* result) override {
     return calls_.ConsumeNextCall("GetMatchingPaths");
   }
 
-  absl::Status Stat(const string& fname, TransactionToken* token,
+  absl::Status Stat(const std::string& fname, TransactionToken* token,
                     FileStatistics* stat) override {
     return calls_.ConsumeNextCall("Stat");
   }
 
-  absl::Status DeleteFile(const string& fname,
+  absl::Status DeleteFile(const std::string& fname,
                           TransactionToken* token) override {
     return calls_.ConsumeNextCall("DeleteFile");
   }
 
-  absl::Status CreateDir(const string& dirname,
+  absl::Status CreateDir(const std::string& dirname,
                          TransactionToken* token) override {
     return calls_.ConsumeNextCall("CreateDir");
   }
 
-  absl::Status DeleteDir(const string& dirname,
+  absl::Status DeleteDir(const std::string& dirname,
                          TransactionToken* token) override {
     return calls_.ConsumeNextCall("DeleteDir");
   }
 
-  absl::Status GetFileSize(const string& fname, TransactionToken* token,
-                           uint64* file_size) override {
+  absl::Status GetFileSize(const std::string& fname, TransactionToken* token,
+                           uint64_t* file_size) override {
     return calls_.ConsumeNextCall("GetFileSize");
   }
 
-  absl::Status RenameFile(const string& src, const string& target,
+  absl::Status RenameFile(const std::string& src, const std::string& target,
                           TransactionToken* token) override {
     return calls_.ConsumeNextCall("RenameFile");
   }
 
-  absl::Status IsDirectory(const string& dirname,
+  absl::Status IsDirectory(const std::string& dirname,
                            TransactionToken* token) override {
     return calls_.ConsumeNextCall("IsDirectory");
   }
 
-  absl::Status DeleteRecursively(const string& dirname, TransactionToken* token,
+  absl::Status DeleteRecursively(const std::string& dirname,
+                                 TransactionToken* token,
                                  int64_t* undeleted_files,
                                  int64_t* undeleted_dirs) override {
     return calls_.ConsumeNextCall("DeleteRecursively");
@@ -496,7 +498,7 @@ TEST(RetryingFileSystemTest, GetChildren_SuccessWith2ndTry) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  std::vector<string> result;
+  std::vector<std::string> result;
   TF_EXPECT_OK(fs.GetChildren("gs://path", nullptr, &result));
 }
 
@@ -507,7 +509,7 @@ TEST(RetryingFileSystemTest, GetChildren_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  std::vector<string> result;
+  std::vector<std::string> result;
   const auto& status = fs.GetChildren("gs://path", nullptr, &result);
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
@@ -523,7 +525,7 @@ TEST(RetryingFileSystemTest, GetMatchingPaths_SuccessWith2ndTry) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  std::vector<string> result;
+  std::vector<std::string> result;
   TF_EXPECT_OK(fs.GetMatchingPaths("gs://path/dir", nullptr, &result));
 }
 
@@ -535,7 +537,7 @@ TEST(RetryingFileSystemTest, GetMatchingPaths_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  std::vector<string> result;
+  std::vector<std::string> result;
   const auto& status = fs.GetMatchingPaths("gs://path/dir", nullptr, &result);
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
@@ -623,7 +625,7 @@ TEST(RetryingFileSystemTest, GetFileSize_SuccessWith2ndTry) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  uint64 size;
+  uint64_t size;
   TF_EXPECT_OK(fs.GetFileSize("gs://path/file.txt", nullptr, &size));
 }
 
@@ -634,7 +636,7 @@ TEST(RetryingFileSystemTest, GetFileSize_AllRetriesFailed) {
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
 
-  uint64 size;
+  uint64_t size;
   const auto& status = fs.GetFileSize("gs://path/file.txt", nullptr, &size);
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;

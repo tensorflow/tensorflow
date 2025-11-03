@@ -299,7 +299,7 @@ std::string HumanReadableNum(int64_t value) {
 }
 
 std::string HumanReadableNumBytes(int64_t num_bytes) {
-  if (num_bytes == kint64min) {
+  if (num_bytes == std::numeric_limits<int64_t>::min()) {
     // Special case for number with not representable negation.
     return "-8E";
   }

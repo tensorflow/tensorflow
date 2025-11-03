@@ -34,9 +34,9 @@ namespace strings {
 TEST(FpToString, Ints) {
   for (int s = 0; s < 64; s++) {
     for (int delta = -1; delta <= 1; delta++) {
-      uint64 fp = (1ull << s) + delta;
-      string s = FpToString(fp);
-      uint64 fp2;
+      uint64_t fp = (1ull << s) + delta;
+      std::string s = FpToString(fp);
+      uint64_t fp2;
       EXPECT_TRUE(HexStringToUint64(s, &fp2));
       EXPECT_EQ(fp, fp2);
     }
@@ -50,14 +50,14 @@ TEST(FpToString, Ints) {
 TEST(Uint64ToHexString, Ints) {
   for (int s = 0; s < 64; s++) {
     for (int delta = -1; delta <= 1; delta++) {
-      uint64 fp = (1ull << s) + delta;
+      uint64_t fp = (1ull << s) + delta;
       std::string s = absl::StrCat(absl::Hex(fp, absl::kZeroPad16));
-      uint64 fp2;
+      uint64_t fp2;
       EXPECT_TRUE(HexStringToUint64(s, &fp2));
       EXPECT_EQ(fp, fp2) << s;
     }
   }
-  uint64 dummy;
+  uint64_t dummy;
   EXPECT_FALSE(HexStringToUint64("", &dummy));
   EXPECT_FALSE(HexStringToUint64("xyz", &dummy));
   EXPECT_FALSE(HexStringToUint64("0000000000000000xyz", &dummy));
@@ -99,7 +99,7 @@ TEST(HumanReadableNumBytes, Bytes) {
   EXPECT_EQ("-4B", HumanReadableNumBytes(-4));
   EXPECT_EQ("-1000B", HumanReadableNumBytes(-1000));
   EXPECT_EQ("-11.77MiB", HumanReadableNumBytes(-12345678));
-  EXPECT_EQ("-8E", HumanReadableNumBytes(kint64min));
+  EXPECT_EQ("-8E", HumanReadableNumBytes(std::numeric_limits<int64_t>::min()));
 }
 
 TEST(HumanReadableElapsedTime, Basic) {
@@ -122,7 +122,7 @@ TEST(HumanReadableElapsedTime, Basic) {
 }
 
 TEST(safe_strto32, Int32s) {
-  int32 result;
+  int32_t result;
 
   EXPECT_EQ(true, absl::SimpleAtoi("1", &result));
   EXPECT_EQ(1, result);
@@ -156,7 +156,7 @@ TEST(safe_strto32, Int32s) {
 }
 
 TEST(safe_strtou32, UInt32s) {
-  uint32 result;
+  uint32_t result;
 
   EXPECT_TRUE(absl::SimpleAtoi("0", &result));
   EXPECT_EQ(0, result);
@@ -189,7 +189,7 @@ TEST(safe_strtou32, UInt32s) {
 }
 
 TEST(safe_strto64, Int64s) {
-  int64 result;
+  int64_t result;
 
   EXPECT_EQ(true, absl::SimpleAtoi("1", &result));
   EXPECT_EQ(1, result);
@@ -225,7 +225,7 @@ TEST(safe_strto64, Int64s) {
 }
 
 TEST(safe_strtou64, UInt64s) {
-  uint64 result;
+  uint64_t result;
 
   EXPECT_TRUE(absl::SimpleAtoi("0", &result));
   EXPECT_EQ(0, result);

@@ -22,7 +22,7 @@ limitations under the License.
 namespace tsl {
 namespace strings {
 
-void Appendv(string* dst, const char* format, va_list ap) {
+void Appendv(std::string* dst, const char* format, va_list ap) {
   // First try with a small fixed size buffer
   static const int kSpaceLength = 1024;
   char space[kSpaceLength];
@@ -73,16 +73,16 @@ void Appendv(string* dst, const char* format, va_list ap) {
   delete[] buf;
 }
 
-string Printf(const char* format, ...) {
+std::string Printf(const char* format, ...) {
   va_list ap;
   va_start(ap, format);
-  string result;
+  std::string result;
   Appendv(&result, format, ap);
   va_end(ap);
   return result;
 }
 
-void Appendf(string* dst, const char* format, ...) {
+void Appendf(std::string* dst, const char* format, ...) {
   va_list ap;
   va_start(ap, format);
   Appendv(dst, format, ap);

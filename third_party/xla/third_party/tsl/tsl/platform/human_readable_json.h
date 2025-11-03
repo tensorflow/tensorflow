@@ -40,9 +40,9 @@ absl::StatusOr<std::string> ProtoToHumanReadableJson(
 
 // Converts a string produced by ProtoToHumanReadableJSON to a protobuf.  Not
 // guaranteed to work for general JSON.
-absl::Status HumanReadableJsonToProto(const string& str,
+absl::Status HumanReadableJsonToProto(const std::string& str,
                                       protobuf::Message* proto);
-absl::Status HumanReadableJsonToProto(const string& str,
+absl::Status HumanReadableJsonToProto(const std::string& str,
                                       protobuf::MessageLite* proto);
 
 }  // namespace tsl
