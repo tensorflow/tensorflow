@@ -485,6 +485,8 @@ message DebugOptions {
   // compilation, possibly multiple times per process. This only works on CUDA.
   optional string xla_gpu_dump_autotune_results_to = 222;
 
+  // The flag is being generalized to dump all autotuned instructions as we
+  // combine the autotuner passes into a single pass.
   optional bool xla_gpu_dump_autotuned_gemm_fusions = 232;
 
   // Whether to dump llvm ir when compiling to ptx.

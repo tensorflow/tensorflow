@@ -73,6 +73,8 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
 
   autotune_config.expect_all_instructions_in_cache =
       debug_options.xla_gpu_require_complete_aot_autotune_results();
+  autotune_config.dump_hlos =
+      debug_options.xla_gpu_dump_autotuned_gemm_fusions();
 
   return autotune_config;
 }
