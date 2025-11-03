@@ -39,6 +39,13 @@ namespace xla {
 // called function, and proceed recursively.
 class CallInliner : public HloModulePass {
  public:
+  enum class InlineOverridePolicy {
+    kAllowInline,                    // Allow inlining as normal.
+    kProhibitInline,                 // Prohibit inlining of this callsite.
+    kAllowIgnoreFrontendAttributes,  // Allow even with the 'inlineable'
+                                     // frontend attribute is set != 'true'.
+  };
+
   using InlinedInstructionMap =
       absl::flat_hash_map<HloInstruction*, HloInstruction*>;
 
@@ -52,19 +59,20 @@ class CallInliner : public HloModulePass {
   // are being inlined if necessary.
   // If `uniquify_channel_ids` is true, the channel ids of the resulting
   // computation will be uniquified.
-  // If the callback `should_inline` is provided, only functions callsite for
-  // which it returns true will be inlined.
+  // If the callback `override_policy` is provided, callsites will be inlined
+  // according to the policy returned.
   explicit CallInliner(
       bool single_call_site = false, bool update_domain = false,
       absl::flat_hash_set<std::string> composites_to_preserve = {},
       bool uniquify_channel_ids = false,
-      std::optional<std::function<bool(const CallGraph&, HloInstruction*)>>
-          should_inline = std::nullopt)
+      std::optional<std::function<InlineOverridePolicy(const CallGraph&,
+                                                       const HloInstruction*)>>
+          override_policy = std::nullopt)
       : single_call_site_(single_call_site),
         update_domain_(update_domain),
         uniquify_channel_ids_(uniquify_channel_ids),
         composites_to_preserve_(std::move(composites_to_preserve)),
-        should_inline_(std::move(should_inline)) {}
+        override_policy_(std::move(override_policy)) {}
   ~CallInliner() override = default;
   absl::string_view name() const override { return "call-inliner"; }
 
@@ -97,9 +105,9 @@ class CallInliner : public HloModulePass {
   bool update_domain_;
   bool uniquify_channel_ids_;
   absl::flat_hash_set<std::string> composites_to_preserve_;
-  std::optional<
-      std::function<bool(const CallGraph& call_graph, HloInstruction*)>>
-      should_inline_;
+  std::optional<std::function<InlineOverridePolicy(const CallGraph& call_graph,
+                                                   const HloInstruction*)>>
+      override_policy_;
   int64_t next_unique_channel_id_ = 1;
 };
 

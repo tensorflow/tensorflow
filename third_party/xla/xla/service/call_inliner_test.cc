@@ -443,6 +443,40 @@ TEST_F(CallInlinerTest, DontInlineCallWithAttributeInlineableFalse) {
   EXPECT_EQ(call->to_apply()->name(), "test");
 }
 
+TEST_F(CallInlinerTest, InlineCallWithOverriddenAttributeInlineableFalse) {
+  const char* const hloString = R"(
+    HloModule jit_f, entry_computation_layout={(f32[8,8]{1,0})->f32[8,8]{1,0}}
+    %test (Arg_0.5: f32[1,8]) -> f32[1,8] {
+      %Arg_0.5 = f32[1,8]{1,0} parameter(0)
+      ROOT %add.6 = f32[1,8]{1,0} add(f32[1,8]{1,0} %Arg_0.5, f32[1,8]{1,0} %Arg_0.5), metadata={source_file="-" source_line=11}
+    }
+    ENTRY %main.10 (Arg_0.1: f32[8,8]) -> f32[8,8] {
+      %Arg_0.1 = f32[8,8]{1,0} parameter(0)
+      %custom-call.3 = f32[1,8]{1,0} custom-call(f32[8,8]{1,0} %Arg_0.1), custom_call_target="SPMDFullToShardShape", sharding={manual}, metadata={source_file="-" source_line=4}
+      %call.7 = f32[1,8]{1,0} call(f32[1,8]{1,0} %custom-call.3), to_apply=%test, frontend_attributes={inlineable="false"}
+      ROOT %custom-call.9 = f32[8,8]{1,0} custom-call(f32[1,8]{1,0} %call.7), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=7}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
+  module->mutable_config().set_use_shardy_partitioner(true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      CallInliner(
+          /*single_call_site=*/false, /*update_domain=*/false,
+          /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
+          /*uniquify_channel_ids=*/false,
+          /*override_policy=*/
+          [](const CallGraph&, const HloInstruction*) {
+            return CallInliner::InlineOverridePolicy::
+                kAllowIgnoreFrontendAttributes;
+          })
+          .Run(module.get()));
+  // The single call will be inlined despite the inlineable attribute being
+  // false because we set override_frontend_attributes to true.
+  EXPECT_TRUE(changed);
+  HloInstruction* call = FindInstruction(module.get(), xla::HloOpcode::kCall);
+  EXPECT_EQ(call, nullptr);
+}
+
 TEST_F(CallInlinerTest, UseShardyMhloToHloShmapBodyNotInlined) {
   const char* const hloString = R"(
     HloModule jit_f, entry_computation_layout={(f32[8,8]{1,0})->f32[8,8]{1,0}}
@@ -942,15 +976,20 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo));
 
+  using InlineOverridePolicy = CallInliner::InlineOverridePolicy;
   auto inline_trivial_only = [](const CallGraph& call_graph,
-                                HloInstruction* instruction) {
+                                const HloInstruction* instruction) {
     HloComputation* callee = instruction->to_apply();
-    return (callee->root_instruction()->opcode() == HloOpcode::kParameter);
+    InlineOverridePolicy policy = InlineOverridePolicy::kProhibitInline;
+    if (callee->root_instruction()->opcode() == HloOpcode::kParameter) {
+      policy = InlineOverridePolicy::kAllowInline;
+    }
+    return policy;
   };
   CallInliner call_inliner(/*single_call_site=*/false, /*update_domain=*/false,
                            /*composites_to_preserve=*/{},
                            /*uniquify_channel_ids=*/false,
-                           /*should_inline=*/inline_trivial_only);
+                           /*override_policy=*/inline_trivial_only);
 
   ASSERT_THAT(call_inliner.Run(m.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(m->entry_computation()->root_instruction(),

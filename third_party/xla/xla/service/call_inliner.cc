@@ -262,7 +262,7 @@ bool InlineComposites(
 
 // Introduces a specific attribute so that the frontend has the direct
 // control over inlining specific calls.
-bool InlineInstruction(HloInstruction* instruction) {
+bool FrontendAttributesAllowInlining(HloInstruction* instruction) {
   auto it = instruction->frontend_attributes().map().find("inlineable");
   if (it != instruction->frontend_attributes().map().end()) {
     return it->second == "true";
@@ -325,11 +325,6 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   if (!prerequisite) {
     return false;
   }
-  if (!InlineInstruction(instruction)) {
-    // Always prioritize user's explicit requests after fulfilling the
-    // prerequisites.
-    return false;
-  }
   if (instruction->GetModule()->config().use_shardy_partitioner() &&
       (absl::StrContains(instruction->to_apply()->name(), "shmap_body") ||
        absl::StrContains(instruction->to_apply()->name(),
@@ -352,16 +347,30 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
 
 bool CallInliner::ShouldInline(const CallGraph& call_graph,
                                HloInstruction* instruction) const {
+  // Check this is an inlineable call op (but not frontend attributes)
   if (!IsInlineableCallOp(instruction)) {
     return false;
   }
 
-  if (should_inline_.has_value()) {
-    if (!(*should_inline_)(call_graph, instruction)) {
+  // Check the override policy, if any.
+  InlineOverridePolicy policy = InlineOverridePolicy::kAllowInline;
+  if (override_policy_.has_value()) {
+    policy = (*override_policy_)(call_graph, instruction);
+  }
+
+  // If the policy is to never inline, we're done.
+  if (policy == InlineOverridePolicy::kProhibitInline) {
+    return false;
+  }
+
+  // If the policy is to ignore frontend attributes, do so.
+  if (policy != InlineOverridePolicy::kAllowIgnoreFrontendAttributes) {
+    if (!FrontendAttributesAllowInlining(instruction)) {
       return false;
     }
   }
 
+  // If we're only inlining calls with a single call site, check that.
   if (single_call_site_) {
     return call_graph.GetNode(instruction->to_apply())
                .caller_callsites()
@@ -507,7 +516,7 @@ bool IsInlineableComputation(HloComputation* computation) {
     bool prerequisite = instruction->opcode() == HloOpcode::kCall &&
                         !instruction->has_backend_config() &&
                         !instruction->parent()->IsAsyncComputation();
-    if (!prerequisite || !InlineInstruction(instruction)) {
+    if (!prerequisite || (!FrontendAttributesAllowInlining(instruction))) {
       return false;
     }
     return true;
