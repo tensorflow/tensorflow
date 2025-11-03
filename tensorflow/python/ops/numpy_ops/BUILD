@@ -6,7 +6,6 @@ package(
     default_visibility = [
         "//tensorflow:internal",
         "//third_party/py/tensorflow_numerics:__subpackages__",
-        "//third_party/py/trax/tf_numpy/numpy:__pkg__",
     ],
     licenses = ["notice"],
 )
