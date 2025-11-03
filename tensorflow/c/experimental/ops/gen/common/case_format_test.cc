@@ -25,13 +25,13 @@ namespace {
 // For each test case, we manually construct the 4 variations in string case and
 // test all 16 conversions: from and to each of the 4 string case variations.
 struct Variations {
-  string lower_camel;
-  string lower_snake;
-  string upper_camel;
-  string upper_snake;
+  std::string lower_camel;
+  std::string lower_snake;
+  std::string upper_camel;
+  std::string upper_snake;
 };
 
-void TestSingleVariation(const string &str, Variations expected,
+void TestSingleVariation(const std::string& str, Variations expected,
                          char delimiter = '_') {
   EXPECT_EQ(expected.lower_camel, toLowerCamel(str, delimiter));
   EXPECT_EQ(expected.lower_snake, toLowerSnake(str, delimiter));
