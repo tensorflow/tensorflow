@@ -787,6 +787,61 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "fission_backend",
+    srcs = ["fission_backend.cc"],
+    hdrs = ["fission_backend.h"],
+    deps = [
+        ":gpu_codegen_backend",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/hlo/analysis:symbolic_expr",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/service:compiler",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service/gpu/transforms:priority_fusion",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tools:hlo_decomposer_lib",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
+    name = "fission_backend_test",
+    srcs = ["fission_backend_test.cc"],
+    backends = ["h100"],
+    tags = ["cuda-only"],
+    deps = [
+        ":cublas",
+        ":fission_backend",
+        ":gpu_codegen_backend",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/hlo/analysis:symbolic_expr",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/service:platform_util",
+        "//xla/service/gpu:nvptx_compiler_impl",
+        "//xla/service/gpu/transforms:dot_algorithm_rewriter",
+        "//xla/service/gpu/transforms:gemm_rewriter",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 xla_cc_test(
     name = "legacy_cache_test",
     srcs = ["legacy_cache_test.cc"],
