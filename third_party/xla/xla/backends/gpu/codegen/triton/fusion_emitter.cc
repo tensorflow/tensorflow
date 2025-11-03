@@ -47,6 +47,7 @@ limitations under the License.
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
@@ -145,6 +146,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tools/hlo_decomposer.h"
+#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -1535,9 +1537,8 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
     for (const TiledHloInstruction* operand : tiled_hlo.operands()) {
       operands.push_back(values[operand].UnwrapUnsafe());
     }
-    TF_ASSIGN_OR_RETURN(
-        Value result,
-        EmitElementwise(b, libdevice_path, device_info, *hlo, operands));
+    TF_ASSIGN_OR_RETURN(Value result,
+                        EmitElementwise(b, device_info, *hlo, operands));
     return ScalarOrTensor(result);
   }
 
@@ -1657,9 +1658,8 @@ absl::StatusOr<ScalarOrTensor> EmitScope(
       for (const HloInstruction* operand : hlo->operands()) {
         operands.push_back(values[operand].UnwrapUnsafe());
       }
-      TF_ASSIGN_OR_RETURN(
-          Value elementwise_result,
-          EmitElementwise(b, libdevice_path, device_info, *hlo, operands));
+      TF_ASSIGN_OR_RETURN(Value elementwise_result,
+                          EmitElementwise(b, device_info, *hlo, operands));
       result = ScalarOrTensor(elementwise_result);
     } else if (hlo->opcode() == HloOpcode::kTuple) {
       TF_RET_CHECK(hlo->IsRoot()) << hlo->ToString();
@@ -1993,7 +1993,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   }
 
   TF_RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
-      triton_module.get(), mlir_context, *fusion));
+      triton_module.get(), mlir_context, *fusion, device_info));
 
   VLOG(6) << DumpTritonIR(triton_module.get(),
                           fusion->GetModule()
@@ -2337,7 +2337,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
 
 absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
                                 mlir::MLIRContext& mlir_context,
-                                const HloFusionInstruction& fusion) {
+                                const HloFusionInstruction& fusion,
+                                const se::DeviceDescription& device_info) {
   {  // Convert xTile ops to Triton ops.
     mlir::PassManager pm(&mlir_context);
     // Disable verifier because the Triton code may be invalid due to the
@@ -2345,7 +2346,19 @@ absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
     pm.enableVerifier(/*enabled=*/false);
     pm.addPass(mlir::triton::xla::CreateTensorLowerToTritonPass());
     pm.addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass());
-    if (mlir::failed(pm.run(xtile_dialect_module))) {
+
+    std::string libdevice_path =
+        GetLibdevicePath(fusion.GetModule()->config(), device_info);
+    absl::string_view triple = device_info.gpu_compute_capability().IsRocm()
+                                   ? "amdgcn-unknown-unknown"
+                                   : "nvptx64-unknown-unknown";
+    pm.addPass(mlir::triton::xla::CreateTritonXLAMathToLibdevicePass(
+        libdevice_path, triple));
+
+    tsl::StatusScopedDiagnosticHandler diagnostic_handler(&mlir_context);
+    if (absl::Status status =
+            diagnostic_handler.consumeStatus(pm.run(xtile_dialect_module));
+        !status.ok()) {
       return CreateInternalError(
           "Failed to lower from shared dialect to Triton.", &fusion,
           xtile_dialect_module);

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
@@ -49,6 +50,8 @@ std::unique_ptr<mlir::Pass> CreateTritonXLALowerRemoteAccessPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLALowerXTilePass();
 std::unique_ptr<mlir::Pass> CreateStableHLOLowerToTritonPass();
 std::unique_ptr<mlir::Pass> CreateTensorLowerToTritonPass();
+std::unique_ptr<mlir::Pass> CreateTritonXLAMathToLibdevicePass(
+    absl::string_view libdevice_path, absl::string_view triple);
 
 // Returns true if the `op` contains an operation in it's regions that satisfies
 // the `fn`.

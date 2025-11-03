@@ -187,7 +187,7 @@ absl::Status LowerXTileIrToTritonAndFileCheck(
     const HloFusionInstruction& fusion) {
   TF_RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
       xtile_dialect_module, *test->symbolic_expr_context()->GetMLIRContext(),
-      fusion));
+      fusion, TestGpuDeviceInfo::RTXH100SXMDeviceInfo()));
 
   std::string out;
   llvm::raw_string_ostream os(out);

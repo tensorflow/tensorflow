@@ -163,7 +163,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
 // dialect module.
 absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
                                 mlir::MLIRContext& mlir_context,
-                                const HloFusionInstruction& fusion);
+                                const HloFusionInstruction& fusion,
+                                const se::DeviceDescription& device_info);
 
 }  // namespace ir_emitter_triton_internal
 }  // namespace gpu
