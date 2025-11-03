@@ -15,3 +15,4 @@ openjdk-21-jdk
 vim
 wget
 jq
+file
