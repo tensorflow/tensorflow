@@ -1990,7 +1990,6 @@ cc_library(
         ":tf_tfl_passes",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
-        "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/compiler/mlir/lite/debug",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
         "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_cc",
@@ -2212,10 +2211,8 @@ tf_proto_library(
     srcs = ["converter_flags.proto"],
     make_default_target_header_only = True,
     protodeps = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto",
-        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto",
         ":types_proto",
+        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto",
     ],
     visibility = ["//visibility:public"],
 )
