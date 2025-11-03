@@ -142,7 +142,7 @@ TfLiteStatus QuantizedMeanOrSum(TfLiteContext* context,
    }
   }
   return kTfLiteOk;
-};
+
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Creates three temp tensors to store index and axis for internal
@@ -1086,7 +1086,6 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
-}  // namespace reduce
 
 using ops::builtin::reduce::ReduceType;
 
@@ -1199,6 +1198,8 @@ TfLiteRegistration* Register_REDUCE_MIN() { return Register_REDUCE_MIN_OPT(); }
 TfLiteRegistration* Register_REDUCE_ANY() { return Register_REDUCE_ANY_OPT(); }
 TfLiteRegistration* Register_REDUCE_ALL() { return Register_REDUCE_ALL_OPT(); }
 
+}  // namespace reduce
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite
+
