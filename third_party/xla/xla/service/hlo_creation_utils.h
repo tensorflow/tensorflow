@@ -442,6 +442,11 @@ absl::StatusOr<HloInstruction*> MakeWithinBounds(HloInstruction* inst,
                                                  HloInstruction* lower_bound,
                                                  HloInstruction* upper_bound);
 
+// Creates a new module with a single computation that contains a fusion of the
+// given instruction with the given fusion kind.
+std::unique_ptr<HloModule> NewModuleWithFusion(
+    const HloInstruction* instruction, HloInstruction::FusionKind fusion_kind);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_HLO_CREATION_UTILS_H_

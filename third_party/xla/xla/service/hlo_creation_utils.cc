@@ -949,4 +949,61 @@ HloInstruction* MakeScalarLikeFromLiteral(HloInstruction* base,
       ShapeUtil::MakeStaticShape(base->shape()), scalar, {}));
 }
 
+std::unique_ptr<HloModule> NewModuleWithFusion(
+    const HloInstruction* instruction, HloInstruction::FusionKind fusion_kind) {
+  auto hlo_module = std::make_unique<HloModule>(
+      absl::StrCat("wrapped_module_", instruction->name()),
+      instruction->GetModule()->config());
+
+  // New computation  with a single instruction as given by the instruction
+  // parameter.
+  HloComputation::Builder fusion_builder(
+      absl::StrCat("wrapped_", instruction->name()));
+
+  const auto build_parameter_instructions =
+      [instruction](HloComputation::Builder& builder) {
+        std::vector<HloInstruction*> parameters;
+        parameters.reserve(instruction->operand_count());
+        for (int i = 0; i < instruction->operand_count(); ++i) {
+          const HloInstruction* operand = instruction->operand(i);
+          parameters.push_back(
+              builder.AddInstruction(HloInstruction::CreateParameter(
+                  i, operand->shape(), absl::StrCat("param_", i))));
+        }
+        return parameters;
+      };
+  std::vector<HloInstruction*> fusion_parameters =
+      build_parameter_instructions(fusion_builder);
+  HloInstruction* fused_root =
+      fusion_builder.AddInstruction(instruction->CloneWithNewOperands(
+          instruction->shape(), fusion_parameters));
+
+  // If the original instruction had any sub-computations (like to_apply), clone
+  // them.
+  if (!instruction->called_computations().empty()) {
+    HloCloneContext context(hlo_module.get());
+    fused_root->ReplaceCalledComputations([&](HloComputation* callee) {
+      if (callee->parent() != hlo_module.get()) {
+        return hlo_module->DeepCloneComputation(callee, &context);
+      }
+      return callee;
+    });
+  }
+
+  HloComputation* fused_computation =
+      hlo_module->AddEmbeddedComputation(fusion_builder.Build(fused_root));
+
+  // Entry computation for the new module.
+  HloComputation::Builder entry_builder("entry");
+  std::vector<HloInstruction*> entry_parameters =
+      build_parameter_instructions(entry_builder);
+  HloInstruction* fusion_instruction = entry_builder.AddInstruction(
+      HloInstruction::CreateFusion(instruction->shape(), fusion_kind,
+                                   entry_parameters, fused_computation));
+
+  hlo_module->AddEntryComputation(entry_builder.Build(fusion_instruction));
+
+  return hlo_module;
+}
+
 }  // namespace xla
