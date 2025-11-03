@@ -1187,7 +1187,6 @@ tf_cc_shared_library(
                 "//tensorflow/c:env",
                 "//tensorflow/c:kernels",
                 "//tensorflow/c:kernels_experimental",
-                "//tensorflow/c:logging",
                 "//tensorflow/c:ops",
                 "//tensorflow/cc/saved_model:fingerprinting_impl",
                 "//tensorflow/cc/saved_model:loader_lite_impl",

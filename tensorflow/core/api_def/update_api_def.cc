@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/api_def/excluded_ops.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -252,9 +253,8 @@ void CreateApiDefs(const OpList& ops, const std::string& api_def_dir,
       continue;
     }
     // Form the expected ApiDef path.
-    std::string file_path =
-        io::JoinPath(std::string(api_def_dir), kApiDefFileFormat);
-    file_path = strings::Printf(file_path.c_str(), op.name().c_str());
+    std::string file_name = absl::StrFormat(kApiDefFileFormat, op.name());
+    std::string file_path = io::JoinPath(api_def_dir, file_name);
 
     // Create ApiDef if it doesn't exist.
     if (!Env::Default()->FileExists(file_path).ok()) {

@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -81,7 +82,8 @@ absl::StatusCode GetTfErrorCode(int code) {
 }
 
 template <typename... Args>
-absl::Status PrintfStatus(int rc, const char* fmt, Args&&... args) {
+absl::Status PrintfStatus(int rc, const absl::FormatSpec<Args...>& fmt,
+                          Args&&... args) {
   return {GetTfErrorCode(rc),
           strings::Printf(fmt, std::forward<Args>(args)...)};
 }

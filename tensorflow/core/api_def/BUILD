@@ -65,6 +65,7 @@ cc_library(
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

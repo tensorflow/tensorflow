@@ -36,15 +36,11 @@ template <typename Device, typename T>
 struct LaunchTensorToHashBucket {
   void operator()(OpKernelContext* c, const int64_t num_buckets, const T* input,
                   const int num_elems, int64_t* output) {
-    std::string format = "%";
     switch (DataTypeToEnum<T>::value) {
       case DT_INT8:
       case DT_INT16:
       case DT_INT32:
-        strings::Appendf(&format, "d");
-        break;
       case DT_INT64:
-        strings::Appendf(&format, "lld");
         break;
       default:
         bool type_not_supported = true;
@@ -55,7 +51,7 @@ struct LaunchTensorToHashBucket {
     }
 
     for (int i = 0; i < num_elems; ++i) {
-      std::string input_str = strings::Printf(format.c_str(), input[i]);
+      std::string input_str = absl::StrFormat("%d", input[i]);
       const uint64_t input_hash = Fingerprint64(input_str);
       const uint64_t bucket_id = input_hash % num_buckets;
       // The number of buckets is always in the positive range of int64 so is

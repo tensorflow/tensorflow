@@ -767,7 +767,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/c:env",
         "//tensorflow/c:kernels",
         "//tensorflow/c:kernels_experimental",
-        "//tensorflow/c:logging",
         "//tensorflow/c:ops",
         "//tensorflow/c:python_api",
         "//tensorflow/c:safe_ptr",

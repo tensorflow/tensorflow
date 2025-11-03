@@ -217,6 +217,7 @@ EXPORTS
   ?BatchShardedOnMesh@Layout@dtensor@tensorflow@@SA?AV123@AEBVMesh@23@HAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@H@Z
   ?BoundPort@GrpcDataServerBase@data@tensorflow@@QEAAHXZ
   ?Build@KernelDefBuilder@tensorflow@@QEAAPEBVKernelDef@2@XZ
+  ?ByteSwapTensor@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVTensor@1@@Z
   ?Canonicalize@FunctionParameterCanonicalizer@tensorflow@@QEAA_NPEAU_object@@0V?$Span@PEAU_object@@@lts_20250814@absl@@@Z
   ?Capture@StackTrace@tensorflow@@SA?AV?$shared_ptr@VStackTrace@tensorflow@@@std@@H@Z
   ?CatPieces@strings_internal@lts_20250814@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$initializer_list@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@5@@Z
@@ -554,7 +555,6 @@ EXPORTS
   ?PrintModelAnalysis@tfprof@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBV34@0000@Z
   ?PrintResult@MetaOptimizer@grappler@tensorflow@@QEAAXXZ
   ?PrintStepStats@StatSummarizer@tensorflow@@QEBAXXZ
-  ?Printf@strings@tsl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBDZZ
   ?ProcessStepStats@StatSummarizer@tensorflow@@QEAAXAEBVStepStats@2@@Z
   ?Profile@tfprof@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBV34@0@Z
   ?ProfilerFromFile@tfprof@tensorflow@@YAXPEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z

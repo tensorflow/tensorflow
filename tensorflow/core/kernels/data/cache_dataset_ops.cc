@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
@@ -175,10 +176,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         env_(env),
         num_tensors_(input->output_dtypes().size()),
         tensor_index_padding_size_(StringPaddingSize(num_tensors_)),
-        item_index_padding_size_(StringPaddingSize(kMaxItems)),
-        tensor_format_string_(strings::Printf(kKeyStrFormat,
-                                              item_index_padding_size_,
-                                              tensor_index_padding_size_)) {
+        item_index_padding_size_(StringPaddingSize(kMaxItems)) {
     input_->Ref();
     DCHECK_EQ(item_index_padding_size_, 7);
   }
@@ -230,9 +228,9 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
     return strings::Printf(kPaddingSizeStrFormat, num_tensors - 1).size();
   }
 
-  string FormatName(size_t item_index, size_t tensor_index) const {
-    return strings::Printf(tensor_format_string_.c_str(), item_index,
-                           tensor_index);
+  std::string FormatName(size_t item_index, size_t tensor_index) const {
+    return absl::StrFormat("%*zu_%*zu", item_index_padding_size_, item_index,
+                           tensor_index_padding_size_, tensor_index);
   }
 
   class FileIterator : public DatasetIterator<FileDatasetBase> {
@@ -710,7 +708,6 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
   const size_t tensor_index_padding_size_;
   static constexpr size_t kMaxItems = 10000000;  // 10 million
   const size_t item_index_padding_size_;
-  const string tensor_format_string_;
 };  // FileDatasetBase
 
 class CacheDatasetOp::FileDataset : public CacheDatasetOp::FileDatasetBase {

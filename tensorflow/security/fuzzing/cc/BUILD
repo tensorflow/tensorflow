@@ -144,6 +144,7 @@ tf_cc_fuzz_test(
     tags = ["no_oss"],
     deps = [
         "//tensorflow/core/platform:stringprintf",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
