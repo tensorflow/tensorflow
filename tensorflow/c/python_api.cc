@@ -84,7 +84,7 @@ std::string GetHandleShapeAndType(TF_Graph* graph, TF_Output output) {
       *out_shape_and_type->mutable_type() = p.type;
     }
   }
-  string result;
+  std::string result;
   handle_data.SerializeToString(&result);
   return result;
 }

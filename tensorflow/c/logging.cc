@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stringprintf.h"
 
-static ::tensorflow::string BuildMessage(const char* fmt, va_list args) {
-  ::tensorflow::string message;
+static std::string BuildMessage(const char* fmt, va_list args) {
+  std::string message;
   ::tensorflow::strings::Appendv(&message, fmt, args);
   return message;
 }
