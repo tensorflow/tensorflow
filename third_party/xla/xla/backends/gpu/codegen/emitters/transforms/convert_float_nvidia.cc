@@ -16,6 +16,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/APFloat.h"
