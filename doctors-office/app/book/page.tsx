@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Navigation from "../components/Navigation";
+import VoiceInputButton from "../components/VoiceInputButton";
+import VoiceOutputButton from "../components/VoiceOutputButton";
 import type { Appointment, Doctor } from "../types";
 
 const doctors: Doctor[] = [
