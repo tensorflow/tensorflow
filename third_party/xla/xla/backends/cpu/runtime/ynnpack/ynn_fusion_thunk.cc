@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -230,29 +231,33 @@ std::vector<se::DeviceMemoryBase> YnnFusionThunk::CaptureArguments(
 }
 
 absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunk::Create(
-    Options options, Info info, std::vector<Argument> arguments,
-    std::vector<Result> results, Builder builder) {
+    Options options, Info info, const HloInstruction* hlo,
+    std::vector<Argument> arguments, std::vector<Result> results,
+    Builder builder) {
   return absl::WrapUnique(new YnnFusionThunk(
-      YnnFusionKind::kFusion, std::move(options), std::move(info),
+      YnnFusionKind::kFusion, std::move(options), std::move(info), hlo,
       std::move(arguments), std::move(results), std::move(builder)));
 }
 
 absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunk::Create(
-    Options options, Info info, std::vector<Argument> arguments,
-    std::vector<Result> results, CapturingBuilder capturing_builder,
+    Options options, Info info, const HloInstruction* hlo,
+    std::vector<Argument> arguments, std::vector<Result> results,
+    CapturingBuilder capturing_builder,
     absl::Span<const int64_t> captured_arguments_ids) {
   return absl::WrapUnique(new YnnFusionThunk(
-      YnnFusionKind::kFusion, std::move(options), std::move(info),
+      YnnFusionKind::kFusion, std::move(options), std::move(info), hlo,
       std::move(arguments), std::move(results), std::move(capturing_builder),
       captured_arguments_ids));
 }
 
 YnnFusionThunk::YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
+                               const HloInstruction* hlo,
                                std::vector<Argument> arguments,
                                std::vector<Result> results, Builder builder)
     : Thunk(Kind::kYnnFusion, std::move(info)),
       ynn_fusion_kind_(kind),
       options_(std::move(options)),
+      hlo_(hlo),
       arguments_(std::move(arguments)),
       results_(std::move(results)),
       builder_(std::move(builder)),
@@ -260,6 +265,7 @@ YnnFusionThunk::YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
           absl::bind_front(&YnnFusionThunk::CreateYnnExecutable, this)) {}
 
 YnnFusionThunk::YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
+                               const HloInstruction* hlo,
                                std::vector<Argument> arguments,
                                std::vector<Result> results,
                                CapturingBuilder capturing_builder,
@@ -267,6 +273,7 @@ YnnFusionThunk::YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
     : Thunk(Kind::kYnnFusion, std::move(info)),
       ynn_fusion_kind_(kind),
       options_(std::move(options)),
+      hlo_(hlo),
       arguments_(std::move(arguments)),
       results_(std::move(results)),
       capturing_builder_(std::move(capturing_builder)),

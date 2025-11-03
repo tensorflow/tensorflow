@@ -181,6 +181,10 @@ message XnnFusionThunkProto {
 
 message YnnFusionThunkProto {
   YnnFusionOptions options = 1;
+
+  int64 instruction_id = 2;
+  repeated ShapeBufferAllocationSliceProto arguments_shapes = 3;
+  repeated ShapeBufferAllocationSliceProto results_shapes = 4;
 }
 
 message DotThunkProto {
@@ -306,6 +310,7 @@ message ThunkProto {
     CollectiveThunkProto collective_thunk = 18;
     PartitionIdThunkProto partition_id_thunk = 19;
     ReplicaIdThunkProto replica_id_thunk = 20;
+    YnnFusionThunkProto ynn_fusion_thunk = 21;
   }
 }
 

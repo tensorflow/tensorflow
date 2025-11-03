@@ -1063,11 +1063,24 @@ TEST(PjRtCpuClientTest, SerializeYnnFusions) {
                                         literal, client->memory_spaces()[0]));
 
   ExecuteOptions opts;
-  auto result =
-      executable->Execute(/*argument_handles=*/{{buf.get(), buf.get()}}, opts);
+  auto result = executable->Execute({{buf.get(), buf.get()}}, opts);
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
                           result->at(0).at(0)->ToLiteralSync());
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({4.0f, 16.0f, 36.0f, 64.0f}),
+      *result_literal));
+
+  // Check that serialized/deserialized executable works and produces the same
+  // result.
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
+                          executable->SerializeExecutable());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto reloaded_executable,
+      client->LoadSerializedExecutable(serialized, std::nullopt, {}));
+
+  result = executable->Execute({{buf.get(), buf.get()}}, opts);
+  TF_ASSERT_OK_AND_ASSIGN(result_literal, result->at(0).at(0)->ToLiteralSync());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({4.0f, 16.0f, 36.0f, 64.0f}),
       *result_literal));
