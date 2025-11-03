@@ -32,13 +32,13 @@ extern "C" {
 // See: https://en.wikipedia.org/wiki/Foreign_function_interface
 #define PJRT_API_FFI_EXTENSION_VERSION 3
 
-struct PJRT_FFI_Type_Info {
+typedef struct PJRT_FFI_Type_Info {
   void (*deleter)(void* object);
   void (*serialize)();    // placeholder for future use
   void (*deserialize)();  // placeholder for future use
-};
+} PJRT_FFI_Type_Info;
 
-struct PJRT_FFI_Type_Register_Args {
+typedef struct PJRT_FFI_Type_Register_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
 
@@ -46,7 +46,7 @@ struct PJRT_FFI_Type_Register_Args {
   size_t type_name_size;
   int64_t type_id;  // in-out
   PJRT_FFI_Type_Info* type_info;
-};
+} PJRT_FFI_Type_Register_Args;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_Type_Register_Args, type_info);
 
 // Registers external type in a static type registry. If `type_id` is set to `0`
