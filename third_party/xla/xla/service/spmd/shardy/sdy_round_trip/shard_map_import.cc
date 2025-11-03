@@ -133,9 +133,8 @@ mlir::LogicalResult rewriteManualComputation(
   sdy::TensorShardingPerValueAttr outShardings =
       sdy::TensorShardingPerValueAttr::get(context, {});
   sdy::ManualAxesAttr manualAxes = sdy::ManualAxesAttr::get(context, {});
-  bool newCodePath = false;
 
-  auto setShardingAttrs = [&newCodePath, &manualAxes](
+  auto setShardingAttrs = [&manualAxes](
                               CustomCallOp customCallOp,
                               sdy::TensorShardingPerValueAttr& shardings,
                               llvm::StringRef shardingAttrName) {
@@ -143,7 +142,6 @@ mlir::LogicalResult rewriteManualComputation(
       return;
     }
     if (mlir::DictionaryAttr frontendAttrs = getFrontendAttrs(customCallOp)) {
-      newCodePath = true;
       shardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
           frontendAttrs, shardingAttrName);
       if (manualAxes.empty()) {
@@ -155,18 +153,6 @@ mlir::LogicalResult rewriteManualComputation(
 
   setShardingAttrs(globalToLocalShape, inShardings, kInShardings);
   setShardingAttrs(localToGlobalShape, outShardings, kOutShardings);
-  // TODO(b/410499196): Code to handle loading an old checkpoint. Remove after
-  // 6 months of cl/745735176 being submitted.
-  mlir::DictionaryAttr callOpFrontendAttrs = getFrontendAttrs(callOp);
-  if (!newCodePath && callOpFrontendAttrs &&
-      callOpFrontendAttrs.contains(kManualAxes)) {
-    inShardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
-        callOpFrontendAttrs, kInShardings);
-    outShardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
-        callOpFrontendAttrs, kOutShardings);
-    manualAxes =
-        parseStringAttr<sdy::ManualAxesAttr>(callOpFrontendAttrs, kManualAxes);
-  }
   auto manualComputationOp =
       rewriter.replaceOpWithNewOp<sdy::ManualComputationOp>(
           callOp, resultTypes, operands, inShardings, outShardings, manualAxes);
