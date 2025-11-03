@@ -615,10 +615,14 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         /*update_domain=*/false,
         /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
         /*uniquify_channel_ids=*/false,
-        /*should_inline=*/
-        [](const xla::CallGraph& call_graph, xla::HloInstruction* instruction) {
-          return absl::StrContains(instruction->to_apply()->name(),
-                                   sdy::kInlineableManualComputationFuncName);
+        /*override_policy=*/
+        [](const xla::CallGraph& call_graph,
+           const xla::HloInstruction* instruction) {
+          if (absl::StrContains(instruction->to_apply()->name(),
+                                sdy::kInlineableManualComputationFuncName)) {
+            return CallInliner::InlineOverridePolicy::kAllowInline;
+          }
+          return CallInliner::InlineOverridePolicy::kProhibitInline;
         });
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(module).status());
   } else {
