@@ -1983,31 +1983,36 @@ TEST(ConstFloatProdOpTest, EmptyAxis) {
   EXPECT_EQ(m.Invoke(), kTfLiteOk);
 }
 
+TEST(QuantizedReduceSumTest, Int8ReferenceKernelNoOverflow) {
+
+  using ::tflite::TensorType_INT8;
+
+  // Input data: shape [1, 128], all values = 2
+  std::vector<int8_t> input_data(128, 2);
+
+  // Expected sum = 2 * 128 = 256 → saturates at 127 (INT8 max)
+  const int8_t kExpected = 127;
+
+  // Build model 
+  BaseOpModel m;
+  const int input = m.AddInput({TensorType_INT8, {1, 128}});
+  const int axis = m.AddConstInput(TensorType_INT32, {1}, {1});
+  const int output = m.AddOutput({TensorType_INT8, {}});
+
+  m.SetBuiltinOp(
+      BuiltinOperator_SUM, BuiltinOptions_ReducerOptions,
+      CreateReducerOptions(m.builder(), /*keep_dims=*/false).Union());
+
+  m.BuildInterpreter({{1, 128}});
+  m.PopulateTensor<int8_t>(input, input_data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  auto output_data = m.GetOutput<int8_t>();
+  EXPECT_EQ(output_data.size(), 1);
+  EXPECT_EQ(output_data[0], kExpected);
+}
+
 }  // namespace
 }  // namespace tflite
 
-// TEST 
-TEST(QuantizedReduceSumTest, Int8ReferenceKernelNoOverflow) {
-  using ::tflite::TensorType_INT8;
-  using ::tflite::TensorType_INT32;
 
-  // Build a simple model with a ReduceSum op.
-  int input_shape[] = {2, 1, 128};
-  int axis_shape[] = {1};
-  int axis_data[] = {2};  // Reduce over last dimension
-
-  // Create interpreter
-  TfLiteQuantizationParams quant_params = {0.1f, 0};  // arbitrary scale/zero_point
-  std::vector<int8_t> input_data(128, 2);  // All values = 2
-
-  // Expected sum: 2 * 128 = 256 → should saturate properly but not overflow to -1
-  float expected_output = 256.0f;
-
-  // Build model
-  ReduceOpModel model(TensorType_INT8, {1, 128}, TensorType_INT8, {1}, false, true);
-  model.PopulateTensor<int8_t>(model.input(), input_data);
-  model.Invoke();
-
-  auto output = model.GetOutput<int8_t>();
-  EXPECT_NEAR(output[0], expected_output, 1.0f);
-}

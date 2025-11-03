@@ -459,6 +459,22 @@ TfLiteStatus QuantizedMeanOrSum(TfLiteContext* context,
                                 TfLiteTensor* resolved_axis,
                                 TfLiteTensor* temp_sum, bool compute_sum) {
   int num_axis = static_cast<int>(NumElements(op_context.axis));
+
+  TF_LITE_LOG_PROD(TFLITE_LOG_INFO,
+                   "QuantizedMeanOrSum: num_axis=%d input_dims=%d output_dims=%d",
+                   num_axis,
+                   op_context.input->dims->size,
+                   op_context.output->dims->size);
+  if (num_axis > 0) {
+    const int* axis_ptr = GetTensorData<int>(op_context.axis);
+    std::string s;
+    for (int i = 0; i < num_axis; ++i) {
+      s += std::to_string(axis_ptr[i]);
+      if (i + 1 < num_axis) s += " ";
+    }
+    TF_LITE_LOG_PROD(TFLITE_LOG_INFO, "QuantizedMeanOrSum: axes=%s", s.c_str());
+  }
+
   if (kernel_type == kGenericOptimized) {
     TF_LITE_ENSURE(
         context,
@@ -477,16 +493,17 @@ TfLiteStatus QuantizedMeanOrSum(TfLiteContext* context,
     TF_LITE_ENSURE(
         context,
         reference_ops::QuantizedMeanOrSum(
-            GetTensorData<T>(op_context.input),
-            op_context.input->params.zero_point, op_context.input->dims->data,
-            op_context.input->dims->size,
-            GetTensorData<T>(op_context.output), op_data->multiplier,
-            op_data->shift, op_context.output->params.zero_point,
-            op_context.output->dims->data, op_context.output->dims->size,
-            GetTensorData<int>(op_context.axis), num_axis,
-            op_context.params->keep_dims, GetTensorData<int>(temp_index),
-            GetTensorData<int>(resolved_axis), GetTensorData<int32_t>(temp_sum),
-            compute_sum));
+          GetTensorData<T>(op_context.input),
+          op_context.input->params.zero_point, op_context.input->dims->data,
+          op_context.input->dims->size,
+          GetTensorData<T>(op_context.output), op_data->multiplier,
+          op_data->shift, op_context.output->params.zero_point,
+          op_context.output->dims->data, op_context.output->dims->size,
+          GetTensorData<int>(op_context.axis), num_axis,
+          op_context.params->keep_dims, GetTensorData<int>(temp_index),
+          GetTensorData<int>(resolved_axis), GetTensorData<int32_t>(temp_sum),
+          compute_sum));
+   }
   }
   return kTfLiteOk;
 }
