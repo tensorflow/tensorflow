@@ -586,7 +586,12 @@ bool MightTrace(const tsl::tracing::EventCollector* event_collector,
 template <class PropagatorStateType>
 absl::Status ExecutorState<PropagatorStateType>::ProcessSync(
     const NodeItem& item, OpKernelContext::Params* params, EntryVector* outputs,
-    NodeExecStatsInterface* stats) {
+    NodeExecStatsInterface* stats) 
+    // NOTE: There is no explicit CUDA stream synchronization here.
+// If the op's CUDA kernel has not finished executing before
+// the input tensor is deallocated, it may lead to accessing freed memory
+// and result in race conditions. Consider reviewing the synchronization mechanisms here.
+{
   absl::Status s;
   OpKernelContext ctx(params, item.num_outputs);
   nodestats::SetOpStart(stats);
