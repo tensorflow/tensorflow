@@ -77,6 +77,8 @@ class RemoteProfilerSessionManager {
       TF_GUARDED_BY(mutex_);
   // Resolves an address into a format that gRPC understands.
   AddressResolver resolver_ TF_GUARDED_BY(mutex_);
+
+  ::grpc::CompletionQueue cq_;
 };
 
 }  // namespace profiler

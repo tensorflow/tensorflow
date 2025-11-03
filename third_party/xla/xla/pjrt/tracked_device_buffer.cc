@@ -318,6 +318,16 @@ tsl::RCReference<CommonPjRtRawBuffer> TrackedDeviceBuffer::GetRawBuffer(
       device_memory_);
 }
 
+absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+TrackedDeviceBuffer::GetDefinitionEvent(PjRtMemorySpace* memory_space) {
+  if (definition_events_.size() != 1) {
+    return absl::InternalError(
+        "GetMergedDefinitionEvent only supported on TPU for buffers with "
+        "exactly 1 definition event.");
+  }
+  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(definition_events_[0]);
+}
+
 void TrackedDeviceBuffer::AddUsageEvent(
     tsl::RCReference<PjRtDeviceEvent> event) {
   if (event) {

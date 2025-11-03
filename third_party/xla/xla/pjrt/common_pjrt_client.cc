@@ -198,11 +198,67 @@ absl::StatusOr<
 CommonPjRtClient::CreateAliasBuffer(const Shape& shape,
                                     PjRtMemorySpace* memory_space) {
   tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
-  tsl::RCReference<PjRtDeviceEvent> definition_event;
-  PjRtFulfillAliasBufferCallback fulfill_cb;
+  PjRtFulfillAliasRawBufferCallback buffer_promise;
 
-  TF_ASSIGN_OR_RETURN(std::tie(raw_buffer, definition_event, fulfill_cb),
-                      CreateRawBufferChannel(shape, memory_space));
+  TF_ASSIGN_OR_RETURN(std::tie(raw_buffer, buffer_promise),
+                      CreateRawBufferChannel(memory_space));
+
+  tsl::RCReference<xla::PjRtDeviceEventPromise> definition_event_promise;
+  tsl::RCReference<xla::PjRtDeviceEvent> definition_event;
+  TF_ASSIGN_OR_RETURN(
+      std::tie(definition_event_promise, definition_event),
+      CreateLinkedEventPromise(memory_space, "CreateRawBufferChannel"));
+
+  PjRtFulfillAliasBufferCallback fulfill_cb =
+      [buffer_promise = std::move(buffer_promise),
+       definition_event_promise = std::move(definition_event_promise),
+       memory_space,
+       shape](absl::StatusOr<xla::PjRtBuffer*> buffer_or) mutable {
+        if (!buffer_or.ok()) {
+          definition_event_promise->SetError(buffer_or.status());
+          std::move(buffer_promise)(buffer_or.status()).IgnoreError();
+          return buffer_or.status();
+        }
+        xla::PjRtBuffer* buffer = buffer_or.value();
+        if (buffer->on_device_shape() != shape) {
+          auto status = absl::InvalidArgumentError(absl::StrFormat(
+              "Shape mismatch in CreateRawBufferChannel fulfill: expected %s, "
+              "got %s",
+              shape.ToString(), buffer->on_device_shape().ToString()));
+          definition_event_promise->SetError(status);
+          std::move(buffer_promise)(status).IgnoreError();
+          return status;
+        }
+        xla::CommonPjRtBuffer* common_buffer =
+            dynamic_cast<xla::CommonPjRtBuffer*>(buffer);
+        if (common_buffer == nullptr) {
+          auto status =
+              absl::InternalError("Failed to cast to CommonPjRtBuffer");
+          definition_event_promise->SetError(status);
+          std::move(buffer_promise)(status).IgnoreError();
+          return status;
+        }
+        xla::CommonPjRtBuffer::ScopedHold hold =
+            common_buffer->GetBufferWithHold(
+                xla::CommonPjRtBuffer::ScopedHold::kDonation);
+        auto device_event_or = hold.buffer()->GetDefinitionEvent(memory_space);
+        if (!device_event_or.ok()) {
+          auto status = device_event_or.status();
+          definition_event_promise->SetError(status);
+          std::move(buffer_promise)(status).IgnoreError();
+          return status;
+        }
+        auto status = std::move(buffer_promise)(
+            hold.buffer()->GetRawBuffer(memory_space));
+        if (!status.ok()) {
+          definition_event_promise->SetError(status);
+          return status;
+        }
+
+        definition_event_promise->Set(std::move(*device_event_or));
+        hold.ConfirmDonation();
+        return absl::OkStatus();
+      };
 
   TF_ASSIGN_OR_RETURN(
       auto result_buffer,

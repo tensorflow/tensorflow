@@ -1012,71 +1012,37 @@ PjRtCpuClient::AllocateRawBuffer(PjRtMemorySpace* memory_space,
                                      *allocator_);
 }
 
-absl::StatusOr<std::tuple<tsl::RCReference<CommonPjRtRawBuffer>,
-                          tsl::RCReference<PjRtDeviceEvent>,
-                          PjRtFulfillAliasBufferCallback>>
-PjRtCpuClient::CreateRawBufferChannel(const Shape& shape,
-                                      PjRtMemorySpace* memory_space) {
+absl::StatusOr<std::pair<tsl::RCReference<CommonPjRtRawBuffer>,
+                         CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
+PjRtCpuClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space) {
   auto buffer_promise = tsl::MakeIndirectAsyncValue();
   auto raw_buffer = tsl::MakeRef<CpuRawBuffer>(
       memory_space, tsl::AsyncValueRef<CpuDeviceMemory>(buffer_promise));
 
-  tsl::RCReference<xla::PjRtDeviceEventPromise> definition_event_promise;
-  tsl::RCReference<xla::PjRtDeviceEvent> definition_event;
-  TF_ASSIGN_OR_RETURN(
-      std::tie(definition_event_promise, definition_event),
-      CreateLinkedEventPromise(memory_space, "CreateRawBufferChannel"));
+  auto buffer_promise_cb =
+      [buffer_promise = std::move(buffer_promise), memory_space](
+          absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>> raw_buffer)
+      -> absl::Status {
+    if (!raw_buffer.ok()) {
+      buffer_promise->SetError(raw_buffer.status());
+      return raw_buffer.status();
+    }
+    if (memory_space != (*raw_buffer)->memory_space()) {
+      auto status = absl::InvalidArgumentError(absl::StrFormat(
+          "Memory space mismatch when forarding raw buffers: %s vs %s",
+          memory_space->DebugString(),
+          (*raw_buffer)->memory_space()->DebugString()));
+      buffer_promise->SetError(status);
+      return status;
+    }
+    buffer_promise->ForwardTo(
+        tensorflow::down_cast<xla::CpuRawBuffer*>(raw_buffer->get())
+            ->buffer()
+            .CopyRCRef());
+    return absl::OkStatus();
+  };
 
-  PjRtFulfillAliasBufferCallback fulfill_alias_buffer_cb =
-      [buffer_promise = std::move(buffer_promise),
-       definition_event_promise = std::move(definition_event_promise),
-       memory_space,
-       shape](absl::StatusOr<xla::PjRtBuffer*> buffer_or) mutable {
-        tsl::RCReference<xla::PjRtDeviceEvent> device_event;
-        if (!buffer_or.ok()) {
-          definition_event_promise->SetError(buffer_or.status());
-          buffer_promise->SetError(buffer_or.status());
-          return buffer_or.status();
-        }
-        xla::PjRtBuffer* buffer = buffer_or.value();
-        if (buffer->on_device_shape() != shape) {
-          auto status = absl::InvalidArgumentError(absl::StrFormat(
-              "Shape mismatch in CreateRawBufferChannel fulfill: expected %s, "
-              "got "
-              "%s",
-              shape.ToString(), buffer->on_device_shape().ToString()));
-          definition_event_promise->SetError(status);
-          buffer_promise->SetError(status);
-          return status;
-        }
-        xla::CommonPjRtBuffer* common_buffer =
-            dynamic_cast<xla::CommonPjRtBuffer*>(buffer);
-        if (common_buffer == nullptr) {
-          auto status =
-              absl::InternalError("Failed to cast to CommonPjRtBuffer");
-          definition_event_promise->SetError(status);
-          buffer_promise->SetError(status);
-          return status;
-        }
-        xla::CommonPjRtBuffer::ScopedHold hold =
-            common_buffer->GetBufferWithHold(
-                xla::CommonPjRtBuffer::ScopedHold::kDonation);
-        TF_ASSIGN_OR_RETURN(device_event,
-                            hold.buffer()->GetDefinitionEvent(memory_space));
-
-        auto* tracked_cpu_buffer =
-            tensorflow::down_cast<TrackedCpuDeviceBuffer*>(hold.buffer());
-        tsl::AsyncValueRef<CpuDeviceMemory> real_cpu_buffer =
-            tracked_cpu_buffer->buffer();
-
-        buffer_promise->ForwardTo(real_cpu_buffer.CopyRCRef());
-        definition_event_promise->Set(device_event);
-        hold.ConfirmDonation();
-        return absl::OkStatus();
-      };
-
-  return std::make_tuple(std::move(raw_buffer), std::move(definition_event),
-                         std::move(fulfill_alias_buffer_cb));
+  return std::make_pair(std::move(raw_buffer), std::move(buffer_promise_cb));
 }
 
 absl::StatusOr<int64_t> PjRtCpuClient::GetOnDeviceBytesCount(

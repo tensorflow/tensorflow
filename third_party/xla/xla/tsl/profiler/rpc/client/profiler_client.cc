@@ -96,73 +96,61 @@ absl::Status MonitorGrpc(const std::string& service_address,
 
 /*static*/ std::unique_ptr<RemoteProfilerSession> RemoteProfilerSession::Create(
     const std::string& service_address, absl::Time deadline,
-    const ProfileRequest& profile_request) {
-  auto instance = absl::WrapUnique(
-      new RemoteProfilerSession(service_address, deadline, profile_request));
-  instance->ProfileAsync();
+    const ProfileRequest& profile_request, ::grpc::CompletionQueue* cq,
+    int64 client_id) {
+  auto instance = absl::WrapUnique(new RemoteProfilerSession(
+      service_address, deadline, profile_request, client_id));
+  instance->ProfileAsync(cq);
   return instance;
 }
 
 RemoteProfilerSession::RemoteProfilerSession(
     const std::string& service_address, absl::Time deadline,
-    const ProfileRequest& profile_request)
+    const ProfileRequest& profile_request, int64 client_id)
     : response_(absl::make_unique<ProfileResponse>()),
       service_address_(service_address),
       stub_(CreateStub<tensorflow::grpc::ProfilerService>(service_address_)),
       deadline_(deadline),
+      client_id_(client_id),
       profile_request_(profile_request) {
   response_->set_empty_trace(true);
 }
 
 RemoteProfilerSession::~RemoteProfilerSession() {
   absl::Status dummy;
-  WaitForCompletion(dummy);
   grpc_context_.TryCancel();
 }
 
-void RemoteProfilerSession::ProfileAsync() {
+void RemoteProfilerSession::ProfileAsync(::grpc::CompletionQueue* cq) {
   LOG(INFO) << "Asynchronous gRPC Profile() to " << service_address_;
   grpc_context_.set_deadline(absl::ToChronoTime(deadline_));
   VLOG(1) << "Deadline set to " << deadline_;
-  rpc_ = stub_->AsyncProfile(&grpc_context_, profile_request_, &cq_);
+  rpc_ = stub_->AsyncProfile(&grpc_context_, profile_request_, cq);
   // Connection failure will create lame channel whereby grpc_status_ will be an
   // error.
-  rpc_->Finish(response_.get(), &grpc_status_,
-               static_cast<void*>(&status_on_completion_));
+  rpc_->Finish(response_.get(), &grpc_status_, (void*)this->client_id_);
   VLOG(2) << "Asynchronous gRPC Profile() issued." << absl::Now();
 }
 
-std::unique_ptr<ProfileResponse> RemoteProfilerSession::WaitForCompletion(
-    absl::Status& out_status) {
-  if (!response_) {
-    out_status = errors::FailedPrecondition(
-        "WaitForCompletion must only be called once.");
-    return nullptr;
-  }
-  LOG(INFO) << "Waiting for completion.";
-
-  void* got_tag = nullptr;
-  bool ok = false;
-  // Next blocks until there is a response in the completion queue. Expect the
-  // completion queue to have exactly a single response because deadline is set
-  // and completion queue is only drained once at destruction time.
-  bool success = cq_.Next(&got_tag, &ok);
-  if (!success || !ok || got_tag == nullptr) {
+std::unique_ptr<ProfileResponse> RemoteProfilerSession::HandleCompletion(
+    absl::Status& out_status, void* got_tag, bool ok) {
+  VLOG(2) << "Received completion event for client " << this->client_id_
+          << " at " << this->service_address_;
+  if (!ok) {
     out_status =
-        errors::Internal("Missing or invalid event from completion queue.");
+        absl::InternalError("Missing or invalid event from completion queue.");
     return nullptr;
   }
-
-  VLOG(1) << "Writing out status.";
-  // For the event read from the completion queue, expect that got_tag points to
-  // the memory location of status_on_completion.
-  DCHECK_EQ(got_tag, &status_on_completion_);
+  DCHECK_EQ(got_tag, (void*)this->client_id_);
   // tagged status points to pre-allocated memory which is okay to overwrite.
   status_on_completion_.Update(FromGrpcStatus(grpc_status_));
+
   if (status_on_completion_.code() == error::DEADLINE_EXCEEDED) {
-    LOG(WARNING) << status_on_completion_;
+    LOG(WARNING) << status_on_completion_ << " from client " << this->client_id_
+                 << " at " << this->service_address_;
   } else if (!status_on_completion_.ok()) {
-    LOG(ERROR) << status_on_completion_;
+    LOG(ERROR) << status_on_completion_ << " from client " << this->client_id_
+               << " at " << this->service_address_;
   }
 
   out_status = status_on_completion_;

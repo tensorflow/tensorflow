@@ -194,6 +194,9 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
   Future<> GetReadyFuture(PjRtMemorySpace* memory_space) override;
 
+  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> GetDefinitionEvent(
+      PjRtMemorySpace* memory_space) override;
+
  private:
   PjRtDevice* device_;
 
