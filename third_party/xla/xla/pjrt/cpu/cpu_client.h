@@ -200,11 +200,9 @@ class PjRtCpuClient final : public CommonPjRtClient {
     return &topology_;
   }
 
-  absl::StatusOr<std::tuple<tsl::RCReference<CommonPjRtRawBuffer>,
-                            tsl::RCReference<PjRtDeviceEvent>,
-                            PjRtFulfillAliasBufferCallback>>
-  CreateRawBufferChannel(const Shape& shape,
-                         PjRtMemorySpace* memory_space) override;
+  absl::StatusOr<std::pair<tsl::RCReference<CommonPjRtRawBuffer>,
+                           PjRtFulfillAliasRawBufferCallback>>
+  CreateRawBufferChannel(PjRtMemorySpace* memory_space) override;
 
   absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>> AllocateRawBuffer(
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,

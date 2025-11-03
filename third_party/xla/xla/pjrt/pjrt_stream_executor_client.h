@@ -398,6 +398,10 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
           definition_device_events,
       bool raw_buffer_is_mutable) override;
 
+  absl::StatusOr<std::pair<tsl::RCReference<CommonPjRtRawBuffer>,
+                           PjRtFulfillAliasRawBufferCallback>>
+  CreateRawBufferChannel(PjRtMemorySpace* memory_space) override;
+
   absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> LinearizeInto(
       const LiteralSlice& literal, const xla::Shape& device_shape,
       HostBufferSemantics host_buffer_semantics,
