@@ -122,7 +122,7 @@ absl::StatusOr<std::tuple<std::vector<Literal*>, std::unique_ptr<Literal>>>
 ExtractInterpreterInputLiteralsFromBuffers(
     const absl::Span<PjRtBuffer* const> buffers,
     const HloComputation& entry_computation,
-    const bool parameter_is_tupled_arguments, const bool arguments_are_tupled) {
+    const bool parameter_is_tupled_arguments) {
   std::vector<Literal*> literals;
   for (PjRtBuffer* const buffer : buffers) {
     InterpreterLiteralWrapperBuffer* interpreter_buffer =
@@ -135,7 +135,7 @@ ExtractInterpreterInputLiteralsFromBuffers(
   }
 
   // Return early if arguments don't need to be re-tupled.
-  if (!parameter_is_tupled_arguments || arguments_are_tupled) {
+  if (!parameter_is_tupled_arguments) {
     return std::make_tuple(std::move(literals), nullptr);
   }
 
@@ -248,8 +248,7 @@ InterpreterLoadedExecutable::ExecuteSharded(
   TF_ASSIGN_OR_RETURN(const auto literals_and_storage,
                       ExtractInterpreterInputLiteralsFromBuffers(
                           argument_handles, computation,
-                          compile_options_.parameter_is_tupled_arguments,
-                          options.arguments_are_tupled));
+                          compile_options_.parameter_is_tupled_arguments));
   const absl::Span<const Literal* const> literals =
       std::get<0>(literals_and_storage);
   if (computation.num_parameters() != literals.size()) {

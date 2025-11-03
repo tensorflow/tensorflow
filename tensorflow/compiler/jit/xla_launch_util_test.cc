@@ -207,7 +207,6 @@ class PjRtExecutionUtilTest : public OpsTestBase {
         &executable_args, /*owned_args=*/{}, &non_donatable_input_indices));
 
     xla::ExecuteOptions exe_options;
-    exe_options.arguments_are_tupled = false;
 
     // TODO(b/257548614): currently PJRT is compiled as portable (num_replica =
     // 1 and num_partition = 1). Support multiple partitions case.
@@ -519,7 +518,6 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsResourceUpdates) {
 TEST(XlaLaunchUtilTest, GetPjRtExecuteOptions) {
   xla::ExecuteOptions options =
       GetPjRtExecuteOptions(DeviceType(DEVICE_GPU), {});
-  EXPECT_FALSE(options.arguments_are_tupled);
   EXPECT_FALSE(options.strict_shape_checking);
   EXPECT_TRUE(options.use_major_to_minor_data_layout_for_callbacks);
 }

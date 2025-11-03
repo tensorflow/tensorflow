@@ -809,7 +809,6 @@ xla::ExecuteOptions GetPjRtExecuteOptions(
     const DeviceType& device_type,
     absl::flat_hash_set<int> non_donatable_input_indices) {
   xla::ExecuteOptions options;
-  options.arguments_are_tupled = false;
   // Hardcode run id to always be one: TF distributed strategy
   // differentiates between subsequent runs using dependency edges. This
   // is safe, as only TF dist-strat can produce distributed ops, and we

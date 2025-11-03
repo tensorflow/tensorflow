@@ -75,7 +75,6 @@ TEST(CompileOptionsTest, Defaults) {
 
 TEST(ExecuteOptionsTest, Serialization) {
   ExecuteOptions src;
-  src.arguments_are_tupled = true;
   src.launch_id = 1234;
   src.strict_shape_checking = true;
   src.execution_mode = ExecuteOptions::ExecutionMode::kAsynchronous;

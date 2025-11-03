@@ -111,20 +111,11 @@ absl::Span<PjRtDevice* const> GetLocalDevices(const PjRtClient& client) {
 //
 // Case 1: the HLO module is compiled with
 // CompileOptions::parameter_is_tupled_arguments = true
-// and the HLO module is executed with
-// ExecuteOptions::arguments_are_tupled = false.
 // This enables PjRtClient::Execute to assemble the tupled arguments from
 // a flat list of buffers.
 //
 // Case 2: the HLO module is compiled with
 // CompileOptions::parameter_is_tupled_arguments = false
-// and the HLO module is executed with
-// ExecuteOptions::arguments_are_tupled = false.
-//
-// Case 3: the HLO module is compiled with
-// CompileOptions::parameter_is_tupled_arguments = false
-// and the HLO module is executed with
-// ExecuteOptions::arguments_are_tupled = false.
 // We will create new on-device buffers for each repeated execution.
 
 enum class ParameterType {
@@ -571,7 +562,6 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   };
 
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
-  execute_options.arguments_are_tupled = false;
   std::optional<std::vector<Future<>>> futures;
   futures.emplace();
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers;

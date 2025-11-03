@@ -1370,7 +1370,7 @@ PjRtStreamExecutorLoadedExecutable::MakeExecutionInputsAndWaitForEvents(
   // Lift tuple_write_event outside the conditional so that the event it
   // returns is not destroyed until after the loop below that waits on events.
   BufferSequencingEventRef tuple_write_event;
-  if (parameter_is_tupled_arguments_ && !options.arguments_are_tupled) {
+  if (parameter_is_tupled_arguments_) {
     TF_ASSIGN_OR_RETURN(
         auto tuple_handle,
         MakeTupleHelper(client_, device_state, options.strict_shape_checking,
@@ -1782,20 +1782,6 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
 
     GetDeviceBufferEvents(*device_buffer, /*get_usage_events=*/must_donate,
                           &events);
-  }
-
-  if (options.arguments_are_tupled) {
-    if (!parameter_is_tupled_arguments_) {
-      return InvalidArgument(
-          "Arguments may only be supplied as a tuple when the executable was "
-          "compiled with a single tupled parameter");
-    }
-    if (argument_handles.size() != 1) {
-      return InvalidArgument(
-          "Option arguments_are_tupled was true but %d buffers were passed to "
-          "execution",
-          argument_handles.size());
-    }
   }
 
   TF_ASSIGN_OR_RETURN(

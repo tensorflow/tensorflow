@@ -1817,7 +1817,6 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     options.call_location = std::string(args->options->call_location);
   }
   options.strict_shape_checking = true;
-  options.arguments_are_tupled = false;
   options.context = args->options->context
                         ? args->options->context->execute_context.get()
                         : nullptr;
