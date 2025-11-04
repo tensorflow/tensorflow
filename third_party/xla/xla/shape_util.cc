@@ -2201,8 +2201,8 @@ Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
 }
 
 /*static*/
-absl::Status ShapeUtil::ByteStrides(const Shape& shape,
-                                    absl::Span<int64_t> strides) {
+absl::Status ShapeUtil::UnpackedByteStrides(const Shape& shape,
+                                            absl::Span<int64_t> strides) {
   TF_RET_CHECK(shape.IsArray());
   TF_RET_CHECK(shape.has_layout());
   TF_RET_CHECK(shape.dimensions().size() == strides.size());
@@ -2216,13 +2216,27 @@ absl::Status ShapeUtil::ByteStrides(const Shape& shape,
 }
 
 /*static*/
-std::optional<absl::InlinedVector<int64_t, 4>> ShapeUtil::ByteStrides(
+absl::Status ShapeUtil::ByteStrides(const Shape& shape,
+                                    absl::Span<int64_t> strides) {
+  return UnpackedByteStrides(shape, strides);
+}
+
+/*static*/
+std::optional<absl::InlinedVector<int64_t, 4>> ShapeUtil::UnpackedByteStrides(
     const Shape& shape) {
   absl::InlinedVector<int64_t, 4> strides(shape.dimensions().size());
-  if (!ByteStrides(shape, absl::MakeSpan(strides)).ok()) {
+  if (!UnpackedByteStrides(shape, absl::MakeSpan(strides)).ok()) {
     return std::nullopt;
   }
   return strides;
+}
+
+/*static*/ std::optional<absl::InlinedVector<int64_t, 4>>
+ShapeUtil::ByteStrides(const Shape& shape) {
+  if (shape.layout().element_size_in_bits() % CHAR_BIT != 0) {
+    return std::nullopt;
+  }
+  return UnpackedByteStrides(shape);
 }
 
 /*static*/ int64_t ShapeUtil::ElementSizeInBits(const Shape& shape) {

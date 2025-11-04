@@ -611,8 +611,8 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
   absl::InlinedVector<int64_t, 4> tmp_strides;
   if (!byte_strides) {
     tmp_strides.resize(dims.size());
-    TF_RETURN_IF_ERROR(
-        ShapeUtil::ByteStrides(on_host_shape, absl::MakeSpan(tmp_strides)));
+    TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+        on_host_shape, absl::MakeSpan(tmp_strides)));
     byte_strides = tmp_strides;
   }
   int64_t size = ShapeUtil::ByteSizeOf(on_host_shape);
@@ -621,8 +621,8 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
 
   absl::InlinedVector<int64_t, 4> shape_strides(
       device_shape.dimensions().size());
-  TF_RETURN_IF_ERROR(
-      ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(shape_strides)));
+  TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+      device_shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
       (size == 0 || *byte_strides == shape_strides);
 
@@ -860,38 +860,36 @@ PjRtStreamExecutorClient::LinearizeInto(
   // it includes linearization that may be slow.
   // TODO(misard) assess if it would be preferable to introduce a heuristic to
   // put the transfer into the calling thread for small literals.
-  auto transfer_h2d =
-      [this, local_client = client(), transfer_manager, local_device,
-       raw_buffer, device, event, literal,
-       on_device_shape = std::move(on_device_shape)]() mutable {
-        // This function uses TF_CHECK_OK and value() since we have no way
-        // to report failures from a callback. However, the operations here are
-        // unlikely to fail and not recoverable even if we were to fail: DMAs to
-        // memory that has already been allocated, and a possible Event
-        // allocation.
-        auto device_memory =
-            tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(
-                raw_buffer.get())
-                ->device_buffer();
+  auto transfer_h2d = [this, local_client = client(), transfer_manager,
+                       local_device, raw_buffer, device, event, literal,
+                       on_device_shape = std::move(on_device_shape)]() mutable {
+    // This function uses TF_CHECK_OK and value() since we have no way
+    // to report failures from a callback. However, the operations here are
+    // unlikely to fail and not recoverable even if we were to fail: DMAs to
+    // memory that has already been allocated, and a possible Event
+    // allocation.
+    auto device_memory =
+        tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(raw_buffer.get())
+            ->device_buffer();
 
-        se::Stream* h2d_stream = local_device->host_to_device_stream();
+    se::Stream* h2d_stream = local_device->host_to_device_stream();
 
-        ShapedBuffer buffer =
-            device_memory->AsShapedBuffer(device, on_device_shape);
-        TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-            h2d_stream, literal, buffer));
+    ShapedBuffer buffer =
+        device_memory->AsShapedBuffer(device, on_device_shape);
+    TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+        h2d_stream, literal, buffer));
 
-        TF_CHECK_OK(AddDestinationBufferSynchronization(this, local_device,
-                                                        event, h2d_stream));
+    TF_CHECK_OK(AddDestinationBufferSynchronization(this, local_device, event,
+                                                    h2d_stream));
 
-        local_device->ThenRelease(h2d_stream, device_memory).IgnoreError();
+    local_device->ThenRelease(h2d_stream, device_memory).IgnoreError();
 
-        // This can sometimes catch the case where the literal memory has been
-        // freed before the H2D transfer was issued.
-        h2d_stream->RefreshStatus()
-            .IgnoreError();  // Can return error::Unimplemented
-        QCHECK(h2d_stream->ok());
-      };
+    // This can sometimes catch the case where the literal memory has been
+    // freed before the H2D transfer was issued.
+    h2d_stream->RefreshStatus()
+        .IgnoreError();  // Can return error::Unimplemented
+    QCHECK(h2d_stream->ok());
+  };
   thread_pool()->Schedule(WrapClosureAsCopyable(std::move(transfer_h2d)));
   return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(event);
 }

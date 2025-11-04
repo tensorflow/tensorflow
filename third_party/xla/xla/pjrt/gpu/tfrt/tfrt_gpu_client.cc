@@ -850,8 +850,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
   absl::InlinedVector<int64_t, 4> tmp_strides;
   if (!byte_strides) {
     tmp_strides.resize(dims.size());
-    TF_RETURN_IF_ERROR(
-        ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(tmp_strides)));
+    TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+        device_shape, absl::MakeSpan(tmp_strides)));
     byte_strides = tmp_strides;
   }
 
@@ -868,8 +868,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
 
   absl::InlinedVector<int64_t, 4> shape_strides(
       device_shape.dimensions().size());
-  TF_RETURN_IF_ERROR(
-      ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(shape_strides)));
+  TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+      device_shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
       (byte_size == 0 || *byte_strides == shape_strides);
 

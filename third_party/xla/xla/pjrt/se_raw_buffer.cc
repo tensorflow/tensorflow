@@ -299,7 +299,7 @@ void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
           if (on_device_shape.layout() != literal_layout) {
             absl::InlinedVector<int64_t, 4> byte_strides(
                 on_device_shape.dimensions().size());
-            absl::Status s = ShapeUtil::ByteStrides(
+            absl::Status s = ShapeUtil::UnpackedByteStrides(
                 on_device_shape, absl::MakeSpan(byte_strides));
             if (!s.ok()) {
               promise.Set(s);

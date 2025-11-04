@@ -369,7 +369,7 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
           if (on_device_shape.layout() != literal_layout) {
             absl::InlinedVector<int64_t, 4> byte_strides(
                 on_device_shape.dimensions().size());
-            absl::Status s = ShapeUtil::ByteStrides(
+            absl::Status s = ShapeUtil::UnpackedByteStrides(
                 on_device_shape, absl::MakeSpan(byte_strides));
             if (!s.ok()) {
               promise.Set(s);
@@ -745,8 +745,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
     Literal* literal_pointer = literal.get();
     absl::InlinedVector<int64_t, 4> byte_strides(
         literal->shape().dimensions().size());
-    TF_RETURN_IF_ERROR(
-        ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
+    TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+        literal->shape(), absl::MakeSpan(byte_strides)));
     return dst_device->client()->BufferFromHostBuffer(
         literal_pointer->untyped_data(),
         literal_pointer->shape().element_type(),
