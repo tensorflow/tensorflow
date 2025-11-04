@@ -4,7 +4,6 @@
 load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",
-    "if_enable_acl",
 )
 load(
     "//xla:xla.default.bzl",
@@ -568,29 +567,14 @@ tf_proto_library(
 
 cc_library(
     name = "runtime_symbol_generator",
-    srcs = [
-        "runtime_symbol_generator.cc",
-        "windows_compatibility.cc",
-        "windows_compatibility.h",
-    ],
+    srcs = ["runtime_symbol_generator.cc"],
     hdrs = ["runtime_symbol_generator.h"],
-    copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]) + tsl_copts(),
+    copts = tsl_copts(),
     deps = [
-        ":cpu_runtime",
-        ":runtime_conv2d",
-        ":runtime_conv2d_acl",
-        ":runtime_conv3d",
-        ":runtime_custom_call_status",
         ":runtime_fp16",
-        ":runtime_key_value_sort",
-        ":runtime_matmul",
-        ":runtime_matmul_acl",
         ":runtime_pow",
-        ":runtime_single_threaded_conv2d",
-        ":runtime_single_threaded_conv3d",
-        ":runtime_single_threaded_matmul",
-        ":runtime_topk",
-        "//xla/service:custom_call_target_registry",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Core",
@@ -598,11 +582,7 @@ cc_library(
         "@llvm-project//llvm:OrcShared",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
-        "@local_tsl//tsl/platform:logging",
-    ] + if_onednn([
-        ":onednn_convolution",
-        ":onednn_matmul",
-    ]),
+    ],
 )
 
 cc_library(

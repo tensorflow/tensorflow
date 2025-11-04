@@ -16,11 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_SYMBOL_GENERATOR_H_
 #define XLA_SERVICE_CPU_RUNTIME_SYMBOL_GENERATOR_H_
 
-#include <optional>
-
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
-#include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Support/Error.h"
 
@@ -38,9 +34,6 @@ class RuntimeSymbolGenerator : public llvm::orc::DefinitionGenerator {
                             const llvm::orc::SymbolLookupSet& names) final;
 
  private:
-  std::optional<llvm::orc::ExecutorSymbolDef> ResolveRuntimeSymbol(
-      llvm::StringRef name);
-
   llvm::DataLayout data_layout_;
 };
 
