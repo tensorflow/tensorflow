@@ -21910,7 +21910,15 @@ type IsotonicRegressionAttr func(optionalAttr)
 
 // IsotonicRegressionOutputDtype sets the optional output_dtype attribute to value.
 //
-// value: Dtype of output.
+// value: Dtype of the output tensor.
+//
+// Note on supported input-output type combinations:
+// * For floating-point types, the output has the same dtype as the input.
+// * For 8-bit and 16-bit integer inputs, the output is a 32-bit float.
+// * For 32-bit and 64-bit integer inputs, the output is a 64-bit float.
+//
+// Using unsupported dtype pairs (for example, input=float64 with output=float32)
+// will result in a "Could not find device for node" error.
 // If not specified, defaults to DT_FLOAT
 func IsotonicRegressionOutputDtype(value tf.DataType) IsotonicRegressionAttr {
 	return func(m optionalAttr) {
