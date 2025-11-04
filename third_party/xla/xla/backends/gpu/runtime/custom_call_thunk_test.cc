@@ -236,8 +236,8 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlers) {
   initialize_params.stream = stream.get();
   initialize_params.buffer_allocations = &buffer_allocations;
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
-      ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
-      stream.get(), stream.get(), nullptr, nullptr);
+      ServiceExecutableRunOptions(), buffer_allocations, stream.get(),
+      stream.get(), nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CustomCallThunk> thunk,
@@ -284,9 +284,10 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutOptionalOnes) {
   Thunk::PrepareParams prepare_params = Thunk::PrepareParams{};
   ResourceRequests resource_requests;
   Thunk::InitializeParams initialize_params = Thunk::InitializeParams{};
+  BufferAllocations buffer_allocations({}, 0, &allocator);
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
-      ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
-      stream.get(), stream.get(), nullptr, nullptr);
+      ServiceExecutableRunOptions(), buffer_allocations, stream.get(),
+      stream.get(), nullptr, nullptr);
 
   // Optional handlers are null and shouldn't be invoked.
   TF_ASSERT_OK_AND_ASSIGN(

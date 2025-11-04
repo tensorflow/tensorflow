@@ -407,7 +407,7 @@ CustomCallThunk::BuildCallFrame(
 CallOptions CustomCallThunk::BuildCallOptions(
     RunId run_id, se::Stream* absl_nullable stream,
     const BufferAllocations* absl_nullable buffer_allocations,
-    const ffi::ExecutionContext* absl_nonnull execution_context) {
+    const ffi::ExecutionContext* absl_nullable execution_context) {
   int32_t device_ordinal = -1;
   se::DeviceMemoryAllocator* allocator = nullptr;
   if (buffer_allocations != nullptr) {
