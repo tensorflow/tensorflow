@@ -157,6 +157,13 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     TF_RETURN_IF_ERROR(thunks_->Initialize(params));
   }
 
+  // If there are no thunks, or command buffer does not require initialization,
+  // we can mark warm up as done immediately.
+  if ((!thunks_ || !commands_.requires_initialization()) &&
+      !cmd_buffer->warmup_done) {
+    cmd_buffer->warmup_done = true;
+  }
+
   // Construct ExecuteParams with empty fields for everything that is not needed
   // for recording commands.
   Thunk::ExecuteParams execute_params(
@@ -177,9 +184,9 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // If commands require initialization, we also record them into the command
   // buffer before execution. This is required to guarantee that collective
   // commands recorded on all participating ranks to avoid deadlocks.
-  if (cmd_buffer->command_buffer->state() ==
-          se::CommandBuffer::State::kCreate ||
-      commands_.requires_initialization()) {
+  if (cmd_buffer->warmup_done && (cmd_buffer->command_buffer->state() ==
+                                      se::CommandBuffer::State::kCreate ||
+                                  commands_.requires_initialization())) {
     VLOG(3) << "Initialize command buffer on device #"
             << params.executor->device_ordinal()
             << " by recoding command buffer cmd sequence"
@@ -237,6 +244,14 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
                       GetOrCreateCommandBuffer(executor));
 
   absl::MutexLock lock(cmd_buffer->mutex);
+
+  // warm up iteration, run through thunks if they are present.
+  if (!cmd_buffer->warmup_done && thunks_) {
+    VLOG(2) << "Executing warm up iteration of command buffer thunk";
+    TF_RETURN_IF_ERROR(thunks_->ExecuteOnStream(params));
+    cmd_buffer->warmup_done = true;
+    return absl::OkStatus();
+  }
 
   // Update buffer allocations and collect all allocations that changed since
   // the last command buffer execution.

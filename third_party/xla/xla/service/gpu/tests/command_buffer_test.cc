@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -21,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
@@ -31,6 +34,7 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
@@ -69,6 +73,111 @@ class CommandBufferTest
     DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_command_buffer_scheduling_mode(GetParam());
     return debug_options;
+  }
+
+  // Execute compiled module three times to exercise warm-up, create, and
+  // update paths. Third run uses cloned arguments to encourage device buffer
+  // address changes.
+  void ExecuteThreePhasesAndExpect(std::unique_ptr<HloModule> module,
+                                   absl::Span<const Literal* const> arguments,
+                                   const Literal& expected,
+                                   bool run_hlo_passes) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<OpaqueExecutable> executable,
+        CreateExecutable(std::move(module), run_hlo_passes));
+
+    // 1) Warm-up (may run thunks)
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal result1,
+        test_runner().ExecuteWithExecutable(executable.get(), arguments));
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result1));
+
+    // 2) Create (record and execute command buffer)
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal result2,
+        test_runner().ExecuteWithExecutable(executable.get(), arguments));
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result2));
+
+    // 3) Update (execute with cloned arguments to attempt buffer changes)
+    std::vector<Literal> cloned_args_storage;
+    cloned_args_storage.reserve(arguments.size());
+    std::vector<const Literal*> cloned_args;
+    cloned_args.reserve(arguments.size());
+    for (const Literal* arg : arguments) {
+      cloned_args_storage.push_back(arg->Clone());
+      cloned_args.push_back(&cloned_args_storage.back());
+    }
+
+    TF_ASSERT_OK_AND_ASSIGN(Literal result3,
+                            test_runner().ExecuteWithExecutable(
+                                executable.get(), absl::MakeSpan(cloned_args)));
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result3));
+  }
+
+  // Same as above, but generates fake inputs and compares results to a
+  // reference execution. Useful for tests originally using RunAndCompare.
+  ::testing::AssertionResult RunAndCompareThreeIterations(
+      std::unique_ptr<HloModule> module, bool run_hlo_passes,
+      const std::optional<ErrorSpec>& error) {
+    // Verify module then clone for reference.
+    TF_CHECK_OK(this->verifier().Run(module.get()).status());
+    std::unique_ptr<HloModule> reference_module = module->Clone();
+
+    // Prepare fake args for both runners.
+    absl::StatusOr<std::vector<Literal>> fake_args_or =
+        MakeFakeArguments(module.get());
+    if (!fake_args_or.ok()) {
+      return ::testing::AssertionFailure() << fake_args_or.status().message();
+    }
+    std::vector<Literal> fake_args = std::move(*fake_args_or);
+    std::vector<const Literal*> arg_ptrs = LiteralUtil::MakePointers(fake_args);
+
+    // Reference once.
+    absl::StatusOr<Literal> reference = reference_runner().Execute(
+        std::move(reference_module), absl::MakeSpan(arg_ptrs), run_hlo_passes);
+    if (!reference.ok()) {
+      return ::testing::AssertionFailure() << reference.status();
+    }
+
+    // Compile once on test backend and run three iterations.
+    absl::StatusOr<std::unique_ptr<OpaqueExecutable>> exec_or =
+        CreateExecutable(std::move(module), run_hlo_passes);
+    if (!exec_or.ok()) {
+      return ::testing::AssertionFailure() << exec_or.status();
+    }
+    std::unique_ptr<OpaqueExecutable> exec = std::move(*exec_or);
+
+    // 1) Warm-up
+    absl::StatusOr<Literal> r1 = test_runner().ExecuteWithExecutable(
+        exec.get(), absl::MakeSpan(arg_ptrs));
+    if (!r1.ok()) return ::testing::AssertionFailure() << r1.status();
+    if (!LiteralTestUtil::NearOrEqual(*reference, *r1, error))
+      return ::testing::AssertionFailure() << "Mismatch on warm-up run";
+
+    // 2) Create
+    absl::StatusOr<Literal> r2 = test_runner().ExecuteWithExecutable(
+        exec.get(), absl::MakeSpan(arg_ptrs));
+    if (!r2.ok()) return ::testing::AssertionFailure() << r2.status();
+    if (!LiteralTestUtil::NearOrEqual(*reference, *r2, error))
+      return ::testing::AssertionFailure() << "Mismatch on create run";
+
+    // 3) Update with cloned args
+    std::vector<Literal> cloned_args_storage;
+    cloned_args_storage.reserve(arg_ptrs.size());
+    std::vector<const Literal*> cloned_arg_ptrs;
+    cloned_arg_ptrs.reserve(arg_ptrs.size());
+    for (const Literal* a : arg_ptrs) {
+      cloned_args_storage.push_back(a->Clone());
+      cloned_arg_ptrs.push_back(&cloned_args_storage.back());
+    }
+
+    absl::StatusOr<Literal> r3 = test_runner().ExecuteWithExecutable(
+        exec.get(), absl::MakeSpan(cloned_arg_ptrs));
+    if (!r3.ok()) return ::testing::AssertionFailure() << r3.status();
+    if (!LiteralTestUtil::NearOrEqual(*reference, *r3, error))
+      return ::testing::AssertionFailure() << "Mismatch on update run";
+
+    return ::testing::AssertionSuccess();
   }
 };
 
@@ -119,10 +228,8 @@ TEST_P(CommandBufferTest, Fusions) {
   Literal argument = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   Literal expected = LiteralUtil::CreateR2<float>({{3.0, 8.0}, {15.0, 24.0}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal result,
-      Execute(std::move(module), {&argument}, /*run_hlo_passes=*/false));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  ExecuteThreePhasesAndExpect(std::move(module), {&argument}, expected,
+                              /*run_hlo_passes=*/false);
 }
 
 TEST_P(CommandBufferTest, TrueFalseConditional) {
@@ -170,9 +277,8 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
 
     Literal pred = LiteralUtil::CreateR0<bool>(true);
     Literal expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&pred, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&pred, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 
   {  // Execute `false` branch.
@@ -180,9 +286,8 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
 
     Literal pred = LiteralUtil::CreateR0<bool>(false);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&pred, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&pred, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 }
 
@@ -230,9 +335,8 @@ TEST_P(CommandBufferTest, IndexConditional) {
 
     Literal index = LiteralUtil::CreateR0<int32_t>(0);
     Literal expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&index, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&index, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 
   {  // Execute `1` branch.
@@ -240,9 +344,8 @@ TEST_P(CommandBufferTest, IndexConditional) {
 
     Literal index = LiteralUtil::CreateR0<int32_t>(1);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&index, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&index, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 
   {  // Execute `1024` branch (our of bound index executes N-1 branch).
@@ -250,9 +353,8 @@ TEST_P(CommandBufferTest, IndexConditional) {
 
     Literal index = LiteralUtil::CreateR0<int32_t>(1024);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&index, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&index, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 }
 
@@ -313,10 +415,8 @@ TEST_P(CommandBufferTest, WhileLoop) {
   Literal expected_value = LiteralUtil::CreateR0<float>(20.0);
   Literal expected = LiteralUtil::MakeTuple({&expected_cnt, &expected_value});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal result,
-      Execute(std::move(module), {&argument}, /*run_hlo_passes=*/false));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  ExecuteThreePhasesAndExpect(std::move(module), {&argument}, expected,
+                              /*run_hlo_passes=*/false);
 }
 
 TEST_P(CommandBufferTest, ControlDependencyTest) {
@@ -574,8 +674,8 @@ TEST_P(CommandBufferTest, DynamicSliceCopyFusionCmd) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_text, config));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-3, 2e-3}));
+  EXPECT_TRUE(RunAndCompareThreeIterations(
+      std::move(module), /*run_hlo_passes=*/false, ErrorSpec{1e-3, 2e-3}));
 
   if (!IsAtLeastCuda12900(GpuExecutor())) {
     GTEST_SKIP() << "While loop unrolling is not supported for CUDA < 12.9";
@@ -596,8 +696,9 @@ TEST_P(CommandBufferTest, DynamicSliceCopyFusionCmd) {
   TF_ASSERT_OK_AND_ASSIGN(auto unrolled_module,
                           ParseAndReturnVerifiedModule(hlo_text, config));
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(unrolled_module),
-                                       ErrorSpec{1e-3, 2e-3}));
+  EXPECT_TRUE(RunAndCompareThreeIterations(std::move(unrolled_module),
+                                           /*run_hlo_passes=*/false,
+                                           ErrorSpec{1e-3, 2e-3}));
 }
 
 TEST_P(CommandBufferUnrollTest, WhileLoop) {
@@ -663,10 +764,8 @@ TEST_P(CommandBufferUnrollTest, WhileLoop) {
   Literal expected_value = LiteralUtil::CreateR0<float>(20.0);
   Literal expected = LiteralUtil::MakeTuple({&expected_cnt, &expected_value});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal result,
-      Execute(std::move(module), {&argument}, /*run_hlo_passes=*/false));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  ExecuteThreePhasesAndExpect(std::move(module), {&argument}, expected,
+                              /*run_hlo_passes=*/false);
 }
 
 TEST_P(CommandBufferUnrollTest, WhileLoopMultiDevice) {
