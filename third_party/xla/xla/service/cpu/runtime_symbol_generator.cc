@@ -37,8 +37,8 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Support/Error.h"
+#include "xla/backends/cpu/codegen/builtin_pow.h"
 #include "xla/service/cpu/runtime_fp16.h"
-#include "xla/service/cpu/runtime_pow.h"
 
 namespace xla::cpu {
 

@@ -24,6 +24,14 @@ package_group(
 )
 
 cc_library(
+    name = "builtin_pow",
+    srcs = ["builtin_pow.cc"],
+    hdrs = ["builtin_pow.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = ["@com_google_absl//absl/base:core_headers"],
+)
+
+cc_library(
     name = "contiguous_section_memory_manager",
     srcs = ["contiguous_section_memory_manager.cc"],
     hdrs = ["contiguous_section_memory_manager.h"],

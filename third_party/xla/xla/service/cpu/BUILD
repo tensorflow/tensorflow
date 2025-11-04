@@ -572,7 +572,7 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         ":runtime_fp16",
-        ":runtime_pow",
+        "//xla/backends/cpu/codegen:builtin_pow",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
