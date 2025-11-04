@@ -511,9 +511,9 @@ xla_cc_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ir_headers",
@@ -996,6 +996,7 @@ xla_test(
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",

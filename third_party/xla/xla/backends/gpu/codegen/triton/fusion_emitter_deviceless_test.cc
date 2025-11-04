@@ -19,6 +19,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "mlir/IR/MLIRContext.h"
@@ -34,14 +35,12 @@ limitations under the License.
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {
 
-using ::tsl::testing::IsOkAndHolds;
 using ::xla::gpu::ir_emitter_triton_internal::DumpTritonIR;
 
 using TritonEmitterDevicelessTest = HloHardwareIndependentTestBase;
@@ -72,10 +71,25 @@ TEST_F(AnnotationsTest, Annotations) {
   static constexpr absl::string_view kHloText = R"(
 HloModule Annotations
 
+triton_dot_lhs {
+  p0 = f32[8,8] parameter(0)
+  ROOT copy = f32[8,8] copy(p0)
+}
+triton_dot_rhs {
+  p1 = f32[8,8] parameter(0)
+  ROOT copy = f32[8,8] copy(p1)
+}
+
 triton_dot {
   p0 = f32[8,8] parameter(0)
   p1 = f32[8,8] parameter(1)
-  ROOT dot = f32[8,8] dot(p0, p1),
+  a = f32[8,8] fusion(p0), kind=kCustom, calls=triton_dot_lhs,
+    backend_config={"fusion_backend_config": {kind: "__triton_nested_gemm_fusion",
+    block_level_fusion_config: {output_tiles:[{sizes:["8","8"]}]}}}
+  b = f32[8,8] fusion(p1), kind=kCustom, calls=triton_dot_rhs,
+    backend_config={"fusion_backend_config": {kind: "__triton_nested_gemm_fusion",
+    block_level_fusion_config: {output_tiles:[{sizes:["8","8"]}]}}}
+  ROOT dot = f32[8,8] dot(a, b),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
     algorithm=dot_bf16_bf16_f32_x3
 }
@@ -84,13 +98,10 @@ ENTRY e {
   p0 = f32[8,8]{1, 0} parameter(0)
   p1 = f32[8,8]{1, 0} parameter(1)
   ROOT _ = f32[8,8] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-      triton_gemm_config:
+    backend_config={"fusion_backend_config": {kind: "__triton_nested_gemm_fusion",
+      block_level_fusion_config:
       {
-        "block_m":32,
-        "block_n":32,
-        "block_k":32,
-        "split_k":1,
+        "output_tiles":[{"sizes":["8","8"]}],
         "num_stages":1,
         "num_warps":1,
         "num_ctas":1
@@ -109,7 +120,11 @@ ENTRY e {
       auto triton_module,
       CreateTritonModule("triton_fn", fusion,
                          TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                         BlockLevelParameters(), symbolic_expr_context));
+                         BlockLevelParameters::FromBlockLevelFusionConfig(
+                             fusion->backend_config<GpuBackendConfig>()
+                                 ->fusion_backend_config()
+                                 .block_level_fusion_config()),
+                         symbolic_expr_context));
 
   std::string annotated_ir = DumpTritonIR(triton_module.get(), true);
 

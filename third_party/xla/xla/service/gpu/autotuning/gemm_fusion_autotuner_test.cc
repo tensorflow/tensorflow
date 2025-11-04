@@ -628,20 +628,32 @@ TEST_F(GemmFusionAutotunerTest, DoNotRunAutotuningKernelSpillingRegisters) {
   const std::string kHloText = R"(
 HloModule m
 
+lhs_computation {
+  %p0 = s8[12288,1536] parameter(0)
+  ROOT %convert = f16[12288,1536] convert(%p0)
+}
+
+rhs_computation {
+  %p1 = s8[4,12288] parameter(0)
+  ROOT %convert = f16[4,12288] convert(%p1)
+}
+
 %triton_gemm_dot {
-  %p1 = s8[4,12288]{1,0} parameter(1)
-  %p0 = s8[12288,1536]{1,0} parameter(0)
-  %convert.p0 = f16[12288,1536]{1,0} convert(s8[12288,1536]{1,0} %p0)
-  %convert.p1 = f16[4,12288]{1,0} convert(s8[4,12288]{1,0} %p1)
-  %dot = f16[4,1536]{1,0} dot(f16[4,12288]{1,0} %convert.p1, f16[12288,1536]{1,0} %convert.p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT %convert = s8[4,1536]{1,0} convert(f16[4,1536]{1,0} %dot)
+  %p0 = s8[12288,1536] parameter(0)
+  %p1 = s8[4,12288] parameter(1)
+  %lhs = f16[12288,1536] fusion(%p0), kind=kCustom, calls=lhs_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["256","16"]}]}}}
+  %rhs = f16[4,12288] fusion(%p1), kind=kCustom, calls=rhs_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","256"]}]}}}
+  %dot = f16[4,1536] dot(%rhs, %lhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT %convert = s8[4,1536] convert(%dot)
 }
 
 ENTRY %e {
-  %get-tuple-element.7020 = s8[12288,1536]{1,0} parameter(0)
-  %convert = s8[4,12288]{1,0} parameter(1)
-  ROOT %triton = s8[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %get-tuple-element.7020, s8[4,12288]{1,0} %convert), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}}}
+  %p0 = s8[12288,1536] parameter(0)
+  %convert = s8[4,12288] parameter(1)
+  ROOT %triton = s8[4,1536] fusion(%p0, %convert), kind=kCustom, calls=%triton_gemm_dot,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"output_tiles":[{"sizes":["256","256"]}],"num_stages":"1","num_warps":"16","num_ctas":"1"}}}
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -674,20 +686,32 @@ TEST_F(GemmFusionAutotunerTest,
   const std::string kHloText = R"(
 HloModule m
 
+rhs_computation {
+  %p0 = s8[12288,1536] parameter(0)
+  ROOT %convert = f16[12288,1536] convert(%p0)
+}
+
+lhs_computation {
+  %p1 = s8[4,12288] parameter(0)
+  ROOT %convert = f16[4,12288] convert(%p1)
+}
+
 %triton_gemm_dot {
-  %p1 = s8[4,12288]{1,0} parameter(1)
-  %p0 = s8[12288,1536]{1,0} parameter(0)
-  %convert.p0 = f16[12288,1536]{1,0} convert(s8[12288,1536]{1,0} %p0)
-  %convert.p1 = f16[4,12288]{1,0} convert(s8[4,12288]{1,0} %p1)
-  %dot = f16[4,1536]{1,0} dot(f16[4,12288]{1,0} %convert.p1, f16[12288,1536]{1,0} %convert.p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT %convert = s8[4,1536]{1,0} convert(f16[4,1536]{1,0} %dot)
+  %p0 = s8[12288,1536] parameter(0)
+  %p1 = s8[4,12288] parameter(1)
+  %rhs = f16[12288,1536] fusion(%p0), kind=kCustom, calls=rhs_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["256","16"]}]}}}
+  %lhs = f16[4,12288] fusion(%p1), kind=kCustom, calls=lhs_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","256"]}]}}}
+  %dot = f16[4,1536] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT %convert = s8[4,1536] convert(%dot)
 }
 
 ENTRY %e {
-  %get-tuple-element.7020 = s8[12288,1536]{1,0} parameter(0)
-  %convert = s8[4,12288]{1,0} parameter(1)
-  ROOT %triton = s8[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %get-tuple-element.7020, s8[4,12288]{1,0} %convert), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}}}
+  %p0 = s8[12288,1536] parameter(0)
+  %p1 = s8[4,12288] parameter(1)
+  ROOT %triton = s8[4,1536] fusion(%p0, %p1), kind=kCustom, calls=%triton_gemm_dot,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"output_tiles":[{"sizes":["256","256"]}],"num_stages":"1","num_warps":"16","num_ctas":"1"}}}
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -714,18 +738,30 @@ TEST_F(GemmFusionAutotunerTest, RunAutotuningKernelNotSpillingRegisters) {
   const std::string kHloText = R"(
 HloModule m
 
+rhs_computation {
+  %p0 = s8[12288,1536] parameter(0)
+  ROOT %convert = f16[12288,1536] convert(%p0)
+}
+
+lhs_computation {
+  ROOT %p1 = f16[4,12288] parameter(0)
+}
+
 %triton_gemm_dot {
-  %p1 = f16[4,12288]{1,0} parameter(1)
-  %p0 = s8[12288,1536]{1,0} parameter(0)
-  %convert.10406 = f16[12288,1536]{1,0} convert(s8[12288,1536]{1,0} %p0)
-  ROOT %dot = f16[4,1536]{1,0} dot(f16[4,12288]{1,0} %p1, f16[12288,1536]{1,0} %convert.10406), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %p0 = s8[12288,1536] parameter(0)
+  %p1 = f16[4,12288] parameter(1)
+  %rhs = f16[12288,1536] fusion(%p0), kind=kCustom, calls=rhs_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","16"]}]}}}
+  %lhs = f16[4,12288] fusion(%p1), kind=kCustom, calls=lhs_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","32"]}]}}}
+  ROOT %dot = f16[4,1536] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 ENTRY %e {
-  %p0 = s8[12288,1536]{1,0} parameter(0)
-  %p1 = f16[4,12288]{1,0} parameter(1)
-  ROOT %triton_dot = f16[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %p0, f16[4,12288]{1,0} %p1), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"16","block_n":"32","block_k":"16","split_k":"1","num_stages":"1","num_warps":"2","num_ctas":"1"}}}
+  %p0 = s8[12288,1536] parameter(0)
+  %p1 = f16[4,12288] parameter(1)
+  ROOT %triton_dot = f16[4,1536] fusion(%p0, %p1), kind=kCustom, calls=%triton_gemm_dot,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"output_tiles":[{"sizes":["16","32"]}],"num_stages":"1","num_warps":"2","num_ctas":"1"}}}
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -917,46 +953,6 @@ ENTRY e {
 // TODO(b/281489442): Write a testcase called
 // `SkipConfigsProducingDeviantResults` or similar.
 
-// TODO(b/393299275): remove when the legacy GEMM emitter is removed.
-class GemmFusionAutotunerLevelLegacyEmitterTest
-    : public StatelessAutotunerTest,
-      public ::testing::WithParamInterface<int> {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        StatelessAutotunerTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_autotune_level(GetParam());
-    debug_options.set_xla_gpu_cublas_fallback(false);
-    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
-    return debug_options;
-  }
-};
-
-TEST_P(GemmFusionAutotunerLevelLegacyEmitterTest,
-       AllAutotuningLevelsWorkCorrectly) {
-  const std::string kHloText = R"(
-HloModule m
-
-ENTRY e {
-  p0 = pred[64,10] parameter(0)
-  p0c = f32[64,10] convert(p0)
-  p1 = f32[10,128] parameter(1)
-  ROOT r = f32[64,128] dot(p0c, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: kind=kCustom
-; CHECK-SAME: __triton_gemm
-      )");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
-
-INSTANTIATE_TEST_SUITE_P(GemmFusionAutotunerLevelSweep,
-                         GemmFusionAutotunerLevelLegacyEmitterTest,
-                         ::testing::Range(0, 5));
-
 class GemmFusionAutotunerLevelTest : public StatelessAutotunerTest,
                                      public ::testing::WithParamInterface<int> {
  public:
@@ -965,10 +961,6 @@ class GemmFusionAutotunerLevelTest : public StatelessAutotunerTest,
         StatelessAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(GetParam());
     debug_options.set_xla_gpu_cublas_fallback(false);
-    // TODO(b/393299275): remove when the flag is enabled by default.
-    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
     return debug_options;
   }
 };
