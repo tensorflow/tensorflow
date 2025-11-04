@@ -87,7 +87,11 @@ def EntryFuncOp : XTile_Op<"entry_func", [
                        TypeAttrOf<FunctionType>:$function_type,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
                        OptionalAttr<XTile_TilingInfoAttr>:$tile_info,
-                       OptionalAttr<DictArrayAttr>:$res_attrs
+                       OptionalAttr<DictArrayAttr>:$res_attrs,
+                       // The number of arguments that are opaque to tiling
+                       // infrastructure and hence do not correspond to a memref
+                       // argument.
+                       DefaultValuedAttr<I32Attr, "0">:$num_opaque_args
   );
 
   // The entry function has no return values.
@@ -106,7 +110,13 @@ def EntryFuncOp : XTile_Op<"entry_func", [
     // Helper Methods
     //===------------------------------------------------------------------===//
     mlir::ValueRange getBufferArgs() {
-      return getBody().getArguments().drop_back();
+      // +1 for the tile id argument.
+      return getBody().getArguments().drop_back(getNumOpaqueArgs() + 1);
+    }
+
+    mlir::ValueRange getOpaqueArgs() {
+      return getBody().getArguments().take_back(getNumOpaqueArgs() + 1)
+          .drop_back();
     }
 
     mlir::Value getTileId() {

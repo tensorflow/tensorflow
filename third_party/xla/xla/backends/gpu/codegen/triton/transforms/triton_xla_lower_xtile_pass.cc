@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -63,14 +62,18 @@ namespace ma = ::mlir::arith;
 
 // Get the new arg types of the lowered function by translating memrefs to the
 // corresponding pointer types.
-llvm::SmallVector<mlir::Type> GetPtrArgTypes(mlir::ValueRange args) {
+llvm::SmallVector<mlir::Type> GetTransformedArgTypes(
+    ::xla::xtile::EntryFuncOp& entry_op) {
   llvm::SmallVector<mlir::Type> arg_types;
-  arg_types.reserve(args.size());
-  for (auto arg : args) {
+  // Tile id is not carried over hence -1.
+  arg_types.reserve(entry_op.getNumArguments() - 1U);
+  for (const auto& arg : entry_op.getBufferArgs()) {
     mlir::MemRefType memref_type = mlir::cast<mlir::MemRefType>(arg.getType());
     arg_types.push_back(
         ::xla::gpu::triton::GetGlobalPointerType(memref_type.getElementType()));
   }
+  mlir::TypeRange opaque_args(entry_op.getOpaqueArgs());
+  arg_types.append(opaque_args.begin(), opaque_args.end());
   return arg_types;
 }
 
@@ -145,7 +148,8 @@ class XTileEntryToTriton
     mlir::ImplicitLocOpBuilder builder(module->getLoc(), module);
     builder.setInsertionPointToStart(module.getBody());
 
-    auto new_arg_types = GetPtrArgTypes(entry_op.getBufferArgs());
+    const int64_t num_buffer_args = entry_op.getBufferArgs().size();
+    auto new_arg_types = GetTransformedArgTypes(entry_op);
     auto new_func_op = builder.create<mlir::func::FuncOp>(
         entry_op.getName(), builder.getFunctionType(new_arg_types, {}));
 
@@ -168,8 +172,10 @@ class XTileEntryToTriton
         builder.create<ma::IndexCastOp>(builder.getIndexType(), pid);
     rewriter.replaceAllUsesWith(tile_id_arg, pid_idx);
 
-    // Handle memeref arguments.
-    for (auto [old_arg, new_arg] : llvm::zip(old_args, new_args)) {
+    // Handle memref arguments.
+    for (auto [old_arg, new_arg] :
+         llvm::zip(old_args,
+                   mlir::ValueRange(new_args).take_front(num_buffer_args))) {
       mlir::MemRefType memref_type =
           mlir::cast<mlir::MemRefType>(old_arg.getType());
 
@@ -178,6 +184,13 @@ class XTileEntryToTriton
 
       // Replace all uses of the old argument with the result of the cast.
       rewriter.replaceAllUsesWith(old_arg, memref_cast);
+    }
+    // For opaque arguments, we can simply replace all uses with the new
+    // argument.
+    for (auto [old_arg, new_arg] :
+         llvm::zip(mlir::ValueRange(old_args).drop_front(num_buffer_args),
+                   mlir::ValueRange(new_args).drop_front(num_buffer_args))) {
+      rewriter.replaceAllUsesWith(old_arg, new_arg);
     }
 
     entry_block.eraseArguments(0, old_args.size());

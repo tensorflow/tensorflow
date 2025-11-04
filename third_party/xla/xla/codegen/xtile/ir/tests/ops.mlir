@@ -30,6 +30,23 @@ xtile.entry_func @too_many_tile_ids(%input: memref<1024xf32>, %id0: index, %id1:
 
 // -----
 
+xtile.entry_func @correct_opaque_args(
+  %input: memref<1024xf32>, %opaque0: index, %opaque1: index, %id1: index)
+  attributes {num_opaque_args = 2 : i32}  {
+  xtile.return
+}
+
+// -----
+
+// expected-error@+1 {{entry function arguments should be of the form (arg: memref..., tile_id: index)}}
+xtile.entry_func @wrong_opaque_args(
+  %input: memref<1024xf32>, %opaque0: index, %opaque1: index, %id1: index)
+  attributes {num_opaque_args = 1 : i32}  {
+  xtile.return
+}
+
+// -----
+
 func.func @incorrect_full_shape_extract(%arg: memref<1024xf32>) -> tensor<10xf32> {
   %offset = arith.constant 0 : index
   // expected-error@+1 {{full tile shape size: 2 does not match rank of buffer: 1}}

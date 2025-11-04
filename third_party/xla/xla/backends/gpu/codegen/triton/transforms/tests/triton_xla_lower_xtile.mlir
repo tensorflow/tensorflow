@@ -53,6 +53,23 @@ xtile.entry_func @scalar_insert_extract(%input: !memref_type,
 
 // -----
 
+!memref_type = memref<32xf64, #nvvm.memory_space<global>>
+// CHECK:func.func @insert_extract_with_opaque_arg(
+// CHECK-SAME: %[[ARG0:.*]]: !tt.ptr<f64>, %[[ARG1:.*]]: !tt.ptr<f64>, %[[ARG2:.*]]: i32) {
+xtile.entry_func @insert_extract_with_opaque_arg(%input: !memref_type,
+                                                 %output: !memref_type,
+                                                 %opaque_arg: i32,
+                                                 %tile_id: index) attributes {
+                                                   num_opaque_args = 1: i32} {
+  // CHECK: %[[SCALAR_VALUE:.*]] = tt.load %[[ARG0]] : !tt.ptr<f64>
+  %tile = xtile.extract %input[%tile_id][1][1] : !memref_type -> tensor<f64>
+  // CHECK: tt.store %[[ARG1]], %[[SCALAR_VALUE]] : !tt.ptr<f64>
+  xtile.insert %tile into %output[%tile_id][1][1] : tensor<f64> -> !memref_type
+  xtile.return
+}
+
+// -----
+
 // CHECK-LABEL: func.func @fold_transpose_into_ptr
 // CHECK-SAME: (%[[ARG0:.*]]: memref<32x16xf64, #triton_xla.layout<[0, 1]>>)
 func.func @fold_transpose_into_ptr(

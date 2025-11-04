@@ -162,7 +162,9 @@ mlir::LogicalResult EntryFuncOp::verify() {
       "entry function arguments should be of the form (arg: memref..., "
       "tile_id: index)";
 
-  for (mlir::Type arg_types : getArgumentTypes().drop_back()) {
+  // + 1 for the tile id.
+  const int64_t num_opaque_args = getNumOpaqueArgs() + 1;
+  for (mlir::Type arg_types : getArgumentTypes().drop_back(num_opaque_args)) {
     if (!mlir::isa<mlir::MemRefType>(arg_types)) {
       return emitOpError() << argument_error;
     }
