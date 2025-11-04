@@ -2819,6 +2819,7 @@ cc_library(
         ":call_inliner",
         ":hlo_creation_utils",
         ":pattern_matcher",
+        ":while_util",
         "//xla:comparison_util",
         "//xla:literal_util",
         "//xla:shape_util",

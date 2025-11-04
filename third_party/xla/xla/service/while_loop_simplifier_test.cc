@@ -1581,5 +1581,72 @@ TEST_F(WhileLoopSimplifierTest, FlattenNestedTupleWithOriginalValue) {
             R"(({"a"}, {"b"}, {"c"}, {"d"}))");
 }
 
+const char* const kSimpleMergeInductionVariablesModuleWithOriginalValue = R"(
+  HloModule Test
+  Body {
+    param = (TYPE[], TYPE[], TYPE[]) parameter(0)
+
+    a = TYPE[] get-tuple-element(param), index=0
+    one = TYPE[] constant(1)
+    a1 = TYPE[] add(a, one), origin={{"induction_var_0"}}
+
+    b = TYPE[] get-tuple-element(param), index=1
+    negone = TYPE[] constant(-1)
+    b1 = TYPE[] add(b, negone), origin={{"induction_var_1"}}
+
+    c = TYPE[] add(a, b)
+
+    ROOT tuple = (TYPE[], TYPE[], TYPE[]) tuple(a1,b1,c)
+  }
+  Cond {
+    param = (TYPE[], TYPE[], TYPE[]) parameter(0)
+    a = TYPE[] get-tuple-element(param), index=0
+    b = TYPE[] get-tuple-element(param), index=1
+    sum = TYPE[] power(a, b)
+    ten = TYPE[] constant(10)
+    ROOT cond = pred[] compare(sum, ten), direction=LT
+  }
+  ENTRY Loop {
+    a = TYPE[] constant(10)
+    b = TYPE[] constant(100)
+    c = TYPE[] constant(0)
+    init = (TYPE[], TYPE[], TYPE[]) tuple(a,b,c), origin={({"a"}, {"b"}, {"c"})}
+    while = (TYPE[], TYPE[], TYPE[]) while(init), condition=Cond, body=Body, origin={({"while" {0}}, {"while" {1}}, {"while" {2}})}
+
+    a1 = TYPE[] get-tuple-element(while), index=0
+    b1 = TYPE[] get-tuple-element(while), index=1
+    c1 = TYPE[] get-tuple-element(while), index=2
+    sum = TYPE[] add(a1, b1)
+    ROOT sum.1 = TYPE[] add(sum, c1)
+  })";
+
+TEST_F(WhileLoopSimplifierTest, MergeInductionVariablesWithOriginalValue) {
+  std::string hlo_string = absl::StrReplaceAll(
+      kSimpleMergeInductionVariablesModuleWithOriginalValue, {{"TYPE", "s32"}});
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          WhileLoopSimplifier().Run(module.get()));
+  EXPECT_TRUE(changed);
+  HloInstruction* while_instr = FindFirstWhile(module.get());
+  ASSERT_NE(while_instr->original_value(), nullptr);
+  EXPECT_EQ(while_instr->original_value()->ToString(),
+            R"(({"while" {0}}, {"while" {1}}, {"while" {2}}, {}))");
+  HloInstruction* while_init = while_instr->while_init();
+  ASSERT_NE(while_init->original_value(), nullptr);
+  EXPECT_EQ(while_init->original_value()->ToString(),
+            R"(({"a"}, {"b"}, {"c"}, {}))");
+  const HloInstruction* add =
+      module->entry_computation()->root_instruction()->operand(0);
+  const HloInstruction* induction_var_0 = add->operand(0);
+  ASSERT_NE(induction_var_0->original_value(), nullptr);
+  EXPECT_EQ(induction_var_0->original_value()->ToString(),
+            R"({"induction_var_0"})");
+  const HloInstruction* induction_var_1 = add->operand(1);
+  ASSERT_NE(induction_var_1->original_value(), nullptr);
+  EXPECT_EQ(induction_var_1->original_value()->ToString(),
+            R"({"induction_var_1"})");
+}
+
 }  // namespace
 }  // namespace xla

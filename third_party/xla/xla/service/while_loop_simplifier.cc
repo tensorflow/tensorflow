@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/while_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -1454,6 +1455,8 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
           add_binary_op(elem_shape, HloOpcode::kMultiply,
                         add_gte(instr, *trip_counter),
                         add_new_instr(induction_vars.at(i)->Clone()))));
+      // Copy the original value of the induction variable to its replacement.
+      tuple_elems.back()->CopyOriginalValue(while_body_root->operand(i));
     }
     return HloInstruction::CreateTuple(tuple_elems);
   };
@@ -1547,6 +1550,15 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
       module->AddEmbeddedComputation(std::move(new_while_body)),
       get_new_while_init(while_init)));
   new_while->CopyBackendConfigFrom(while_op);
+  if (auto original_value = while_init->original_value()) {
+    new_while->while_init()->set_original_value(original_value);
+  }
+  if (auto original_value = while_op->original_value()) {
+    new_while->set_original_value(original_value);
+  }
+  if (added_trip_counter) {
+    AppendToWhileLoopOriginalValue(new_while, {});
+  }
   CopyFrontendAttributes(while_op, new_while);
   CopyMetadata(while_op, new_while);
   TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
