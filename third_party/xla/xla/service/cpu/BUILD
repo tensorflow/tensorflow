@@ -571,7 +571,7 @@ cc_library(
     hdrs = ["runtime_symbol_generator.h"],
     copts = tsl_copts(),
     deps = [
-        ":runtime_fp16",
+        "//xla/backends/cpu/codegen:builtin_fp16",
         "//xla/backends/cpu/codegen:builtin_pow",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
