@@ -40,6 +40,7 @@ struct SymbolicExprTest : public ::testing::Test {
   SymbolicExprContext ctx{&mlir_context};
   SymbolicExpr v0 = ctx.CreateVariable(0);
   SymbolicExpr v1 = ctx.CreateVariable(1);
+  SymbolicExpr v2 = ctx.CreateVariable(2);
   SymbolicExpr c2 = ctx.CreateConstant(2);
 };
 
@@ -258,8 +259,9 @@ TEST_F(SymbolicExprTest, Canonicalization_Basic) {
   EXPECT_EQ(distribute_mul_over_add.Canonicalize().ToString(),
             "((v0 * 3) + 6)");
 
-  SymbolicExpr term_sorting = (v1 * 3) + (v0 * 2);
-  EXPECT_EQ(term_sorting.Canonicalize().ToString(), "((v0 * 2) + (v1 * 3))");
+  SymbolicExpr variable_ordering = v2 * 3 + 5 + v1 + (v0 * 2);
+  EXPECT_EQ(variable_ordering.Canonicalize().ToString(),
+            "((((v0 * 2) + v1) + (v2 * 3)) + 5)");
 
   SymbolicExpr add_associativity_and_commutativity = v0 + v1 + v0 + v1;
   EXPECT_EQ(add_associativity_and_commutativity.Canonicalize().ToString(),

@@ -61,7 +61,7 @@ class SymbolicMapConverterTest : public ::testing::Test {
 
 TEST_F(SymbolicMapConverterTest, AffineToSymbolicRoundTrip) {
   AffineMap affine_map = ParseAffineMap(
-      "(d0, d1)[s0, s1] -> (d0 + s1 * 2, d1 - s0, d0 floordiv 3, d1 mod 4)",
+      "(d0, d1)[s0, s1] -> (d0 + d1 + s1 * 2, s0, d0 floordiv 3, d1 mod 4)",
       &mlir_context_);
 
   SymbolicMap symbolic_map =
