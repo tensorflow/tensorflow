@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/custom_call_target.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
@@ -71,8 +72,8 @@ using xla::ffi::CallOptions;
 // memory addresses. This is called once when creating the CustomCall thunk,
 // then the thunk will need to update the addresses at runtime.
 static absl::StatusOr<ffi::CallFrame> BuildCallFramePrototype(
-    absl::Span<const std::optional<ShapedSlice>> operands,
-    absl::Span<const std::optional<ShapedSlice>> results,
+    absl::Span<const NullableShapedSlice> operands,
+    absl::Span<const NullableShapedSlice> results,
     ffi::AttributesMap attributes) {
   CallFrameBuilder builder(
       /*num_args=*/operands.size(),
@@ -176,8 +177,8 @@ ResolveLegacyCustomCall(const CustomCallTargetRegistry& registry,
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     ThunkInfo thunk_info, std::string target_name, CustomCallTarget call_target,
-    std::vector<std::optional<ShapedSlice>> operands,
-    std::vector<std::optional<ShapedSlice>> results, std::string opaque) {
+    std::vector<NullableShapedSlice> operands,
+    std::vector<NullableShapedSlice> results, std::string opaque) {
   return absl::WrapUnique(new CustomCallThunk(
       thunk_info, std::move(target_name), std::move(operands),
       std::move(results), std::move(opaque), std::move(call_target),
@@ -186,8 +187,8 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     ThunkInfo thunk_info, std::string target_name,
-    std::vector<std::optional<ShapedSlice>> operands,
-    std::vector<std::optional<ShapedSlice>> results, std::string opaque,
+    std::vector<NullableShapedSlice> operands,
+    std::vector<NullableShapedSlice> results, std::string opaque,
     CustomCallApiVersion api_version, absl::string_view platform_name) {
   if (api_version == CustomCallApiVersion::API_VERSION_TYPED_FFI) {
     return absl::InvalidArgumentError(
@@ -207,10 +208,9 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     ThunkInfo thunk_info, std::string target_name,
-    std::vector<std::optional<ShapedSlice>> operands,
-    std::vector<std::optional<ShapedSlice>> results,
-    ffi::AttributesMap attributes, const HloComputation* called_computation,
-    absl::string_view platform_name) {
+    std::vector<NullableShapedSlice> operands,
+    std::vector<NullableShapedSlice> results, ffi::AttributesMap attributes,
+    const HloComputation* called_computation, absl::string_view platform_name) {
   TF_ASSIGN_OR_RETURN(ffi::HandlerRegistration registration,
                       ffi::FindHandler(target_name, platform_name));
 
@@ -221,10 +221,9 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     ThunkInfo thunk_info, std::string target_name,
-    XLA_FFI_Handler_Bundle bundle,
-    std::vector<std::optional<ShapedSlice>> operands,
-    std::vector<std::optional<ShapedSlice>> results,
-    ffi::AttributesMap attributes, const HloComputation* called_computation) {
+    XLA_FFI_Handler_Bundle bundle, std::vector<NullableShapedSlice> operands,
+    std::vector<NullableShapedSlice> results, ffi::AttributesMap attributes,
+    const HloComputation* called_computation) {
   auto execution_state = std::make_unique<ffi::ExecutionState>();
 
   // Initialize FFI handler state if it has an instantiate callback.
@@ -255,8 +254,8 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     ThunkInfo thunk_info, std::string target_name, OwnedHandlerBundle bundle,
-    std::vector<std::optional<ShapedSlice>> operands,
-    std::vector<std::optional<ShapedSlice>> results,
+    std::vector<NullableShapedSlice> operands,
+    std::vector<NullableShapedSlice> results,
     xla::ffi::AttributesMap attributes,
     const HloComputation* called_computation) {
   if (!bundle.execute) {
@@ -293,8 +292,8 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
 
 CustomCallThunk::CustomCallThunk(
     ThunkInfo thunk_info, std::string target_name,
-    std::vector<std::optional<ShapedSlice>> operands,
-    std::vector<std::optional<ShapedSlice>> results, std::string opaque,
+    std::vector<NullableShapedSlice> operands,
+    std::vector<NullableShapedSlice> results, std::string opaque,
     CustomCallTarget call_target,
     const std::optional<CustomCallApiVersion>& api_version)
     : Thunk(Thunk::kCustomCall, thunk_info),
@@ -308,8 +307,8 @@ CustomCallThunk::CustomCallThunk(
 CustomCallThunk::CustomCallThunk(
     ThunkInfo thunk_info, std::string target_name,
     std::variant<XLA_FFI_Handler_Bundle, OwnedHandlerBundle> bundle,
-    std::vector<std::optional<ShapedSlice>> operands,
-    std::vector<std::optional<ShapedSlice>> results, CallFrame call_frame,
+    std::vector<NullableShapedSlice> operands,
+    std::vector<NullableShapedSlice> results, CallFrame call_frame,
     ffi::AttributesMap attributes,
     std::unique_ptr<ffi::ExecutionState> execution_state,
     const HloComputation* called_computation)

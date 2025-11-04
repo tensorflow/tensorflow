@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
@@ -995,8 +996,8 @@ class CustomCallCmd : public CommandBufferCmd {
   // This is a legacy custom call API that is discouraged, and will be
   // deprecated once XLA:FFI mechanism is ready.
   CustomCallCmd(std::string target_name, CustomCallTarget call_target,
-                std::vector<std::optional<ShapedSlice>> operands,
-                std::vector<std::optional<ShapedSlice>> results,
+                std::vector<NullableShapedSlice> operands,
+                std::vector<NullableShapedSlice> results,
                 absl::string_view opaque)
       : CommandBufferCmd(CommandBufferCmdType::kCustomCallCmd),
         target_name_(std::move(target_name)),
@@ -1006,8 +1007,8 @@ class CustomCallCmd : public CommandBufferCmd {
         results_(std::move(results)) {}
 
   CustomCallCmd(std::string target_name, XLA_FFI_Handler* handler,
-                std::vector<std::optional<ShapedSlice>> operands,
-                std::vector<std::optional<ShapedSlice>> results,
+                std::vector<NullableShapedSlice> operands,
+                std::vector<NullableShapedSlice> results,
                 ffi::CallFrame call_frame,
                 const HloComputation* called_computation)
       : CommandBufferCmd(CommandBufferCmdType::kCustomCallCmd),
@@ -1059,8 +1060,8 @@ class CustomCallCmd : public CommandBufferCmd {
 
   const HloComputation* called_computation_;
 
-  std::vector<std::optional<ShapedSlice>> operands_;
-  std::vector<std::optional<ShapedSlice>> results_;
+  std::vector<NullableShapedSlice> operands_;
+  std::vector<NullableShapedSlice> results_;
 };
 
 //===----------------------------------------------------------------------===//

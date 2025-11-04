@@ -498,6 +498,7 @@ cc_library(
         "//xla/backends/gpu/runtime:select_k_thunk",
         "//xla/backends/gpu/runtime:send_thunk",
         "//xla/backends/gpu/runtime:sequential_thunk",
+        "//xla/backends/gpu/runtime:shaped_slice",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/backends/gpu/runtime:topk",
         "//xla/backends/gpu/runtime:triangular_solve_thunk",

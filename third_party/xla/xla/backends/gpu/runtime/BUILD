@@ -68,6 +68,7 @@ cc_library(
         ":custom_call_thunk",
         ":dynamic_slice_thunk",
         ":gpublas_lt_matmul_thunk",
+        ":shaped_slice",
         ":thunk",
         ":while_thunk",
         "//xla:debug_options_flags",
@@ -268,6 +269,7 @@ xla_test(
         ":dynamic_slice_thunk_proto_cc",
         ":gemm_thunk",
         ":sequential_thunk",
+        ":shaped_slice",
         ":thunk",
         ":thunk_proto_deserialization",
         "//xla:shape_util",
@@ -695,6 +697,7 @@ cc_library(
     hdrs = ["custom_call_thunk.h"],
     deps = [
         ":custom_call_target",
+        ":shaped_slice",
         ":thunk",
         "//xla:executable_run_options",
         "//xla:shape_util",
@@ -738,6 +741,7 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":custom_call_thunk",
+        ":shaped_slice",
         ":thunk",
         "//xla:executable_run_options",
         "//xla/ffi",
@@ -919,6 +923,7 @@ cc_library(
     srcs = ["infeed_thunk.cc"],
     hdrs = ["infeed_thunk.h"],
     deps = [
+        ":shaped_slice",
         ":thunk",
         "//xla:shape_tree",
         "//xla:shape_util",
@@ -1730,6 +1735,7 @@ cc_library(
     srcs = ["outfeed_thunk.cc"],
     hdrs = ["outfeed_thunk.h"],
     deps = [
+        ":shaped_slice",
         ":thunk",
         "//xla:shape_tree",
         "//xla:shape_util",
@@ -1920,6 +1926,46 @@ xla_cc_test(
         ":thunk",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_proto_library(
+    name = "shaped_slice_proto",
+    srcs = ["shaped_slice.proto"],
+    protodeps = [
+        # keep sorted
+        "//xla:xla_data_proto",
+        "//xla/service:buffer_assignment_proto",
+    ],
+)
+
+cc_library(
+    name = "shaped_slice",
+    srcs = ["shaped_slice.cc"],
+    hdrs = ["shaped_slice.h"],
+    deps = [
+        ":shaped_slice_proto_cc",
+        "//xla:shape_util",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "shaped_slice_test",
+    srcs = ["shaped_slice_test.cc"],
+    deps = [
+        ":shaped_slice",
+        ":shaped_slice_proto_cc",
+        "//xla:shape_util",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2445,6 +2491,7 @@ tf_proto_library(
         # keep sorted
         ":convolution_filter_thunk_proto",
         ":dynamic_slice_thunk_proto",
+        ":shaped_slice_proto",
         "//xla:xla_data_proto",
         "//xla/core/host_offloading:host_offloading_executable_proto",
         "//xla/service:buffer_assignment_proto",
@@ -2696,6 +2743,7 @@ cc_library(
     srcs = ["host_execute_thunk.cc"],
     hdrs = ["host_execute_thunk.h"],
     deps = [
+        ":shaped_slice_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
         "//xla:executable_run_options",

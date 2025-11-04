@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
@@ -45,6 +44,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/ffi/attribute_map.h"
@@ -762,7 +762,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
         "thunks");
   }
 
-  using Slices = std::vector<std::optional<ShapedSlice>>;
+  using Slices = std::vector<NullableShapedSlice>;
 
   int64_t num_args = ShapeUtil::GetLeafCount(custom_call.shape());
   absl::c_for_each(custom_call.operands(), [&](auto* operand) {
