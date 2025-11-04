@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_reduce.h"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <tuple>
@@ -90,92 +92,113 @@ class AllReduceKernelTest : public ::testing::Test,
     const int64_t num_ranks = input_data.size();
     const LaunchDimensions launch_dimensions = AllReduceLaunchDimensions(
         input_data[0].num_elements(), num_ranks, params_.all_reduce_strategy);
+    // One for signal and one for input parameters.
+    constexpr int kNumPeerParameters = 2;
 
-    int64_t num_elements = input_data[0].num_elements();
-
+    const int64_t num_elements = input_data[0].num_elements();
+    const uint64_t input_size = num_elements * sizeof(T);
+    const uint64_t signal_size =
+        num_ranks * launch_dimensions.num_blocks() * sizeof(int32_t);
     TF_RETURN_IF_ERROR(executors[0]->EnablePeerAccessTo(executors[1]));
     TF_RETURN_IF_ERROR(executors[1]->EnablePeerAccessTo(executors[0]));
 
-    std::unique_ptr<stream_executor::gpu::GpuExecutor::MulticastMemory>
-        multicast_memory;
+    std::array<
+        std::unique_ptr<stream_executor::gpu::GpuExecutor::MulticastMemory>,
+        kNumPeerParameters>
+        argument_to_multicast_memory;
     if (params_.all_reduce_strategy == AllReduceStrategy::kMultimem) {
       TF_ASSIGN_OR_RETURN(
-          multicast_memory,
+          argument_to_multicast_memory[0],
           dynamic_cast<stream_executor::gpu::GpuExecutor*>(executors[0])
-              ->CreateMulticastMemory(num_elements * sizeof(T), num_ranks));
+              ->CreateMulticastMemory(input_size, num_ranks));
 
       for (int i = 0; i < num_ranks; ++i) {
-        TF_RETURN_IF_ERROR(multicast_memory->SubscribeDevice(i));
+        TF_RETURN_IF_ERROR(argument_to_multicast_memory[0]->SubscribeDevice(i));
       }
     }
 
     std::vector<std::unique_ptr<se::Stream>> streams;
-    std::vector<se::DeviceMemoryBase> allocated_buffers;
     std::vector<se::DeviceMemoryBase> local_input_buffers;
-    std::vector<se::DeviceMemoryBase> data_buffers;
+    std::vector<se::DeviceMemoryBase> symmetric_input_buffers;
     std::vector<se::DeviceMemoryBase> signal_flags_buffers;
 
-    uint64_t input_size = num_elements * sizeof(T);
-    uint64_t aligned_input_size =
-        xla::RoundUpTo<uint64_t>(input_size, kXlaAllocatedBufferAlignBytes);
-    uint64_t signal_size =
-        num_ranks * launch_dimensions.num_blocks() * sizeof(int32_t);
-    uint64_t aligned_signal_size =
-        xla::RoundUpTo<uint64_t>(signal_size, kXlaAllocatedBufferAlignBytes);
     for (int i = 0; i < num_ranks; ++i) {
       auto* executor = executors[i];
       streams.push_back(executor->CreateStream().value());
 
-      uint64_t total_size =
-          /*local_input_buffer_size=*/aligned_input_size +
-          /*data_buffer_size=*/aligned_input_size +
-          /*signal_buffer_size=*/aligned_signal_size;
-      allocated_buffers.emplace_back(executor->AllocateArray<T>(
-          total_size, static_cast<int64_t>(stream_executor::MemoryType::kP2P)));
-      local_input_buffers.emplace_back(
-          allocated_buffers[i].GetByteSlice(0, aligned_input_size));
-      TF_RET_CHECK(!local_input_buffers[i].is_null());
+      local_input_buffers.emplace_back(executor->AllocateArray<T>(
+          input_size, static_cast<int64_t>(stream_executor::MemoryType::kP2P)));
+      symmetric_input_buffers.emplace_back(executor->AllocateArray<T>(
+          input_size, static_cast<int64_t>(stream_executor::MemoryType::kP2P)));
+      signal_flags_buffers.emplace_back(executor->AllocateArray<T>(
+          signal_size,
+          static_cast<int64_t>(stream_executor::MemoryType::kP2P)));
 
-      data_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
-          aligned_input_size, aligned_input_size));
-      TF_RET_CHECK(!data_buffers[i].is_null());
+      TF_RETURN_IF_ERROR(
+          executor->SynchronousMemZero(&signal_flags_buffers[i], signal_size));
 
-      signal_flags_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
-          2 * aligned_input_size, aligned_signal_size));
-      TF_RET_CHECK(!signal_flags_buffers[i].is_null());
-      TF_RETURN_IF_ERROR(executor->SynchronousMemZero(&signal_flags_buffers[i],
-                                                      aligned_signal_size));
       TF_RETURN_IF_ERROR(streams[i]->Memcpy(&local_input_buffers[i],
                                             input_data[i].data(), input_size));
     }
 
     std::vector<se::DeviceMemoryBase> metadata_buffers;
+    size_t param_to_peers_size =
+        sizeof(uint64_t) * kNumPeerParameters * num_ranks;
+    std::vector<uint64_t> param_to_peers_ptrs;
+    for (const auto& symmetric_input_buffer : symmetric_input_buffers) {
+      param_to_peers_ptrs.push_back((uint64_t)symmetric_input_buffer.opaque());
+    }
+    for (const auto& signal_flags_buffer : signal_flags_buffers) {
+      param_to_peers_ptrs.push_back((uint64_t)signal_flags_buffer.opaque());
+    }
 
+    se::DeviceMemoryBase multicast_ptrs_buffer;
     for (int i = 0; i < num_ranks; ++i) {
       CollectiveKernelMetadata metadata;
       metadata.rank = i;
-
-      for (int j = 0; j < num_ranks; ++j) {
-        metadata.buffer_root_ptrs[j] = (uint64_t)allocated_buffers[j].opaque();
-      }
 
       if (params_.all_reduce_strategy == AllReduceStrategy::kMultimem) {
         stream_executor::gpu::GpuExecutor* gpu_executor =
             dynamic_cast<stream_executor::gpu::GpuExecutor*>(executors[i]);
         TF_RET_CHECK(gpu_executor != nullptr);
-        TF_ASSIGN_OR_RETURN(
-            void* mapped_memory,
-            multicast_memory->MapMemory(allocated_buffers[i], gpu_executor));
-        metadata.multicast_buffer_ptr = (uint64_t)mapped_memory;
+
+        std::vector<uint64_t> multicast_ptrs(kNumPeerParameters);
+        size_t multicast_ptrs_size_bytes =
+            sizeof(uint64_t) * kNumPeerParameters;
+        TF_ASSIGN_OR_RETURN(void* input_mapped_memory,
+                            argument_to_multicast_memory[0]->MapMemory(
+                                symmetric_input_buffers[i], gpu_executor));
+        multicast_ptrs[0] = reinterpret_cast<uint64_t>(input_mapped_memory);
+        // Signals parameter is not used with multimem instructions.
+        multicast_ptrs[1] = 0;
+
+        multicast_ptrs_buffer =
+            gpu_executor->Allocate(multicast_ptrs_size_bytes, 0);
+        metadata.param_to_multicast_ptrs =
+            reinterpret_cast<uint64_t*>(multicast_ptrs_buffer.opaque());
+        TF_RETURN_IF_ERROR(streams[i]->Memcpy(&multicast_ptrs_buffer,
+                                              multicast_ptrs.data(),
+                                              multicast_ptrs_size_bytes));
+        TF_RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
       } else {
-        metadata.multicast_buffer_ptr = 0;
+        metadata.param_to_multicast_ptrs = nullptr;
       }
 
+      // First map from parameter to peer ptrs and then metadata.
       metadata_buffers.emplace_back(executors[i]->AllocateArray<uint64_t>(
-          sizeof(CollectiveKernelMetadata)));
+          sizeof(CollectiveKernelMetadata) + param_to_peers_size));
+
+      se::DeviceMemoryBase param_to_peers_ptrs_buffer =
+          metadata_buffers[i].GetByteSlice(sizeof(CollectiveKernelMetadata),
+                                           param_to_peers_size);
+      metadata.param_to_peers =
+          reinterpret_cast<uint64_t*>(param_to_peers_ptrs_buffer.opaque());
 
       TF_RETURN_IF_ERROR(streams[i]->Memcpy(&metadata_buffers[i], &metadata,
                                             sizeof(CollectiveKernelMetadata)));
+      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&param_to_peers_ptrs_buffer,
+                                            param_to_peers_ptrs.data(),
+                                            param_to_peers_size));
     }
 
     for (int i = 0; i < num_ranks; ++i) {
@@ -189,7 +212,7 @@ class AllReduceKernelTest : public ::testing::Test,
           primitive_util::NativeToPrimitiveType<T>(),
           /*reduction_kind=*/reduction_kind,
           /*all_reduce_strategy=*/params_.all_reduce_strategy,
-          /*symmetric_input_buffer=*/data_buffers[i],
+          /*symmetric_input_buffer=*/symmetric_input_buffers[i],
           // Memory is aliased for both input and output (similar to what nccl
           // would do).
           /*local_input_buffer=*/local_input_buffers[i],
