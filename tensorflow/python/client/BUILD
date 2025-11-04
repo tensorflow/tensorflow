@@ -187,7 +187,6 @@ py_strict_library(
     srcs = ["device_lib.py"],
     visibility = [
         "//tensorflow:internal",
-        "//third_party/mlperf/submissions/training/v0_7/models:__subpackages__",
         "//third_party/py/cleverhans:__subpackages__",
     ],
     deps = [
