@@ -189,8 +189,11 @@ TEST(PremappedCopierState, FreeCycle) {
     absl::AnyInvocable<void() &&> on_done_;
   };
   cstate->ScheduleCopy(
-      {/*copy_fn=*/[](void* dst, int64_t offset,
-                      int64_t transfer_size) -> xla::Future<> {
+      {/*copy_fn=*/[buffer = std::make_unique<BufferReturner>(
+                        [buffer_to_return, cstate]() {
+                          cstate->ReturnBuffer(buffer_to_return);
+                        })](void* dst, int64_t offset,
+                            int64_t transfer_size) -> xla::Future<> {
          return xla::Future<>(absl::OkStatus());
        },
        /*buffer_id=*/0,
