@@ -106,11 +106,6 @@ class AdjacencyList {
   std::vector<std::vector<NodeId>> adj_;
 };
 
-struct HloAndDimOrder {
-  const HloInstruction* original_hlo = nullptr;
-  DimensionOrder dim_order;
-};
-
 struct HloAndIterSpec {
   const HloInstruction* original_hlo;
   TensorIterationSpec iter_spec;
@@ -278,6 +273,87 @@ std::optional<DimOrdersAndReqs> GetUserDimOrdersAndCombinedReqsIfProfitable(
       std::get<DotRequirements>(combined_reqs)};
 }
 
+class FusionPlanBuilder {
+ public:
+  // Builds and returns the FusionPlan. Clears internal state.
+  FusionPlan BuildPlan() {
+    FusionPlan fusion_plan;
+    for (auto& [node_id, node] : node_map_) {
+      CHECK(node.should_fuse.has_value());
+      fusion_plan.map[node_id] =
+          NodeFusionPlan{node.original_hlo, *node.should_fuse};
+    }
+
+    node_map_.clear();
+    node_reuse_map_.clear();
+    fusion_plan.graph = std::move(graph_);
+    return fusion_plan;
+  }
+
+  void ReserveSpaceForOutNeighbors(AdjacencyList::NodeId node_id,
+                                   size_t count) {
+    graph_.ReserveSpaceForOutNeighbors(node_id, count);
+  }
+
+  void AddArc(AdjacencyList::NodeId from, AdjacencyList::NodeId to) {
+    graph_.AddArc(from, to);
+  }
+
+  const HloInstruction* GetOriginalHlo(AdjacencyList::NodeId node_id) const {
+    return node_map_.at(node_id).original_hlo;
+  }
+
+  const DimensionOrder& GetDimOrder(AdjacencyList::NodeId node_id) const {
+    return node_map_.at(node_id).dim_order;
+  }
+
+  // Inserts a node for the given HLO and `dim_order` unless already exists.
+  // Returns the node id and a bool indicating if a new node was inserted.
+  std::pair<AdjacencyList::NodeId, bool> InsertNode(
+      const HloInstruction& hlo, const DimensionOrder& dim_order) {
+    HloAndIterSpec reuse_key{&hlo, dim_order.ToTensorIterationSpec()};
+
+    // Attempt to insert a placeholder. If the key already exists, inserted is
+    // false.
+    auto [it, inserted] = node_reuse_map_.insert({reuse_key, -1});
+    if (!inserted) {
+      return {it->second, false};
+    }
+
+    // Key was not present. Create the node and update the map.
+    AdjacencyList::NodeId node_id = graph_.AddNode();
+    it->second = node_id;
+    CHECK(node_map_
+              .insert({node_id,
+                       Node{&hlo, dim_order, /*should_fuse=*/std::nullopt}})
+              .second);
+    return {node_id, true};
+  }
+
+  // Assigns fusion decision for the specified node.
+  // The node must not have an already assigned decision.
+  void SetShouldFuseNode(AdjacencyList::NodeId node_id, bool should_fuse) {
+    Node& node = node_map_.at(node_id);
+    CHECK(!node.should_fuse.has_value());
+    node.should_fuse = should_fuse;
+  }
+
+ private:
+  AdjacencyList graph_;
+
+  struct Node {
+    const HloInstruction* original_hlo;
+    DimensionOrder dim_order;
+    std::optional<bool> should_fuse;
+  };
+  absl::flat_hash_map<AdjacencyList::NodeId, Node> node_map_;
+
+  // Allows reusing nodes when multiple instructions iterate over the same HLO
+  // using the same iteration spec. In that case we don't duplicate the
+  // instruction in the fusion.
+  absl::flat_hash_map<HloAndIterSpec, AdjacencyList::NodeId> node_reuse_map_;
+};
+
 // Builds the fusion map and the requirements which can later be used to
 // actually fuse that subgraph.
 FusionPlanAndRequirements BuildFusionPlanTowardOperands(
@@ -288,61 +364,32 @@ FusionPlanAndRequirements BuildFusionPlanTowardOperands(
     const DotRequirements& requirements_so_far) {
   CHECK(!max_params.has_value() || max_params.value() >= 1);
 
-  // The graph describing the structure of the fusion that we build - nodes
-  // corresponding to the instructions and arcs pointing from users to operands.
-  // We can build and modify this graph easily without the need to create
-  // HloInstructions at this point.
-  AdjacencyList graph;
-  // Stores the original HLO and the dimension order for each node. This is a
-  // temporary map which is used when processing the nodes in this function.
-  absl::flat_hash_map<AdjacencyList::NodeId, HloAndDimOrder>
-      hlo_and_dim_order_map;
-  // Stores the information needed to build the fused HLO for each node (what
-  // was the original HLO and whether we should fuse it or create a parameter).
-  // This is one of the outputs of this function.
-  absl::flat_hash_map<AdjacencyList::NodeId, NodeFusionPlan> fusion_plan_map;
-  // Allows reusing nodes when multiple instructions iterate over the same HLO
-  // using the same iteration spec. In that case we don't duplicate the
-  // instruction in the fusion.
-  absl::flat_hash_map<HloAndIterSpec, AdjacencyList::NodeId> node_reuse_map;
+  FusionPlanBuilder fusion_builder;
+
   // The requirements imposed by the fusion choices made in this function,
-  // combined with the existing requirements. This is one of the outputs of this
-  // function.
+  // combined with the existing requirements. This is one of the outputs of
+  // this function.
   DotRequirements combined_reqs = requirements_so_far;
 
-  auto get_or_create_fusion_node =
-      [&](const HloInstruction& hlo, const DimensionOrder& dim_order,
-          bool* is_new_node = nullptr) -> AdjacencyList::NodeId {
-    HloAndIterSpec reuse_key = {&hlo, dim_order.ToTensorIterationSpec()};
-    if (auto it = node_reuse_map.find(reuse_key); it != node_reuse_map.end()) {
-      if (is_new_node != nullptr) {
-        *is_new_node = false;
-      }
-      return it->second;
-    }
-    AdjacencyList::NodeId node_id = graph.AddNode();
-    CHECK(hlo_and_dim_order_map.insert({node_id, {&hlo, dim_order}}).second);
-    CHECK(node_reuse_map.insert({reuse_key, node_id}).second);
-    if (is_new_node != nullptr) {
-      *is_new_node = true;
-    }
-    return node_id;
-  };
   AdjacencyList::NodeId root =
-      get_or_create_fusion_node(root_hlo, root_dim_order);
+      fusion_builder.InsertNode(root_hlo, root_dim_order).first;
 
   // Nodes at the fusion edge that can either get fused too or become parameters
   // of the fusion. Used to track the number of parameters.
   absl::flat_hash_set<AdjacencyList::NodeId> inputs({root});
+
   std::queue<AdjacencyList::NodeId> queue({root});
   int64_t num_requeued = 0;
+
   // BFS
+  // If all queued instructions are re-queued, they all exceed the parameter
+  // limit, so stop fusing.
   while (queue.size() > num_requeued) {
     AdjacencyList::NodeId node_id = queue.front();
     queue.pop();
-    const HloAndDimOrder& hlo_and_dim_order = hlo_and_dim_order_map.at(node_id);
-    const HloInstruction& original_hlo = *hlo_and_dim_order.original_hlo;
-    const DimensionOrder& dim_order = hlo_and_dim_order.dim_order;
+    const HloInstruction& original_hlo =
+        *fusion_builder.GetOriginalHlo(node_id);
+    const DimensionOrder& dim_order = fusion_builder.GetDimOrder(node_id);
 
     // Watch the total number of fusion parameters.
     if (max_params.has_value() &&
@@ -355,55 +402,45 @@ FusionPlanAndRequirements BuildFusionPlanTowardOperands(
       continue;
     }
     num_requeued = 0;
+
     if (original_hlo.opcode() == HloOpcode::kParameter) {
-      CHECK(fusion_plan_map
-                .insert({node_id, {&original_hlo, /*should_fuse=*/false}})
-                .second);
+      fusion_builder.SetShouldFuseNode(node_id, false);
       continue;
     }
+
     auto opt_result = GetOperandDimOrdersAndCombinedReqsIfProfitable(
         original_hlo, dim_order, properties, gpu_version, combined_reqs);
     if (!opt_result.has_value()) {
-      CHECK(fusion_plan_map
-                .insert({node_id, {&original_hlo, /*should_fuse=*/false}})
-                .second);
+      fusion_builder.SetShouldFuseNode(node_id, false);
       continue;
     }
+
     const DimOrderMap operand_dim_orders = std::move(opt_result->dim_orders);
     combined_reqs = std::move(opt_result->requirements);
+
     inputs.erase(node_id);
-    graph.ReserveSpaceForOutNeighbors(node_id, original_hlo.operand_count());
-    for (int64_t i = 0; i < original_hlo.operand_count(); ++i) {
-      const HloInstruction& operand = *original_hlo.operand(i);
-      const DimensionOrder& operand_dim_order = operand_dim_orders.at(&operand);
-      bool is_new_node = false;
-      AdjacencyList::NodeId operand_node_id =
-          get_or_create_fusion_node(operand, operand_dim_order, &is_new_node);
-      graph.AddArc(node_id, operand_node_id);
+    fusion_builder.ReserveSpaceForOutNeighbors(node_id,
+                                               original_hlo.operand_count());
+    for (const HloInstruction* operand : original_hlo.operands()) {
+      const DimensionOrder& operand_dim_order = operand_dim_orders.at(operand);
+      auto [operand_node_id, is_new_node] =
+          fusion_builder.InsertNode(*operand, operand_dim_order);
+      fusion_builder.AddArc(node_id, operand_node_id);
       if (is_new_node) {
-        VLOG(6) << "Enqueueing " << operand.ToString() << ":"
+        VLOG(6) << "Enqueueing " << operand->ToString() << ":"
                 << operand_dim_order.ToString();
         inputs.insert(operand_node_id);
         queue.push(operand_node_id);
       }
     }
-    CHECK(
-        fusion_plan_map.insert({node_id, {&original_hlo, /*should_fuse=*/true}})
-            .second);
+    fusion_builder.SetShouldFuseNode(node_id, true);
   }
   // Handle the remaining requeued items.
-  while (!queue.empty()) {
+  for (; !queue.empty(); queue.pop()) {
     AdjacencyList::NodeId node_id = queue.front();
-    queue.pop();
-
-    const HloAndDimOrder& hlo_and_dim_order = hlo_and_dim_order_map.at(node_id);
-    CHECK(fusion_plan_map
-              .insert({node_id,
-                       {hlo_and_dim_order.original_hlo, /*should_fuse=*/false}})
-              .second);
+    fusion_builder.SetShouldFuseNode(node_id, false);
   }
-  return {{std::move(graph), std::move(fusion_plan_map)},
-          std::move(combined_reqs)};
+  return {fusion_builder.BuildPlan(), std::move(combined_reqs)};
 }
 
 // Builds the HLO instructions for the fusion represented by `fusion_plan`,
