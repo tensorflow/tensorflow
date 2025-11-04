@@ -37,6 +37,7 @@ cc_library(
         "round_f32_to_tf32_for_tf32_dot_pass.cc",
         "stablehlo_lower_to_triton.cc",
         "tensor_lower_to_triton.cc",
+        "triton_xla_convert_tensor_to_scalar_pass.cc",
         "triton_xla_convert_unsupported_types.cc",
         "triton_xla_extract_insert_to_triton_pass.cc",
         "triton_xla_fold_transpose_pass.cc",
