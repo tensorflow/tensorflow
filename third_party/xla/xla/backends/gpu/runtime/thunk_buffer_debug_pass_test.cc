@@ -187,14 +187,6 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
       true);
   se::DeviceDescription device_info;
   FakeThunkPassBufferAllocator allocator;
-  // The callbacks created by ThunkBufferDebugPass require a HloModule with
-  // a non-null entry computation.
-  auto builder = HloComputation::Builder("entry");
-  HloInstruction* root = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1)));
-  std::unique_ptr<HloComputation> entry_computation = builder.Build(root);
-  HloModule hlo_module("test_module", HloModuleConfig());
-  hlo_module.AddEntryComputation(std::move(entry_computation));
   // Create a fake thunk with a few different buffer uses.
   BufferAllocation alloc(0, 1024, 0);
   BufferAllocation::Slice slice_i(&alloc, 0, 1);
@@ -224,9 +216,9 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
 
   ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          pass.Run(root_thunk.get(), debug_options, &hlo_module,
-                                   device_info, allocator));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, pass.Run(root_thunk.get(), debug_options,
+                             fake_hlo_module_.get(), device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:
@@ -525,6 +517,224 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugNanCounterThunks) {
       static_cast<const BuffersDebugNanCountThunk&>(*sub_thunks[1]);
   EXPECT_THAT(buffer_debug_after_fake_thunk.buffer_slices(),
               UnorderedElementsAre(Pair(1, slice_o), Pair(2, slice_io)));
+}
+
+TEST_F(ThunkBufferDebugPassTest, FiltersThunksByIdRanges) {
+  DebugOptions debug_options;
+  debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
+      true);
+  IntRangeInclusive* range =
+      debug_options.mutable_xla_gpu_experimental_thunk_buffer_debug_filter()
+          ->add_thunk_id_ranges();
+  range->set_first(2);
+  range->set_last(2);
+  se::DeviceDescription device_info;
+  FakeThunkPassBufferAllocator allocator;
+  // Create a fake thunk with a few different buffer uses.
+  BufferAllocation alloc(0, 1024, 0);
+  BufferAllocation::Slice slice1_io(&alloc, 0, 1);
+  BufferAllocation::Slice slice2_io(&alloc, 1, 1);
+  Thunk::ThunkInfo fake_thunk1_info;
+  fake_thunk1_info.thunk_id = ThunkId(1);
+  auto fake_thunk1 = std::make_unique<FakeThunk>(
+      fake_thunk1_info, Thunk::BufferUses{BufferUse::Read(slice1_io)});
+  Thunk::ThunkInfo fake_thunk2_info;
+  fake_thunk2_info.thunk_id = ThunkId(2);
+  auto fake_thunk2 = std::make_unique<FakeThunk>(
+      fake_thunk2_info, Thunk::BufferUses{BufferUse::Read(slice2_io)});
+  Thunk* fake_thunk1_ptr = fake_thunk1.get();
+  Thunk* fake_thunk2_ptr = fake_thunk2.get();
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  thunks.push_back(std::move(fake_thunk1));
+  thunks.push_back(std::move(fake_thunk2));
+  auto root_thunk =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
+
+  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, pass.Run(root_thunk.get(), debug_options,
+                             fake_hlo_module_.get(), device_info, allocator));
+  EXPECT_TRUE(changed);
+
+  // Expected thunk structure after the pass:
+  // 1. CustomCallThunk (buffer debug log init)
+  // 2. FakeThunk1 (not instrumented due to filter)
+  // 3. SequentialThunk [
+  //    1. BuffersDebugChecksumThunk (checksum input buffers)
+  //    2. FakeThunk2
+  //    3. BuffersDebugChecksumThunk (checksum output buffers)
+  // 4. CustomCallThunk (buffer debug log dump)
+  const std::vector<std::unique_ptr<Thunk>>& new_thunks = root_thunk->thunks();
+  EXPECT_THAT(
+      new_thunks,
+      ElementsAre(
+          IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_init"),
+          Pointer(fake_thunk1_ptr),
+          IsSequentialThunkWith(ElementsAre(IsChecksumThunkChecking(SliceList{
+                                                {0, slice2_io},
+                                            }),
+                                            Pointer(fake_thunk2_ptr),
+                                            IsChecksumThunkChecking(SliceList{
+                                                {0, slice2_io},
+                                            }))),
+          IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_dump")));
+}
+
+TEST_F(ThunkBufferDebugPassTest, FiltersThunksByProfileAnnotationRegexes) {
+  DebugOptions debug_options;
+  debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
+      true);
+  debug_options.mutable_xla_gpu_experimental_thunk_buffer_debug_filter()
+      ->add_profile_annotation_regexes("thunk1");
+  debug_options.mutable_xla_gpu_experimental_thunk_buffer_debug_filter()
+      ->add_profile_annotation_regexes("^fake.*2$");
+  se::DeviceDescription device_info;
+  FakeThunkPassBufferAllocator allocator;
+  // Create a fake thunk with a few different buffer uses.
+  BufferAllocation alloc(0, 1024, 0);
+  BufferAllocation::Slice slice1_io(&alloc, 0, 1);
+  BufferAllocation::Slice slice2_io(&alloc, 1, 1);
+  Thunk::ThunkInfo fake_thunk1_info;
+  fake_thunk1_info.thunk_id = ThunkId(1);
+  fake_thunk1_info.profile_annotation = "fake_thunk1";
+  auto fake_thunk1 = std::make_unique<FakeThunk>(
+      fake_thunk1_info, Thunk::BufferUses{BufferUse::Read(slice1_io)});
+  Thunk::ThunkInfo fake_thunk2_info;
+  fake_thunk2_info.profile_annotation = "fake_thunk2";
+  fake_thunk2_info.thunk_id = ThunkId(2);
+  auto fake_thunk2 = std::make_unique<FakeThunk>(
+      fake_thunk2_info, Thunk::BufferUses{BufferUse::Read(slice2_io)});
+  Thunk::ThunkInfo fake_thunk3_info;
+  fake_thunk3_info.profile_annotation = "fake_thunk3";
+  fake_thunk3_info.thunk_id = ThunkId(3);
+  auto fake_thunk3 = std::make_unique<FakeThunk>(
+      fake_thunk3_info, Thunk::BufferUses{BufferUse::Read(slice2_io)});
+  Thunk* fake_thunk1_ptr = fake_thunk1.get();
+  Thunk* fake_thunk2_ptr = fake_thunk2.get();
+  Thunk* fake_thunk3_ptr = fake_thunk3.get();
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  thunks.push_back(std::move(fake_thunk1));
+  thunks.push_back(std::move(fake_thunk2));
+  thunks.push_back(std::move(fake_thunk3));
+  auto root_thunk =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
+
+  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, pass.Run(root_thunk.get(), debug_options,
+                             fake_hlo_module_.get(), device_info, allocator));
+  EXPECT_TRUE(changed);
+
+  // Expected thunk structure after the pass:
+  // 1. CustomCallThunk (buffer debug log init)
+  // 2. SequentialThunk [
+  //    1. BuffersDebugChecksumThunk (checksum input buffers)
+  //    2. FakeThunk1 (instrumented due to thunk1)
+  //    3. BuffersDebugChecksumThunk (checksum output buffers)
+  // ]
+  // 3. SequentialThunk [
+  //    4. BuffersDebugChecksumThunk (checksum input buffers)
+  //    5. FakeThunk2 (instrumented due to 2$)
+  //    6. BuffersDebugChecksumThunk (checksum output buffers)
+  // ]
+  // 3. FakeThunk3 (not instrumented)
+  // 4. CustomCallThunk (buffer debug log dump)
+  const std::vector<std::unique_ptr<Thunk>>& new_thunks = root_thunk->thunks();
+  EXPECT_THAT(
+      new_thunks,
+      ElementsAre(
+          IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_init"),
+          IsSequentialThunkWith(ElementsAre(IsChecksumThunkChecking(SliceList{
+                                                {0, slice1_io},
+                                            }),
+                                            Pointer(fake_thunk1_ptr),
+                                            IsChecksumThunkChecking(SliceList{
+                                                {0, slice1_io},
+                                            }))),
+          IsSequentialThunkWith(ElementsAre(IsChecksumThunkChecking(SliceList{
+                                                {0, slice2_io},
+                                            }),
+                                            Pointer(fake_thunk2_ptr),
+                                            IsChecksumThunkChecking(SliceList{
+                                                {0, slice2_io},
+                                            }))),
+          Pointer(fake_thunk3_ptr),
+          IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_dump")));
+}
+
+TEST_F(ThunkBufferDebugPassTest,
+       FiltersThunksByIdRangesAndProfileAnnotationRegexes) {
+  DebugOptions debug_options;
+  debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
+      true);
+  IntRangeInclusive* range =
+      debug_options.mutable_xla_gpu_experimental_thunk_buffer_debug_filter()
+          ->add_thunk_id_ranges();
+  range->set_first(2);
+  range->set_last(3);
+  debug_options.mutable_xla_gpu_experimental_thunk_buffer_debug_filter()
+      ->add_profile_annotation_regexes("instrument_me");
+  se::DeviceDescription device_info;
+  FakeThunkPassBufferAllocator allocator;
+  // Create a fake thunk with a few different buffer uses.
+  BufferAllocation alloc(0, 1024, 0);
+  BufferAllocation::Slice slice1_io(&alloc, 0, 1);
+  BufferAllocation::Slice slice2_io(&alloc, 1, 1);
+  BufferAllocation::Slice slice3_io(&alloc, 2, 1);
+  Thunk::ThunkInfo fake_thunk1_info;
+  fake_thunk1_info.thunk_id = ThunkId(1);
+  fake_thunk1_info.profile_annotation = "instrument_me";
+  auto fake_thunk1 = std::make_unique<FakeThunk>(
+      fake_thunk1_info, Thunk::BufferUses{BufferUse::Read(slice1_io)});
+  Thunk::ThunkInfo fake_thunk2_info;
+  fake_thunk2_info.thunk_id = ThunkId(2);
+  fake_thunk2_info.profile_annotation = "ignore_me";
+  auto fake_thunk2 = std::make_unique<FakeThunk>(
+      fake_thunk2_info, Thunk::BufferUses{BufferUse::Read(slice2_io)});
+  Thunk::ThunkInfo fake_thunk3_info;
+  fake_thunk3_info.thunk_id = ThunkId(3);
+  fake_thunk3_info.profile_annotation = "instrument_me";
+  auto fake_thunk3 = std::make_unique<FakeThunk>(
+      fake_thunk3_info, Thunk::BufferUses{BufferUse::Read(slice3_io)});
+  Thunk* fake_thunk1_ptr = fake_thunk1.get();
+  Thunk* fake_thunk2_ptr = fake_thunk2.get();
+  Thunk* fake_thunk3_ptr = fake_thunk3.get();
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  thunks.push_back(std::move(fake_thunk1));
+  thunks.push_back(std::move(fake_thunk2));
+  thunks.push_back(std::move(fake_thunk3));
+  auto root_thunk =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
+
+  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, pass.Run(root_thunk.get(), debug_options,
+                             fake_hlo_module_.get(), device_info, allocator));
+  EXPECT_TRUE(changed);
+
+  // Expected thunk structure after the pass:
+  // 1. CustomCallThunk (buffer debug log init)
+  // 2. FakeThunk1 (not instrumented due to thunk ID filter)
+  // 3. FakeThunk2 (not instrumented due to profile annotation regex filter)
+  // 4. SequentialThunk [
+  //    1. BuffersDebugChecksumThunk (checksum input buffers)
+  //    2. FakeThunk3
+  //    3. BuffersDebugChecksumThunk (checksum output buffers)
+  // 5. CustomCallThunk (buffer debug log dump)
+  const std::vector<std::unique_ptr<Thunk>>& new_thunks = root_thunk->thunks();
+  EXPECT_THAT(
+      new_thunks,
+      ElementsAre(
+          IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_init"),
+          Pointer(fake_thunk1_ptr), Pointer(fake_thunk2_ptr),
+          IsSequentialThunkWith(ElementsAre(IsChecksumThunkChecking(SliceList{
+                                                {0, slice3_io},
+                                            }),
+                                            Pointer(fake_thunk3_ptr),
+                                            IsChecksumThunkChecking(SliceList{
+                                                {0, slice3_io},
+                                            }))),
+          IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_dump")));
 }
 
 }  // namespace

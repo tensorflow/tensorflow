@@ -16,18 +16,23 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_pass.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "re2/re2.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/buffers_checksum_thunk.h"
@@ -35,6 +40,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
@@ -226,6 +232,103 @@ absl::Status DumpBufferDebugLog(
   return absl::OkStatus();
 }
 
+// A boolean-like value returned from thunk filters to indicate whether the
+// thunk should be instrumented or left as is.
+enum class InstrumentAction : bool {
+  // Don't instrument the thunk, leave it as is.
+  kSkip,
+  // Instrument the thunk.
+  kInstrument,
+};
+
+// A function that decides whether the thunk should be instrumented
+// (kInstrument) or not (kSkip).
+using ThunkFilter = absl::AnyInvocable<InstrumentAction(const Thunk&) const>;
+
+// Creates a thunk filter that filters thunks by their IDs, based the allowed
+// ranges passed in debug options.
+ThunkFilter CreateThunkIdFilter(const DebugOptions& debug_options) {
+  std::vector<std::pair<int64_t, int64_t>> thunk_id_ranges;
+  for (const auto& range :
+       debug_options.xla_gpu_experimental_thunk_buffer_debug_filter()
+           .thunk_id_ranges()) {
+    VLOG(1) << "Thunk filter: id range [" << range.first() << ", "
+            << range.last() << "]";
+    thunk_id_ranges.emplace_back(range.first(), range.last());
+  }
+
+  return [id_ranges = std::move(thunk_id_ranges)](const Thunk& thunk) {
+    if (id_ranges.empty()) {
+      return InstrumentAction::kInstrument;
+    }
+
+    const ThunkId thunk_id = thunk.thunk_info().thunk_id;
+    if (absl::c_any_of(id_ranges, [&](const auto& range) {
+          VLOG(2) << "Thunk filter: check ID range: " << range.first
+                  << " <= " << thunk_id.value() << " <= " << range.second;
+          return range.first <= thunk_id.value() &&
+                 thunk_id.value() <= range.second;
+        })) {
+      VLOG(2) << "Thunk filter: ID matches";
+      return InstrumentAction::kInstrument;
+    }
+
+    VLOG(2) << "Thunk filter: ID does not match";
+    return InstrumentAction::kSkip;
+  };
+}
+
+// Creates a thunk filter that filters thunks by matching their profile
+// annotations against regexes configured in debug options.
+ThunkFilter CreateProfileAnnotationRegexFilter(
+    const DebugOptions& debug_options) {
+  std::vector<std::unique_ptr<RE2>> profile_annotation_regexes;
+  for (const auto& regex :
+       debug_options.xla_gpu_experimental_thunk_buffer_debug_filter()
+           .profile_annotation_regexes()) {
+    VLOG(1) << "Thunk filter: profile annotation regex: " << regex;
+    profile_annotation_regexes.push_back(std::make_unique<RE2>(regex));
+  }
+  return [regexes = std::move(profile_annotation_regexes)](const Thunk& thunk) {
+    if (regexes.empty()) {
+      return InstrumentAction::kInstrument;
+    }
+
+    const std::string& profile_annotation =
+        thunk.thunk_info().profile_annotation;
+    if (absl::c_any_of(regexes, [&](const auto& regex) {
+          VLOG(2) << "Thunk filter: check profile annotation regex: "
+                  << regex->pattern();
+          return RE2::PartialMatch(profile_annotation, *regex);
+        })) {
+      VLOG(2) << "Thunk filter: profile annotation matches";
+      return InstrumentAction::kInstrument;
+    }
+
+    VLOG(2) << "Thunk filter: profile annotation does not match";
+    return InstrumentAction::kSkip;
+  };
+}
+
+// Creates a thunk filter that filters thunks by all the conditions configured
+// in debug options.
+ThunkFilter CreateThunkFilter(const DebugOptions& debug_options) {
+  std::vector<ThunkFilter> filters;
+  filters.push_back(CreateThunkIdFilter(debug_options));
+  filters.push_back(CreateProfileAnnotationRegexFilter(debug_options));
+
+  return [filters = std::move(filters)](const Thunk& thunk) {
+    VLOG(2) << "Thunk filter: check ID " << thunk.thunk_info().thunk_id
+            << ", profile annotation " << thunk.thunk_info().profile_annotation;
+    if (absl::c_all_of(filters, [&](const auto& filter) {
+          return filter(thunk) == InstrumentAction::kInstrument;
+        })) {
+      return InstrumentAction::kInstrument;
+    }
+    return InstrumentAction::kSkip;
+  };
+}
+
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     kDebugLogInitHandler,
     [](se::Stream* absl_nonnull stream, xla::ffi::Buffer<U8> log_buffer) {
@@ -285,7 +388,11 @@ absl::StatusOr<bool> ThunkBufferDebugPass::Run(
                                               /*results=*/{}, /*attributes=*/{},
                                               hlo_module->entry_computation()));
 
+  ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
   root_thunk->TransformAllNestedThunks([&](std::unique_ptr<Thunk> thunk) {
+    if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
+      return thunk;
+    }
     switch (mode_) {
       case Mode::kChecksum:
         VLOG(1) << "Wrapping with checksum thunk";
