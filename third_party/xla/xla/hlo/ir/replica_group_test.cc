@@ -289,14 +289,14 @@ TEST(MeshAxesReplicaGroupListTest, ValidateSubAxesCoexistenceCheck) {
 
 TEST(MeshAxesReplicaGroupListTest, ReplicaGroupsCountAndSizeForSubaxes) {
   Mesh mesh_one_subaxis({2, 6, 10}, {"axis1", "axis2", "axis3"});
-  MeshAxesReplicaGroupList replica_group_across_axis1_subaxis(
-      mesh_one_subaxis, {AxisRef(0, {1, 2})});
   MeshAxesReplicaGroupList replica_group_across_axis2_subaxis(
       mesh_one_subaxis, {AxisRef(1, {2, 3})});
-  EXPECT_EQ(replica_group_across_axis1_subaxis.num_replica_groups(), 60);
-  EXPECT_EQ(replica_group_across_axis1_subaxis.num_devices_per_group(), 2);
+  MeshAxesReplicaGroupList replica_group_across_axis3_subaxis(
+      mesh_one_subaxis, {AxisRef(2, {1, 2})});
   EXPECT_EQ(replica_group_across_axis2_subaxis.num_replica_groups(), 40);
   EXPECT_EQ(replica_group_across_axis2_subaxis.num_devices_per_group(), 3);
+  EXPECT_EQ(replica_group_across_axis3_subaxis.num_replica_groups(), 60);
+  EXPECT_EQ(replica_group_across_axis3_subaxis.num_devices_per_group(), 2);
 
   Mesh mesh_multiple_subaxis({2 * 3, 5 * 7, 11 * 13},
                              {"alpha", "beta", "gamma"});
@@ -350,6 +350,34 @@ TEST(MeshAxesReplicaGroupListTest, MeshAxesToString) {
                                                  {AxisRef(0, {5, 2})});
   EXPECT_EQ(rg_ooo_across_ooo_5_2.ToString(),
             "@mesh<ooo=10>(8,3,7,5,4,2,6,0,1,9) {ooo:(5)2}");
+}
+
+TEST(MeshAxesReplicaGroupListTest, ValidatesIncompatibleAxes) {
+  Mesh mesh({10}, {"u"});
+  EXPECT_DEATH(
+      {
+        MeshAxesReplicaGroupList index_out_of_bounds(
+            mesh, /*axes=*/{AxisRef(1, {1, 2})});
+      },
+      "Axis index must be less than number of axes");
+  EXPECT_DEATH(
+      {
+        MeshAxesReplicaGroupList index_out_of_bounds(
+            mesh, /*axes=*/{AxisRef(0, {8, 2})});
+      },
+      "Pre-size and size must divide the full axis size");
+  EXPECT_DEATH(
+      {
+        MeshAxesReplicaGroupList index_out_of_bounds(
+            mesh, /*axes=*/{AxisRef(0, {2, 8})});
+      },
+      "Pre-size and size must divide the full axis size");
+  EXPECT_DEATH(
+      {
+        MeshAxesReplicaGroupList index_out_of_bounds(
+            mesh, /*axes=*/{AxisRef(0, {1, 10})});
+      },
+      "Sub-axis size must be strictly less than the full axis size");
 }
 
 TEST(CollectiveDeviceListTest, DefaultListToString) {

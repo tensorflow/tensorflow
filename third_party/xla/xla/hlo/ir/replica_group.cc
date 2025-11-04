@@ -176,14 +176,9 @@ MeshAxesReplicaGroupList::MeshAxesReplicaGroupList(Mesh mesh,
   absl::flat_hash_set<int64_t> dimensions;
   absl::flat_hash_map<int64_t, std::vector<AxisRef>> dim_to_axes;
   for (const AxisRef& axis : axes_) {
+    CHECK_OK(axis.Validate(mesh_));
     dim_to_axes[axis.mesh_axis_index()].push_back(axis);
     dimensions.insert(axis.mesh_axis_index());
-    if (axis.sub_axis_info().has_value()) {
-      CHECK(mesh_.axis_size(axis.mesh_axis_index()) %
-                axis.sub_axis_info()->next_pre_size() ==
-            0)
-          << "Next pre-size must divide the full axis size.";
-    }
   }
 
   // Validate input AxisRefs.
