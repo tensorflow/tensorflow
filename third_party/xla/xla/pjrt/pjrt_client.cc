@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
@@ -26,12 +28,15 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
+#include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -97,6 +102,67 @@ PjRtLoadedExecutable::GetCostAnalysis() const {
 
 PjRtExecutable* PjRtLoadedExecutable::GetExecutable() const {
   return executable_forwarder_.get();
+}
+
+absl::StatusOr<Shape> PjRtBuffer::HostShape() {
+  Shape device_shape;
+  if (!IsTuple()) {
+    absl::Span<const int64_t> literal_dims;
+    std::optional<std::vector<int64_t>> logical_dims_storage;
+    if (has_dynamic_dimensions()) {
+      TF_ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims,
+                          logical_dimensions());
+      logical_dims_storage.emplace(std::move(logical_dims));
+      literal_dims = *logical_dims_storage;
+    } else {
+      literal_dims = dimensions();
+    }
+    if (element_type() == TOKEN) {
+      device_shape = ShapeUtil::MakeTokenShape();
+    } else {
+      device_shape = ShapeUtil::MakeShape(element_type(), literal_dims);
+      // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
+      *device_shape.mutable_layout() = layout()->xla_layout();
+    }
+  } else {
+    // TODO(skyewm): does anything need to create tuple literals? The PJRT C
+    // API doesn't support tuples or {logical_}on_device_shape(), so we prefer
+    // to use the above non-tuple code path where possible.
+    device_shape = on_device_shape();
+    if (device_shape.is_dynamic()) {
+      TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
+    }
+  }
+  return ShapeUtil::DeviceShapeToHostShape(device_shape);
+}
+
+xla::Future<std::shared_ptr<Literal>> PjRtBuffer::ToLiteral() {
+  absl::StatusOr<Shape> host_shape = HostShape();
+  if (!host_shape.ok()) {
+    return xla::Future<std::shared_ptr<Literal>>(host_shape.status());
+  }
+  auto [promise, future] = xla::Future<std::shared_ptr<Literal>>::MakePromise();
+  auto shared_literal = std::make_shared<Literal>();
+  Literal* literal = shared_literal.get();
+  LazyToLiteral([literal, host_shape = *std::move(
+                              host_shape)]() -> Future<MutableLiteralBase*> {
+    auto literal_or = Literal::Make(host_shape);
+    if (!literal_or.ok()) {
+      return Future<MutableLiteralBase*>(literal_or.status());
+    }
+    *literal = *std::move(literal_or);
+    return Future<MutableLiteralBase*>(literal);
+  })
+      .OnReady(
+          [promise = std::move(promise),
+           shared_literal = std::move(shared_literal)](absl::Status s) mutable {
+            if (!s.ok()) {
+              std::move(promise).Set(s);
+            } else {
+              std::move(promise).Set(std::move(shared_literal));
+            }
+          });
+  return future;
 }
 
 }  // namespace xla

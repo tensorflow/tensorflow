@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -1136,57 +1137,20 @@ class PjRtBuffer {
 
   // Synchronous overload of ToLiteral, as a convenience.
   absl::Status ToLiteralSync(MutableLiteralBase* literal) {
-    absl::Notification done;
-    absl::Status status;
-    ToLiteral(literal).OnReady([&](absl::Status s) {
-      status = std::move(s);
-      done.Notify();
-    });
-    done.WaitForNotification();
-    return status;
+    return ToLiteral(literal).Await();
   }
 
-  absl::StatusOr<Shape> HostShape() {
-    Shape device_shape;
-    if (!IsTuple()) {
-      absl::Span<const int64_t> literal_dims;
-      std::optional<std::vector<int64_t>> logical_dims_storage;
-      if (has_dynamic_dimensions()) {
-        TF_ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims,
-                            logical_dimensions());
-        logical_dims_storage.emplace(std::move(logical_dims));
-        literal_dims = *logical_dims_storage;
-      } else {
-        literal_dims = dimensions();
-      }
-      if (element_type() == TOKEN) {
-        device_shape = ShapeUtil::MakeTokenShape();
-      } else {
-        device_shape = ShapeUtil::MakeShape(element_type(), literal_dims);
-        // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
-        *device_shape.mutable_layout() = layout()->xla_layout();
-      }
-    } else {
-      // TODO(skyewm): does anything need to create tuple literals? The PJRT C
-      // API doesn't support tuples or {logical_}on_device_shape(), so we prefer
-      // to use the above non-tuple code path where possible.
-      device_shape = on_device_shape();
-      if (device_shape.is_dynamic()) {
-        TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
-      }
-    }
-    return ShapeUtil::DeviceShapeToHostShape(device_shape);
-  }
+  absl::StatusOr<Shape> HostShape();
 
   // Convenience synchronous overload that allocates a literal with a default
   // layout.
+  ABSL_DEPRECATE_AND_INLINE()
   absl::StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
-    TF_ASSIGN_OR_RETURN(Shape host_shape, HostShape());
-    TF_ASSIGN_OR_RETURN(auto literal, Literal::Make(host_shape));
-    auto shared_literal = std::make_shared<Literal>(std::move(literal));
-    TF_RETURN_IF_ERROR(ToLiteralSync(shared_literal.get()));
-    return shared_literal;
+    return ToLiteral().Await();
   }
+
+  // ToLiteral overload which async allocates a literal with default layout.
+  xla::Future<std::shared_ptr<Literal>> ToLiteral();
 
   // Returns the number of bytes of the buffer storage on the device.
   virtual absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const = 0;

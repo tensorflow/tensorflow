@@ -544,11 +544,7 @@ TEST(PjRtClientTest, FulfillAliasBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto alias_buffer,
       client->CreateAliasBuffer(shape, client->memory_spaces()[0]));
-
-  TF_ASSERT_OK_AND_ASSIGN(Shape host_shape, alias_buffer.first->HostShape());
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, Literal::Make(host_shape));
-  auto shared_literal = std::make_shared<Literal>(std::move(literal));
-  auto future = alias_buffer.first->ToLiteral(shared_literal.get());
+  auto future = alias_buffer.first->ToLiteral();
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto param,
@@ -560,7 +556,7 @@ TEST(PjRtClientTest, FulfillAliasBuffer) {
 
   ASSERT_NE(alias_buffer.second, nullptr);
   TF_ASSERT_OK(std::move(alias_buffer.second)(param.get()));
-  TF_ASSERT_OK(future.Await());
+  TF_ASSERT_OK_AND_ASSIGN(auto shared_literal, future.Await());
 
   std::vector<int32_t> expected = {1, 2, 3, 4, 5, 6};
   EXPECT_EQ(shared_literal->data<int32_t>(), expected);
