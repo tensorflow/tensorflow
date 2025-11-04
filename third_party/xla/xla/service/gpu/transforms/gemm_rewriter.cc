@@ -2612,7 +2612,7 @@ GemmRewriter::GemmRewriter(se::GpuComputeCapability gpu_version,
       toolkit_version_(toolkit_version),
       options_(options) {}
 
-absl::StatusOr<bool> GemmRewriter::Run(
+absl::StatusOr<bool> GemmRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

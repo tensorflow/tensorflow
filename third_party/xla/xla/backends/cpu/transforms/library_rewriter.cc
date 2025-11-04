@@ -334,7 +334,7 @@ absl::StatusOr<bool> LibraryRewriter::ProcessComputation(
   return !fused_.empty();
 }
 
-absl::StatusOr<bool> LibraryRewriter::Run(
+absl::StatusOr<bool> LibraryRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool module_changed = false;

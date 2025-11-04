@@ -1682,7 +1682,7 @@ void VlogStats(HloModule* module) {
 
 }  // namespace
 
-absl::StatusOr<bool> CudnnFusedConvRewriter::Run(
+absl::StatusOr<bool> CudnnFusedConvRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool any_changed = false;

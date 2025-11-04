@@ -36,11 +36,6 @@ class HloDomainVerifier : public HloModulePass {
 
   absl::string_view name() const override { return "domain_verifier"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // Verify that the whole kDomain frontier bounding the instruction reach set,
   // has matching metadata.
   // A kDomain instruction has two sides of metadata, a user facing and an
@@ -57,6 +52,11 @@ class HloDomainVerifier : public HloModulePass {
   // boundary.
   static absl::StatusOr<const DomainMetadata*> VerifyDomain(
       const DomainMetadata::Domain& domain);
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   class RunContext;

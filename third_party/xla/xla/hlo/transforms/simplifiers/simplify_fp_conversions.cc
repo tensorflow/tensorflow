@@ -64,11 +64,11 @@ absl::StatusOr<bool> RunOnComputation(HloComputation& computation) {
 
 }  // namespace
 
-absl::StatusOr<bool> SimplifyFPConversions::Run(
+absl::StatusOr<bool> SimplifyFPConversions::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
-      2, absl::StrFormat("SimplifyFPConversions::Run() with before:\n%s",
+      2, absl::StrFormat("SimplifyFPConversions::RunImpl() with before:\n%s",
                          module->ToString()));
   bool changed = false;
   for (HloComputation* computation :
@@ -76,9 +76,9 @@ absl::StatusOr<bool> SimplifyFPConversions::Run(
     TF_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(*computation));
     changed |= comp_changed;
   }
-  XLA_VLOG_LINES(2,
-                 absl::StrFormat("SimplifyFPConversions::Run() with after:\n%s",
-                                 module->ToString()));
+  XLA_VLOG_LINES(
+      2, absl::StrFormat("SimplifyFPConversions::RunImpl() with after:\n%s",
+                         module->ToString()));
   return changed;
 }
 

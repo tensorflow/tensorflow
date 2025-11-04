@@ -584,7 +584,7 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
 
 }  // anonymous namespace
 
-absl::StatusOr<bool> DotMerger::Run(
+absl::StatusOr<bool> DotMerger::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

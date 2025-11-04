@@ -1530,11 +1530,11 @@ EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(
     OneDnnConvolutionConfig, onednn_conv_config, optimization_config,
     user_scratchpad);
 
-absl::StatusOr<bool> OneDnnContractionRewriter::Run(
+absl::StatusOr<bool> OneDnnContractionRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(
-      3, "OneDnnContractionRewriter::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(3, "OneDnnContractionRewriter::RunImpl(), before:\n" +
+                        module->ToString());
   OneDnnContractionRewriteVisitor visitor(graph_enabled_);
   TF_ASSIGN_OR_RETURN(auto result,
                       visitor.RunOnModule(module, execution_threads));
@@ -1544,7 +1544,7 @@ absl::StatusOr<bool> OneDnnContractionRewriter::Run(
   TF_ASSIGN_OR_RETURN(auto result2,
                       reorder_visitor.RunOnModule(module, execution_threads));
   XLA_VLOG_LINES(
-      3, "OneDnnContractionRewriter::Run(), after:\n" + module->ToString());
+      3, "OneDnnContractionRewriter::RunImpl(), after:\n" + module->ToString());
   return {result || result2};
 }
 

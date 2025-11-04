@@ -44,7 +44,7 @@ bool HloComputationDeduplicator::ContainsLargeConstants(HloComputation* comp) {
   return false;
 }
 
-absl::StatusOr<bool> HloComputationDeduplicator::Run(
+absl::StatusOr<bool> HloComputationDeduplicator::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   absl::flat_hash_map<std::string, HloComputation*> unique_comps;

@@ -1127,7 +1127,7 @@ FusionDecision PriorityFusion::CanFuseConstant(const HloInstruction* constant,
   return FusionDecision::Allow();
 }
 
-absl::StatusOr<bool> PriorityFusion::Run(
+absl::StatusOr<bool> PriorityFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool dump_enabled =

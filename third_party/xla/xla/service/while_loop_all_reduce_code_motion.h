@@ -69,8 +69,9 @@ class WhileLoopAllReduceCodeMotion : public HloModulePass {
   static constexpr absl::string_view kName =
       "while-loop-all-reduce-code-motion";
   absl::string_view name() const override { return kName; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

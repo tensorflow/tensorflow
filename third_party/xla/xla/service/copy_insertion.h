@@ -70,13 +70,6 @@ class CopyInsertion : public HloModulePass {
         use_region_based_live_range_analysis_(
             use_region_based_live_range_analysis) {}
 
-  // Run the pass on the given module. Returns whether the module was changed
-  // (copies were inserted).
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // Try to remove as many copies from the module as possible without
   // introducing live range interference. Only copy instructions that are
   // eligible for copy elision are considered for removal.
@@ -125,6 +118,12 @@ class CopyInsertion : public HloModulePass {
   // Backend specific information about whether an instruction can share buffer
   // with its operand.
   const AliasInfo* alias_info_;
+
+  // Run the pass on the given module. Returns whether the module was changed
+  // (copies were inserted).
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   absl::Status AddCopiesToResolveInterference(

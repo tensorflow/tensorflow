@@ -37,9 +37,9 @@ class CudnnPadForConvolutions : public HloModulePass {
   absl::string_view name() const override {
     return "cudnn_pad_for_convolutions";
   }
-  // Run PadForConvolutions on the given module and return if any change is made
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

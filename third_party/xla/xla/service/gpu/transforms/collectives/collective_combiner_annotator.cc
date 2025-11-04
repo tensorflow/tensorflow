@@ -124,7 +124,7 @@ int64_t MaxAvailableMemory(const HloModule& module,
 
 }  // namespace
 
-absl::StatusOr<bool> CollectiveCombinerAnnotator::Run(
+absl::StatusOr<bool> CollectiveCombinerAnnotator::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(

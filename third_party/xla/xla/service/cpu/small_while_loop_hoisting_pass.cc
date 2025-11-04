@@ -84,7 +84,7 @@ SmallWhileLoopHoistingPass::SmallWhileLoopHoistingPass(
     int64_t small_buffer_access_size)
     : small_buffer_access_size_(small_buffer_access_size) {}
 
-absl::StatusOr<bool> SmallWhileLoopHoistingPass::Run(
+absl::StatusOr<bool> SmallWhileLoopHoistingPass::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<HloInstruction*> while_instrs;

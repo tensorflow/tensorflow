@@ -968,7 +968,7 @@ bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
       ->WantToFuse();
 }
 
-absl::StatusOr<bool> GemmFusion::Run(
+absl::StatusOr<bool> GemmFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_RETURN_IF_ERROR(

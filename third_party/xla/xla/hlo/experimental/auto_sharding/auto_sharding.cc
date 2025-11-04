@@ -3956,7 +3956,7 @@ std::vector<int> FindAllIndices(std::vector<int64_t> vec, int64_t element) {
   return result;
 }
 
-absl::StatusOr<bool> AutoSharding::Run(
+absl::StatusOr<bool> AutoSharding::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!option_.enable) {

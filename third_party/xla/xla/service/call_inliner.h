@@ -76,11 +76,6 @@ class CallInliner : public HloModulePass {
   ~CallInliner() override = default;
   absl::string_view name() const override { return "call-inliner"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   absl::StatusOr<bool> RunWithInlineMap(
       HloModule* module, std::optional<InlinedInstructionMap*> inline_map,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
@@ -91,6 +86,11 @@ class CallInliner : public HloModulePass {
 
   // Maximum length of an op_name that can be formed during inlining.
   static constexpr int kMaxOpNameSize = 1024;
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   absl::StatusOr<bool> InlineAndLegalize(

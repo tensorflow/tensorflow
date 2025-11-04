@@ -190,7 +190,7 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
 }
 }  // namespace
 
-absl::StatusOr<bool> CustomKernelFusionRewriter::Run(
+absl::StatusOr<bool> CustomKernelFusionRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<CustomKernelFusionPattern::Match> matches;

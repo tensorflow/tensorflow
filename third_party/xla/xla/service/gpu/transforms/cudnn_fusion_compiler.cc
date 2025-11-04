@@ -1009,7 +1009,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> CuDnnFusionCompiler::Run(
+absl::StatusOr<bool> CuDnnFusionCompiler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_SCOPED_LOGGING_TIMER("cuDNN fusion compiler");

@@ -158,7 +158,7 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> GemvRewriter::Run(
+absl::StatusOr<bool> GemvRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   GemvRewriterVisitor gemv_rewriter;

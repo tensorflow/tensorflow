@@ -55,18 +55,18 @@ class HloCSE : public HloModulePass {
   ~HloCSE() override = default;
   absl::string_view name() const override { return "cse"; }
 
-  // Run CSE on the given module. Returns whether the module was changed (common
-  // subexpressions were found and eliminated).
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // Run CSE on the given computation. Returns whether the computation was
   // changed.
   absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
 
   static bool ShouldEliminateInstruction(const HloInstruction* instruction);
+
+ protected:
+  // Run CSE on the given module. Returns whether the module was changed (common
+  // subexpressions were found and eliminated).
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   const bool is_layout_sensitive_;

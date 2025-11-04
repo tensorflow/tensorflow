@@ -52,7 +52,7 @@ using RematAlgorithmFunction = std::function<absl::StatusOr<bool>(
 // CSE will undo the effects of this optimization and should not be run after
 // this pass. In general, this pass should be run very late, immediately before
 // code generation.
-class HloRematerialization : public HloModulePass {
+class HloRematerialization : public HloPassInterface {
  public:
   // The minimum cost estimate memory limit in bytes for a computation to be
   // considered for rematerialization. Only in use for peak priority
@@ -218,17 +218,6 @@ class HloRematerialization : public HloModulePass {
     max_rematerialized_block_size_ =
         std::max(max_rematerialized_block_size_, new_rematerialized_block_size);
   }
-
-  // Runs rematerialization on the given module. Returns whether the module was
-  // changed. Requires that the module has a schedule set
-  // (HloModule::has_schedule() is true) before running. Returns whether any
-  // instructions were rematerialized. If memory use is already below the limit
-  // specified in the constructor then no instructions are rematerialized and
-  // false is returned.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   int64_t GetBlockSizeLimit() const { return options_.block_size_limit; }
 
@@ -414,6 +403,16 @@ class HloRematerialization : public HloModulePass {
   // rematerialized.
   absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
       on_rematerialized_;
+
+  // Runs rematerialization on the given module. Returns whether the module was
+  // changed. Requires that the module has a schedule set
+  // (HloModule::has_schedule() is true) before running. Returns whether any
+  // instructions were rematerialized. If memory use is already below the limit
+  // specified in the constructor then no instructions are rematerialized and
+  // false is returned.
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla

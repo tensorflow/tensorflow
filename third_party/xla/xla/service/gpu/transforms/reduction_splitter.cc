@@ -131,9 +131,9 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
   const bool ignore_small_dims_;
 };
 
-absl::StatusOr<bool> ReductionSplitter::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> ReductionSplitter::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(
       bool changed,
       ReductionSplitterVisitor(device_description_, ignore_small_dims_)

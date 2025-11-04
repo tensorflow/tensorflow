@@ -3594,7 +3594,7 @@ LatencyHidingScheduler::ScheduleWithPreferences(
   return std::make_pair(new_schedule, schedule_info);
 }
 
-absl::StatusOr<bool> LatencyHidingScheduler::Run(
+absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Original module:";

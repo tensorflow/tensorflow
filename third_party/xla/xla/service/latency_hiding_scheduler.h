@@ -1839,13 +1839,12 @@ class LatencyHidingScheduler : public HloModulePass {
                           const std::vector<double>& preferences,
                           const HloComputation* computation);
 
-  using HloPassInterface::Run;
+  virtual void LogScheduleStatistics(const HloComputation* computation);
 
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
-  virtual void LogScheduleStatistics(const HloComputation* computation);
 
  protected:
   std::shared_ptr<const SchedulingContext> scheduling_context_;
