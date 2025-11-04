@@ -558,8 +558,8 @@ void HeapSimulator::Free(const HloValue* buffer,
 // SharedGroup.
 void HeapSimulator::ShareBuffer(const HloValue* buffer, const HloValue* shared,
                                 const HloInstruction* instruction) {
-  algorithm_->ShareWith(buffer, shared, GetBufferSize(shared));
-  no_fragmentation_stats_->ShareWith(buffer, shared, GetBufferSize(shared));
+  algorithm_->ShareWith(buffer, shared, GetBufferSize(buffer));
+  no_fragmentation_stats_->ShareWith(buffer, shared, GetBufferSize(buffer));
   FillDebugTrace(HeapSimulatorTrace::Event::SHARE_WITH, buffer, instruction,
                  shared);
 }
