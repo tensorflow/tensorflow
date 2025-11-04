@@ -29,6 +29,7 @@ cc_library(
         "//xla/python/ifrt:user_context_registry",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_to_from_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -37,6 +38,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:fingerprint",
     ],
     alwayslink = 1,
 )

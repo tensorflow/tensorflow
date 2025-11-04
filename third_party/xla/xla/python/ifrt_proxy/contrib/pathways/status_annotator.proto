@@ -40,10 +40,18 @@ message ObjectStoreDumpProto {
     repeated PerCreator per_creator = 2;
   }
 
+  message Dump {
+    repeated PerErrorContext per_error_context = 1;
+    string warning = 2;
+  }
+
   string device = 1;
   fixed64 dump_timestamp_ns = 2;
 
-  // One of 'dump_failed' or 'per_error_context' is filled.
-  tensorflow.StatusProto dump_failed = 3;
-  repeated PerErrorContext per_error_context = 4;
+  oneof result_statusor {
+    tensorflow.StatusProto dump_failed = 5;
+    Dump dump = 6;
+  }
+
+  reserved 3, 4;
 }

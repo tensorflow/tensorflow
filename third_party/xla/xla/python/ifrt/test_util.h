@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -97,8 +98,11 @@ absl::StatusOr<DeviceListRef> GetAddressableDevices(
     Client* client, absl::Span<const int> device_indices);
 
 // Returns a new `UserContext` for testing. The created `UserContext` has an
-// ID equal to `id`.
-UserContextRef MakeUserContext(uint64_t id);
+// ID equal to `id`. `debug_string` defaults to `TestUserContext(id)`. This can
+// be overridden with a custom debug string for the tests that must use
+// multiple `UserContext`s with the same debug string.
+UserContextRef MakeUserContext(
+    uint64_t id, std::optional<std::string> debug_string = std::nullopt);
 
 }  // namespace test_util
 }  // namespace ifrt
