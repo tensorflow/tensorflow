@@ -144,9 +144,10 @@ ENTRY e {
   r1 = s8[8,32,8] reshape(p0)
   t1 = s8[32,8,8] transpose(r1), dimensions={1,0,2}
   r0 = s8[32,64] reshape(t1)
+  c1 = f16[32,64] convert(r0)
   p1 = s8[32,32] parameter(1)
   c0 = f16[32,32] convert(p1)
-  ROOT d = f16[64,32] dot(r0, c0),
+  ROOT d = f16[64,32] dot(c1, c0),
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })")
                     .value();
@@ -1398,7 +1399,7 @@ ENTRY e {
 TEST_F(SmallDotGemmFusionTest, Int4DotIsRewritten) {
   constexpr auto kInt4Dot = R"(
     ENTRY e {
-      p0 = s8[16,16] parameter(0)
+      p0 = bf16[16,16] parameter(0)
       p1 = s4[16,16] parameter(1)
       p1c = bf16[16,16] convert(p1)
       ROOT dot = bf16[16,16] dot(p0, p1c),

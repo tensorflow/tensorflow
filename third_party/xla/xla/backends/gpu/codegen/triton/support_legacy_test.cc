@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -270,7 +269,7 @@ INSTANTIATE_TEST_SUITE_P(
     DynamicSliceTestParamToString);
 
 TEST_F(TritonSupportTestBase,
-       UnsupportedDotOutputTypeFailsGracefullyWithTriton) {
+       UnsupportedDotOutputTypeFailsCanTritonHandleGEMM) {
   const std::string kHloTest = R"(
 triton_computation {
   parameter_0 = f32[92,11]{1,0} parameter(0)
@@ -278,7 +277,6 @@ triton_computation {
   ROOT dot = pred[92,63]{1,0} dot(parameter_0, parameter_1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
-
 ENTRY e {
   parameter_0 = f32[92,11]{1,0} parameter(0)
   parameter_1 = f32[11,63]{1,0} parameter(1)
@@ -293,23 +291,71 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(
                               kHloTest, /*data_type=*/{}, HloOpcode::kDot));
-  const se::DeviceDescription dev_info =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
-  EXPECT_THAT(legacy_triton::IsTritonSupportedInstruction(
-                  ti.Instruction(), GetComputeCapability())
-                  .Explain(),
-              ::testing::HasSubstr("Unsupported output data type for Dot op."));
-  BlockLevelParameters block_level_parameters;
-  block_level_parameters.num_ctas = 1;
-  block_level_parameters.num_stages = 4;
-  block_level_parameters.num_warps = 8;
   EXPECT_THAT(
-      TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
-                    dev_info, block_level_parameters, &llvm_module_,
-                    symbolic_expr_context_),
-      absl_testing::StatusIs(
-          absl::StatusCode::kInternal,
-          ::testing::HasSubstr("Failed to verify Triton module for fusion")));
+      legacy_triton::CanTritonHandleGEMM(
+          *Cast<HloDotInstruction>(&ti.Instruction()), GetComputeCapability())
+          .Explain(),
+      ::testing::HasSubstr("Unsupported output data type for Dot op."));
+}
+
+TEST_F(TritonSupportTestBase, UnsupportedIntFloatDotFailsCanTritonHandleGEMM) {
+  const std::string kHloTest = R"(
+triton_computation {
+  parameter_0 = s8[92,11]{1,0} parameter(0)
+  parameter_1 = s8[11,63]{1,0} parameter(1)
+  ROOT dot = f32[92,63]{1,0} dot(parameter_0, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+ENTRY e {
+  parameter_0 = s8[92,11]{1,0} parameter(0)
+  parameter_1 = s8[11,63]{1,0} parameter(1)
+  ROOT triton_op = f32[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
+    calls=triton_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
+      triton_gemm_config:
+        {"block_m":16,"block_n":32,"block_k":512,
+         "split_k":1,"num_stages":4,"num_warps":8,
+         "num_ctas":1}}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                          ParseTemplateAndGetInstruction(
+                              kHloTest, /*data_type=*/{}, HloOpcode::kDot));
+  EXPECT_THAT(
+      legacy_triton::CanTritonHandleGEMM(
+          *Cast<HloDotInstruction>(&ti.Instruction()), GetComputeCapability())
+          .Explain(),
+      ::testing::HasSubstr("Dots between integer and floating-point "
+                           "types are not supported."));
+}
+
+TEST_F(TritonSupportTestBase,
+       UnsupportedDifferentOperandTypesDotFailsCanTritonHandleGEMM) {
+  const std::string kHloTest = R"(
+triton_computation {
+  parameter_0 = f16[92,11]{1,0} parameter(0)
+  parameter_1 = f32[11,63]{1,0} parameter(1)
+  ROOT dot = f32[92,63]{1,0} dot(parameter_0, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+ENTRY e {
+  parameter_0 = f16[92,11]{1,0} parameter(0)
+  parameter_1 = f32[11,63]{1,0} parameter(1)
+  ROOT triton_op = f32[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
+    calls=triton_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
+      triton_gemm_config:
+        {"block_m":16,"block_n":32,"block_k":512,
+         "split_k":1,"num_stages":4,"num_warps":8,
+         "num_ctas":1}}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                          ParseTemplateAndGetInstruction(
+                              kHloTest, /*data_type=*/{}, HloOpcode::kDot));
+  EXPECT_THAT(
+      legacy_triton::CanTritonHandleGEMM(
+          *Cast<HloDotInstruction>(&ti.Instruction()), GetComputeCapability())
+          .Explain(),
+      ::testing::HasSubstr("input types must be the same"));
 }
 
 TEST_F(TritonSupportTestBase,
