@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -68,12 +69,6 @@ namespace {
 
 using xla::cpu::BufferAllocationInfo;
 
-bool IsAlpha(char c) {
-  return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
-}
-
-bool IsAlphaNum(char c) { return IsAlpha(c) || (c >= '0' && c <= '9'); }
-
 // Convert an XLA type into a C++ type.
 absl::Status XLATypeToCpp(xla::PrimitiveType type, string* str) {
   switch (type) {
@@ -81,28 +76,28 @@ absl::Status XLATypeToCpp(xla::PrimitiveType type, string* str) {
       *str = "bool";
       break;
     case xla::S8:
-      *str = "tensorflow::int8";
+      *str = "int8_t";
       break;
     case xla::S16:
-      *str = "tensorflow::int16";
+      *str = "int16_t";
       break;
     case xla::S32:
-      *str = "tensorflow::int32";
+      *str = "int32_t";
       break;
     case xla::S64:
       *str = "int64_t";
       break;
     case xla::U8:
-      *str = "tensorflow::uint8";
+      *str = "uint8_t";
       break;
     case xla::U16:
-      *str = "tensorflow::uint16";
+      *str = "uint16_t";
       break;
     case xla::U32:
-      *str = "tensorflow::uint32";
+      *str = "uint32_t";
       break;
     case xla::U64:
-      *str = "tensorflow::uint64";
+      *str = "uint64_t";
       break;
     case xla::F32:
       *str = "float";
@@ -169,8 +164,8 @@ absl::Status AddRewritesForShape(
   } else {
     for (int dim = 0; dim < shape.dimensions().size(); ++dim) {
       dim_vars.push_back(absl::StrCat("size_t dim", dim));
-      dim_sizes += absl::StrCat("[", shape.dimensions(dim), "]");
-      indices += absl::StrCat("[dim", dim, "]");
+      absl::StrAppend(&dim_sizes, "[", shape.dimensions(dim), "]");
+      absl::StrAppend(&indices, "[dim", dim, "]");
       count *= shape.dimensions(dim);
     }
   }
@@ -1344,11 +1339,11 @@ absl::Status ValidateCppIdent(absl::string_view ident, absl::string_view msg) {
   // implementation-defined characters`.  We disallow those here to give
   // better error messages, at the expensive of being more restrictive than
   // the standard.
-  if (ident[0] != '_' && !IsAlpha(ident[0])) {
+  if (ident[0] != '_' && !absl::ascii_isalpha(ident[0])) {
     return errors::InvalidArgument("illegal leading char: ", msg);
   }
   for (size_t pos = 1; pos < ident.size(); ++pos) {
-    if (ident[pos] != '_' && !IsAlphaNum(ident[pos])) {
+    if (ident[pos] != '_' && !absl::ascii_isalnum(ident[pos])) {
       return errors::InvalidArgument("illegal char: ", msg);
     }
   }
