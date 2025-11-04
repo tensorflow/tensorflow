@@ -165,6 +165,12 @@ TEST(Layout, Equality) {
   EXPECT_TRUE(Layout::Equal().IgnoreSplitConfigs()(
       Layout({0, 1, 2}).add_split_configs(SplitConfig(0, {2})),
       Layout({0, 1, 2}).add_split_configs(SplitConfig(0, {3}))));
+  EXPECT_FALSE(
+      Layout::Equal()(Layout({0, 1, 2}).add_split_configs(SplitConfig(0, {2})),
+                      Layout({0, 1, 2})));
+  EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
+      Layout({0, 1, 2}).add_split_configs(SplitConfig(0, {2})),
+      Layout({0, 1, 2})));
 }
 
 TEST(Layout, LayoutToFromProto) {
