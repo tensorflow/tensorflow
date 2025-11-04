@@ -491,7 +491,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
   return changed;
 }
 
-absl::StatusOr<bool> WhileLoopFusibleSinking::Run(
+absl::StatusOr<bool> WhileLoopFusibleSinking::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Before WhileLoopFusibleSinking " << module->unique_id();

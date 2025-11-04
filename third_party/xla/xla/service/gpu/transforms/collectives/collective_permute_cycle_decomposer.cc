@@ -273,7 +273,7 @@ absl::Status DecomposeCollectivePermuteCycle(
 }
 }  // namespace
 
-absl::StatusOr<bool> CollectivePermuteCycleDecomposer::Run(
+absl::StatusOr<bool> CollectivePermuteCycleDecomposer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -430,7 +430,7 @@ absl::StatusOr<bool> TopkRewriter::TransformToCustomCall(
   return changed;
 }
 
-absl::StatusOr<bool> TopkRewriter::Run(
+absl::StatusOr<bool> TopkRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -537,7 +537,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
   HloPredicate should_decompose_;
 };
 
-absl::StatusOr<bool> TopkDecomposer::Run(
+absl::StatusOr<bool> TopkDecomposer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return TopkDecomposerVisitor(should_decompose_)

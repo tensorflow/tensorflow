@@ -53,17 +53,16 @@ class PriorityFusion : public HloModulePass {
 
   absl::string_view name() const override { return "priority-fusion"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
  protected:
   HloInstruction::FusionKind ChooseKind(const HloInstruction* producer,
                                         const HloInstruction* consumer);
 
   HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
                        bool use_multi_output_fusion = false);
+
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Consumes a unit of compiler fuel and returns true if we should

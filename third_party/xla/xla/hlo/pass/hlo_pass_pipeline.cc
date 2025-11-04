@@ -290,7 +290,7 @@ void HloPassPipeline::MaybeDumpHloAndSaveFilenames(
   }
 }
 
-absl::StatusOr<bool> HloPassPipeline::Run(
+absl::StatusOr<bool> HloPassPipeline::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   run_called_ = true;
@@ -304,7 +304,7 @@ absl::StatusOr<bool> HloPassPipeline::Run(
   return RunPassesInternal(module, debug_options, execution_threads);
 }
 
-absl::StatusOr<bool> HloPassPipeline::Run(
+absl::StatusOr<bool> HloPassPipeline::RunImpl(
     std::unique_ptr<HloModule>& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   run_called_ = true;

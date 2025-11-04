@@ -119,11 +119,11 @@ absl::StatusOr<bool> CanonicalizeNonTupleConditional(
 
 }  // namespace
 
-absl::StatusOr<bool> ConditionalCanonicalizer::Run(
+absl::StatusOr<bool> ConditionalCanonicalizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
-      2, "ConditionalCanonicalizer::Run(), before:\n" + module->ToString());
+      2, "ConditionalCanonicalizer::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
@@ -133,7 +133,7 @@ absl::StatusOr<bool> ConditionalCanonicalizer::Run(
     }
   }
   XLA_VLOG_LINES(
-      2, "ConditionalCanonicalizer::Run(), after:\n" + module->ToString());
+      2, "ConditionalCanonicalizer::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

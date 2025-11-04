@@ -40,7 +40,7 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<bool> AllReduceSimplifier::Run(
+absl::StatusOr<bool> AllReduceSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(

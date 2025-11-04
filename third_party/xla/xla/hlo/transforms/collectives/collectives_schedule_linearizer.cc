@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<bool> CollectivesScheduleLinearizer::Run(
+absl::StatusOr<bool> CollectivesScheduleLinearizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (is_enabled_ && !is_enabled_(module)) {

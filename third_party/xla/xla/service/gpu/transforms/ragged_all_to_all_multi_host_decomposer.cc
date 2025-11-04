@@ -491,7 +491,7 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(
       intra_host_replica_groups, num_hosts, num_devices_in_replica);
 }
 
-absl::StatusOr<bool> RaggedAllToAllMultiHostDecomposer::Run(
+absl::StatusOr<bool> RaggedAllToAllMultiHostDecomposer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

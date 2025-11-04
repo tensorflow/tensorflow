@@ -130,13 +130,12 @@ class LibraryRewriter : public HloModulePass {
   // Finds and creates fusions in the given computation.
   absl::StatusOr<bool> ProcessComputation(HloComputation* computation);
 
-  // Runs the pass.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+  absl::string_view name() const override { return "dot-library-rewriter"; }
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
-  absl::string_view name() const override { return "dot-library-rewriter"; }
 
  private:
   const TargetMachineFeatures* target_machine_features_;

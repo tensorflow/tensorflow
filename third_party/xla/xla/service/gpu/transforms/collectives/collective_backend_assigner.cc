@@ -78,7 +78,7 @@ absl::StatusOr<GPUCommunicationType> GetCommunicationType(
 // based on:
 // 1. Communication pattern (intranode vs internode)
 // 2. Message size (compared against threshold_in_bytes)
-absl::StatusOr<bool> CollectiveBackendAssigner::Run(
+absl::StatusOr<bool> CollectiveBackendAssigner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

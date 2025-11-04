@@ -602,7 +602,7 @@ HloHostDeviceTypeCallWrapper::MaterializeConstantsOnHostComputation(
   return tsl::down_cast<HloCallInstruction*>(new_call);
 }
 
-absl::StatusOr<bool> HloHostDeviceTypeCallWrapper::Run(
+absl::StatusOr<bool> HloHostDeviceTypeCallWrapper::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool has_host_compute_instr = false;

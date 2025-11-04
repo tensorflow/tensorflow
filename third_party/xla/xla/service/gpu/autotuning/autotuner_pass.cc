@@ -121,7 +121,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
       debug_options.xla_gpu_shard_autotuning()));
 }
 
-absl::StatusOr<bool> AutotunerPass::Run(
+absl::StatusOr<bool> AutotunerPass::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running Autotuner Pass";

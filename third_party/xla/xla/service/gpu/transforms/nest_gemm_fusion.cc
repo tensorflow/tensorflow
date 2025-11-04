@@ -1326,7 +1326,7 @@ absl::StatusOr<bool> NestGemmFusion::RunOnModule(
   return changed;
 }
 
-absl::StatusOr<bool> NestGemmFusion::Run(
+absl::StatusOr<bool> NestGemmFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "--xla_gpu_unsupported_generic_triton_emitter_features="

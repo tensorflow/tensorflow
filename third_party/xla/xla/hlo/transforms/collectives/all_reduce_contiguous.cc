@@ -93,7 +93,7 @@ absl::Status ReplaceWithContiguousAllReduce(
 }
 }  // namespace
 
-absl::StatusOr<bool> AllReduceContiguous::Run(
+absl::StatusOr<bool> AllReduceContiguous::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running AllReduceContiguous";

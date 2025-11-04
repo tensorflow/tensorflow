@@ -237,7 +237,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
 
 }  // anonymous namespace
 
-absl::StatusOr<bool> FusionBlockLevelRewriter::Run(
+absl::StatusOr<bool> FusionBlockLevelRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(

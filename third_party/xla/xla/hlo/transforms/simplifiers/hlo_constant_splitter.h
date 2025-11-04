@@ -45,8 +45,9 @@ class HloConstantSplitter : public HloModulePass {
       : split_expressions_(split_expressions),
         extra_constraints_(extra_constraints) {}
   absl::string_view name() const override { return "hlo-constant-splitter"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

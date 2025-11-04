@@ -180,11 +180,11 @@ absl::StatusOr<bool> AnnotateStreamAttributesForUsers(
 }
 }  // namespace
 
-absl::StatusOr<bool> StreamAttributeAnnotator::Run(
+absl::StatusOr<bool> StreamAttributeAnnotator::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
-      5, "StreamAttributeAnnotator::Run(), before:\n" + module->ToString());
+      5, "StreamAttributeAnnotator::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
   int64_t channel_id = hlo_query::NextChannelId(*module);
   for (const HloComputation* comp :
@@ -228,7 +228,7 @@ absl::StatusOr<bool> StreamAttributeAnnotator::Run(
     }
   }
   XLA_VLOG_LINES(
-      5, "StreamAttributeAnnotator::Run(), after:\n" + module->ToString());
+      5, "StreamAttributeAnnotator::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

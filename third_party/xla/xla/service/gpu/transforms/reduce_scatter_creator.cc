@@ -39,9 +39,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<bool> ReduceScatterCreator::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> ReduceScatterCreator::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   const HloModuleConfig &config = module->config();
   int64_t next_channel_id = hlo_query::NextChannelId(*module);
 

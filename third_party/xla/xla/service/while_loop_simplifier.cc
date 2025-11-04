@@ -1557,11 +1557,11 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
   return new_while;
 }
 
-absl::StatusOr<bool> WhileLoopSimplifier::Run(
+absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(3,
-                 "WhileLoopSimplifier::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(
+      3, "WhileLoopSimplifier::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
 
   // Gather all the while ops in our module.  We do this ahead of time so we
@@ -1682,8 +1682,8 @@ absl::StatusOr<bool> WhileLoopSimplifier::Run(
     HloDCE dce;
     TF_RETURN_IF_ERROR(dce.Run(module).status());
   }
-  XLA_VLOG_LINES(3,
-                 "WhileLoopSimplifier::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(
+      3, "WhileLoopSimplifier::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

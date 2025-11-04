@@ -871,7 +871,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
 }  // end namespace
 
-absl::StatusOr<bool> LayoutNormalization::Run(
+absl::StatusOr<bool> LayoutNormalization::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return LayoutNormalizationVisitor{this, custom_call_transformer_}.RunOnModule(

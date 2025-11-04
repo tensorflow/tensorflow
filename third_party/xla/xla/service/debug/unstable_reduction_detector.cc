@@ -74,7 +74,7 @@ std::string UniqueReductionOpsAsString(
   return result;
 }
 
-absl::StatusOr<bool> UnstableReductionDetector::Run(
+absl::StatusOr<bool> UnstableReductionDetector::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (module->config().debug_options().xla_detect_unstable_reductions() ==

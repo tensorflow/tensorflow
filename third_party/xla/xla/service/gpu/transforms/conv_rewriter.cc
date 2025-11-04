@@ -901,10 +901,10 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
 }
 }  // namespace
 
-absl::StatusOr<bool> ConvRewriter::Run(
+absl::StatusOr<bool> ConvRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(2, "ConvRewriter::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "ConvRewriter::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
@@ -913,7 +913,7 @@ absl::StatusOr<bool> ConvRewriter::Run(
         RunOnComputation(computation, compute_capability_, dnn_version_));
     changed |= result;
   }
-  XLA_VLOG_LINES(2, "ConvRewriter::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "ConvRewriter::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

@@ -1355,11 +1355,11 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> WindowedEinsumHandler::Run(
+absl::StatusOr<bool> WindowedEinsumHandler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
-      5, "WindowedEinsumHandler::Run(), before:\n" + module->ToString());
+      5, "WindowedEinsumHandler::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
   int64_t stream_id = hlo_query::NextChannelId(*module);
   std::vector<HloInstruction*> all_windowed_einsum_loops;
@@ -1461,8 +1461,8 @@ absl::StatusOr<bool> WindowedEinsumHandler::Run(
     }
     changed |= result.unrolled;
   }
-  XLA_VLOG_LINES(5,
-                 "WindowedEinsumHandler::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(
+      5, "WindowedEinsumHandler::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

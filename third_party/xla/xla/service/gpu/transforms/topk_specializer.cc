@@ -151,7 +151,7 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> TopkSpecializer::Run(
+absl::StatusOr<bool> TopkSpecializer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return SpecializeTopkVisitor(compute_capability_)

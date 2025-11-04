@@ -4194,11 +4194,11 @@ absl::Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
 
 }  // namespace
 
-absl::StatusOr<bool> SpaceToBatchConverter::Run(
+absl::StatusOr<bool> SpaceToBatchConverter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
-      2, "SpaceToBatchConverter::Run(), before:\n" + module->ToString());
+      2, "SpaceToBatchConverter::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
 
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
@@ -4208,8 +4208,8 @@ absl::StatusOr<bool> SpaceToBatchConverter::Run(
     }
     VLOG(1) << "Done operating on computation";
   }
-  XLA_VLOG_LINES(2,
-                 "SpaceToBatchConverter::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(
+      2, "SpaceToBatchConverter::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

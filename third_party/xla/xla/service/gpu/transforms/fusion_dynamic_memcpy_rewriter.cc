@@ -267,7 +267,7 @@ absl::Status SetLoopMemcpyConfig(
 
 }  // namespace
 
-absl::StatusOr<bool> FusionDynamicMemcpyRewriter::Run(
+absl::StatusOr<bool> FusionDynamicMemcpyRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool has_changed = false;

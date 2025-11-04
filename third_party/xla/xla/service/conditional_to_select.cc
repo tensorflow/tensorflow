@@ -104,7 +104,7 @@ static absl::StatusOr<bool> DoConditionalToSelect(HloInstruction* conditional) {
   return true;
 }
 
-absl::StatusOr<bool> ConditionalToSelect::Run(
+absl::StatusOr<bool> ConditionalToSelect::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);

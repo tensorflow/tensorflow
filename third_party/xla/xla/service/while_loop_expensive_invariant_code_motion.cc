@@ -298,7 +298,7 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
   return true;
 }
 
-absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(
+absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(3) << "HLO module before WhileLoopExpensiveInvariantCodeMotion:";

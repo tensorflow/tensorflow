@@ -32,7 +32,7 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<bool> DynamicIndexSplitter::Run(
+absl::StatusOr<bool> DynamicIndexSplitter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -505,7 +505,7 @@ absl::StatusOr<bool> CallInliner::RunWithInlineMap(
   return did_mutate;
 }
 
-absl::StatusOr<bool> CallInliner::Run(
+absl::StatusOr<bool> CallInliner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return RunWithInlineMap(module, std::nullopt, execution_threads);

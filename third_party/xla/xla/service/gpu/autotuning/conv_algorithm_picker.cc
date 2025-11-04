@@ -1153,7 +1153,7 @@ absl::StatusOr<bool> GpuConvAlgorithmPicker::RunOnComputation(
   return changed;
 }
 
-absl::StatusOr<bool> GpuConvAlgorithmPicker::Run(
+absl::StatusOr<bool> GpuConvAlgorithmPicker::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_SCOPED_LOGGING_TIMER(

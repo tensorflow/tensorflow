@@ -50,7 +50,7 @@ class ShapeCanonicalizerVisitor : public DfsHloRewriteVisitor {
 ShapeCanonicalizer::ShapeCanonicalizer(ShapePool* shape_pool)
     : shape_pool_(shape_pool) {}
 
-absl::StatusOr<bool> ShapeCanonicalizer::Run(
+absl::StatusOr<bool> ShapeCanonicalizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Every time we canonicalize shapes in a module, we garbage collect expired

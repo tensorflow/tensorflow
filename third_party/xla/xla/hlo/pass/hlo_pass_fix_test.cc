@@ -48,10 +48,10 @@ class DecrementPositiveConstants : public HloModulePass {
  public:
   absl::string_view name() const override { return "decrement-constants"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     bool changed = false;
     for (HloComputation* computation :
          module->computations(execution_threads)) {
@@ -79,10 +79,10 @@ class FlipAddSubtract : public HloModulePass {
  public:
   absl::string_view name() const override { return "flip-add-subtract"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     bool changed = false;
     for (HloComputation* computation :
          module->computations(execution_threads)) {

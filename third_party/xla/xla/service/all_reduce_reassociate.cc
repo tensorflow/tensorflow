@@ -179,7 +179,7 @@ bool MatchOperandsToAllReduceWithOptionalConvert(HloInstruction* inst,
 }
 }  // namespace
 
-absl::StatusOr<bool> AllReduceReassociate::Run(
+absl::StatusOr<bool> AllReduceReassociate::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (hlo_query::ContainsLayoutConstrainedAllReduce(*module)) {

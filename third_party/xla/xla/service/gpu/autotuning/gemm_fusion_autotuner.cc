@@ -1561,7 +1561,7 @@ static absl::Status ExchangeResults(KeyValueStoreInterface& key_value_store,
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> GemmFusionAutotuner::Run(
+absl::StatusOr<bool> GemmFusionAutotuner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_SCOPED_LOGGING_TIMER("GEMM fusion autotuner");

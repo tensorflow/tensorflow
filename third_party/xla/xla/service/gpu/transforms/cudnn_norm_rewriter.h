@@ -34,8 +34,8 @@ class CudnnNormRewriter : public HloModulePass {
       const se::CudaComputeCapability& cuda_compute_capability);
   absl::string_view name() const override { return "norm-rewriter"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

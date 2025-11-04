@@ -5405,7 +5405,7 @@ int64_t SpmdPartitioner::CommunicationCostInBytes(HloInstruction* hlo) {
   module->set_spmd_output_sharding(entry_root->sharding());
 }
 
-absl::StatusOr<bool> SpmdPartitioner::Run(
+absl::StatusOr<bool> SpmdPartitioner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   set_execution_threads(execution_threads);

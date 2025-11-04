@@ -94,7 +94,7 @@ bool RecordReificationCost(HloInstruction& instr,
 
 }  // namespace
 
-absl::StatusOr<bool> SolGpuCostModelStatsCollection::Run(
+absl::StatusOr<bool> SolGpuCostModelStatsCollection::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto cost_analysis =

@@ -446,7 +446,7 @@ absl::StatusOr<bool> MatchQuantization(HloInstruction* instr) {
 
 }  // namespace
 
-absl::StatusOr<bool> CollectiveQuantizer::Run(
+absl::StatusOr<bool> CollectiveQuantizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

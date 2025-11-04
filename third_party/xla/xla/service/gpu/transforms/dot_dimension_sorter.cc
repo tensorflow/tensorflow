@@ -81,7 +81,7 @@ absl::Status SortDotDimensions(HloDotInstruction* dot) {
 
 }  // namespace
 
-absl::StatusOr<bool> DotDimensionSorter::Run(
+absl::StatusOr<bool> DotDimensionSorter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<HloInstruction*> dots_to_process;
