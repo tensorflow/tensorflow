@@ -562,3 +562,16 @@ filegroup(
     srcs = glob(["%{rocm_root}/**"]),
     visibility = ["//visibility:public"],
 )
+
+platform(
+    name = "linux_x64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+        "@bazel_tools//tools/cpp:clang",
+    ],
+    exec_properties = {
+        "container-image": "docker://%{rocm_rbe_docker_image}",
+        "OSFamily": "Linux",
+    },
+)

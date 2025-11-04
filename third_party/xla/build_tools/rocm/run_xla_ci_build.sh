@@ -27,7 +27,6 @@ fi
 
 SCRIPT_DIR=$(dirname $0)
 bazel --bazelrc="$SCRIPT_DIR/rocm_xla_ci.bazelrc" test \
-	"$@" \
 	--build_tag_filters=$TAG_FILTERS \
     --test_tag_filters=$TAG_FILTERS \
 	--profile=/tf/pkg/profile.json.gz \
@@ -36,4 +35,5 @@ bazel --bazelrc="$SCRIPT_DIR/rocm_xla_ci.bazelrc" test \
 	--action_env=XLA_FLAGS="--xla_gpu_enable_llvm_module_compilation_parallelism=true --xla_gpu_force_compilation_parallelism=16" \
 	--test_output=errors \
 	--local_test_jobs=2 \
-	--run_under=//build_tools/rocm:parallel_gpu_execute
+	--run_under=//build_tools/rocm:parallel_gpu_execute \
+	"$@"
