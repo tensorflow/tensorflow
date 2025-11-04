@@ -275,7 +275,7 @@ class GatherOp : public XlaOpKernel {
 
   // The number of batch dimensions, as passed in the batch_dims attribute.
   // It must be less than or equal to rank(indices).
-  int32 batch_dims_ = 0;
+  int32_t batch_dims_ = 0;
 };
 
 REGISTER_XLA_OP(Name("Gather"), MlirXlaOpKernel);

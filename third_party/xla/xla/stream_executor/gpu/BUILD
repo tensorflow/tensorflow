@@ -1004,3 +1004,14 @@ cc_library(
         "//xla/stream_executor:kernel",
     ],
 )
+
+cc_library(
+    name = "prefix_sum_kernel",
+    hdrs = ["prefix_sum_kernel.h"],
+    deps = [
+        "//xla:types",
+        "//xla/backends/gpu/runtime:buffer_debug_log_structs",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
+)

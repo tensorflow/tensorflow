@@ -134,8 +134,8 @@ class ReverseSequenceOp : public XlaOpKernel {
   }
 
  private:
-  int32 batch_dim_;
-  int32 seq_dim_;
+  int32_t batch_dim_;
+  int32_t seq_dim_;
 };
 
 REGISTER_XLA_OP(Name("ReverseSequence"), ReverseSequenceOp);

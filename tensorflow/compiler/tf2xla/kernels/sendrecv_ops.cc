@@ -35,7 +35,7 @@ class SendOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override;
 
  private:
-  string tensor_name_;
+  std::string tensor_name_;
 
   SendOp(const SendOp&) = delete;
   void operator=(const SendOp&) = delete;
@@ -60,7 +60,7 @@ class RecvOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override;
 
  private:
-  string tensor_name_;
+  std::string tensor_name_;
   xla::Shape shape_;
 
   RecvOp(const RecvOp&) = delete;
