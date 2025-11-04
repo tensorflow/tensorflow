@@ -305,11 +305,11 @@ cc_library(
     hdrs = ["command_line_flags.h"],
     deps = [
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:types",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:str_util",
-        "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:stringprintf",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
