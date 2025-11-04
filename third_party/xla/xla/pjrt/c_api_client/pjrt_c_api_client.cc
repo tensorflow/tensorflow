@@ -2958,6 +2958,7 @@ void PjRtCApiBuffer::MakePromiseTrackEvent() {
 }
 
 Future<> PjRtCApiBuffer::GetReadyFuture() {
+  absl::MutexLock l(mu_);
   if (readiness_promise_ == nullptr) {
     auto [promise, future] = Future<>::MakePromise();
     readiness_promise_ = std::move(promise).ToShared();

@@ -29,6 +29,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -57,8 +58,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
@@ -124,6 +127,55 @@ TEST(PjRtCApiClientTest, FulfillAliasBuffer) {
   // Expected result: data + 1
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR2<int32_t>({{2, 3, 4}, {5, 6, 7}}), *alias_literal));
+}
+
+TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
+  const PJRT_Api* c_api = ::pjrt::cpu_plugin::GetCpuPjrtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          WrapClientAroundCApi(c_api));
+
+  constexpr int kNumThreads = 4;
+  tsl::thread::ThreadPool thread_pool(
+      tsl::Env::Default(), "GetReadyWithConcurrentUsage", kNumThreads);
+
+  std::vector<int32_t> data{1, 2, 3, 4, 5, 6};
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+
+  // Create a buffer from host data.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto param,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  // Define a simple "add one" kernel.
+  XlaBuilder builder("add_one");
+  auto input = Parameter(&builder, 0, shape, "input");
+  auto one = ConstantR0<int32_t>(&builder, 1);
+  auto add = Add(input, one);
+  auto computation = builder.Build(add).value();
+
+  // Compile and load the executable.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client->CompileAndLoad(computation, CompileOptions()));
+  for (size_t i = 0; i < 100; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+        executable->Execute({{param.get()}}, ExecuteOptions()));
+    auto buffer = std::move(results[0][0]);
+
+    absl::BlockingCounter blocking_counter(kNumThreads);
+    for (size_t j = 0; j < kNumThreads; ++j) {
+      thread_pool.Schedule([&, buffer = buffer.get()]() {
+        TF_EXPECT_OK(buffer->GetReadyFuture().Await());
+        blocking_counter.DecrementCount();
+      });
+    }
+    blocking_counter.Wait();
+  }
 }
 
 TEST(PjRtCApiClientTest, IsDynamicDimension) {
