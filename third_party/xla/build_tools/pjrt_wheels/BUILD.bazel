@@ -1,13 +1,18 @@
 load("@cuda_cudart//:version.bzl", cuda_major_version = "VERSION")
 load("@nightly_timestamp//:timestamp.bzl", "XLA_NIGHTLY_TIMESTAMP")
+load("@rc_number//:rc_number.bzl", "XLA_RC_NUMBER")
 load("@rules_python//python:packaging.bzl", "py_wheel")
 
 # This ensures we can only build plugins for selected CUDA versions.
 cuda_label = "cuda" + cuda_major_version if cuda_major_version else "null"
 
 # If we're building a nightly, append .devYYYYMMDD to the version
-# If we're not, the timestamp is the empty string
-wheel_version = "0.0.0" + XLA_NIGHTLY_TIMESTAMP
+# If we're not, the timestamp is an empty string
+# If we're building a release candidate, append rc# to the version
+# If we're not, the rc number is an empty string
+# Note that PEP 440 supports both of these at the same time, but
+# our CI will never set both.
+wheel_version = "0.0.0" + XLA_RC_NUMBER + XLA_NIGHTLY_TIMESTAMP
 
 wheel_platform = select({
     "//conditions:default": "manylinux_2_27_x86_64",

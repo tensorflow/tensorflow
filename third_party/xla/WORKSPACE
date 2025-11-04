@@ -157,3 +157,8 @@ nvshmem_redist_init_repository(
 load("//build_tools/pjrt_wheels:nightly.bzl", "nightly_timestamp_repo")
 
 nightly_timestamp_repo(name = "nightly_timestamp")
+
+# This is used for building release candidate PJRT wheels.
+load("//build_tools/pjrt_wheels:release_candidate.bzl", "rc_number_repo")
+
+rc_number_repo(name = "rc_number")

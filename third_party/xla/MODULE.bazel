@@ -208,3 +208,6 @@ use_repo(tensorrt_configure, "local_config_tensorrt")
 
 pjrt_nightly_timestamp = use_extension("//build_tools/pjrt_wheels:nightly.bzl", "nightly_timestamp_repo_bzlmod")
 use_repo(pjrt_nightly_timestamp, "nightly_timestamp")
+
+pjrt_rc_number = use_extension("//build_tools/pjrt_wheels:release_candidate.bzl", "rc_number_repo_bzlmod")
+use_repo(pjrt_rc_number, "rc_number")
