@@ -1221,7 +1221,8 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
 
 absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
     const GpuExecutableProto& proto,
-    const se::DeviceDescription& device_description) {
+    const se::DeviceDescription& device_description,
+    absl::string_view platform_name) {
   Params params;
   params.enable_debug_info_manager = false;
   params.asm_text = proto.asm_text();
@@ -1263,7 +1264,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Thunk> thunk,
-      DeserializeThunkProto(proto.thunk(), params.mlir_allocations.value()));
+      DeserializeThunkProto(proto.thunk(), params.mlir_allocations.value(),
+                            params.debug_module.get(), platform_name));
 
   if (dynamic_cast<const SequentialThunk*>(thunk.get()) == nullptr) {
     return absl::InvalidArgumentError(

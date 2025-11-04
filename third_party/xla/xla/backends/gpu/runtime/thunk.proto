@@ -21,6 +21,7 @@ import "xla/backends/gpu/runtime/convolution_filter_thunk.proto";
 import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
 import "xla/backends/gpu/runtime/shaped_slice.proto";
 import "xla/core/host_offloading/host_offloading_executable.proto";
+import "xla/ffi/attribute_map.proto";
 import "xla/service/buffer_assignment.proto";
 import "xla/service/gpu/gpu_conv_runner.proto";
 import "xla/service/gpu/gpu_norm_runner.proto";
@@ -248,6 +249,18 @@ message FftThunkProto {
   xla.ShapeProto output_shape = 6;
 }
 
+message CustomCallThunkProto {
+  string target_name = 1;
+  repeated NullableShapedSliceProto operands = 2;
+  repeated NullableShapedSliceProto results = 3;
+  string opaque = 4;
+  CustomCallApiVersion api_version = 5;
+  xla.ffi.AttributesMapProto attributes = 6;
+  // The name of the called computation. It needs to match the HloCompuation in
+  // the HloModule that is used to deserialize the thunk.
+  optional string called_computation = 7;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -280,6 +293,7 @@ message ThunkProto {
     FftThunkProto fft_thunk = 27;
     CholeskyThunkProto cholesky_thunk = 28;
     Memset32BitValueThunkProto memset32bit_value_thunk = 29;
+    CustomCallThunkProto custom_call_thunk = 30;
   }
 }
 

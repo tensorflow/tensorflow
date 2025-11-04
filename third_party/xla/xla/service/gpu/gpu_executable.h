@@ -218,7 +218,8 @@ class GpuExecutable : public Executable {
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> FromProto(
       const GpuExecutableProto&,
-      const se::DeviceDescription& device_description);
+      const se::DeviceDescription& device_description,
+      absl::string_view platform);
 
   absl::StatusOr<GpuExecutableProto> ToProto() const;
 

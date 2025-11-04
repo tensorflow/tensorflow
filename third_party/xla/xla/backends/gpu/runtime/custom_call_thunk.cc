@@ -28,10 +28,12 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -538,6 +540,85 @@ absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   return ExecuteCustomCall(params);
+}
+
+absl::StatusOr<ThunkProto> CustomCallThunk::ToProto() const {
+  if (!api_version_.has_value()) {
+    return absl::FailedPreconditionError(
+        "CustomCallThunk was created from a non-registered target and cannot "
+        "be serialized to a proto");
+  }
+
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+  proto.mutable_custom_call_thunk()->set_target_name(target_name_);
+  proto.mutable_custom_call_thunk()->set_opaque(opaque_);
+  proto.mutable_custom_call_thunk()->set_api_version(api_version_.value());
+  if (called_computation_ != nullptr) {
+    proto.mutable_custom_call_thunk()->set_called_computation(
+        called_computation_->name());
+  }
+
+  for (const NullableShapedSlice& operand : operands_) {
+    TF_ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_operands(),
+                        operand.ToProto());
+  }
+
+  for (const NullableShapedSlice& result : results_) {
+    TF_ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_results(),
+                        result.ToProto());
+  }
+
+  if (attributes_.has_value()) {
+    *proto.mutable_custom_call_thunk()->mutable_attributes() =
+        attributes_->ToProto();
+  }
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::FromProto(
+    ThunkInfo thunk_info, const CustomCallThunkProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    const HloModule* absl_nullable hlo_module,
+    absl::string_view platform_name) {
+  if (hlo_module == nullptr && proto.has_called_computation()) {
+    return absl::InvalidArgumentError(
+        "HloModule is required to deserialize a CustomCallThunk with a "
+        "called computation");
+  }
+
+  std::vector<NullableShapedSlice> operands, results;
+  for (const auto& operand_proto : proto.operands()) {
+    TF_ASSIGN_OR_RETURN(
+        NullableShapedSlice operand,
+        NullableShapedSlice::FromProto(operand_proto, buffer_allocations));
+    operands.push_back(std::move(operand));
+  }
+  for (const auto& result_proto : proto.results()) {
+    TF_ASSIGN_OR_RETURN(
+        NullableShapedSlice result,
+        NullableShapedSlice::FromProto(result_proto, buffer_allocations));
+    results.push_back(std::move(result));
+  }
+  TF_ASSIGN_OR_RETURN(ffi::AttributesMap attributes,
+                      ffi::AttributesMap::FromProto(proto.attributes()));
+
+  HloComputation* called_computation = nullptr;
+  if (proto.has_called_computation()) {
+    CHECK(hlo_module != nullptr);  // This check is needed for static analysis.
+    called_computation =
+        hlo_module->GetComputationWithName(proto.called_computation());
+    if (called_computation == nullptr) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "HloComputation '", proto.called_computation(),
+          "' not found in the HloModule with name '", hlo_module->name(), "'"));
+    }
+  }
+
+  return CustomCallThunk::Create(std::move(thunk_info), proto.target_name(),
+                                 std::move(operands), std::move(results),
+                                 std::move(attributes), called_computation,
+                                 platform_name);
 }
 
 }  // namespace gpu

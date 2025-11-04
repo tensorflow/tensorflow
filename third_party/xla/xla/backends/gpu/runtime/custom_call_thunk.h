@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/runtime/object_pool.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -145,6 +147,14 @@ class CustomCallThunk : public Thunk {
   const std::vector<NullableShapedSlice>& results() const { return results_; }
 
   absl::string_view opaque() const { return opaque_; }
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<CustomCallThunk>> FromProto(
+      ThunkInfo thunk_info, const CustomCallThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      const HloModule* absl_nullable hlo_module,
+      absl::string_view platform_name);
 
  private:
   CustomCallThunk(ThunkInfo thunk_info, std::string target_name,

@@ -474,7 +474,7 @@ TEST(GpuExecutableTest, ProtoConversion) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> reconstructed_executable,
-      GpuExecutable::FromProto(proto, device_description));
+      GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM"));
   EXPECT_THAT(reconstructed_executable->text(), "test_asm_text");
   EXPECT_THAT(reconstructed_executable->binary(), ElementsAre(1, 2, 3));
   EXPECT_THAT(
