@@ -34,7 +34,7 @@ namespace tensorflow {
 class TensorShapeTestHelper {
  public:
   static void set_data_type(TensorShape* s, DataType t) { s->set_data_type(t); }
-  static uint8 data_type(const TensorShape* s) { return s->data_type(); }
+  static uint8_t data_type(const TensorShape* s) { return s->data_type(); }
 };
 
 namespace {
@@ -620,11 +620,11 @@ class TensorShapeOld {
   TensorShapeIterOld end() const;
 
   /// For error messages.
-  string DebugString() const;
+  std::string DebugString() const;
 
   /// Same as `TensorShape(proto).DebugString()` but doesn't crash for
   /// invalid protos.
-  static string DebugString(const TensorShapeProto& proto);
+  static std::string DebugString(const TensorShapeProto& proto);
 
  private:
   // Recalculates the dimensions of this tensor after they are modified.
@@ -794,13 +794,13 @@ TensorShapeIterOld TensorShapeOld::end() const {
   return TensorShapeIterOld(this, dims());
 }
 
-string TensorShapeOld::DebugString() const {
+std::string TensorShapeOld::DebugString() const {
   return absl::StrCat(
       "[", absl::StrJoin(absl::Span<const int64_t>(dim_sizes_), ","), "]");
 }
 
-string TensorShapeOld::DebugString(const TensorShapeProto& proto) {
-  string s = "[";
+std::string TensorShapeOld::DebugString(const TensorShapeProto& proto) {
+  std::string s = "[";
   bool first = true;
   for (const auto& d : proto.dim()) {
     absl::StrAppend(&s, first ? "" : ",", d.size());

@@ -138,10 +138,10 @@ TEST(TypesTest, QuantizedTypes) {
   EXPECT_TRUE(GetQuantized<quint8>());
   EXPECT_TRUE(GetQuantized<qint32>());
 
-  EXPECT_FALSE(GetQuantized<int8>());
-  EXPECT_FALSE(GetQuantized<uint8>());
-  EXPECT_FALSE(GetQuantized<int16>());
-  EXPECT_FALSE(GetQuantized<int32>());
+  EXPECT_FALSE(GetQuantized<int8_t>());
+  EXPECT_FALSE(GetQuantized<uint8_t>());
+  EXPECT_FALSE(GetQuantized<int16_t>());
+  EXPECT_FALSE(GetQuantized<int32_t>());
 
   EXPECT_TRUE(DataTypeIsQuantized(DT_QINT8));
   EXPECT_TRUE(DataTypeIsQuantized(DT_QUINT8));
@@ -173,7 +173,7 @@ TEST(TypesTest, ComplexTypes) {
 
 TEST(TypesTest, IntegerTypes) {
   for (auto dt : AllTypes()) {
-    const string name = DataTypeString(dt);
+    const std::string name = DataTypeString(dt);
     EXPECT_EQ(DataTypeIsInteger(dt),
               absl::StartsWith(name, "int") || absl::StartsWith(name, "uint"))
         << "DataTypeInteger failed for " << name;

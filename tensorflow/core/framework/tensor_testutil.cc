@@ -49,7 +49,8 @@ static ::testing::AssertionResult EqualFailure(const T& x, const T& y) {
 }
 
 template <>
-::testing::AssertionResult EqualFailure<int8>(const int8& x, const int8& y) {
+::testing::AssertionResult EqualFailure<int8_t>(const int8_t& x,
+                                                const int8_t& y) {
   return EqualFailure(static_cast<int>(x), static_cast<int>(y));
 }
 
@@ -231,17 +232,17 @@ void ExpectEqual(const Tensor& x, const Tensor& y, Tolerance t) {
     case DT_DOUBLE:
       return ExpectEqual<double>(x, y, t);
     case DT_INT32:
-      return ExpectEqual<int32>(x, y);
+      return ExpectEqual<int32_t>(x, y);
     case DT_UINT32:
-      return ExpectEqual<uint32>(x, y);
+      return ExpectEqual<uint32_t>(x, y);
     case DT_UINT16:
-      return ExpectEqual<uint16>(x, y);
+      return ExpectEqual<uint16_t>(x, y);
     case DT_UINT8:
-      return ExpectEqual<uint8>(x, y);
+      return ExpectEqual<uint8_t>(x, y);
     case DT_INT16:
-      return ExpectEqual<int16>(x, y);
+      return ExpectEqual<int16_t>(x, y);
     case DT_INT8:
-      return ExpectEqual<int8>(x, y);
+      return ExpectEqual<int8_t>(x, y);
     case DT_STRING:
       return ExpectEqual<tstring>(x, y);
     case DT_COMPLEX64:
@@ -251,7 +252,7 @@ void ExpectEqual(const Tensor& x, const Tensor& y, Tolerance t) {
     case DT_INT64:
       return ExpectEqual<int64_t>(x, y);
     case DT_UINT64:
-      return ExpectEqual<uint64>(x, y);
+      return ExpectEqual<uint64_t>(x, y);
     case DT_BOOL:
       return ExpectEqual<bool>(x, y);
     case DT_QINT8:

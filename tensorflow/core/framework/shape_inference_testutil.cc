@@ -30,17 +30,17 @@ namespace shape_inference {
 
 using errors::Unknown;
 
-absl::Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
-                                                 const string& ins,
-                                                 const string& expected_outs) {
+absl::Status ShapeInferenceTestutil::InferShapes(
+    ShapeInferenceTestOp op, const std::string& ins,
+    const std::string& expected_outs) {
   const OpRegistrationData* op_reg_data;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
 
-  std::vector<string> ins_v = str_util::Split(ins, ';');
+  std::vector<std::string> ins_v = str_util::Split(ins, ';');
 
   InferenceContext::ShapeManager manager;
   std::vector<ShapeHandle> in_shapes;
-  for (const string& spec : ins_v) {
+  for (const std::string& spec : ins_v) {
     ShapeHandle shape;
     TF_RETURN_IF_ERROR(MakeShapeFromString(&manager, spec, &shape));
     in_shapes.push_back(shape);
@@ -82,7 +82,8 @@ absl::Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
   }
 
   // Verify the output shape.
-  std::vector<string> expected_outs_v = str_util::Split(expected_outs, ';');
+  std::vector<std::string> expected_outs_v =
+      str_util::Split(expected_outs, ';');
   if (num_outputs != expected_outs_v.size()) {
     return Unknown("The expected output string lists the wrong number of ",
                    "outputs. It lists ", expected_outs_v.size(),
@@ -92,8 +93,9 @@ absl::Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
     absl::string_view expected(expected_outs_v[i]);
     shape_inference::ShapeHandle out = c.output(i);
 
-    string err_prefix = absl::StrCat("Output ", i);
-    string err_suffix = absl::StrCat(". Output shape was ", c.DebugString(out));
+    std::string err_prefix = absl::StrCat("Output ", i);
+    std::string err_suffix =
+        absl::StrCat(". Output shape was ", c.DebugString(out));
 
     int in_index = -1;
     for (int i = 0; i < c.num_inputs(); ++i) {
@@ -230,7 +232,7 @@ absl::Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
 
 // static
 absl::Status ShapeInferenceTestutil::MakeShapeFromString(
-    InferenceContext::ShapeManager* manager, const string& spec,
+    InferenceContext::ShapeManager* manager, const std::string& spec,
     ShapeHandle* output) {
   if (spec == "?") {
     *output = manager->UnknownShape();

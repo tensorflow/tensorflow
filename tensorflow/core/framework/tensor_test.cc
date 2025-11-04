@@ -62,8 +62,8 @@ bool operator==(const Variant& a, const Variant& b) {
   a.Encode(&a_data);
   b.Encode(&b_data);
 
-  string a_metadata;
-  string b_metadata;
+  std::string a_metadata;
+  std::string b_metadata;
   a_data.get_metadata(&a_metadata);
   b_data.get_metadata(&b_metadata);
   if (a_metadata != b_metadata) return false;
@@ -74,7 +74,7 @@ bool operator==(const Variant& a, const Variant& b) {
     TensorProto a_proto, b_proto;
     a_data.tensors(i).AsProtoTensorContent(&a_proto);
     b_data.tensors(i).AsProtoTensorContent(&b_proto);
-    string a_str, b_str;
+    std::string a_str, b_str;
     a_proto.SerializeToString(&a_str);
     b_proto.SerializeToString(&b_str);
     if (a_str != b_str) return false;
@@ -95,15 +95,15 @@ TEST(TensorTest, Default) {
 TEST(TensorTest, DataType_Traits) {
   EXPECT_TRUE(std::is_trivial<float>::value);
   EXPECT_TRUE(std::is_trivial<double>::value);
-  EXPECT_TRUE(std::is_trivial<int32>::value);
-  EXPECT_TRUE(std::is_trivial<uint8>::value);
-  EXPECT_TRUE(std::is_trivial<uint16>::value);
-  EXPECT_TRUE(std::is_trivial<int16>::value);
-  EXPECT_TRUE(std::is_trivial<int8>::value);
+  EXPECT_TRUE(std::is_trivial<int32_t>::value);
+  EXPECT_TRUE(std::is_trivial<uint8_t>::value);
+  EXPECT_TRUE(std::is_trivial<uint16_t>::value);
+  EXPECT_TRUE(std::is_trivial<int16_t>::value);
+  EXPECT_TRUE(std::is_trivial<int8_t>::value);
   EXPECT_TRUE(std::is_trivial<int64_t>::value);
   EXPECT_TRUE(std::is_trivial<bool>::value);
   EXPECT_FALSE(std::is_trivial<tstring>::value);
-  EXPECT_FALSE(std::is_trivial<string>::value);
+  EXPECT_FALSE(std::is_trivial<std::string>::value);
 
   EXPECT_EQ(sizeof(bool), 1);
 
@@ -315,10 +315,10 @@ TEST(Tensor_int8, Simple) {
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({10, 20})));
   for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
     for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
-      t.matrix<int8>()(a, b) = static_cast<int8>(a * b);
+      t.matrix<int8_t>()(a, b) = static_cast<int8_t>(a * b);
     }
   }
-  TestCopies<int8>(t);
+  TestCopies<int8_t>(t);
 }
 
 TEST(Tensor_int16, Simple) {
@@ -326,10 +326,10 @@ TEST(Tensor_int16, Simple) {
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({10, 20})));
   for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
     for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
-      t.matrix<int16>()(a, b) = static_cast<int16>(a * b);
+      t.matrix<int16_t>()(a, b) = static_cast<int16_t>(a * b);
     }
   }
-  TestCopies<int16>(t);
+  TestCopies<int16_t>(t);
 }
 
 TEST(Tensor_int32, Simple) {
@@ -499,10 +499,10 @@ TEST(Tensor_UInt8, Simple) {
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 2})));
   for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
     for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
-      t.matrix<uint8>()(a, b) = static_cast<uint8>(a * b);
+      t.matrix<uint8_t>()(a, b) = static_cast<uint8_t>(a * b);
     }
   }
-  TestCopies<uint8>(t);
+  TestCopies<uint8_t>(t);
 }
 
 TEST(Tensor_UInt16, Simple) {
@@ -510,10 +510,10 @@ TEST(Tensor_UInt16, Simple) {
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 2})));
   for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
     for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
-      t.matrix<uint16>()(a, b) = static_cast<uint16>(a * b);
+      t.matrix<uint16_t>()(a, b) = static_cast<uint16_t>(a * b);
     }
   }
-  TestCopies<uint16>(t);
+  TestCopies<uint16_t>(t);
 }
 
 TEST(Tensor_UInt32, Simple) {
@@ -521,10 +521,10 @@ TEST(Tensor_UInt32, Simple) {
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 2})));
   for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
     for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
-      t.matrix<uint32>()(a, b) = static_cast<uint32>(a * b);
+      t.matrix<uint32_t>()(a, b) = static_cast<uint32_t>(a * b);
     }
   }
-  TestCopies<uint32>(t);
+  TestCopies<uint32_t>(t);
 }
 
 TEST(Tensor_QInt8, Simple) {
@@ -576,7 +576,7 @@ TEST(Tensor_QInt32, Simple) {
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 2})));
   for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
     for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
-      t.matrix<qint32>()(a, b) = qint32(static_cast<int32>(a * b));
+      t.matrix<qint32>()(a, b) = qint32(static_cast<int32_t>(a * b));
     }
   }
   TestCopies<qint32>(t);
@@ -970,26 +970,26 @@ TEST(ReinterpretLastDimension, Reinterpret_NCHW_VECT_C_as_NCHW) {
     Tensor t_nchw_vect_c(DT_QINT8, TensorShape({2, 3, 5, 7, 4}));
     auto nchw_vect_c = t_nchw_vect_c.tensor<qint8, 5>();
     Tensor t_expected_nchw(DT_INT32, TensorShape({2, 3, 5, 7}));
-    auto expected_nchw = t_expected_nchw.tensor<int32, 4>();
+    auto expected_nchw = t_expected_nchw.tensor<int32_t, 4>();
     int8_t val = 0;
     for (int n = 0; n < t_nchw_vect_c.shape().dim_size(0); ++n) {
       for (int c = 0; c < t_nchw_vect_c.shape().dim_size(1); ++c) {
         for (int h = 0; h < t_nchw_vect_c.shape().dim_size(2); ++h, ++val) {
-          int8 packet[4];
+          int8_t packet[4];
           for (int w = 0; w < t_nchw_vect_c.shape().dim_size(3); ++w) {
             packet[0] = nchw_vect_c(n, c, h, w, 0) = ++val;
             packet[1] = nchw_vect_c(n, c, h, w, 1) = ++val;
             packet[2] = nchw_vect_c(n, c, h, w, 2) = ++val;
             packet[3] = nchw_vect_c(n, c, h, w, 3) = ++val;
-            expected_nchw(n, c, h, w) = *reinterpret_cast<int32*>(&packet[0]);
+            expected_nchw(n, c, h, w) = *reinterpret_cast<int32_t*>(&packet[0]);
           }
         }
       }
     }
-    auto actual_nchw = t_nchw_vect_c.reinterpret_last_dimension<int32, 4>();
+    auto actual_nchw = t_nchw_vect_c.reinterpret_last_dimension<int32_t, 4>();
     const auto& const_t_nchw_vect_c = t_nchw_vect_c;
     auto const_actual_nchw =
-        const_t_nchw_vect_c.reinterpret_last_dimension<int32, 4>();
+        const_t_nchw_vect_c.reinterpret_last_dimension<int32_t, 4>();
     for (int n = 0; n < t_nchw_vect_c.shape().dim_size(0); ++n) {
       for (int c = 0; c < t_nchw_vect_c.shape().dim_size(1); ++c) {
         for (int h = 0; h < t_nchw_vect_c.shape().dim_size(2); ++h) {
@@ -1217,19 +1217,19 @@ TEST(Tensor_Float, SimpleWithAllocator) {
 }
 
 TEST(Tensor_Int32, SimpleWithHelper) {
-  Tensor t1 = test::AsTensor<int32>({0, 1, 2, 3, 4, 5}, {2, 3});
+  Tensor t1 = test::AsTensor<int32_t>({0, 1, 2, 3, 4, 5}, {2, 3});
   Tensor t2(t1.dtype(), t1.shape());
-  t2.flat<int32>() = t1.flat<int32>() * 2;
-  Tensor t3 = test::AsTensor<int32>({0, 2, 4, 6, 8, 10}, t1.shape());
-  ExpectEqual<int32>(t2, t3);
+  t2.flat<int32_t>() = t1.flat<int32_t>() * 2;
+  Tensor t3 = test::AsTensor<int32_t>({0, 2, 4, 6, 8, 10}, t1.shape());
+  ExpectEqual<int32_t>(t2, t3);
 }
 
 TEST(Tensor_UInt16, SimpleWithHelper) {
-  Tensor t1 = test::AsTensor<uint16>({0, 1, 2, 3, 4, 5}, {2, 3});
+  Tensor t1 = test::AsTensor<uint16_t>({0, 1, 2, 3, 4, 5}, {2, 3});
   Tensor t2(t1.dtype(), t1.shape());
-  t2.flat<uint16>() = t1.flat<uint16>() * uint16(2);
-  Tensor t3 = test::AsTensor<uint16>({0, 2, 4, 6, 8, 10}, t1.shape());
-  ExpectEqual<uint16>(t2, t3);
+  t2.flat<uint16_t>() = t1.flat<uint16_t>() * uint16_t(2);
+  Tensor t3 = test::AsTensor<uint16_t>({0, 2, 4, 6, 8, 10}, t1.shape());
+  ExpectEqual<uint16_t>(t2, t3);
 }
 
 TEST(Tensor_QInt8, SimpleWithHelper) {
@@ -1413,7 +1413,7 @@ TEST(Tensor_Complex, SimpleWithHelper128) {
 class DummyCPUAllocator : public Allocator {
  public:
   DummyCPUAllocator() = default;
-  string Name() override { return "cpu"; }
+  std::string Name() override { return "cpu"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     return nullptr;
   }
@@ -1583,7 +1583,7 @@ TEST(Tensor, Slice_Basic) {
   {
     // Test unaligned access via a Slice for 8-bit data type.
     Tensor x(DT_INT8, TensorShape({30}));
-    x.flat<int8>().setConstant(0);
+    x.flat<int8_t>().setConstant(0);
 
     // Take an unaligned slice.
     Tensor y = x.Slice(1, 13);
@@ -1705,37 +1705,40 @@ INSTANTIATE_TEST_SUITE_P(
                                   {1, 2, 3, 4, 0}),
          MkTensor<Eigen::QUInt16>(DT_QUINT16, TensorShape({0}), {})},
         {"DT_UINT8",
-         MkTensor<uint8>(DT_UINT8, TensorShape({5}), {1, 2, 3, 4, 0}),
-         MkTensor<uint8>(DT_UINT8, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
-         MkTensor<uint8>(DT_UINT8, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0}),
-         MkTensor<uint8>(DT_UINT8, TensorShape({0}), {})},
+         MkTensor<uint8_t>(DT_UINT8, TensorShape({5}), {1, 2, 3, 4, 0}),
+         MkTensor<uint8_t>(DT_UINT8, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
+         MkTensor<uint8_t>(DT_UINT8, TensorShape({2, 2, 1, 1}),
+                           {1, 2, 3, 4, 0}),
+         MkTensor<uint8_t>(DT_UINT8, TensorShape({0}), {})},
         {"DT_UINT16",
-         MkTensor<uint16>(DT_UINT16, TensorShape({5}), {1, 2, 3, 4, 0}),
-         MkTensor<uint16>(DT_UINT16, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
-         MkTensor<uint16>(DT_UINT16, TensorShape({2, 2, 1, 1}),
-                          {1, 2, 3, 4, 0}),
-         MkTensor<uint16>(DT_UINT16, TensorShape({0}), {})},
+         MkTensor<uint16_t>(DT_UINT16, TensorShape({5}), {1, 2, 3, 4, 0}),
+         MkTensor<uint16_t>(DT_UINT16, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
+         MkTensor<uint16_t>(DT_UINT16, TensorShape({2, 2, 1, 1}),
+                            {1, 2, 3, 4, 0}),
+         MkTensor<uint16_t>(DT_UINT16, TensorShape({0}), {})},
         {"DT_UINT32",
-         MkTensor<uint32>(DT_UINT32, TensorShape({5}), {1, 2, 3, 4, 0}),
-         MkTensor<uint32>(DT_UINT32, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
-         MkTensor<uint32>(DT_UINT32, TensorShape({2, 2, 1, 1}),
-                          {1, 2, 3, 4, 0}),
-         MkTensor<uint32>(DT_UINT32, TensorShape({0}), {})},
+         MkTensor<uint32_t>(DT_UINT32, TensorShape({5}), {1, 2, 3, 4, 0}),
+         MkTensor<uint32_t>(DT_UINT32, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
+         MkTensor<uint32_t>(DT_UINT32, TensorShape({2, 2, 1, 1}),
+                            {1, 2, 3, 4, 0}),
+         MkTensor<uint32_t>(DT_UINT32, TensorShape({0}), {})},
         {"DT_UINT64",
-         MkTensor<uint64>(DT_UINT64, TensorShape({5}), {1, 2, 3, 4, 0}),
-         MkTensor<uint64>(DT_UINT64, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
-         MkTensor<uint64>(DT_UINT64, TensorShape({2, 2, 1, 1}),
-                          {1, 2, 3, 4, 0}),
-         MkTensor<uint64>(DT_UINT64, TensorShape({0}), {})},
-        {"DT_INT8", MkTensor<int8>(DT_INT8, TensorShape({5}), {1, 2, 3, 4, 0}),
-         MkTensor<int8>(DT_INT8, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
-         MkTensor<int8>(DT_INT8, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0}),
-         MkTensor<int8>(DT_INT8, TensorShape({0}), {})},
+         MkTensor<uint64_t>(DT_UINT64, TensorShape({5}), {1, 2, 3, 4, 0}),
+         MkTensor<uint64_t>(DT_UINT64, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
+         MkTensor<uint64_t>(DT_UINT64, TensorShape({2, 2, 1, 1}),
+                            {1, 2, 3, 4, 0}),
+         MkTensor<uint64_t>(DT_UINT64, TensorShape({0}), {})},
+        {"DT_INT8",
+         MkTensor<int8_t>(DT_INT8, TensorShape({5}), {1, 2, 3, 4, 0}),
+         MkTensor<int8_t>(DT_INT8, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
+         MkTensor<int8_t>(DT_INT8, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0}),
+         MkTensor<int8_t>(DT_INT8, TensorShape({0}), {})},
         {"DT_INT16",
-         MkTensor<int16>(DT_INT16, TensorShape({5}), {1, 2, 3, 4, 0}),
-         MkTensor<int16>(DT_INT16, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
-         MkTensor<int16>(DT_INT16, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0}),
-         MkTensor<int16>(DT_INT16, TensorShape({0}), {})},
+         MkTensor<int16_t>(DT_INT16, TensorShape({5}), {1, 2, 3, 4, 0}),
+         MkTensor<int16_t>(DT_INT16, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
+         MkTensor<int16_t>(DT_INT16, TensorShape({2, 2, 1, 1}),
+                           {1, 2, 3, 4, 0}),
+         MkTensor<int16_t>(DT_INT16, TensorShape({0}), {})},
         {"DT_INT32", MkTensor<int>(DT_INT32, TensorShape({5}), {1, 2, 3, 4, 0}),
          MkTensor<int>(DT_INT32, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
          MkTensor<int>(DT_INT32, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0}),

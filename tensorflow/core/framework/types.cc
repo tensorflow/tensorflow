@@ -82,7 +82,7 @@ const std::string DeviceName<Eigen::GpuDevice>::value = DEVICE_GPU;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
-string DataTypeStringInternal(DataType dtype) {
+std::string DataTypeStringInternal(DataType dtype) {
   switch (dtype) {
     case DT_INVALID:
       return "INVALID";
@@ -157,7 +157,7 @@ string DataTypeStringInternal(DataType dtype) {
 }
 }  // end namespace
 
-string DataTypeString(DataType dtype) {
+std::string DataTypeString(DataType dtype) {
   if (IsRefType(dtype)) {
     DataType non_ref = static_cast<DataType>(dtype - kDataTypeRefOffset);
     return absl::StrCat(DataTypeStringInternal(non_ref), "_ref");
@@ -277,12 +277,12 @@ bool DataTypeFromString(absl::string_view sp, DataType* dt) {
   return false;
 }
 
-string DeviceTypeString(const DeviceType& device_type) {
+std::string DeviceTypeString(const DeviceType& device_type) {
   return device_type.type();
 }
 
-string DataTypeSliceString(const DataTypeSlice types) {
-  string out;
+std::string DataTypeSliceString(const DataTypeSlice types) {
+  std::string out;
   for (auto it = types.begin(); it != types.end(); ++it) {
     absl::StrAppend(&out, it == types.begin() ? "" : ", ", DataTypeString(*it));
   }
@@ -335,17 +335,17 @@ int DataTypeSize(DataType dt) {
 
 DEFINE_DATATYPETOENUM_VALUE(float);
 DEFINE_DATATYPETOENUM_VALUE(double);
-DEFINE_DATATYPETOENUM_VALUE(int32);
-DEFINE_DATATYPETOENUM_VALUE(uint32);
-DEFINE_DATATYPETOENUM_VALUE(uint16);
-DEFINE_DATATYPETOENUM_VALUE(uint8);
-DEFINE_DATATYPETOENUM_VALUE(int16);
-DEFINE_DATATYPETOENUM_VALUE(int8);
+DEFINE_DATATYPETOENUM_VALUE(int32_t);
+DEFINE_DATATYPETOENUM_VALUE(uint32_t);
+DEFINE_DATATYPETOENUM_VALUE(uint16_t);
+DEFINE_DATATYPETOENUM_VALUE(uint8_t);
+DEFINE_DATATYPETOENUM_VALUE(int16_t);
+DEFINE_DATATYPETOENUM_VALUE(int8_t);
 DEFINE_DATATYPETOENUM_VALUE(tstring);
 DEFINE_DATATYPETOENUM_VALUE(complex64);
 DEFINE_DATATYPETOENUM_VALUE(complex128);
 DEFINE_DATATYPETOENUM_VALUE(int64_t);
-DEFINE_DATATYPETOENUM_VALUE(uint64);
+DEFINE_DATATYPETOENUM_VALUE(uint64_t);
 DEFINE_DATATYPETOENUM_VALUE(bool);
 DEFINE_DATATYPETOENUM_VALUE(qint8);
 DEFINE_DATATYPETOENUM_VALUE(quint8);
