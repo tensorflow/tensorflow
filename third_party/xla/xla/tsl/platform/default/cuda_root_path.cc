@@ -43,7 +43,8 @@ std::vector<std::string> CandidateCudaRoots() {
   auto roots = std::vector<std::string>{};
   std::string runfiles_suffix = "runfiles";
   std::vector<std::string> cuda_dir_names = {"cuda_nvcc", "cuda_nvdisasm",
-                                             "nvidia_nvshmem", "cuda_nvvm"};
+                                             "nvidia_nvshmem", "cuda_nvvm",
+                                             "cuda_cudart"};
 
   // The CUDA candidate root for c++ targets.
   std::string executable_path = tsl::Env::Default()->GetExecutablePath();

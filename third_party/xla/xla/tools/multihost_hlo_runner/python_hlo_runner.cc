@@ -337,7 +337,9 @@ absl::Status RegisterCustomTypeId(absl::string_view type_name,
 }
 
 NB_MODULE(py_hlo_multihost_runner, m) {
-  InitializeAbslLogging();
+#ifndef PLATFORM_GOOGLE
+  xla::InitializeAbslLogging();
+#endif  // PLATFORM_GOOGLE
 
   m.def("RunHloFiles", ThrowIfErrorWrapper(RunHloFiles));
   m.def(
