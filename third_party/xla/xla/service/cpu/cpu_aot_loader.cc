@@ -190,25 +190,28 @@ CpuAotLoader::LoadAotCompilationResult(
   llvm::StringMap<bool> host_machine_features = llvm::sys::getHostCPUFeatures();
   auto compile_machine_features =
       absl::StrSplit(aot_result_proto.target_machine_options().features(), ',');
+  // Convert the supported features to a vector of strings.
+  std::vector<std::string> host_machine_features_vector;
+  for (const auto& [feature, supported] : host_machine_features) {
+    if (supported) {
+      host_machine_features_vector.push_back(feature.str());
+    }
+  }
 
   for (const absl::string_view feature : compile_machine_features) {
     if (!host_machine_features.contains(feature) ||
         !host_machine_features[feature]) {
-      // Convert the supported features to a vector of strings.
-      std::vector<std::string> host_machine_features_vector;
-      for (const auto& [feature, supported] : host_machine_features) {
-        if (supported) {
-          host_machine_features_vector.push_back(feature.str());
-        }
-      }
-
-      return Internal(
-          "Cannot load XLA:CPU AOT result. Target machine feature %s is not "
-          "supported on the host machine. Machine type used for XLA:CPU "
-          "compilation doesn't match the machine type for execution. Compile "
-          "machine features: [%s] vs host machine features: [%s]",
-          feature, absl::StrJoin(compile_machine_features, ","),
-          absl::StrJoin(host_machine_features_vector, ","));
+      // TODO: b/457415427 - Turn this warning into an error once a mechanism
+      // for passing target machine features to the CPU compiler is implemented.
+      LOG(ERROR)
+          << "Loading XLA:CPU AOT result. Target machine feature " << feature
+          << " is not  supported on the host machine. Machine type used for "
+             "XLA:CPU compilation doesn't match the machine type for "
+             "execution. Compile machine features: ["
+          << absl::StrJoin(compile_machine_features, ",")
+          << "] vs host machine features: ["
+          << absl::StrJoin(host_machine_features_vector, ",") << "]"
+          << ". This could lead to execution errors such as SIGILL.";
     }
   }
 
