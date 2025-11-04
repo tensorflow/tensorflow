@@ -20,11 +20,11 @@ GPU_TEST_PROPERTIES = {
 }
 
 ROCM_SINGLE_GPU_TEST_PROPERTIES = {
-    "Pool": "linux_x64_gpu",
+    "test.Pool": "linux_x64_gpu",
 }
 
 ROCM_MULTI_GPU_TEST_PROPERTIES = {
-    "Pool": "linux_x64_multigpu",
+    "test.Pool": "linux_x64_multigpu",
 }
 
 def tf_gpu_tests_tags():
