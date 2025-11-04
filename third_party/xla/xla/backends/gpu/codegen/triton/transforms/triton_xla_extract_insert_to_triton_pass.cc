@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
@@ -289,26 +290,22 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
       auto element_type =
           mlir::cast<PointerType>(operand_type).getPointeeType();
 
-      mlir::UnrealizedConversionCastOp cast_to_orig_type;
-      if (auto attr = op.getArgAttr(index, "tt.tma_descriptor")) {
-        auto tma_descriptor = mlir::cast<TmaDescriptorAttr>(attr);
-        auto layout = tma_descriptor.getLayout();
-        auto block_shape = tma_descriptor.getTileShape();
-        SmallVector<int64_t> ordered_block_shape =
-            GetMajorToMinorOrder(block_shape, layout);
-
-        operand_type = TensorDescType::get(
-            builder.getContext(),
-            RankedTensorType::get(ordered_block_shape, element_type));
-        // !tt.tensordesc<tensor<block_shape x element_type>> -> !tt.ptr<>
-        cast_to_orig_type = builder.create<mlir::UnrealizedConversionCastOp>(
-            operand_type, func_arg);
-      } else {
-        // !tt.ptr<> -> !tt.ptr<>
-        cast_to_orig_type = builder.create<mlir::UnrealizedConversionCastOp>(
-            operand_type, func_arg);
-        operand_type = GetTensorPtrType(element_type);
+      auto attr = op.getArgAttr(index, "tt.tma_descriptor");
+      if (!attr) {
+        continue;
       }
+      auto tma_descriptor = mlir::cast<TmaDescriptorAttr>(attr);
+      auto layout = tma_descriptor.getLayout();
+      auto block_shape = tma_descriptor.getTileShape();
+      SmallVector<int64_t> ordered_block_shape =
+          GetMajorToMinorOrder(block_shape, layout);
+
+      operand_type = TensorDescType::get(
+          builder.getContext(),
+          RankedTensorType::get(ordered_block_shape, element_type));
+      // !tt.tensordesc<tensor<block_shape x element_type>> -> !tt.ptr<>
+      auto cast_to_orig_type = builder.create<mlir::UnrealizedConversionCastOp>(
+          operand_type, func_arg);
       func_arg.replaceAllUsesExcept(cast_to_orig_type.getResult(0),
                                     cast_to_orig_type);
     }
