@@ -61,7 +61,7 @@ class SymbolicMapConverterTest : public ::testing::Test {
 
 TEST_F(SymbolicMapConverterTest, AffineToSymbolicRoundTrip) {
   AffineMap affine_map = ParseAffineMap(
-      "(d0, d1)[s0, s1] -> (d0 + s1 * 2, d1 - s0, d0 floordiv 3, d1 mod 4)",
+      "(d0, d1)[s0, s1] -> (d0 + d1 + s1 * 2, s0, d0 floordiv 3, d1 mod 4)",
       &mlir_context_);
 
   SymbolicMap symbolic_map =
@@ -91,8 +91,8 @@ TEST_F(SymbolicMapConverterTest, SymbolicToAffineNestedFailure) {
   SymbolicExpr c1 = symbolic_expr_context_.CreateConstant(1);
   SymbolicExpr c2 = symbolic_expr_context_.CreateConstant(2);
 
-  // d0 + max(c1, c2). max is not representable in AffineExpr.
-  SymbolicExpr nested_max_expr = d0 + c1.max(c2);
+  // c1 + max(d0, c2). max is not representable in AffineExpr.
+  SymbolicExpr nested_max_expr = c1 + d0.max(c2);
 
   // This should not crash and should return a null AffineMap.
   AffineMap affine_map = SymbolicMapToAffineMap(

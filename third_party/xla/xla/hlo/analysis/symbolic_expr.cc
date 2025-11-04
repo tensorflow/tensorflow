@@ -230,46 +230,51 @@ SymbolicExpr CanonicalizeAdd(SymbolicExpr lhs, SymbolicExpr rhs) {
   ExtractTerms(lhs, terms);
   ExtractTerms(rhs, terms);
 
-  absl::c_sort(terms,
-               [](const auto& a, const auto& b) { return a.first < b.first; });
-
-  llvm::SmallVector<SymbolicExpr> exprs;
+  llvm::DenseMap<SymbolicExpr, int64_t> combined_terms;
   int64_t const_val = 0;
 
-  for (int i = 0; i < terms.size(); ++i) {
-    SymbolicExpr current_base = terms[i].first;
-    int64_t current_coeff = terms[i].second;
-
-    while (i + 1 < terms.size() && terms[i + 1].first == current_base) {
-      current_coeff += terms[i + 1].second;
-      i++;
-    }
-
-    if (current_coeff == 0) {
-      continue;
-    }
-
-    if (current_base.GetType() == SymbolicExprType::kConstant) {
-      const_val += current_base.GetValue() * current_coeff;
+  for (const auto& term : terms) {
+    if (term.first.GetType() == SymbolicExprType::kConstant) {
+      const_val += term.first.GetValue() * term.second;
     } else {
-      exprs.push_back((current_base * current_coeff).Canonicalize());
+      combined_terms[term.first] += term.second;
     }
   }
 
-  // Add the combined constant term as an expression
-  if (const_val != 0) {
-    exprs.push_back(ctx->CreateConstant(const_val));
+  // Sort terms based on the base expression (v0, v1, v2...)
+  llvm::SmallVector<std::pair<SymbolicExpr, int64_t>> sorted_terms;
+  for (const auto& pair : combined_terms) {
+    if (pair.second != 0) {
+      sorted_terms.push_back({pair.first, pair.second});
+    }
   }
-  if (exprs.empty()) {
-    return ctx->CreateConstant(0);
-  }
-  // Sort all terms, including the constant
-  absl::c_sort(exprs);
+  absl::c_sort(sorted_terms,
+               [](const auto& a, const auto& b) { return a.first < b.first; });
 
-  SymbolicExpr result = exprs[0];
-  for (size_t i = 1; i < exprs.size(); ++i) {
-    result = ctx->CreateBinaryOp(SymbolicExprType::kAdd, result, exprs[i]);
+  if (sorted_terms.empty()) {
+    return ctx->CreateConstant(const_val);
   }
+
+  auto create_term = [&](SymbolicExpr base, int64_t coeff) {
+    if (coeff == 1) {
+      return base;
+    }
+    return base * coeff;
+  };
+
+  SymbolicExpr result =
+      create_term(sorted_terms[0].first, sorted_terms[0].second);
+  for (size_t i = 1; i < sorted_terms.size(); ++i) {
+    SymbolicExpr term =
+        create_term(sorted_terms[i].first, sorted_terms[i].second);
+    result = ctx->CreateBinaryOp(SymbolicExprType::kAdd, result, term);
+  }
+
+  if (const_val != 0) {
+    result = ctx->CreateBinaryOp(SymbolicExprType::kAdd, result,
+                                 ctx->CreateConstant(const_val));
+  }
+
   return result;
 }
 
@@ -838,7 +843,9 @@ SymbolicExpr SymbolicExpr::operator+(int64_t v) const {
   return *this + GetContext()->CreateConstant(v);
 }
 SymbolicExpr SymbolicExpr::operator+(SymbolicExpr other) const {
-  return GetContext()->CreateBinaryOp(SymbolicExprType::kAdd, *this, other);
+  return GetContext()
+      ->CreateBinaryOp(SymbolicExprType::kAdd, *this, other)
+      .Canonicalize();
 }
 
 SymbolicExpr SymbolicExpr::operator-() const {
