@@ -277,6 +277,12 @@ TfLiteDelegate* delegate1 = TfLiteXNNPackDelegateCreate(&xnnpack_options);
 if (interpreter1->ModifyGraphWithDelegate(delegate1) != kTfLiteOk) {
   // Handle errors...
 }
+// Signal to the weight cache provider that there's no building to be done
+// anymore. That way subsequent interpreter setups won't try to continue
+// building the cache.
+weight_cache.StopBuild();
+
+// Modify graph with delegate, as above...
 TfLiteDelegate* delegate2 = TfLiteXNNPackDelegateCreate(&xnnpack_options);
 if (interpreter2->ModifyGraphWithDelegate(delegate2) != kTfLiteOk) {
   // Handle errors...
@@ -287,8 +293,10 @@ if (interpreter2->ModifyGraphWithDelegate(delegate2) != kTfLiteOk) {
 // directly read from disk the 2nd time.
 ```
 
-Warning: Sharing the cache is not thread safe for writing. You should always do
-one full run of one of the interpreters before starting threading.
+Warning: Sharing the cache is not thread safe for building. You should always do
+one full run of one of the interpreters before starting threading. **Once the
+building run is done**, call `weight_cache.StopBuild()` before using the weight
+cache provider to build other delegate instances.
 
 ## Profiling
 
