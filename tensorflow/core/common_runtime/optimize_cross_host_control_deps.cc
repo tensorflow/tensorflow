@@ -182,7 +182,7 @@ absl::Status OptimizeCrossHostControlOutputEdges(
               << " edges size: " << pair.second.size();
       Node* control_after;
       TF_RETURN_IF_ERROR(BuildNoopNode(
-          *n, graph->NewName(strings::StrCat(n->name(), "/", "control_after")),
+          *n, graph->NewName(absl::StrCat(n->name(), "/", "control_after")),
           device, graph, &control_after));
 
       // When adding control edges, set `allow_duplicates` to true since the
@@ -265,7 +265,7 @@ absl::Status OptimizeCrossHostDataOutputEdges(Graph* graph,
         inputs.emplace_back(edge0->src()->name(), edge0->src_output(),
                             edge0->src()->output_type(edge0->src_output()));
         TF_RETURN_IF_ERROR(BuildIdentityNode(
-            *n, graph->NewName(strings::StrCat(n->name(), "/", "data_after")),
+            *n, graph->NewName(absl::StrCat(n->name(), "/", "data_after")),
             device, graph, inputs, &data_after));
 
         graph->AddEdge(edge0->src(), edge0->src_output(), data_after, 0);
@@ -281,7 +281,7 @@ absl::Status OptimizeCrossHostDataOutputEdges(Graph* graph,
                               edge->src()->output_type(edge->src_output()));
         }
         TF_RETURN_IF_ERROR(BuildIdentityNNode(
-            *n, graph->NewName(strings::StrCat(n->name(), "/", "data_after")),
+            *n, graph->NewName(absl::StrCat(n->name(), "/", "data_after")),
             device, graph, inputs, &data_after));
 
         int i = 0;
@@ -353,7 +353,7 @@ absl::Status OptimizeCrossHostControlInputEdges(
       Node* control_before;
       TF_RETURN_IF_ERROR(BuildNoopNode(
           *dst,
-          graph->NewName(strings::StrCat(dst->name(), "/", "control_before")),
+          graph->NewName(absl::StrCat(dst->name(), "/", "control_before")),
           /*device=*/src_device, graph, &control_before));
 
       // When adding control edges, set `allow_duplicates` to true since the

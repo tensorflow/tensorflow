@@ -226,9 +226,8 @@ absl::Status Placer::Run(const GraphOptimizationPassOptions& options) {
   }
 
   if (VLOG_IS_ON(3)) {
-    DumpGraphToFile(
-        strings::StrCat(options.debug_filename_prefix, "placer_input"), *graph_,
-        nullptr);
+    DumpGraphToFile(absl::StrCat(options.debug_filename_prefix, "placer_input"),
+                    *graph_, nullptr);
   }
   if (VLOG_IS_ON(5)) {
     for (const Node* node : graph_->op_nodes()) {
@@ -358,10 +357,10 @@ absl::Status Placer::Run(const GraphOptimizationPassOptions& options) {
 
   if (VLOG_IS_ON(3)) {
     DumpGraphToFile(
-        strings::StrCat(options.debug_filename_prefix, "placer_output"),
-        *graph_, nullptr);
+        absl::StrCat(options.debug_filename_prefix, "placer_output"), *graph_,
+        nullptr);
     DumpColocationGraph(
-        strings::StrCat(options.debug_filename_prefix, "colocation_graph"),
+        absl::StrCat(options.debug_filename_prefix, "colocation_graph"),
         colocation_graph);
   }
   return absl::OkStatus();
