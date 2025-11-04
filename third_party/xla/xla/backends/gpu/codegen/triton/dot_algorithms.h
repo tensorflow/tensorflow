@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_DOT_ALGORITHMS_H_
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
@@ -26,6 +27,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace triton {
+
+constexpr absl::string_view kScaledDotFunctionName = "scaled_dot";
 
 // Carries named `Value`s corresponding to `dot` operands. This includes an
 // accumulator.

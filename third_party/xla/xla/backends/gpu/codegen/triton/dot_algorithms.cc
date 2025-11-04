@@ -29,12 +29,15 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
@@ -129,47 +132,17 @@ std::vector<Value> SplitF32(EmitterLocOpBuilder b, Value input,
   return split_inputs;
 }
 
-absl::StatusOr<ttir::ScaleDotElemType> GetScaleDotElemType(Type value) {
-  auto type = getElementTypeOrSelf(value);
-  if (type == mlir::Float8E4M3FNType::get(value.getContext())) {
-    return ttir::ScaleDotElemType::E4M3;
-  }
-  if (type == mlir::Float8E5M2Type::get(value.getContext())) {
-    return ttir::ScaleDotElemType::E5M2;
-  }
-  if (type == mlir::Float4E2M1FNType::get(value.getContext())) {
-    return ttir::ScaleDotElemType::E2M1;
-  }
-  if (type == mlir::BFloat16Type::get(value.getContext())) {
-    return ttir::ScaleDotElemType::BF16;
-  }
-  return absl::InvalidArgumentError(
-      absl::StrCat("Unsupported type: ", llvm_ir::DumpToString(type)));
-}
-
 absl::StatusOr<Value> ScaledDot(EmitterLocOpBuilder b,
                                 ScaledDotOperands& operands) {
-  TF_ASSIGN_OR_RETURN(auto lhs_dot_elem_type,
-                      GetScaleDotElemType(operands.lhs.getType()));
-  TF_ASSIGN_OR_RETURN(auto rhs_dot_elem_type,
-                      GetScaleDotElemType(operands.rhs.getType()));
+  auto scaled_dot_op = b.create<mlir::func::CallOp>(
+      operands.accumulator.getType(),
+      mlir::ValueRange{operands.lhs, operands.rhs, operands.accumulator,
+                       operands.lhs_scale, operands.rhs_scale},
+      llvm::ArrayRef<mlir::NamedAttribute>{
+          b.getNamedAttr("fast_math", b.getBoolAttr(true))});
 
-  Value lhs_scale;
-  if (lhs_dot_elem_type != ttir::ScaleDotElemType::BF16) {
-    lhs_scale = Bitcast(b, operands.lhs_scale, b.getI8Type());
-  }
-  Value rhs_scale;
-  if (rhs_dot_elem_type != ttir::ScaleDotElemType::BF16) {
-    rhs_scale = Bitcast(b, operands.rhs_scale, b.getI8Type());
-    rhs_scale = b.create<mlir::stablehlo::TransposeOp>(
-        rhs_scale, b.getDenseI64ArrayAttr({1, 0}));
-  }
-
-  // make type with the same shape as the scale but with i8 type
-  return b.create<ttir::DotScaledOp>(
-      operands.accumulator.getType(), operands.lhs, operands.rhs,
-      operands.accumulator, lhs_scale, rhs_scale, lhs_dot_elem_type,
-      rhs_dot_elem_type, true);
+  scaled_dot_op.setCallee(b.getStringAttr(kScaledDotFunctionName));
+  return scaled_dot_op.getResult(0);
 }
 
 Value IEEEDot(EmitterLocOpBuilder b, Value lhs, Value rhs, Value acc) {
