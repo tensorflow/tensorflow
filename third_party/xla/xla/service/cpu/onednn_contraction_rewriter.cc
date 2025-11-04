@@ -679,22 +679,20 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
           (*it).window_reversal()) {
         return absl::OkStatus();
       }
-      // Changing the input subspace of uint repeated fields from whole numbers
-      // to natural nummbers to avoid misinterpretation of buffer values.
-      conv_config->mutable_window()->add_pad_left((*it).padding_low() + 1);
-      conv_config->mutable_window()->add_pad_right((*it).padding_high() + 1);
-      conv_config->mutable_window()->add_strides((*it).stride() + 1);
+      conv_config->mutable_window()->add_pad_left((*it).padding_low());
+      conv_config->mutable_window()->add_pad_right((*it).padding_high());
+      conv_config->mutable_window()->add_strides((*it).stride());
       conv_config->mutable_window()->add_window_dilations(
-          (*it).window_dilation() + 1);
+          (*it).window_dilation());
     }
 
     for (int i = 0; i < dims; i++) {
       conv_config->mutable_input()->mutable_data()->add_spatial_dims(
-          conv_dims.input_spatial_dimensions()[i] + 1);
+          conv_dims.input_spatial_dimensions()[i]);
       conv_config->mutable_kernel()->mutable_filter()->add_spatial_dims(
-          conv_dims.kernel_spatial_dimensions()[i] + 1);
+          conv_dims.kernel_spatial_dimensions()[i]);
       conv_config->mutable_output()->mutable_data()->add_spatial_dims(
-          conv_dims.output_spatial_dimensions()[i] + 1);
+          conv_dims.output_spatial_dimensions()[i]);
     }
 
     HloInstruction* custom_call =
@@ -1065,10 +1063,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       auto backend_config = custom_call->backend_config<BackendConfig>();
       auto fusions_config = GetFusionsConfig(&backend_config);
       fusions_config->add_ops(OneDnnFusionConfig::LINEAR);
-      // Casting to int32 because of issues in proto config for decimal types
-      // handling.
-      fusions_config->add_alpha_typecast(
-          *(reinterpret_cast<int32_t*>(&constant_value.value())));
+      fusions_config->add_alpha(constant_value.value());
       TF_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
       HloInstruction* new_instr;
       if (optional_convert != nullptr &&

@@ -114,9 +114,7 @@ dnnl::post_ops PopulateOneDnnPostOps(
         fused_operand_idx++;
       } break;
       case OneDnnFusionConfig::LINEAR: {
-        float const_float;
-        *(reinterpret_cast<int32_t*>(&const_float)) =
-            fusion_config->alpha_typecast()[linear_scale_idx];
+        float const_float = fusion_config->alpha()[linear_scale_idx];
         post_ops.append_eltwise(dnnl::algorithm::eltwise_linear, const_float,
                                 0.f);
         linear_scale_idx++;

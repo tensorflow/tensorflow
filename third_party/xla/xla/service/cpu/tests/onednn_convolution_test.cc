@@ -300,20 +300,20 @@ TEST_P(ConvolutionTest, ConvInsufficientScratchTest) {
             "dims":"3",
             "input":{
               "dims":"3",
-              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["2"]}
+              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["1"]}
             },
             "kernel":{
               "dims":"3",
               "filter":{"input_feature_dim":"1","output_feature_dim":"2",
-                "spatial_dims":["1"],"shape":[]}
+                "spatial_dims":["0"],"shape":[]}
             },
             "output":{
               "dims":"3",
-              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["2"]}
+              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["1"]}
             },
             "window":{
-              "size":[],"pad_left":["1"],"pad_right":["1"],
-              "strides":["2"],"window_dilations":["2"]
+              "size":[],"pad_left":["0"],"pad_right":["0"],
+              "strides":["1"],"window_dilations":["1"]
             },
             "feature_groups":"1",
             "optimization_config":{"user_scratchpad":true}
