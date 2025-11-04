@@ -93,6 +93,7 @@ cc_library(
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/transforms/simplifiers:gather_simplifier",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/mlir_hlo",
