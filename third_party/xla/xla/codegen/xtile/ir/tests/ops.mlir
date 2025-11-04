@@ -9,39 +9,24 @@ xtile.entry_func @happy_path(%input: memref<1024x4xf32>, %output: memref<128x102
 // -----
 
 xtile.entry_func @with_attributes(
-  %input: memref<1024xf32> {xla.some_attr = 1},
-  %tile_id: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count:10, tiles_per_workgroup:5>} {
+  %input: memref<1024xf32>, %tile_id: index) tiling
+    #xtile.tiling_info<tile_count:10, tiles_per_workgroup:5> {
   xtile.return
 }
 
 // -----
 
-// expected-error@+1 {{entry function arguments should be of the form (arg: memref..., tile_id: index)}}
-xtile.entry_func @tile_id_at_start(%tile_id: index, %input: memref<1024xf32>, %output: memref<1024xf32>) {
-  xtile.return
-}
-
-// -----
-
-// expected-error@+1 {{entry function arguments should be of the form (arg: memref..., tile_id: index)}}
-xtile.entry_func @too_many_tile_ids(%input: memref<1024xf32>, %id0: index, %id1: index) {
+// expected-error@+1 {{entry function arguments should be of the form (arg: memref..., opaque: types..., tile_id: index)}}
+xtile.entry_func @tile_id_at_start(%tile_id: index,
+                                   %input: memref<1024xf32>,
+                                   %output: memref<1024xf32>) {
   xtile.return
 }
 
 // -----
 
 xtile.entry_func @correct_opaque_args(
-  %input: memref<1024xf32>, %opaque0: index, %opaque1: index, %id1: index)
-  attributes {num_opaque_args = 2 : i32}  {
-  xtile.return
-}
-
-// -----
-
-// expected-error@+1 {{entry function arguments should be of the form (arg: memref..., tile_id: index)}}
-xtile.entry_func @wrong_opaque_args(
-  %input: memref<1024xf32>, %opaque0: index, %opaque1: index, %id1: index)
-  attributes {num_opaque_args = 1 : i32}  {
+  %input: memref<1024xf32>, %opaque0: index, %opaque1: index, %id1: index) {
   xtile.return
 }
 

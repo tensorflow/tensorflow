@@ -15,17 +15,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def XTileToVectorPass : Pass<"xtile-cpu-xtile-to-vector", "mlir::ModuleOp"> {
-  let summary = "Lowering xtile ops to vector ops";
-
-  let constructor = "CreateXTileToVectorPass()";
-
-  let dependentDialects = [
-    "mlir::vector::VectorDialect",
-    "xla::xtile::XTileDialect",
-  ];
-}
-
 def LowerXTileEntryPass : Pass<"xtile-cpu-lower-xtile-entry", "mlir::ModuleOp"> {
   let summary = "Lowers the entry function into the form required by the CPU runtime";
 

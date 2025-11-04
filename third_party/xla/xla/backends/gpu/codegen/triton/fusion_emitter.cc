@@ -1972,7 +1972,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
   absl::string_view fusion_kind = backend_config.kind();
 
   // Build Triton kernel.
-  SmallVector<Type> fn_arg_types;
+  SmallVector<Type> buffer_arg_types;
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
     PrimitiveType type = p->shape().element_type();
     Type ir_type;
@@ -1983,29 +1983,27 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     } else {
       TF_ASSIGN_OR_RETURN(ir_type, TritonType(b, type));
     }
-    fn_arg_types.push_back(GetMemRefType(p->shape(), ir_type));
+    buffer_arg_types.push_back(GetMemRefType(p->shape(), ir_type));
   }
 
   for (const auto& [index, shape] : ShapeUtil::GetLeafShapes(fusion->shape())) {
     TF_ASSIGN_OR_RETURN(Type triton_ty, TritonType(b, shape.element_type()));
-    fn_arg_types.push_back(GetMemRefType(shape, triton_ty));
+    buffer_arg_types.push_back(GetMemRefType(shape, triton_ty));
   }
 
   // Add metadata arguments for collectives.
   // This is done after the input and output arguments but before the tile
   // index.
   int32_t num_metadata_arguments = 0;
+  SmallVector<Type> opaque_arg_types;
   if (fusion_kind == kTritonCollectiveFusionKind) {
     TF_ASSIGN_OR_RETURN(
         num_metadata_arguments,
-        AddCollectiveMetadataArguments(fn_arg_types, b, hlo_computation));
+        AddCollectiveMetadataArguments(opaque_arg_types, b, hlo_computation));
   }
-  // Metadata arguments are opaque to the tiling infra.
-  llvm::SmallVector<mlir::NamedAttribute> named_attributes{b.getNamedAttr(
-      "num_opaque_args", b.getI32IntegerAttr(num_metadata_arguments))};
 
   auto fn =
-      b.create<xtile::EntryFuncOp>(fn_name, fn_arg_types, named_attributes, {});
+      b.create<xtile::EntryFuncOp>(fn_name, buffer_arg_types, opaque_arg_types);
 
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
