@@ -140,9 +140,14 @@ static llvm::orc::ExecutorSymbolDef SymbolDef(R (*func)(Args...)) {
 static Registry CreateRegistry() {
   Registry registry;
 
-  registry["memcpy"] = SymbolDef(memcpy);
-  registry["memmove"] = SymbolDef(memmove);
-  registry["memset"] = SymbolDef(memset);
+  // Some platforms have overloaded memcpy, memmove, and memset, so we need to
+  // specify the signature type to get the address of the specific function.
+  registry["memcpy"] =
+      SymbolDef(static_cast<void* (*)(void*, const void*, size_t)>(memcpy));
+  registry["memmove"] =
+      SymbolDef(static_cast<void* (*)(void*, const void*, size_t)>(memmove));
+  registry["memset"] =
+      SymbolDef(static_cast<void* (*)(void*, int, size_t)>(memset));
 
   registry["__gnu_f2h_ieee"] = SymbolDef(__gnu_f2h_ieee);
   registry["__gnu_h2f_ieee"] = SymbolDef(__gnu_h2f_ieee);
