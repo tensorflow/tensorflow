@@ -912,6 +912,17 @@ TEST(FfiTest, AutoBindingDictionary) {
     EXPECT_EQ(*attrs.get<int32_t>("i32"), 42);
     EXPECT_EQ(*attrs.get<float>("f32"), 42.0f);
 
+    auto it = attrs.begin();
+    EXPECT_EQ(*it, "f32");
+    EXPECT_TRUE(attrs.isa<float>(it));
+    EXPECT_EQ(*attrs.get<float>(it), 42.0f);
+
+    EXPECT_EQ(*++it, "i32");
+    EXPECT_TRUE(attrs.isa<int32_t>(it));
+    EXPECT_EQ(*attrs.get<int32_t>(it), 42);
+
+    EXPECT_EQ(++it, attrs.end());
+
     return Error::Success();
   });
 

@@ -1081,6 +1081,16 @@ class Dictionary : public internal::DictionaryBase {
   using internal::DictionaryBase::DictionaryBase;
 
   template <typename T>
+  ErrorOr<T> get(const Iterator& it) const {
+    DiagnosticEngine diagnostic;
+    auto value = internal::DictionaryBase::get<T>(it, diagnostic);
+    if (XLA_FFI_PREDICT_FALSE(!value.has_value())) {
+      return Unexpected(Error::Internal(diagnostic.Result()));
+    }
+    return *value;
+  }
+
+  template <typename T>
   ErrorOr<T> get(std::string_view name) const {
     DiagnosticEngine diagnostic;
     auto value = internal::DictionaryBase::get<T>(name, diagnostic);
