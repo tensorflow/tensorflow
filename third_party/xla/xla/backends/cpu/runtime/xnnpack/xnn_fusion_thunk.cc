@@ -47,6 +47,12 @@ limitations under the License.
 
 namespace xla::cpu {
 
+namespace {
+constexpr uint32_t kXnnRuntimeFlags = XNN_FLAG_SLINKY_ENABLED |
+                                      XNN_FLAG_SLINKY_STATIC_BOUNDS |
+                                      XNN_FLAG_DONT_SPIN_WORKERS;
+};
+
 absl::string_view XnnFusionThunk::XnnFusionKindToString(XnnFusionKind kind) {
   switch (kind) {
     case XnnFusionKind::kFusion:
@@ -149,14 +155,14 @@ XnnFusionThunk::CreateXnnExecutable(
         capturing_builder_(arguments_, results_, arguments_buffers));
   }
 
-  uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS |
-                   XNN_FLAG_DONT_SPIN_WORKERS;
+  XNN_RETURN_IF_ERROR(
+      xnn_define_all_input_shapes_static(executable.subgraph.get()));
 
   TF_ASSIGN_OR_RETURN(
       executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {
         return xnn_create_runtime_with_threadpool(
             executable.subgraph.get(), /*weights_cache=*/nullptr,
-            threadpool.get(), flags, runtime);
+            threadpool.get(), kXnnRuntimeFlags, runtime);
       }));
   XNN_RETURN_IF_ERROR(xnn_reshape_runtime(executable.runtime.get()));
 
@@ -192,14 +198,14 @@ absl::Status XnnFusionThunk::UpdateXnnExecutable(
       executable.subgraph,
       capturing_builder_(arguments_, results_, arguments_buffers));
 
-  uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS |
-                   XNN_FLAG_DONT_SPIN_WORKERS;
+  XNN_RETURN_IF_ERROR(
+      xnn_define_all_input_shapes_static(executable.subgraph.get()));
 
   TF_ASSIGN_OR_RETURN(
       executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {
         return xnn_create_runtime_with_threadpool(
             executable.subgraph.get(), /*weights_cache=*/nullptr,
-            threadpool.get(), flags, runtime);
+            threadpool.get(), kXnnRuntimeFlags, runtime);
       }));
   XNN_RETURN_IF_ERROR(xnn_reshape_runtime(executable.runtime.get()));
 
