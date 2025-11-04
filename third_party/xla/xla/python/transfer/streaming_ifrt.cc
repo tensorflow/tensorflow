@@ -201,12 +201,13 @@ void PremappedCopierState::FlushReadyWorkItemsInOrder() {
     }
     currently_flushing_ = true;
     mu_.unlock();
-    if (work_item->result_status.ok()) {
-      std::move(work_item->on_done)(this, work_item->dest_buffer,
-                                    work_item->work);
-    } else {
-      std::move(work_item->on_done)(this, work_item->result_status,
-                                    work_item->work);
+    {
+      auto on_done_fn = std::move(work_item->on_done);
+      if (work_item->result_status.ok()) {
+        std::move(on_done_fn)(this, work_item->dest_buffer, work_item->work);
+      } else {
+        std::move(on_done_fn)(this, work_item->result_status, work_item->work);
+      }
     }
     mu_.lock();
     currently_flushing_ = false;

@@ -165,20 +165,23 @@ TEST(PremappedCopierState, FreeCycle) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto scratch, AllocateAndMapPjrtMemory(pjrt_client, 1024 * 1024 * 16));
   auto cstate = std::make_shared<PremappedCopierState>(scratch, 4, 4096);
-  void* buffer_to_return = nullptr;
-  cstate->ScheduleCopy({/*copy_fn=*/[](void* dst, int64_t offset,
-                                       int64_t transfer_size) -> xla::Future<> {
-                          return xla::Future<>(absl::OkStatus());
-                        },
-                        /*buffer_id=*/0,
-                        /*offset=*/100,
-                        /*size=*/100},
-                       [&buffer_to_return](PremappedCopierState* state,
-                                           absl::StatusOr<void*> buf,
-                                           const DmaCopyChunk& chunk) {
-                         TF_CHECK_OK(buf.status());
-                         buffer_to_return = buf.value();
-                       });
+  std::vector<void*> buffers_to_return;
+  for (size_t i = 0; i < 2; ++i) {
+    cstate->ScheduleCopy(
+        {/*copy_fn=*/[](void* dst, int64_t offset,
+                        int64_t transfer_size) -> xla::Future<> {
+           return xla::Future<>(absl::OkStatus());
+         },
+         /*buffer_id=*/0,
+         /*offset=*/100,
+         /*size=*/100},
+        [&buffers_to_return](PremappedCopierState* state,
+                             absl::StatusOr<void*> buf,
+                             const DmaCopyChunk& chunk) {
+          TF_CHECK_OK(buf.status());
+          buffers_to_return.push_back(buf.value());
+        });
+  }
   class BufferReturner {
    public:
     explicit BufferReturner(absl::AnyInvocable<void() &&> on_done)
@@ -190,8 +193,8 @@ TEST(PremappedCopierState, FreeCycle) {
   };
   cstate->ScheduleCopy(
       {/*copy_fn=*/[buffer = std::make_unique<BufferReturner>(
-                        [buffer_to_return, cstate]() {
-                          cstate->ReturnBuffer(buffer_to_return);
+                        [b = buffers_to_return[0], cstate]() {
+                          cstate->ReturnBuffer(b);
                         })](void* dst, int64_t offset,
                             int64_t transfer_size) -> xla::Future<> {
          return xla::Future<>(absl::OkStatus());
@@ -199,8 +202,10 @@ TEST(PremappedCopierState, FreeCycle) {
        /*buffer_id=*/0,
        /*offset=*/100,
        /*size=*/100},
-      [](PremappedCopierState* state, absl::StatusOr<void*> buf,
-         const DmaCopyChunk& chunk) {
+      [buffer = std::make_unique<BufferReturner>(
+           [b = buffers_to_return[1], cstate]() { cstate->ReturnBuffer(b); })](
+          PremappedCopierState* state, absl::StatusOr<void*> buf,
+          const DmaCopyChunk& chunk) {
         TF_CHECK_OK(buf.status());
         state->ReturnBuffer(buf.value());
       });
