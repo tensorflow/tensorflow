@@ -13,12 +13,25 @@ END
 A (batch_size, dim)-tensor holding the per-batch element solutions.
 END
   }
-    out_arg {
+  out_arg {
     name: "segments"
     description: <<END
 An int32 (batch_size, dim)-tensor with the segments.
 END
   }
-  attr { name: "output_dtype"  description: "Dtype of output." }
+  attr {
+    name: "output_dtype"
+    description: <<END
+Dtype of the output tensor.
+
+Note on supported input-output type combinations:
+* For floating-point types, the output has the same dtype as the input.
+* For 8-bit and 16-bit integer inputs, the output is a 32-bit float.
+* For 32-bit and 64-bit integer inputs, the output is a 64-bit float.
+
+Using unsupported dtype pairs (for example, input=float64 with output=float32)
+will result in a "Could not find device for node" error.
+END
+  }
   summary: "Solves a batch of isotonic regression problems."
 }
