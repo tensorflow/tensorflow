@@ -86,17 +86,24 @@ __device__ __forceinline__ void VecOp(Vec<T>& res, const Vec<T>& vec) {
 
 template <typename T>
 __device__ __forceinline__ RestrictedPtr<T> GetPeerPtr(
-    void* ptr, int64_t peer_rank, const CollectiveKernelMetadata& metadata) {
-  uint64_t current_base = metadata.buffer_root_ptrs[metadata.rank];
+    void* ptr, int64_t peer_rank, int64_t argument_index, int num_ranks,
+    const CollectiveKernelMetadata& metadata) {
+  uint64_t argument_offset = num_ranks * argument_index;
+  uint64_t current_base =
+      metadata.param_to_peers[argument_offset + metadata.rank];
+  uint64_t peer_base = metadata.param_to_peers[argument_offset + peer_rank];
   uint64_t offset = (uint64_t)ptr - current_base;
 
-  return (RestrictedPtr<T>)(metadata.buffer_root_ptrs[peer_rank] + offset);
+  return (RestrictedPtr<T>)(peer_base + offset);
 }
 
 template <typename T>
 __device__ __forceinline__ RestrictedPtr<T> GetMultimemPtr(
-    void* ptr, const CollectiveKernelMetadata& metadata) {
-  uint64_t current_base = metadata.buffer_root_ptrs[metadata.rank];
+    void* ptr, int64_t argument_index, int num_ranks,
+    const CollectiveKernelMetadata& metadata) {
+  uint64_t argument_offset = num_ranks * argument_index;
+  uint64_t current_base =
+      metadata.param_to_peers[argument_offset + metadata.rank];
   uint64_t offset = (uint64_t)ptr - current_base;
 
   return (RestrictedPtr<T>)(metadata.multicast_buffer_ptr + offset);
@@ -134,11 +141,13 @@ __device__ __forceinline__ void OneShotAllReduceKernelImpl(
   __shared__ std::array<RestrictedPtr<T>, kMaxNumAllReduceInputPtrs>
       remote_input_buffers;
 
-  if (threadIdx.x < kMaxNumAllReduceInputPtrs) {
-    signal_flags_buffers[threadIdx.x] = GetPeerPtr<uint32_t>(
-        args.symmetric_signal_ptrs, threadIdx.x, *args.metadata);
+  if (threadIdx.x < args.num_ranks) {
     remote_input_buffers[threadIdx.x] =
-        GetPeerPtr<T>(args.symmetric_input_ptrs, threadIdx.x, *args.metadata);
+        GetPeerPtr<T>(args.symmetric_input_ptrs, threadIdx.x,
+                      /*argument_index=*/0, args.num_ranks, *args.metadata);
+    signal_flags_buffers[threadIdx.x] = GetPeerPtr<uint32_t>(
+        args.symmetric_signal_ptrs, threadIdx.x, /*argument_index=*/1,
+        args.num_ranks, *args.metadata);
   }
 
   __syncthreads();
@@ -190,9 +199,10 @@ __device__ __forceinline__ void MultimemAllReduceKernelImpl(
   __shared__ std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
       signal_flags_buffers;
 
-  if (threadIdx.x < kMaxNumAllReduceInputPtrs) {
+  if (threadIdx.x < args.num_ranks) {
     signal_flags_buffers[threadIdx.x] = GetPeerPtr<uint32_t>(
-        args.symmetric_signal_ptrs, threadIdx.x, *args.metadata);
+        args.symmetric_signal_ptrs, threadIdx.x, /*argument_index=*/1,
+        args.num_ranks, *args.metadata);
   }
 
   int64_t offset =
@@ -208,8 +218,8 @@ __device__ __forceinline__ void MultimemAllReduceKernelImpl(
                               args.signal_value);
   __syncthreads();
 
-  RestrictedPtr<T> multimem_ptr =
-      GetMultimemPtr<T>(args.symmetric_input_ptrs, *args.metadata);
+  RestrictedPtr<T> multimem_ptr = GetMultimemPtr<T>(
+      args.symmetric_input_ptrs, 0, args.num_ranks, *args.metadata);
   if (args.metadata->rank == 0) {
     for (int i = offset; i < args.num_elements; i += stride) {
       T* multimem_element_ptr = multimem_ptr + i;
@@ -254,11 +264,13 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
   __shared__ std::array<RestrictedPtr<T>, kMaxNumAllReduceInputPtrs>
       remote_input_buffers;
 
-  if (threadIdx.x < kMaxNumAllReduceInputPtrs) {
-    signal_flags_buffers[threadIdx.x] = GetPeerPtr<uint32_t>(
-        args.symmetric_signal_ptrs, threadIdx.x, *args.metadata);
+  if (threadIdx.x < args.num_ranks) {
     remote_input_buffers[threadIdx.x] =
-        GetPeerPtr<T>(args.symmetric_input_ptrs, threadIdx.x, *args.metadata);
+        GetPeerPtr<T>(args.symmetric_input_ptrs, threadIdx.x,
+                      /*argument_index=*/0, args.num_ranks, *args.metadata);
+    signal_flags_buffers[threadIdx.x] = GetPeerPtr<uint32_t>(
+        args.symmetric_signal_ptrs, threadIdx.x, /*argument_index=*/1,
+        args.num_ranks, *args.metadata);
   }
 
   __syncthreads();

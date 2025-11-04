@@ -401,22 +401,26 @@ def TTXLA_GetRankOp : TTXLA_Op<"get_rank", [Pure]> {
 def TTXLA_GetPeerPtrOp : TTXLA_Op<"get_peer_ptr", [Pure]> {
   let summary = [{
     Extract the pointer to the given symmetric memory `address` on the given
-    `peer` device using the symmetric memory `metadata`.
-    For this an operation first calculates an offset of the `address` to the
-    current rank symmetric memory range, and the adds this offset to the 
-    symmetric memory range of the `peer` device.
+    `peer` device. An `address` should point to the memory of the given kernel
+    argument with `argument_index`. The result is calculated using the symmetric
+    memory `metadata` constructed at the runtime.
+    To calculate offsets operation also need to know the number of devices
+    participating in the collective operation (`world_size`).
   }];
   let arguments = (ins
     Arg<TT_PtrLike, "",
       [MemRead<GlobalMemory>]>:$address,
     I64:$peer_id,
     Arg<TT_PtrLike, "",
-      [MemRead<GlobalMemory>]>:$metadata);
+      [MemRead<GlobalMemory>]>:$metadata,
+    I32Attr:$argument_index,
+    // The number of devices participating in the collective operation.
+    I32Attr:$world_size);
 
   let results = (outs Arg<TT_PtrLike, "", [MemRead<GlobalMemory>]>:$result);
 
   let assemblyFormat = [{
-    $address `,` $peer_id `,` $metadata attr-dict `:`
+    $address `,` $peer_id `,` $metadata `,` attr-dict `:`
     functional-type(operands, results)
   }];
 }

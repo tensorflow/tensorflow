@@ -67,8 +67,14 @@ LogicalResult LowerGetRankOp(GetRankOp get_rank, PatternRewriter& rewriter) {
 
 // The peer address should be computed as follows:
 //
-// offset = address - metadata->buffer_root_ptrs[metadata->rank].
-// peer_address = metadata->buffer_root_ptrs[peer_id] + offset.
+// argument_offset = world_size * argument_index
+// argument_base = metadata->param_to_peers[argument_offset + metadata->rank]
+// offset = address - argument_base
+// peer_base = metadata->param_to_peers[argument_offset + peer_id]
+// peer_address = peer_base + offset
+//
+// For more details regarding peer pointers layout see comments in the:
+// `stream_executor::gpu::CollectiveKernelMetadata`.
 LogicalResult LowerGetPeerPtrOp(GetPeerPtrOp get_peer_ptr,
                                 PatternRewriter& rewriter) {
   Value metadata = get_peer_ptr.getMetadata();
@@ -94,16 +100,26 @@ LogicalResult LowerGetPeerPtrOp(GetPeerPtrOp get_peer_ptr,
   // 1. Load metadata->rank.
   Value current_rank_load_op = builder.create<GetRankOp>(metadata);
 
-  // 2. Load metadata->buffer_root_ptrs[metadata->rank].
+  // 2. Calculate argument_offset = num_ranks * argument_index.
+  const int32_t argument_index = get_peer_ptr.getArgumentIndex();
+  const int32_t world_size = get_peer_ptr.getWorldSize();
+  const int32_t argument_offset =
+      world_size * argument_index * sizeof(uint64_t);
+
+  // 3. Load metadata->param_to_peers[argument_offset + metadata->rank].
   Value local_buffers_ptrs_offset = builder.create<arith::ConstantIntOp>(
-      type_i64, offsetof(CollectiveKernelMetadata, buffer_root_ptrs));
+      type_i64, offsetof(CollectiveKernelMetadata, param_to_peers));
 
   Value rank_offset =
       builder.create<arith::ExtUIOp>(type_i64, current_rank_load_op);
+  Value argument_offset_bytes =
+      builder.create<arith::ConstantIntOp>(type_i64, argument_offset);
   Value current_rank_offset_bytes =
       builder.create<arith::MulIOp>(rank_offset, pointer_size_bytes_const);
+  Value argument_ptr_offset_bytes = builder.create<arith::AddIOp>(
+      local_buffers_ptrs_offset, argument_offset_bytes);
   Value current_ptr_offset_bytes = builder.create<arith::AddIOp>(
-      local_buffers_ptrs_offset, current_rank_offset_bytes);
+      argument_ptr_offset_bytes, current_rank_offset_bytes);
 
   Value current_range_address = builder.create<AddPtrOp>(
       metadata.getType(), metadata, current_ptr_offset_bytes);
@@ -115,19 +131,19 @@ LogicalResult LowerGetPeerPtrOp(GetPeerPtrOp get_peer_ptr,
       EvictionPolicyAttr::get(ctx, EvictionPolicy::NORMAL),
       /*isVolatile=*/rewriter.getBoolAttr(false));
 
-  // 3. Calculate offset =
-  //      address - metadata->buffer_root_ptrs[metadata->rank].
+  // 4. Calculate offset =
+  //      address - metadata->param_to_peers[argument_offset + metadata->rank].
   Value current_range_address_int =
       builder.create<PtrToIntOp>(type_i64, address);
   Value offsetInt = builder.create<arith::SubIOp>(current_range_address_int,
                                                   current_range_address_value);
 
-  // 4. Load metadata->buffer_root_ptrs[peer_id].
+  // 5. Load metadata->param_to_peers[argument_offset + peer_id].
   Value peer_index = builder.create<arith::ExtUIOp>(type_i64, peer_id);
   Value peer_index_offset_bytes =
       builder.create<arith::MulIOp>(peer_index, pointer_size_bytes_const);
   Value peer_range_offset_bytes = builder.create<arith::AddIOp>(
-      local_buffers_ptrs_offset, peer_index_offset_bytes);
+      argument_ptr_offset_bytes, peer_index_offset_bytes);
   Value peer_range_address = builder.create<AddPtrOp>(
       metadata.getType(), metadata, peer_range_offset_bytes);
 
@@ -138,7 +154,7 @@ LogicalResult LowerGetPeerPtrOp(GetPeerPtrOp get_peer_ptr,
       EvictionPolicyAttr::get(ctx, EvictionPolicy::NORMAL),
       /*isVolatile=*/rewriter.getBoolAttr(false));
 
-  // 5. Calculate the result address: peerBasePtr + offset.
+  // 6. Calculate the result address: peerBasePtr + offset.
   Value result_int =
       builder.create<arith::AddIOp>(peer_range_address_value, offsetInt);
   Value result_address = builder.create<IntToPtrOp>(result_type, result_int);
