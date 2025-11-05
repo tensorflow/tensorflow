@@ -72,6 +72,11 @@ static constexpr int64_t kMaxTwoShotAllReduceSizeBytes =
 // - Signal value.
 static constexpr int kAllReduceArgsCount = 7;
 
+// Number of peer parameters for the all-reduce kernel.
+// - Input buffer pointer.
+// - Signal value.
+static constexpr int kNumPeerParameters = 2;
+
 // Helper for allocating memory on the device.
 absl::StatusOr<se::DeviceMemoryHandle> AllocateMemory(
     se::StreamExecutor* executor, int64_t size,
@@ -163,6 +168,7 @@ int64_t CollectiveKernelThunk::GetInputSizeBytes() const {
 struct BaseRangePtrRendezvousValue {
   RankId rank;
   se::DeviceMemoryBase buffer_ptr;
+  se::DeviceMemoryBase signal_ptr;
 
   bool operator<(const BaseRangePtrRendezvousValue& other) const {
     return rank < other.rank;
@@ -179,7 +185,8 @@ absl::Status CollectiveKernelThunk::ExchangeStateMetadata(
       << "Device " << params.collective_params->global_device_id
       << "is not in the clique.";
   rendezvous_value.rank = rank.value();
-  rendezvous_value.buffer_ptr = state.local_buffer.memory();
+  rendezvous_value.buffer_ptr = state.local_buffers_handle.memory();
+  rendezvous_value.signal_ptr = state.signal_buffers_handle.memory();
 
   auto rendezvous_fn =
       [](absl::Span<const BaseRangePtrRendezvousValue* const> values) {
@@ -203,24 +210,57 @@ absl::Status CollectiveKernelThunk::ExchangeStateMetadata(
                           /*value=*/rendezvous_value, /*num_threads=*/num_ranks,
                           rendezvous_fn));
 
-  if (rendezvous_values->size() > CollectiveKernelMetadata::kMaxNumDevices) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("Multi-device kernels require at most %d peers.",
-                        CollectiveKernelMetadata::kMaxNumDevices));
+  if (rendezvous_values->size() > num_ranks) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Multi-device kernels require at most %d peers.", num_ranks));
   }
+
   CollectiveKernelMetadata metadata;
   metadata.rank = rank.value().value();
-  for (int i = 0; i < rendezvous_values->size(); ++i) {
-    metadata.buffer_root_ptrs[i] = reinterpret_cast<uint64_t>(
-        rendezvous_values->at(i).buffer_ptr.opaque());
-  }
-  metadata.multicast_buffer_ptr =
-      reinterpret_cast<uint64_t>(state.multicast_device_ptr);
 
-  se::DeviceMemoryBase metadata_ptr =
-      params.executor->Allocate(sizeof(CollectiveKernelMetadata), 0);
+  std::vector<uint64_t> param_to_peers_ptrs;
+  param_to_peers_ptrs.reserve(rendezvous_values->size() * kNumPeerParameters);
+  for (const auto& value : *rendezvous_values) {
+    param_to_peers_ptrs.push_back(
+        reinterpret_cast<uint64_t>(value.buffer_ptr.opaque()));
+  }
+  for (const auto& value : *rendezvous_values) {
+    param_to_peers_ptrs.push_back(
+        reinterpret_cast<uint64_t>(value.signal_ptr.opaque()));
+  }
+
+  size_t param_to_peers_ptrs_size_bytes =
+      param_to_peers_ptrs.size() * sizeof(uint64_t);
+  size_t multicast_ptrs_size_bytes =
+      state.multicast_device_ptrs.size() * sizeof(uint64_t);
+  se::DeviceMemoryBase metadata_ptr = params.executor->Allocate(
+      sizeof(CollectiveKernelMetadata) + param_to_peers_ptrs_size_bytes +
+          multicast_ptrs_size_bytes,
+      0);
+  se::DeviceMemoryBase param_to_peers_ptrs_buffer = metadata_ptr.GetByteSlice(
+      sizeof(CollectiveKernelMetadata), param_to_peers_ptrs_size_bytes);
+  se::DeviceMemoryBase multicast_ptrs_buffer = metadata_ptr.GetByteSlice(
+      sizeof(CollectiveKernelMetadata) + param_to_peers_ptrs_size_bytes,
+      multicast_ptrs_size_bytes);
+  VLOG(3) << "[" << params.executor->device_ordinal() << "]"
+          << " ExchangeStateMetadata: metadata_ptr = " << metadata_ptr.opaque()
+          << ", param_to_peers_ptrs_buffer = "
+          << param_to_peers_ptrs_buffer.opaque()
+          << ", param_to_peers_ptrs_size = " << param_to_peers_ptrs.size()
+          << ", multicast_ptrs_buffer = " << multicast_ptrs_buffer.opaque()
+          << ", multicast_ptrs_size = " << state.multicast_device_ptrs.size();
+  metadata.param_to_peers =
+      reinterpret_cast<uint64_t*>(param_to_peers_ptrs_buffer.opaque());
+  metadata.param_to_multicast_ptrs =
+      reinterpret_cast<uint64_t*>(multicast_ptrs_buffer.opaque());
   TF_RETURN_IF_ERROR(params.stream->Memcpy(&metadata_ptr, (void*)&metadata,
                                            sizeof(CollectiveKernelMetadata)));
+  TF_RETURN_IF_ERROR(params.stream->Memcpy(&param_to_peers_ptrs_buffer,
+                                           param_to_peers_ptrs.data(),
+                                           param_to_peers_ptrs_size_bytes));
+  TF_RETURN_IF_ERROR(params.stream->Memcpy(&multicast_ptrs_buffer,
+                                           state.multicast_device_ptrs.data(),
+                                           multicast_ptrs_size_bytes));
   TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
 
   state.metadata = metadata_ptr;
@@ -247,28 +287,31 @@ absl::Status CollectiveKernelThunk::SetupMultimem(
     return absl::UnimplementedError("Multicast is not supported on device.");
   }
 
-  size_t data_size = buffers_[0].source_buffer.size();
-  int device_number = gpu_executor->device_ordinal();
-
+  state.multicast_device_ptrs.resize(kNumPeerParameters);
+  argument_to_multicast_memory_.resize(kNumPeerParameters);
+  se::DeviceMemoryBase device_ptr = state.local_buffers_handle.memory();
+  int device_number = stream_executor->device_ordinal();
   if (device_number == 0) {
-    TF_ASSIGN_OR_RETURN(multicast_memory_,
-                        gpu_executor->CreateMulticastMemory(
-                            data_size, clique_key.num_local_participants()));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<se::gpu::GpuExecutor::MulticastMemory> multicast_memory,
+        gpu_executor->CreateMulticastMemory(
+            device_ptr.size(), clique_key.num_local_participants()));
+    argument_to_multicast_memory_.push_back(std::move(multicast_memory));
   }
 
   // Wait for all devices to create the multicast object.
   TF_RETURN_IF_ERROR(Barrier(device_number, clique_key));
 
   // Add current devices to the multicast object.
-  TF_RETURN_IF_ERROR(multicast_memory_->SubscribeDevice(device_number));
+  TF_RETURN_IF_ERROR(
+      argument_to_multicast_memory_[0]->SubscribeDevice(device_number));
 
   // Wait for all devices to register the multicast object.
   TF_RETURN_IF_ERROR(Barrier(device_number, clique_key));
 
   TF_ASSIGN_OR_RETURN(
-      state.multicast_device_ptr,
-      multicast_memory_->MapMemory(state.local_buffer.memory(), gpu_executor));
-
+      state.multicast_device_ptrs[0],
+      argument_to_multicast_memory_[0]->MapMemory(device_ptr, gpu_executor));
   return absl::OkStatus();
 }
 
@@ -299,11 +342,16 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
           kNumSignalFlags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
       const int64_t kLocalBufferSize = xla::RoundUpTo<uint64_t>(
           buffers_[0].source_buffer.size(), kXlaAllocatedBufferAlignBytes);
+
       TF_ASSIGN_OR_RETURN(
-          se::DeviceMemoryHandle local_buffer_alloc,
-          AllocateMemory(params.executor,
-                         (kSignalBufferSize + kLocalBufferSize) * kNumBuffers,
-                         "Local and Signal buffers"));
+          se::DeviceMemoryHandle local_buffers_handle,
+          AllocateMemory(params.executor, kLocalBufferSize * kNumBuffers,
+                         "Local buffers"));
+
+      TF_ASSIGN_OR_RETURN(
+          se::DeviceMemoryHandle signal_buffers_handle,
+          AllocateMemory(params.executor, kLocalBufferSize * kNumBuffers,
+                         "Signal buffers"));
 
       // Step2: We needs 1 atomic flag per block per device on each device.
       // One-shot kernel expects that the signal flags buffer is zeroed out.
@@ -312,7 +360,8 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       // correct state after use, so we don't need to zero out after
       // initialization.
       TF_RETURN_IF_ERROR(params.executor->SynchronousMemZero(
-          local_buffer_alloc.memory_ptr(), local_buffer_alloc.memory().size()));
+          signal_buffers_handle.memory_ptr(),
+          signal_buffers_handle.memory().size()));
       // Create a kernel for execution.
       std::unique_ptr<se::Kernel> kernel = nullptr;
       // If PTX is provided, we create a kernel from it.
@@ -327,22 +376,22 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
           params.executor,
           std::make_unique<StreamState>(
               params.executor->device_ordinal(), rank.value(),
-              std::move(local_buffer_alloc), std::move(kernel)));
+              std::move(local_buffers_handle), std::move(signal_buffers_handle),
+              std::move(kernel)));
 
       state = per_stream_state_.at(params.executor).get();
 
       // NB: This is a double buffer allocation. So size of a single buffer is
       // half of the total allocation.
       for (int i = 0; i < kNumBuffers; ++i) {
-        uint64_t offset = i * (kLocalBufferSize + kSignalBufferSize);
         state->remote_buffer_ptrs[i] =
-            state->local_buffer.memory_ptr()->GetByteSlice(
-                /*offset_bytes=*/offset,
+            state->local_buffers_handle.memory_ptr()->GetByteSlice(
+                /*offset_bytes=*/i * kLocalBufferSize,
                 /*size_bytes=*/kLocalBufferSize);
 
         state->signal_buffer_ptrs[i] =
-            state->local_buffer.memory_ptr()->GetByteSlice(
-                /*offset_bytes=*/offset + kLocalBufferSize,
+            state->signal_buffers_handle.memory_ptr()->GetByteSlice(
+                /*offset_bytes=*/i * kSignalBufferSize,
                 /*size_bytes=*/kSignalBufferSize);
       }
     }
@@ -416,8 +465,8 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   se::DeviceMemoryBase signal_buffer_ptr =
       state->signal_buffer_ptrs[buffer_index];
   VLOG(3) << "[" << device_ordinal
-          << "] input_buffer_ptr: " << (uint64_t)input_buffer_ptr.opaque()
-          << " signal_buffer_ptr: " << (uint64_t)signal_buffer_ptr.opaque();
+          << "] input_buffer_ptr: " << input_buffer_ptr.opaque()
+          << " signal_buffer_ptr: " << signal_buffer_ptr.opaque();
   VLOG(3) << "[" << device_ordinal
           << "] launch dimensions: " << launch_dimensions.num_blocks() << "x"
           << launch_dimensions.num_threads_per_block()
