@@ -1783,6 +1783,7 @@ TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTest) {
 
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
   EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "pinned_host");
+  TF_ASSERT_OK(result_buffers[0]->GetReadyFuture().Await());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto memory_stats, executable->GetExecutable()->GetCompiledMemoryStats());
@@ -1818,6 +1819,7 @@ TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTupleTest) {
       auto result, executable->Execute({{input.get()}}, execute_options));
 
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
+  TF_ASSERT_OK(result_buffers[0]->GetReadyFuture().Await());
   EXPECT_EQ(result_buffers.size(), 2);
   EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "device");
   EXPECT_EQ(result_buffers[1]->memory_space()->kind(), "pinned_host");
@@ -2061,6 +2063,7 @@ TEST(StreamExecutorGpuClientTest,
       auto result, executable->Execute({{input.get()}}, ExecuteOptions()));
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
   EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "device");
+  TF_ASSERT_OK(result_buffers[0]->GetReadyFuture().Await());
   Shape result_shape = result_buffers[0]->on_device_shape();
   auto memory_space = result_shape.layout().memory_space();
   EXPECT_EQ(memory_space, 1);
@@ -2094,6 +2097,7 @@ TEST(StreamExecutorGpuClientTest, CollectiveMemorySpaceSmoke) {
   TF_ASSERT_OK_AND_ASSIGN(auto results,
                           exe->Execute({{input.get()}}, ExecuteOptions()));
   auto& buf = results[0][0];
+  TF_ASSERT_OK(buf->GetReadyFuture().Await());
 
   // Override default memory space to collective memory space.
   EXPECT_EQ(buf->on_device_shape().layout().memory_space(),
@@ -2616,8 +2620,10 @@ TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementMultiGPU) {
   auto measurement0 = CreateDeviceTimeMeasurement();
 
   // Test that running the program does not crash/hang.
-  TF_ASSERT_OK(
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto res,
       executable->Execute(absl::MakeSpan(input_ptrs), ExecuteOptions()));
+  TF_ASSERT_OK(res[0][0]->GetReadyFuture().Await());
 
   // Check measurement after execution completes.
   EXPECT_GT(
