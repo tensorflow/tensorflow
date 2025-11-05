@@ -632,4 +632,39 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
              : std::nullopt;
 }
 
+/*static*/ bool LayoutUtil::IsUntiledLayout(absl::Span<const Tile> tiles,
+                                            absl::Span<const int64_t> shape) {
+  // Tiles are applied recursively to expand current_shape
+  // Example: (t0, t1) tile applied to (..., n, m) expands it to
+  // (..., ceildiv(n, t0), ceildiv(m, t1), t0, t1)
+  std::vector<int64_t> current_shape(shape.begin(), shape.end());
+  for (const Tile& tile : tiles) {
+    const int64_t tile_ndims = tile.dimensions().size();
+    CHECK_LE(tile_ndims, current_shape.size());
+    const absl::Span<const int64_t> tiled_shape =
+        absl::Span<const int64_t>(current_shape).last(tile_ndims);
+    // new_tiled_shape will hold the tiled shape after the tile is applied.
+    std::vector<int64_t> new_tiled_shape(2 * tile_ndims);
+    bool allow_multiple_tiles = true;
+    for (int64_t i = 0; i < tile_ndims; ++i) {
+      if (tiled_shape[i] % tile.dimension(i) != 0) {
+        return false;
+      }
+      CHECK_GT(tile.dimension(i), 0);
+      new_tiled_shape[i] = tiled_shape[i] / tile.dimension(i);
+      new_tiled_shape[tile_ndims + i] = tile.dimension(i);
+      if (!allow_multiple_tiles && new_tiled_shape[i] != 1) {
+        return false;
+      }
+      if (tile.dimension(i) != 1) {
+        allow_multiple_tiles = false;
+      }
+    }
+    current_shape.erase(current_shape.end() - tile_ndims, current_shape.end());
+    current_shape.insert(current_shape.end(), new_tiled_shape.begin(),
+                         new_tiled_shape.end());
+  }
+  return true;
+}
+
 }  // namespace xla
