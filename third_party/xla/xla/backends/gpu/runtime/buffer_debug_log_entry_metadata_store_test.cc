@@ -66,12 +66,14 @@ TEST(BufferDebugLogEntryMetadataStoreTest, EntriesToProto) {
       /*buffer_idx=*/4,
       /*execution_id=*/5,
       /*is_input=*/true,
+      BufferDebugLogEntryProto::CHECK_TYPE_CHECKSUM,
   });
   const BufferDebugLogEntryId entry_id2 = store.AssignId({
       /*thunk_id=*/ThunkId(567),
       /*buffer_idx=*/8,
       /*execution_id=*/9,
       /*is_input=*/false,
+      BufferDebugLogEntryProto::CHECK_TYPE_NAN_COUNT,
   });
   std::vector<BufferDebugLogEntry> entries = {
       {
@@ -93,13 +95,15 @@ TEST(BufferDebugLogEntryMetadataStoreTest, EntriesToProto) {
                   execution_id: 5
                   is_input_buffer: true
                   checksum: 12341234
+                  check_type: CHECK_TYPE_CHECKSUM
                 }
                 entries {
                   thunk_id: 567
                   buffer_idx: 8
                   execution_id: 9
                   is_input_buffer: false
-                  checksum: 56785678
+                  checksum: 56785678,
+                  check_type: CHECK_TYPE_NAN_COUNT
                 }
               )pb"));
 }

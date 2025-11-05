@@ -167,21 +167,26 @@ TEST_F(BuffersDebugNanCountThunkTest, CalculatesNanCounts) {
 
   // BuffersDebugNanCountThunk launches a kernel for each input buffer, they may
   // complete in any order.
-  EXPECT_THAT(
-      entries,
-      UnorderedElementsAre(
-          IsEntryWithMetadata(metadata_store, Metadata{
-                                                  /*thunk_id=*/ThunkId(123),
-                                                  /*buffer_idx=*/0,
-                                                  /*execution_id=*/0,
-                                                  /*is_input=*/true,
-                                              }),
-          IsEntryWithMetadata(metadata_store, Metadata{
-                                                  /*thunk_id=*/ThunkId(123),
-                                                  /*buffer_idx=*/1,
-                                                  /*execution_id=*/0,
-                                                  /*is_input=*/true,
-                                              })));
+  EXPECT_THAT(entries,
+              UnorderedElementsAre(
+                  IsEntryWithMetadata(
+                      metadata_store,
+                      Metadata{
+                          /*thunk_id=*/ThunkId(123),
+                          /*buffer_idx=*/0,
+                          /*execution_id=*/0,
+                          /*is_input=*/true,
+                          BufferDebugLogEntryProto::CHECK_TYPE_NAN_COUNT,
+                      }),
+                  IsEntryWithMetadata(
+                      metadata_store,
+                      Metadata{
+                          /*thunk_id=*/ThunkId(123),
+                          /*buffer_idx=*/1,
+                          /*execution_id=*/0,
+                          /*is_input=*/true,
+                          BufferDebugLogEntryProto::CHECK_TYPE_NAN_COUNT,
+                      })));
 }
 
 }  // namespace

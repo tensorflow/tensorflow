@@ -171,21 +171,25 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
   // complete in any order.
   EXPECT_THAT(entries,
               UnorderedElementsAre(
-                  AllOf(IsEntryWithMetadata(metadata_store,
-                                            Metadata{
-                                                /*thunk_id=*/ThunkId(123),
-                                                /*buffer_idx=*/0,
-                                                /*execution_id=*/0,
-                                                /*is_input=*/true,
-                                            }),
+                  AllOf(IsEntryWithMetadata(
+                            metadata_store,
+                            Metadata{
+                                /*thunk_id=*/ThunkId(123),
+                                /*buffer_idx=*/0,
+                                /*execution_id=*/0,
+                                /*is_input=*/true,
+                                BufferDebugLogEntryProto::CHECK_TYPE_CHECKSUM,
+                            }),
                         Field(&BufferDebugLogEntry::value, 12341234)),
-                  AllOf(IsEntryWithMetadata(metadata_store,
-                                            Metadata{
-                                                /*thunk_id=*/ThunkId(123),
-                                                /*buffer_idx=*/1,
-                                                /*execution_id=*/0,
-                                                /*is_input=*/true,
-                                            }),
+                  AllOf(IsEntryWithMetadata(
+                            metadata_store,
+                            Metadata{
+                                /*thunk_id=*/ThunkId(123),
+                                /*buffer_idx=*/1,
+                                /*execution_id=*/0,
+                                /*is_input=*/true,
+                                BufferDebugLogEntryProto::CHECK_TYPE_CHECKSUM,
+                            }),
                         Field(&BufferDebugLogEntry::value, 56785678))));
 }
 

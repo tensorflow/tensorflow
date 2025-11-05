@@ -440,7 +440,8 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
 TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugNanCounterThunks) {
   static constexpr ThunkId kTestThunkId = ThunkId(123);
   DebugOptions debug_options;
-  debug_options.set_xla_gpu_experimental_enable_nan_counter_on_thunks(true);
+  debug_options.set_xla_gpu_detect_nan(
+      DebugOptions::NAN_CHECK_DETECTION_MODE_WARNING);
   se::DeviceDescription device_info;
   FakeThunkPassBufferAllocator allocator;
   // The callbacks created by ThunkBufferDebugPass require a HloModule with

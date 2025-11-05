@@ -74,6 +74,7 @@ BufferDebugLogProto BufferDebugLogEntryMetadataStore::EntriesToProto(
     entry_proto->set_execution_id(metadata->execution_id);
     entry_proto->set_is_input_buffer(metadata->is_input);
     entry_proto->set_checksum(entry.value);
+    entry_proto->set_check_type(metadata->check_type);
   }
   return proto;
 }

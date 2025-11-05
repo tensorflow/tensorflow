@@ -229,6 +229,23 @@ absl::Status DumpBufferDebugLog(
   VLOG(1) << "read " << buffer_debug_log_proto.entries_size() << " entries";
   DumpPerExecutionProtobufToFile(*hlo_module, buffer_debug_log_proto,
                                  debug_options, "buffer_debug_log", nullptr);
+  int non_zero_nan_count_modules_count = 0;
+  for (const auto& entry : buffer_debug_log_proto.entries()) {
+    if (entry.check_type() == BufferDebugLogEntryProto::CHECK_TYPE_NAN_COUNT &&
+        entry.checksum() > 0) {
+      LOG(ERROR) << "Found entry with non zero nan count " << entry.checksum()
+                 << " for thunk " << entry.thunk_id() << " and execution "
+                 << entry.execution_id() << " for module: \n"
+                 << hlo_module->ToString();
+      non_zero_nan_count_modules_count++;
+    }
+  }
+  if (non_zero_nan_count_modules_count > 0 &&
+      hlo_module->config().debug_options().xla_gpu_detect_nan() ==
+          DebugOptions::NAN_CHECK_DETECTION_MODE_FAIL) {
+    LOG(FATAL) << "Found " << non_zero_nan_count_modules_count
+               << " modules with non zero nan count";
+  }
   return absl::OkStatus();
 }
 

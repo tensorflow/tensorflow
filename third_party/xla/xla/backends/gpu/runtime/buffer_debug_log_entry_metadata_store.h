@@ -19,10 +19,12 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
@@ -52,6 +54,17 @@ class BufferDebugLogEntryMetadataStore {
     size_t execution_id;
     // True if the entry represents a check made before the thunk executes.
     bool is_input;
+
+    // The type of check that produced this entry.
+    BufferDebugLogEntryProto::CheckType check_type;
+
+    std::string ToString() const {
+      return absl::StrCat(
+          "thunk_id: ", thunk_id.value(), ", buffer_idx: ", buffer_idx,
+          ", execution_id: ", execution_id,
+          ", is_input: ", is_input ? "true" : "false", ", check_type: ",
+          BufferDebugLogEntryProto::CheckType_Name(check_type));
+    }
   };
 
   // Inserts `metadata` into the store and returns an ID that can be used to

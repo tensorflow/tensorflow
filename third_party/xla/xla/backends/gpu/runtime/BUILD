@@ -3223,6 +3223,7 @@ cc_library(
         ":thunk_id",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -90,12 +91,14 @@ absl::Status BuffersDebugNanCountThunk::ExecuteOnStream(
   const uint32_t execution_id = execution_count_.fetch_add(1);
 
   for (const auto& [buffer_idx, buffer] : checked_thunk_buffers_) {
-    const BufferDebugLogEntryId entry_id = metadata_store_->AssignId({
+    BufferDebugLogEntryMetadataStore::Metadata metadata{
         checked_thunk_id_,
         buffer_idx,
         execution_id,
         /*is_input=*/runs_before_checked_thunk_,
-    });
+        BufferDebugLogEntryProto::CHECK_TYPE_NAN_COUNT,
+    };
+    const BufferDebugLogEntryId entry_id = metadata_store_->AssignId(metadata);
 
     PrimitiveType buffer_type = buffer.element_type();
     se::DeviceMemoryBase device_buffer =

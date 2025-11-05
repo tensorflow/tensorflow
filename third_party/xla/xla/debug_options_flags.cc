@@ -475,7 +475,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_keep_shardings_after_spmd(false);
   opts.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(false);
-  opts.set_xla_gpu_experimental_enable_nan_counter_on_thunks(false);
+  opts.set_xla_gpu_detect_nan(DebugOptions::NAN_CHECK_DETECTION_MODE_NONE);
   return opts;
 }
 
@@ -2667,13 +2667,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enables an experimental feature to record checksums of selected thunk "
       "inputs/outputs."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_nan_counter_on_thunks",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_experimental_enable_nan_counter_on_thunks),
-      debug_options->xla_gpu_experimental_enable_nan_counter_on_thunks(),
-      "Enables an experimental feature to record the number of nans in thunk "
-      "outputs."));
-  flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_thunk_buffer_debug_filter_by_thunk_id_ranges",
       setter_for_thunk_buffer_debug_filter_by_thunk_id, "(none)",
       "Limits the thunk buffer debug instrumentation to thunks with IDs "
@@ -2685,6 +2678,31 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Limits the thunk buffer debug instrumentation to thunks with profile "
       "annotations matching one or more regexes passed as comma-separated "
       "string."));
+
+  auto setter_for_xla_gpu_detect_nan =
+      [debug_options](const std::string& value) {
+        DebugOptions::NaNCheckDetectionMode detection_mode;
+        if (value == "none") {
+          detection_mode = DebugOptions::NAN_CHECK_DETECTION_MODE_NONE;
+        } else if (value == "warning") {
+          detection_mode = DebugOptions::NAN_CHECK_DETECTION_MODE_WARNING;
+        } else if (value == "fail") {
+          detection_mode = DebugOptions::NAN_CHECK_DETECTION_MODE_FAIL;
+        } else {
+          return false;
+        }
+        debug_options->set_xla_gpu_detect_nan(detection_mode);
+        return true;
+      };
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_detect_nan", setter_for_xla_gpu_detect_nan,
+      DebugOptions::NaNCheckDetectionMode_Name(
+          debug_options->xla_gpu_detect_nan()),
+      "Controls the behavior of the NaN detector pass that checks for presence "
+      "of NaN values in kernel outputs. Acceptable values are: 'none', "
+      "'warning', and 'fail'. 'none' is the default. If other than 'none' "
+      "value is provided, additional thunks will be added to detect and "
+      "warn or fail the execution if NaNs are detected."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

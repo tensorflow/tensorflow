@@ -182,7 +182,8 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
     pipeline.AddPass(std::make_unique<ThunkBufferDebugPass>(
         ThunkBufferDebugPass::Mode::kChecksum));
   }
-  if (debug_options.xla_gpu_experimental_enable_nan_counter_on_thunks()) {
+  if (debug_options.xla_gpu_detect_nan() !=
+      DebugOptions::NAN_CHECK_DETECTION_MODE_NONE) {
     pipeline.AddPass(std::make_unique<ThunkBufferDebugPass>(
         ThunkBufferDebugPass::Mode::kNanCounter));
   }

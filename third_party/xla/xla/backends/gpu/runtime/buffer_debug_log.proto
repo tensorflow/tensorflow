@@ -40,6 +40,15 @@ message BufferDebugLogEntryProto {
   // (thunk_id, execution_id) describe buffers used by a single execution of a
   // thunk.
   uint32 execution_id = 5;
+
+  // The type of check that produced this entry.
+  enum CheckType {
+    CHECK_TYPE_UNSPECIFIED = 0;
+    CHECK_TYPE_CHECKSUM = 1;
+    CHECK_TYPE_NAN_COUNT = 2;
+  }
+
+  CheckType check_type = 6;
 }
 
 // A dump of a `BufferDebugLog` contents.

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -86,12 +87,15 @@ absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
       se::gpu::BufferDebugLog::FromDeviceMemoryUnchecked(log_ptr);
 
   for (const auto& [buffer_idx, buffer] : checked_thunk_buffers_) {
-    const BufferDebugLogEntryId log_entry_id = metadata_store_->AssignId({
-        checked_thunk_id_,
-        buffer_idx,
-        execution_id,
-        /*is_input=*/runs_before_checked_thunk_,
-    });
+    BufferDebugLogEntryMetadataStore::Metadata metadata{
+        /*thunk_id*/ checked_thunk_id_,
+        /*buffer_idx*/ buffer_idx,
+        /*execution_id*/ execution_id,
+        /*is_input*/ runs_before_checked_thunk_,
+        /*check_type*/ BufferDebugLogEntryProto::CHECK_TYPE_CHECKSUM,
+    };
+    const BufferDebugLogEntryId log_entry_id =
+        metadata_store_->AssignId(metadata);
 
     se::DeviceMemory<uint8_t> device_buffer(
         params.buffer_allocations->GetDeviceAddress(buffer));
