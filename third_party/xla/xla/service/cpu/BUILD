@@ -60,7 +60,6 @@ filegroup(
         # Single-threaded support.
         "runtime_custom_call_status.cc",
         "runtime_key_value_sort.cc",
-        "runtime_pow.cc",
         "runtime_single_threaded_conv2d.cc",
         "runtime_single_threaded_conv3d.cc",
         "runtime_single_threaded_matmul_c128.cc",
@@ -94,7 +93,6 @@ filegroup(
         # Single-threaded support.
         "runtime_custom_call_status.h",
         "runtime_key_value_sort.h",
-        "runtime_pow.h",
         "runtime_single_threaded_conv2d.h",
         "runtime_single_threaded_conv3d.h",
         "runtime_single_threaded_matmul.h",
@@ -588,18 +586,6 @@ cc_library(
     hdrs = ["runtime_lightweight_check.h"],
     compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
-)
-
-cc_library(
-    name = "runtime_pow",
-    srcs = [
-        "runtime_pow.cc",
-    ],
-    hdrs = [
-        "runtime_pow.h",
-    ],
-    copts = runtime_copts(),
-    deps = ["@com_google_absl//absl/base:core_headers"],
 )
 
 cc_library(
