@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/util/command_line_flags.h"
+
 #include <ctype.h>
+
 #include <vector>
 
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
 namespace {
@@ -266,16 +269,16 @@ static bool MatchWithAnyWhitespace(const string &str, const string &pat) {
   bool matching = true;
   int pat_i = 0;
   for (int str_i = 0; str_i != str.size() && matching; str_i++) {
-    if (isspace(str[str_i])) {
-      matching = (pat_i != pat.size() && isspace(pat[pat_i]));
+    if (absl::ascii_isspace(str[str_i])) {
+      matching = (pat_i != pat.size() && absl::ascii_isspace(pat[pat_i]));
     } else {
-      while (pat_i != pat.size() && isspace(pat[pat_i])) {
+      while (pat_i != pat.size() && absl::ascii_isspace(pat[pat_i])) {
         pat_i++;
       }
       matching = (pat_i != pat.size() && str[str_i] == pat[pat_i++]);
     }
   }
-  while (pat_i != pat.size() && isspace(pat[pat_i])) {
+  while (pat_i != pat.size() && absl::ascii_isspace(pat[pat_i])) {
     pat_i++;
   }
   return (matching && pat_i == pat.size());

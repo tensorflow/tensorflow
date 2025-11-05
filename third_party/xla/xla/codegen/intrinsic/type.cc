@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/codegen/intrinsic/type.h"
 
-#include <cctype>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -23,6 +22,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -121,7 +121,7 @@ std::string Type::name() const {
 
 Type Type::FromName(absl::string_view name) {
   if (name[0] == 'v') {
-    size_t len = std::isdigit(name[2]) ? 2 : 1;
+    size_t len = absl::ascii_isdigit(name[2]) ? 2 : 1;
     size_t width;
     CHECK(absl::SimpleAtoi(name.substr(1, len), &width)) << name;
     return Type(FromLowercaseLLVMTypeName(name.substr(len + 1)), width);

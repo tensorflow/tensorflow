@@ -85,6 +85,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform/cloud:now_seconds_env",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",

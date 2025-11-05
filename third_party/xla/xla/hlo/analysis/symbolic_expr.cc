@@ -88,11 +88,11 @@ class Parser {
   int64_t ParseNumber(std::string& error_msg) {
     size_t num_len = 0;
     if (!remaining_str_.empty() &&
-        (isdigit(remaining_str_[0]) || remaining_str_[0] == '-')) {
+        (absl::ascii_isdigit(remaining_str_[0]) || remaining_str_[0] == '-')) {
       num_len = 1;
     }
     while (num_len < remaining_str_.size() &&
-           isdigit(remaining_str_[num_len])) {
+           absl::ascii_isdigit(remaining_str_[num_len])) {
       num_len++;
     }
     CHECK(num_len > 0) << error_msg;

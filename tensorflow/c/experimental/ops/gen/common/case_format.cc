@@ -52,7 +52,7 @@ string FormatStringCase(const string &str, CaseFormatType to,
       wordStart = true;
       continue;
     }
-    if (!from_snake && isupper(c)) {
+    if (!from_snake && absl::ascii_isupper(c)) {
       wordStart = true;
     }
 
@@ -65,9 +65,9 @@ string FormatStringCase(const string &str, CaseFormatType to,
     const bool shouldCapIfSnake = toUpper;
     const bool shouldCapIfCamel = wordStart && (toUpper || !inputStart);
     if ((toSnake && shouldCapIfSnake) || (!toSnake && shouldCapIfCamel)) {
-      result += toupper(c);
+      result += absl::ascii_toupper(c);
     } else {
-      result += tolower(c);
+      result += absl::ascii_tolower(c);
     }
 
     // at this point we are no longer at the start of a word:

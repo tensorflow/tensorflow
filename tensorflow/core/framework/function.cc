@@ -1039,7 +1039,7 @@ class AttrKeyAndValue {
  private:
   static bool NeedsEscaping(const string& s) {
     for (auto c : s) {
-      if (!isalnum(c) && (c != ' ')) {
+      if (!absl::ascii_isalnum(c) && (c != ' ')) {
         return true;
       }
     }

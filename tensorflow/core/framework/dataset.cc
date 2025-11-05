@@ -1310,7 +1310,7 @@ bool DatasetOpKernel::IsDatasetOp(const OpDef& op_def) {
 
   // Check if the suffix matches "DatasetV[0-9]+".
   size_t index = op_name.length() - 1;
-  while (index >= 0 && isdigit(op_name[index])) {
+  while (index >= 0 && absl::ascii_isdigit(op_name[index])) {
     index--;
   }
   constexpr absl::string_view kDatasetPrefix = "DatasetV";

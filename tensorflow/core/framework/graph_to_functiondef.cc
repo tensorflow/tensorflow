@@ -87,9 +87,9 @@ string NodeNameMapping::Normalize(string name) {
   const int n = name.size();
   for (int i = 0; i < n; ++i) {
     char c = name[i];
-    if (isalnum(c)) {
-      if (isupper(c)) {
-        name[i] = tolower(c);
+    if (absl::ascii_isalnum(c)) {
+      if (absl::ascii_isupper(c)) {
+        name[i] = absl::ascii_tolower(c);
       }
     } else {
       name[i] = '_';
@@ -99,7 +99,7 @@ string NodeNameMapping::Normalize(string name) {
   // Find the first letter and start with it.
   int i = 0;
   for (; i < n; ++i) {
-    if (isalpha(name[i])) break;
+    if (absl::ascii_isalpha(name[i])) break;
   }
 
   // Return "unknown" if none of the name's chars were letters.

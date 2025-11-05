@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 // Needed for encoding and decoding ResourceDeleter Variant.
@@ -375,10 +376,11 @@ class GrpcPollingThread {
   explicit GrpcPollingThread(std::string thread_name) {
     // Thread name can only have alpha numeric characters. Remove special
     // characters from input thread_name.
-    thread_name.erase(
-        std::remove_if(thread_name.begin(), thread_name.end(),
-                       [](auto const c) -> bool { return !std::isalnum(c); }),
-        thread_name.end());
+    thread_name.erase(std::remove_if(thread_name.begin(), thread_name.end(),
+                                     [](unsigned char const c) -> bool {
+                                       return !absl::ascii_isalnum(c);
+                                     }),
+                      thread_name.end());
     thread_.reset(Env::Default()->StartThread(
         ThreadOptions(), absl::StrCat("GrpcPollingThread", thread_name),
         [this]() {

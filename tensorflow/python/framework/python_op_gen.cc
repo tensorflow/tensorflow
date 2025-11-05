@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -783,14 +784,15 @@ void GenerateLowerCaseOpName(const string& str, string* result) {
     // Emit a joiner only if a previous-lower-to-now-upper or a
     // now-upper-to-next-lower transition happens.
     // (But don't emit an extra joiner if we just saw a namespace separator
-    if (isupper(c) && (i > 0)) {
-      if (islower(str[i - 1]) || ((i < last_index) && islower(str[i + 1]))) {
+    if (absl::ascii_isupper(c) && (i > 0)) {
+      if (absl::ascii_islower(str[i - 1]) ||
+          ((i < last_index) && absl::ascii_islower(str[i + 1]))) {
         if (!(str[i - 1] == namespace_separator)) {
           result->push_back(joiner);
         }
       }
     }
-    result->push_back(tolower(c));
+    result->push_back(absl::ascii_tolower(c));
   }
 }
 

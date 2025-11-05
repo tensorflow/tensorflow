@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/grappler/optimizers/scoped_allocator_optimizer.h"
 
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/common_runtime/scoped_allocator.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -58,7 +59,7 @@ bool HasOpName(const string& node_name, const string& op_name) {
   if (end != string::npos) {
     size_t p = end + 1;
     while (p < node_name.size()) {
-      if (!isdigit(node_name[p])) {
+      if (!absl::ascii_isdigit(node_name[p])) {
         end = node_name.size();
         break;
       }

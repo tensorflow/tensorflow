@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/iterator.h"
 #include "llvm/Support/ScopedPrinter.h"
@@ -668,8 +669,9 @@ FuncAttr BasePattern::Outline(Operation *op, PatternRewriter &rewriter,
             op->getAttrOfType<StringAttr>(dialect_.getNameAttrIdentifier())) {
       llvm::raw_string_ostream os(new_func_name);
       os << "_tfg_region_specialized_";
-      for (char c : llvm::map_range(
-               op_name.getValue(), [](char c) { return isalnum(c) ? c : '_'; }))
+      for (char c : llvm::map_range(op_name.getValue(), [](char c) {
+             return llvm::isAlnum(c) ? c : '_';
+           }))
         os << c;
       os << '_' << llvm::to_string(region.getRegionNumber());
       os.flush();
