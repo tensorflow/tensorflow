@@ -71,17 +71,6 @@ namespace xla {
 namespace cpu {
 namespace runtime {
 
-// TODO(zhangqiaorjc): Prefer to make callers set and use device_ordinal
-// directly since callers may not have a Stream*.
-int GetDeviceOrdinal(const xla::ExecutableRunOptions* run_options) {
-  if (!run_options) {
-    return 0;
-  } else if (run_options->device_ordinal() != -1) {
-    return run_options->device_ordinal();
-  }
-  return run_options->stream()->parent()->device_ordinal();
-}
-
 extern const char* const kEigenMatMulF16SymbolName =
     "__xla_cpu_runtime_EigenMatMulF16";
 extern const char* const kEigenMatMulF32SymbolName =

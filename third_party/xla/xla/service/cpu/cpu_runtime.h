@@ -95,8 +95,6 @@ extern const char* const kHandleFfiCallSymbolName;
 // prefix.
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix;
 
-int GetDeviceOrdinal(const xla::ExecutableRunOptions* run_options);
-
 }  // namespace runtime
 }  // namespace cpu
 }  // namespace xla

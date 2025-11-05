@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
@@ -228,6 +227,16 @@ CpuExecutable::CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
   return std::move(buffers);
 }
 
+static int32_t GetDeviceOrdinal(const ExecutableRunOptions* run_options) {
+  if (!run_options) {
+    return 0;
+  }
+  if (run_options->device_ordinal() != -1) {
+    return run_options->device_ordinal();
+  }
+  return run_options->stream()->parent()->device_ordinal();
+}
+
 absl::Status CpuExecutable::ExecuteThunks(
     const ExecutableRunOptions* run_options,
     absl::Span<MaybeOwningDeviceMemory const> buffers) {
@@ -273,7 +282,7 @@ absl::Status CpuExecutable::ExecuteThunks(
   Thunk::ExecuteParams execute_params = {
       &*function_library_,
       &allocations,
-      GetXfeedManager(runtime::GetDeviceOrdinal(run_options)),
+      GetXfeedManager(GetDeviceOrdinal(run_options)),
       intra_op_thread_pool,
       &task_runner,
       &collective_execute_params,
