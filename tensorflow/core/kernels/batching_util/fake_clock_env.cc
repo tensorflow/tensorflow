@@ -40,7 +40,7 @@ void FakeClockEnv::AdvanceByMicroseconds(int micros) {
   }
 }
 
-void FakeClockEnv::BlockUntilSleepingThread(uint64 wake_time) {
+void FakeClockEnv::BlockUntilSleepingThread(uint64_t wake_time) {
   for (;;) {
     {
       mutex_lock l(mu_);
@@ -67,7 +67,7 @@ void FakeClockEnv::BlockUntilThreadsAsleep(int num_threads) {
   }
 }
 
-uint64 FakeClockEnv::NowMicros() const {
+uint64_t FakeClockEnv::NowMicros() const {
   {
     mutex_lock l(mu_);
     return current_time_;
