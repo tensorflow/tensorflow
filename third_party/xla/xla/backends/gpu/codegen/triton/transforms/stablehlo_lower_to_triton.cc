@@ -21,9 +21,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -253,11 +251,76 @@ class LowerReshape : public mlir::OpRewritePattern<stablehlo::ReshapeOp> {
  private:
   mlir::LogicalResult matchAndRewrite(
       stablehlo::ReshapeOp op, mlir::PatternRewriter& rewriter) const override {
+    bool input_is_0d = op.getOperand().getType().getRank() == 0;
+    bool output_is_0d = op.getType().getRank() == 0;
+
+    if (input_is_0d && output_is_0d) {
+      rewriter.replaceAllUsesWith(op, op.getOperand());
+      return mlir::success();
+    }
+
+    if (input_is_0d) {
+      auto to_scalar = ::xla::xtile::ToScalarOp::create(rewriter, op->getLoc(),
+                                                        op.getOperand());
+      rewriter.replaceOpWithNewOp<ttir::SplatOp>(op, op.getType(), to_scalar);
+      return mlir::success();
+    }
+
+    if (output_is_0d) {
+      // We know the input dimensions must be all 1s as reshape input-output
+      // must have the same number of elements.
+      return LowerRank0ToReduce(op, rewriter);
+    }
+
     // Conservatively prevent Triton from reordering elements within the tile.
     // TODO(b/353637689): see if this restriction can be lifted.
     bool allow_reorder = false;
     rewriter.replaceOpWithNewOp<ttir::ReshapeOp>(
         op, op.getResult().getType(), op.getOperand(), allow_reorder);
+    return mlir::success();
+  }
+
+  static mlir::LogicalResult LowerRank0ToReduce(
+      stablehlo::ReshapeOp op, mlir::PatternRewriter& rewriter) {
+    auto input_tensor_type = op.getOperand().getType();
+
+    // First, reshape to a 1D tensor if not already the case. This is needed
+    // because triton::ReduceOp can only reduce 1 dimension at a time.
+    auto single_dim_tensor = op.getOperand();
+    if (input_tensor_type.getRank() > 1) {
+      Type output_tensor_type =
+          mlir::RankedTensorType::get({1}, input_tensor_type.getElementType());
+      single_dim_tensor = ttir::ReshapeOp::create(
+          rewriter, op.getLoc(), output_tensor_type, single_dim_tensor,
+          /*allow_reorder=*/true);
+    }
+
+    // Second, reduce to a scalar.
+    ttir::ReduceOp reduction = ttir::ReduceOp::create(
+        rewriter, op.getLoc(), single_dim_tensor, /*axis=*/0);
+
+    auto element_type = input_tensor_type.getElementType();
+    mlir::Location loc = op.getLoc();
+    mlir::Block* reducer =
+        rewriter.createBlock(&reduction->getRegion(0), /*insertPt=*/{},
+                             /*argTypes=*/
+                             {element_type, element_type},
+                             /*locs=*/{loc, loc});
+
+    rewriter.setInsertionPointToStart(reducer);
+    auto create_binary_op = [&](auto op_type) -> Value {
+      return op_type.create(rewriter, reducer->getArgument(0).getLoc(),
+                            reducer->getArgument(0), reducer->getArgument(1));
+    };
+    Value result = mlir::isa<mlir::IntegerType>(element_type)
+                       ? create_binary_op(arith::AddIOp())
+                       : create_binary_op(arith::AddFOp());
+    ttir::ReduceReturnOp::create(rewriter, result.getLoc(), {result});
+
+    rewriter.setInsertionPointAfter(reduction);
+    rewriter.replaceOpWithNewOp<::xla::xtile::ToTensorOp>(
+        op, reduction.getResult());
+
     return mlir::success();
   }
 };

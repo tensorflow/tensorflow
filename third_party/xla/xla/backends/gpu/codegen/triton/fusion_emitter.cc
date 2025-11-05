@@ -602,56 +602,24 @@ SmallVector<Value> GetRuntimeValues(
   return runtime_values;
 }
 
-// Reshapes a non-0D tensor of shape [1, 1, 1, ...] to a scalar.
-ScalarOrTensor ReshapeTensorToScalar(EmitterLocOpBuilder b, Value input) {
-  auto element_type = mlir::cast<ShapedType>(input.getType()).getElementType();
-  auto shaped_type = mlir::cast<ShapedType>(input.getType());
-
-  SmallVector<Value> zero_indices;
-  zero_indices.assign(shaped_type.getRank(),
-                      b.create<mlir::arith::ConstantIndexOp>(0));
-
-  return ScalarOrTensor(
-      b.create<mlir::tensor::ExtractOp>(element_type, input, zero_indices));
-}
-
-absl::StatusOr<ScalarOrTensor> EmitTiledReshape(EmitterLocOpBuilder b,
-                                                ArrayRef<int64_t> tile_sizes,
-                                                ScalarOrTensor input) {
+absl::StatusOr<TensorValue> EmitTiledReshape(EmitterLocOpBuilder b,
+                                             ArrayRef<int64_t> tile_sizes,
+                                             TensorValue input) {
+  mlir::RankedTensorType input_type = input.getType();
   SmallVector<int64_t> padded_tile_sizes = GetPaddedTileSizes(tile_sizes);
-
-  if (input.IsScalar()) {
-    if (tile_sizes.empty()) {
-      // Nothing to do.
-      return input;
-    }
-    // Convert the scalar to a tensor.
-    return Splat(b, input, padded_tile_sizes);
-  }
-
-  // At this point we know that the input is a non-0D tensor.
-  auto input_shaped_type = mlir::cast<ShapedType>(input.getType());
-
-  // Handle the case of reshaping [1,1,1...] to a scalar.
-  if (tile_sizes.empty()) {
-    return ReshapeTensorToScalar(b, input.UnwrapTensor());
-  }
 
   // At this point we know that neither the input nor the output are 0D tensors.
   auto output_tensor_type = mlir::RankedTensorType::get(
-      padded_tile_sizes, input_shaped_type.getElementType());
+      padded_tile_sizes, input_type.getElementType());
 
-  if (input_shaped_type.getNumElements() !=
-      output_tensor_type.getNumElements()) {
+  if (input_type.getNumElements() != output_tensor_type.getNumElements()) {
     return absl::InvalidArgumentError(
         absl::StrCat("Reshape input and output shapes must be the same, got ",
-                     absl::StrJoin(input_shaped_type.getShape(), "x"), " -> ",
+                     absl::StrJoin(input_type.getShape(), "x"), " -> ",
                      absl::StrJoin(output_tensor_type.getShape(), "x")));
   }
 
-  auto reshape =
-      b.create<stablehlo::ReshapeOp>(output_tensor_type, input.UnwrapUnsafe());
-  return ScalarOrTensor(reshape.getResult());
+  return b.create<stablehlo::ReshapeOp>(output_tensor_type, input);
 }
 
 Value EmitTiledTranspose(EmitterLocOpBuilder b, ArrayRef<int64_t> tile_sizes,
@@ -730,20 +698,19 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
   if (ShapeUtil::Equal(trt->transpose1_shape, trt->reshape_shape)) {
     normalized_reshape = normalized_input;
   } else {
-    TF_ASSIGN_OR_RETURN(auto reshape,
+    TF_ASSIGN_OR_RETURN(normalized_reshape,
                         EmitTiledReshape(b, reshape_tile_sizes,
-                                         ScalarOrTensor(normalized_input)));
-    normalized_reshape = reshape.UnwrapUnsafe();
+                                         MakeTensor(b, normalized_input)));
   }
 
   // The final transpose simply uses the tile sizes computed for the original
   // bitcast by the tiling analysis.
-  return ScalarOrTensor{
-      trt->IsTranspose2Identity()
-          ? normalized_reshape
-          : EmitTiledTranspose(b, tiled_bitcast.tile_sizes(),
-                               llvm::to_vector(trt->transpose2_dims),
-                               normalized_reshape)};
+  return MakeScalarOrTensor(
+      b, trt->IsTranspose2Identity()
+             ? normalized_reshape
+             : EmitTiledTranspose(b, tiled_bitcast.tile_sizes(),
+                                  llvm::to_vector(trt->transpose2_dims),
+                                  normalized_reshape));
 }
 
 absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
@@ -913,10 +880,8 @@ absl::StatusOr<Value> CanonicalizeDotOperand(
   }
 
   if (shape.size() != shape_without_unit_dims.size()) {
-    TF_ASSIGN_OR_RETURN(
-        ScalarOrTensor wrapped_operand,
-        EmitTiledReshape(b, shape_without_unit_dims, ScalarOrTensor(operand)));
-    operand = wrapped_operand.UnwrapTensor();
+    TF_ASSIGN_OR_RETURN(operand, EmitTiledReshape(b, shape_without_unit_dims,
+                                                  MakeTensor(b, operand)));
   }
 
   int expected_contracting_dim_position = side == DotOperandSide::kLhs ? 1 : 0;
@@ -1094,12 +1059,10 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
 
   if (padded_tile_sizes.size() != padded_tile_sizes_no_unit_dims.size()) {
     TF_ASSIGN_OR_RETURN(
-        ScalarOrTensor wrapped_result,
-        EmitTiledReshape(b, padded_tile_sizes, ScalarOrTensor(result)));
-    result = wrapped_result.UnwrapTensor();
+        result, EmitTiledReshape(b, padded_tile_sizes, MakeTensor(b, result)));
   }
 
-  return ScalarOrTensor(result);
+  return MakeScalarOrTensor(b, result);
 }
 
 absl::StatusOr<ScalarOrTensor> EmitScaledDot(
@@ -1248,12 +1211,10 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
 
   if (padded_tile_sizes.size() != padded_tile_sizes_no_unit_dims.size()) {
     TF_ASSIGN_OR_RETURN(
-        ScalarOrTensor wrapped_result,
-        EmitTiledReshape(b, padded_tile_sizes, ScalarOrTensor(result)));
-    result = wrapped_result.UnwrapTensor();
+        result, EmitTiledReshape(b, padded_tile_sizes, MakeTensor(b, result)));
   }
 
-  return ScalarOrTensor(result);
+  return MakeScalarOrTensor(b, result);
 }
 
 absl::StatusOr<ScalarOrTensor> EmitConcatenate(
@@ -1534,8 +1495,12 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kReshape) {
-    return EmitTiledReshape(b, tiled_hlo.tile_sizes(),
-                            values[tiled_hlo.operand(0)]);
+    TF_ASSIGN_OR_RETURN(
+        TensorValue reshaped_value,
+        EmitTiledReshape(
+            b, tiled_hlo.tile_sizes(),
+            MakeTensor(b, values[tiled_hlo.operand(0)].UnwrapUnsafe())));
+    return MakeScalarOrTensor(b, reshaped_value);
   }
 
   if (hlo->opcode() == HloOpcode::kBitcast) {
