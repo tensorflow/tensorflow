@@ -23,16 +23,15 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "google/protobuf/text_format.h"
 #include "xla/stream_executor/kernel_argument_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.pb.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace stream_executor {
 namespace {
@@ -44,10 +43,17 @@ using ::testing::Optional;
 using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
 
+// Creates a pointer to a CUDA kernel with a value that can be used to identify
+// it later. Note that this is not a valid pointer, but that's fine as long
+// as we don't try to dereference it.
+void* InventPointerToCudaKernel(std::uintptr_t value) {
+  return tsl::safe_reinterpret_cast<void*>(value);
+}
+
 TEST(KernelLoaderSpec, InProcessSymbol) {
-  void* symbol = absl::bit_cast<void*>(0xDEADBEEFul);
-  auto spec = stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(
-      symbol, "kernel24", 2);
+  void* symbol = InventPointerToCudaKernel(0xDEADBEEF);
+  auto spec = KernelLoaderSpec::CreateInProcessSymbolSpec(symbol, "kernel24",
+                                                          /*arity=*/2);
   EXPECT_FALSE(spec.has_cuda_cubin_in_memory());
   EXPECT_FALSE(spec.has_cuda_ptx_in_memory());
   EXPECT_TRUE(spec.has_in_process_symbol());
@@ -59,8 +65,8 @@ TEST(KernelLoaderSpec, InProcessSymbol) {
 
 TEST(KernelLoaderSpec, CudaCubin) {
   static constexpr std::array<uint8_t, 4> kCubinData = {0xDE, 0xAD, 0xBE, 0xEF};
-  auto spec = stream_executor::KernelLoaderSpec::CreateCudaCubinInMemorySpec(
-      kCubinData, "kernel24", 2);
+  auto spec = KernelLoaderSpec::CreateCudaCubinInMemorySpec(
+      kCubinData, "kernel24", /*arity=*/2);
   EXPECT_TRUE(spec.has_cuda_cubin_in_memory());
   EXPECT_FALSE(spec.has_cuda_ptx_in_memory());
   EXPECT_FALSE(spec.has_in_process_symbol());
@@ -72,10 +78,9 @@ TEST(KernelLoaderSpec, CudaCubin) {
 
 TEST(KernelLoaderSpec, OwningCudaCubin) {
   static constexpr std::array<uint8_t, 4> kCubinData = {0xDE, 0xAD, 0xBE, 0xEF};
-  auto spec =
-      stream_executor::KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
-          std::vector<uint8_t>{kCubinData.begin(), kCubinData.end()},
-          "kernel24", 2);
+  auto spec = KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
+      std::vector<uint8_t>{kCubinData.begin(), kCubinData.end()}, "kernel24",
+      /*arity=*/2);
   EXPECT_TRUE(spec.has_cuda_cubin_in_memory());
   EXPECT_FALSE(spec.has_cuda_ptx_in_memory());
   EXPECT_FALSE(spec.has_in_process_symbol());
@@ -87,8 +92,8 @@ TEST(KernelLoaderSpec, OwningCudaCubin) {
 
 TEST(KernelLoaderSpec, CudaPtx) {
   static constexpr absl::string_view kPtxData = "PTX DEADBEEF";
-  auto spec = stream_executor::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
-      kPtxData, "kernel24", 2);
+  auto spec = KernelLoaderSpec::CreateCudaPtxInMemorySpec(kPtxData, "kernel24",
+                                                          /*arity=*/2);
   EXPECT_FALSE(spec.has_cuda_cubin_in_memory());
   EXPECT_TRUE(spec.has_cuda_ptx_in_memory());
   EXPECT_FALSE(spec.has_in_process_symbol());
@@ -100,9 +105,8 @@ TEST(KernelLoaderSpec, CudaPtx) {
 
 TEST(KernelLoaderSpec, OwningCudaPtx) {
   static constexpr absl::string_view kPtxData = "PTX DEADBEEF";
-  auto spec =
-      stream_executor::KernelLoaderSpec::CreateOwningCudaPtxInMemorySpec(
-          std::string{kPtxData}, "kernel24", 2);
+  auto spec = KernelLoaderSpec::CreateOwningCudaPtxInMemorySpec(
+      std::string{kPtxData}, "kernel24", /*arity=*/2);
   EXPECT_FALSE(spec.has_cuda_cubin_in_memory());
   EXPECT_TRUE(spec.has_cuda_ptx_in_memory());
   EXPECT_FALSE(spec.has_in_process_symbol());
@@ -113,14 +117,11 @@ TEST(KernelLoaderSpec, OwningCudaPtx) {
 }
 
 TEST(KernelLoaderSpec, PtxKernelFromProto) {
-  KernelLoaderSpecProto proto;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-      R"pb(
-        ptx { data: "PTX!" }
-        kernel_name: "kernel_name"
-        arity: 42
-      )pb",
-      &proto));
+  auto proto = ParseTextProtoOrDie<KernelLoaderSpecProto>(R"pb(
+    ptx { data: "PTX!" }
+    kernel_name: "kernel_name"
+    arity: 42
+  )pb");
 
   TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec spec,
                           KernelLoaderSpec::FromProto(proto));
@@ -131,8 +132,8 @@ TEST(KernelLoaderSpec, PtxKernelFromProto) {
 }
 
 TEST(KernelLoaderSpec, PtxKernelToProto) {
-  auto spec = stream_executor::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
-      "PTX!", "kernel_name", 42);
+  auto spec = KernelLoaderSpec::CreateCudaPtxInMemorySpec("PTX!", "kernel_name",
+                                                          /*arity=*/42);
 
   EXPECT_THAT(spec.ToProto(), absl_testing::IsOkAndHolds(EqualsProto(R"pb(
                 ptx { data: "PTX!" }
@@ -142,14 +143,11 @@ TEST(KernelLoaderSpec, PtxKernelToProto) {
 }
 
 TEST(KernelLoaderSpec, CubinKernelFromProto) {
-  KernelLoaderSpecProto proto;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-      R"pb(
-        cubin { data: "CUBIN" }
-        kernel_name: "kernel_name"
-        arity: 42
-      )pb",
-      &proto));
+  auto proto = ParseTextProtoOrDie<KernelLoaderSpecProto>(R"pb(
+    cubin { data: "CUBIN" }
+    kernel_name: "kernel_name"
+    arity: 42
+  )pb");
 
   TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec spec,
                           KernelLoaderSpec::FromProto(proto));
@@ -162,10 +160,10 @@ TEST(KernelLoaderSpec, CubinKernelFromProto) {
 
 TEST(KernelLoaderSpec, CubinKernelToProto) {
   std::array<uint8_t, 5> kCubin = {'C', 'U', 'B', 'I', 'N'};
-  auto spec = stream_executor::KernelLoaderSpec::CreateCudaCubinInMemorySpec(
-      kCubin, "kernel_name", 42);
+  auto spec = KernelLoaderSpec::CreateCudaCubinInMemorySpec(
+      kCubin, "kernel_name", /*arity=*/42);
 
-  EXPECT_THAT(spec.ToProto(), absl_testing::IsOkAndHolds(EqualsProto(R"pb(
+  EXPECT_THAT(spec.ToProto(), IsOkAndHolds(EqualsProto(R"pb(
                 cubin { data: "CUBIN" }
                 kernel_name: "kernel_name"
                 arity: 42
@@ -180,7 +178,7 @@ TEST(KernelLoaderSpec, InProcessSymbolFromProto) {
   )pb");
 
   const auto symbol_resolver = [](absl::string_view name) {
-    return absl::bit_cast<void*>(static_cast<uintptr_t>(0x1234567890));
+    return InventPointerToCudaKernel(0x1234567890);
   };
 
   TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec spec,
@@ -189,8 +187,7 @@ TEST(KernelLoaderSpec, InProcessSymbolFromProto) {
   EXPECT_EQ(spec.arity(), 42);
   EXPECT_THAT(spec.in_process_symbol(),
               Optional(Field(&InProcessSymbol::symbol,
-                             absl::bit_cast<void*>(
-                                 static_cast<uintptr_t>(0x1234567890)))));
+                             InventPointerToCudaKernel(0x1234567890))));
   EXPECT_THAT(spec.in_process_symbol(),
               Optional(Field(&InProcessSymbol::persistent_name,
                              "persistent_kernel_name")));
@@ -201,16 +198,15 @@ TEST(KernelLoaderSpec, InProcessSymbolFromProto) {
 }
 
 TEST(KernelLoaderSpec, InProcessSymbolToProto) {
-  auto non_serializable_spec =
-      stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(
-          nullptr, "kernel_name", 42);
+  auto non_serializable_spec = KernelLoaderSpec::CreateInProcessSymbolSpec(
+      /*symbol=*/nullptr, "kernel_name", 42);
 
   // InProcessSymbol specs without a persistent name cannot be serialized.
   EXPECT_THAT(non_serializable_spec.ToProto(),
               StatusIs(absl::StatusCode::kInvalidArgument));
 
   auto serializable_spec =
-      stream_executor::KernelLoaderSpec::CreateSerializableInProcessSymbolSpec(
+      KernelLoaderSpec::CreateSerializableInProcessSymbolSpec(
           "persistent_kernel_name", nullptr, "kernel_name", 42);
   EXPECT_THAT(serializable_spec.ToProto(), IsOkAndHolds(EqualsProto(R"pb(
                 in_process_symbol { persistent_name: "persistent_kernel_name" }
