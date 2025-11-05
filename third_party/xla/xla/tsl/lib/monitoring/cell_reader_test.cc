@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/tsl/lib/monitoring/counter.h"
+#include "xla/tsl/lib/monitoring/counter_gauge.h"
 #include "xla/tsl/lib/monitoring/gauge.h"
 #include "xla/tsl/lib/monitoring/percentile_sampler.h"
 #include "xla/tsl/lib/monitoring/sampler.h"
@@ -75,6 +76,13 @@ auto* test_bool_gauge = tsl::monitoring::Gauge<bool, 0>::New(
 auto* test_bool_gauge_with_labels = tsl::monitoring::Gauge<bool, 2>::New(
     "/tsl/monitoring/test/bool_gauge_with_labels", "Test gauge.", "label1",
     "label2");
+
+auto* test_counter_gauge = tsl::monitoring::CounterGauge<0>::New(
+    "/tsl/monitoring/test/counter_gauge", "Test counter gauge.");
+
+auto* test_counter_gauge_with_labels = tsl::monitoring::CounterGauge<2>::New(
+    "/tsl/monitoring/test/counter_gauge_with_labels",
+    "Test counter gauge with two labels.", "label1", "label2");
 
 auto* test_percentiles = tsl::monitoring::PercentileSampler<0>::New(
     {"/tsl/monitoring/test/percentiles", "Test percentiles."},
@@ -1081,6 +1089,36 @@ TEST(CellReaderTest, BoolGaugeRepeatedSetAndRead) {
   EXPECT_EQ(cell_reader.Read("x2", "y2"), true);
   test_bool_gauge_with_labels->GetCell("x2", "y2")->Set(false);
   EXPECT_EQ(cell_reader.Read("x2", "y2"), false);
+}
+
+TEST(CellReaderTest, CounterGaugeRead) {
+  CellReader<int64_t> cell_reader("/tsl/monitoring/test/counter_gauge");
+  EXPECT_EQ(cell_reader.Read(), 0);
+  test_counter_gauge->GetCell()->IncrementBy(10);
+  EXPECT_EQ(cell_reader.Read(), 10);
+  test_counter_gauge->GetCell()->IncrementBy(20);
+  EXPECT_EQ(cell_reader.Read(), 30);
+  test_counter_gauge->GetCell()->IncrementBy(-30);
+  EXPECT_EQ(cell_reader.Read(), 0);
+}
+
+TEST(CellReaderTest, CounterGaugeRepeatedIncrementAndDecrement) {
+  CellReader<int64_t> cell_reader("/tsl/monitoring/test/counter_gauge");
+  EXPECT_EQ(cell_reader.Read(), 0);
+  const int kNumIterations = 10;
+  for (int i = 0; i < kNumIterations; ++i) {
+    test_counter_gauge->GetCell()->Increment();
+    EXPECT_EQ(cell_reader.Read(), i + 1);
+  }
+  for (int i = 0; i < kNumIterations; ++i) {
+    test_counter_gauge->GetCell()->Decrement();
+    EXPECT_EQ(cell_reader.Read(), 10 - i - 1);
+  }
+  for (int i = 0; i < kNumIterations; ++i) {
+    test_counter_gauge->GetCell()->Increment();
+    test_counter_gauge->GetCell()->Decrement();
+    EXPECT_EQ(cell_reader.Read(), 0);
+  }
 }
 
 TEST(CellReaderTest, PercentilesDeltaNoLabels) {
