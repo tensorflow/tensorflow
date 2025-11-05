@@ -232,4 +232,32 @@ bool AxisRef::CanCoexist(const AxisRef& other) const {
                            max_next_pre_size);
 }
 
+bool AxisRef::Overlaps(const AxisRef& other) const {
+  if (mesh_axis_index() != other.mesh_axis_index()) {
+    return false;
+  }
+
+  // If one is a full axis then they must overlap.
+  if (!sub_axis_info_.has_value() || !other.sub_axis_info_.has_value()) {
+    return true;
+  }
+
+  const SubAxis& this_sub_axis = sub_axis_info_.value();
+  const SubAxis& other_sub_axis = other.sub_axis_info_.value();
+
+  return this_sub_axis.pre_size < other_sub_axis.next_pre_size() &&
+         other_sub_axis.pre_size < this_sub_axis.next_pre_size();
+}
+
+bool ValidateSpanOfAxes(absl::Span<const AxisRef> axes) {
+  for (int64_t i = 0; i < axes.size() - 1; ++i) {
+    for (int64_t j = i + 1; j < axes.size(); ++j) {
+      if (!axes[i].CanCoexist(axes[j]) || axes[i].Overlaps(axes[j])) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 }  // namespace xla

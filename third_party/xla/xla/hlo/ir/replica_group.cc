@@ -153,15 +153,13 @@ bool ValidateSingleDimensionAxes(int64_t dim, std::vector<AxisRef>& axes,
   // --- Step 2: Overlap Check ---
   // At this point, all remaining axes MUST have sub_axis_info().
   // Verify that the remaining multiple sub-axes do not overlap.
-  for (int64_t i = 0; i < axes.size() - 1; ++i) {
-    for (int64_t j = i + 1; j < axes.size(); ++j) {
-      // CHECK will terminate the program on failure, matching original
-      // behavior.
-      CHECK(axes[i].CanCoexist(axes[j]))
-          << "Overlapping sub-axes detected: " << axes[i].ToString(mesh_)
-          << " and " << axes[j].ToString(mesh_);
-    }
-  }
+  CHECK(ValidateSpanOfAxes(axes))
+      << "Overlapping sub-axes detected in set of axes: "
+      << absl::StrJoin(axes, ",",
+                       [&mesh_](std::string* out, const AxisRef& axis) {
+                         absl::StrAppend(out, axis.ToString(mesh_));
+                       });
+
   return true;  // Passed all checks for this dimension.
 }
 
