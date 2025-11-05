@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/random/bit_gen_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -870,7 +871,7 @@ CreateArgumentsOnDevice(PjRtClient& client,
                         const PjRtLoadedExecutable* executable,
                         const RunningOptions& running_options,
                         bool flatten_arguments = false,
-                        std::minstd_rand0* engine = nullptr) {
+                        absl::BitGenRef* engine = nullptr) {
   if (running_options.module_argument_mode ==
       ModuleArgumentMode::kUninitialized) {
     return CreateUninitializedArgumentsOnDevice(
@@ -1198,7 +1199,7 @@ absl::Status LoadAndRunAndDump(
     absl::string_view hlo_file, InputFormat input_format,
     std::string dump_output_to, int task_id, int num_nodes,
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store,
-    std::minstd_rand0* engine) {
+    absl::BitGenRef* engine) {
   TF_ASSIGN_OR_RETURN(
       CompileOptions compile_options,
       FunctionalHloRunner::CreateCompileOptions(client, raw_compile_options,
@@ -1219,7 +1220,7 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
     const CompileOptions& compile_options,
     const RunningOptions& running_options, absl::string_view hlo_file,
     InputFormat input_format, const PerDeviceLiteralVecType& arguments,
-    std::minstd_rand0* engine) {
+    absl::BitGenRef* engine) {
   // We only support SPMD as of now, i.e., all devices are supposed
   // to execute the same HLO module.
   // Currently there is no mechanism to map the loaded arguments to
@@ -1315,7 +1316,7 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
     const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const RunningOptions& running_options, HloModule* hlo_module,
-    const PerDeviceLiteralVecType& arguments, std::minstd_rand0* engine) {
+    const PerDeviceLiteralVecType& arguments, absl::BitGenRef* engine) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       Compile(client, hlo_module, debug_options,
                               preproc_options, compile_options));
@@ -1470,7 +1471,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
 absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> Run(
     PjRtClient& client, PjRtLoadedExecutable* executable,
     const PerDeviceLiteralVecType& arguments,
-    const RunningOptions& running_options, std::minstd_rand0* engine) {
+    const RunningOptions& running_options, absl::BitGenRef* engine) {
   auto create_argument_buffers_on_device = [&client, &executable, &arguments,
                                             &running_options, engine](
                                                bool flatten_tupled_arguments) {

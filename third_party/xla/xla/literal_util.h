@@ -30,6 +30,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/random/bit_gen_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -655,7 +656,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape,
 // 'max_bits_of_precision' sets the data to have the given number of bits or
 // less and are not NaNs (integer or floating point formats only).
 absl::StatusOr<Literal> MakeFakeLiteral(
-    const Shape& shape, std::minstd_rand0* engine,
+    const Shape& shape, absl::BitGenRef* engine,
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,
     bool no_duplicates, bool use_large_range,
     std::optional<int64_t> max_bits_of_precision);
