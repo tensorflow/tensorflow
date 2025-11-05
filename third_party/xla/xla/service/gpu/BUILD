@@ -3339,7 +3339,12 @@ cc_library(
     tags = [
         "gpu",
         "oneapi-only",
-    ],
+    ] + if_google([
+        # TODO(b/456585142): Currently we don't support building the SYCL backend.
+        "notap",
+        "nobuilder",
+        "manual",
+    ]),
     deps = [
         ":intel_gpu_compiler_impl",
         "//xla/service:compiler",
@@ -3359,7 +3364,12 @@ cc_library(
     tags = [
         "gpu",
         "oneapi-only",
-    ],
+    ] + if_google([
+        # TODO(b/456585142): Currently we don't support building the SYCL backend.
+        "notap",
+        "nobuilder",
+        "manual",
+    ]),
     deps = [
         ":gpu_compiler",
         ":target_constants",
@@ -3381,7 +3391,12 @@ xla_test(
     tags = [
         "gpu",
         "oneapi-only",
-    ],
+    ] + if_google([
+        # TODO(b/456585142): Currently we don't support building the SYCL backend.
+        "notap",
+        "nobuilder",
+        "manual",
+    ]),
     deps = [
         ":intel_gpu_compiler",
         "//xla/tests:hlo_test_base",
