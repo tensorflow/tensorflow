@@ -132,6 +132,7 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
     const void* src, int64_t offset, int64_t transfer_size) {
   se::Stream* stream = local_device_->host_to_device_stream();
   auto device_event = BufferSequencingEvent::Create(client_->thread_pool());
+  device_event.AndThen([device_buffer = device_buffer_]() {});
   client_->thread_pool()->Schedule([client = client_, device_event,
                                     local_device = local_device_, stream, src,
                                     offset, transfer_size,
@@ -191,6 +192,7 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
     void* dst, int64_t offset, int64_t transfer_size) {
   se::Stream* stream = local_device_->GetDeviceToHostStream();
   auto device_event = BufferSequencingEvent::Create(client_->thread_pool());
+  device_event.AndThen([device_buffer = device_buffer_]() {});
   client_->thread_pool()->Schedule([client = client_, device_event,
                                     local_device = local_device_, stream, dst,
                                     offset, transfer_size,
