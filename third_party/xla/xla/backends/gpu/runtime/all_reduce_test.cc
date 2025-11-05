@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_reduce.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <tuple>
@@ -150,14 +151,21 @@ class AllReduceKernelTest : public ::testing::Test,
     }
 
     std::vector<se::DeviceMemoryBase> metadata_buffers;
+    // One for signal and one for input parameters.
+    constexpr int kNumPeerParameters = 2;
+    size_t param_to_peers_size =
+        sizeof(uint64_t) * kNumPeerParameters * num_ranks;
+    std::vector<uint64_t> param_to_peers_ptrs;
+    for (const auto& local_input_buffer : local_input_buffers) {
+      param_to_peers_ptrs.push_back((uint64_t)local_input_buffer.opaque());
+    }
+    for (const auto& signal_flags_buffer : signal_flags_buffers) {
+      param_to_peers_ptrs.push_back((uint64_t)signal_flags_buffer.opaque());
+    }
 
     for (int i = 0; i < num_ranks; ++i) {
       CollectiveKernelMetadata metadata;
       metadata.rank = i;
-
-      for (int j = 0; j < num_ranks; ++j) {
-        metadata.buffer_root_ptrs[j] = (uint64_t)allocated_buffers[j].opaque();
-      }
 
       if (params_.all_reduce_strategy == AllReduceStrategy::kMultimem) {
         stream_executor::gpu::GpuExecutor* gpu_executor =
@@ -171,11 +179,21 @@ class AllReduceKernelTest : public ::testing::Test,
         metadata.multicast_buffer_ptr = 0;
       }
 
+      // First map from parameter to peer ptrs and then metadata.
       metadata_buffers.emplace_back(executors[i]->AllocateArray<uint64_t>(
-          sizeof(CollectiveKernelMetadata)));
+          sizeof(CollectiveKernelMetadata) + param_to_peers_size));
+
+      se::DeviceMemoryBase param_to_peers_ptrs_buffer =
+          metadata_buffers[i].GetByteSlice(sizeof(CollectiveKernelMetadata),
+                                           param_to_peers_size);
+      metadata.param_to_peers =
+          reinterpret_cast<uint64_t*>(param_to_peers_ptrs_buffer.opaque());
 
       TF_RETURN_IF_ERROR(streams[i]->Memcpy(&metadata_buffers[i], &metadata,
                                             sizeof(CollectiveKernelMetadata)));
+      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&param_to_peers_ptrs_buffer,
+                                            param_to_peers_ptrs.data(),
+                                            param_to_peers_size));
     }
 
     for (int i = 0; i < num_ranks; ++i) {

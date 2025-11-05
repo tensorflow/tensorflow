@@ -99,7 +99,7 @@ class CollectiveKernelThunk : public Thunk {
   struct StreamState {
     int device_ordinal;
     RankId rank;
-    // Buffers and signal flags allocated for the collective.
+    // Buffers allocated for the collective.
     // Buffers are double buffered to allow for consecutive invocation
     // of the kernel on different GPUs.
     // - GPUs sync on Buffer 0 on first invocation.
@@ -107,7 +107,11 @@ class CollectiveKernelThunk : public Thunk {
     //   This implies that all GPUs must have finished the first invocation
     //   before they can sync on the second invocation.
     // - Alternate back to Buffer 0 on third invocation. And so on.
-    se::DeviceMemoryHandle local_buffer;
+    se::DeviceMemoryHandle local_buffers_handle;
+
+    // Signal buffers allocated for the collective.
+    // Also double buffered for the same reason as local buffers.
+    se::DeviceMemoryHandle signal_buffers_handle;
 
     // Pointer to the collective kernel metadata on device.
     se::DeviceMemoryBase metadata;
@@ -126,11 +130,13 @@ class CollectiveKernelThunk : public Thunk {
     // Constructor to make OSS builds happy.
     StreamState() = default;
     StreamState(int device_ordinal_arg, RankId rank_arg,
-                se::DeviceMemoryHandle local_buffer_arg,
+                se::DeviceMemoryHandle local_buffers_handle_arg,
+                se::DeviceMemoryHandle signal_buffers_handle_arg,
                 std::unique_ptr<se::Kernel> kernel_arg)
         : device_ordinal(device_ordinal_arg),
           rank(rank_arg),
-          local_buffer(std::move(local_buffer_arg)),
+          local_buffers_handle(std::move(local_buffers_handle_arg)),
+          signal_buffers_handle(std::move(signal_buffers_handle_arg)),
           kernel(std::move(kernel_arg)) {}
   };
 
