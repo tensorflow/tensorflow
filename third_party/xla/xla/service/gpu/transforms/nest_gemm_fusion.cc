@@ -1340,9 +1340,7 @@ absl::StatusOr<bool> NestGemmFusion::RunImpl(
     VLOG(1) << "Generic Triton emitter for gemms is disabled, exiting";
     return false;
   }
-
-  TF_ASSIGN_OR_RETURN(bool result, RunOnModule(module, execution_threads));
-  return result;
+  return RunOnModule(module, execution_threads);
 }
 
 namespace detail {

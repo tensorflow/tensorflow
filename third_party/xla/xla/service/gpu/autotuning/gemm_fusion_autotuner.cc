@@ -342,7 +342,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
   }
 
   NestGemmFusion nest_gemm_fusion(gpu_device_info, symbolic_expr_context);
-  TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
+  TF_ASSIGN_OR_RETURN(bool changed, nest_gemm_fusion.Run(new_module.get()));
+  if (!changed) {
+    return absl::InternalError(
+        "NestGemmFusion pass failed to rewrite the HLO module.");
+  }
+  DCHECK(IsGpuFusionKind(*new_module->entry_computation()->root_instruction(),
+                         kTritonGemmFusionKind))
+      << "Expected Triton nested GEMM fusion, got: " << new_module->ToString();
   return new_module;
 }
 
