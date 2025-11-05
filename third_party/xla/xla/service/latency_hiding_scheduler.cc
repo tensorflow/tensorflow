@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/layout.h"
 #include "xla/map_util.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/dump.h"
@@ -219,6 +220,12 @@ int64_t EstimateFragmentationSize(HloModule* module,
   BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) -> int64_t {
     const Shape& shape = buffer.shape();
     if (!shape.IsArray()) {
+      return 0;
+    }
+    if (!shape.has_layout()) {
+      return 0;
+    }
+    if (shape.layout().memory_space() != Layout::kDefaultMemorySpace) {
       return 0;
     }
     return ShapeUtil::ByteSizeOf(shape);
@@ -3674,9 +3681,8 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
        iter++) {
     LOG(INFO) << "LatencyHidingScheduler current memory usage: "
               << scheduler_core_->GetMemoryPeak() + fragmentation_size
-              << " bytes, does not fit in limit: "
-              << scheduler_core_->GetMemoryLimit()
-              << ". Setting the new limit to "
+              << " bytes, does not fit in initial limit: "
+              << initial_memory_limit << ". Setting the new limit to "
               << static_cast<uint64_t>(scheduler_core_->GetMemoryLimit() * 0.9);
     TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
     scheduler_core_->SetMemoryLimit(scheduler_core_->GetMemoryLimit() * 0.9);
