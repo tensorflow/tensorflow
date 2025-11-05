@@ -35,7 +35,7 @@ namespace {
 using impl::NodeMatcherProperties;
 using impl::OutEdge;
 
-string IndentAllButFirstLine(absl::string_view text) {
+std::string IndentAllButFirstLine(absl::string_view text) {
   std::vector<std::string> lines = absl::StrSplit(text, '\n');
   for (int i = 1; i < lines.size(); i++) {
     lines[i].insert(0, "  ");
@@ -86,21 +86,21 @@ bool MatchAndExplainTensor(const Tensor& tensor, const Tensor& expected_tensor,
     case DT_DOUBLE:
       return CompareTensor<double>(tensor, expected_tensor, listener);
     case DT_INT8:
-      return CompareTensor<int8>(tensor, expected_tensor, listener);
+      return CompareTensor<int8_t>(tensor, expected_tensor, listener);
     case DT_INT16:
-      return CompareTensor<int16>(tensor, expected_tensor, listener);
+      return CompareTensor<int16_t>(tensor, expected_tensor, listener);
     case DT_INT32:
-      return CompareTensor<int32>(tensor, expected_tensor, listener);
+      return CompareTensor<int32_t>(tensor, expected_tensor, listener);
     case DT_INT64:
       return CompareTensor<int64_t>(tensor, expected_tensor, listener);
     case DT_UINT8:
-      return CompareTensor<uint8>(tensor, expected_tensor, listener);
+      return CompareTensor<uint8_t>(tensor, expected_tensor, listener);
     case DT_UINT16:
-      return CompareTensor<uint16>(tensor, expected_tensor, listener);
+      return CompareTensor<uint16_t>(tensor, expected_tensor, listener);
     case DT_UINT32:
-      return CompareTensor<uint32>(tensor, expected_tensor, listener);
+      return CompareTensor<uint32_t>(tensor, expected_tensor, listener);
     case DT_UINT64:
-      return CompareTensor<uint64>(tensor, expected_tensor, listener);
+      return CompareTensor<uint64_t>(tensor, expected_tensor, listener);
     default:
       LOG(FATAL) << "Unsupported dtype "  // Crash ok: testonly.
                  << DataType_Name(tensor.dtype());
@@ -188,7 +188,7 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
     if (control_dep_set &&
         !control_dep_set->MatchAndExplain(control_deps, &inner_listener)) {
       if (listener->IsInterested()) {
-        string explanation = inner_listener.str();
+        std::string explanation = inner_listener.str();
         if (!explanation.empty()) {
           explanation = absl::StrCat(", ", explanation, ",");
         }
@@ -225,7 +225,7 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
   }
 
   void DescribeTo(::std::ostream* os) const override {
-    std::vector<string> predicates;
+    std::vector<std::string> predicates;
 
     if (name) {
       predicates.push_back(absl::StrCat("name: ", *name));
@@ -282,10 +282,11 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
 
     if (!attrs.empty()) {
       printed_something = true;
-      std::vector<string> attrs_str;
+      std::vector<std::string> attrs_str;
       absl::c_transform(
           attrs, std::back_inserter(attrs_str),
-          [](const std::pair<string, std::optional<AttrValue>>& attr_kv_pair) {
+          [](const std::pair<std::string, std::optional<AttrValue>>&
+                 attr_kv_pair) {
             return absl::StrCat(attr_kv_pair.first, "->",
                                 attr_kv_pair.second
                                     ? SummarizeAttrValue(*attr_kv_pair.second)
@@ -319,7 +320,7 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
     if (listener->IsInterested()) {
       *listener << "\ninput " << input_idx << " does not match expected:\n";
       (*input_matchers)[input_idx].DescribeTo(listener->stream());
-      string explanation = inner_listener.str();
+      std::string explanation = inner_listener.str();
       if (!explanation.empty()) {
         *listener << ", " << explanation;
       }
@@ -327,14 +328,14 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
     return false;
   }
 
-  std::optional<string> op;
-  std::optional<string> name;
-  std::optional<string> assigned_device;
+  std::optional<std::string> op;
+  std::optional<std::string> name;
+  std::optional<std::string> assigned_device;
   std::optional<Tensor> constant_value;
   std::optional<std::vector<::testing::Matcher<OutEdge>>> input_matchers;
   std::optional<::testing::Matcher<absl::Span<const Node* const>>>
       control_dep_set;
-  std::map<string, std::optional<AttrValue>> attrs;
+  std::map<std::string, std::optional<AttrValue>> attrs;
 };
 
 // Matches a dst and dst_output on an input edge.  Today we only use this with
@@ -352,7 +353,7 @@ class OutEdgeMatcher : public ::testing::MatcherInterface<OutEdge> {
       if (listener->IsInterested()) {
         *listener << "\nsource does not match expected ";
         src_matcher_.DescribeTo(listener->stream());
-        string explanation = inner_listener.str();
+        std::string explanation = inner_listener.str();
         if (!explanation.empty()) {
           *listener << "\n\t" << explanation;
         }
@@ -432,21 +433,21 @@ class OutEdgeMatcher : public ::testing::MatcherInterface<OutEdge> {
   return ::testing::MakeMatcher(matcher);
 }
 
-impl::NodeMatcherProperties Name(string name) {
+impl::NodeMatcherProperties Name(std::string name) {
   impl::NodeMatcherProperties props;
   props.set_name(std::move(name));
   return props;
 }
 
 // Matches a node with op `op`.
-impl::NodeMatcherProperties Op(string op) {
+impl::NodeMatcherProperties Op(std::string op) {
   impl::NodeMatcherProperties props;
   props.set_op(std::move(op));
   return props;
 }
 
 // Matches a node with assigned device `assigned_device`.
-impl::NodeMatcherProperties AssignedDevice(string assigned_device) {
+impl::NodeMatcherProperties AssignedDevice(std::string assigned_device) {
   impl::NodeMatcherProperties props;
   props.set_assigned_device(std::move(assigned_device));
   return props;
@@ -472,15 +473,15 @@ impl::NodeMatcherProperties impl::CtrlDeps(
   return props;
 }
 
-std::pair<string, AttrValue> impl::AttrLiteralHelper(
-    const std::pair<string, bool>& bool_attr) {
+std::pair<std::string, AttrValue> impl::AttrLiteralHelper(
+    const std::pair<std::string, bool>& bool_attr) {
   AttrValue attr_value;
   attr_value.set_b(bool_attr.second);
   return {bool_attr.first, attr_value};
 }
 
-std::pair<string, AttrValue> impl::AttrLiteralHelper(
-    const std::pair<string, absl::Span<const int>>& int_list_attr) {
+std::pair<std::string, AttrValue> impl::AttrLiteralHelper(
+    const std::pair<std::string, absl::Span<const int>>& int_list_attr) {
   AttrValue attr_value;
   AttrValue::ListValue* list = attr_value.mutable_list();
   for (int i : int_list_attr.second) {
@@ -489,23 +490,24 @@ std::pair<string, AttrValue> impl::AttrLiteralHelper(
   return {int_list_attr.first, attr_value};
 }
 
-std::pair<string, AttrValue> impl::AttrLiteralHelper(
-    const std::pair<string, absl::Span<const string>>& string_list_attr) {
+std::pair<std::string, AttrValue> impl::AttrLiteralHelper(
+    const std::pair<std::string, absl::Span<const std::string>>&
+        string_list_attr) {
   AttrValue attr_value;
   AttrValue::ListValue* list = attr_value.mutable_list();
-  for (const string& s : string_list_attr.second) {
+  for (const std::string& s : string_list_attr.second) {
     list->add_s(s);
   }
   return {string_list_attr.first, attr_value};
 }
 
-impl::NodeMatcherProperties impl::Attr(std::pair<string, AttrValue> attr) {
+impl::NodeMatcherProperties impl::Attr(std::pair<std::string, AttrValue> attr) {
   impl::NodeMatcherProperties props;
   props.set_attr(std::move(attr));
   return props;
 }
 
-impl::NodeMatcherProperties impl::Attr(string name) {
+impl::NodeMatcherProperties impl::Attr(std::string name) {
   impl::NodeMatcherProperties props;
   props.set_attr({std::move(name), std::nullopt});
   return props;
