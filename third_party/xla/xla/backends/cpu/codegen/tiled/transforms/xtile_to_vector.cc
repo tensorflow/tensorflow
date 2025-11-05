@@ -165,7 +165,7 @@ struct LowerExtractTile : mlir::OpRewritePattern<xtile::ExtractTileOp> {
         op->getLoc(), vector_type, buffer_subview, zero_index,
         GetIdentityMap(op), padding, mask, in_bounds);
 
-    rewriter.replaceOp(op, CastToTensor(builder, vector_value));
+    rewriter.replaceOp(op, WriteVectorToTensor(builder, vector_value));
     return mlir::success();
   }
 };
@@ -177,7 +177,7 @@ struct LowerInsertTile : mlir::OpRewritePattern<xtile::InsertTileOp> {
       xtile::InsertTileOp op, mlir::PatternRewriter& rewriter) const override {
     mlir::ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
     mlir::TypedValue<mlir::VectorType> vector_tile =
-        CastToVector(builder, op.getSource());
+        ReadTensorToVector(builder, op.getSource());
 
     mlir::TypedValue<mlir::MemRefType> buffer_subview = GetSubView(builder, op);
 

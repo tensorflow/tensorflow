@@ -32,8 +32,8 @@ mlir::VectorType GetVectorType(mlir::ShapedType tensor_type);
 // vector.from_elements to create a 0D vector.
 // If it is a vector it will be cast to a vector using an unrealized cast op.
 // Any other type will crash.
-mlir::TypedValue<mlir::VectorType> CastToVector(mlir::OpBuilder& builder,
-                                                mlir::Value input);
+mlir::TypedValue<mlir::VectorType> ReadTensorToVector(mlir::OpBuilder& builder,
+                                                      mlir::Value input);
 
 // Get the tensor type that has the same shape and element type as the vector
 // type.
@@ -44,8 +44,8 @@ mlir::RankedTensorType GetTensorType(mlir::ShapedType vector_type);
 // tensor.from_elements to create a 0D tensor.
 // If it is a vector it will be cast to a tensor using an unrealized cast op.
 // Any other type will crash.
-mlir::TypedValue<mlir::RankedTensorType> CastToTensor(mlir::OpBuilder& builder,
-                                                      mlir::Value input);
+mlir::TypedValue<mlir::RankedTensorType> WriteVectorToTensor(
+    mlir::OpBuilder& builder, mlir::Value input);
 
 mlir::TypedValue<mlir::MemRefType> CreateBufferOfShape(mlir::OpBuilder& builder,
                                                        mlir::Location loc,

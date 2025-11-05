@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cassert>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -21,6 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -28,11 +30,13 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "xla/backends/cpu/codegen/tiled/transforms/lowering_utils.h"
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h"
 
 namespace xla::cpu {
@@ -59,6 +63,33 @@ class TensorToVectorTypeConverter : public mlir::TypeConverter {
       }
       return mlir::VectorType::get(type.getShape(), type.getElementType());
     });
+
+    addSourceMaterialization([](mlir::OpBuilder& builder,
+                                mlir::Type result_type, mlir::ValueRange inputs,
+                                mlir::Location loc) -> mlir::Value {
+      if (inputs.size() != 1) {
+        return nullptr;
+      }
+
+      return WriteVectorToTensor(builder, inputs.front());
+    });
+
+    addTargetMaterialization([](mlir::OpBuilder& builder,
+                                mlir::Type result_type, mlir::ValueRange inputs,
+                                mlir::Location loc) -> mlir::Value {
+      if (inputs.size() != 1) {
+        return nullptr;
+      }
+
+      return ReadTensorToVector(builder, inputs.front());
+    });
+  }
+
+ private:
+  static llvm::SmallVector<mlir::Value> MakeZeroIndices(
+      mlir::OpBuilder& builder, mlir::Location loc, int64_t rank) {
+    return llvm::SmallVector<mlir::Value>(
+        rank, mlir::arith::ConstantIndexOp::create(builder, loc, 0));
   }
 };
 
@@ -153,10 +184,7 @@ struct ElementalTensorToVectorPass
     AddArithOpConversions(target, patterns, typeConverter);
     AddMathOpConversions(target, patterns, typeConverter);
 
-    mlir::ConversionConfig config;
-    config.buildMaterializations = false;
-    if (failed(applyPartialConversion(module, target, std::move(patterns),
-                                      config))) {
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }

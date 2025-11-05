@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/tiled/transforms/lowering_utils.h"
 
+#include <cstdint>
+#include <optional>
+
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Value.h"
@@ -27,12 +30,19 @@ limitations under the License.
 
 namespace xla::cpu {
 
+static llvm::SmallVector<mlir::Value> MakeZeroIndices(mlir::OpBuilder& builder,
+                                                      mlir::Location loc,
+                                                      int64_t rank) {
+  return llvm::SmallVector<mlir::Value>(
+      rank, mlir::arith::ConstantIndexOp::create(builder, loc, 0));
+}
+
 mlir::VectorType GetVectorType(mlir::ShapedType type) {
   return mlir::VectorType::get(type.getShape(), type.getElementType());
 }
 
-mlir::TypedValue<mlir::VectorType> CastToVector(mlir::OpBuilder& builder,
-                                                mlir::Value input) {
+mlir::TypedValue<mlir::VectorType> ReadTensorToVector(mlir::OpBuilder& builder,
+                                                      mlir::Value input) {
   if (input.getType().isIntOrFloat()) {
     return builder.create<mlir::vector::FromElementsOp>(
         input.getLoc(), mlir::VectorType::get({}, input.getType()), input);
@@ -41,17 +51,19 @@ mlir::TypedValue<mlir::VectorType> CastToVector(mlir::OpBuilder& builder,
   auto input_tensor =
       mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(input);
   auto vector_type = GetVectorType(input_tensor.getType());
-  auto cast_op = builder.create<mlir::UnrealizedConversionCastOp>(
-      input.getLoc(), vector_type, input_tensor);
-  return mlir::cast<mlir::TypedValue<mlir::VectorType>>(cast_op.getResult(0));
+
+  return mlir::vector::TransferReadOp::create(
+      builder, input.getLoc(), vector_type, input_tensor,
+      MakeZeroIndices(builder, input.getLoc(), vector_type.getRank()),
+      std::nullopt);
 }
 
 mlir::RankedTensorType GetTensorType(mlir::ShapedType type) {
   return mlir::RankedTensorType::get(type.getShape(), type.getElementType());
 }
 
-mlir::TypedValue<mlir::RankedTensorType> CastToTensor(mlir::OpBuilder& builder,
-                                                      mlir::Value input) {
+mlir::TypedValue<mlir::RankedTensorType> WriteVectorToTensor(
+    mlir::OpBuilder& builder, mlir::Value input) {
   if (input.getType().isIntOrFloat()) {
     return builder.create<mlir::tensor::FromElementsOp>(
         input.getLoc(), mlir::RankedTensorType::get({}, input.getType()),
@@ -59,11 +71,15 @@ mlir::TypedValue<mlir::RankedTensorType> CastToTensor(mlir::OpBuilder& builder,
   }
 
   auto input_vector = mlir::cast<mlir::TypedValue<mlir::VectorType>>(input);
-  auto tensor_type = GetTensorType(input_vector.getType());
-  auto cast_op = builder.create<mlir::UnrealizedConversionCastOp>(
-      input.getLoc(), tensor_type, input_vector);
+  mlir::VectorType vector_type = input_vector.getType();
+  auto empty_tensor = mlir::tensor::EmptyOp::create(
+      builder, input.getLoc(), vector_type.getShape(),
+      vector_type.getElementType());
   return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
-      cast_op.getResult(0));
+      mlir::vector::TransferWriteOp::create(
+          builder, input.getLoc(), input, empty_tensor,
+          MakeZeroIndices(builder, input.getLoc(), vector_type.getRank()))
+          .getResult());
 }
 
 mlir::TypedValue<mlir::MemRefType> CreateBufferOfShape(mlir::OpBuilder& builder,
