@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_YNN_SUPPORT_H_
 #define XLA_BACKENDS_CPU_YNN_SUPPORT_H_
 
+#include <cstdint>
+
 #include "ynnpack/include/ynnpack.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
+#include "xla/xla.pb.h"
 
 namespace xla::cpu {
 
@@ -64,6 +67,9 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
 
 // Returns true if the reduce op is supported by YNNPACK.
 bool IsReduceOpSupportedByYnn(const HloInstruction* hlo);
+
+// Convert XLA options to YNNPACK flags.
+uint32_t YnnFlags(const DebugOptions& debug_options);
 
 }  // namespace xla::cpu
 

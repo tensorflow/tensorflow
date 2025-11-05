@@ -259,7 +259,8 @@ static absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
       YnnSubgraph subgraph, CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
         return ynn_create_subgraph(
             /*external_value_ids=*/computation->num_parameters() + 1,
-            /*flags=*/0, subgraph);
+            YnnFlags(computation->parent()->config().debug_options()),
+            subgraph);
       }));
 
   // Traverse fused computation in post-order and define YNNPACK operations
@@ -373,12 +374,12 @@ static absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
     std::vector<std::unique_ptr<Literal>>& literals,
     absl::Span<const se::DeviceMemoryBase> arguments_buffers,
     bool capture_rhs) {
-  TF_ASSIGN_OR_RETURN(YnnSubgraph subgraph,
-                      CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
-                        return ynn_create_subgraph(
-                            /*external_value_ids=*/3,
-                            /*flags=*/0, subgraph);
-                      }));
+  TF_ASSIGN_OR_RETURN(
+      YnnSubgraph subgraph, CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
+        return ynn_create_subgraph(
+            /*external_value_ids=*/3,
+            YnnFlags(dot->GetModule()->config().debug_options()), subgraph);
+      }));
 
   uint32_t lhs_id = 0;
   uint32_t rhs_id = 1;

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/cpu/ynn_support.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <tuple>
 
 #include "ynnpack/include/ynnpack.h"
@@ -240,6 +241,14 @@ bool IsReduceOpSupportedByYnn(const HloInstruction* hlo) {
                                             match::Minimum())
                    .WithBinaryOperandsAnyOrder(match::Parameter(0),
                                                match::Parameter(1)));
+}
+
+uint32_t YnnFlags(const DebugOptions& debug_options) {
+  uint32_t flags = 0;
+  if (!debug_options.xla_cpu_enable_platform_dependent_math()) {
+    flags |= YNN_FLAG_CONSISTENT_ARITHMETIC;
+  }
+  return flags;
 }
 
 }  // namespace xla::cpu

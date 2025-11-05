@@ -221,6 +221,11 @@ message DebugOptions {
   // below!
   optional bool xla_cpu_enable_fast_min_max = 140;
 
+  // When xla_enable_platform_dependent_math is true, we allow operations to use
+  // calculations that produce different results depending on the current
+  // machine.
+  optional bool xla_cpu_enable_platform_dependent_math = 425;
+
   // Call oneDNN custom call thunks in the CPU backend
   optional bool xla_cpu_experimental_onednn_custom_call = 412;
 
@@ -1393,7 +1398,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 425
+  // Next id: 426
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
