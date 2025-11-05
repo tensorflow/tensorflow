@@ -240,42 +240,31 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleAcos(const HloInstruction* acos) override {
-    if constexpr (!is_complex_v<ReturnT>) {
-      TF_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(acos, [](ElementwiseT elem_operand) {
-            return std::acos(elem_operand);
-          }));
-      parent_->SetEvaluatedLiteralFor(acos, std::move(literal));
-      return absl::OkStatus();
-    }
-    return UnsupportedTypeError(acos);
+    TF_ASSIGN_OR_RETURN(Literal literal,
+                        ElementWiseUnaryOp(acos, [](ElementwiseT elem_operand) {
+                          return std::acos(elem_operand);
+                        }));
+    parent_->SetEvaluatedLiteralFor(acos, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleAcosh(const HloInstruction* acosh) override {
-    if constexpr (!is_complex_v<ReturnT>) {
-      TF_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(acosh, [](ElementwiseT elem_operand) {
-            return std::acosh(elem_operand);
-          }));
-      parent_->SetEvaluatedLiteralFor(acosh, std::move(literal));
-      return absl::OkStatus();
-    }
-    return UnsupportedTypeError(acosh);
+    TF_ASSIGN_OR_RETURN(
+        Literal literal,
+        ElementWiseUnaryOp(acosh, [](ElementwiseT elem_operand) {
+          return std::acosh(elem_operand);
+        }));
+    parent_->SetEvaluatedLiteralFor(acosh, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleAsin(const HloInstruction* asin) override {
-    if constexpr (!is_complex_v<ReturnT>) {
-      TF_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(asin, [](ElementwiseT elem_operand) {
-            return std::asin(elem_operand);
-          }));
-      parent_->SetEvaluatedLiteralFor(asin, std::move(literal));
-      return absl::OkStatus();
-    }
-    return UnsupportedTypeError(asin);
+    TF_ASSIGN_OR_RETURN(Literal literal,
+                        ElementWiseUnaryOp(asin, [](ElementwiseT elem_operand) {
+                          return std::asin(elem_operand);
+                        }));
+    parent_->SetEvaluatedLiteralFor(asin, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleRound(const HloInstruction* round) override {
@@ -475,16 +464,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleAsinh(const HloInstruction* asinh) override {
-    if constexpr (!is_complex_v<ReturnT>) {
-      TF_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(asinh, [](ElementwiseT elem_operand) {
-            return std::asinh(elem_operand);
-          }));
-      parent_->SetEvaluatedLiteralFor(asinh, std::move(literal));
-      return absl::OkStatus();
-    }
-    return UnsupportedTypeError(asinh);
+    TF_ASSIGN_OR_RETURN(
+        Literal literal,
+        ElementWiseUnaryOp(asinh, [](ElementwiseT elem_operand) {
+          return std::asinh(elem_operand);
+        }));
+    parent_->SetEvaluatedLiteralFor(asinh, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleAtan2(const HloInstruction* atan2) override {
@@ -512,16 +498,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleAtanh(const HloInstruction* atanh) override {
-    if constexpr (!is_complex_v<ReturnT>) {
-      TF_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(atanh, [](ElementwiseT elem_operand) {
-            return std::atanh(elem_operand);
-          }));
-      parent_->SetEvaluatedLiteralFor(atanh, std::move(literal));
-      return absl::OkStatus();
-    }
-    return UnsupportedTypeError(atanh);
+    TF_ASSIGN_OR_RETURN(
+        Literal literal,
+        ElementWiseUnaryOp(atanh, [](ElementwiseT elem_operand) {
+          return std::atanh(elem_operand);
+        }));
+    parent_->SetEvaluatedLiteralFor(atanh, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleTanh(const HloInstruction* tanh) override {
@@ -2083,70 +2066,48 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleSin(const HloInstruction* sin) override {
-    if constexpr (std::is_floating_point_v<ElementwiseT> ||
-                  is_complex_v<ElementwiseT>) {
-      TF_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(sin, [](ElementwiseT elem_operand) {
-            return std::sin(elem_operand);
-          }));
-      parent_->SetEvaluatedLiteralFor(sin, std::move(literal));
-      return absl::OkStatus();
-    }
-    return UnsupportedTypeError(sin);
+    TF_ASSIGN_OR_RETURN(Literal literal,
+                        ElementWiseUnaryOp(sin, [](ElementwiseT elem_operand) {
+                          return std::sin(elem_operand);
+                        }));
+    parent_->SetEvaluatedLiteralFor(sin, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleSinh(const HloInstruction* sinh) override {
-    if constexpr (!is_complex_v<ReturnT>) {
-      TF_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(sinh, [](ElementwiseT elem_operand) {
-            return std::sinh(elem_operand);
-          }));
-      parent_->SetEvaluatedLiteralFor(sinh, std::move(literal));
-      return absl::OkStatus();
-    }
-    return UnsupportedTypeError(sinh);
+    TF_ASSIGN_OR_RETURN(Literal literal,
+                        ElementWiseUnaryOp(sinh, [](ElementwiseT elem_operand) {
+                          return std::sinh(elem_operand);
+                        }));
+    parent_->SetEvaluatedLiteralFor(sinh, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleCos(const HloInstruction* cos) override {
-    if constexpr (std::is_floating_point_v<ElementwiseT> ||
-                  is_complex_v<ElementwiseT>) {
-      TF_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(cos, [](ElementwiseT elem_operand) {
-            return std::cos(elem_operand);
-          }));
-      parent_->SetEvaluatedLiteralFor(cos, std::move(literal));
-      return absl::OkStatus();
-    }
-    return UnsupportedTypeError(cos);
+    TF_ASSIGN_OR_RETURN(Literal literal,
+                        ElementWiseUnaryOp(cos, [](ElementwiseT elem_operand) {
+                          return std::cos(elem_operand);
+                        }));
+    parent_->SetEvaluatedLiteralFor(cos, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleCosh(const HloInstruction* cosh) override {
-    if constexpr (!is_complex_v<ReturnT>) {
-      TF_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(cosh, [](ElementwiseT elem_operand) {
-            return std::cosh(elem_operand);
-          }));
-      parent_->SetEvaluatedLiteralFor(cosh, std::move(literal));
-      return absl::OkStatus();
-    }
-    return UnsupportedTypeError(cosh);
+    TF_ASSIGN_OR_RETURN(Literal literal,
+                        ElementWiseUnaryOp(cosh, [](ElementwiseT elem_operand) {
+                          return std::cosh(elem_operand);
+                        }));
+    parent_->SetEvaluatedLiteralFor(cosh, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleTan(const HloInstruction* tan) override {
-    if constexpr (std::is_floating_point_v<ElementwiseT>) {
-      TF_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(tan, [](ElementwiseT elem_operand) {
-            return std::tan(elem_operand);
-          }));
-      parent_->SetEvaluatedLiteralFor(tan, std::move(literal));
-      return absl::OkStatus();
-    }
-    return UnsupportedTypeError(tan);
+    TF_ASSIGN_OR_RETURN(Literal literal,
+                        ElementWiseUnaryOp(tan, [](ElementwiseT elem_operand) {
+                          return std::tan(elem_operand);
+                        }));
+    parent_->SetEvaluatedLiteralFor(tan, std::move(literal));
+    return absl::OkStatus();
   }
 
   template <typename NativeT, typename std::enable_if_t<

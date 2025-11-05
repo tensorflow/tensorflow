@@ -114,7 +114,8 @@ class HloEvaluatorTest : public HloHardwareIndependentTestBase {
     TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
 
     auto element_type = expected.shape().element_type();
-    if (element_type == F32 || element_type == F64) {
+    if (element_type == F32 || element_type == F64 || element_type == C64 ||
+        element_type == C128) {
       ErrorSpec error(aabs);
       EXPECT_TRUE(LiteralTestUtil::Near(expected, result, error));
     } else {
@@ -492,6 +493,108 @@ TEST_P(HloEvaluatorBf16Test, DoesTanR2) {
   auto expected = LiteralUtil::CreateR2<float>({{0, 0}, {0, 0}});
   TestUnaryOp(HloOpcode::kTan, std::move(expected), std::move(operand),
               use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
+}
+TEST_F(HloEvaluatorTest, DoesSinC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex64>({1.2985, 0.6350});
+  TestUnaryOp(HloOpcode::kSin, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesSinC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex128>({1.298457581, 0.634963915});
+  TestUnaryOp(HloOpcode::kSin, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesCosC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex64>({0.8337, -0.9889});
+  TestUnaryOp(HloOpcode::kCos, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesCosC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({1.0, 1.0});
+  auto expected =
+      LiteralUtil::CreateR0<complex128>({0.833730025, -0.988897706});
+  TestUnaryOp(HloOpcode::kCos, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesTanC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex64>({0.2718, 1.0839});
+  TestUnaryOp(HloOpcode::kTan, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesTanC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex128>({0.271752585, 1.083923327});
+  TestUnaryOp(HloOpcode::kTan, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesSinhC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex64>({0.6350, 1.2985});
+  TestUnaryOp(HloOpcode::kSinh, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesSinhC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex128>({0.634963915, 1.298457581});
+  TestUnaryOp(HloOpcode::kSinh, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesCoshC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex64>({0.8337, 0.9889});
+  TestUnaryOp(HloOpcode::kCosh, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesCoshC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex128>({0.833730025, 0.988897706});
+  TestUnaryOp(HloOpcode::kCosh, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesAsinC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({0.5, 0.5});
+  auto expected = LiteralUtil::CreateR0<complex64>({0.4523, 0.5306});
+  TestUnaryOp(HloOpcode::kAsin, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesAsinC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({0.5, 0.5});
+  auto expected = LiteralUtil::CreateR0<complex128>({0.452278447, 0.530637531});
+  TestUnaryOp(HloOpcode::kAsin, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesAcosC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({0.5, 0.5});
+  auto expected = LiteralUtil::CreateR0<complex64>({1.1185, -0.5306});
+  TestUnaryOp(HloOpcode::kAcos, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesAcosC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({0.5, 0.5});
+  auto expected =
+      LiteralUtil::CreateR0<complex128>({1.118517880, -0.530637531});
+  TestUnaryOp(HloOpcode::kAcos, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesAsinhC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({0.5, 0.5});
+  auto expected = LiteralUtil::CreateR0<complex64>({0.5306, 0.4523});
+  TestUnaryOp(HloOpcode::kAsinh, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesAsinhC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({0.5, 0.5});
+  auto expected = LiteralUtil::CreateR0<complex128>({0.530637531, 0.452278447});
+  TestUnaryOp(HloOpcode::kAsinh, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesAcoshC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex64>({1.0613, 0.9046});
+  TestUnaryOp(HloOpcode::kAcosh, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesAcoshC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex128>({1.061275062, 0.904556894});
+  TestUnaryOp(HloOpcode::kAcosh, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesAtanhC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({0.5, 0.5});
+  auto expected = LiteralUtil::CreateR0<complex64>({0.4024, 0.5536});
+  TestUnaryOp(HloOpcode::kAtanh, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesAtanhC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({0.5, 0.5});
+  auto expected = LiteralUtil::CreateR0<complex128>({0.402359478, 0.553574359});
+  TestUnaryOp(HloOpcode::kAtanh, std::move(expected), std::move(operand), 1e-9);
 }
 TEST_F(HloEvaluatorTest, DoesNotR2) {
   auto operand =

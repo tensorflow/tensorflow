@@ -347,18 +347,11 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
   switch (opcode) {
-    case HloOpcode::kAsin:
-    case HloOpcode::kAsinh:
-    case HloOpcode::kAcos:
-    case HloOpcode::kAcosh:
-    case HloOpcode::kAtanh:
-    case HloOpcode::kCosh:
     case HloOpcode::kFloor:
     case HloOpcode::kCbrt:  // Complex cbrt is not implemented in either of the
                             // backends.
     case HloOpcode::kCeil:
     case HloOpcode::kErf:
-    case HloOpcode::kSinh:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
       if (!ShapeUtil::ElementIsFloating(shape)) {
@@ -368,7 +361,14 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
             HloOpcodeString(opcode), PrimitiveType_Name(shape.element_type()));
       }
       return shape;
+    case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAtanh:
+    case HloOpcode::kCosh:
     case HloOpcode::kCos:
+    case HloOpcode::kSinh:
     case HloOpcode::kSin:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
