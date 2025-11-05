@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/scoped_mock_log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -86,6 +87,8 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/testing/temporary_directory.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/path.h"
@@ -108,6 +111,7 @@ using ::testing::Not;
 using ::testing::StartsWith;
 using ::testing::TempDir;
 using ::tsl::gtl::ValueOrDie;
+using ::tsl::testing::TemporaryDirectory;
 
 class GpuCompilerTest : public HloTestBase {
  public:
@@ -149,6 +153,17 @@ class GpuCompilerTest : public HloTestBase {
     return executor->GetDeviceDescription().cuda_compute_capability();
   }
 };
+
+absl::StatusOr<std::string> ReadNonEmptyFile(absl::string_view file_path) {
+  std::string str;
+  tsl::Env* env = tsl::Env::Default();
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path), &str));
+  if (str.empty()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("File is empty: ", file_path));
+  }
+  return str;
+}
 
 TEST_F(GpuCompilerTest, CompiledProgramsCount) {
   const char* hlo_text = R"(
@@ -388,6 +403,50 @@ ENTRY e {
   EXPECT_THAT(entry_root, GmockMatch(m::Fusion()));
 }
 
+TEST_F(GpuCompilerTest, GpuExecutableDump) {
+  constexpr absl::string_view hlo_text = R"hlo(
+    HloModule test
+
+    ENTRY main {
+      p = f32[10]{0} parameter(0)
+      ROOT neg = f32[10]{0} negate(p)
+    }
+)hlo";
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions& debug_options = config.mutable_debug_options();
+  debug_options.set_xla_gpu_experimental_dump_gpu_executable(true);
+  TF_ASSERT_OK_AND_ASSIGN(TemporaryDirectory temp_dir,
+                          TemporaryDirectory::CreateForCurrentTestcase());
+  debug_options.set_xla_dump_to(temp_dir.path());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+  std::string module_name = module->name();
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      backend().compiler()->RunBackend(std::move(module),
+                                       backend().default_stream_executor(),
+                                       Compiler::CompileOptions()));
+
+  std::vector<std::string> dump_files;
+  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+      tsl::io::JoinPath(debug_options.xla_dump_to(), "*gpu_executable.txt"),
+      &dump_files));
+  ASSERT_EQ(dump_files.size(), 1);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string dump_serialized_contents,
+                          ReadNonEmptyFile(dump_files[0]));
+  ExecutableAndOptionsProto dump_content;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      dump_serialized_contents, &dump_content));
+
+  GpuExecutableProto gpu_executable_proto;
+  ASSERT_TRUE(gpu_executable_proto.ParseFromString(
+      dump_content.serialized_executable()));
+  EXPECT_THAT(gpu_executable_proto.binary(), Not(IsEmpty()));
+  EXPECT_EQ(gpu_executable_proto.module_name(), module_name);
+}
+
 class PersistedAutotuningTest : public HloTestBase {
  protected:
   static constexpr absl::string_view kHloText = R"(
@@ -406,14 +465,6 @@ ENTRY e {
     CHECK(tsl::Env::Default()->CreateUniqueFileName(&filename,
                                                     std::string(suffix)));
     return filename;
-  }
-
-  std::string ExpectToReadNonEmptyFile(absl::string_view file_path) {
-    std::string str;
-    tsl::Env* env = tsl::Env::Default();
-    TF_EXPECT_OK(tsl::ReadFileToString(env, std::string(file_path), &str));
-    EXPECT_THAT(str, Not(IsEmpty()));
-    return str;
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
@@ -436,8 +487,9 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   // Check that it writes the results on the first compilation.
   TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
   {
-    std::string autotune_results_str =
-        ExpectToReadNonEmptyFile(xla_gpu_dump_autotune_results_to_);
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::string autotune_results_str,
+        ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
     AutotuneResults results;
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
                                                            &results));
@@ -451,8 +503,9 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   // Check that it writes the results on the second compilation.
   TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
   {
-    std::string autotune_results_str =
-        ExpectToReadNonEmptyFile(xla_gpu_dump_autotune_results_to_);
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::string autotune_results_str,
+        ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
     AutotuneResults results;
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
                                                            &results));

@@ -1353,6 +1353,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_experimental_dump_fdo_profiles(),
                 "Dumps FDO profiles as text to the directory specified "
                 "by --xla_dump_to."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_dump_gpu_executable",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_dump_gpu_executable),
+      debug_options->xla_gpu_experimental_dump_gpu_executable(),
+      "Dump the serialized GPU executables to 'gpu_executable_proto' suffixed "
+      "files, in the directory specified by `xla_dump_to`. No-op if "
+      "`xla_dump_to` isn't set, or during autotuning compilations."));
   flag_list->push_back(
       tsl::Flag("xla_dump_hlo_as_dot",
                 bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_dot),

@@ -6,7 +6,6 @@ import "xla/backends/gpu/runtime/thunk.proto";
 import "xla/service/gpu/ir_emission_utils.proto";
 import "xla/service/hlo.proto";
 import "xla/shape_util.proto";
-import "xla/stream_executor/cuda/cuda_compute_capability.proto";
 import "xla/stream_executor/device_description.proto";
 import "xla/xla.proto";
 import "xla/xla_data.proto";

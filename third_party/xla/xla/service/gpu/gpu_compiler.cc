@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
 #include "xla/core/host_offloading/host_compute_asyncifier.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -142,6 +143,7 @@ limitations under the License.
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/maybe_owning.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/all_reduce_reassociate.h"
 #include "xla/service/all_reduce_simplifier.h"
@@ -179,6 +181,7 @@ limitations under the License.
 #include "xla/service/gpu/fusion_dispatch_pipeline.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
@@ -2094,9 +2097,9 @@ bool ShouldAddCopyForCollectiveMemorySpace(const HloValue* value) {
            .xla_gpu_experimental_enable_nccl_symmetric_buffers()) {
     return false;
   }
-  // Add copy if a potential collective-memmory-spaced op directly consumes from
+  // Add copy if a potential collective-memory-spaced op directly consumes from
   // module input or a constant as they are allocated by bfc ahead of time and
-  // the alignment might not match collective memory space's requiment.
+  // the alignment might not match collective memory space's requirement.
   if (absl::c_linear_search(
           module->entry_computation()->parameter_instructions(), inst) ||
       (inst->opcode() == HloOpcode::kConstant)) {
@@ -2650,6 +2653,40 @@ GpuCompiler::CompileToBackendResult(
                                    std::move(compile_module_results)};
 }
 
+static absl::Status DumpGpuExecutableIfEnabled(
+    const GpuExecutable& gpu_executable,
+    const Compiler::CompileOptions& compile_options,
+    const DebugOptions& debug_options) {
+  // If we were to dump the GPU executable for autotuning, we would end up
+  // creating lots of tiny executables that aren't event useful for customers.
+  if (compile_options.is_autotuning_compilation) {
+    return absl::OkStatus();
+  }
+  if (!debug_options.has_xla_dump_to() ||
+      !debug_options.xla_gpu_experimental_dump_gpu_executable()) {
+    return absl::OkStatus();
+  }
+
+  TF_ASSIGN_OR_RETURN(GpuExecutableProto gpu_executable_proto,
+                      gpu_executable.ToProto());
+  std::string serialized_proto = gpu_executable_proto.SerializeAsString();
+  if (serialized_proto.empty()) {
+    return absl::InternalError("Failed to serialize GPU executable proto");
+  }
+
+  ExecutableAndOptionsProto dump_proto;
+  *dump_proto.mutable_serialized_executable() = std::move(serialized_proto);
+  constexpr absl::string_view kDumpFilename = "gpu_executable";
+  if (gpu_executable.has_module()) {
+    DumpPerModuleProtobufToFile(gpu_executable.module(), dump_proto,
+                                debug_options, kDumpFilename);
+  } else {
+    DumpProtobufToFile(dump_proto, debug_options, kDumpFilename);
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
@@ -2738,7 +2775,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
   const GpuAliasInfo* alias_info_ptr = alias_info.get();
   TF_ASSIGN_OR_RETURN(
-      auto gpu_executable,
+      std::unique_ptr<GpuExecutable> gpu_executable,
       GpuExecutable::Create(GpuExecutable::Params{
           /*asm_text=*/(options.is_autotuning_compilation &&
                         !res.backend_result.binary.empty())
@@ -2760,12 +2797,15 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*buffer_assignment=*/
           std::move(res.compile_module_results.buffer_assignment),
           /*alias_info=*/std::move(alias_info),
-          /*debug_options=*/std::move(debug_opts),
+          /*debug_options=*/debug_opts,
           /*device_description=*/gpu_device_info,
           /*debug_module=*/options.is_autotuning_compilation
               ? std::unique_ptr<HloModule>()
               : std::move(module),
           /*enable_debug_info_manager=*/!options.is_autotuning_compilation}));
+
+  TF_RETURN_IF_ERROR(
+      DumpGpuExecutableIfEnabled(*gpu_executable, options, debug_opts));
 
   if (embed_ir_in_executable) {
     std::string ir_module_string_before_opt =
