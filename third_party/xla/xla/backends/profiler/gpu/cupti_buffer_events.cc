@@ -16,12 +16,16 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 
 #include <cstdint>
+#include <optional>
+#include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
+#include "xla/backends/profiler/gpu/cupti_marker_data_parser.h"
 #include "xla/backends/profiler/gpu/cupti_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/mem.h"
@@ -264,6 +268,29 @@ void AddMarkerActivityEvent(CuptiEventCollectorDelegate &collector,
         /* .context_id = */ 0,
         /* .stream_id = */ 0,
         /* .graph_id = */ marker_trace->id,
+    });
+  }
+}
+
+void AddMarkerDataActivityEvent(CuptiEventCollectorDelegate& collector,
+                                void* marker_data_trace) {
+  std::optional<std::pair<std::string, uint32_t>> result =
+      ParseMarkerDataActivity(marker_data_trace);
+  if (result.has_value() && !result.value().first.empty()) {
+    collector.receive(CuptiTracerEvent{
+        /* .type = */ CuptiTracerEventType::MarkerData,
+        /* .source = */ CuptiTracerEventSource::Activity,
+        /* .name = */ std::move(result.value().first),
+        /* .annotation = */ "",
+        /* .nvtx_range = */ "",
+        /* .start_time_ns = */ 0,
+        /* .end_time_ns = */ 0,
+        /* .device_id = */ 0,
+        /* .correlation_id = */ 0,
+        /* .thread_id = */ 0,
+        /* .context_id = */ 0,
+        /* .stream_id = */ 0,
+        /* .graph_id = */ result.value().second,
     });
   }
 }
@@ -576,6 +603,9 @@ static absl::Status ConvertActivityBuffer(
           AddMarkerActivityEvent(
               collector, reinterpret_cast<CuptiActivityMarkerTy *>(record));
           break;
+        case CUPTI_ACTIVITY_KIND_MARKER_DATA:
+          AddMarkerDataActivityEvent(collector, static_cast<void*>(record));
+          break;
         default:
           VLOG(3) << "Activity type " << record->kind << " is not supported.";
           break;
@@ -643,6 +673,8 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
       return "ThreadMarkerEnd";
     case CuptiTracerEventType::CudaGraphNodeMap:
       return "CudaGraphNodeMap";
+    case CuptiTracerEventType::MarkerData:
+      return "MarkerData";
     case CuptiTracerEventType::Unsupported:
       return "";
   }
