@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace mlir::triton::xla {
@@ -43,8 +45,26 @@ class LowerBitcast : public mlir::OpRewritePattern<tensor::BitcastOp> {
  private:
   mlir::LogicalResult matchAndRewrite(
       tensor::BitcastOp op, mlir::PatternRewriter& rewriter) const override {
-    rewriter.replaceOpWithNewOp<ttir::BitcastOp>(op, op.getResult().getType(),
-                                                 op.getOperand());
+    mlir::Value source = op.getSource();
+    if (op.getSource().getType().getRank() == 0) {
+      source = ::xla::xtile::ToScalarOp::create(rewriter, op.getLoc(), source);
+    }
+
+    mlir::TensorType tensor_result_type = op.getResult().getType();
+    bool is_0d_result = tensor_result_type.getRank() == 0;
+    mlir::Type triton_result_type =
+        is_0d_result ? tensor_result_type.getElementType() : tensor_result_type;
+
+    auto bitcast = ttir::BitcastOp::create(rewriter, op.getLoc(),
+                                           triton_result_type, source);
+
+    mlir::Value result = bitcast.getResult();
+    if (is_0d_result) {
+      result = ::xla::xtile::ToTensorOp::create(rewriter, op.getLoc(), result);
+    }
+
+    rewriter.replaceOp(op, result);
+
     return mlir::success();
   }
 };

@@ -223,7 +223,8 @@ def TensorLowerToTritonPass
   let summary = "Lowers tensor operations to their Triton equivalent.";
   let dependentDialects = [
     "tensor::TensorDialect",
-    "triton::TritonDialect"
+    "triton::TritonDialect",
+    "::xla::xtile::XTileDialect",
   ];
   let constructor = "CreateTensorLowerToTritonPass()";
 }
