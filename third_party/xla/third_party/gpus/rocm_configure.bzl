@@ -239,7 +239,6 @@ def _rocm_lib_paths(repository_ctx, lib, basedir):
         repository_ctx.path("%s/lib64/stubs/%s" % (basedir, file_name)),
         repository_ctx.path("%s/lib/x86_64-linux-gnu/%s" % (basedir, file_name)),
         repository_ctx.path("%s/lib/%s" % (basedir, file_name)),
-        repository_ctx.path("%s/lib/%s.0" % (basedir, file_name)),  # hipblaslt has this pattern
         repository_ctx.path("%s/%s" % (basedir, file_name)),
     ]
 
@@ -310,7 +309,7 @@ def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
 
     return libs
 
-def _find_libs(repository_ctx, rocm_config, bash_bin):
+def _find_libs(repository_ctx, rocm_config, miopen_path, rccl_path, bash_bin):
     """Returns the ROCm libraries on the system.
 
     Args:
@@ -321,7 +320,6 @@ def _find_libs(repository_ctx, rocm_config, bash_bin):
     Returns:
       Map of library names to structs of filename and path
     """
-    repo_path = str(repository_ctx.path(rocm_config.rocm_toolkit_path))
     libs_paths = [
         (name, _rocm_lib_paths(repository_ctx, name, path))
         for name, path in [
@@ -338,9 +336,16 @@ def _find_libs(repository_ctx, rocm_config, bash_bin):
             ("hipsolver", repo_path),
             ("hipblas", repo_path),
             ("hipblaslt", repo_path),
+            ("rocprofiler-sdk", repo_path),
         ]
     ]
+    if int(rocm_config.rocm_version_number) >= 40500:
+        libs_paths.append(("hipsolver", _rocm_lib_paths(repository_ctx, "hipsolver", rocm_config.rocm_toolkit_path)))
+        libs_paths.append(("hipblas", _rocm_lib_paths(repository_ctx, "hipblas", rocm_config.rocm_toolkit_path)))
 
+    # hipblaslt may be absent even in versions of ROCm where it exists
+    # (it is not installed by default in some containers). Autodetect.
+    libs_paths.append(("hipblaslt", _rocm_lib_paths(repository_ctx, "hipblaslt", rocm_config.rocm_toolkit_path), True))
     return _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin)
 
 def find_rocm_config(repository_ctx, rocm_path):
@@ -581,12 +586,16 @@ def _create_local_rocm_repository(repository_ctx):
     rocm_config = _setup_rocm_distro_dir(repository_ctx)
     rocm_version_number = int(rocm_config.rocm_version_number)
 
+    # For ROCm 5.2 and above, find MIOpen and RCCL in the main rocm lib path
+    miopen_path = rocm_config.rocm_toolkit_path + "/miopen" if rocm_version_number < 50200 else rocm_config.rocm_toolkit_path
+    rccl_path = rocm_config.rocm_toolkit_path + "/rccl" if rocm_version_number < 50200 else rocm_config.rocm_toolkit_path
+
     # Copy header and library files to execroot.
     # rocm_toolkit_path
     rocm_toolkit_path = _remove_root_dir(rocm_config.rocm_toolkit_path, "rocm")
 
     bash_bin = get_bash_bin(repository_ctx)
-    rocm_libs = _find_libs(repository_ctx, rocm_config, bash_bin)
+    rocm_libs = _find_libs(repository_ctx, rocm_config, miopen_path, rccl_path, bash_bin)
     rocm_lib_srcs = []
     rocm_lib_outs = []
     for lib in rocm_libs.values():

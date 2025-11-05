@@ -18,14 +18,6 @@ rocm_redist_ubuntu_22_04 = {
                 sha256 = "9d1bb3a5006a5b69655abbd890efaad1d347b3cd66b5d0a7fe60a6885494b19b",
             ),
             struct(
-                url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/h/hipblaslt6.4.1/hipblaslt6.4.1_0.12.1.60401-83~22.04_amd64.deb",
-                sha256 = "b53019fa5e46dc1ec4725960da9c30c6564db7adc10eb176f00d6dc99f565f3a",
-            ),
-            struct(
-                url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/h/hipblaslt-dev6.4.1/hipblaslt-dev6.4.1_0.12.1.60401-83~22.04_amd64.deb",
-                sha256 = "23a8ed2da0d56cf79336eef3d502c57daf06934e8ca7225b4e6b449e59de3dab",
-            ),
-            struct(
                 url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/h/hipblas-dev/hipblas-dev_2.4.0.60401-83~22.04_amd64.deb",
                 sha256 = "df5dd894a6840693f060fcdd1e96c0e8cf9eed16b2763643f17a5a9c4baa69a5",
             ),
@@ -150,6 +142,18 @@ rocm_redist_ubuntu_22_04 = {
                 sha256 = "da49a66ca3e6ee8b9491777c2b5170b6020e8308371e26b869d7af81bc50f571",
             ),
             struct(
+                url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/r/rocprofiler-sdk/rocprofiler-sdk_0.6.0-83~22.04_amd64.deb",
+                sha256 = "9890bc2ddbf563edbb50fc8d227a56da462a8bcdd08dbc2f549c924b89c42a59",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/r/rocprofiler-sdk-roctx/rocprofiler-sdk-roctx_0.6.0-83~22.04_amd64.deb",
+                sha256 = "87eddf255f80bbe3c371e0a087a1045ec82766903077de2fb708ed1958ab62fb",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/h/hsa-rocr-dev/hsa-rocr-dev_1.15.0.60401-83~22.04_amd64.deb",
+                sha256 = "e1221293f8a5501ef01324c381e61d76a5d2e0f11032e4d33766dc53efc75813",
+            ),
+            struct(
                 url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/r/rocrand6.4.1/rocrand6.4.1_3.3.0.60401-83~22.04_amd64.deb",
                 sha256 = "ebc85dfef24a03afc28671e3df47519f520bedd08643ef5957dd5b08e15dc1f1",
             ),
@@ -217,14 +221,6 @@ rocm_redist_ubuntu_22_04 = {
             struct(
                 url = "https://repo.radeon.com/rocm/apt/6.2/pool/main/h/hipblas-dev6.2.0/hipblas-dev6.2.0_2.2.0.60200-66~22.04_amd64.deb",
                 sha256 = "885cf3f3a52ebde9caadf6348a6cda28fd15e3bc52bab0c90b587d72b29ff7ef",
-            ),
-            struct(
-                url = "https://repo.radeon.com/rocm/apt/6.2/pool/main/h/hipblaslt6.2.0/hipblaslt6.2.0_0.8.0.60200-66~22.04_amd64.deb",
-                sha256 = "af3bea7cda7c1af147c3baae1cb3a8846ff571fe713c3a83d0924810bee734fe",
-            ),
-            struct(
-                url = "https://repo.radeon.com/rocm/apt/6.2/pool/main/h/hipblaslt-dev6.2.0/hipblaslt-dev6.2.0_0.8.0.60200-66~22.04_amd64.deb",
-                sha256 = "d9d2c80228ebfe74ebb98fc74fda57be498ab84ca40358355c616dfd38efded2",
             ),
             struct(
                 url = "https://repo.radeon.com/rocm/apt/6.2/pool/main/h/hipcc6.2.0/hipcc6.2.0_1.1.1.60200-66~22.04_amd64.deb",
@@ -388,5 +384,186 @@ rocm_redist_ubuntu_22_04 = {
             ),
         ],
         "rocm_root": "opt/rocm-6.2.0",
+    },
+    "6.1.0": {
+        "archives": [
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/c/comgr6.1.0/comgr6.1.0_2.7.0.60100-82~22.04_amd64.deb",
+                sha256 = "49967e2e98b96a95c618a1db7eacf8892b2700e0cf88960b3b0097da081ec1c8",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hip-runtime-amd/hip-runtime-amd_6.1.40091.60100-82~22.04_amd64.deb",
+                sha256 = "8cb31ffd9d313e19a6e9b7bed8a106d0ed59fe92f479fa042405217f787cae16",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hip-dev6.1.0/hip-dev6.1.0_6.1.40091.60100-82~22.04_amd64.deb",
+                sha256 = "7ca5568b754948576555b07924abbb35e24b7448b6f612738a5fdde6ae7020c9",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hipblas6.1.0/hipblas6.1.0_2.1.0.60100-82~22.04_amd64.deb",
+                sha256 = "4703e568dd8d6314b81508260b9d799c577ee38ae59655ce6a4782c0f6d3e3ef",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hipblas-dev6.1.0/hipblas-dev6.1.0_2.1.0.60100-82~22.04_amd64.deb",
+                sha256 = "3b6ddd2df992002afd0684de4ace6a6e86e497c4db95813febd7c0da851f8da5",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hipcc6.1.0/hipcc6.1.0_1.0.0.60100-82~22.04_amd64.deb",
+                sha256 = "e11db2414fec41b45f605616a10793956611850b42406bdf5c4f067e195e502a",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hipcub-dev6.1.0/hipcub-dev6.1.0_3.1.0.60100-82~22.04_amd64.deb",
+                sha256 = "888d7643506f00023b617beb8446d09608216dae075e978c7862a41adb7e94c2",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hipfft6.1.0/hipfft6.1.0_1.0.14.60100-82~22.04_amd64.deb",
+                sha256 = "e8de4cd7a377a718e8c4392e02fafbe3f43f38a2397aaf5cd2136eb03c43a5c3",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hipfft-dev6.1.0/hipfft-dev6.1.0_1.0.14.60100-82~22.04_amd64.deb",
+                sha256 = "afaf929e06c43310b5325a735169e73af85cf5e764d43ef319038d25484201b5",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hipsolver6.1.0/hipsolver6.1.0_2.1.0.60100-82~22.04_amd64.deb",
+                sha256 = "6bb779344bd39e9da75ee8474d7de5d10e6993d627e6cbd9ac7a3fcf260b1a6a",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hipsolver-dev6.1.0/hipsolver-dev6.1.0_2.1.0.60100-82~22.04_amd64.deb",
+                sha256 = "450c0849203b69da15d593fde712555328715626027df980823df9458f9b4631",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hipsparse6.1.0/hipsparse6.1.0_3.0.1.60100-82~22.04_amd64.deb",
+                sha256 = "b3806a85a483da4fa06f8e4edf917c5ceb1a4c00af6426ec61fbec23828291b3",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hipsparse-dev6.1.0/hipsparse-dev6.1.0_3.0.1.60100-82~22.04_amd64.deb",
+                sha256 = "7003d85e42e988d9e5b80da0d5b81aa34a393ded1d9d567b0edf06e3ba2fc9b4",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hiprand6.1.0/hiprand6.1.0_2.10.16.60100-82~22.04_amd64.deb",
+                sha256 = "bf6678ba14b9baebe6fe39a0aeaeeb2c10b8154a5e9c6d0223d8b01f36d1a7b9",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hiprand-dev6.1.0/hiprand-dev6.1.0_2.10.16.60100-82~22.04_amd64.deb",
+                sha256 = "3f2069097efc8a9bbf1cb9be60f7240dcd17a5380614b2b6faf29c7b53b657c4",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hsa-rocr6.1.0/hsa-rocr6.1.0_1.13.0.60100-82~22.04_amd64.deb",
+                sha256 = "562904659abd5e905a806b4ffc30af5c25442e3d6143e6a99b4660badced2b86",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/m/miopen-hip6.1.0/miopen-hip6.1.0_3.1.0.60100-82~22.04_amd64.deb",
+                sha256 = "2f26448b8ef551383bf16f0e066dd6f4b7539b51f382b7028b377de5164f8b63",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/m/miopen-hip-dev6.1.0/miopen-hip-dev6.1.0_3.1.0.60100-82~22.04_amd64.deb",
+                sha256 = "df6d5a8151f216dc02cd96e45d0ca8133cca51d272ede25eb30898f07d0f3e82",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rccl6.1.0/rccl6.1.0_2.18.6.60100-82~22.04_amd64.deb",
+                sha256 = "2d367697957bba93c79e8da1d1bc7c8bbd8d07fb7f013de7c83824f9047372f1",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rccl-dev6.1.0/rccl-dev6.1.0_2.18.6.60100-82~22.04_amd64.deb",
+                sha256 = "1c4927aa49e4dcb441608c3fa6ec86c9d078aaa767214be2b213c1a8421a3929",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocblas6.1.0/rocblas6.1.0_4.1.0.60100-82~22.04_amd64.deb",
+                sha256 = "43cb1dd308f08a9d766ed846bd4d345b74fcc3a87e6e7ee727c7e5cf49629416",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocblas-dev/rocblas-dev_4.1.0.60100-82~22.04_amd64.deb",
+                sha256 = "fc8bef370666fad72c01fc131749ccb835b8bfcb1639ed43dda26b9e64702b3b",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocfft6.1.0/rocfft6.1.0_1.0.27.60100-82~22.04_amd64.deb",
+                sha256 = "50d0ad3cb37a69285b6132a17fdefbdea2e18ab6faf8265ead44ef3d7a4d16cb",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocfft-dev6.1.0/rocfft-dev6.1.0_1.0.27.60100-82~22.04_amd64.deb",
+                sha256 = "2e091de9499e493c03a79ca7673b9c8640f896051542ff3c4f635efccc97d10f",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocm-core6.1.0/rocm-core6.1.0_6.1.0.60100-82~22.04_amd64.deb",
+                sha256 = "685993f25f9da6e17cf69bc7dc9cdde0ca33b9955474a11bb903cae0d4a25d66",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocm-hip-libraries/rocm-hip-libraries_6.1.0.60100-82~22.04_amd64.deb",
+                sha256 = "57c4212475dd5a8fe2bdab92eeff71332a0d408615dc2a4254482eb46d13e212",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/h/hip-dev6.1.0/hip-dev6.1.0_6.1.40091.60100-82~22.04_amd64.deb",
+                sha256 = "7ca5568b754948576555b07924abbb35e24b7448b6f612738a5fdde6ae7020c9",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocm-device-libs/rocm-device-libs_1.0.0.60100-82~22.04_amd64.deb",
+                sha256 = "7e155798e1027dd4fc0d49a89865245f3017090e44ea057584b8b86d5ea931cd",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocminfo/rocminfo_1.0.0.60100-82~22.04_amd64.deb",
+                sha256 = "b7cf95b3b20e3accba23de34265ac408603176279412fda116dce47047a36e7b",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocm-llvm/rocm-llvm_17.0.0.24103.60100-82~22.04_amd64.deb",
+                sha256 = "4c245a83e48517d627f34f52c0e7020434dcf4ef4ef073c736afc60e69f8b6f2",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocm-llvm-dev6.1.0/rocm-llvm-dev6.1.0_17.0.0.24103.60100-82~22.04_amd64.deb",
+                sha256 = "c99854c0b92ea9c530be6c656157d26587b74c4ea1e9e12522570438a189d5b9",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocm-smi-lib6.1.0/rocm-smi-lib6.1.0_7.0.0.60100-82~22.04_amd64.deb",
+                sha256 = "4b02aa9e5e09a36303e185def69ae67702a7177a5e6793e00565c8c6fdd32f88",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocprim-dev6.1.0/rocprim-dev6.1.0_3.1.0.60100-82~22.04_amd64.deb",
+                sha256 = "ce3ce32ed9692c58d1a6ba089a7c07b27d2935b0f126a1c84b214cd2433ebe48",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocprofiler-register6.1.0/rocprofiler-register6.1.0_0.3.0.60100-82~22.04_amd64.deb",
+                sha256 = "73b877f13ba65c6ba01197452c3b538f50f687d54ae0b3428c85c07bff20dcb7",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocrand-dev6.1.0/rocrand-dev6.1.0_3.0.1.60100-82~22.04_amd64.deb",
+                sha256 = "afcdfa0cbc71363ccd9bb71f421343b12263bc88d42fa9a4c78c60bbc3fa17d3",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/roctracer6.1.0/roctracer6.1.0_4.1.60100.60100-82~22.04_amd64.deb",
+                sha256 = "c98aedc99d252bf40b8069f497d24d60e2eaca25d001471e42ceb4df531ecba7",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/roctracer-dev6.1.0/roctracer-dev6.1.0_4.1.60100.60100-82~22.04_amd64.deb",
+                sha256 = "9c2967d988e7a1408a3e4b2c83177eb7c88af939619a9d0d5ab7af2db9489884",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocsolver6.1.0/rocsolver6.1.0_3.25.0.60100-82~22.04_amd64.deb",
+                sha256 = "65a6270f66194e033af1dc4b238bf7ecdfa439933b9c330bcb307caf516e8b3b",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocsolver-dev6.1.0/rocsolver-dev6.1.0_3.25.0.60100-82~22.04_amd64.deb",
+                sha256 = "ca40789c82d3e46f2951cb0b1a7d5e8026daf5af6d597693746d95b8a49cd9a1",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.1/pool/main/r/rocsparse6.1.0/rocsparse6.1.0_3.1.2.60100-82~22.04_amd64.deb",
+                sha256 = "ede46a9ccd505543425c5f75c6e8180c05c3b865dd638edbe297237664b3fe31",
+            ),
+            struct(
+                url = "https://mirror.bazel.build/github.com/alekstheod/rocm-deps/releases/download/rocm-6.2.0/libdrm2_2.4.101-2_amd64.deb",
+                sha256 = "4cd2e10f9486456a2782487f8bfd39f330f35a4d5bd6d693412b9e4ca2a6acbd",
+            ),
+            struct(
+                url = "https://mirror.bazel.build/github.com/alekstheod/rocm-deps/releases/download/rocm-6.2.0/libdrm-amdgpu1_2.4.101-2_amd64.deb",
+                sha256 = "d4567a30f7d68b4dcf794f8677b96e89083693c94e88279fecf577ceba8b9774",
+            ),
+            struct(
+                url = "https://mirror.bazel.build/github.com/alekstheod/rocm-deps/releases/download/rocm-6.2.0/libelf1_0.176-1.1build1_amd64.deb",
+                sha256 = "78a8761227efc04a1e37527f2f33ba608c6fb5d6c911616346ada5d7b9b72ee3",
+            ),
+            struct(
+                url = "https://mirror.bazel.build/github.com/alekstheod/rocm-deps/releases/download/rocm-6.2.0/libnuma1_2.0.12-1_amd64.deb",
+                sha256 = "0b1edf08cf9befecd21fe94e298ac25e476f87fd876ddd4adf42ef713449e637",
+            ),
+        ],
+        "rocm_root": "opt/rocm-6.1.0",
     },
 }
