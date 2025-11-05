@@ -376,6 +376,17 @@ class PjRtCApiClient : public PjRtClient {
                               PjRtDevice* device,
                               PjRtCrossHostRecvNotifier notifier) override;
 
+  absl::StatusOr<std::vector<Future<>>> CrossHostSendBuffers(
+      absl::Span<PjRtBuffer* const> buffers,
+      absl::Span<const PjRtGlobalDeviceId> dst_global_device_ids,
+      std::vector<CrossHostTransferKey> transfer_keys) override;
+
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  CrossHostReceiveBuffers(
+      xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
+      absl::Span<const PjRtGlobalDeviceId> src_global_device_ids,
+      std::vector<CrossHostTransferKey> transfer_keys) override;
+
   absl::Status DmaMap(void* data, size_t size) override;
 
   absl::Status DmaUnmap(void* data) override;

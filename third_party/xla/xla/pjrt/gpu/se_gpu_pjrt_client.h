@@ -140,6 +140,21 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
       PjRtMemorySpace* memory_space) override;
 
+  // CrossHostSendBuffers and CrossHostReceiveBuffers are part of the new
+  // cross-host transfers API.
+  absl::StatusOr<std::vector<Future<>>> CrossHostSendBuffers(
+      absl::Span<PjRtBuffer* const> buffers,
+      absl::Span<const PjRtGlobalDeviceId> dst_global_device_ids,
+      std::vector<CrossHostTransferKey> transfer_keys) override;
+
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  CrossHostReceiveBuffers(
+      xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
+      absl::Span<const PjRtGlobalDeviceId> src_global_device_ids,
+      std::vector<CrossHostTransferKey> transfer_keys) override;
+
+  // ScheduleRemoteSend and MakeCrossHostReceiveBuffers are methods implemented
+  // to support the legacy cross-host transfers API.
   void ScheduleRemoteSend(
       PjRtMemorySpace* memory_space,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
@@ -186,6 +201,29 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   const bool abort_collectives_on_failure_ = false;
   std::optional<xla::StreamExecutorGpuTopologyDescription> topology_;
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
+
+  // Helpers for cross host transfers.
+  absl::Duration cross_host_transfer_timeout_ = absl::Minutes(3);
+
+  absl::StatusOr<Future<>> CrossHostSendBuffer(
+      PjRtBuffer* buffer, PjRtGlobalDeviceId dst_global_device_id,
+      CrossHostTransferKey transfer_key);
+
+  struct PrepareReceiveBufferResult {
+    std::unique_ptr<PjRtBuffer> buffer;
+    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
+    LocalDeviceState* local_device;
+    se::Stream* stream;
+    BufferSequencingEventRef definition_event;
+  };
+
+  absl::StatusOr<PrepareReceiveBufferResult> PrepareReceiveBuffer(
+      PjRtDevice* device, Shape shape);
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CrossHostReceiveBuffer(
+      xla::Shape shape, xla::PjRtDevice* device,
+      PjRtGlobalDeviceId src_global_device_ids,
+      CrossHostTransferKey transfer_keys);
 };
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
