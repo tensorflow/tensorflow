@@ -28,6 +28,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
@@ -1005,8 +1006,30 @@ absl::StatusOr<ModuleHandle> CudaExecutor::LoadModuleFromCuBin(
   if (module == nullptr) {
     TF_ASSIGN_OR_RETURN(module, LoadCubin(cuda_context_, cubin));
     module_refcount = 1;
-    VLOG(3) << "[" << device_ordinal() << "] Loaded CUBIN "
-            << static_cast<const void*>(cubin) << " as module " << module;
+    if (VLOG_IS_ON(3)) {
+      VLOG(3) << "[" << device_ordinal() << "] Loaded CUBIN "
+              << static_cast<const void*>(cubin) << " as module " << module;
+// cuModuleGetFunctionCount and cuModuleEnumerateFunctions were added in
+// CUDA-12.5
+#if CUDA_VERSION >= 12050
+      VLOG(3) << "The following functions are available in the module: ";
+      unsigned int num_functions;
+      TF_RETURN_IF_ERROR(cuda::ToStatus(
+          cuModuleGetFunctionCount(&num_functions, module),
+          absl::StrFormat("Failed to get number of functions in module %p",
+                          module)));
+      std::vector<CUfunction> functions(num_functions);
+      TF_RETURN_IF_ERROR(cuda::ToStatus(
+          cuModuleEnumerateFunctions(functions.data(), num_functions, module)));
+      for (const auto& function : functions) {
+        const char* function_name;
+        TF_RETURN_IF_ERROR(
+            cuda::ToStatus(cuFuncGetName(&function_name, function)));
+        VLOG(3) << "Function: " << function_name;
+      }
+#endif
+    }
+
   } else {
     ++module_refcount;
     VLOG(3) << "[" << device_ordinal() << "] CUBIN "

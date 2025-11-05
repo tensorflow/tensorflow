@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/globals.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -36,21 +37,17 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
 using ::testing::_;
 using ::testing::AnyOf;
-using testing::Ge;
+using ::testing::Ge;
 using ::testing::HasSubstr;
-using testing::IsEmpty;
-using testing::Not;
-using testing::VariantWith;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
+using ::testing::IsEmpty;
+using ::testing::Not;
 
 TEST(CudaExecutorTest, CreateDeviceDescription) {
   CudaPlatform platform;
@@ -101,6 +98,20 @@ TEST(CudaExecutorTest, GetCudaKernel) {
                           GetAddI32TestKernelSpec(cuda::kCudaPlatformId));
   verify_kernel(add);
   verify_kernel(GetAddI32PtxKernelSpec());
+}
+
+TEST(CudaExecutorTest, AdditionalDebugLoggingDoesntBreakKernelLoading) {
+  // Setting VLOG level to 3 will cause the CudaExecutor to log the available
+  // functions in the loaded module.
+  absl::SetVLogLevel("cuda_executor", 3);
+
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec add,
+                          GetAddI32TestKernelSpec(cuda::kCudaPlatformId));
+  TF_EXPECT_OK(executor->LoadKernel(add));
 }
 
 TEST(CudaExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
