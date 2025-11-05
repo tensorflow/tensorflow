@@ -1084,6 +1084,43 @@ TEST_F(IndexingAnalysisTest, GatherOp) {
     )"));
 }
 
+TEST_F(IndexingAnalysisTest, GatherOpWithShuffledStartIndexMap) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY main {
+      operand = f32[33,76,70] parameter(0)
+      indices = s32[1806,2] parameter(1)
+      ROOT r = f32[1806,7,8,4] gather(operand, indices), offset_dims={1,2,3},
+                                 collapsed_slice_dims={}, start_index_map={1,0},
+                                 index_vector_dim=1, slice_sizes={7,8,4}
+    }
+  )"));
+  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+    operand id = 0
+      (d0, d1, d2, d3){rt0, rt1} -> (d1 + rt0, d2 + rt1, d3),
+      domain:
+        d0 in [0, 1805],
+        d1 in [0, 6],
+        d2 in [0, 7],
+        d3 in [0, 3],
+        rt0 in [0, 26],
+        rt1 in [0, 68]
+      runtime variables:
+        rt0: %indices = s32[1806,2]{1,0} parameter(1); (d0, d1, d2, d3) -> (d0, 1),
+          domain: d0 in [0, 1805], d1 in [0, 6], d2 in [0, 7], d3 in [0, 3]
+        rt1: %indices = s32[1806,2]{1,0} parameter(1); (d0, d1, d2, d3) -> (d0, 0),
+          domain: d0 in [0, 1805], d1 in [0, 6], d2 in [0, 7], d3 in [0, 3]
+    operand id = 1
+      (d0, d1, d2, d3)[s0] -> (d0, s0),
+      domain:
+        d0 in [0, 1805],
+        d1 in [0, 6],
+        d2 in [0, 7],
+        d3 in [0, 3],
+        s0 in [0, 1]
+    )"));
+}
+
 TEST_F(IndexingAnalysisTest, FusionOpWithReduceOfReduce) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m

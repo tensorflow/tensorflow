@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/gather_simplifier.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
@@ -392,6 +393,9 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDynamicUpdateSlice(
 absl::StatusOr<SmallVector<Value, 1>> EmitGather(
     const HloInstruction* instr, ValueRange indices,
     const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
+  const auto* gather = Cast<HloGatherInstruction>(instr);
+  CHECK(GatherSimplifier::IsSimplifiedGather(gather))
+      << "Non-simplified HLO Gather is not supported.";
   auto row = indices[0];
   auto zero = b.create<ConstantIndexOp>(0);
   // Gather allows the index vector to contain fewer elements than the rank
@@ -404,12 +408,12 @@ absl::StatusOr<SmallVector<Value, 1>> EmitGather(
   // simplifier prefers this form. Therefore, we need to check the rank of the
   // indices here and do the implicit reshape in place.
   const auto& indices_shape = instr->operand(1)->shape();
-  int num_indices =
-      indices_shape.dimensions().size() == 1 ? 1 : indices_shape.dimensions(1);
-  for (int i = 0; i < num_indices; ++i) {
+  const auto& dim_numbers = gather->gather_dimension_numbers();
+  const auto& start_index_map = dim_numbers.start_index_map();
+  for (auto [i, operand_dim] : llvm::enumerate(start_index_map)) {
     auto i_val = i == 0 ? zero : b.create<ConstantIndexOp>(i);
-    int64_t slice_size = instr->gather_slice_sizes()[i];
-    int64_t input_size = instr->operand(0)->shape().dimensions()[i];
+    int64_t slice_size = gather->gather_slice_sizes()[operand_dim];
+    int64_t input_size = gather->operand(0)->shape().dimensions()[operand_dim];
     // Read and clamp index.
     TF_ASSIGN_OR_RETURN(auto input_index,
                         operand_provider(instr, 1,
@@ -418,7 +422,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitGather(
                                              : ValueRange{row, i_val}));
     TF_RET_CHECK(input_index.size() == 1)
         << "Expected operand to be a single value.";
-    operand_indices[i] =
+    operand_indices[operand_dim] =
         ClampIndex(input_index.front(),
                    primitive_util::IsUnsignedIntegralType(
                        instr->operand(1)->shape().element_type()),
