@@ -137,6 +137,8 @@ cc_library(
         "gpu_command_buffer.h",
     ],
     deps = [
+        "//xla:debug_options_flags",
+        "//xla/service:dump",
         "//xla/stream_executor:bit_pattern",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_memory",

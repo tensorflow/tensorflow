@@ -1559,6 +1559,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:path",
     ],
 )
 
