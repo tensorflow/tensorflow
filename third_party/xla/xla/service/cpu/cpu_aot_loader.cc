@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
+#include "xla/backends/cpu/codegen/builtin_definition_generator.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/executable.pb.h"
-#include "xla/service/cpu/runtime_symbol_generator.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
@@ -107,7 +107,7 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> LoadFunctionLibrary(
   // Definition generator to link with XLA:CPU host runtime symbols.
   ExecutionEngine::DefinitionGenerator definition_generator =
       [](const llvm::DataLayout& data_layout) {
-        return std::make_unique<RuntimeSymbolGenerator>(data_layout);
+        return std::make_unique<BuiltinDefinitionGenerator>(data_layout);
       };
 
   ObjectLoader object_loader(/*num_dylibs=*/1,
@@ -116,7 +116,7 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> LoadFunctionLibrary(
 
   for (size_t i = 0; i < object_loader.num_dylibs(); ++i) {
     object_loader.dylib(i).value()->addGenerator(
-        std::make_unique<RuntimeSymbolGenerator>(
+        std::make_unique<BuiltinDefinitionGenerator>(
             target_machine->createDataLayout()));
   }
 

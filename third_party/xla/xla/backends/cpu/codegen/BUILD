@@ -24,6 +24,25 @@ package_group(
 )
 
 cc_library(
+    name = "builtin_definition_generator",
+    srcs = ["builtin_definition_generator.cc"],
+    hdrs = ["builtin_definition_generator.h"],
+    deps = [
+        ":builtin_fp16",
+        ":builtin_pow",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:OrcShared",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:mlir_c_runner_utils",
+    ],
+)
+
+cc_library(
     name = "builtin_fp16",
     srcs = ["builtin_fp16.cc"],
     hdrs = ["builtin_fp16.h"],

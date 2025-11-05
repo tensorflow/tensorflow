@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/runtime_symbol_generator.h"
+#include "xla/backends/cpu/codegen/builtin_definition_generator.h"
 
 #ifdef _MSC_VER
 #include <math.h>
@@ -247,13 +247,14 @@ static Registry CreateRegistry() {
 }
 
 //===----------------------------------------------------------------------===//
-// RuntimeSymbolGenerator
+// BuiltinDefinitionGenerator
 //===----------------------------------------------------------------------===//
 
-RuntimeSymbolGenerator::RuntimeSymbolGenerator(llvm::DataLayout data_layout)
+BuiltinDefinitionGenerator::BuiltinDefinitionGenerator(
+    llvm::DataLayout data_layout)
     : data_layout_(std::move(data_layout)) {}
 
-llvm::Error RuntimeSymbolGenerator::tryToGenerate(
+llvm::Error BuiltinDefinitionGenerator::tryToGenerate(
     llvm::orc::LookupState&, llvm::orc::LookupKind kind,
     llvm::orc::JITDylib& jit_dylib, llvm::orc::JITDylibLookupFlags,
     const llvm::orc::SymbolLookupSet& names) {

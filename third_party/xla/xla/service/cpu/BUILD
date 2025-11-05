@@ -189,7 +189,6 @@ cc_library(
         ":ir_emitter2",
         ":metrics",
         ":parallel_task_assignment",
-        ":runtime_symbol_generator",
         ":small_while_loop_hoisting_pass",
         ":thunk_emitter",
         "//xla:debug_options_flags",
@@ -206,6 +205,7 @@ cc_library(
         "//xla/backends/cpu:alignment",
         "//xla/backends/cpu:constant_allocation",
         "//xla/backends/cpu:xnn_support",
+        "//xla/backends/cpu/codegen:builtin_definition_generator",
         "//xla/backends/cpu/codegen:compiled_function_library",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/codegen:execution_engine",
@@ -562,26 +562,6 @@ tf_proto_library(
 )
 
 cc_library(
-    name = "runtime_symbol_generator",
-    srcs = ["runtime_symbol_generator.cc"],
-    hdrs = ["runtime_symbol_generator.h"],
-    copts = tsl_copts(),
-    deps = [
-        "//xla/backends/cpu/codegen:builtin_fp16",
-        "//xla/backends/cpu/codegen:builtin_pow",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:OrcJIT",
-        "@llvm-project//llvm:OrcShared",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:mlir_c_runner_utils",
-    ],
-)
-
-cc_library(
     name = "runtime_lightweight_check",
     hdrs = ["runtime_lightweight_check.h"],
     compatible_with = get_compatible_with_portable(),
@@ -715,10 +695,10 @@ xla_cc_test(
         ":cpu_options",
         ":ir_emitter",
         ":ir_function",
-        ":runtime_symbol_generator",
         ":target_machine_features_stub",
         "//xla:shape_util",
         "//xla/backends/cpu:alignment",
+        "//xla/backends/cpu/codegen:builtin_definition_generator",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/codegen:execution_engine",
         "//xla/backends/cpu/codegen:ir_compiler",
@@ -2112,8 +2092,8 @@ cc_library(
     deps = [
         ":cpu_aot_compilation_result",
         ":executable_proto_cc",
-        ":runtime_symbol_generator",
         "//xla:util",
+        "//xla/backends/cpu/codegen:builtin_definition_generator",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/codegen:execution_engine",
         "//xla/backends/cpu/codegen:ir_compiler",
