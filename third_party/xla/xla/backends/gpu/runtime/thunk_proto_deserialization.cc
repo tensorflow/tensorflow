@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/cub_sort_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
@@ -186,6 +187,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
       return CustomCallThunk::FromProto(
           std::move(thunk_info), thunk_proto.custom_call_thunk(),
           buffer_allocations, hlo_module, platform_name);
+    case ThunkProto::kCubSortThunk:
+      return CubSortThunk::FromProto(std::move(thunk_info),
+                                     thunk_proto.cub_sort_thunk(),
+                                     buffer_allocations, platform_name);
     default:
       std::optional<absl::string_view> unsupported_thunk_type =
           GetStoredThunkTypeName(thunk_proto);

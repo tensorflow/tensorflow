@@ -212,6 +212,16 @@ message CublasLtMatmulThunkProto {
   optional xla.buffer_assignment.BufferAllocationSliceProto workspace = 16;
 }
 
+message CubSortThunkProto {
+  xla.PrimitiveType type = 1;
+  optional xla.PrimitiveType value_type = 3;
+  repeated xla.buffer_assignment.BufferAllocationSliceProto operands = 4;
+  repeated xla.buffer_assignment.BufferAllocationSliceProto results = 5;
+  xla.buffer_assignment.BufferAllocationSliceProto scratch = 6;
+  bool descending = 7;
+  int64 batch_size = 8;
+}
+
 message NormThunkProto {
   GpuNormDescriptorProto norm_descriptor = 1;
   xla.buffer_assignment.BufferAllocationSliceProto x = 2;
@@ -294,6 +304,7 @@ message ThunkProto {
     CholeskyThunkProto cholesky_thunk = 28;
     Memset32BitValueThunkProto memset32bit_value_thunk = 29;
     CustomCallThunkProto custom_call_thunk = 30;
+    CubSortThunkProto cub_sort_thunk = 31;
   }
 }
 
