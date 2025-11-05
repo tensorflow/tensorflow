@@ -78,8 +78,8 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
   bool is_subslice_topology() const override { return false; }
 
   // TODO(b/319478189): We support multi-host CPU computations and should
-  // correctly report process count.
-  absl::StatusOr<int> ProcessCount() const override { return 1; }
+  // correctly report host count.
+  absl::StatusOr<int> HostCount() const override { return 1; }
 
   absl::StatusOr<int> ChipsPerProcess() const override {
     return cpu_topology_.number_of_devices();

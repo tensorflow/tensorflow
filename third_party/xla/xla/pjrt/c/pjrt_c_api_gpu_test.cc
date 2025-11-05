@@ -966,7 +966,7 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopologyAndTargetConfig) {
               (pjrt_topology->topology->platform_id() == xla::RocmId() &&
                pjrt_topology->topology->platform_name() == xla::RocmName()));
 
-  EXPECT_EQ(pjrt_topology->topology->ProcessCount().value(), 16 * 2);
+  EXPECT_EQ(pjrt_topology->topology->HostCount().value(), 16 * 2);
   EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions().size(), 16 * 2 * 4);
   EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions()[0]->device_kind(),
             "Tesla V100-SXM2-32GB");
@@ -1006,7 +1006,7 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopology) {
       reinterpret_cast<const PJRT_TopologyDescription*>(args.topology);
   ASSERT_NE(pjrt_topology, nullptr);
 
-  EXPECT_EQ(pjrt_topology->topology->ProcessCount().value(), 16 * 2);
+  EXPECT_EQ(pjrt_topology->topology->HostCount().value(), 16 * 2);
   EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions().size(), 16 * 2 * 4);
 
   PJRT_TopologyDescription_Destroy_Args destroy_args;
