@@ -81,7 +81,7 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
   // correctly report process count.
   absl::StatusOr<int> ProcessCount() const override { return 1; }
 
-  absl::StatusOr<int> ChipsPerProcess() const override {
+  absl::StatusOr<int> ChipCountPerHost() const override {
     return cpu_topology_.number_of_devices();
   }
 

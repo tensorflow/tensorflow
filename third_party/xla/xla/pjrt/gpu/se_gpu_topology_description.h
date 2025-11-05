@@ -86,7 +86,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
     return gpu_topology_->number_of_hosts();
   }
 
-  absl::StatusOr<int> ChipsPerProcess() const override {
+  absl::StatusOr<int> ChipCountPerHost() const override {
     return gpu_topology_->num_devices_per_host();
   }
 
