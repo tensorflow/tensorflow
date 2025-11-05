@@ -431,7 +431,7 @@ static absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
   TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
                       GetDotCanonicalDims(dot_dimensions, dot_shape));
 
-  const size_t b_rank = rhs_shape.dimensions_size();
+  const size_t b_rank = rhs_shape.dimensions().size();
   const bool transpose_b = !dot_canonical_dims.rhs_canonical;
   YNN_RETURN_IF_ERROR(DefineBatchMatrixMultiply(subgraph.get(), lhs_id, rhs_id,
                                                 out_id, b_rank, transpose_b));
