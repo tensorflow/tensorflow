@@ -59,7 +59,6 @@ filegroup(
     srcs = [
         # Single-threaded support.
         "runtime_custom_call_status.cc",
-        "runtime_fp16.cc",
         "runtime_key_value_sort.cc",
         "runtime_pow.cc",
         "runtime_single_threaded_conv2d.cc",
@@ -94,7 +93,6 @@ filegroup(
     srcs = [
         # Single-threaded support.
         "runtime_custom_call_status.h",
-        "runtime_fp16.h",
         "runtime_key_value_sort.h",
         "runtime_pow.h",
         "runtime_single_threaded_conv2d.h",
@@ -590,18 +588,6 @@ cc_library(
     hdrs = ["runtime_lightweight_check.h"],
     compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
-)
-
-cc_library(
-    name = "runtime_fp16",
-    srcs = [
-        "runtime_fp16.cc",
-    ],
-    hdrs = [
-        "runtime_fp16.h",
-    ],
-    copts = runtime_copts(),
-    deps = ["@com_google_absl//absl/base:core_headers"],
 )
 
 cc_library(
