@@ -251,6 +251,7 @@ TEST(StreamExecutorGpuCompilerTest, UnloadedExecutableMemoryStats) {
   EXPECT_GT(compiled_memory_stats.temp_size_in_bytes, 0);
   EXPECT_EQ(compiled_memory_stats.host_temp_size_in_bytes, 0);
   EXPECT_EQ(compiled_memory_stats.host_output_size_in_bytes, 16);
+  EXPECT_GT(compiled_memory_stats.peak_memory_in_bytes, 0);
 }
 
 }  // namespace
