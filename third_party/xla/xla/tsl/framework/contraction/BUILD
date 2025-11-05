@@ -113,6 +113,7 @@ cc_library(
         "//xla/tsl:fuchsia_x86_64": [],
         "//xla/tsl:ios": [],
         "//xla/tsl:linux_ppc64le": [],
+        "//xla/tsl:linux_riscv64": [],
         "//xla/tsl:linux_s390x": [],
         "//xla/tsl:macos_arm64": [],
         "//conditions:default": [
@@ -132,6 +133,7 @@ cc_library(
         "//xla/tsl:fuchsia_x86_64": [],
         "//xla/tsl:ios": [],
         "//xla/tsl:linux_ppc64le": [],
+        "//xla/tsl:linux_riscv64": [],
         "//xla/tsl:linux_s390x": [],
         "//xla/tsl:macos_arm64": [],
         "//conditions:default": ["//xla/tsl/mkl:onednn"],
