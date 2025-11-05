@@ -117,6 +117,7 @@ constexpr int NumDecimalDigits(int n) {
 
 template <typename T>
 size_t FpToBuffer(T value, char* buffer) {
+  using strings_internal::kFastToBufferSize;
   // Out of an abundance of caution, we ensure that the buffer is large enough
   // to hold the worst-case formatting of any floating-point number.
   constexpr size_t kMaxExponentDigits10 =

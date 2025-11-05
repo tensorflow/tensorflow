@@ -27,6 +27,8 @@ limitations under the License.
 namespace tsl {
 namespace strings {
 
+using strings_internal::kFastToBufferSize;
+
 // NOTE: most of the routines in numbers.h are tested indirectly through
 // strcat_test.cc in this directory.
 
