@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
@@ -443,6 +444,10 @@ struct PjRtPluginAttributes {
   absl::flat_hash_map<std::string, PjRtValueType> attributes;
 };
 
+// Each cross-host transfer in the second transfers API is associated with a
+// unique CrossHostTransferKey.
+TSL_LIB_GTL_DEFINE_INT_TYPE(CrossHostTransferKey, int64_t);
+
 // Encapsulates the state of Python session with XLA.
 //
 // It is the responsibility of the client of this API to keep the PjRtClient
@@ -450,7 +455,7 @@ struct PjRtPluginAttributes {
 //
 // A note on the semantics of cross-device copies.
 //
-// There are two mechanisms to transfer a buffer from one device to another.
+// There are three mechanisms to transfer a buffer from one device to another.
 // When both devices are on the same host (more specifically, the user program
 // ends up with pointers to both the source and destination buffers in the same
 // address space), the caller can use:
@@ -460,18 +465,25 @@ struct PjRtPluginAttributes {
 // made via native device networking (as opposed to the user program fetching
 // the buffer and sending it using its own networking code), the caller can
 // use:
+//   DstHost: dst_client->CrossHostReceiveBuffers(...)
+//   SrcHost: src_client->CrossHostSendBuffers(...)
+//
+// The caller can also use the original cross-host transfers API:
 //   DstHost: dst_client->MakeCrossHostReceiveBuffers(...)
 //   DstHost: [...]
 //   DstHost: gets callback containing PjRtCrossHostRecvDescriptors
 //   DstHost: sends cross-host recv serialized descriptors to SrcHost
 //   SrcHost: src_buffer->CopyToRemoteDevice(serialized_descriptors)
 //
+// See subclass documentation for platform-specific tradeoffs between the
+// two cross-host transfer methods.
+//
 // Note that in the cross-host case, the dst_client may call
-// MakeCrossHostReceiveBuffers before the action that produces src_buffer has
+// (Make)CrossHostReceiveBuffers before the action that produces src_buffer has
 // been enqueued at SrcHost.
 //
 // On some platforms, device-to-device transfers consume scarce hardware
-// resources. If dst_client->MakeCrossHostReceiveBuffers immediately claimed
+// resources. If dst_client->(Make)CrossHostReceiveBuffers immediately claimed
 // those resources, then there would be a risk of system-wide deadlock, if the
 // resources claimed by the recv prevented other transfers that are necessary
 // to generate src_buffer from acquiring enough resources to proceed.
@@ -965,16 +977,16 @@ class PjRtClient {
   virtual absl::StatusOr<std::uintptr_t> UnsafeBufferPointer(
       PjRtBuffer* buffer);
 
-  // Returns a vector of PjRtBuffers that can be used to receive
-  // cross host transfers using `client` on `device'. Asynchronously calls
-  // `notifier` once receive descriptors are ready to be communicated to the
-  // sender. `shapes` must be the exact shapes, with identical layouts,
-  // corresponding to the buffers that will be sent. When resources for the
-  // transfer are available, notifier will be called with a vector of
-  // PjRtCrossHostRecvDescriptors structs, one for each shape in `shapes`. Each
-  // struct contains an opaque string that should be transmitted to the sending
-  // host and used in a call to CopyToRemoteDevice. None of the recv buffers
-  // will become ready until *all* of the sends have completed.
+  // Part of original cross-host transfers API. Returns a vector of PjRtBuffers
+  // that can be used to receive cross host transfers using `client` on
+  // `device'. Asynchronously calls `notifier` once receive descriptors are
+  // ready to be communicated to the sender. `shapes` must be the exact shapes,
+  // with identical layouts, corresponding to the buffers that will be sent.
+  // When resources for the transfer are available, notifier will be called with
+  // a vector of PjRtCrossHostRecvDescriptors structs, one for each shape in
+  // `shapes`. Each struct contains an opaque string that should be transmitted
+  // to the sending host and used in a call to CopyToRemoteDevice. None of the
+  // recv buffers will become ready until *all* of the sends have completed.
   //
   // If MakeCrossHostReceiveBuffers returns an error, then `notifier` will not
   // be called. Otherwise `notifier` will be called exactly once. In the case
@@ -1010,6 +1022,28 @@ class PjRtClient {
   virtual absl::Status DmaUnmap(void* data) {
     return absl::UnimplementedError(absl::StrFormat(
         "DmaUnmap not supported on platform %s", platform_name()));
+  }
+
+  // CrossHostSendBuffers and CrossHostReceiveBuffers are part of the second
+  // cross-host transfers API.
+
+  // Send buffers to remote devices specified by dst_global_device_ids.
+  virtual absl::StatusOr<std::vector<Future<>>> CrossHostSendBuffers(
+      absl::Span<PjRtBuffer* const> buffers,
+      absl::Span<const PjRtGlobalDeviceId> dst_global_device_ids,
+      std::vector<CrossHostTransferKey> transfer_keys) {
+    return absl::InternalError(
+        "Cross-host data transfers are not supported by this client.");
+  }
+
+  // Places buffers from a cross-host send onto device.
+  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  CrossHostReceiveBuffers(
+      xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
+      absl::Span<const PjRtGlobalDeviceId> src_global_device_ids,
+      std::vector<CrossHostTransferKey> transfer_keys) {
+    return absl::UnimplementedError(
+        "Cross-host data transfers are not supported.");
   }
 
  private:
@@ -1225,13 +1259,14 @@ class PjRtBuffer {
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) = 0;
 
-  // Prepares to send a copy of the buffer to a remote device. The destination
-  // device is encoded in `serialized_descriptor`, which must be fulfilled by
-  // the result of call to MakeCrossHostReceiveBuffers on the remote host's
-  // destination device. MakeCrossHostReceiveBuffers takes an array of shapes to
-  // construct the destination buffers, and a callback supplies an array
-  // containing both the destination buffers, and a serialized descriptor for
-  // each buffer. For each destination buffer there should be a matching call to
+  // Part of original cross-host transfers API. Prepares to send a copy of the
+  // buffer to a remote device. The destination device is encoded in
+  // `serialized_descriptor`, which must be fulfilled by the result of call to
+  // MakeCrossHostReceiveBuffers on the remote host's destination device.
+  // MakeCrossHostReceiveBuffers takes an array of shapes to construct the
+  // destination buffers, and a callback supplies an array containing both the
+  // destination buffers, and a serialized descriptor for each buffer. For each
+  // destination buffer there should be a matching call to
   // src->CopyToRemoteDevice on a remote host for a src buffer of the
   // corresponding shape. If `serialized_descriptor` is fulfilled with a non-Ok
   // status, then the transfer is canceled, otherwise it must be the string

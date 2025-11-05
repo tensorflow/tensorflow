@@ -230,6 +230,7 @@ xla_test(
         "//xla/pjrt:local_device_state",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",

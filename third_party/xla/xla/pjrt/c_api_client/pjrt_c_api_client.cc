@@ -989,6 +989,61 @@ PJRT_Transfers_CrossHostRecvNotifierInfo CppCrossHostRecvNotifierToC(
       }};
 }
 
+// Helper struct and method used to serialize shapes past the C API boundary.
+struct ShapesInfo {
+  std::vector<size_t> shape_num_dims;
+  std::vector<PJRT_Buffer_MemoryLayout*> layout_list;
+  std::vector<const int64_t*> num_dims;
+  std::vector<PJRT_Buffer_Type> element_type_list;
+};
+
+ShapesInfo MakeShapesInfo(absl::Span<const Shape> shapes) {
+  std::vector<size_t> shape_num_dims;
+  shape_num_dims.reserve(shapes.size());
+  std::vector<PJRT_Buffer_MemoryLayout*> layout_list;
+  layout_list.reserve(shapes.size());
+  std::vector<const int64_t*> num_dims;
+  num_dims.reserve(shapes.size());
+  std::vector<PJRT_Buffer_Type> element_type_list;
+  element_type_list.reserve(shapes.size());
+
+  for (int i = 0; i < shapes.size(); ++i) {
+    shape_num_dims.push_back(shapes[i].dimensions().size());
+
+    num_dims.push_back(shapes[i].dimensions().data());
+    element_type_list.push_back(
+        pjrt::ConvertToPjRtBufferType(shapes[i].element_type()));
+    // TODO(b/434246423): Enable this once ASAN failure is fixed.
+    // if (shapes[i].has_layout()) {
+    //   // this is messed up
+    //   auto& layout = shapes[i].layout();
+    //   TF_ASSIGN_OR_RETURN(
+    //       pjrt::BufferMemoryLayoutData c_layout_data,
+    //       pjrt::ConvertToBufferMemoryLayoutData(layout));
+    //   layout_list.push_back(&(c_layout_data.c_layout));
+    layout_list.push_back(nullptr);
+  }
+
+  return ShapesInfo{
+      /*shape_num_dims=*/std::move(shape_num_dims),
+      /*layout_list=*/std::move(layout_list),
+      /*num_dims=*/std::move(num_dims),
+      /*element_type_list=*/std::move(element_type_list),
+  };
+}
+
+// Helper method to convert a list of PJRT_Buffer* to a list of PjRtBuffer*.
+std::vector<std::unique_ptr<PjRtBuffer>> MakePjRtBuffersFromPJRT_Buffers(
+    PjRtCApiClient* client, PJRT_Buffer** c_buffers, size_t num_buffers) {
+  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
+  buffers.reserve(num_buffers);
+  for (int i = 0; i < num_buffers; ++i) {
+    buffers.emplace_back(
+        std::make_unique<PjRtCApiBuffer>(client, c_buffers[i]));
+  }
+  return buffers;
+}
+
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiClient::MakeCrossHostReceiveBuffers(
     absl::Span<const Shape> shapes, PjRtDevice* device,
@@ -1006,35 +1061,13 @@ PjRtCApiClient::MakeCrossHostReceiveBuffers(
       PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.client = c_client_.get();
-  args.num_shapes = shapes.size();
-  std::vector<size_t> shape_num_dims;
-  shape_num_dims.reserve(shapes.size());
-  std::vector<PJRT_Buffer_MemoryLayout*> layout_list;
-  layout_list.reserve(shapes.size());
-  std::vector<const int64_t*> num_dims;
-  num_dims.reserve(shapes.size());
-  std::vector<PJRT_Buffer_Type> element_type_list;
-  element_type_list.reserve(shapes.size());
-  for (int i = 0; i < shapes.size(); ++i) {
-    shape_num_dims.push_back(shapes[i].dimensions().size());
 
-    num_dims.push_back(shapes[i].dimensions().data());
-    element_type_list.push_back(
-        pjrt::ConvertToPjRtBufferType(shapes[i].element_type()));
-    // TODO(b/434246423): Enable this once ASAN failure is fixed.
-    // if (shapes[i].has_layout()) {
-    //   // this is messed up
-    //   auto& layout = shapes[i].layout();
-    //   TF_ASSIGN_OR_RETURN(
-    //       pjrt::BufferMemoryLayoutData c_layout_data,
-    //       pjrt::ConvertToBufferMemoryLayoutData(layout));
-    //   layout_list.push_back(&(c_layout_data.c_layout));
-    layout_list.push_back(nullptr);
-  }
-  args.shape_num_dims = shape_num_dims.data();
-  args.num_dims = num_dims.data();
-  args.element_types = element_type_list.data();
-  args.layouts = layout_list.data();
+  ShapesInfo shapes_info = MakeShapesInfo(shapes);
+  args.num_shapes = shapes.size();
+  args.shape_num_dims = shapes_info.shape_num_dims.data();
+  args.num_dims = shapes_info.num_dims.data();
+  args.element_types = shapes_info.element_type_list.data();
+  args.layouts = shapes_info.layout_list.data();
 
   args.notifier = CppCrossHostRecvNotifierToC(c_api, std::move(notifier));
   args.device = tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
@@ -1044,13 +1077,102 @@ PjRtCApiClient::MakeCrossHostReceiveBuffers(
   RETURN_STATUS_IF_PJRT_ERROR(
       extension->PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers(&args),
       c_api);
-  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
-  buffers.reserve(args.num_buffers);
-  for (int i = 0; i < args.num_buffers; ++i) {
-    buffers.emplace_back(std::unique_ptr<PjRtBuffer>(
-        std::make_unique<PjRtCApiBuffer>(this, args.buffers[i])));
+
+  return MakePjRtBuffersFromPJRT_Buffers(this, args.buffers,
+                                         temp_buffers.size());
+}
+
+absl::StatusOr<std::vector<Future<>>> PjRtCApiClient::CrossHostSendBuffers(
+    absl::Span<PjRtBuffer* const> buffers,
+    absl::Span<const PjRtGlobalDeviceId> dst_global_device_ids,
+    std::vector<CrossHostTransferKey> transfer_keys) {
+  // Get C API extension.
+  const PJRT_Api* c_api = pjrt_c_api();
+  PJRT_CrossHostTransfers_Extension* extension =
+      FindExtension<PJRT_CrossHostTransfers_Extension>(
+          PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
+  if (extension == nullptr) {
+    return absl::UnimplementedError(
+        "CrossHostSendBuffers is not implemented in this PJRT plugin.");
   }
-  return buffers;
+
+  // Form inputs.
+  PJRT_Transfers_PJRT_Client_CrossHostSendBuffers_Args args;
+  args.struct_size =
+      PJRT_Transfers_PJRT_Client_CrossHostSendBuffers_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.client = c_client_.get();
+  args.num_buffers = buffers.size();
+
+  std::vector<PJRT_Buffer*> c_buffers;
+  c_buffers.reserve(buffers.size());
+  for (PjRtBuffer* buffer : buffers) {
+    c_buffers.push_back(
+        tensorflow::down_cast<const PjRtCApiBuffer*>(buffer)->c_buffer());
+  }
+
+  args.buffers = c_buffers.data();
+  args.dst_global_device_ids = dst_global_device_ids.data();
+  args.transfer_keys = transfer_keys.data();
+
+  auto send_events = std::vector<PJRT_Event*>(args.num_buffers);
+  args.send_events = send_events.data();
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      extension->PJRT_Transfers_PJRT_Client_CrossHostSendBuffers(&args), c_api);
+
+  std::vector<Future<>> send_futures;
+  send_futures.reserve(args.num_buffers);
+  for (int i = 0; i < args.num_buffers; ++i) {
+    send_futures.push_back(
+        pjrt::ConvertCEventToCppFuture(args.send_events[i], c_api));
+  }
+
+  return send_futures;
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+PjRtCApiClient::CrossHostReceiveBuffers(
+    xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
+    absl::Span<const PjRtGlobalDeviceId> src_global_device_ids,
+    std::vector<CrossHostTransferKey> transfer_keys) {
+  // Get C API extension.
+  const PJRT_Api* c_api = pjrt_c_api();
+  PJRT_CrossHostTransfers_Extension* extension =
+      FindExtension<PJRT_CrossHostTransfers_Extension>(
+          PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers);
+  if (extension == nullptr) {
+    return absl::UnimplementedError(
+        "CrossHostReceiveBuffers is not implemented in this PJRT plugin.");
+  }
+
+  // Form inputs.
+  PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args args;
+  args.struct_size =
+      PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.client = c_client_.get();
+
+  ShapesInfo shapes_info = MakeShapesInfo(shapes);
+  args.num_shapes = shapes.size();
+  args.shape_num_dims = shapes_info.shape_num_dims.data();
+  args.num_dims = shapes_info.num_dims.data();
+  args.element_types = shapes_info.element_type_list.data();
+  args.layouts = shapes_info.layout_list.data();
+
+  args.device = tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
+  args.src_global_device_ids = src_global_device_ids.data();
+  args.transfer_keys = transfer_keys.data();
+
+  std::vector<PJRT_Buffer*> temp_buffers(shapes.size());
+  args.buffers = temp_buffers.data();
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      extension->PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(&args),
+      c_api);
+
+  return MakePjRtBuffersFromPJRT_Buffers(this, args.buffers,
+                                         temp_buffers.size());
 }
 
 class PjRtCApiAsyncHostToDeviceTransferManager

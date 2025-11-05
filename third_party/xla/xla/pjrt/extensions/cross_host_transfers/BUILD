@@ -13,6 +13,7 @@ cc_library(
         "//xla:future",
         "//xla:shape_util",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_helpers",
         "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
