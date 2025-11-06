@@ -195,15 +195,14 @@ __global__ void AppendChecksum(xla::gpu::BufferDebugLogEntryId entry_id,
   }
 }
 
-absl::StatusOr<se::KernelLoaderSpec> GetChecksumKernelSpec() {
+se::KernelLoaderSpec GetChecksumKernelSpec(int arity) {
   return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
       absl::bit_cast<void*>(&AppendChecksum), "BufferDebugXorChecksumKernel",
-      /*arity=*/5);
+      arity);
 }
 
 }  // namespace
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     BufferDebugXorChecksumKernel, se::gpu::BufferDebugXorChecksumKernel,
-    se::cuda::kCudaPlatformId,
-    ([](size_t _arity) { return GetChecksumKernelSpec().value(); }));
+    se::cuda::kCudaPlatformId, GetChecksumKernelSpec);

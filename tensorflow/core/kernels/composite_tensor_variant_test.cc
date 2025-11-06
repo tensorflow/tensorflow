@@ -43,13 +43,13 @@ type_spec_proto: {
 
 // Returns an CompositeTensorVariant encoding for a 2D ragged tensor with
 // the specified values and row_splits.
-CompositeTensorVariant Make2DRaggedTensor(const std::vector<int32>& values,
+CompositeTensorVariant Make2DRaggedTensor(const std::vector<int32_t>& values,
                                           const std::vector<int64_t>& splits) {
   CompositeTensorVariantMetadata metadata;
   EXPECT_TRUE(
       protobuf::TextFormat::ParseFromString(k2DRaggedTensorSpec, &metadata));
   std::vector<Tensor> components;
-  components.push_back(test::AsTensor<int32>(values));
+  components.push_back(test::AsTensor<int32_t>(values));
   components.push_back(test::AsTensor<int64_t>(splits));
   CompositeTensorVariant v(metadata, absl::MakeSpan(components));
   return v;
@@ -67,8 +67,8 @@ TEST(CompositeTensorVariantTest, EncodeAndDecodeRagged) {
   EXPECT_EQ(v.metadata().SerializeAsString(),
             decoded->metadata().SerializeAsString());
   EXPECT_EQ(v.flat_components().size(), 2);
-  test::ExpectTensorEqual<int32>(v.flat_components()[0],
-                                 decoded->flat_components()[0]);
+  test::ExpectTensorEqual<int32_t>(v.flat_components()[0],
+                                   decoded->flat_components()[0]);
   test::ExpectTensorEqual<int64_t>(v.flat_components()[1],
                                    decoded->flat_components()[1]);
 }

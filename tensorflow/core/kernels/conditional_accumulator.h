@@ -53,7 +53,8 @@ class ConditionalAccumulator
   //   name:  A name to use for the ConditionalAccumulator.
   //   reduction_type: The reduction type, i.e., MEAN or SUM
   ConditionalAccumulator(const DataType& dtype, const PartialTensorShape& shape,
-                         const string& name, const string& reduction_type)
+                         const std::string& name,
+                         const std::string& reduction_type)
       : TypedConditionalAccumulatorBase<const Tensor>(dtype, shape, name,
                                                       reduction_type) {}
   ~ConditionalAccumulator() override{};
