@@ -264,7 +264,7 @@ class Sampler {
 
   absl::Status status_;
 
-  using LabelArray = std::array<string, NumLabels>;
+  using LabelArray = std::array<std::string, NumLabels>;
   // we need a container here that guarantees pointer stability of the value,
   // namely, the pointer of the value should remain valid even after more cells
   // are inserted.

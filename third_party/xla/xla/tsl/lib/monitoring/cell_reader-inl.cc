@@ -70,7 +70,7 @@ absl::StatusOr<std::vector<Point>> GetPoints(
     return errors::NotFound("Metric descriptor is not found for metric ",
                             metric_name, ".");
   }
-  const std::vector<string>& label_names =
+  const std::vector<std::string>& label_names =
       metric_descriptor->second->label_names;
   if (label_names.size() != labels.size()) {
     return errors::InvalidArgument(
