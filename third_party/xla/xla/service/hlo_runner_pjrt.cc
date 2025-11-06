@@ -910,7 +910,7 @@ std::string MakeFilename(const HloModule& module, const bool run_hlo_passes) {
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
 CompilePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
                                             const bool run_hlo_passes) {
-  const std::string filename =
+  const std::string path =
       tsl::io::JoinPath(artifact_dir_, MakeFilename(*module, run_hlo_passes));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<OpaqueExecutable> wrapped_executable,
@@ -921,19 +921,19 @@ CompilePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
 
   TF_ASSIGN_OR_RETURN(const std::string serialized_executable,
                       executable->executable()->SerializeExecutable());
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), filename,
-                                            serialized_executable));
+  TF_RETURN_IF_ERROR(
+      tsl::WriteStringToFile(tsl::Env::Default(), path, serialized_executable));
   return wrapped_executable;
 }
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
 ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
                                             const bool run_hlo_passes) {
-  const std::string filename =
-      tsl::io::JoinPath(artifact_dir_, MakeFilename(*module, run_hlo_passes));
+  const std::string filename = MakeFilename(*module, run_hlo_passes);
+  const std::string path = tsl::io::JoinPath(artifact_dir_, filename);
   std::string serialized_executable;
   if (const absl::Status status = tsl::ReadFileToString(
-          tsl::Env::Default(), filename, &serialized_executable);
+          tsl::Env::Default(), path, &serialized_executable);
       !status.ok()) {
     if (!compile_if_not_found_) {
       return absl::NotFoundError(absl::StrCat(
@@ -942,6 +942,8 @@ ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
     LOG(INFO) << "Failed to read serialized executable. " << status;
     return HloRunnerPjRt::CreateExecutable(std::move(module), run_hlo_passes);
   }
+  LOG(INFO) << "ExecutePhase deserializing " << module->name() << " from "
+            << filename;
   return DeserializeExecutable(serialized_executable);
 }
 
