@@ -2376,6 +2376,64 @@ cuda_library(
     alwayslink = 1,
 ) for typename in get_cub_sort_kernel_types()]
 
+[cuda_library(
+    name = "cub_prefix_sum_kernel_cuda_{}".format(typename),
+    srcs = ["cub_prefix_sum_kernel_cuda.cu.cc"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    local_defines = ["CUB_TYPE_" + typename.upper()],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_platform",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:prefix_sum_kernel",
+        "@local_config_cuda//cuda:cub_headers",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+    alwayslink = 1,
+) for typename in get_cub_sort_kernel_types()]
+
+xla_test(
+    name = "cub_prefix_sum_kernel_cuda_test",
+    srcs = ["cub_prefix_sum_kernel_cuda_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:prefix_sum_kernel",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/lib/math:math_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_cuda//cuda:cuda_headers",
+    ] + [":cub_prefix_sum_kernel_cuda_" + suffix for suffix in get_cub_sort_kernel_types()],
+)
+
 cuda_library(
     name = "topk_kernel_cuda",
     srcs = [
