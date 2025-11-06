@@ -109,7 +109,8 @@ inline bool SerializeToTString(const protobuf::MessageLite& proto,
 
 inline bool ParseFromTString(const tstring& input,
                              protobuf::MessageLite* proto) {
-  return proto->ParseFromArray(input.data(), static_cast<int>(input.size()));
+  return proto->ParseFromString(
+      absl::string_view(input.data(), static_cast<int>(input.size())));
 }
 
 // Analogue to StringOutputStream for tstring.
