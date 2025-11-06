@@ -123,7 +123,7 @@ absl::Status CompressElement(const std::vector<Tensor>& element,
     }
   }
 
-  if (iov.NumBytes() > kuint32max) {
+  if (iov.NumBytes() > std::numeric_limits<uint32_t>::max()) {
     return errors::OutOfRange("Encountered dataset element of size ",
                               iov.NumBytes(),
                               ", exceeding the 4GB Snappy limit.");
