@@ -143,7 +143,6 @@ cc_library(
 
 tf_cc_test(
     name = "threadpool_test",
-    timeout = "short",
     srcs = ["threadpool_test.cc"],
     deps = [
         ":threadpool",
@@ -151,6 +150,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@local_xla//xla/tsl/platform:test_main",
     ],
 )
