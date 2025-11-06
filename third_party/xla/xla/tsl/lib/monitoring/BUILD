@@ -16,6 +16,7 @@ package(
         "//learning/brain/google/monitoring:__subpackages__",
         # copybara:uncomment "//learning/infra/mira/experimental/orbax_model:__subpackages__",
         # copybara:uncomment "//learning/pathways/util/platform:__subpackages__",
+        # copybara:uncomment "//third_party/pathways/util/platform:__subpackages__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
         # tensorflow/core/platform:monitoring depends on this package
