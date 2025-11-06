@@ -44,11 +44,11 @@ class StringErrorCollector : public protobuf::io::ErrorCollector {
  public:
   // String error_text is unowned and must remain valid during the use of
   // StringErrorCollector.
-  explicit StringErrorCollector(string* error_text);
+  explicit StringErrorCollector(std::string* error_text);
   // If one_indexing is set to true, all line and column numbers will be
   // increased by one for cases when provided indices are 0-indexed and
   // 1-indexed error messages are desired
-  StringErrorCollector(string* error_text, bool one_indexing);
+  StringErrorCollector(std::string* error_text, bool one_indexing);
   StringErrorCollector(const StringErrorCollector&) = delete;
   StringErrorCollector& operator=(const StringErrorCollector&) = delete;
 
@@ -61,7 +61,7 @@ class StringErrorCollector : public protobuf::io::ErrorCollector {
                      absl::string_view message) override;
 
  private:
-  string* const error_text_;
+  std::string* const error_text_;
   const int index_offset_;
 };
 

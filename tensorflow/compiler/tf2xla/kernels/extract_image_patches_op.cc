@@ -179,9 +179,9 @@ class ExtractImagePatchesOp : public XlaOpKernel {
   }
 
  protected:
-  std::vector<int32> ksizes_;
-  std::vector<int32> dilations_;
-  std::vector<int32> strides_;
+  std::vector<int32_t> ksizes_;
+  std::vector<int32_t> dilations_;
+  std::vector<int32_t> strides_;
   Padding padding_;
 
  private:

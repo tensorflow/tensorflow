@@ -41,7 +41,7 @@ class XlaSelfAdjointEigOp : public XlaOpKernel {
 
  private:
   bool lower_;
-  int32 max_iter_;
+  int32_t max_iter_;
   float epsilon_;
 };
 
