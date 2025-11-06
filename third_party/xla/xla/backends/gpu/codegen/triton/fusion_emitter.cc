@@ -1415,7 +1415,8 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
 
   if (hlo->opcode() == HloOpcode::kConstant) {
     if (ShapeUtil::IsEffectiveScalar(hlo->shape())) {
-      return EmitConstant(b, *hlo);
+      TF_ASSIGN_OR_RETURN(TensorValue constant, EmitConstant(b, *hlo));
+      return MakeScalarOrTensor(b, constant);
     }
     return absl::UnimplementedError(
         absl::StrCat("Unsupported non-scalar constant ", hlo->ToString()));
@@ -1548,7 +1549,8 @@ absl::StatusOr<TensorValue> EmitScope(
       TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
       continue;
     } else if (hlo->opcode() == HloOpcode::kConstant) {
-      TF_ASSIGN_OR_RETURN(result, EmitConstant(b, *hlo));
+      TF_ASSIGN_OR_RETURN(TensorValue constant, EmitConstant(b, *hlo));
+      result = MakeScalarOrTensor(b, constant);
     } else if (hlo->opcode() == HloOpcode::kBroadcast) {
       return absl::InvalidArgumentError(
           "Broadcast is not yet supported in EmitScope().");
