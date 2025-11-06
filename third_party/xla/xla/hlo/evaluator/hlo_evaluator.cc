@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <complex>
@@ -69,7 +70,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/compilation_environments.h"
-#include "xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"
@@ -87,6 +87,13 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
+
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
+#endif
 
 namespace xla {
 
@@ -4891,76 +4898,68 @@ absl::Status HloEvaluator::Postprocess(const HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
-namespace {
 template <typename T>
-std::unique_ptr<Array2D<T>> MatmulArray2DImpl(
-    const Array2D<T>& lhs, const Array2D<T>& rhs,
-    const std::function<void(const void* run_options_ptr, T* out, T* lhs,
-                             T* rhs, int64_t m, int64_t n, int64_t k,
-                             int32_t transpose_lhs, int32_t transpose_rhs)>&
-        impl_fn) {
+static std::unique_ptr<Array2D<T>> MatmulArray2DImpl(const Array2D<T>& lhs,
+                                                     const Array2D<T>& rhs) {
   CHECK_EQ(lhs.width(), rhs.height());
   int m = lhs.height();
-  int n = rhs.width();
   int k = lhs.width();
+  int n = rhs.width();
   auto result = std::make_unique<Array2D<T>>(m, n);
-  // Because Eigen is a header-oriented library, make sure that the Eigen code
-  // is the same as the code used by the CPU backend (otherwise the linker will
-  // randomly pick *some* definition).
-  impl_fn(
-      /*run_options_ptr=*/nullptr, result->data(), rhs.data(), lhs.data(), n, m,
-      k,
-      /*transpose_lhs=*/0,
-      /*transpose_rhs=*/0);
+
+  using ConstTensor = Eigen::Tensor<const T, 2, Eigen::RowMajor>;
+  using Tensor = Eigen::Tensor<T, 2, Eigen::RowMajor>;
+
+  Eigen::TensorMap<ConstTensor> A(lhs.data(), m, k);
+  Eigen::TensorMap<ConstTensor> B(rhs.data(), k, n);
+  Eigen::TensorMap<Tensor> C(result->data(), m, n);
+
+  using DimPair = typename ConstTensor::DimensionPair;
+  std::array<DimPair, 1> dims({DimPair(1, 0)});
+
+  C = A.contract(B, dims);
+
   return result;
 }
-}  // namespace
 
 std::unique_ptr<Array2D<Eigen::half>> HloEvaluator::MatmulArray2D(
     const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs) {
-  return MatmulArray2DImpl<Eigen::half>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF16);
+  return MatmulArray2DImpl<Eigen::half>(lhs, rhs);
 }
 
 std::unique_ptr<Array2D<float>> HloEvaluator::MatmulArray2D(
     const Array2D<float>& lhs, const Array2D<float>& rhs) {
-  return MatmulArray2DImpl<float>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF32);
+  return MatmulArray2DImpl<float>(lhs, rhs);
 }
 
 std::unique_ptr<Array2D<double>> HloEvaluator::MatmulArray2D(
     const Array2D<double>& lhs, const Array2D<double>& rhs) {
-  return MatmulArray2DImpl<double>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF64);
+  return MatmulArray2DImpl<double>(lhs, rhs);
 }
 
 std::unique_ptr<Array2D<std::complex<float>>> HloEvaluator::MatmulArray2D(
     const Array2D<std::complex<float>>& lhs,
     const Array2D<std::complex<float>>& rhs) {
-  return MatmulArray2DImpl<std::complex<float>>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulC64);
+  return MatmulArray2DImpl<std::complex<float>>(lhs, rhs);
 }
 
 std::unique_ptr<Array2D<std::complex<double>>> HloEvaluator::MatmulArray2D(
     const Array2D<std::complex<double>>& lhs,
     const Array2D<std::complex<double>>& rhs) {
-  return MatmulArray2DImpl<std::complex<double>>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulC128);
+  return MatmulArray2DImpl<std::complex<double>>(lhs, rhs);
 }
 
 std::unique_ptr<Array2D<int32_t>> HloEvaluator::MatmulArray2D(
     const Array2D<int32_t>& lhs, const Array2D<int32_t>& rhs) {
-  return MatmulArray2DImpl<int32_t>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulS32);
+  return MatmulArray2DImpl<int32_t>(lhs, rhs);
 }
 
 std::unique_ptr<Array2D<uint8_t>> HloEvaluator::MatmulArray2D(
     const Array2D<uint8_t>& lhs, const Array2D<uint8_t>& rhs) {
-  return MatmulArray2DImpl<uint8_t>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulU8);
+  return MatmulArray2DImpl<uint8_t>(lhs, rhs);
 }
 
-/* static */ std::unique_ptr<Array2D<float>> Array2DF8E5M2ToF32(
+std::unique_ptr<Array2D<float>> Array2DF8E5M2ToF32(
     const Array2D<tsl::float8_e5m2>& input) {
   auto result = std::make_unique<Array2D<float>>(input.height(), input.width());
   for (int64_t rowno = 0; rowno < input.height(); ++rowno) {
@@ -4971,7 +4970,7 @@ std::unique_ptr<Array2D<uint8_t>> HloEvaluator::MatmulArray2D(
   return result;
 }
 
-/* static */ std::unique_ptr<Array2D<float>> Array2DF8E4M3FNToF32(
+std::unique_ptr<Array2D<float>> Array2DF8E4M3FNToF32(
     const Array2D<tsl::float8_e4m3fn>& input) {
   auto result = std::make_unique<Array2D<float>>(input.height(), input.width());
   for (int64_t rowno = 0; rowno < input.height(); ++rowno) {
@@ -4982,7 +4981,7 @@ std::unique_ptr<Array2D<uint8_t>> HloEvaluator::MatmulArray2D(
   return result;
 }
 
-/* static */ std::unique_ptr<Array2D<tsl::float8_e5m2>> Array2DF32ToF8E5M2(
+std::unique_ptr<Array2D<tsl::float8_e5m2>> Array2DF32ToF8E5M2(
     const Array2D<float>& input) {
   auto result = std::make_unique<Array2D<tsl::float8_e5m2>>(input.height(),
                                                             input.width());
@@ -4995,7 +4994,7 @@ std::unique_ptr<Array2D<uint8_t>> HloEvaluator::MatmulArray2D(
   return result;
 }
 
-/* static */ std::unique_ptr<Array2D<tsl::float8_e4m3fn>> Array2DF32ToF8E4M3FN(
+std::unique_ptr<Array2D<tsl::float8_e4m3fn>> Array2DF32ToF8E4M3FN(
     const Array2D<float>& input) {
   auto result = std::make_unique<Array2D<tsl::float8_e4m3fn>>(input.height(),
                                                               input.width());
@@ -5018,10 +5017,8 @@ std::unique_ptr<Array2D<tsl::float8_e5m2>> HloEvaluator::MatmulArray2D(
     auto rhs_float = Array2DF8E5M2ToF32(rhs);
     auto result = MatmulArray2D(*lhs_float, *rhs_float);
     return Array2DF32ToF8E5M2(*result);
-  } else {
-    return MatmulArray2DImpl<tsl::float8_e5m2>(
-        lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF8E5M2);
   }
+  return MatmulArray2DImpl<tsl::float8_e5m2>(lhs, rhs);
 }
 
 std::unique_ptr<Array2D<tsl::float8_e4m3fn>> HloEvaluator::MatmulArray2D(
@@ -5032,10 +5029,8 @@ std::unique_ptr<Array2D<tsl::float8_e4m3fn>> HloEvaluator::MatmulArray2D(
     auto rhs_float = Array2DF8E4M3FNToF32(rhs);
     auto result = MatmulArray2D(*lhs_float, *rhs_float);
     return Array2DF32ToF8E4M3FN(*result);
-  } else {
-    return MatmulArray2DImpl<tsl::float8_e4m3fn>(
-        lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF8E4M3FN);
   }
+  return MatmulArray2DImpl<tsl::float8_e4m3fn>(lhs, rhs);
 }
 
 }  // namespace xla
