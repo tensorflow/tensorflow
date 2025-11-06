@@ -109,7 +109,7 @@ class SparseAddOp : public OpKernel {
     // (1) do a pass over inputs, and append values and indices to vectors
     auto a_indices_mat = a_indices->matrix<int64_t>();
     auto b_indices_mat = b_indices->matrix<int64_t>();
-    std::vector<std::pair<bool, int64>> entries_to_copy;  // from_a?, idx
+    std::vector<std::pair<bool, int64_t>> entries_to_copy;  // from_a?, idx
     entries_to_copy.reserve(a_nnz + b_nnz);
     std::vector<T> out_values;
 
@@ -187,10 +187,10 @@ class SparseAddOp : public OpKernel {
 // is because std::abs() on uint8 does not compile.
 REGISTER_KERNELS(float, float);
 REGISTER_KERNELS(double, double);
-REGISTER_KERNELS(int64_t, int64);
-REGISTER_KERNELS(int32, int32);
-REGISTER_KERNELS(int16, int16);
-REGISTER_KERNELS(int8, int8);
+REGISTER_KERNELS(int64_t, int64_t);
+REGISTER_KERNELS(int32_t, int32_t);
+REGISTER_KERNELS(int16_t, int16_t);
+REGISTER_KERNELS(int8_t, int8_t);
 REGISTER_KERNELS(complex64, float);
 REGISTER_KERNELS(complex128, double);
 #undef REGISTER_KERNELS

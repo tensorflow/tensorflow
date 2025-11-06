@@ -63,7 +63,7 @@ static Graph* MakeGraph(int split_dim, const std::vector<int64_t>& size_splits,
   TensorShape in_shape(total_size);
   Tensor in(DataTypeToEnum<float>::value, in_shape);
   in.flat<float>().setRandom();
-  Tensor split_dim_tensor = test::AsScalar<int32>(split_dim);
+  Tensor split_dim_tensor = test::AsScalar<int32_t>(split_dim);
   Tensor size_splits_tensor = test::AsTensor<int64_t>(size_splits);
   Node* splitv;
   TF_CHECK_OK(NodeBuilder(g->NewName("splitv"), "SplitV")
