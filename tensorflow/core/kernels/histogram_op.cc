@@ -48,9 +48,9 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
 
     Tensor index_to_bin_tensor;
     TF_RETURN_IF_ERROR(context->forward_input_or_allocate_temp(
-        {0}, DataTypeToEnum<int32>::value, TensorShape({values.size()}),
+        {0}, DataTypeToEnum<int32_t>::value, TensorShape({values.size()}),
         &index_to_bin_tensor));
-    auto index_to_bin = index_to_bin_tensor.flat<int32>();
+    auto index_to_bin = index_to_bin_tensor.flat<int32_t>();
 
     // Avoid overflow in step computation.
     const double step =
@@ -59,9 +59,9 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
     const double nbins_minus_1 = static_cast<double>(nbins - 1);
 
     // We cannot handle NANs in the algorithm below (due to the cast to int32)
-    const Eigen::Tensor<int32, 1, 1> nans_tensor =
-        values.isnan().template cast<int32>();
-    const Eigen::Tensor<int32, 0, 1> reduced_tensor = nans_tensor.sum();
+    const Eigen::Tensor<int32_t, 1, 1> nans_tensor =
+        values.isnan().template cast<int32_t>();
+    const Eigen::Tensor<int32_t, 0, 1> reduced_tensor = nans_tensor.sum();
     const int num_nans = reduced_tensor(0);
     if (num_nans > 0) {
       return errors::InvalidArgument("Histogram values must not contain NaN");
@@ -82,7 +82,7 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
                                static_cast<double>(value_range(0))) /
                               step)
                                  .cwiseMin(nbins_minus_1)
-                                 .template cast<int32>();
+                                 .template cast<int32_t>();
 
     out.setZero();
     for (int32_t i = 0; i < index_to_bin.size(); i++) {
@@ -114,7 +114,7 @@ class HistogramFixedWidthOp : public OpKernel {
 
     const auto values = values_tensor.flat<T>();
     const auto value_range = value_range_tensor.flat<T>();
-    const auto nbins = nbins_tensor.scalar<int32>()();
+    const auto nbins = nbins_tensor.scalar<int32_t>()();
 
     OP_REQUIRES(
         ctx, value_range(0) < value_range(1),
