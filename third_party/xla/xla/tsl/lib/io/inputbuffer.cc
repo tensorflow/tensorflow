@@ -130,7 +130,7 @@ absl::Status InputBuffer::ReadNBytes(int64_t bytes_to_read, char* result,
   return status;
 }
 
-absl::Status InputBuffer::ReadVarint32Fallback(uint32* result) {
+absl::Status InputBuffer::ReadVarint32Fallback(uint32_t* result) {
   absl::Status s = ReadVarintFallback(result, core::kMaxVarint32Bytes);
   if (absl::IsDataLoss(s)) {
     return errors::DataLoss("Stored data is too large to be a varint32.");
@@ -138,7 +138,7 @@ absl::Status InputBuffer::ReadVarint32Fallback(uint32* result) {
   return s;
 }
 
-absl::Status InputBuffer::ReadVarint64Fallback(uint64* result) {
+absl::Status InputBuffer::ReadVarint64Fallback(uint64_t* result) {
   absl::Status s = ReadVarintFallback(result, core::kMaxVarint64Bytes);
   if (absl::IsDataLoss(s)) {
     return errors::DataLoss("Stored data is too large to be a varint64.");
@@ -148,7 +148,7 @@ absl::Status InputBuffer::ReadVarint64Fallback(uint64* result) {
 
 template <typename T>
 absl::Status InputBuffer::ReadVarintFallback(T* result, int max_bytes) {
-  uint8 scratch = 0;
+  uint8_t scratch = 0;
   auto* p = reinterpret_cast<char*>(&scratch);
   size_t unused_bytes_read = 0;
 
