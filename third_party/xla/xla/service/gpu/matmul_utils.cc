@@ -47,8 +47,8 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
-#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
@@ -534,7 +534,7 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
                                  PrecisionConfig::Algorithm precision_algorithm,
                                  se::blas::AlgorithmType algorithm,
                                  se::blas::ComputePrecision compute_precision,
-                                 const se::NumericOptions& numeric_options,
+                                 const se::EngineOptions& engine_options,
                                  se::blas::ProfileResult* profile_result,
                                  se::blas::CallContext context) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
@@ -560,14 +560,14 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
         alpha, lhs.cast<Input>(), lhs.leading_dim_stride, lhs.batch_stride,
         rhs.cast<Input>(), rhs.leading_dim_stride, rhs.batch_stride, beta,
         &output_data, output.leading_dim_stride, output.batch_stride,
-        output.batch_size, computation_type, algorithm, numeric_options,
+        output.batch_size, computation_type, algorithm, engine_options,
         profile_result, context);
   }
   return blas->BlasGemmWithAlgorithm(
       stream, lhs.transpose, rhs.transpose, output.m, output.n, output.k, alpha,
       lhs.cast<Input>(), lhs.leading_dim_stride, rhs.cast<Input>(),
       rhs.leading_dim_stride, beta, &output_data, output.leading_dim_stride,
-      computation_type, algorithm, numeric_options, profile_result, context);
+      computation_type, algorithm, engine_options, profile_result, context);
 }
 
 template <typename Scale, typename Input, typename Output>
@@ -579,7 +579,7 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
                     PrecisionConfig::Algorithm precision_algorithm,
                     std::optional<se::blas::AlgorithmType> algorithm,
                     se::blas::ComputePrecision compute_precision,
-                    const se::NumericOptions& numeric_options,
+                    const se::EngineOptions& engine_options,
                     se::blas::ProfileResult* profile_result,
                     se::blas::CallContext context) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
@@ -592,8 +592,7 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
   if (algorithm) {
     return DoGemmWithAlgorithm<Scale, Input, Output>(
         lhs, rhs, output, workspace, alpha, beta, stream, precision_algorithm,
-        *algorithm, compute_precision, numeric_options, profile_result,
-        context);
+        *algorithm, compute_precision, engine_options, profile_result, context);
   }
 
   // Set a workspace for all Blas operations launched below.
@@ -605,14 +604,14 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
         alpha, lhs.cast<Input>(), lhs.leading_dim_stride, lhs.batch_stride,
         rhs.cast<Input>(), rhs.leading_dim_stride, rhs.batch_stride, beta,
         &output_data, output.leading_dim_stride, output.batch_stride,
-        output.batch_size, numeric_options, context);
+        output.batch_size, engine_options, context);
   }
 
   return blas->BlasGemm(stream, lhs.transpose, rhs.transpose, output.m,
                         output.n, output.k, alpha, lhs.cast<Input>(),
                         lhs.leading_dim_stride, rhs.cast<Input>(),
                         rhs.leading_dim_stride, beta, &output_data,
-                        output.leading_dim_stride, numeric_options, context);
+                        output.leading_dim_stride, engine_options, context);
 }
 
 }  // namespace
@@ -630,10 +629,11 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
       GemmConfig::DescriptorsTuple desc,
       config.GetMatrixDescriptors(lhs_buffer, rhs_buffer, output_buffer));
 
-  se::NumericOptions numeric_options{
+  se::EngineOptions engine_options{
       deterministic_ops,
-      /*allow_tf32=*/IsTf32Allowed(config.precision_algorithm,
-                                   config.compute_precision)};
+      /*allow_tf32=*/
+      IsTf32Allowed(config.precision_algorithm, config.compute_precision),
+      /*require_command_buffer=*/false};
 
   if (!algorithm) {
     algorithm = config.algorithm;
@@ -673,7 +673,7 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
         static_cast<NativeScaleType>(config.alpha.real()),                  \
         static_cast<NativeScaleType>(config.beta), stream,                  \
         config.precision_algorithm, algorithm, config.compute_precision,    \
-        numeric_options, profile_result, context);                          \
+        engine_options, profile_result, context);                           \
   }
 
 #define TYPED_GEMM_COMPLEX(SCALENTYPE, ATYPE, BTYPE, CTYPE)                 \
@@ -687,7 +687,7 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
         static_cast<NativeScaleType>(config.alpha),                         \
         static_cast<NativeScaleType>(config.beta), stream,                  \
         config.precision_algorithm, algorithm, config.compute_precision,    \
-        numeric_options, profile_result, context);                          \
+        engine_options, profile_result, context);                           \
   }
 
   if (config.output_layout.dtype == S32) {
@@ -700,7 +700,7 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
         desc.lhs, desc.rhs, desc.output, workspace_buffer,
         static_cast<int32_t>(config.alpha.real()),
         static_cast<int32_t>(config.beta), stream, PrecisionConfig::ALG_UNSET,
-        *algorithm, se::blas::kDefaultComputePrecision, numeric_options,
+        *algorithm, se::blas::kDefaultComputePrecision, engine_options,
         profile_result, context);
   }
 
