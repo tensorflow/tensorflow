@@ -38,14 +38,15 @@ class XlaExpressionTest : public ::testing::Test {
   void SetUp() override {
     client_ = xla::ClientLibrary::LocalClientOrDie();
     builder_ = std::make_unique<xla::XlaBuilder>("acomputation");
-    constant_ = test::AsScalar<int32>(42);
-    op_ = xla::ConstantR0<int32>(builder_.get(), 7);
+    constant_ = test::AsScalar<int32_t>(42);
+    op_ = xla::ConstantR0<int32_t>(builder_.get(), 7);
     non_constant_op_ = xla::Parameter(
         builder_.get(), 0, xla::ShapeUtil::MakeShape(xla::F32, {}), "x");
     resource_ = std::make_unique<XlaResource>(
-        XlaResource::kVariable, /*arg_num=*/0, /*name=*/string("avariable"),
-        DT_INT32, TensorShape({17, 3}), op_, /*tensor_array_size=*/-1,
-        /*tensor_array_gradients=*/std::set<string>(),
+        XlaResource::kVariable, /*arg_num=*/0,
+        /*name=*/std::string("avariable"), DT_INT32, TensorShape({17, 3}), op_,
+        /*tensor_array_size=*/-1,
+        /*tensor_array_gradients=*/std::set<std::string>(),
         /*tensor_array_multiple_writes_aggregate=*/false);
   }
 
@@ -87,8 +88,8 @@ TEST_F(XlaExpressionTest, AsXlaOp) {
                           builder_->BuildConstantSubGraph(const_as_op));
   TF_ASSERT_OK_AND_ASSIGN(xla::Literal value,
                           client_->ComputeConstant(computation));
-  EXPECT_TRUE(xla::LiteralTestUtil::Equal(xla::LiteralUtil::CreateR0<int32>(42),
-                                          value));
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(
+      xla::LiteralUtil::CreateR0<int32_t>(42), value));
 }
 
 TEST_F(XlaExpressionTest, GetShape) {
@@ -120,7 +121,7 @@ TEST_F(XlaExpressionTest, ResolveConstant) {
       std::optional<Tensor> op_constant,
       XlaExpression::XlaOp(op_, DT_INT32).ResolveConstant(client_));
   ASSERT_TRUE(op_constant.has_value());
-  test::ExpectTensorEqual<int32>(test::AsScalar<int32>(7), *op_constant);
+  test::ExpectTensorEqual<int32_t>(test::AsScalar<int32_t>(7), *op_constant);
 
   TF_ASSERT_OK_AND_ASSIGN(std::optional<Tensor> op_nonconstant,
                           XlaExpression::XlaOp(non_constant_op_, DT_FLOAT)
@@ -131,7 +132,7 @@ TEST_F(XlaExpressionTest, ResolveConstant) {
       std::optional<Tensor> constant_constant,
       XlaExpression::Constant(constant_).ResolveConstant(client_));
   ASSERT_TRUE(constant_constant.has_value());
-  test::ExpectTensorEqual<int32>(constant_, *constant_constant);
+  test::ExpectTensorEqual<int32_t>(constant_, *constant_constant);
 }
 
 TEST_F(XlaExpressionTest, ResolveConstantOnResource) {

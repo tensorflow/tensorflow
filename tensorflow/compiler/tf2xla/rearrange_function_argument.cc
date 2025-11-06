@@ -304,7 +304,7 @@ absl::Status MaybeRewriteWhileNode(
                                         resource_input_count, index_mapping));
 
   // Modify cond and body functions.
-  for (auto const& attr_name : std::vector<string>{"cond", "body"}) {
+  for (auto const& attr_name : std::vector<std::string>{"cond", "body"}) {
     NameAttrList attr_value;
     TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), attr_name, &attr_value));
     const FunctionBody* fbody;
@@ -363,7 +363,7 @@ absl::Status MaybeRewriteWhileNode(
 
     // Save the new FunctionDef.
     FunctionDef new_fdef;
-    string new_name =
+    std::string new_name =
         fld->UniqueFunctionName(absl::StrCat(attr_value.name(), "_rearrange_"));
     TF_RETURN_IF_ERROR(GraphToFunctionDef(*fbody->graph, new_name, &new_fdef));
 
@@ -435,7 +435,7 @@ absl::Status MaybeRewriteIfNode(
 
   std::map<int, int> resource_retval_to_arg, retval_index_mapping;
   for (auto const& attr_name :
-       std::vector<string>{"then_branch", "else_branch"}) {
+       std::vector<std::string>{"then_branch", "else_branch"}) {
     NameAttrList f;
     TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), attr_name, &f));
     const FunctionBody* fbody;
@@ -459,7 +459,7 @@ absl::Status MaybeRewriteIfNode(
 
     // Save the new FunctionDef.
     FunctionDef new_fdef;
-    string new_name =
+    std::string new_name =
         fld->UniqueFunctionName(absl::StrCat(f.name(), "_rearrange_"));
     TF_RETURN_IF_ERROR(GraphToFunctionDef(*fbody->graph, new_name, &new_fdef));
 
