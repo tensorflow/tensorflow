@@ -1391,26 +1391,35 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
           mlir::cast<TensorValue>(Cast(b, parameter, expected_element_type));
     }
 
-    return parameter;
+    return MakeScalarOrTensor(b, parameter);
   }
 
   if (hlo->opcode() == HloOpcode::kConcatenate) {
-    return EmitConcatenate(b, device_info, fusion, tiled_hlo,
-                           block_level_parameters, fn, pid, values);
+    TF_ASSIGN_OR_RETURN(
+        TensorValue result,
+        EmitConcatenate(b, device_info, fusion, tiled_hlo,
+                        block_level_parameters, fn, pid, values));
+    return MakeScalarOrTensor(b, result);
   }
 
   if (hlo->opcode() == HloOpcode::kPad) {
-    return EmitPad(b, device_info, tiled_hlo, values, pid);
+    TF_ASSIGN_OR_RETURN(TensorValue result,
+                        EmitPad(b, device_info, tiled_hlo, values, pid));
+    return MakeScalarOrTensor(b, result);
   }
 
   if (hlo->opcode() == HloOpcode::kDot) {
-    return EmitDot(b, device_info, fusion, tiled_hlo, block_level_parameters,
-                   fn, pid, values);
+    TF_ASSIGN_OR_RETURN(TensorValue result,
+                        EmitDot(b, device_info, fusion, tiled_hlo,
+                                block_level_parameters, fn, pid, values));
+    return MakeScalarOrTensor(b, result);
   }
 
   if (hlo->opcode() == HloOpcode::kScaledDot) {
-    return EmitScaledDot(b, device_info, fusion, tiled_hlo,
-                         block_level_parameters, fn, pid, values);
+    TF_ASSIGN_OR_RETURN(TensorValue result,
+                        EmitScaledDot(b, device_info, fusion, tiled_hlo,
+                                      block_level_parameters, fn, pid, values));
+    return MakeScalarOrTensor(b, result);
   }
 
   if (hlo->opcode() == HloOpcode::kConstant) {
@@ -1430,7 +1439,9 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kReduce) {
-    return EmitReduce(b, tiled_hlo, values, device_info);
+    TF_ASSIGN_OR_RETURN(TensorValue reduce_result,
+                        EmitReduce(b, tiled_hlo, values, device_info));
+    return MakeScalarOrTensor(b, reduce_result);
   }
 
   if (hlo->IsElementwise()) {
