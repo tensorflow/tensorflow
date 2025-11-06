@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
+#include "xla/stream_executor/cuda/subprocess_compilation_support.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/path.h"
@@ -36,6 +37,10 @@ TEST(SubprocessCompilationTest, BundleGpuAsmUsingFatbinWorks) {
   if (!tsl::io::GetTestWorkspaceDir(&cuda_dir)) {
     GTEST_SKIP() << "No test workspace directory found which means we can't "
                     "run this test. Was this called in a Bazel environment?";
+  }
+
+  if (!IsSubprocessCompilationSupported()) {
+    GTEST_SKIP() << "Subprocess compilation is not supported in this build.";
   }
 
   const absl::string_view ptx = R"(

@@ -36,6 +36,22 @@ def if_cuda_tools(if_true, if_false = []):  # buildifier: disable=unused-variabl
         "//conditions:default": if_false,
     })
 
+selects.config_setting_group(
+    name = "subprocess_compilation_enabled_with_cuda_tools",
+    match_all = [
+        ":subprocess_compilation_support_enabled",
+        "@local_config_cuda//cuda:cuda_tools",
+    ],
+)
+
+def if_cuda_tools_subprocess_compilation(if_both, if_cuda_no_subprocess, if_none = []):  # buildifier: disable=unused-variable
+    """Shorthand for select()'ing three-fold: with hermetic CUDA tools and subprocess compilation, with hermetic CUDA tools but no subprocess compilation, and neither (no CUDA tools, no subprocess compilation)."""
+    return select({
+        ":subprocess_compilation_enabled_with_cuda_tools": if_both,
+        "@local_config_cuda//cuda:cuda_tools": if_cuda_no_subprocess,
+        "//conditions:default": if_none,
+    })
+
 def if_cuda_libs(if_true, if_false = []):  # buildifier: disable=unused-variable
     """Shorthand for select()'ing on whether we need to include hermetic CUDA libraries."""
     return select({
