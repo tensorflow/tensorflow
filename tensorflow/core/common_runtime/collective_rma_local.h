@@ -37,8 +37,9 @@ class CollectiveRemoteAccessLocal : public CollectiveRemoteAccess {
 
   void StartAbort(const absl::Status& s) override;
 
-  void RecvFromPeer(const string& peer_device, const string& peer_task,
-                    bool peer_is_local, const string& key, Device* to_device,
+  void RecvFromPeer(const std::string& peer_device,
+                    const std::string& peer_task, bool peer_is_local,
+                    const std::string& key, Device* to_device,
                     DeviceContext* to_device_ctx,
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
                     const DeviceLocality& client_locality,
@@ -46,8 +47,8 @@ class CollectiveRemoteAccessLocal : public CollectiveRemoteAccess {
                     CancellationManager* cancellation_manager,
                     const StatusCallback& done) override;
 
-  void PostToPeer(const string& peer_device, const string& peer_task,
-                  const string& key, Device* from_device,
+  void PostToPeer(const std::string& peer_device, const std::string& peer_task,
+                  const std::string& key, Device* from_device,
                   DeviceContext* from_device_ctx,
                   const AllocatorAttributes& from_alloc_attr,
                   const Tensor* from_tensor,
@@ -55,7 +56,7 @@ class CollectiveRemoteAccessLocal : public CollectiveRemoteAccess {
                   CancellationManager* cancellation_manager,
                   const StatusCallback& done) override;
 
-  void CheckPeerHealth(const string& peer_task, int64_t timeout_in_ms,
+  void CheckPeerHealth(const std::string& peer_task, int64_t timeout_in_ms,
                        const StatusCallback& done) override;
 
   BufRendezvous* buf_rendezvous() override { return &buf_rendezvous_; }

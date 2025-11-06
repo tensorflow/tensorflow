@@ -24,11 +24,12 @@ void CollectiveRemoteAccessLocal::StartAbort(const absl::Status& s) {
 }
 
 void CollectiveRemoteAccessLocal::RecvFromPeer(
-    const string& peer_device, const string& peer_task, bool peer_is_local,
-    const string& key, Device* to_device, DeviceContext* to_device_ctx,
-    const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
-    const DeviceLocality& client_locality, int dev_to_dev_stream_index,
-    CancellationManager* cancellation_manager, const StatusCallback& done) {
+    const std::string& peer_device, const std::string& peer_task,
+    bool peer_is_local, const std::string& key, Device* to_device,
+    DeviceContext* to_device_ctx, const AllocatorAttributes& to_alloc_attr,
+    Tensor* to_tensor, const DeviceLocality& client_locality,
+    int dev_to_dev_stream_index, CancellationManager* cancellation_manager,
+    const StatusCallback& done) {
   VLOG(1) << "RecvFromPeer " << this << " from " << peer_device << " key "
           << key;
   if (!peer_is_local) {
@@ -95,8 +96,8 @@ void CollectiveRemoteAccessLocal::RecvFromPeer(
 }
 
 void CollectiveRemoteAccessLocal::PostToPeer(
-    const string& peer_device, const string& peer_task, const string& key,
-    Device* from_device, DeviceContext* from_device_ctx,
+    const std::string& peer_device, const std::string& peer_task,
+    const std::string& key, Device* from_device, DeviceContext* from_device_ctx,
     const AllocatorAttributes& from_alloc_attr, const Tensor* from_tensor,
     const DeviceLocality& client_locality,
     CancellationManager* cancellation_manager, const StatusCallback& done) {
@@ -106,7 +107,7 @@ void CollectiveRemoteAccessLocal::PostToPeer(
                              from_alloc_attr, done, cancellation_manager);
 }
 
-void CollectiveRemoteAccessLocal::CheckPeerHealth(const string& peer_task,
+void CollectiveRemoteAccessLocal::CheckPeerHealth(const std::string& peer_task,
                                                   int64_t timeout_in_ms,
                                                   const StatusCallback& done) {
   // Assume local devices are always healthy.
