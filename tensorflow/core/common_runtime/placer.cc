@@ -40,10 +40,10 @@ namespace {
 
 struct NameCounts {
   mutex counts_mutex;
-  std::unordered_map<string, int> counts;
+  std::unordered_map<std::string, int> counts;
 };
 
-string MakeUniqueFilename(string name) {
+std::string MakeUniqueFilename(std::string name) {
   static NameCounts& instance = *new NameCounts;
 
   // Remove illegal characters from `name`.
@@ -60,7 +60,7 @@ string MakeUniqueFilename(string name) {
     count = instance.counts[name]++;
   }
 
-  string filename = name;
+  std::string filename = name;
   if (count > 0) {
     absl::StrAppend(&filename, "_", count);
   }
@@ -68,7 +68,7 @@ string MakeUniqueFilename(string name) {
   return filename;
 }
 
-absl::Status GetFileName(string base_name, string* fname) {
+absl::Status GetFileName(std::string base_name, std::string* fname) {
   const char* dir = nullptr;
   dir = getenv("TF_DUMP_GRAPH_PREFIX");
   if (!dir) {
@@ -90,9 +90,9 @@ absl::Status GetFileName(string base_name, string* fname) {
   return absl::OkStatus();
 }
 
-void DumpColocationGraph(const string& base_name,
+void DumpColocationGraph(const std::string& base_name,
                          const ColocationGraph& colocation_graph) {
-  string fname;
+  std::string fname;
   absl::Status status = GetFileName(base_name, &fname);
   if (status.ok()) {
     status = WriteStringToFile(Env::Default(), fname,
@@ -189,7 +189,7 @@ absl::Status AssignAndLog(int assigned_device, Node* node,
 
 }  // namespace
 
-Placer::Placer(Graph* graph, const string& function_name,
+Placer::Placer(Graph* graph, const std::string& function_name,
                const FunctionLibraryDefinition* flib_def,
                const DeviceSet* devices, const Device* default_local_device,
                bool allow_soft_placement, bool log_device_placement)
@@ -201,12 +201,12 @@ Placer::Placer(Graph* graph, const string& function_name,
       allow_soft_placement_(allow_soft_placement),
       log_device_placement_(log_device_placement) {}
 
-Placer::Placer(Graph* graph, const string& function_name,
+Placer::Placer(Graph* graph, const std::string& function_name,
                const FunctionLibraryDefinition* flib_def,
                const DeviceSet* devices, const Device* default_local_device)
     : Placer(graph, function_name, flib_def, devices, default_local_device,
              true, false) {}
-Placer::Placer(Graph* graph, const string& function_name,
+Placer::Placer(Graph* graph, const std::string& function_name,
                const FunctionLibraryDefinition* flib_def,
                const DeviceSet* devices)
     : Placer(graph, function_name, flib_def, devices, nullptr, true, false) {}
@@ -226,9 +226,8 @@ absl::Status Placer::Run(const GraphOptimizationPassOptions& options) {
   }
 
   if (VLOG_IS_ON(3)) {
-    DumpGraphToFile(
-        strings::StrCat(options.debug_filename_prefix, "placer_input"), *graph_,
-        nullptr);
+    DumpGraphToFile(absl::StrCat(options.debug_filename_prefix, "placer_input"),
+                    *graph_, nullptr);
   }
   if (VLOG_IS_ON(5)) {
     for (const Node* node : graph_->op_nodes()) {
@@ -358,16 +357,16 @@ absl::Status Placer::Run(const GraphOptimizationPassOptions& options) {
 
   if (VLOG_IS_ON(3)) {
     DumpGraphToFile(
-        strings::StrCat(options.debug_filename_prefix, "placer_output"),
-        *graph_, nullptr);
+        absl::StrCat(options.debug_filename_prefix, "placer_output"), *graph_,
+        nullptr);
     DumpColocationGraph(
-        strings::StrCat(options.debug_filename_prefix, "colocation_graph"),
+        absl::StrCat(options.debug_filename_prefix, "colocation_graph"),
         colocation_graph);
   }
   return absl::OkStatus();
 }
 
-bool Placer::CanAssignToDevice(const string& candidate_device_name,
+bool Placer::CanAssignToDevice(const std::string& candidate_device_name,
                                const std::vector<Device*>& devices) const {
   if (!candidate_device_name.empty()) {
     // 'devices' lists the set of devices that the placer or the user has
