@@ -149,18 +149,6 @@ class IotaTileAssignment {
   int size_bytes() const {
     return ndims_ * kPerDimBytes + reshape_ndims_ * kPerReshapeDimBytes;
   }
-
-  bool next_index(absl::Span<int64_t> index) const {
-    DCHECK_EQ(index.size(), ndims_);
-    for (int64_t i = ndims_ - 1; i >= 0; --i) {
-      index[i]++;
-      if (index[i] < dims_ptr()[i]) {
-        return true;
-      }
-      index[i] = 0;
-    }
-    return false;
-  }
   int32_t ndims_;
   int32_t reshape_ndims_;
   // Contiguous buffer storing `int64_t dims[]`, `int64_t reshape_dims[]`,
