@@ -188,7 +188,7 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
 
   absl::Status Initialize(IteratorContext* ctx) override
       ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (ctx->cancellation_manager()->IsCancelled()) {
       return absl::CancelledError(
           "ctx->cancellation_manager()->IsCancelled() is true. Would not "
@@ -211,7 +211,7 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
                                std::vector<Tensor>* out_tensors,
                                bool* end_of_sequence) override
       ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     IteratorContext::Params params(ctx);
     params.index_mapper = GetIndexMapper(ctx->index_mapper());
     IteratorContext global_shuffle_ctx(params);
@@ -249,7 +249,7 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
 
   absl::Status SaveInternal(SerializationContext* ctx,
                             IteratorStateWriter* writer) override {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     TF_RETURN_IF_ERROR(
         writer->WriteScalar(prefix(), kElementCount, element_count_));
     TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kEpochNumRandomSamples,
@@ -264,7 +264,7 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
 
   absl::Status RestoreInternal(IteratorContext* ctx,
                                IteratorStateReader* reader) override {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (ctx->restored_element_count().has_value()) {
       element_count_ = *ctx->restored_element_count();
     } else {

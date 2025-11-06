@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_
 
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -45,12 +46,12 @@ class GpuExecutor : public StreamExecutorCommon {
   int device_ordinal() const override { return device_ordinal_; };
 
   absl::StatusOr<std::vector<ApiTrace>> ExtractApiTrace() override {
-    absl::MutexLock lock(&logger_mu_);
+    absl::MutexLock lock(logger_mu_);
     return std::move(argument_logs_);
   }
 
   absl::Status RecordApiTrace(ApiTrace call) override {
-    absl::MutexLock lock(&logger_mu_);
+    absl::MutexLock lock(logger_mu_);
     if (std::holds_alternative<GemmCallTrace>(call) &&
         (argument_logging_mode_ & kLogGemm)) {
       argument_logs_.push_back(call);
@@ -59,12 +60,35 @@ class GpuExecutor : public StreamExecutorCommon {
   }
 
   bool SetArgumentLoggingMode(uint64_t mode) override {
-    absl::MutexLock lock(&logger_mu_);
+    absl::MutexLock lock(logger_mu_);
     argument_logging_mode_ = mode;
     return true;
   }
 
   uint64_t GetArgumentLoggingMode() const { return argument_logging_mode_; }
+
+  // Abstract class for multicast memory.
+  class MulticastMemory {
+   public:
+    virtual ~MulticastMemory() = default;
+
+    MulticastMemory() = default;
+
+    virtual absl::Status SubscribeDevice(int device_number) {
+      return absl::UnimplementedError("SubscribeDevice is not implemented.");
+    }
+
+    virtual absl::StatusOr<void*> MapMemory(void* device_ptr,
+                                            GpuExecutor* gpu_executor) {
+      return absl::UnimplementedError("MapMemory is not implemented.");
+    }
+  };
+
+  virtual absl::StatusOr<std::unique_ptr<MulticastMemory>>
+  CreateMulticastMemory(uint64_t size, int num_devices) {
+    return absl::UnimplementedError(
+        "CreateMulticastMemory is not implemented.");
+  };
 
  private:
   // The device ordinal value that this executor was initialized with; recorded

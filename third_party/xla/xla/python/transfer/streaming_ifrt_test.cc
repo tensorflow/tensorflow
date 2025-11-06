@@ -89,8 +89,10 @@ absl::StatusOr<SingleBufferCopyPlan> SetupTransferDestList(
   size_t copy_size = xla::ShapeUtil::ByteSizeOf(shape);
 
   results.dests.push_back(MakeDmaDestination(atm, 0, copy_size));
-  TF_ASSIGN_OR_RETURN(auto arr,
-                      ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0)));
+  // `CreateBuffersForAsyncHostToDevice` uses a default layout.
+  TF_ASSIGN_OR_RETURN(
+      auto arr, ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0),
+                                             /*has_custom_layout=*/false));
   results.arrays.push_back(std::move(arr));
   return results;
 }
@@ -125,7 +127,7 @@ void CopyIntoDest(tsl::RCReference<ChunkDestination> dest,
                             absl::StatusOr<void*> buf,
                             const DmaCopyChunk& chunk) {
           CHECK_OK(buf.status());
-          absl::MutexLock l(&mu);
+          absl::MutexLock l(mu);
           local_queue.push_back(LocalQueueInfo{*buf, chunk.offset, chunk.size});
         });
   }
@@ -134,7 +136,7 @@ void CopyIntoDest(tsl::RCReference<ChunkDestination> dest,
     mu.LockWhen(absl::Condition(&cond));
     auto state = local_queue.front();
     local_queue.pop_front();
-    mu.Unlock();
+    mu.unlock();
     TF_ASSERT_OK(
         dest->Put(state.buff, state.offset, state.size,
                   [cstate, buf = state.buff]() { cstate->ReturnBuffer(buf); }));
@@ -246,10 +248,10 @@ TEST(Semaphore, Async) {
   auto thread_wait_flip = [&thread_id, &mu](size_t my_thread_id) {
     auto cond = [&] { return thread_id == my_thread_id; };
     mu.LockWhen(absl::Condition(&cond));
-    mu.Unlock();
+    mu.unlock();
   };
   auto thread_flip = [&thread_id, &mu](size_t my_thread_id) {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     thread_id = 1 - thread_id;
   };
 

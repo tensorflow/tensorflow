@@ -123,7 +123,6 @@ py_strict_test(
     exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
     tags = tf_cuda_tests_tags() + [
         "notap",
-        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
     deps = [
         ":cuda_op",

@@ -30,13 +30,12 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-#if defined(INTEL_MKL)
-
 class ConvolutionTest : public HloTestBase,
                         public ::testing::WithParamInterface<PrimitiveType> {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
     return debug_options;
   }
 
@@ -761,8 +760,6 @@ INSTANTIATE_TEST_SUITE_P(
                      [](auto c) { return std::toupper(c); });
       return test_name;
     });
-
-#endif  // INTEL_MKL
 
 // Ensure at least one test case is linked to avoid test failures.
 TEST(Dummy, Test) {}

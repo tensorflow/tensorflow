@@ -118,6 +118,7 @@ uint64 Signature::Hash::operator()(const Signature& signature) const {
 
 static absl::StatusOr<Signature> AppendArguments(
     Signature signature, absl::Span<const XlaCompiler::Argument> args) {
+  signature.args.reserve(args.size());
   for (const XlaCompiler::Argument& arg : args) {
     switch (arg.kind) {
       case XlaCompiler::Argument::kConstant:

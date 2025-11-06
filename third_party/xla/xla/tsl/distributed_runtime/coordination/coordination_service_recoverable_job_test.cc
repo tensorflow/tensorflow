@@ -51,12 +51,12 @@ constexpr char kServiceLeader[] = "/job:parameter_server/replica:0/task:0";
 class TestCoordinationClientCache : public CoordinationClientCache {
  public:
   void AddTask(const std::string& target, CoordinationClient* client) {
-    absl::MutexLock l(&clients_mu_);
+    absl::MutexLock l(clients_mu_);
     clients_.emplace(target, client);
   }
 
   CoordinationClient* GetClient(const std::string& target) override {
-    absl::MutexLock l(&clients_mu_);
+    absl::MutexLock l(clients_mu_);
     if (auto it = clients_.find(target); it != clients_.end()) {
       return it->second;
     }

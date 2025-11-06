@@ -128,7 +128,7 @@ HloSharding::HloSharding(DeviceListRef devices, MemoryKind memory_kind,
 
 absl::StatusOr<Shape> HloSharding::GetShardShape(const Shape& shape) const {
   if (xla_hlo_sharding_.IsTileMaximal() || xla_hlo_sharding_.IsManual() ||
-      xla_hlo_sharding_.IsUnknown()) {
+      xla_hlo_sharding_.IsUnreduced() || xla_hlo_sharding_.IsUnknown()) {
     return shape;
   }
   if (xla_hlo_sharding_.TotalNumTiles() != devices_->size()) {
@@ -193,7 +193,8 @@ HloSharding::Disassemble(
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
   bool is_even_sharding = false;
-  if (xla_hlo_sharding_.IsReplicated() || xla_hlo_sharding_.IsTileMaximal()) {
+  if (xla_hlo_sharding_.IsReplicated() || xla_hlo_sharding_.IsTileMaximal() ||
+      xla_hlo_sharding_.IsUnreduced()) {
     is_even_sharding = true;
   } else if (xla_hlo_sharding_.IsTiled()) {
     const int64_t tiled_data_rank = xla_hlo_sharding_.TiledDataRank();

@@ -254,7 +254,7 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
   // the identities of tasks in the worker pool after the service is
   // running.
   ::grpc::ServerBuilder builder;
-  builder.AddListeningPort(strings::StrCat("0.0.0.0:", requested_port),
+  builder.AddListeningPort(absl::StrCat("0.0.0.0:", requested_port),
                            GetServerCredentials(server_def_), &bound_port_);
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
 
@@ -385,7 +385,7 @@ absl::Status GrpcServer::ParseChannelSpec(
       // the worker port. We swap in the bound worker port when we see this
       // pattern.
       if (job.name() == options.job_name && task.first == options.task_index) {
-        host_ports[task.first] = strings::StrCat(host_name_, ":", bound_port_);
+        host_ports[task.first] = absl::StrCat(host_name_, ":", bound_port_);
       } else {
         host_ports[task.first] = task.second;
       }
@@ -585,7 +585,7 @@ absl::Status GrpcServer::Join() {
 }
 
 const string GrpcServer::target() const {
-  return strings::StrCat("grpc://", host_name_, ":", bound_port_);
+  return absl::StrCat("grpc://", host_name_, ":", bound_port_);
 }
 
 std::shared_ptr<::grpc::ServerCredentials> GrpcServer::GetServerCredentials(

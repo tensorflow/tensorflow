@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_MMAP_HANDLE_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_MMAP_HANDLE_H_
 
-#if defined(_MSC_VER)
+#if defined(_WIN32)
 #include <windows.h>
 #endif
 
@@ -130,7 +130,7 @@ class MMapHandle {
   size_t offset_ = 0;
   size_t offset_page_adjustment_ = 0;
   uint8_t* data_ = nullptr;
-#if defined(_MSC_VER)
+#if defined(_WIN32)
   HANDLE file_mapping_ = 0;
 #endif
 };

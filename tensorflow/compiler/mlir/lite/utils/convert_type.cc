@@ -114,6 +114,8 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
       return mlir::ComplexType::get(builder.getF32Type());
     case tflite::TensorType_COMPLEX128:
       return mlir::ComplexType::get(builder.getF64Type());
+    case tflite::TensorType_INT2:
+      return builder.getIntegerType(2);
     case tflite::TensorType_INT4:
       return builder.getIntegerType(4);
     case tflite::TensorType_INT8:
@@ -143,7 +145,9 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_FLOAT;
     case tflite::TensorType_FLOAT64:
       return tensorflow::DT_DOUBLE;
-    // TODO(b/246806634): Tensorflow DT_INT4 type doesn't exist yet
+    // TODO(b/246806634): Tensorflow DT_INT2/4 type doesn't exist yet
+    case tflite::TensorType_INT2:
+      return tensorflow::DT_INT8;
     case tflite::TensorType_INT4:
       return tensorflow::DT_INT8;
     case tflite::TensorType_INT8:

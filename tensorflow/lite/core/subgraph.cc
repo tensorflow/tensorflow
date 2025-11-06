@@ -322,6 +322,7 @@ void Subgraph::CleanupNode(int node_index) {
   TfLiteIntArrayFree(node.intermediates);
   if (node.builtin_data) free(node.builtin_data);
   OpFree(registration, node.user_data);
+  node.user_data = nullptr;
   node.builtin_data = nullptr;
 }
 
@@ -523,7 +524,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
 
   // The subgraph is taking ownership of the external registration, in case the
   // user has supplied an opaque delegate.
-  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+  if (TfLiteDelegateIsOpaque(delegate)) {
     // If the user has supplied an opaque delegate, then they _must_ also use
     // TfLiteOperator.
     if (!registration.registration_external) {
@@ -594,7 +595,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
         int node_index;
 
         void* delegate_params = nullptr;
-        if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+        if (TfLiteDelegateIsOpaque(delegate)) {
           TfLiteOpaqueDelegateParams* opaque_params =
               CreateOpaqueDelegateParams(delegate, node_subset);
           delegate_params = opaque_params;

@@ -11,6 +11,8 @@ load(
     "if_gpu_is_configured",
 )
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
+load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 def _lookup_file(filegroup, path):

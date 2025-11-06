@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/service/call_inliner.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -115,24 +118,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
         outer_->AddInstruction(std::move(new_hlo));
     TF_RETURN_IF_ERROR(NoteMapping(hlo, new_hlo_pointer));
 
-    new_hlo_pointer->CopyOriginalValue(hlo, /*clone=*/true);
-    if (std::shared_ptr<OriginalValue> original_value =
-            new_hlo_pointer->original_value()) {
-      for (auto& pair : original_value->mutable_original_arrays()) {
-        std::optional<OriginalArray>& original_array = pair.second;
-        if (original_array.has_value()) {
-          std::string call_instruction_name;
-          if (std::shared_ptr<OriginalValue> call_original_value =
-                  call_->original_value()) {
-            call_instruction_name = call_original_value->original_arrays()
-                                        .begin()
-                                        ->second->instruction_name;
-          }
-          original_array->instruction_name = absl::StrCat(
-              call_instruction_name, "/", original_array->instruction_name);
-        }
-      }
-    }
+    PropagateOriginalValue(new_hlo_pointer, hlo);
 
     // Account for control edges.
     for (HloInstruction* control_predecessor : hlo->control_predecessors()) {
@@ -216,6 +202,47 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     TF_RET_CHECK(result.second)
         << "A mapping for the subcomputation HLO is already present.";
     return absl::OkStatus();
+  }
+
+  // Propagates original value information from the call and the original HLO
+  // to the newly cloned HLO.
+  void PropagateOriginalValue(HloInstruction* new_hlo_pointer,
+                              HloInstruction* hlo) {
+    std::shared_ptr<OriginalValue> call_original_value =
+        call_->original_value();
+    if (!call_original_value) {
+      new_hlo_pointer->set_original_value(nullptr);
+      return;
+    }
+    std::optional<std::string> call_instructions =
+        call_original_value->GetOriginalCallLikeInstructions();
+    if (!call_instructions.has_value()) {
+      // If the call instruction is lost, we must drop the original values
+      // on the inlined instructions because the call hierarchy is lost.
+      new_hlo_pointer->set_original_value(nullptr);
+      return;
+    }
+    new_hlo_pointer->CopyOriginalValue(hlo, /*clone=*/true,
+                                       /*issue_warning=*/true);
+    if (call_instructions->empty()) {
+      // Empty call instructions means the call is synthetic and hence the
+      // inlined instruction do not need to be prefixed with the call
+      // instructions. Hence we can just return here to have the copied original
+      // value to be used.
+      return;
+    }
+    std::shared_ptr<OriginalValue> original_value =
+        new_hlo_pointer->original_value();
+    if (!original_value) {
+      return;
+    }
+    for (auto& pair : original_value->mutable_original_arrays()) {
+      std::optional<OriginalArray>& original_array = pair.second;
+      if (original_array.has_value()) {
+        original_array->instruction_name = absl::StrCat(
+            *call_instructions, "/", original_array->instruction_name);
+      }
+    }
   }
 
   HloInstruction* call_;
@@ -305,7 +332,7 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   if (instruction->GetModule()->config().use_shardy_partitioner() &&
       (absl::StrContains(instruction->to_apply()->name(), "shmap_body") ||
        absl::StrContains(instruction->to_apply()->name(),
-                         sdy::kManualComputationBodyFuncName.str()))) {
+                         sdy::kManualComputationFuncName.str()))) {
     // TODO(b/436603025). Remove this special handling by marking the
     // instruction as uninlineable with the frontend attribute.
     //
@@ -315,7 +342,7 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
     // - shmap_body: We do not want to inline the bodies of JAX shard maps to
     //   import them into an `sdy.ManualComputationOp`. This is for the MHLO
     //   round-trip pipeline
-    // - kManualComputationBodyFuncName: Same as shmap_body except for the SDY
+    // - kManualComputationFuncName: Same as shmap_body except for the SDY
     //   round-trip pipeline.
     return false;
   }
@@ -345,7 +372,8 @@ bool CallInliner::ShouldInline(const CallGraph& call_graph,
 
 absl::StatusOr<bool> CallInliner::InlineAndLegalize(
     const CallGraph& call_graph, HloComputation* computation,
-    absl::Span<HloInstruction* const> instruction_sequence) const {
+    absl::Span<HloInstruction* const> instruction_sequence,
+    std::optional<InlinedInstructionMap*> inline_map) {
   HloModule* module = computation->parent();
   bool did_node_mutate = false;
   std::vector<HloInstruction*> inlined_instructions;
@@ -358,23 +386,29 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
       // The caller instruction will get removed after inlining. Record the
       // callee computation beforehand, so we can find its schedule.
       HloComputation* callee = instruction->to_apply();
-      TF_ASSIGN_OR_RETURN(CallInliner::InlinedInstructionMap inline_map,
-                          Inline(instruction));
+      TF_ASSIGN_OR_RETURN(
+          CallInliner::InlinedInstructionMap inline_map_cur_call,
+          Inline(instruction));
       if (module->has_schedule()) {
         for (HloInstruction* inlined_instruction :
              module->schedule().sequence(callee).instructions()) {
           // Parameters were already added to sequence as operands to the
           // call.
           if (inlined_instruction->opcode() != HloOpcode::kParameter) {
-            inlined_instructions.push_back(inline_map[inlined_instruction]);
+            inlined_instructions.push_back(
+                inline_map_cur_call[inlined_instruction]);
           }
         }
       }
       if (update_domain_) {
         HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-        for (const auto& [call_inst, inlined_inst] : inline_map) {
+        for (const auto& [call_inst, inlined_inst] : inline_map_cur_call) {
           TF_RETURN_IF_ERROR(isolator.UpdateDomains(inlined_inst).status());
         }
+      }
+      if (inline_map.has_value()) {
+        inline_map.value()->insert(inline_map_cur_call.begin(),
+                                   inline_map_cur_call.end());
       }
       did_node_mutate = true;
     } else if (module->has_schedule()) {
@@ -386,20 +420,45 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
         HloInstructionSequence(inlined_instructions);
   }
   if (did_node_mutate && uniquify_channel_ids_) {
-    int unique_channel_id = 1;
     for (HloInstruction* instruction : computation->instructions()) {
-      if (dynamic_cast<HloChannelInstruction*>(instruction)) {
-        instruction->set_channel_id(unique_channel_id++);
+      if (!dynamic_cast<HloChannelInstruction*>(instruction)) {
+        continue;
       }
+      // Channel IDs for host transfers are part of the ABI, and can never be
+      // uniquified.
+      HloSendRecvInstruction* send_recv =
+          dynamic_cast<HloSendRecvInstruction*>(instruction);
+      if (send_recv && send_recv->is_host_transfer()) {
+        continue;
+      }
+      instruction->set_channel_id(next_unique_channel_id_++);
     }
   }
   return did_node_mutate;
 }
 
-absl::StatusOr<bool> CallInliner::Run(
-    HloModule* module,
+absl::StatusOr<bool> CallInliner::RunWithInlineMap(
+    HloModule* module, std::optional<InlinedInstructionMap*> inline_map,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+  if (uniquify_channel_ids_) {
+    // If we're going to uniquify channel IDs, make sure the new IDs we assigned
+    // are not already used in the module. The easiest way is to just start at
+    // the top currently used ID.
+    for (HloComputation* computation : module->computations()) {
+      for (HloInstruction* instruction : computation->instructions()) {
+        HloChannelInstruction* channel_instruction =
+            dynamic_cast<HloChannelInstruction*>(instruction);
+        if (channel_instruction &&
+            channel_instruction->channel_id().has_value()) {
+          next_unique_channel_id_ =
+              std::max(next_unique_channel_id_,
+                       channel_instruction->channel_id().value() + 1);
+        }
+      }
+    }
+  }
+
   // Because call graph nodes are visited in post-order (callees before callers)
   // we'll always inline kCalls into their callers in the appropriate order.
   TF_ASSIGN_OR_RETURN(
@@ -415,12 +474,12 @@ absl::StatusOr<bool> CallInliner::Run(
               HloInstructionSequence& sequence =
                   module->schedule().GetOrCreateSequence(node.computation());
               return InlineAndLegalize(*call_graph, node.computation(),
-                                       sequence.instructions());
+                                       sequence.instructions(), inline_map);
             }
 
             return InlineAndLegalize(
                 *call_graph, node.computation(),
-                node.computation()->MakeInstructionPostOrder());
+                node.computation()->MakeInstructionPostOrder(), inline_map);
           }));
   if (did_mutate) {
     // Run DCE to remove called computations which are now becoming unused.
@@ -434,6 +493,50 @@ absl::StatusOr<bool> CallInliner::Run(
     }
   }
   return did_mutate;
+}
+
+absl::StatusOr<bool> CallInliner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return RunWithInlineMap(module, std::nullopt, execution_threads);
+}
+
+bool IsInlineableComputation(HloComputation* computation) {
+  auto is_inlineable_call_op = [](HloInstruction* instruction) {
+    bool prerequisite = instruction->opcode() == HloOpcode::kCall &&
+                        !instruction->has_backend_config() &&
+                        !instruction->parent()->IsAsyncComputation();
+    if (!prerequisite || !InlineInstruction(instruction)) {
+      return false;
+    }
+    return true;
+  };
+  return absl::c_any_of(computation->instructions(), is_inlineable_call_op);
+}
+
+const HloInstruction* InlinedModule::get_inlined_inst(
+    const HloInstruction* inst) {
+  auto it = clone_context->cloned_instructions().find(inst);
+  if (it != clone_context->cloned_instructions().end()) {
+    auto it2 = clone_inlined_map.find(it->second);
+    if (it2 != clone_inlined_map.end()) {
+      return it2->second;
+    }
+    return it->second;
+  }
+  return nullptr;
+}
+
+absl::StatusOr<InlinedModule> GetInlinedModule(const HloModule* module) {
+  auto [cloned_module, clone_context] =
+      module->CloneWithContext("inline", module->config());
+  CallInliner::InlinedInstructionMap clone_inlined_map;
+  CallInliner inliner;
+  TF_RETURN_IF_ERROR(
+      inliner.RunWithInlineMap(cloned_module.get(), &clone_inlined_map, {})
+          .status());
+  return InlinedModule{std::move(cloned_module), std::move(clone_context),
+                       std::move(clone_inlined_map)};
 }
 
 }  // namespace xla

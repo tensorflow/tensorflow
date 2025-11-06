@@ -297,6 +297,34 @@ ENTRY e {
   EXPECT_EQ(analysis_.IrSize(*root), 4);
 }
 
+TEST_F(GpuHloCostAnalysisTest, ElementwiseBitcast) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f {
+  p0 = s8[10] parameter(0)
+  negate = s8[10] negate(p0)
+  bitcast = u8[10] bitcast(p0)
+  ROOT result = (s8[10], u8[10]) tuple(negate, bitcast)
+}
+
+ENTRY e {
+  param0 = s8[10] parameter(0)
+  ROOT fusion = (s8[10], u8[10]) fusion(param0), kind=kLoop, calls=f
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  // There are 2 element-wise accesses from the root. One of them is a
+  // elementwise bitcast, which needs to be detected separately as in general
+  // bitcasts are not elementwise.
+  EXPECT_EQ(analysis_.IrSize(*root->fused_parameter(0)), 1);
+  EXPECT_EQ(analysis_.IrSize(*root), 4);
+}
+
 TEST_F(GpuHloCostAnalysisTest, MixedUsers) {
   absl::string_view hlo_string = R"(
 HloModule m

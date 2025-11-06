@@ -103,7 +103,7 @@ string GenTypeScriptOp::Code() {
   AddOpAttrs();
   AddMethodReturnAndClose();
 
-  strings::StrAppend(&result_, "\n");
+  absl::StrAppend(&result_, "\n");
   return result_;
 }
 
@@ -161,54 +161,54 @@ string GenTypeScriptOp::InputForAttr(const OpDef::AttrDef& op_def_attr) {
   if (arg_list != attr_arg_idx_map_.end()) {
     for (auto iter = arg_list->second.begin(); iter != arg_list->second.end();
          ++iter) {
-      strings::StrAppend(&inputs, input_op_args_[*iter].op_def_arg.name());
+      absl::StrAppend(&inputs, input_op_args_[*iter].op_def_arg.name());
     }
   }
   return inputs;
 }
 
 void GenTypeScriptOp::AddMethodSignature() {
-  strings::StrAppend(&result_, "export function ", api_def_.endpoint(0).name(),
-                     "(");
+  absl::StrAppend(&result_, "export function ", api_def_.endpoint(0).name(),
+                  "(");
 
   bool is_first = true;
   for (auto& in_arg : input_op_args_) {
     if (is_first) {
       is_first = false;
     } else {
-      strings::StrAppend(&result_, ", ");
+      absl::StrAppend(&result_, ", ");
     }
 
     auto op_def_arg = in_arg.op_def_arg;
 
-    strings::StrAppend(&result_, op_def_arg.name(), ": ");
+    absl::StrAppend(&result_, op_def_arg.name(), ": ");
     if (IsListAttr(op_def_arg)) {
-      strings::StrAppend(&result_, "tfc.Tensor[]");
+      absl::StrAppend(&result_, "tfc.Tensor[]");
     } else {
-      strings::StrAppend(&result_, "tfc.Tensor");
+      absl::StrAppend(&result_, "tfc.Tensor");
     }
   }
 
   if (num_outputs_ == 1) {
-    strings::StrAppend(&result_, "): tfc.Tensor {\n");
+    absl::StrAppend(&result_, "): tfc.Tensor {\n");
   } else {
-    strings::StrAppend(&result_, "): tfc.Tensor[] {\n");
+    absl::StrAppend(&result_, "): tfc.Tensor[] {\n");
   }
 }
 
 void GenTypeScriptOp::AddOpAttrs() {
-  strings::StrAppend(&result_, "  const opAttrs = [\n");
+  absl::StrAppend(&result_, "  const opAttrs = [\n");
 
   bool is_first = true;
   for (auto& attr : op_attrs_) {
     if (is_first) {
       is_first = false;
     } else {
-      strings::StrAppend(&result_, ",\n");
+      absl::StrAppend(&result_, ",\n");
     }
 
     // Append 4 spaces to start:
-    strings::StrAppend(&result_, "    ");
+    absl::StrAppend(&result_, "    ");
 
     if (attr.op_def_attr.type() == "type") {
       // Type OpAttributes can be generated from a helper function:
@@ -216,17 +216,17 @@ void GenTypeScriptOp::AddOpAttrs() {
                          attr.op_def_attr.name(), "', ",
                          InputForAttr(attr.op_def_attr), ")");
     } else if (attr.op_def_attr.type() == "int") {
-      strings::StrAppend(&result_, "{name: '", attr.op_def_attr.name(), "', ");
-      strings::StrAppend(&result_, "type: nodeBackend().binding.TF_ATTR_INT, ");
-      strings::StrAppend(&result_, "value: ", InputForAttr(attr.op_def_attr),
-                         ".length}");
+      absl::StrAppend(&result_, "{name: '", attr.op_def_attr.name(), "', ");
+      absl::StrAppend(&result_, "type: nodeBackend().binding.TF_ATTR_INT, ");
+      absl::StrAppend(&result_, "value: ", InputForAttr(attr.op_def_attr),
+                      ".length}");
     }
   }
-  strings::StrAppend(&result_, "\n  ];\n");
+  absl::StrAppend(&result_, "\n  ];\n");
 }
 
 void GenTypeScriptOp::AddMethodReturnAndClose() {
-  strings::StrAppend(&result_, "  return null;\n}\n");
+  absl::StrAppend(&result_, "  return null;\n}\n");
 }
 
 void WriteTSOp(const OpDef& op_def, const ApiDef& api_def, WritableFile* ts) {

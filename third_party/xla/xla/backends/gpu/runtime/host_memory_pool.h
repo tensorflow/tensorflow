@@ -89,7 +89,7 @@ class HostMemoryPool {
                  PrimitiveType type);
 
   void Release(void* ptr) {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     free_list_.push(ptr);
   }
 

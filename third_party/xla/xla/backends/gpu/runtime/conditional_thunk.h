@@ -71,6 +71,7 @@ class ConditionalThunk : public Thunk {
   }
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
+  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
   bool branch_index_is_bool() const { return branch_index_is_bool_; }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
@@ -88,6 +89,8 @@ class ConditionalThunk : public Thunk {
       ThunkInfo thunk_info, const ConditionalThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations,
       const Deserializer& deserializer);
+
+  std::string ToString(int indent) const override;
 
  private:
   const BufferAllocation::Slice branch_index_buffer_index_;

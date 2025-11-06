@@ -89,8 +89,8 @@ class Var : public ResourceBase {
   absl::Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override;
 
   std::string DebugString() const override {
-    return strings::StrCat(DataTypeString(tensor_.dtype()), "/",
-                           tensor_.shape().DebugString());
+    return absl::StrCat(DataTypeString(tensor_.dtype()), "/",
+                        tensor_.shape().DebugString());
   }
 
   std::string MakeRefCountingHandleName(int64_t resource_id) const override;

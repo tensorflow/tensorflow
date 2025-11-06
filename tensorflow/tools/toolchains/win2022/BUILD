@@ -9,8 +9,6 @@ java_runtime(
 )
 
 # Register a Windows 2022 (Clang) platform.
-# Note that while this does support RBE, the current pool size is tiny,
-# and this platform is meant to be used as a non-RBE one, for now.
 platform(
     name = "windows_ltsc2022_clang",
     constraint_values = [

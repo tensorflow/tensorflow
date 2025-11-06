@@ -36,7 +36,7 @@ PjRtState* PjRtState::Create() { return new PjRtState(); }
 
 absl::StatusOr<xla::PjRtClient*> PjRtState::GetPjRtClient(
     const DeviceType& device_type) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (auto it = clients_.find(device_type); it != clients_.end()) {
     return it->second.get();
   }
@@ -46,7 +46,7 @@ absl::StatusOr<xla::PjRtClient*> PjRtState::GetPjRtClient(
 
 absl::StatusOr<xla::PjRtClient*> PjRtState::GetOrCreatePjRtClient(
     const DeviceType& device_type) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (auto it = clients_.find(device_type); it != clients_.end()) {
     return it->second.get();
   }
@@ -68,7 +68,7 @@ absl::StatusOr<xla::PjRtClient*> PjRtState::GetOrCreatePjRtClient(
 
 absl::Status PjRtState::SetPjRtClient(const DeviceType& device_type,
                                       std::unique_ptr<xla::PjRtClient> client) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (auto it = clients_.find(device_type); it != clients_.end()) {
     unused_.push_back(std::move(it->second));
   }
@@ -77,7 +77,7 @@ absl::Status PjRtState::SetPjRtClient(const DeviceType& device_type,
 }
 
 absl::Status PjRtState::MovePjRtClientToUnused(const DeviceType& device_type) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (auto it = clients_.find(device_type); it != clients_.end()) {
     unused_.push_back(std::move(it->second));
     clients_.erase(it);
@@ -89,13 +89,13 @@ absl::Status PjRtState::MovePjRtClientToUnused(const DeviceType& device_type) {
 
 absl::Status PjRtState::SetPjRtGpuClientCreationInfo(
     std::unique_ptr<PjRtGpuClientCreationInfo> info) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   pjrt_gpu_client_creation_info_ = std::move(info);
   return absl::OkStatus();
 }
 
 PjRtGpuClientCreationInfo* PjRtState::GetPjRtGpuClientCreationInfo() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return pjrt_gpu_client_creation_info_.get();
 }
 

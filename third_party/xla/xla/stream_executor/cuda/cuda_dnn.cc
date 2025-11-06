@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cudnn_api_wrappers.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
 #include "xla/stream_executor/cuda/cudnn_sdpa_score_mod.h"
 #include "xla/stream_executor/data_type.h"
@@ -67,6 +68,7 @@ limitations under the License.
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
@@ -234,10 +236,10 @@ class CudnnHandle {
 //
 // Patch releases are always forward and backward compatible and therefore
 // need not match.
-bool IsSourceCompatibleWithCudnnLibrary(dnn::VersionInfo source_version,
-                                        dnn::VersionInfo loaded_version) {
-  return loaded_version.major_version() == source_version.major_version() &&
-         loaded_version.minor_version() >= source_version.minor_version();
+bool IsSourceCompatibleWithCudnnLibrary(const SemanticVersion& source_version,
+                                        const SemanticVersion& loaded_version) {
+  return loaded_version.major() == source_version.major() &&
+         loaded_version.minor() >= source_version.minor();
 }
 
 }  // namespace
@@ -261,7 +263,7 @@ class CudnnAccess {
   }
 
   ~CudnnAccess() {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     cudnnDestroy(handle_);
 
     if (compilation_handle_) {
@@ -309,7 +311,7 @@ class CudnnAccess {
   void NotifyStreamDestroyed(Stream* stream) {
     CUstream cu_stream =
         absl::bit_cast<CUstream>(stream->platform_specific_handle().stream);
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (current_stream_ && cu_stream == *current_stream_) {
       current_stream_.reset();
     }
@@ -337,12 +339,6 @@ namespace {
 // RNNs in cudnn.
 cudnnDataType_t GetRnnComputeType(dnn::DataType data_type);
 
-absl::StatusOr<int> GetCudnnProperty(libraryPropertyType type) {
-  int value;
-  RETURN_IF_CUDNN_ERROR(cudnnGetProperty(type, &value));
-  return value;
-}
-
 cudnnRNNAlgo_t ToCudnnRNNAlgo(std::optional<dnn::AlgorithmDesc> algorithm) {
   if (!algorithm.has_value()) {
     return CUDNN_RNN_ALGO_STANDARD;
@@ -356,13 +352,6 @@ cudnnRNNAlgo_t ToCudnnRNNAlgo(std::optional<dnn::AlgorithmDesc> algorithm) {
     default:
       LOG(FATAL) << "Unsupported Cudnn RNN algorithm: " << algorithm->algo_id();
   }
-}
-
-absl::StatusOr<dnn::VersionInfo> GetLoadedCudnnVersion() {
-  TF_ASSIGN_OR_RETURN(int major, GetCudnnProperty(MAJOR_VERSION));
-  TF_ASSIGN_OR_RETURN(int minor, GetCudnnProperty(MINOR_VERSION));
-  TF_ASSIGN_OR_RETURN(int patch_level, GetCudnnProperty(PATCH_LEVEL));
-  return dnn::VersionInfo(major, minor, patch_level);
 }
 
 enum class PreloadCudnnType { ConvFwd, ConvBwdFilter, ConvBwdData, Rnn };
@@ -450,14 +439,15 @@ absl::Status CudnnSupport::Init() {
   cudnnHandle_t cudnn_handle = nullptr;
   const auto status = cudnnCreate(&cudnn_handle);
   if (status == CUDNN_STATUS_SUCCESS) {
-    dnn::VersionInfo source_version(CUDNN_MAJOR, CUDNN_MINOR, CUDNN_PATCHLEVEL);
+    constexpr SemanticVersion kSourceVersion(CUDNN_MAJOR, CUDNN_MINOR,
+                                             CUDNN_PATCHLEVEL);
 
-    TF_ASSIGN_OR_RETURN(dnn::VersionInfo loaded_version,
-                        GetLoadedCudnnVersion());
-    if (!IsSourceCompatibleWithCudnnLibrary(source_version, loaded_version)) {
+    TF_ASSIGN_OR_RETURN(SemanticVersion loaded_version,
+                        cuda::GetLoadedCudnnVersion());
+    if (!IsSourceCompatibleWithCudnnLibrary(kSourceVersion, loaded_version)) {
       const std::string error = absl::StrCat(
           "Loaded runtime CuDNN library: ", loaded_version.ToString(),
-          " but source was compiled with: ", source_version.ToString(),
+          " but source was compiled with: ", kSourceVersion.ToString(),
           ".  CuDNN library needs to have matching major version and equal or "
           "higher minor version. If using a binary install, upgrade your CuDNN "
           "library.  If building from sources, make sure the library loaded at "
@@ -504,7 +494,10 @@ void CudnnSupport::NotifyStreamDestroyed(Stream* stream) /* override */ {
 }
 
 absl::StatusOr<stream_executor::dnn::VersionInfo> CudnnSupport::GetVersion() {
-  return GetLoadedCudnnVersion();
+  TF_ASSIGN_OR_RETURN(SemanticVersion version,
+                      stream_executor::cuda::GetLoadedCudnnVersion());
+  return stream_executor::dnn::VersionInfo(version.major(), version.minor(),
+                                           version.patch());
 }
 
 namespace {
@@ -882,9 +875,6 @@ class CudnnConvolutionDescriptor {
     absl::Span<const int64_t> strides64 = convolution_descriptor.strides();
     absl::Span<const int64_t> padding64 = convolution_descriptor.padding();
     absl::Span<const int64_t> dilations64 = convolution_descriptor.dilations();
-    CHECK_NE(convolution_descriptor.pad_alignment(),
-             dnn::PadAlignment::kTensorFlowPadding)
-        << "TensorFlow padding alignment is not supported.";
 
     // cuDNN requires arrays of ints.
     std::vector<int> strides(convolution_descriptor.ndims());
@@ -2949,9 +2939,6 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
   int conv_dim = convolution_descriptor.ndims();
 
   auto accumulator_type = ToCudnnDataType(GetConvAccumulatorType(input_type));
-  CHECK_NE(convolution_descriptor.pad_alignment(),
-           dnn::PadAlignment::kTensorFlowPadding)
-      << "TensorFlow padding alignment is not supported.";
 
   auto conv_desc =
       cudnn_frontend::ConvDescBuilder()
@@ -3050,15 +3037,15 @@ OpNameStringToOperandKindAndMode(std::string opstring) {
 // Struct describing the convolution, pointwise and reduction ops in the
 // graph.
 struct OpDescriptor {
-  int uid;                        // The UID of the op.
-  std::vector<int> operand_uids;  // The UIDs of the operands of the op that
-                                  // are part of the graph.
-  OpMode mode;                    // The mode describing the op.
-  TensorKind operand_kind;        // The kind of a second operand.
-  TensorKind result_kind;         // The kind of the output.
-  dnn::DataType result_type;      // The type of the output.
-  bool is_virtual;                // A virtual op has a user within the graph.
-  int sequence_index;             // The index of the op in the sequence.
+  int64_t uid;                        // The UID of the op.
+  std::vector<int64_t> operand_uids;  // The UIDs of the operands of the op that
+                                      // are part of the graph.
+  OpMode mode;                        // The mode describing the op.
+  TensorKind operand_kind;            // The kind of a second operand.
+  TensorKind result_kind;             // The kind of the output.
+  dnn::DataType result_type;          // The type of the output.
+  bool is_virtual;     // A virtual op has a user within the graph.
+  int sequence_index;  // The index of the op in the sequence.
 };
 
 // Class describing the graph of ops to be fused into the cuDNN convolution
@@ -3067,13 +3054,13 @@ class OpGraph {
  public:
   OpGraph() = default;
 
-  absl::Status AddOp(int uid, std::vector<int> operand_uids, OpMode mode,
-                     TensorKind operand_kind, TensorKind result_kind,
-                     dnn::DataType result_type) {
+  absl::Status AddOp(int64_t uid, std::vector<int64_t> operand_uids,
+                     OpMode mode, TensorKind operand_kind,
+                     TensorKind result_kind, dnn::DataType result_type) {
     ops_.emplace_back(OpDescriptor({uid, operand_uids, mode, operand_kind,
                                     result_kind, result_type, false, -1}));
     // If they exist, the operands are virtual.
-    for (int operand_uid : operand_uids) {
+    for (int64_t operand_uid : operand_uids) {
       auto it = std::find_if(
           ops_.begin(), ops_.end(),
           [operand_uid](OpDescriptor op) { return op.uid == operand_uid; });
@@ -3085,7 +3072,7 @@ class OpGraph {
     return absl::OkStatus();
   }
 
-  absl::StatusOr<OpDescriptor> FindOpDescriptor(int uid) const {
+  absl::StatusOr<OpDescriptor> FindOpDescriptor(int64_t uid) const {
     auto it = std::find_if(ops_.begin(), ops_.end(),
                            [uid](OpDescriptor op) { return op.uid == uid; });
     if (it == ops_.end()) {
@@ -3101,7 +3088,7 @@ class OpGraph {
     return ops_[index];
   }
 
-  absl::Status SetSequenceIndex(int uid, int index) {
+  absl::Status SetSequenceIndex(int64_t uid, int index) {
     auto it = std::find_if(ops_.begin(), ops_.end(),
                            [uid](OpDescriptor op) { return op.uid == uid; });
     if (it == ops_.end()) {
@@ -3150,15 +3137,15 @@ GetGenericCudnnOperationGraph(
       dnn::DataType output_type;
       std::string::size_type m = serialized_graph.find('[', pos);
       std::string::size_type n = serialized_graph.find(']', pos);
-      int uid = std::stoi(serialized_graph.substr(pos, m - pos - 1));
+      int64_t uid = std::stol(serialized_graph.substr(pos, m - pos - 1));
       std::string data_type_string = serialized_graph.substr(m + 1, n - m - 1);
       m = serialized_graph.find('(', pos);
       std::string op_string = serialized_graph.substr(n + 1, m - n - 1);
-      std::vector<int> operands;
+      std::vector<int64_t> operands;
       std::string::size_type l = serialized_graph.find_first_of(",)", m + 1);
       while (l > m + 1) {
         operands.push_back(
-            std::stoi(serialized_graph.substr(m + 1, l - m - 1)));
+            std::stol(serialized_graph.substr(m + 1, l - m - 1)));
         if (serialized_graph[l] == ')') {
           break;
         }
@@ -3298,9 +3285,6 @@ GetGenericCudnnOperationGraph(
                         /*is_virtual=*/op_descriptor.is_virtual));
 
   auto accumulator_type = ToCudnnDataType(GetConvAccumulatorType(input_type));
-  CHECK_NE(convolution_descriptor.pad_alignment(),
-           dnn::PadAlignment::kTensorFlowPadding)
-      << "TensorFlow padding alignment is not supported.";
 
   int conv_dim = convolution_descriptor.ndims();
   auto conv_desc =
@@ -3345,7 +3329,7 @@ GetGenericCudnnOperationGraph(
     TF_ASSIGN_OR_RETURN(op_descriptor, op_graph.OpDescriptorAt(op_index));
     std::vector<OpDescriptor> preceding_ops;
     preceding_ops.reserve(op_descriptor.operand_uids.size());
-    for (int operand_uid : op_descriptor.operand_uids) {
+    for (int64_t operand_uid : op_descriptor.operand_uids) {
       preceding_ops.emplace_back(
           op_graph.FindOpDescriptor(operand_uid).value());
     }
@@ -3622,10 +3606,6 @@ GetCudnnFusedOperationGraph(
                   : CUDNN_CROSS_CORRELATION;
 
   int conv_dim = convolution_descriptor.ndims();
-
-  CHECK_NE(convolution_descriptor.pad_alignment(),
-           dnn::PadAlignment::kTensorFlowPadding)
-      << "TensorFlow padding alignment is not supported.";
 
   cudnnDataType_t cudnn_convolution_type = ToCudnnDataType(accumulator_type);
   cudnnDataType_t cudnn_activation_type = ToCudnnDataType(activation_type);
@@ -4617,10 +4597,11 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
     const dnn::TensorDescriptor& lhs_scale,
     const dnn::TensorDescriptor& rhs_data,
     const dnn::TensorDescriptor& rhs_scale, dnn::DataType result_type,
-    int block_size) {
+    int block_size, bool has_global_scale) {
 #if CUDNN_VERSION >= 90700
   using cudnn_frontend::graph::Block_scale_dequantize_attributes;
   using cudnn_frontend::graph::Matmul_attributes;
+  using cudnn_frontend::graph::Pointwise_attributes;
   using cudnn_frontend::graph::Tensor_attributes;
 
   VLOG(4) << "\n lhs_data: " << lhs_data.ToString()
@@ -4628,7 +4609,8 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
           << "\n rhs_data: " << rhs_data.ToString()
           << "\n rhs_scale: " << rhs_scale.ToString()
           << "\n result_type: " << dnn::DataType_Name(result_type)
-          << "\n block_size: " << block_size;
+          << "\n block_size: " << block_size
+          << "\n global_scale: " << has_global_scale;
 
   cudnn_frontend::graph::Graph graph;
   auto compute_type = cudnn_frontend::DataType_t::FLOAT;
@@ -4677,9 +4659,27 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
 
   auto matmul_attr = Matmul_attributes().set_compute_data_type(compute_type);
   auto d_tensor = graph.matmul(a_dq, b_dq, matmul_attr);
-  d_tensor->set_uid(next_uid());
   d_tensor->set_data_type(ToCudnnFrontendDataType(result_type));
-  d_tensor->set_is_virtual(false);
+  if (!has_global_scale) {
+    d_tensor->set_uid(next_uid());
+    d_tensor->set_is_virtual(false);
+  } else {
+    std::vector<int64_t> scalar(lhs_data.ndims(), 1);
+    auto scale_attr = Tensor_attributes()
+                          .set_uid(next_uid())
+                          .set_dim(scalar)
+                          .set_stride(scalar)
+                          .set_data_type(d_tensor->get_data_type());
+    auto global_scale = graph.tensor(scale_attr.set_name("global_scale"));
+
+    auto mul_attr = Pointwise_attributes()
+                        .set_mode(cudnn_frontend::PointwiseMode_t::MUL)
+                        .set_compute_data_type(compute_type);
+    auto result = graph.pointwise(d_tensor, global_scale, mul_attr);
+    result->set_data_type(d_tensor->get_data_type());
+    result->set_uid(next_uid());
+    result->set_is_virtual(false);
+  }
 
   CudnnGraph cudnnGraph(std::move(graph));
   TF_RETURN_IF_ERROR(cudnnGraph.Prepare(
@@ -4815,9 +4815,6 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     DCHECK(bias_descriptor != std::nullopt);
     auto bias_dims = bias_descriptor->dimensions();
     auto bias_strides = bias_descriptor->GetLogicalStrides();
-    auto b = bias_dims[0];
-    auto n = bias_dims[1];
-    auto q_n = q_dims[1];
     auto bias_tensor = graph.tensor(Tensor_attributes()
                                         .set_name("bias")
                                         .set_dim(bias_dims)
@@ -4825,11 +4822,10 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
                                         .set_uid(next_uid()));
     sdpa_backward_options.set_bias(bias_tensor);
 
-    // shapes [1, 1, s, s], [b, 1, s, s], [b, h, s, s] are not supported for
-    // dbias calculation but they are supported for forward bias calculation
+    // shapes [1, 1, s, s], [1, h, s, s], [b, 1, s, s], [b, h, s, s] are
+    // supported for dbias calculation.
     // Set UID later: this is the last output tuple element.
     if (dbias_descriptor != std::nullopt) {
-      DCHECK(b == 1 && n == q_n);
       d_bias_tensor =
           graph.tensor(Tensor_attributes()
                            .set_name("dBias")

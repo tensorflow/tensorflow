@@ -342,7 +342,7 @@ void Scope::UpdateBuilder(NodeBuilder* builder) const {
     // Add loc:@ prefix
     std::transform(constraints.begin(), constraints.end(), constraints.begin(),
                    [](const string& s) {
-                     return strings::StrCat(kColocationGroupPrefix, s);
+                     return absl::StrCat(kColocationGroupPrefix, s);
                    });
     builder->Attr(kColocationAttrName, constraints);
   }
@@ -375,7 +375,7 @@ string Scope::Impl::GetUniqueName(const string& prefix,
   }
   string unique_name;
   do {
-    unique_name = strings::StrCat(prefix, kSuffixSeparator, ++entry->second);
+    unique_name = absl::StrCat(prefix, kSuffixSeparator, ++entry->second);
   } while (name_map_->find(unique_name) != name_map_->end());
   name_map_->insert({unique_name, 0});
   return unique_name;
@@ -386,7 +386,7 @@ string Scope::Impl::GetNameForOp(const string& default_name) const {
       GetUniqueName(default_name, true /* check_single_use */);
   const string sep =
       name_.empty() || unique_name.empty() ? "" : kScopeSeparator;
-  return strings::StrCat(name_, sep, unique_name);
+  return absl::StrCat(name_, sep, unique_name);
 }
 
 string Scope::GetUniqueNameForOp(const string& default_name) const {
@@ -413,7 +413,7 @@ Scope Scope::NewSubScope(const string& child_scope_name) const {
   const string sep =
       impl()->name_.empty() || unique_name.empty() ? "" : kScopeSeparator;
   return Scope(new Impl(*this, Impl::Tags::ScopeName(),
-                        strings::StrCat(impl()->name_, sep, unique_name),
+                        absl::StrCat(impl()->name_, sep, unique_name),
                         false /* copy_names */));
 }
 
@@ -488,7 +488,7 @@ CompositeOpScopes Scope::GetCompositeOpScopes(
                                                        : impl()->op_name_);
     const string child_op_sep = impl()->name_.empty() ? "" : kSuffixSeparator;
     const string child_name =
-        strings::StrCat(impl()->name_, child_op_sep, child.impl()->name_);
+        absl::StrCat(impl()->name_, child_op_sep, child.impl()->name_);
     return {child,
             Scope(new Impl(child, Impl::Tags::SingleUseScope(), child_name))};
   } else {

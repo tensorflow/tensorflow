@@ -2038,26 +2038,22 @@ void Node::CollectTunableParametersHelper(
 void Node::DebugStringHelper(absl::flat_hash_map<string, string>* debug_strings)
     const TF_SHARED_LOCKS_REQUIRED(mu_) {
   string result;
-  strings::StrAppend(&result, long_name(), ":\n");
-  strings::StrAppend(&result, "  autotune=", autotune_.load(), "\n");
-  strings::StrAppend(&result, "  buffered_bytes=", buffered_bytes_.load(),
-                     "\n");
-  strings::StrAppend(&result, "  buffered_elements=", buffered_elements_.load(),
-                     "\n");
-  strings::StrAppend(&result, "  bytes_consumed=", bytes_consumed_.load(),
-                     "\n");
-  strings::StrAppend(&result, "  bytes_produced=", bytes_produced_.load(),
-                     "\n");
-  strings::StrAppend(&result, "  processing_time=", processing_time_.load(),
-                     "\n");
-  strings::StrAppend(&result, "  num_elements=", num_elements_.load(), "\n");
+  absl::StrAppend(&result, long_name(), ":\n");
+  absl::StrAppend(&result, "  autotune=", autotune_.load(), "\n");
+  absl::StrAppend(&result, "  buffered_bytes=", buffered_bytes_.load(), "\n");
+  absl::StrAppend(&result, "  buffered_elements=", buffered_elements_.load(),
+                  "\n");
+  absl::StrAppend(&result, "  bytes_consumed=", bytes_consumed_.load(), "\n");
+  absl::StrAppend(&result, "  bytes_produced=", bytes_produced_.load(), "\n");
+  absl::StrAppend(&result, "  processing_time=", processing_time_.load(), "\n");
+  absl::StrAppend(&result, "  num_elements=", num_elements_.load(), "\n");
   string inputs;
   for (auto& input : inputs_) {
-    strings::StrAppend(&inputs, input->long_name(), ",");
+    absl::StrAppend(&inputs, input->long_name(), ",");
   }
-  strings::StrAppend(&result, "  inputs={", inputs, "}\n");
+  absl::StrAppend(&result, "  inputs={", inputs, "}\n");
   for (auto& input : inputs_) {
-    strings::StrAppend(&result, debug_strings->at(input->long_name()));
+    absl::StrAppend(&result, debug_strings->at(input->long_name()));
   }
   debug_strings->insert(std::make_pair(long_name(), result));
 }
@@ -2261,7 +2257,7 @@ Model::Model(std::optional<std::string> dataset_name)
     : dataset_name_(std::move(dataset_name)),
       optimization_period_ms_(kOptimizationPeriodMinMs),
       safe_to_collect_metrics_(std::make_shared<GuardedBool>(true)) {
-  model_id_ = strings::StrCat(reinterpret_cast<uint64>(this));
+  model_id_ = absl::StrCat(reinterpret_cast<uint64>(this));
   model_gauge_cell_ = metrics::GetTFDataModelGauge(model_id_);
 
   // Capture `safe_to_collect_metrics_` by value to avoid use-after-free issues
@@ -2893,9 +2889,9 @@ void Model::OptimizeStageBasedAsyncInterleaveManyNodes(
       // updating the parameter state values.
       parallelism_parameter->value -= 1.0;
       // Removes the `<index>` of `[<index>]` to reduce the number of labels.
-      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
-          "ram_budget_exceeded:",
-          RemoveArrayIndices(critical_root.second->long_name())));
+      metrics::RecordTFDataAutotuneStoppingCriteria(
+          absl::StrCat("ram_budget_exceeded:",
+                       RemoveArrayIndices(critical_root.second->long_name())));
       return;
     }
     model_timing.ComputeNodeTotalTime(*critical_root.second);
@@ -2963,16 +2959,16 @@ void Model::OptimizeStageBasedNonAsyncInterleaveManyNodes(
     // it has reached the max parallelism value.
     if (parallelism_parameter == nullptr) {
       // Removes the `<index>` of `[<index>]` to reduce the number of labels.
-      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
-          "no_optimizable_parameter:",
-          RemoveArrayIndices(critical_root.second->long_name())));
+      metrics::RecordTFDataAutotuneStoppingCriteria(
+          absl::StrCat("no_optimizable_parameter:",
+                       RemoveArrayIndices(critical_root.second->long_name())));
       break;
     }
     if (parallelism_parameter->value >= parallelism_parameter->max) {
       // Removes the `<index>` of `[<index>]` to reduce the number of labels.
-      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
-          "parameter_max_exceeded:",
-          RemoveArrayIndices(critical_root.second->long_name())));
+      metrics::RecordTFDataAutotuneStoppingCriteria(
+          absl::StrCat("parameter_max_exceeded:",
+                       RemoveArrayIndices(critical_root.second->long_name())));
       break;
     }
     parallelism_parameter->value += 1.0;
@@ -2986,9 +2982,9 @@ void Model::OptimizeStageBasedNonAsyncInterleaveManyNodes(
       // recording the stopping criteria.
 
       // Removes the `<index>` of `[<index>]` to reduce the number of labels.
-      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
-          "ram_budget_exceeded:",
-          RemoveArrayIndices(critical_root.second->long_name())));
+      metrics::RecordTFDataAutotuneStoppingCriteria(
+          absl::StrCat("ram_budget_exceeded:",
+                       RemoveArrayIndices(critical_root.second->long_name())));
       return;
     }
     // Compute the new total time and put the node back in the queue after its
@@ -3001,9 +2997,9 @@ void Model::OptimizeStageBasedNonAsyncInterleaveManyNodes(
         (root_timing->total_time_nsec * root_timing->pipeline_ratio)) {
       parallelism_parameter->value -= 1.0;
       // Removes the `<index>` of `[<index>]` to reduce the number of labels.
-      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
-          "total_time_not_improved:",
-          RemoveArrayIndices(critical_root.second->long_name())));
+      metrics::RecordTFDataAutotuneStoppingCriteria(
+          absl::StrCat("total_time_not_improved:",
+                       RemoveArrayIndices(critical_root.second->long_name())));
       break;
     }
     // Push it back to the priority queue.

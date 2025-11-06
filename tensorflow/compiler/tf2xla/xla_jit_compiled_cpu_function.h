@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function_thunks.h"
+#include "xla/backends/cpu/buffer_allocation_info.h"
 #include "xla/client/local_client.h"
-#include "xla/cpu_function_runtime.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -82,7 +82,7 @@ class XlaJitCompiledCpuFunction {
   XlaCompiledCpuFunction::StaticData static_data_;
 
   // The backing array for buffer infos.
-  std::vector<xla::cpu_function_runtime::BufferInfo> buffer_infos_;
+  std::vector<xla::cpu::BufferAllocationInfo> buffer_infos_;
 
   // The backing array for the arg index table.
   std::vector<int32> arg_index_table_;

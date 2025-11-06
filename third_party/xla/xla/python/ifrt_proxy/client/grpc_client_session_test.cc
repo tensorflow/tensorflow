@@ -31,6 +31,7 @@
 #include "absl/log/log.h"
 #include "absl/log/log_sink_registry.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
@@ -132,7 +133,7 @@ class SimpleIfrtService : public grpc::GrpcIfrtService::Service {
     }
 
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       CHECK(contexts_.insert(context).second);
     }
 
@@ -154,7 +155,7 @@ class SimpleIfrtService : public grpc::GrpcIfrtService::Service {
       }
     }
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       CHECK_EQ(contexts_.erase(context), 1);
     }
 
@@ -163,7 +164,7 @@ class SimpleIfrtService : public grpc::GrpcIfrtService::Service {
   }
 
   void CancelAllServerSessions() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     for (const auto& context : contexts_) {
       context->TryCancel();
     }

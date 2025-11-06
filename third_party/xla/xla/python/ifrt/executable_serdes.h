@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_EXECUTABLE_SERDES_H_
 #define XLA_PYTHON_IFRT_EXECUTABLE_SERDES_H_
 
+#include <optional>
+#include <utility>
+
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/serdes.h"
 
 namespace xla {
@@ -29,6 +33,15 @@ namespace ifrt {
 // TODO(hyeontaek): Make an new `LoadOptions` that is specific for loading.
 struct DeserializeExecutableOptions
     : llvm::RTTIExtends<DeserializeExecutableOptions, DeserializeOptions> {
+  DeserializeExecutableOptions() = default;
+  explicit DeserializeExecutableOptions(std::optional<DeviceListRef> devices)
+      : devices(std::move(devices)) {}
+
+  // The devices to load the executable on to.
+  // If unspecified, let the runtime decide the devices to use for loading.
+  // TODO(hyeontaek): Require `devices` to be always provided.
+  std::optional<DeviceListRef> devices;
+
   static char ID;  // NOLINT
 };
 

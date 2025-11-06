@@ -89,8 +89,8 @@ absl::Status GetEnvironmentVariableFileName(string* filename) {
   }
   const char* result = std::getenv(kGoogleApplicationCredentials);
   if (!result || !IsFile(result)) {
-    return errors::NotFound(strings::StrCat("$", kGoogleApplicationCredentials,
-                                            " is not set or corrupt."));
+    return errors::NotFound(absl::StrCat("$", kGoogleApplicationCredentials,
+                                         " is not set or corrupt."));
   }
   *filename = result;
   return absl::OkStatus();

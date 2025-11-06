@@ -203,7 +203,6 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "@com_google_absl//absl/synchronization",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/stream_executor/gpu:gpu_init_impl",

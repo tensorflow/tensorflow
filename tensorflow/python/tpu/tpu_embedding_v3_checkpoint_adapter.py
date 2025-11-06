@@ -150,13 +150,13 @@ def _unshard_from_sc_to_cpu(
   logging.vlog(
       1,
       "To unshuffle_from_sc_to_cpu on stacked_table.shape: %s",
-      stacked_table[0].shape,
+      stacked_table.shape,
   )
   ret_tensors = []
 
   for layout in from_shard_layouts:
     padded_table = tpu_embedding_v3_utils.unshuffle_from_sc_to_cpu(
-        stacked_table[0],
+        stacked_table,
         num_sparse_cores=layout.num_sparse_cores,
         offset_in_shard=layout.sparse_core_shard_row_offset,
         size_in_shard=layout.unsharded_padded_shape[0]
@@ -279,20 +279,19 @@ class EmbeddingReshardCallback(checkpoint_adapter.ReshardCallback):
   def __init__(
       self,
       object_local_name: str,
-      from_shard_layouts: Sequence[
-          sparse_core_layout_pb2.SparseCoreTableLayout
-      ],  # table name to layout
-      to_shard_layouts: Sequence[
-          sparse_core_layout_pb2.SparseCoreTableLayout
-      ],  # table name to layout
+      from_shard_layouts: Mapping[
+          str, Sequence[sparse_core_layout_pb2.SparseCoreTableLayout]
+      ],
+      to_shard_layouts: Sequence[sparse_core_layout_pb2.SparseCoreTableLayout],
   ):
     """Initializes  Reshard callback.
 
     Args:
       object_local_name:  The local name of the object being restored.
-      from_shard_layouts: layouts as in checkpoint being restored from.
-      to_shard_layouts: target layouts as specified in the embedding being
-        restored.
+      from_shard_layouts: A dictionary in stacked table name to a list of its
+        consituent table layouts.  The layouts are coming from the checkpoint
+        being restored.
+      to_shard_layouts: a list of target layouts that will be resharded to.
     """
     logging.info("Creating EmbeddingReshardCallback for %s", object_local_name)
     self._object_local_name = object_local_name
@@ -322,55 +321,76 @@ class EmbeddingReshardCallback(checkpoint_adapter.ReshardCallback):
       restore_v2 op will usually be passed to reshard method of this class to
       get the final resharded value.
     """
-    logging.vlog(
-        1,
-        "Updating restore v2 inputs for %s[%s]: %s",
+    keys = []
+    slices = []
+    for stacked_name, table_layouts in self._from_shard_layouts.items():
+      key = checkpoint_key.replace(self._object_local_name, stacked_name)
+      keys.append(key)
+
+      # use the first layout get the full shape of the stacked table
+      first_layout = table_layouts[0]
+      full_vocab_size = (
+          first_layout.total_rows_per_sparse_core_shard
+          * first_layout.num_sparse_cores
+      )
+      stack_dim = first_layout.unsharded_padded_shape[1]
+      full_shape = [full_vocab_size, stack_dim]
+      slices.append(
+          _shard_info_str(
+              full_shape,
+              trackable_base.ShardInfo(offset=[0, 0], shape=full_shape),
+          )
+      )
+
+    logging.info(
+        "Updating restore v2 inputs for %s[%s]:%s to stacked_tables: [%s],"
+        " slices: [%s]",
         checkpoint_key,
         self._object_local_name,
         shape_and_slice_spec,
+        ", ".join(keys),
+        ", ".join(slices),
     )
 
-    slices = []
-
-    # use the first layout get the full shape of the stacked table
-    first_layout = self._from_shard_layouts[0]
-    full_vocab_size = (
-        first_layout.total_rows_per_sparse_core_shard
-        * first_layout.num_sparse_cores
-    )
-    stack_dim = first_layout.unsharded_padded_shape[1]
-    full_shape = [full_vocab_size, stack_dim]
-    logging.vlog(
-        1,
-        "Read checkpoint_key %s: %s",
-        checkpoint_key,
-        full_shape,
-    )
-
-    slices.append(
-        _shard_info_str(
-            full_shape,
-            trackable_base.ShardInfo(offset=[0, 0], shape=full_shape),
-        )
-    )
-    return ([checkpoint_key], slices)
+    return (keys, slices)
 
   def reshard(
-      self, checkpoint_values: tensor.Tensor, shape_and_slice: str
+      self,
+      checkpoint_values: Sequence[tensor.Tensor],
+      shape_and_slice: str,
   ) -> tensor.Tensor:
     # unshard
     stime = time.time()
-    logging.vlog(
-        1,
-        "EmbeddingReshardCallback: starting to reshard [%s]",
+    logging.info(
+        "EmbeddingReshardCallback: starting to reshard [%s],"
+        " from checkpoint_value with shapes: %s",
         self._object_local_name,
-    )
-    unsharded_tensors = _unshard_from_sc_to_cpu(
-        checkpoint_values, self._from_shard_layouts
+        ", ".join([str(t.shape) for t in checkpoint_values]),
     )
 
+    unsharded_tables = dict()
+
+    for stacked_table, layouts in zip(
+        checkpoint_values,
+        list(self._from_shard_layouts.values()),
+    ):
+      logging.info(
+          "Unshard sc_to_cpu stacked_table: %s, shape: %s, no. of constituent"
+          " tables: %d",
+          layouts[0].stacked_table_name,
+          stacked_table.shape,
+          len(layouts),
+      )
+
+      unsharded_tensors = _unshard_from_sc_to_cpu(stacked_table, layouts)
+      for unshared_tensor, layout in zip(unsharded_tensors, layouts):
+        unsharded_tables[layout.table_name] = unshared_tensor
+
+    required_tables = [
+        unsharded_tables[layout.table_name] for layout in self._to_shard_layouts
+    ]
     ret = _shard_from_cpu_to_sc(
-        unsharded_tensors, shape_and_slice, self._to_shard_layouts
+        required_tables, shape_and_slice, self._to_shard_layouts
     )
 
     etime = time.time()
@@ -385,7 +405,16 @@ class EmbeddingReshardCallback(checkpoint_adapter.ReshardCallback):
 def _reorg_layouts(
     layouts: Sequence[sparse_core_layout_pb2.SparseCoreTableLayout],
 ) -> Mapping[str, Sequence[sparse_core_layout_pb2.SparseCoreTableLayout]]:
-  """Reorg the layouts to be in the order of the logical table."""
+  """Reorg the layouts to be in the order of the logical table.
+
+    Building a Dict[StackedTableName, SortedList[TableLayout]]
+
+  Args:
+    layouts: The layouts to be reorged.
+
+  Returns:
+    A dict of stacked table name to sorted list of table layouts.
+  """
   stacked_name_to_table_names = collections.defaultdict(list)
   for layout in layouts:
     stacked_name_to_table_names[layout.stacked_table_name].append(layout)
@@ -470,12 +499,25 @@ class TpuEmbeddingV3CheckpointAdapter(
     # Reshard to different SC Layout
     from_layouts = _reorg_layouts(list(self._checkpoint_layouts.values()))
     to_layouts = _reorg_layouts(list(embedding_layouts.values()))
-    for stacked_name in from_layouts.keys():
-      logging.info("Creating resharding plan for %s", stacked_name)
+    for stacked_name, table_layouts in to_layouts.items():
+      # look for required stacked tables
+      required_stacked_tables = dict()
+      for table_layout in table_layouts:
+        for from_stacked_name, from_table_layouts in from_layouts.items():
+          if table_layout.table_name in {
+              layout.table_name for layout in from_table_layouts
+          }:
+            required_stacked_tables[from_stacked_name] = from_table_layouts
+
+      logging.info(
+          "Creating resharding plan for %s, required stacked_tables: %s",
+          stacked_name,
+          ", ".join(required_stacked_tables.keys()),
+      )
       self._checkpoint_to_reshard_callback[stacked_name] = (
           EmbeddingReshardCallback(
               object_local_name=stacked_name,
-              from_shard_layouts=from_layouts[stacked_name],
+              from_shard_layouts=required_stacked_tables,
               to_shard_layouts=to_layouts[stacked_name],
           )
       )

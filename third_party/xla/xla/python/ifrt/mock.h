@@ -46,9 +46,9 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/executable_serdes.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/index_domain.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 
@@ -73,8 +74,8 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
 
   // LINT.IfChange
   MOCK_METHOD(Client*, client, (), (const, final));
-  MOCK_METHOD(Future<>, GetReadyFuture, (), (const, final));
-  MOCK_METHOD(Future<>, Delete, (), (final));
+  MOCK_METHOD(tsl::Future<>, GetReadyFuture, (), (const, final));
+  MOCK_METHOD(tsl::Future<>, Delete, (), (final));
   MOCK_METHOD(bool, IsDeleted, (), (const, final));
 
   MOCK_METHOD(DType, dtype, (), (const, final));
@@ -83,6 +84,7 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(ShardingRef, shared_ptr_sharding, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>,
               pjrt_layout, (), (const, final));
+  MOCK_METHOD(CustomLayoutRef, layout, (), (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               DisassembleIntoSingleDeviceArrays,
@@ -91,7 +93,7 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
               (final));
   MOCK_METHOD(absl::StatusOr<ArrayRef>, FullyReplicatedShard,
               (ArrayCopySemantics semantics), (final));
-  MOCK_METHOD(Future<>, CopyToHostBuffer,
+  MOCK_METHOD(tsl::Future<>, CopyToHostBuffer,
               (void* data,
                std::optional<absl::Span<const int64_t>> byte_strides,
                ArrayCopySemantics semantics),
@@ -147,8 +149,12 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (const RemapPlan& plan, absl::Span<ArrayRef> arrays,
                ArrayCopySemantics semantics),
               (final));
-  MOCK_METHOD(Future<>, GetReadyFuture, (absl::Span<const ValueRef> values),
+  MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, ReshardArrays,
+              (absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
+               ArrayCopySemantics semantics),
               (final));
+  MOCK_METHOD(tsl::Future<>, GetReadyFuture,
+              (absl::Span<const ValueRef> values), (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Tuple>>, MakeTuple,
               (absl::Span<ValueRef> values), (final));
   MOCK_METHOD(absl::string_view, runtime_type, (), (const, final));
@@ -180,6 +186,9 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
                xla::ifrt::Device* device, xla::ifrt::MemoryKind memory_kind),
               (const, final));
+  MOCK_METHOD(absl::StatusOr<CustomLayoutRef>, GetDefaultLayout,
+              (DType dtype, const Shape& shape, const ShardingRef& sharding),
+              (const, final));
   MOCK_METHOD(tsl::RCReference<xla::ifrt::UserContext>, CreateUserContext, (),
               (final));
   // LINT.ThenChange(mock.cc:MockClientDelegation)
@@ -204,6 +213,10 @@ class MockCompiler : public llvm::RTTIExtends<MockCompiler, Compiler> {
               (std::unique_ptr<Program> program,
                std::unique_ptr<CompileOptions> options),
               (final));
+  MOCK_METHOD(absl::Status, IsExecutableVersionCompatible,
+              (const xla::ifrt::ExecutableVersion& executable_version,
+               const xla::ifrt::DeviceListRef& devices),
+              (const, final));
   MOCK_METHOD(absl::StatusOr<LoadedExecutableRef>, DeserializeLoadedExecutable,
               (absl::string_view serialized,
                std::unique_ptr<DeserializeExecutableOptions> options),
@@ -237,6 +250,26 @@ class MockDevice : public Device {
 
  private:
   Device* const delegated_ = nullptr;
+};
+
+// device_list.h
+
+class MockDeviceList : public DeviceList {
+ public:
+  MockDeviceList() = default;
+  ~MockDeviceList() override = default;
+
+  MOCK_METHOD(absl::Span<Device* const>, devices, (), (const final));
+  MOCK_METHOD(DeviceList*, AddressableDeviceList, (), (const final));
+
+  MOCK_METHOD(bool, EqualEqualOperator, (const DeviceList& other),
+              (const final));
+  bool operator==(const DeviceList& other) const override {
+    return EqualEqualOperator(other);
+  }
+  MOCK_METHOD(uint64_t, hash, (), (const final));
+  MOCK_METHOD(uint64_t, fingerprint, (), (const final));
+  MOCK_METHOD(std::string, ToString, (), (const final));
 };
 
 // memory.h
@@ -295,9 +328,13 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::string_view, name, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::optional<std::string>>, Fingerprint, (),
               (const, final));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>,
+              executable_version, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::string>, Serialize, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::string>, GetHumanReadableProgramText, (),
+              (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
-  MOCK_METHOD(Future<>, GetReadyFuture, (), (const, override));
+  MOCK_METHOD(tsl::Future<>, GetReadyFuture, (), (const, override));
   MOCK_METHOD(int, num_devices, (), (const, final));
   MOCK_METHOD(int64_t, SizeOfGeneratedCodeInBytes, (), (const, final));
   MOCK_METHOD(absl::StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),

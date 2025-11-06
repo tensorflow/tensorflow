@@ -18,19 +18,19 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -143,7 +143,7 @@ bool IsGPUSyncCollective(const HloInstruction& instr) {
 absl::StatusOr<GPUCommunicationType> CommunicationType(
     int num_devices_per_host, const HloChannelInstruction& instr,
     const se::GpuComputeCapability& gpu_version) {
-  if (!std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
+  if (!gpu_version.IsCuda()) {
     return absl::FailedPreconditionError("Only CUDA is supported.");
   }
 
@@ -160,25 +160,6 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
   }
 
   return GPUCommunicationType::UNDEFINED;
-}
-
-GPUTopologyType GetTopologyType(
-    const HloModuleConfig& config,
-    const se::DeviceDescription& device_description) {
-  se::CudaComputeCapability cc = device_description.cuda_compute_capability();
-  // TODO: b/390095346 - Use topology information once available at compile
-  // time.
-  if (cc.IsHopper()) {
-    return config.num_partitions() * config.replica_count() > 8
-               ? GPUTopologyType::MULTI_HOST
-               : GPUTopologyType::SINGLE_HOST;
-  }
-  if (cc.IsAmpere()) {
-    return config.num_partitions() * config.replica_count() > 16
-               ? GPUTopologyType::MULTI_HOST
-               : GPUTopologyType::SINGLE_HOST;
-  }
-  return GPUTopologyType::UNKNOWN;
 }
 
 }  // namespace gpu

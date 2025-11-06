@@ -151,11 +151,10 @@ mlir::Type getQuantizedType(mlir::DictionaryAttr& backend_config) {
     return mlir::quant::UniformQuantizedPerAxisType::get(
         is_signed, storage_type, expressed_type, scales, zero_points,
         quantization_dimension, storage_min, storage_max);
-  } else {
-    return mlir::quant::UniformQuantizedType::get(
-        is_signed, storage_type, expressed_type, scales[0], zero_points[0],
-        storage_min, storage_max);
   }
+  return mlir::quant::UniformQuantizedType::get(
+      is_signed, storage_type, expressed_type, scales[0], zero_points[0],
+      storage_min, storage_max);
 }
 
 absl::StatusOr<mlir::Operation*> ImportCustomCallAsOp(

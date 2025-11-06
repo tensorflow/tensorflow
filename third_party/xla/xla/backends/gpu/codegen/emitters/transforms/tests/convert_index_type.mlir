@@ -7,10 +7,10 @@ func.func @addi_default(%arg0: index, %arg1: index) -> index {
 
 // CHECK-LABEL: @addi_default
 // CHECK-SAME: (%[[ARG0:.*]]: index, %[[ARG1:.*]]: index) -> index {
-// CHECK: %[[V1:.*]] = arith.index_castui %[[ARG0]] : index to i64
-// CHECK: %[[V2:.*]] = arith.index_castui %[[ARG1]] : index to i64
+// CHECK: %[[V1:.*]] = arith.index_cast %[[ARG0]] : index to i64
+// CHECK: %[[V2:.*]] = arith.index_cast %[[ARG1]] : index to i64
 // CHECK: %[[RI:.*]] = arith.addi %[[V1]], %[[V2]] : i64
-// CHECK: %[[R:.*]] = arith.index_castui %[[RI]] : i64 to index
+// CHECK: %[[R:.*]] = arith.index_cast %[[RI]] : i64 to index
 // CHECK: return %[[R]] : index
 
 // -----
@@ -24,10 +24,10 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 
 // CHECK-LABEL: @addi_32
 // CHECK-SAME: (%[[ARG0:.*]]: index, %[[ARG1:.*]]: index) -> index {
-// CHECK: %[[V1:.*]] = arith.index_castui %[[ARG0]] : index to i32
-// CHECK: %[[V2:.*]] = arith.index_castui %[[ARG1]] : index to i32
+// CHECK: %[[V1:.*]] = arith.index_cast %[[ARG0]] : index to i32
+// CHECK: %[[V2:.*]] = arith.index_cast %[[ARG1]] : index to i32
 // CHECK: %[[RI:.*]] = arith.addi %[[V1]], %[[V2]] : i32
-// CHECK: %[[R:.*]] = arith.index_castui %[[RI]] : i32 to index
+// CHECK: %[[R:.*]] = arith.index_cast %[[RI]] : i32 to index
 // CHECK: return %[[R]] : index
 
 // -----
@@ -43,9 +43,9 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-LABEL: @addi_const
 // CHECK-SAME: (%[[ARG0:.*]]: index) -> index {
 // CHECK: %[[C:.*]] = arith.constant 4 : i32
-// CHECK: %[[V1:.*]] = arith.index_castui %[[ARG0]] : index to i32
+// CHECK: %[[V1:.*]] = arith.index_cast %[[ARG0]] : index to i32
 // CHECK: %[[RI:.*]] = arith.addi %[[V1]], %[[C]] : i32
-// CHECK: %[[R:.*]] = arith.index_castui %[[RI]] : i32 to index
+// CHECK: %[[R:.*]] = arith.index_cast %[[RI]] : i32 to index
 // CHECK: return %[[R]] : index
 
 // -----
@@ -59,10 +59,10 @@ func.func @divui(%arg0: index, %arg1: index) -> index {
 
 // CHECK-LABEL: @divui
 // CHECK-SAME: (%[[ARG0:.*]]: index, %[[ARG1:.*]]: index) -> index {
-// CHECK: %[[V1:.*]] = arith.index_castui %[[ARG0]] : index to i8
-// CHECK: %[[V2:.*]] = arith.index_castui %[[ARG1]] : index to i8
+// CHECK: %[[V1:.*]] = arith.index_cast %[[ARG0]] : index to i8
+// CHECK: %[[V2:.*]] = arith.index_cast %[[ARG1]] : index to i8
 // CHECK: %[[RI:.*]] = arith.divui %[[V1]], %[[V2]] : i8
-// CHECK: %[[R:.*]] = arith.index_castui %[[RI]] : i8 to index
+// CHECK: %[[R:.*]] = arith.index_cast %[[RI]] : i8 to index
 // CHECK: return %[[R]] : index
 
 // -----
@@ -74,10 +74,10 @@ func.func @muli(%arg0: index, %arg1: index) -> index {
 
 // CHECK-LABEL: @muli
 // CHECK-SAME: (%[[ARG0:.*]]: index, %[[ARG1:.*]]: index) -> index {
-// CHECK: %[[V1:.*]] = arith.index_castui %[[ARG0]] : index to i64
-// CHECK: %[[V2:.*]] = arith.index_castui %[[ARG1]] : index to i64
+// CHECK: %[[V1:.*]] = arith.index_cast %[[ARG0]] : index to i64
+// CHECK: %[[V2:.*]] = arith.index_cast %[[ARG1]] : index to i64
 // CHECK: %[[RI:.*]] = arith.muli %[[V1]], %[[V2]] : i64
-// CHECK: %[[R:.*]] = arith.index_castui %[[RI]] : i64 to index
+// CHECK: %[[R:.*]] = arith.index_cast %[[RI]] : i64 to index
 // CHECK: return %[[R]] : index
 
 
@@ -90,10 +90,10 @@ func.func @remui(%arg0: index, %arg1: index) -> index {
 
 // CHECK-LABEL: @remui
 // CHECK-SAME: (%[[ARG0:.*]]: index, %[[ARG1:.*]]: index) -> index {
-// CHECK: %[[V1:.*]] = arith.index_castui %[[ARG0]] : index to i64
-// CHECK: %[[V2:.*]] = arith.index_castui %[[ARG1]] : index to i64
+// CHECK: %[[V1:.*]] = arith.index_cast %[[ARG0]] : index to i64
+// CHECK: %[[V2:.*]] = arith.index_cast %[[ARG1]] : index to i64
 // CHECK: %[[RI:.*]] = arith.remui %[[V1]], %[[V2]] : i64
-// CHECK: %[[R:.*]] = arith.index_castui %[[RI]] : i64 to index
+// CHECK: %[[R:.*]] = arith.index_cast %[[RI]] : i64 to index
 // CHECK: return %[[R]] : index
 
 // -----
@@ -105,10 +105,10 @@ func.func @subi(%arg0: index, %arg1: index) -> index {
 
 // CHECK-LABEL: @subi
 // CHECK-SAME: (%[[ARG0:.*]]: index, %[[ARG1:.*]]: index) -> index {
-// CHECK: %[[V1:.*]] = arith.index_castui %[[ARG0]] : index to i64
-// CHECK: %[[V2:.*]] = arith.index_castui %[[ARG1]] : index to i64
+// CHECK: %[[V1:.*]] = arith.index_cast %[[ARG0]] : index to i64
+// CHECK: %[[V2:.*]] = arith.index_cast %[[ARG1]] : index to i64
 // CHECK: %[[RI:.*]] = arith.subi %[[V1]], %[[V2]] : i64
-// CHECK: %[[R:.*]] = arith.index_castui %[[RI]] : i64 to index
+// CHECK: %[[R:.*]] = arith.index_cast %[[RI]] : i64 to index
 // CHECK: return %[[R]] : index
 
 // -----
@@ -128,5 +128,5 @@ func.func @complex(%arg0: index, %arg1: index, %arg2: index) -> index {
 // CHECK: arith.muli %{{.*}} : i64
 // CHECK: arith.muli %{{.*}} : i64
 // CHECK: arith.remui %{{.*}} : i64
-// CHECK: %[[R:.*]] = arith.index_castui %{{.*}} : i64 to index
+// CHECK: %[[R:.*]] = arith.index_cast %{{.*}} : i64 to index
 // CHECK: return %[[R]] : index

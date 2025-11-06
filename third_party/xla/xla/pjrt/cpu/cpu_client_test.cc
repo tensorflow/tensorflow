@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
+
+#include "absl/status/status_matchers.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_memory.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -32,12 +38,15 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Parser/Parser.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -70,7 +79,6 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::IsFalse;
-using ::tsl::testing::IsOkAndHolds;
 
 static absl::Status TestError(ffi::AnyBuffer, ffi::Result<ffi::AnyBuffer>,
                               ffi::Result<ffi::AnyBuffer>) {
@@ -166,6 +174,58 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
               HasSubstr("buffer has been deleted or donated."));
 }
 
+TEST(PjRtCpuClientTest, RuntimeDonationDenial) {
+  static constexpr char kProgram[] =
+      R"(
+HloModule RuntimeDonationDenial,
+          input_output_alias={ {}: (0, {}, must-alias) }
+
+ENTRY RuntimeDonationDenial() -> f32[2, 2] {
+    ROOT %param = f32[2, 2] parameter(0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                          client->CompileAndLoad(xla_computation, {}));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto fingerprint,
+                          pjrt_executable->FingerprintExecutable());
+  ASSERT_TRUE(!fingerprint.empty());
+
+  std::vector<float> data(4, 0);
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  {
+    ExecuteOptions options;
+    options.non_donatable_input_indices.insert(0);
+    auto result = pjrt_executable->Execute(
+        /*argument_handles=*/{{buffer.get()}}, options);
+    TF_ASSERT_OK(result);
+
+    EXPECT_FALSE(buffer->IsDeleted());
+  }
+
+  {
+    ExecuteOptions options;
+    auto result = pjrt_executable->Execute(
+        /*argument_handles=*/{{buffer.get()}}, options);
+    TF_ASSERT_OK(result);
+
+    EXPECT_TRUE(buffer->IsDeleted());
+  }
+}
+
 TEST(PjRtCpuClientTest, HloSnapshot) {
   static constexpr char kProgram[] = R"(
     HloModule add
@@ -236,20 +296,18 @@ TEST(PjRtCpuClientTest, HloSnapshot) {
 }
 
 TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
-  static constexpr char kProgram[] = R"(
-    HloModule add
-    ENTRY add {
-      x = f32[3,2] parameter(0)
-      y = f32[3,2] parameter(1)
-      ROOT add = f32[3,2] add(x, y)
+  static constexpr absl::string_view kProgram = R"(
+    module {
+      func.func @main(%arg0: tensor<3x2xf32>, %arg1: tensor<3x2xf32>) -> tensor<3x2xf32> {
+        %0 = mhlo.add %arg0, %arg1 : tensor<3x2xf32>
+        return %0 : tensor<3x2xf32>
+      }
     })";
 
   CpuClientOptions cpu_options;
   cpu_options.cpu_device_count = 1;
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetPjRtCpuClient(std::move(cpu_options)));
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
 
   std::string dir =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "UnoptimizedHloSnapshot");
@@ -258,9 +316,14 @@ TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
   debug_opts->set_xla_dump_to(dir);
   debug_opts->set_xla_dump_hlo_snapshots(true);
   debug_opts->set_xla_dump_hlo_unoptimized_snapshots(true);
-  XlaComputation xla_computation(hlo_module->ToProto());
+
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::func::FuncDialect, mlir::mhlo::MhloDialect>();
+  auto mlir_module =
+      mlir::parseSourceString<mlir::ModuleOp>(kProgram, &context);
+
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->CompileAndLoad(xla_computation, options));
+                          client->CompileAndLoad(mlir_module.get(), options));
 
   std::vector<float> data1{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   std::vector<float> data2{10.0, 20.0, 30.0, 40.0, 50.0, 60.0};
@@ -302,6 +365,69 @@ TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
   ASSERT_EQ(
       *Literal::CreateFromProto(snapshot.partitions(0).arguments(1)),
       LiteralUtil::CreateR2<float>({{10.0, 20.0}, {30.0, 40.0}, {50.0, 60.0}}));
+}
+
+TEST(PjRtCpuClientTest, DumpOnDeserialize) {
+  static constexpr char kProgram[] = R"(
+    HloModule add
+    ENTRY add {
+      x = f32[3,2] parameter(0)
+      y = f32[3,2] parameter(1)
+      ROOT add = f32[3,2] add(x, y)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+
+  tsl::Env* env = tsl::Env::Default();
+  EXPECT_TRUE(env);
+  std::string compile_dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&compile_dump_dir));
+  CompileOptions compile_options;
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_dump_to(compile_dump_dir);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      client->CompileAndLoad(xla_computation, compile_options));
+  std::string compile_dump_name, compile_dump_contents;
+  {
+    std::vector<std::string> matches;
+    TF_ASSERT_OK(env->GetMatchingPaths(
+        tsl::io::JoinPath(compile_dump_dir, "*after_optimizations.txt"),
+        &matches));
+    EXPECT_THAT(matches, ::testing::SizeIs(1));
+    compile_dump_name = std::move(matches.front());
+    TF_ASSERT_OK(
+        tsl::ReadFileToString(env, compile_dump_name, &compile_dump_contents));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
+                          executable->SerializeExecutable());
+
+  std::string deserialize_dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&deserialize_dump_dir));
+  EXPECT_NE(compile_dump_dir, deserialize_dump_dir);
+  CompileOptions deserialize_options;
+  deserialize_options.executable_build_options.mutable_debug_options()
+      ->set_xla_dump_to(deserialize_dump_dir);
+  LoadOptions load_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> reloaded_executable,
+      client->LoadSerializedExecutable(serialized, deserialize_options,
+                                       load_options));
+  std::string deserialize_dump_name, deserialize_dump_contents;
+  {
+    std::vector<std::string> matches;
+    TF_ASSERT_OK(env->GetMatchingPaths(
+        tsl::io::JoinPath(deserialize_dump_dir, "*after_optimizations.txt"),
+        &matches));
+    EXPECT_THAT(matches, ::testing::SizeIs(1));
+    deserialize_dump_name = std::move(matches.front());
+    TF_ASSERT_OK(tsl::ReadFileToString(env, deserialize_dump_name,
+                                       &deserialize_dump_contents));
+  }
+  EXPECT_EQ(compile_dump_contents, deserialize_dump_contents);
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferRawData) {
@@ -484,12 +610,15 @@ TEST(PjRtCpuClientTest, AsyncTransferSetBufferError) {
 TEST(PjRtCpuClientTest, CreateErrorBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->CreateErrorBuffer(Internal("foobar"), shape,
-                                             client->memory_spaces()[0]));
-  EXPECT_THAT(
-      buffer->ToLiteralSync(),
-      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
+  for (PjRtMemorySpace* memory_space : client->memory_spaces()) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto buffer,
+        client->CreateErrorBuffer(Internal("foobar"), shape, memory_space));
+    EXPECT_THAT(
+        buffer->ToLiteralSync(),
+        absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
+    EXPECT_EQ(buffer->memory_space(), memory_space);
+  }
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferRawDataToSubBuffer) {
@@ -867,6 +996,41 @@ TEST(PjRtCpuClientTest, SubByteLiteralToBufferRoundtrip) {
   TF_ASSERT_OK(buffer->ToLiteralSync(&literal_result));
 
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, literal_result));
+}
+
+TEST(PjRtCpuClientTest, CustomAllocator) {
+  alignas(64) std::array<float, 4> data;
+
+  class CustomMemory : public CpuMemory {
+   public:
+    CustomMemory(void* base, size_t size_bytes)
+        : base_(base), size_bytes_(size_bytes) {}
+
+    void* base() const final { return base_; }
+    size_t size_bytes() const final { return size_bytes_; }
+
+   private:
+    void* base_;
+    size_t size_bytes_;
+  };
+
+  CpuClientOptions options;
+  options.allocator = [&](size_t size_bytes, size_t alignment) {
+    return std::make_unique<CustomMemory>(&data, sizeof(data));
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(options));
+  xla::Shape shape = xla::ShapeUtil::MakeShape(F32, {4});
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+
+  // Check that buffer was constructed in the data array provided by the custom
+  // allocator.
+  EXPECT_THAT(data, ElementsAreArray(literal.data<float>()));
 }
 
 }  // namespace

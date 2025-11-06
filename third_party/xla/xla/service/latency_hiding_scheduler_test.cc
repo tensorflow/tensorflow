@@ -155,14 +155,18 @@ absl::StatusOr<bool> RunScheduler(
         std::make_unique<ApproximateLatencyEstimator>(),
     std::unique_ptr<AsyncTracker> async_tracker = nullptr,
     std::unique_ptr<LegalizeSchedulingAnnotations::Config> legalizer_config =
-        nullptr) {
+        nullptr,
+    bool skip_async_collective_creator = false) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config{
       /*convert_all_reduce=*/HloPredicateTrue,
       /*convert_all_gather=*/HloPredicateTrue,
       /*convert_collective_broadcast=*/HloPredicateTrue,
       /*convert_collective_permute=*/HloPredicateTrue};
-  TF_ASSIGN_OR_RETURN(bool value,
-                      AsyncCollectiveCreator(std::move(config)).Run(module));
+  bool value = false;
+  if (!skip_async_collective_creator) {
+    TF_ASSIGN_OR_RETURN(value,
+                        AsyncCollectiveCreator(std::move(config)).Run(module));
+  }
   if (!legalizer_config) {
     legalizer_config =
         std::make_unique<LegalizeSchedulingAnnotations::Config>();
@@ -4733,6 +4737,189 @@ ROOT tuple.2 = (f32[16,2048,2048]{2,1,0}, f32[8,128,128]{2,1,0}, f32[16,2048,204
             GetIndex(new_instruction_sequence, "cp1d"));
   EXPECT_LT(GetIndex(new_instruction_sequence, "c0"),
             GetIndex(new_instruction_sequence, "cp1d"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, SyncAllGatherResource) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = bf16[4]{0} parameter(0)
+  all-gather.2 = bf16[8]{0} all-gather(p0), replica_groups={{0,1},{2,3}}, dimensions={0}, channel_id=2
+  all-gather-start.1 = (bf16[4]{0}, bf16[8]{0}) all-gather-start(p0), replica_groups={{0,1},{2,3}}, dimensions={0}
+  all-gather-done.1 = bf16[8]{0} all-gather-done(all-gather-start.1)
+  ROOT tuple.2 = (bf16[8]{0}, bf16[8]{0}) tuple(all-gather-done.1, all-gather.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.track_sync_op_resource_usage = true;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<ApproximateLatencyEstimator>(),
+                            /*async_tracker=*/nullptr,
+                            /*legalizer_config=*/nullptr,
+                            /*skip_async_collective_creator=*/true));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  VLOG(1) << "module after: ";
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  // Check that the sync AG does not overlap with the async AG due to resource
+  // constraint of 1 for kAllGather
+  auto sync_ag_index = GetIndex(new_instruction_sequence, "all-gather.2");
+  auto async_ag_start_index =
+      GetIndex(new_instruction_sequence, "all-gather-start.1");
+  auto async_ag_done_index =
+      GetIndex(new_instruction_sequence, "all-gather-done.1");
+  EXPECT_TRUE(sync_ag_index < async_ag_start_index ||
+              sync_ag_index > async_ag_done_index);
+}
+
+TEST_F(LatencyHidingSchedulerTest, SyncAllGatherResourceLimitOfTwo) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = bf16[4]{0} parameter(0)
+  all-gather.2 = bf16[8]{0} all-gather(p0), replica_groups={{0,1},{2,3}}, dimensions={0}, channel_id=2
+  all-gather-start.1 = (bf16[4]{0}, bf16[8]{0}) all-gather-start(p0), replica_groups={{0,1},{2,3}}, dimensions={0}
+  all-gather-done.1 = bf16[8]{0} all-gather-done(all-gather-start.1)
+  ROOT tuple.2 = (bf16[8]{0}, bf16[8]{0}) tuple(all-gather-done.1, all-gather.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.track_sync_op_resource_usage = true;
+  sched_config.all_gather_overlap_limit = 2;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<ApproximateLatencyEstimator>(),
+                            /*async_tracker=*/nullptr,
+                            /*legalizer_config=*/nullptr,
+                            /*skip_async_collective_creator=*/true));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  VLOG(1) << "module after: ";
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  // Check that the sync AG does not overlap with the async AG due to resource
+  // constraint of 1 for kAllGather
+  auto sync_ag_index = GetIndex(new_instruction_sequence, "all-gather.2");
+  auto async_ag_start_index =
+      GetIndex(new_instruction_sequence, "all-gather-start.1");
+  auto async_ag_done_index =
+      GetIndex(new_instruction_sequence, "all-gather-done.1");
+  EXPECT_TRUE(sync_ag_index > async_ag_start_index &&
+              sync_ag_index < async_ag_done_index);
+}
+
+TEST_F(LatencyHidingSchedulerTest, SyncAllGatherResourceAnnotationGroup) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = bf16[4]{0} parameter(0)
+  all-gather.2 = bf16[8]{0} all-gather(p0), replica_groups={{0,1},{2,3}}, dimensions={0}, channel_id=2, frontend_attributes={_scheduling_group_id="0"}
+  all-gather-start.1 = (bf16[4]{0}, bf16[8]{0}) all-gather-start(p0), replica_groups={{0,1},{2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="0"}
+  all-gather-done.1 = bf16[8]{0} all-gather-done(all-gather-start.1), frontend_attributes={_scheduling_group_id="0"}
+  ROOT tuple.2 = (bf16[8]{0}, bf16[8]{0}) tuple(all-gather-done.1, all-gather.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.track_sync_op_resource_usage = true;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<ApproximateLatencyEstimator>(),
+                            /*async_tracker=*/nullptr,
+                            /*legalizer_config=*/nullptr,
+                            /*skip_async_collective_creator=*/true));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  VLOG(1) << "module after: ";
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  // Check that the sync AG does not overlap with the async AG due to resource
+  // constraint of 1 for kAllGather
+  auto sync_ag_index = GetIndex(new_instruction_sequence, "all-gather.2");
+  auto async_ag_start_index =
+      GetIndex(new_instruction_sequence, "all-gather-start.1");
+  auto async_ag_done_index =
+      GetIndex(new_instruction_sequence, "all-gather-done.1");
+  EXPECT_TRUE(sync_ag_index < async_ag_start_index ||
+              sync_ag_index > async_ag_done_index);
+}
+
+TEST_F(LatencyHidingSchedulerTest,
+       SyncAllGatherResourceLimitOfTwoAnnotationGroup) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = bf16[4]{0} parameter(0)
+  all-gather.2 = bf16[8]{0} all-gather(p0), replica_groups={{0,1},{2,3}}, dimensions={0}, channel_id=2, frontend_attributes={_scheduling_group_id="0"}
+  all-gather-start.1 = (bf16[4]{0}, bf16[8]{0}) all-gather-start(p0), replica_groups={{0,1},{2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="0"}
+  all-gather-done.1 = bf16[8]{0} all-gather-done(all-gather-start.1), frontend_attributes={_scheduling_group_id="0"}
+  ROOT tuple.2 = (bf16[8]{0}, bf16[8]{0}) tuple(all-gather-done.1, all-gather.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.track_sync_op_resource_usage = true;
+  sched_config.all_gather_overlap_limit = 2;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<ApproximateLatencyEstimator>(),
+                            /*async_tracker=*/nullptr,
+                            /*legalizer_config=*/nullptr,
+                            /*skip_async_collective_creator=*/true));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  VLOG(1) << "module after: ";
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  // Check that the sync AG does not overlap with the async AG due to resource
+  // constraint of 1 for kAllGather
+  auto sync_ag_index = GetIndex(new_instruction_sequence, "all-gather.2");
+  auto async_ag_start_index =
+      GetIndex(new_instruction_sequence, "all-gather-start.1");
+  auto async_ag_done_index =
+      GetIndex(new_instruction_sequence, "all-gather-done.1");
+  EXPECT_TRUE(sync_ag_index > async_ag_start_index &&
+              sync_ag_index < async_ag_done_index);
 }
 
 class LatencyHidingSchedulerBenchmark : public LatencyHidingSchedulerTest {

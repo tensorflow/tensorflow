@@ -865,8 +865,7 @@ REGISTER_OP("ExtractGlimpse")
       TF_RETURN_IF_ERROR(c->GetAttr("noise", &noise));
       if (uniform_noise && (!noise.empty() && noise != "uniform")) {
         return errors::InvalidArgument(
-            "The uniform_noise and noise should not be specified at the same "
-            "time");
+            "The uniform_noise should not be True when noise is not uniform");
       }
 
       return SetOutputToSizedImage(c, batch_dim, 1 /* size_input_idx */,
@@ -900,8 +899,7 @@ REGISTER_OP("ExtractGlimpseV2")
       TF_RETURN_IF_ERROR(c->GetAttr("noise", &noise));
       if (uniform_noise && (!noise.empty() && noise != "uniform")) {
         return errors::InvalidArgument(
-            "The uniform_noise and noise should not be specified at the same "
-            "time");
+            "The uniform_noise should not be True when noise is not uniform");
       }
 
       return SetOutputToSizedImage(c, batch_dim, 1 /* size_input_idx */,

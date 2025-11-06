@@ -43,7 +43,7 @@ StreamExecutorCommon::StreamExecutorCommon(const Platform* platform)
       memory_limit_bytes_(GetMemoryLimitBytesFromEnvironmentVariable()) {}
 
 const DeviceDescription& StreamExecutorCommon::GetDeviceDescription() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (device_description_ != nullptr) {
     return *device_description_;
   }

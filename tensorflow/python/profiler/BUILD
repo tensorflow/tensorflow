@@ -34,7 +34,6 @@ cuda_py_strict_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
     tags = ["no_pip",
-    "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
     deps = [
         ":profiler_client",

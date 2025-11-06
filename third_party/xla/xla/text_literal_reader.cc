@@ -87,7 +87,17 @@ absl::StatusOr<Literal> TextLiteralReader::ReadAllLines() {
   std::vector<int64_t> coordinate_values;
   std::string line;
   while (buf.ReadLine(&line).ok()) {
-    pieces = absl::StrSplit(line, ':');
+    // Ignore empty or whitespace-only lines.
+    absl::string_view trimmed_line = absl::StripAsciiWhitespace(line);
+    if (trimmed_line.empty()) {
+      continue;
+    }
+
+    pieces = absl::StrSplit(trimmed_line, ':');
+    if (pieces.size() != 2) {
+      return InvalidArgument(
+          "expected ':' separating coordinates and value: \"%s\"", line);
+    }
     absl::string_view coordinates_string =
         absl::StripAsciiWhitespace(pieces[0]);
     absl::string_view value_string = absl::StripAsciiWhitespace(pieces[1]);

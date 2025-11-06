@@ -163,9 +163,10 @@ class ConvertNdConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
       return failure();
     }
 
-    // tf Convolution doesn't support quantized type.
-    if (mlir::isa<quant::QuantizedType>(
-            conv_op.getRhs().getType().getElementType())) {
+    // tf Convolution doesn't support quantized type or 8-bit integer type.
+    Type rhs_element_type = conv_op.getRhs().getType().getElementType();
+    if (mlir::isa<quant::QuantizedType>(rhs_element_type) ||
+        rhs_element_type.isInteger(8)) {
       return failure();
     }
 

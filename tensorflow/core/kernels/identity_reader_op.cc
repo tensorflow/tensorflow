@@ -31,7 +31,7 @@ namespace tensorflow {
 class IdentityReader : public ReaderBase {
  public:
   explicit IdentityReader(const string& node_name)
-      : ReaderBase(strings::StrCat("IdentityReader '", node_name, "'")) {}
+      : ReaderBase(absl::StrCat("IdentityReader '", node_name, "'")) {}
 
   absl::Status ReadLocked(tstring* key, tstring* value, bool* produced,
                           bool* at_end) override {

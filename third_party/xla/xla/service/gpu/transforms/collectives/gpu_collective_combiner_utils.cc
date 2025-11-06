@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 
+#include <cstdint>
+
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -22,6 +24,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
@@ -55,6 +61,33 @@ bool ContainsPipelinedInstruction(const HloModule& module) {
     }
   }
   return false;
+}
+
+bool EnableHeuristicCollectiveCombining(
+    const HloModuleConfig& config,
+    const se::DeviceDescription& device_description,
+    int64_t nvlink_slice_size) {
+  if (!config.debug_options()
+           .xla_gpu_experimental_enable_heuristic_collective_combining()) {
+    return false;
+  }
+  se::CudaComputeCapability cc = device_description.cuda_compute_capability();
+  // Heuristic collective combining is not turned on before Ampere GPUs.
+  if (!cc.IsAtLeastAmpere()) {
+    return false;
+  }
+  int hlo_device_count = config.num_partitions() * config.replica_count();
+  if (hlo_device_count <= nvlink_slice_size) {
+    VLOG(1) << "Disabled heuristic collective combining for intra-NVLink "
+               "domain communication: HLO device count "
+            << hlo_device_count << " <= NVLink slice size "
+            << nvlink_slice_size;
+    return false;
+  }
+  VLOG(1) << "Enabled heuristic collective combining for inter-NVLink domain "
+             "communication: HLO device count "
+          << hlo_device_count << " > NVLink slice size " << nvlink_slice_size;
+  return true;
 }
 
 }  // namespace xla::gpu

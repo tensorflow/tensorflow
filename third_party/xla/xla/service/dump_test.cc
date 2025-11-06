@@ -23,8 +23,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "google/protobuf/text_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
@@ -37,6 +39,8 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/testing/temporary_directory.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
@@ -45,7 +49,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
+using ::tsl::proto_testing::EqualsProto;
 
 TEST(DumpHloIfEnabled, LargeConstantElided) {
   HloModuleConfig config;
@@ -483,13 +490,49 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
 
 TEST(DumpTest, DumpRepeatedStringTest) {
   DebugOptions options = DefaultDebugOptionsIgnoringFlags();
-  options.add_legacy_command_buffer_custom_call_targets("__gpu.gpu.triton");
+  options.add_xla_disable_hlo_passes("layout-assignment");
 
   std::string non_default_options = GetNonDefaultDebugOptions(options);
   EXPECT_THAT(
       non_default_options,
-      testing::HasSubstr(
-          "legacy_command_buffer_custom_call_targets: \"__gpu.gpu.triton\""));
+      testing::HasSubstr("xla_disable_hlo_passes: \"layout-assignment\"\n"));
+}
+
+TEST(DumpTest, DumpPerExecutionProtoToFile) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory dump_folder,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  const HloModule hlo_module("test_module", HloModuleConfig());
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  debug_options.set_xla_dump_to(dump_folder.path());
+  // Arbitrary proto.
+  HloModuleProto proto;
+  tsl::Env* env = tsl::Env::Default();
+
+  proto.set_name("test_module_1");
+  DumpPerExecutionProtobufToFile(hlo_module, proto, debug_options,
+                                 /*name=*/"test_name",
+                                 /*text_formatter=*/nullptr);
+  proto.set_name("test_module_2");
+  DumpPerExecutionProtobufToFile(hlo_module, proto, debug_options,
+                                 /*name=*/"test_name",
+                                 /*text_formatter=*/nullptr);
+
+  std::vector<std::string> matches;
+  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+      tsl::io::JoinPath(dump_folder.path(), "*test_name*execution_*"),
+      &matches));
+  // The output of GetMatchingPaths is not stable, therefore we sort the vector.
+  absl::c_sort(matches);
+  ASSERT_THAT(matches, ElementsAre(HasSubstr("execution_0000"),
+                                   HasSubstr("execution_0001")));
+
+  HloModuleProto loaded_proto1;
+  HloModuleProto loaded_proto2;
+  TF_ASSERT_OK(tsl::ReadTextOrBinaryProto(env, matches[0], &loaded_proto1));
+  TF_ASSERT_OK(tsl::ReadTextOrBinaryProto(env, matches[1], &loaded_proto2));
+  EXPECT_THAT(loaded_proto1, EqualsProto(R"pb(name: "test_module_1")pb"));
+  EXPECT_THAT(loaded_proto2, EqualsProto(R"pb(name: "test_module_2")pb"));
 }
 
 }  // namespace

@@ -13,6 +13,77 @@ arbitrary-dimensional array. For convenience, special cases have more specific
 and familiar names; for example a *vector* is a 1-dimensional array and a
 *matrix* is a 2-dimensional array.
 
+## Abs
+
+See also
+[`XlaBuilder::Abs`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise abs `x -> |x|`.
+
+**`Abs(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+For StableHLO information see
+[StableHLO - abs](https://openxla.org/stablehlo/spec#abs).
+
+## Add
+
+See also
+[`XlaBuilder::Add`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise addition of `lhs` and `rhs`.
+
+**`Add(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Add:
+
+**`Add(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - add](https://openxla.org/stablehlo/spec#add).
+
+## AddDependency
+
+See also
+[`HloInstruction::AddDependency`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
+
+`AddDependency` may appear in HLO dumps, but they are not intended to be
+constructed manually by end users.
+
+> **Note:** `AddDependency` is only found in HLO. It is not found in StableHLO.
+
 ## AfterAll
 
 See also
@@ -21,13 +92,16 @@ See also
 AfterAll takes a variadic number of tokens and produces a single token. Tokens
 are primitive types which can be threaded between side-effecting operations to
 enforce ordering. `AfterAll` can be used as a join of tokens for ordering an
-operation after a set operations.
+operation after a set of operations.
 
-**`AfterAll(operands)`**
+**`AfterAll(tokens)`**
 
-Arguments  | Type    | Semantics
----------- | ------- | -------------------------
-`operands` | `XlaOp` | variadic number of tokens
+Arguments | Type              | Semantics
+--------- | ----------------- | -------------------------
+`tokens`  | vector of `XlaOp` | variadic number of tokens
+
+For StableHLO information see
+[StableHLO - after_all](https://openxla.org/stablehlo/spec#after_all).
 
 ## AllGather
 
@@ -36,18 +110,27 @@ See also
 
 Performs concatenation across replicas.
 
-**`AllGather(operand, all_gather_dim, shard_count, replica_group_ids,
-channel_id)`**
+**`AllGather(operand, all_gather_dimension, shard_count, replica_groups,
+channel_id, layout, use_global_device_ids)`**
 
-| Arguments        | Type                 | Semantics                   |
-| ---------------- | -------------------- | --------------------------- |
-| `operand`        | `XlaOp`              | Array to concatenate across |
-:                  :                      : replicas                    :
-| `all_gather_dim` | `int64`              | Concatenation dimension     |
-| `replica_groups` | vector of vectors of | Groups between which the    |
-:                  : `int64`              : concatenation is performed  :
-| `channel_id`     | optional `int64`     | Optional channel ID for     |
-:                  :                      : cross-module communication  :
+| Arguments               | Type                 | Semantics                   |
+| ----------------------- | -------------------- | --------------------------- |
+| `operand`               | `XlaOp`              | Array to concatenate across |
+:                         :                      : replicas                    :
+| `all_gather_dimension`  | `int64`              | Concatenation dimension     |
+| `shard_count`           | `int64`              | The size of each replica    |
+:                         :                      : group                       :
+| `replica_groups`        | vector of vectors of | Groups between which the    |
+:                         : `int64`              : concatenation is performed  :
+| `channel_id`            | optional             | Optional channel ID for     |
+:                         : `ChannelHandle`      : cross-module communication  :
+| `layout`                | optional `Layout`    | Creates a layout pattern    |
+:                         :                      : that will capture the       :
+:                         :                      : matched layout in the       :
+:                         :                      : argument                    :
+| `use_global_device_ids` | optional `bool`      | Returns true if the ids in  |
+:                         :                      : the ReplicaGroup config     :
+:                         :                      : represent a global id       :
 
 -   `replica_groups` is a list of replica groups between which the concatenation
     is performed (replica id for the current replica can be retrieved using
@@ -61,12 +144,32 @@ channel_id)`**
     `replica_groups` are empty.
 -   `channel_id` is used for cross-module communication: only `all-gather`
     operations with the same `channel_id` can communicate to each other.
+-   `use_global_device_ids` Returns true if the ids in the ReplicaGroup config
+    represent a global id of (replica_id * partition_count + partition_id)
+    instead of a replica id. This enables more flexible grouping of devices if
+    this all-reduce is both cross-partition and cross-replica.
 
-The output shape is the input shape with the `all_gather_dim` made `shard_count`
-times larger. For example, if there are two replicas and the operand has the
-value `[1.0, 2.5]` and `[3.0, 5.25]` respectively on the two replicas, then the
-output value from this op where `all_gather_dim` is `0` will be `[1.0, 2.5, 3.0,
-5.25]` on both replicas.
+The output shape is the input shape with the `all_gather_dimension` made
+`shard_count` times larger. For example, if there are two replicas and the
+operand has the value `[1.0, 2.5]` and `[3.0, 5.25]` respectively on the two
+replicas, then the output value from this op where `all_gather_dim` is `0` will
+be `[1.0, 2.5, 3.0,5.25]` on both replicas.
+
+The API of `AllGather` is internally decomposed into 2 HLO instructions
+(`AllGatherStart` and `AllGatherDone`).
+
+See also
+[`HloInstruction::CreateAllGatherStart`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
+
+`AllGatherStart`, `AllGatherDone` serve as primitives in HLO. These ops may
+appear in HLO dumps, but they are not intended to be constructed manually by end
+users.
+
+> **Note:** `AllGatherStart` and `AllGatherDone` are only found in HLO. They are
+> not found in StableHLO.
+
+For StableHLO information see
+[StableHLO - all_gather](https://openxla.org/stablehlo/spec#all_gather).
 
 ## AllReduce
 
@@ -75,17 +178,24 @@ See also
 
 Performs a custom computation across replicas.
 
-**`AllReduce(operand, computation, replica_group_ids, channel_id)`**
+**`AllReduce(operand, computation, replica_groups, channel_id,
+shape_with_layout, use_global_device_ids)`**
 
-| Arguments        | Type                 | Semantics                        |
-| ---------------- | -------------------- | -------------------------------- |
-| `operand`        | `XlaOp`              | Array or a non-empty tuple of    |
-:                  :                      : arrays to reduce across replicas :
-| `computation`    | `XlaComputation`     | Reduction computation            |
-| `replica_groups` | vector of vectors of | Groups between which the         |
-:                  : `int64`              : reductions are performed         :
-| `channel_id`     | optional `int64`     | Optional channel ID for          |
-:                  :                      : cross-module communication       :
+| Arguments               | Type                  | Semantics                  |
+| ----------------------- | --------------------- | -------------------------- |
+| `operand`               | `XlaOp`               | Array or a non-empty tuple |
+:                         :                       : of arrays to reduce across :
+:                         :                       : replicas                   :
+| `computation`           | `XlaComputation`      | Reduction computation      |
+| `replica_groups`        | `ReplicaGroup` vector | Groups between which the   |
+:                         :                       : reductions are performed   :
+| `channel_id`            | optional              | Optional channel ID for    |
+:                         : `ChannelHandle`       : cross-module communication :
+| `shape_with_layout`     | optional `Shape`      | Defines the layout of the  |
+:                         :                       : data transferred           :
+| `use_global_device_ids` | optional `bool`       | Returns true if the ids in |
+:                         :                       : the ReplicaGroup config    :
+:                         :                       : represent a global id      :
 
 -   When `operand` is a tuple of arrays, the all-reduce is performed on each
     element of the tuple.
@@ -98,6 +208,13 @@ Performs a custom computation across replicas.
     `3`.
 -   `channel_id` is used for cross-module communication: only `all-reduce`
     operations with the same `channel_id` can communicate to each other.
+-   `shape_with_layout`: forces the layout of the AllReduce to the given layout.
+    This is used to guarantee the same layout for a group of AllReduce ops
+    compiled separately.
+-   `use_global_device_ids` Returns true if the ids in the ReplicaGroup config
+    represent a global id of (replica_id * partition_count + partition_id)
+    instead of a replica id. This enables more flexible grouping of devices if
+    this all-reduce is both cross-partition and cross-replica.
 
 The output shape is the same as the input shape. For example, if there are two
 replicas and the operand has the value `[1.0, 2.5]` and `[3.0, 5.25]`
@@ -109,8 +226,44 @@ Computing the result of `AllReduce` requires having one input from each replica,
 so if one replica executes an `AllReduce` node more times than another, then the
 former replica will wait forever. Since the replicas are all running the same
 program, there are not a lot of ways for that to happen, but it is possible when
-a while loop's condition depends on data from infeed and the data that is infed
-causes the while loop to iterate more times on one replica than another.
+a while loop's condition depends on data from `infeed` and the data that is
+`infeed` causes the while loop to iterate more times on one replica than
+another.
+
+The API of `AllReduce` is internally decomposed into 2 HLO instructions
+(`AllReduceStart` and `AllReduceDone`).
+
+See also
+[`HloInstruction::CreateAllReduceStart`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
+
+`AllReduceStart` and `AllReduceDone` serve as primitives in HLO. These ops may
+appear in HLO dumps, but they are not intended to be constructed manually by end
+users.
+
+> **Note:** `AllGatherStart` and `AllGatherDone` are only found in HLO. They are
+> not found in StableHLO. For StableHLO information see
+> [StableHLO - all_reduce](https://openxla.org/stablehlo/spec#all_reduce).
+
+### CrossReplicaSum
+
+See also
+[`XlaBuilder::CrossReplicaSum`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs `AllReduce` with a summation computation.
+
+**`CrossReplicaSum(operand, replica_groups)`**
+
+| Arguments            | Type                 | Semantics                     |
+| :------------------- | :------------------- | :---------------------------- |
+| **`operand`**        | XlaOp                | Array or a non-empty tuple of |
+:                      :                      : arrays to reduce across       :
+:                      :                      : replicas                      :
+| **`replica_groups`** | vector of vectors of | Groups between which the      |
+:                      : **`int64`**          : reductions are performed      :
+
+Returns the sum of the operand value within each subgroup of replicas. All
+replicas supply one input to the sum and all replicas receive the resulting sum
+for each subgroup.
 
 ## AllToAll
 
@@ -142,48 +295,304 @@ The participating cores can be configured by:
 Prerequisites:
 
 -   The dimension size of the operand on the `split_dimension` is divisible by
-`split_count`.
+    `split_count`.
 -   The operand's shape is not tuple.
 
 **`AllToAll(operand, split_dimension, concat_dimension, split_count,
-replica_groups)`**
+replica_groups, layout, channel_id)`**
 
-| Arguments          | Type                  | Semantics                       |
-| ------------------ | --------------------- | ------------------------------- |
-| `operand`          | `XlaOp`               | n dimensional input array       |
-| `split_dimension`  | `int64`               | A value in the interval `[0,    |
-:                    :                       : n)` that names the dimension    :
-:                    :                       : along which the operand is      :
-:                    :                       : split                           :
-| `concat_dimension` | `int64`               | A value in the interval `[0,    |
-:                    :                       : n)` that names the dimension    :
-:                    :                       : along which the split blocks    :
-:                    :                       : are concatenated                :
-| `split_count`      | `int64`               | The number of cores that        |
-:                    :                       : participate this operation. If  :
-:                    :                       : `replica_groups` is empty, this :
-:                    :                       : should be the number of         :
-:                    :                       : replicas; otherwise, this       :
-:                    :                       : should be equal to the number   :
-:                    :                       : of replicas in each group.      :
-| `replica_groups`   | `ReplicaGroup` vector | Each group contains a list of   |
-:                    :                       : replica ids.                    :
+| Arguments          | Type                     | Semantics                    |
+| ------------------ | ------------------------ | ---------------------------- |
+| `operand`          | `XlaOp`                  | n dimensional input array    |
+| `split_dimension`  | `int64`                  | A value in the interval      |
+:                    :                          : `[0,n)` that names the       :
+:                    :                          : dimension along which the    :
+:                    :                          : operand is split             :
+| `concat_dimension` | `int64`                  | A value in the interval      |
+:                    :                          : `[0,n)` that names the       :
+:                    :                          : dimension along which the    :
+:                    :                          : split blocks are             :
+:                    :                          : concatenated                 :
+| `split_count`      | `int64`                  | The number of cores that     |
+:                    :                          : participate in this          :
+:                    :                          : operation. If                :
+:                    :                          : `replica_groups` is empty,   :
+:                    :                          : this should be the number of :
+:                    :                          : replicas; otherwise, this    :
+:                    :                          : should be equal to the       :
+:                    :                          : number of replicas in each   :
+:                    :                          : group.                       :
+| `replica_groups`   | `ReplicaGroup`vector     | Each group contains a list   |
+:                    :                          : of replica ids.              :
+| `layout`           | optional `Layout`        | user-specified memory layout |
+| `channel_id`       | optional `ChannelHandle` | unique identifier for each   |
+:                    :                          : send/recv pair               :
 
-Below shows an example of Alltoall.
+See
+[xla::shapes for more information on shapes and layouts.](https://openxla.org/xla/shapes).
+
+For StableHLO information see
+[StableHLO - all_to_all](https://openxla.org/stablehlo/spec#all_to_all).
+
+### AllToAll - Example 1.
 
 ```cpp
 XlaBuilder b("alltoall");
 auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
-AllToAll(x, /*split_dimension=*/1, /*concat_dimension=*/0, /*split_count=*/4);
+AllToAll(
+    x,
+    /*split_dimension=*/ 1,
+    /*concat_dimension=*/ 0,
+    /*split_count=*/ 4);
 ```
 
 ![](images/ops_alltoall.png)
 
-In this example, there are 4 cores participating in the Alltoall. On each core,
-the operand is split into 4 parts along dimension 1, so each part has shape
-f32[4,4]. The 4 parts are scattered to all cores. Then each core concatenates
-the received parts along dimension 0, in the order of core 0-4. So the output on
-each core has shape f32[16,4].
+In the above example, there are 4 cores participating in the Alltoall. On each
+core, the operand is split into 4 parts along dimension 1, so each part has
+shape f32[4,4]. The 4 parts are scattered to all cores. Then each core
+concatenates the received parts along dimension 0, in the order of core 0-4. So
+the output on each core has shape f32[16,4].
+
+### AllToAll - Example 2 - StableHLO
+
+![An example of AllToAll dataflow for StableHLO](images/ops_alltoall_2.svg)
+
+In the above example, there are 2 replicas participating in the AllToAll. On
+each replica, the operand has shape f32[2,4]. The operand is split into 2 parts
+along dimension 1, so each part has shape f32[2,2]. The 2 parts are then
+exchanged across the replicas according to their position in the replica group.
+Each replica collects its corresponding part from both operands and concatenates
+them along dimension 0. As a result, the output on each replica has shape
+f32[4,2].
+
+### RaggedAllToAll
+
+See also
+[`XlaBuilder::RaggedAllToAll`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+RaggedAllToAll performs a collective all-to-all operation, where the input and
+output are ragged tensors.
+
+**`RaggedAllToAll(input, input_offsets, send_sizes, output, output_offsets,
+recv_sizes, replica_groups, channel_id)`**
+
+| Arguments        | Type                     | Semantics                     |
+| ---------------- | ------------------------ | ----------------------------- |
+| `input`          | `XlaOp`                  | N array of type T             |
+| `input_offsets`  | `XlaOp`                  | N array of type T             |
+| `send_sizes`     | `XlaOp`                  | N array of type T             |
+| `output`         | `XlaOp`                  | N array of type T             |
+| `output_offsets` | `XlaOp`                  | N array of type T             |
+| `recv_sizes`     | `XlaOp`                  | N array of type T             |
+| `replica_groups` | `ReplicaGroup` vector    | Each group contains a list of |
+:                  :                          : replica ids.                  :
+| `channel_id`     | optional `ChannelHandle` | unique identifier for each    |
+:                  :                          : send/recv pair                :
+
+Ragged tensors are defined by a set of three tensors:
+
+-   `data`: the `data`tensor is “ragged” along its outermost dimension, along
+    which each indexed element has variable size.
+-   `offsets`': the `offsets` tensor indexes the outermost dimension of the
+    `data` tensor, and represents the starting offset of each ragged element of
+    the `data` tensor.
+-   `sizes`: the `sizes` tensor represents the size of each ragged element of
+    the `data` tensor, where the size is specified in units of sub-elements. A
+    sub-element is defined as the suffix of the ‘data’ tensor shape obtained by
+    removing the outermost “ragged” dimension.
+-   The `offsets` and `sizes` tensors must have the same size.
+
+An example ragged tensor:
+
+```cpp
+data: [8,3] =
+{{a,b,c},{d,e,f},{g,h,i},{j,k,l},{m,n,o},{p,q,r},{s,t,u},{v,w,x}}
+
+offsets: [3] = {0, 1, 4}
+
+sizes: [3] = {1, 3, 4}
+
+// Index 'data' at 'offsets'[0], 'sizes'[0]' // {a,b,c}
+
+// Index 'data' at 'offsets'[1], 'sizes'[1]' // {d,e,f},{g,h,i},{j,k,l}
+
+// Index 'data' at 'offsets'[2], 'sizes'[2]' // {m,n,o},{p,q,r},{s,t,u},{v,w,x}
+```
+
+`output_offsets` must be sharded in a way that each replica has offsets in the
+target replica output perspective.
+
+For i-th output offset, the current replica will send
+`input[input_offsets[i]:input_offsets[i]+input_sizes[i]]` update to `i`-th
+replica that will be written to
+`output_i[output_offsets[i]:output_offsets[i]+send_sizes[i]]` in `i`-th replica
+`output`.
+
+For example, if we have 2 replicas:
+
+```cpp
+replica 0:
+input: [1, 2, 2]
+output:[0, 0, 0, 0]
+input_offsets: [0, 1]
+send_sizes: [1, 2]
+output_offsets: [0, 0]
+recv_sizes: [1, 1]
+
+replica 1:
+input: [3, 4, 0]
+output: [0, 0, 0, 0]
+input_offsets: [0, 1]
+send_sizes: [1, 1]
+output_offsets: [1, 2]
+recv_sizes: [2, 1]
+
+// replica 0's result will be: [1, 3, 0, 0]
+// replica 1's result will be: [2, 2, 4, 0]
+```
+
+The ragged all-to-all HLO has the following arguments:
+
+-   `input`: ragged input data tensor.
+-   `output`: ragged output data tensor.
+-   `input_offsets`: ragged input offsets tensor.
+-   `send_sizes`: ragged send sizes tensor.
+-   `output_offsets`: array of ragged offsets in the target replica output.
+-   `recv_sizes`: ragged recv sizes tensor.
+
+The `*_offsets` and `*_sizes` tensors must all have the same shape.
+
+Two shapes are supported for the `*_offsets` and `*_sizes` tensors:
+
+-   `[num_devices]` where ragged-all-to-all may send at most one update to each
+    remote device in the replica group. For example:
+
+```cpp
+for (remote_device_id : replica_group) {
+     SEND input[input_offsets[remote_device_id]],
+     output[output_offsets[remote_device_id]],
+     send_sizes[remote_device_id] }
+```
+
+-   `[num_devices, num_updates]` where ragged-all-to-all may send up to
+    `num_updates` updates the same remote device (each at different offsets),
+    for each remote device in the replica group.
+
+For example:
+
+```cpp
+for (remote_device_id : replica_group) {
+    for (update_idx : num_updates) {
+        SEND input[input_offsets[remote_device_id][update_idx]],
+        output[output_offsets[remote_device_id][update_idx]]],
+        send_sizes[remote_device_id][update_idx] } }
+```
+
+> **Note:** `RaggedAllToAll` is only found in HLO. It is not found in StableHLO.
+
+## And
+
+See also
+[`XlaBuilder::And`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise AND of two tensors `lhs` and `rhs`.
+
+**`And(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for And:
+
+**`And(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - and](https://openxla.org/stablehlo/spec#and).
+
+## Async
+
+See also [`HloInstruction::CreateAsyncStart`,
+`HloInstruction::CreateAsyncUpdate`,
+`HloInstruction::CreateAsyncDone`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
+
+`AsyncDone`, `AsyncStart`, and `AsyncUpdate` are internal HLO instructions used
+for Asynchronous operations and serve as primitives in HLO. These ops may appear
+in HLO dumps but they are not intended to be constructed manually by end users.
+
+> **Note:** `AsyncStart`, `AsyncUpdate`, and `AsyncDone` are only found in HLO.
+> They are not found in StableHLO.
+
+## Atan2
+
+See also
+[`XlaBuilder::Atan2`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise atan2 operation on `lhs` and `rhs`.
+
+**`Atan2(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Atan2:
+
+**`Atan2(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - atan2](https://openxla.org/stablehlo/spec#atan2).
 
 ## BatchNormGrad
 
@@ -194,16 +603,16 @@ for a detailed description of the algorithm.
 
 Calculates gradients of batch norm.
 
-**`BatchNormGrad(operand, scale, mean, variance, grad_output, epsilon,
-                 feature_index)`**
+**`BatchNormGrad(operand, scale, batch_mean, batch_var, grad_output, epsilon,
+feature_index)`**
 
 Arguments       | Type    | Semantics
 --------------- | ------- | ----------------------------------------------------
-`operand`       | `XlaOp` | n dimensional array to be normalized (x)
-`scale`         | `XlaOp` | 1 dimensional array ($\gamma$)
-`mean`          | `XlaOp` | 1 dimensional array ($\mu$)
-`variance`      | `XlaOp` | 1 dimensional array ($\sigma^2$)
-`grad_output`   | `XlaOp` | Gradients passed to `BatchNormTraining` ($\nabla y$)
+`operand`       | XlaOp   | n dimensional array to be normalized (x)
+`scale`         | XlaOp   | 1 dimensional array ($\gamma$)
+`batch_mean`    | XlaOp   | 1 dimensional array ($\mu$)
+`batch_var`     | XlaOp   | 1 dimensional array ($\sigma^2$)
+`grad_output`   | XlaOp   | Gradients passed to `BatchNormTraining` ($\nabla y$)
 `epsilon`       | `float` | Epsilon value ($\epsilon$)
 `feature_index` | `int64` | Index to feature dimension in `operand`
 
@@ -235,19 +644,25 @@ d_l&=
 \end{split}
 $$
 
-The inputs `mean` and `variance` represent moments values across batch and
-spatial dimensions.
+The inputs `batch_mean` and `batch_var` represent moments values across batch
+and spatial dimensions.
 
 The output type is a tuple of three handles:
 
-| Outputs        | Type    | Semantics                                         |
-| -------------- | ------- | ------------------------------------------------- |
-| `grad_operand` | `XlaOp` | gradient with respect to input `operand` ($\nabla |
-:                :         : x$)                                               :
-| `grad_scale`   | `XlaOp` | gradient with respect to input `scale` ($\nabla   |
-:                :         : \gamma$)                                          :
-| `grad_offset`  | `XlaOp` | gradient with respect to input `offset`($\nabla   |
-:                :         : \beta$)                                           :
+| Outputs        | Type  | Semantics                   |
+| -------------- | ----- | --------------------------- |
+| `grad_operand` | XlaOp | gradient with respect to    |
+:                :       : input **`operand`**         :
+:                :       : ($\nabla x$)                :
+| `grad_scale`   | XlaOp | gradient with respect to    |
+:                :       : input **`scale` **          :
+:                :       : ($\nabla\gamma$)            :
+| `grad_offset`  | XlaOp | gradient with respect to    |
+:                :       : input                       :
+:                :       : **`offset`**($\nabla\beta$) :
+
+For StableHLO information see
+[StableHLO - batch_norm_grad](https://openxla.org/stablehlo/spec#batch_norm_grad).
 
 ## BatchNormInference
 
@@ -259,15 +674,15 @@ for a detailed description of the algorithm.
 Normalizes an array across batch and spatial dimensions.
 
 **`BatchNormInference(operand, scale, offset, mean, variance, epsilon,
-                      feature_index)`**
+feature_index)`**
 
 Arguments       | Type    | Semantics
 --------------- | ------- | ---------------------------------------
-`operand`       | `XlaOp` | n dimensional array to be normalized
-`scale`         | `XlaOp` | 1 dimensional array
-`offset`        | `XlaOp` | 1 dimensional array
-`mean`          | `XlaOp` | 1 dimensional array
-`variance`      | `XlaOp` | 1 dimensional array
+`operand`       | XlaOp   | n dimensional array to be normalized
+`scale`         | XlaOp   | 1 dimensional array
+`offset`        | XlaOp   | 1 dimensional array
+`mean`          | XlaOp   | 1 dimensional array
+`variance`      | XlaOp   | 1 dimensional array
 `epsilon`       | `float` | Epsilon value
 `feature_index` | `int64` | Index to feature dimension in `operand`
 
@@ -284,6 +699,9 @@ latency in inference, hence the name `BatchNormInference`.
 
 The output is an n-dimensional, normalized array with the same shape as input
 `operand`.
+
+For StableHLO information see
+[StableHLO - batch_norm_inference](https://openxla.org/stablehlo/spec#batch_norm_inference).
 
 ## BatchNormTraining
 
@@ -339,6 +757,19 @@ The output type is a tuple of three `XlaOp`s:
 The `batch_mean` and `batch_var` are moments calculated across the batch and
 spatial dimensions using the formulas above.
 
+For StableHLO information see
+[StableHLO - batch_norm_training](https://openxla.org/stablehlo/spec#batch_norm_training).
+
+## Bitcast
+
+See also
+[`HloInstruction::CreateBitcast`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
+
+`Bitcast` may appear in HLO dumps, but they are not intended to be constructed
+manually by end users.
+
+> **Note:** `Bitcast` is only found in HLO. It is not found in StableHLO.
+
 ## BitcastConvertType
 
 See also
@@ -363,6 +794,9 @@ last dimension which will change by the ratio of the primitive size before and
 after the conversion.
 
 The source and destination element types must not be tuples.
+
+For StableHLO information see
+[StableHLO - bitcast_convert](https://openxla.org/stablehlo/spec#bitcast_convert).
 
 ### Bitcast-converting to primitive type of different width
 
@@ -423,7 +857,10 @@ For example, if `operand` is a scalar `f32` with value `2.0f`, and
 `broadcast_sizes` is `{2, 3}`, then the result will be an array with shape
 `f32[2, 3]` and all the values in the result will be `2.0f`.
 
-## BroadcastInDim
+For StableHLO information see
+[StableHLO - broadcast](https://openxla.org/stablehlo/spec#broadcast).
+
+### BroadcastInDim
 
 See also
 [`XlaBuilder::BroadcastInDim`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
@@ -436,8 +873,11 @@ in the array.
 | Arguments              | Type                | Semantics                     |
 | ---------------------- | ------------------- | ----------------------------- |
 | `operand`              | `XlaOp`             | The array to duplicate        |
-| `out_dim_size`         | `ArraySlice<int64>` | The sizes of the dimensions of the target shape |
-| `broadcast_dimensions` | `ArraySlice<int64>` | Which dimension in the target shape each dimension of the operand shape corresponds to |
+| `out_dim_size`         | `ArraySlice<int64>` | The sizes of the dimensions   |
+:                        :                     : of the target shape           :
+| `broadcast_dimensions` | `ArraySlice<int64>` | Which dimension in the target |
+:                        :                     : shape each dimension of the   :
+:                        :                     : operand shape corresponds to  :
 
 Similar to Broadcast, but allows adding dimensions anywhere and expanding
 existing dimensions with size 1.
@@ -459,17 +899,19 @@ See also
 
 Invokes a computation with the given arguments.
 
-**`Call(computation, args...)`**
+**`Call(computation, operands...)`**
 
 | Arguments     | Type                   | Semantics                           |
 | ------------- | ---------------------- | ----------------------------------- |
-| `computation` | `XlaComputation`       | computation of type `T_0, T_1, ..., T_{N-1} -> S` with N parameters of arbitrary type |
-| `args`        | sequence of N `XlaOp`s | N arguments of arbitrary type       |
+| `computation` | `XlaComputation`       | computation of type `T_0, T_1, ..., |
+:               :                        : T_{N-1} -> S` with N parameters of  :
+:               :                        : arbitrary type                      :
+| `operands`    | sequence of N `XlaOp`s | N arguments of arbitrary type       |
 
-The arity and types of the `args` must match the parameters of the
-`computation`. It is allowed to have no `args`.
+The arity and types of the `operands` must match the parameters of the
+`computation`. It is allowed to have no `operands`.
 
-## CompositeCall
+### CompositeCall
 
 See also
 [`XlaBuilder::CompositeCall`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
@@ -489,6 +931,7 @@ This op is implemented as a `kCall` with attribute `is_composite=true`. The
 attributes store the remaining attributes prefixed with `composite.`.
 
 Example CompositeCall op:
+
 ```cpp
 f32[] call(f32[] %cst), to_apply=%computation, is_composite=true,
 frontend_attributes = {
@@ -498,15 +941,73 @@ frontend_attributes = {
 }
 ```
 
-**`Call(computation, args..., name, composite_attributes, version)`**
+**`CompositeCall(computation, operands..., name, attributes, version)`**
 
-| Arguments                   | Type                   | Semantics                                                                             |
-| --------------------------- | ---------------------- | ------------------------------------------------------------------------------------- |
-| `inputs`                    | `XlaOp`                | variadic number of values                                                             |
-| `name`                      | `string`               | name of the composite                                                                 |
-| `composite_attributes`      | optional `string`      | optional stringified dictionary of attributes                                         |
-| `decomposition`             | `XlaComputation`       | computation of type `T_0, T_1, ..., T_{N-1} -> S` with N parameters of arbitrary type |
-| `version`                   | `int64`.               | number to version updates to semantics of the composite op                            |
+| Arguments     | Type                   | Semantics                           |
+| ------------- | ---------------------- | ----------------------------------- |
+| `computation` | `XlaComputation`       | computation of type `T_0, T_1, ..., |
+:               :                        : T_{N-1} -> S` with N parameters of  :
+:               :                        : arbitrary type                      :
+| `operands`    | sequence of N `XlaOp`s | variadic number of values           |
+| `name`        | `string`               | name of the composite               |
+| `attributes`  | optional `string`      | optional stringified dictionary of  |
+:               :                        : attributes                          :
+| `version`     | optional `int64`       | number to version updates to        |
+:               :                        : semantics of the composite op       :
+
+An op’s `decomposition` isn’t a field called, but instead appears as a to_apply
+attribute that points to the function which contains the lower-level
+implementation, i.e. `to_apply=%funcname`
+
+More information on composite and decomposition can be found on
+[StableHLO Specification](https://openxla.org/stablehlo/spec#composite).
+
+## Cbrt
+
+See also
+[`XlaBuilder::Cbrt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise cubic root operation `x -> cbrt(x)`.
+
+**`Cbrt(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+Cbrt also supports the optional `result_accuracy` argument:
+
+**`Cbrt(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+For StableHLO information see
+[StableHLO - cbrt](https://openxla.org/stablehlo/spec#cbrt).
+
+## Ceil
+
+See also
+[`XlaBuilder::Ceil`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise ceil `x -> ⌈x⌉`.
+
+**`Ceil(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+For StableHLO information see
+[StableHLO - ceil](https://openxla.org/stablehlo/spec#ceil).
 
 ## Cholesky
 
@@ -519,10 +1020,11 @@ of a batch of symmetric (Hermitian) positive definite matrices.
 
 **`Cholesky(a, lower)`**
 
-Arguments | Type    | Semantics
---------- | ------- | -----------------------------------------------------
-`a`       | `XlaOp` | an array of a complex or floating-point type with > 2 dimensions.
-`lower`   | `bool`  | whether to use the upper or lower triangle of `a`.
+| Arguments | Type    | Semantics                                             |
+| --------- | ------- | ----------------------------------------------------- |
+| `a`       | `XlaOp` | an array of a complex or floating-point type with > 2 |
+:           :         : dimensions.                                           :
+| `lower`   | `bool`  | whether to use the upper or lower triangle of `a`.    |
 
 If `lower` is `true`, computes lower-triangular matrices `l` such that $a = l .
 l^T$. If `lower` is `false`, computes upper-triangular matrices `u` such that
@@ -538,6 +1040,9 @@ where all except the minor 2 dimensions are batch dimensions.
 
 If `a` is not symmetric (Hermitian) positive definite, the result is
 implementation-defined.
+
+For StableHLO information see
+[StableHLO - cholesky](https://openxla.org/stablehlo/spec#cholesky).
 
 ## Clamp
 
@@ -557,7 +1062,7 @@ Arguments | Type    | Semantics
 Given an operand and minimum and maximum values, returns the operand if it is in
 the range between the minimum and maximum, else returns the minimum value if the
 operand is below this range or the maximum value if the operand is above this
-range. That is, `clamp(a, x, b) =  min(max(a, x), b)`.
+range. That is, `clamp(a, x, b) = min(max(a, x), b)`.
 
 All three arrays must be the same shape. Alternatively, as a restricted form of
 [broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
@@ -572,10 +1077,13 @@ let max: s32 = 6;
 Clamp(min, operand, max) = s32[3]{0, 5, 6};
 ```
 
+For StableHLO information see
+[StableHLO - clamp](https://openxla.org/stablehlo/spec#clamp).
+
 ## Collapse
 
 See also
-[`XlaBuilder::Collapse`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Collapse`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 and the `tf.reshape` operation.
 
 Collapses dimensions of an array into one dimension.
@@ -603,10 +1111,10 @@ general collapse ordering is needed.
 For example, let v be an array of 24 elements:
 
 ```cpp
-let v = f32[4x2x3] {{{10, 11, 12},  {15, 16, 17}},
-{{20, 21, 22},  {25, 26, 27}},
-{{30, 31, 32},  {35, 36, 37}},
-{{40, 41, 42},  {45, 46, 47}}};
+let v = f32[4x2x3] {{{10, 11, 12}, {15, 16, 17}},
+{{20, 21, 22}, {25, 26, 27}},
+{{30, 31, 32}, {35, 36, 37}},
+{{40, 41, 42}, {45, 46, 47}}};
 
 // Collapse to a single dimension, leaving one dimension.
 let v012 = Collapse(v, {0,1,2});
@@ -635,29 +1143,516 @@ then v12 == f32[8x3] {{10, 11, 12},
 
 ```
 
+> **Note:** For further information on `Collapse` see [HLO - Reshape](#reshape)
+
+## Clz
+
+See also
+[`XlaBuilder::Clz`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise count leading zeros.
+
+**`Clz(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+> **Note:** `Clz` is not found directly in StableHLO, but is analogous to
+> [StableHlo - count_leading_zeros](https://openxla.org/stablehlo/spec#count_leading_zeros).
+
+## CollectiveBroadcast
+
+See also
+[`XlaBuilder::CollectiveBroadcast`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Broadcasts data across replicas. Data is sent from the first replica id in each
+group to the other ids in the same group. If a replica id is not in any replica
+group, the output on that replica is a tensor consisting of 0(s) in `shape`.
+
+**`CollectiveBroadcast(operand, replica_groups, channel_id)`**
+
+| Arguments        | Type                     | Semantics                     |
+| ---------------- | ------------------------ | ----------------------------- |
+| `operand`        | `XlaOp`                  | The operand to the function   |
+| `replica_groups` | `ReplicaGroup`vector     | Each group contains a list of |
+:                  :                          : replica ids                   :
+| `channel_id`     | optional `ChannelHandle` | unique identifier for each    |
+:                  :                          : send/recv pair                :
+
+For StableHLO information see
+[StableHLO - collective_broadcast](https://openxla.org/stablehlo/spec#collective_broadcast).
+
 ## CollectivePermute
 
 See also
 [`XlaBuilder::CollectivePermute`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-CollectivePermute is a collective operation that sends and receives data cross
+CollectivePermute is a collective operation that sends and receives data across
 replicas.
 
-**`CollectivePermute(operand, source_target_pairs)`**
+**`CollectivePermute(operand, source_target_pairs, channel_id, inplace)`**
 
-| Arguments             | Type                    | Semantics                  |
-| --------------------- | ----------------------- | -------------------------- |
-| `operand`             | `XlaOp`                 | n dimensional input array  |
-| `source_target_pairs` | `<int64, int64>` vector | A list of (source_replica_id, target_replica_id) pairs. For each pair, the operand is sent from source replica to target replica. |
+| Arguments             | Type                     | Semantics                 |
+| --------------------- | ------------------------ | ------------------------- |
+| `operand`             | `XlaOp`                  | n dimensional input array |
+| `source_target_pairs` | `<int64, int64>` vector  | A list of                 |
+:                       :                          : (source_replica_id,       :
+:                       :                          : target_replica_id) pairs. :
+:                       :                          : For each pair, the        :
+:                       :                          : operand is sent from      :
+:                       :                          : source replica to target  :
+:                       :                          : replica.                  :
+| `channel_id`          | optional `ChannelHandle` | Optional channel ID for   |
+:                       :                          : cross-module              :
+:                       :                          : communication             :
+| `inpace`              | optional `bool`          | flag whether permutation  |
+:                       :                          : should be done inplace    :
 
-Note that there are the following restrictions on the `source_target_pair`:
+Note that there are the following restrictions on the `source_target_pairs`:
 
 -   Any two pairs should not have the same target replica id, and they should
     not have the same source replica id.
 -   If a replica id is not a target in any pair, then the output on that replica
     is a tensor consisting of 0(s) with the same shape as the input.
 
-## Concatenate
+The API of `CollectivePermute` operation is internally decomposed into 2 HLO
+instructions (`CollectivePermuteStart` and `CollectivePermuteDone`).
+
+See also
+[`HloInstruction::CreateCollectivePermuteStart`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
+
+`CollectivePermuteStart` and `CollectivePermuteDone` serve as primitives in HLO.
+These ops may appear in HLO dumps, but they are not intended to be constructed
+manually by end users.
+
+For StableHLO information see
+[StableHLO - collective_permute](https://openxla.org/stablehlo/spec#collective_permute).
+
+> **Note:** `CollectivePermuteStart` and `CollectivePermuteDone` are only found
+> in HLO. They are not found in StableHLO.
+
+## Compare
+
+See also
+[`XlaBuilder::Compare`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise comparison of `lhs` and `rhs` of the following:
+
+### Eq
+
+See also
+[`XlaBuilder::Eq`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise **equal-to** comparison of `lhs` and `rhs`.
+
+$lhs = rhs$
+
+**`Eq(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Eq:
+
+**`Eq(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+Support a total order over the floating point numbers exists for Eq, by
+enforcing:
+
+$$-NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN.$$
+
+**`EqTotalOrder(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+For StableHLO information see
+[StableHLO - compare](https://openxla.org/stablehlo/spec#compare).
+
+### Ne
+
+See also
+[`XlaBuilder::Ne`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise **not equal-to** comparison of `lhs` and `rhs`.
+
+$lhs != rhs$
+
+**`Ne(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Ne:
+
+**`Ne(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+Support a total order over the floating point numbers exists for Ne, by
+enforcing:
+
+$$-NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN.$$
+
+**`NeTotalOrder(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+For StableHLO information see
+[StableHLO - compare](https://openxla.org/stablehlo/spec#compare).
+
+### Ge
+
+See also
+[`XlaBuilder::Ge`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise **greater-or-equal-than** comparison of `lhs` and `rhs`.
+
+$lhs >= rhs$
+
+**`Ge(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Ge:
+
+**`Ge(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+Support a total order over the floating point numbers exists for Gt, by
+enforcing:
+
+$$-NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN.$$
+
+**`GtTotalOrder(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+For StableHLO information see
+[StableHLO - compare](https://openxla.org/stablehlo/spec#compare).
+
+### Gt
+
+See also
+[`XlaBuilder::Gt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise **greater-than** comparison of `lhs` and `rhs`.
+
+$lhs > rhs$
+
+**`Gt(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Gt:
+
+**`Gt(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - compare](https://openxla.org/stablehlo/spec#compare).
+
+### Le
+
+See also
+[`XlaBuilder::Le`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise **less-or-equal-than** comparison of `lhs` and `rhs`.
+
+$lhs <= rhs$
+
+**`Le(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Le:
+
+**`Le(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+Support a total order over the floating point numbers exists for Le, by
+enforcing:
+
+$$-NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN.$$
+
+**`LeTotalOrder(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+For StableHLO information see
+[StableHLO - compare](https://openxla.org/stablehlo/spec#compare).
+
+### Lt
+
+See also
+[`XlaBuilder::Lt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise **less-than** comparison of `lhs` and `rhs`.
+
+$lhs < rhs$
+
+**`Lt(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Lt:
+
+**`Lt(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+Support a total order over the floating point numbers exists for Lt, by
+enforcing:
+
+$$-NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN.$$
+
+**`LtTotalOrder(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+For StableHLO information see
+[StableHLO - compare](https://openxla.org/stablehlo/spec#compare).
+
+## Complex
+
+See also
+[`XlaBuilder::Complex`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise conversion to a complex value from a pair of real and
+imaginary values, `lhs` and `rhs`.
+
+**`Complex(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Complex:
+
+**`Complex(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - complex](https://openxla.org/stablehlo/spec#complex).
+
+## ConcatInDim (Concatenate)
 
 See also
 [`XlaBuilder::ConcatInDim`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
@@ -671,8 +1666,11 @@ order that they were specified.
 
 | Arguments   | Type                  | Semantics                              |
 | ----------- | --------------------- | -------------------------------------- |
-| `operands`  | sequence of N `XlaOp` | N arrays of type T with dimensions [L0, L1, ...]. Requires N >= 1. |
-| `dimension` | `int64`               | A value in the interval `[0, N)` that names the dimension to be concatenated between the `operands`. |
+| `operands`  | sequence of N `XlaOp` | N arrays of type T with dimensions     |
+:             :                       : [L0, L1, ...]. Requires N >= 1.        :
+| `dimension` | `int64`               | A value in the interval `[0, N)` that  |
+:             :                       : names the dimension to be concatenated :
+:             :                       : between the `operands`.                :
 
 With the exception of `dimension` all dimensions must be the same. This is
 because XLA does not support "ragged" arrays. Also note that 0-dimensional
@@ -683,53 +1681,53 @@ which the concatenation occurs).
 
 ```cpp
 Concat({{2, 3}, {4, 5}, {6, 7}}, 0)
->>> {2, 3, 4, 5, 6, 7}
+//Output:  {2, 3, 4, 5, 6, 7}
 ```
 
 2-dimensional example:
 
 ```cpp
-let a = {
-{1, 2},
-{3, 4},
-{5, 6},
-};
-let b = {
-{7, 8},
-};
+let a = {{1, 2},
+         {3, 4},
+         {5, 6}};
+
+let b = {{7, 8}};
+
 Concat({a, b}, 0)
->>> {
-{1, 2},
-{3, 4},
-{5, 6},
-{7, 8},
-}
+
+//Output:  {{1, 2},
+//          {3, 4},
+//          {5, 6},
+//          {7, 8}}
 ```
 
 Diagram:
 
 ![](images/ops_concatenate.png)
 
+For StableHLO information see
+[StableHLO - concatenate](https://openxla.org/stablehlo/spec#concatenate).
+
 ## Conditional
 
 See also
 [`XlaBuilder::Conditional`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-**`Conditional(pred, true_operand, true_computation, false_operand,
+**`Conditional(predicate, true_operand, true_computation, false_operand,
 false_computation)`**
 
 <!-- mdformat off(disable mdformat for proper MathJax formatting) -->
 
-Arguments           | Type             | Semantics
-------------------- | ---------------- | ------------------------------------
-`pred`              | `XlaOp`          | Scalar of type `PRED`
-`true_operand`      | `XlaOp`          | Argument of type $T_0$
-`true_computation`  | `XlaComputation` | XlaComputation of type $T_0 \to S$
-`false_operand`     | `XlaOp`          | Argument of type $T_1$
-`false_computation` | `XlaComputation` | XlaComputation of type $T_1 \to S$
+| Arguments           | Type             | Semantics                          |
+| ------------------- | ---------------- | ---------------------------------- |
+| `predicate`         | `XlaOp`          | Scalar of type `PRED`              |
+| `true_operand`      | `XlaOp`          | Argument of type $T_0$             |
+| `true_computation`  | `XlaComputation` | XlaComputation of type $T_0 \to S$ |
+| `false_operand`     | `XlaOp`          | Argument of type $T_1$             |
+| `false_computation` | `XlaComputation` | XlaComputation of type $T_1 \to S$ |
 
-Executes `true_computation` if `pred` is `true`, `false_computation` if `pred`
-is `false`, and returns the result.
+Executes `true_computation` if `predicate` is `true`, `false_computation` if
+`predicate` is `false`, and returns the result.
 
 The `true_computation` must take in a single argument of type $T_0$ and will
 be invoked with `true_operand` which must be of the same type. The
@@ -740,17 +1738,17 @@ returned value of `true_computation` and `false_computation` must be the same.
 <!-- mdformat on -->
 
 Note that only one of `true_computation` and `false_computation` will be
-executed depending on the value of `pred`.
+executed depending on the value of `predicate`.
 
 **`Conditional(branch_index, branch_computations, branch_operands)`**
 
 <!-- mdformat off(disable mdformat for proper MathJax formatting) -->
 
-| Arguments             | Type                           | Semantics                    |
-| --------------------- | ------------------------------ | ---------------------------- |
-| `branch_index`        | `XlaOp`                        | Scalar of type `S32`         |
-| `branch_computations` | sequence of N `XlaComputation` | XlaComputations of type $T_0 \to S , T_1 \to S , ..., T_{N-1} \to S$   |
-| `branch_operands`     | sequence of N `XlaOp`          | Arguments of type $T_0 , T_1 , ..., T_{N-1}$ |
+| Arguments             | Type                           | Semantics                                                    |
+| --------------------- | ------------------------------ | ------------------------------------------------------------ |
+| `branch_index`        | `XlaOp`                        | Scalar of type `S32`                                         |
+| `branch_computations` | sequence of N `XlaComputation` | XlaComputations of type $T_0 \to S , T_1 \to S , ..., T_{N-1} \to S$ |
+| `branch_operands`     | sequence of N `XlaOp`          | Arguments of type $T_0 , T_1 , ..., T_{N-1}$                 |
 
 <!-- mdformat on -->
 
@@ -765,35 +1763,104 @@ type of the returned value of each `branch_computations[b]` must be the same.
 Note that only one of the `branch_computations` will be executed depending on
 the value of `branch_index`.
 
-## Conv (convolution)
+For StableHLO information see
+[StableHLO - if](https://openxla.org/stablehlo/spec#if).
+
+## Constant
+
+See also
+[`XlaBuilder::ConstantLiteral`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Produces an `output` from a constant `literal`.
+
+**`Constant(literal)`**
+
+Arguments | Type           | Semantics
+--------- | -------------- | --------------------------------------
+`literal` | `LiteralSlice` | constant view of an existing `Literal`
+
+For StableHLO information see
+[StableHLO - constant](https://openxla.org/stablehlo/spec#constant).
+
+## ConvertElementType
+
+See also
+[`XlaBuilder::ConvertElementType`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Similar to an element-wise `static_cast` in C++, `ConvertElementType` performs
+an element-wise conversion operation from a data shape to a target shape. The
+dimensions must match, and the conversion is an element-wise one; e.g. `s32`
+elements become `f32` elements via an `s32`-to-`f32` conversion routine.
+
+**`ConvertElementType(operand, new_element_type)`**
+
+Arguments          | Type            | Semantics
+------------------ | --------------- | ---------------------------
+`operand`          | `XlaOp`         | array of type T with dims D
+`new_element_type` | `PrimitiveType` | type U
+
+The dimensions of the operand and the target shape must match. The source and
+destination element types must not be tuples.
+
+A conversion such as `T=s32` to `U=f32` will perform a normalizing int-to-float
+conversion routine such as round-to-nearest-even.
+
+> **Note:** The precise float-to-int and visa-versa conversions are currently
+> unspecified, but may become additional arguments to the convert operation in
+> the future. Not all possible conversions have been implemented for all
+> targets.
+
+```cpp
+let a: s32[3] = {0, 1, 2};
+let b: f32[3] = convert(a, f32);
+then b == f32[3]{0.0, 1.0, 2.0}
+```
+
+For StableHLO information see
+[StableHLO - convert](https://openxla.org/stablehlo/spec#convert).
+
+## Conv (Convolution)
 
 See also
 [`XlaBuilder::Conv`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
-
-As ConvWithGeneralPadding, but the padding is specified in a short-hand way as
-either SAME or VALID. SAME padding pads the input (`lhs`) with zeroes so that
-the output has the same shape as the input when not taking striding into
-account. VALID padding simply means no padding.
-
-## ConvWithGeneralPadding (convolution)
-
-See also
-[`XlaBuilder::ConvWithGeneralPadding`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Computes a convolution of the kind used in neural networks. Here, a convolution
 can be thought of as a n-dimensional window moving across a n-dimensional base
 area and a computation is performed for each possible position of the window.
 
-| Arguments             | Type                     | Semantics                |
-| --------------------- | ------------------------ | ------------------------ |
-| `lhs`                 | `XlaOp`                  | (n+2)-dimensional array of inputs |
-| `rhs`                 | `XlaOp`                  | (n+2)-dimensional array of kernel weights |
-| `window_strides`      | `ArraySlice<int64>`      | n-d array of kernel strides |
-| `padding`             | `ArraySlice< pair<int64,int64>>` | n-d array of (low, high) padding |
-| `lhs_dilation`        | `ArraySlice<int64>`      | n-d lhs dilation factor array |
-| `rhs_dilation`        | `ArraySlice<int64>`      | n-d rhs dilation factor array |
-| `feature_group_count` | int64                    | the number of feature groups |
-| `batch_group_count`   | int64                    | the number of batch groups |
+`Conv` Enqueues a convolution instruction onto the computation, which uses the
+default convolution dimension numbers with no dilation.
+
+The padding is specified in a short-hand way as either SAME or VALID. SAME
+padding pads the input (`lhs`) with zeroes so that the output has the same shape
+as the input when not taking striding into account. VALID padding simply means
+no padding.
+
+**`Conv(lhs, rhs, window_strides, padding, feature_group_count,
+batch_group_count, precision_config, preferred_element_type)`**
+
+| Arguments                | Type                | Semantics                   |
+| :----------------------- | :------------------ | :-------------------------- |
+| `lhs`                    | `XlaOp`             | (n+2)-dimensional array of  |
+:                          :                     : inputs                      :
+| `rhs`                    | `XlaOp`             | (n+2)-dimensional array of  |
+:                          :                     : kernel weights              :
+| `window_strides`         | `ArraySlice<int64>` | n-d array of kernel strides |
+| `padding`                | `Padding`           | enum of padding             |
+| `feature_group_count`    | int64               | the number of feature       |
+:                          :                     : groups                      :
+| `batch_group_count`      | int64               | the number of batch groups  |
+| `precision_config`       | optional            | enum for level of precision |
+:                          : `PrecisionConfig`   :                             :
+| `preferred_element_type` | optional            | enum of scalar element type |
+:                          : `PrimitiveType`     :                             :
+
+Increasing levels of controls are available for `Conv`:
+
+-   [ConvWithGeneralPadding](#ConvWithGeneralPadding)
+-   [ConvWithGeneralDimensions](#ConvWithGeneralDimensions)
+-   [ConvGeneral](#ConvGeneral)
+-   [ConvGeneralDilated](#convgeneraldilated)
 
 Let n be the number of spatial dimensions. The `lhs` argument is an
 (n+2)-dimensional array describing the base area. This is called the input,
@@ -801,20 +1868,20 @@ even though of course the rhs is also an input. In a neural network, these are
 the input activations. The n+2 dimensions are, in this order:
 
 *   `batch`: Each coordinate in this dimension represents an independent input
-for which convolution is carried out.
+    for which convolution is carried out.
 *   `z/depth/features`: Each (y,x) position in the base area has a vector
-associated to it, which goes into this dimension.
+    associated to it, which goes into this dimension.
 *   `spatial_dims`: Describes the `n` spatial dimensions that define the base
-area that the window moves across.
+    area that the window moves across.
 
 The `rhs` argument is an (n+2)-dimensional array describing the convolutional
 filter/kernel/window. The dimensions are, in this order:
 
 *   `output-z`: The `z` dimension of the output.
 *   `input-z`: The size of this dimension times `feature_group_count` should
-equal the size of the `z` dimension in lhs.
+    equal the size of the `z` dimension in lhs.
 *   `spatial_dims`: Describes the `n` spatial dimensions that define the n-d
-window that moves across the base area.
+    window that moves across the base area.
 
 The `window_strides` argument specifies the stride of the convolutional window
 in the spatial dimensions. For example, if the stride in the first spatial
@@ -908,9 +1975,9 @@ separate convolutions with a different filter for each of them.
 Here is pseudo-code for a 2d convolution with padding and striding:
 
 ```cpp
-for (b, oz, oy, ox) {  // output coordinates
+for (b, oz, oy, ox) { // output coordinates
   value = 0;
-  for (iz, ky, kx) {  // kernel coordinates and input z
+  for (iz, ky, kx) { // kernel coordinates and input z
     iy = oy*stride_y + ky - pad_low_y;
     ix = ox*stride_x + kx - pad_low_x;
     if ((iy, ix) inside the base area considered without padding) {
@@ -921,43 +1988,236 @@ for (b, oz, oy, ox) {  // output coordinates
 }
 ```
 
-## ConvertElementType
+`precision_config` is used to indicate the precision configuration. The level
+dictates whether hardware should attempt to generate more machine code
+instructions to provide more accurate dtype emulation when needed (i.e.
+emulating f32 on a TPU that only supports bf16 matmuls). Values may be
+`DEFAULT`, `HIGH`, `HIGHEST`. Additional details
+[in the MXU sections](https://cloud.google.com/blog/products/ai-machine-learning/bfloat16-the-secret-to-high-performance-on-cloud-tpus).
+
+`preferred_element_type` is a scalar element of higher/lower precision output
+types used for accumulation. `preferred_element_type` recommends the
+accumulation type for the given operation, however it is not guaranteed. This
+allows for some hardware backends to instead accumulate in a different type and
+convert to the preferred output type.
+
+For StableHLO information see
+[StableHLO - convolution](https://openxla.org/stablehlo/spec#convolution).
+
+### ConvWithGeneralPadding
 
 See also
-[`XlaBuilder::ConvertElementType`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+[`XlaBuilder::ConvWithGeneralPadding`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-Similar to an element-wise `static_cast` in C++, performs an element-wise
-conversion operation from a data shape to a target shape. The dimensions must
-match, and the conversion is an element-wise one; e.g. `s32` elements become
-`f32` elements via an `s32`-to-`f32` conversion routine.
+**`ConvWithGeneralPadding(lhs, rhs, window_strides, padding,
+feature_group_count, batch_group_count, precision_config,
+preferred_element_type)`**
 
-**`ConvertElementType(operand, new_element_type)`**
+Same as [`Conv`](#conv-convolution) where padding configuration is explicit.
 
-Arguments          | Type            | Semantics
------------------- | --------------- | ---------------------------
-`operand`          | `XlaOp`         | array of type T with dims D
-`new_element_type` | `PrimitiveType` | type U
+| Arguments                | Type                | Semantics                   |
+| :----------------------- | :------------------ | :-------------------------- |
+| `lhs`                    | `XlaOp`             | (n+2)-dimensional array of  |
+:                          :                     : inputs                      :
+| `rhs`                    | `XlaOp`             | (n+2)-dimensional array of  |
+:                          :                     : kernel weights              :
+| `window_strides`         | `ArraySlice<int64>` | n-d array of kernel strides |
+| `padding`                | `ArraySlice<        | n-d array of (low, high)    |
+:                          : pair<int64,int64>>` : padding                     :
+| `feature_group_count`    | int64               | the number of feature       |
+:                          :                     : groups                      :
+| `batch_group_count`      | int64               | the number of batch groups  |
+| `precision_config`       | optional            | enum for level of precision |
+:                          : `PrecisionConfig`   :                             :
+| `preferred_element_type` | optional            | enum of scalar element type |
+:                          : `PrimitiveType`     :                             :
 
-The dimensions of the operand and the target shape must match. The source and
-destination element types must not be tuples.
+### ConvWithGeneralDimensions
 
-A conversion such as `T=s32` to `U=f32` will perform a normalizing int-to-float
-conversion routine such as round-to-nearest-even.
+See also
+[`XlaBuilder::ConvWithGeneralDimensions`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-> Note: The precise float-to-int and visa-versa conversions are currently
-> unspecified, but may become additional arguments to the convert operation in
-> the future. Not all possible conversions have been implemented for all
->targets.
+**`ConvWithGeneralDimensions(lhs, rhs, window_strides, padding,
+dimension_numbers, feature_group_count, batch_group_count, precision_config,
+preferred_element_type)`**
 
-```cpp
-let a: s32[3] = {0, 1, 2};
-let b: f32[3] = convert(a, f32);
-then b == f32[3]{0.0, 1.0, 2.0}
-```
+Same as [`Conv`](#conv-convolution) where dimension numbers are explicit.
 
-## CrossReplicaSum
+| Arguments                | Type                          | Semantics         |
+| :----------------------- | :---------------------------- | :---------------- |
+| `lhs`                    | `XlaOp`                       | (n+2)-dimensional |
+:                          :                               : array of inputs   :
+| `rhs`                    | `XlaOp`                       | (n+2)-dimensional |
+:                          :                               : array of kernel   :
+:                          :                               : weights           :
+| `window_strides`         | `ArraySlice<int64>`           | n-d array of      |
+:                          :                               : kernel strides    :
+| `padding`                | `Padding`                     | enum of padding   |
+| `dimension_numbers`      | `ConvolutionDimensionNumbers` | the number of     |
+:                          :                               : dimensions        :
+| `feature_group_count`    | int64                         | the number of     |
+:                          :                               : feature groups    :
+| `batch_group_count`      | int64                         | the number of     |
+:                          :                               : batch groups      :
+| `precision_config`       | optional `PrecisionConfig`    | enum for level of |
+:                          :                               : precision         :
+| `preferred_element_type` | optional `PrimitiveType`      | enum of scalar    |
+:                          :                               : element type      :
 
-Performs `AllReduce` with a summation computation.
+### ConvGeneral
+
+See also
+[`XlaBuilder::ConvGeneral`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+**`ConvGeneral(lhs, rhs, window_strides, padding, dimension_numbers,
+feature_group_count, batch_group_count, precision_config,
+preferred_element_type)`**
+
+Same as [`Conv`](#conv-convolution) where dimension numbers and padding
+configuration is explicit
+
+| Arguments                | Type                          | Semantics         |
+| :----------------------- | :---------------------------- | :---------------- |
+| `lhs`                    | `XlaOp`                       | (n+2)-dimensional |
+:                          :                               : array of inputs   :
+| `rhs`                    | `XlaOp`                       | (n+2)-dimensional |
+:                          :                               : array of kernel   :
+:                          :                               : weights           :
+| `window_strides`         | `ArraySlice<int64>`           | n-d array of      |
+:                          :                               : kernel strides    :
+| `padding`                | `ArraySlice<                  | n-d array of      |
+:                          : pair<int64,int64>>`           : (low, high)       :
+:                          :                               : padding           :
+| `dimension_numbers`      | `ConvolutionDimensionNumbers` | the number of     |
+:                          :                               : dimensions        :
+| `feature_group_count`    | int64                         | the number of     |
+:                          :                               : feature groups    :
+| `batch_group_count`      | int64                         | the number of     |
+:                          :                               : batch groups      :
+| `precision_config`       | optional `PrecisionConfig`    | enum for level of |
+:                          :                               : precision         :
+| `preferred_element_type` | optional `PrimitiveType`      | enum of scalar    |
+:                          :                               : element type      :
+
+### ConvGeneralDilated
+
+See also
+[`XlaBuilder::ConvGeneralDilated`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+**`ConvGeneralDilated(lhs, rhs, window_strides, padding, lhs_dilation,
+rhs_dilation, dimension_numbers, feature_group_count, batch_group_count,
+precision_config, preferred_element_type, window_reversal)`**
+
+Same as [`Conv`](#conv-convolution) where padding configuration, dilation
+factors, and dimension numbers are explicit.
+
+| Arguments                | Type                          | Semantics         |
+| :----------------------- | :---------------------------- | :---------------- |
+| `lhs`                    | `XlaOp`                       | (n+2)-dimensional |
+:                          :                               : array of inputs   :
+| `rhs`                    | `XlaOp`                       | (n+2)-dimensional |
+:                          :                               : array of kernel   :
+:                          :                               : weights           :
+| `window_strides`         | `ArraySlice<int64>`           | n-d array of      |
+:                          :                               : kernel strides    :
+| `padding`                | `ArraySlice<                  | n-d array of      |
+:                          : pair<int64,int64>>`           : (low, high)       :
+:                          :                               : padding           :
+| `lhs_dilation`           | `ArraySlice<int64>`           | n-d lhs dilation  |
+:                          :                               : factor array      :
+| `rhs_dilation`           | `ArraySlice<int64>`           | n-d rhs dilation  |
+:                          :                               : factor array      :
+| `dimension_numbers`      | `ConvolutionDimensionNumbers` | the number of     |
+:                          :                               : dimensions        :
+| `feature_group_count`    | int64                         | the number of     |
+:                          :                               : feature groups    :
+| `batch_group_count`      | int64                         | the number of     |
+:                          :                               : batch groups      :
+| `precision_config`       | optional `PrecisionConfig`    | enum for level of |
+:                          :                               : precision         :
+| `preferred_element_type` | optional `PrimitiveType`      | enum of scalar    |
+:                          :                               : element type      :
+| `window_reversal`        | optional `vector<bool>`       | flag used to      |
+:                          :                               : logically reverse :
+:                          :                               : dimension before  :
+:                          :                               : applying the      :
+:                          :                               : convolution       :
+
+## Copy
+
+See also
+[`HloInstruction::CreateCopyStart`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
+
+`Copy` is internally decomposed into 2 HLO instructions `CopyStart` and
+`CopyDone`. `Copy` along with `CopyStart` and `CopyDone` serve as primitives in
+HLO. These ops may appear in HLO dumps, but they are not intended to be
+constructed manually by end users.
+
+> **Note:** `Copy`, `CopyStart`, `CopyDone` are only found in HLO. They are not
+> found in StableHLO.
+
+## Cos
+
+See
+also[`XlaBuilder::Cos`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise cosine `x -> cos(x)`.
+
+**`Cos(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+Cos also supports the optional `result_accuracy` argument:
+
+**`Cos(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+For StableHLO information see
+[StableHLO - cosine](https://openxla.org/stablehlo/spec#cosine).
+
+## Cosh
+
+See also
+[`XlaBuilder::Cosh`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise hyperbolic cosine `x -> cosh(x)`.
+
+**`Cosh(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+Cosh also supports the optional `result_accuracy` argument:
+
+**`Cosh(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+> **Note:** `Cosh` is only found in HLO and not found in StableHLO. CHLO `Cosh`
+> in Frameworks will lower to HLO `Cosh` see
+> [StableHLO - chlo.cosh](https://openxla.org/stablehlo/generated/chlo?hl=en#chlocosh_chlocoshop)
 
 ## CustomCall
 
@@ -966,75 +2226,96 @@ See also
 
 Call a user-provided function within a computation.
 
-**`CustomCall(target_name, args..., shape)`**
+CustomCall documentation is provided in
+[Developer details - XLA Custom Calls](https://openxla.org/xla/custom_call)
 
-| Arguments     | Type                   | Semantics                         |
-| ------------- | ---------------------- | --------------------------------- |
-| `target_name` | `string`               | Name of the function. A call instruction will be emitted which targets this symbol name. |
-| `args`        | sequence of N `XlaOp`s | N arguments of arbitrary type, which will be passed to the function. |
-| `shape`       | `Shape`                | Output shape of the function      |
+For StableHLO information see
+[StableHLO - custom_call](https://openxla.org/stablehlo/spec#custom_call).
 
-The function signature is the same, regardless of the arity or type of args:
+## Div
 
-```cpp
-extern "C" void target_name(void* out, void** in);
-```
+See also
+[`XlaBuilder::Div`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-For example, if CustomCall is used as follows:
+Performs element-wise division of dividend `lhs` and divisor `rhs`.
 
-```cpp
-let x = f32[2] {1,2};
-let y = f32[2x3] {{10, 20, 30}, {40, 50, 60}};
+**`Div(lhs, rhs)`**
 
-CustomCall("myfunc", {x, y}, f32[3x3])
-```
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
 
-Here is an example of an implementation of `myfunc`:
+Integer division overflow (signed/unsigned division/remainder by zero or signed
+division/remainder of `INT_SMIN` with `-1`) produces an implementation defined
+value.
 
-```cpp
-extern "C" void myfunc(void* out, void** in) {
-  float (&x)[2] = *static_cast<float(*)[2]>(in[0]);
-  float (&y)[2][3] = *static_cast<float(*)[2][3]>(in[1]);
-  EXPECT_EQ(1, x[0]);
-  EXPECT_EQ(2, x[1]);
-  EXPECT_EQ(10, y[0][0]);
-  EXPECT_EQ(20, y[0][1]);
-  EXPECT_EQ(30, y[0][2]);
-  EXPECT_EQ(40, y[1][0]);
-  EXPECT_EQ(50, y[1][1]);
-  EXPECT_EQ(60, y[1][2]);
-  float (&z)[3][3] = *static_cast<float(*)[3][3]>(out);
-  z[0][0] = x[1] + y[1][0];
-  // ...
-}
-```
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
 
-The user-provided function must not have side-effects and its execution must be
-idempotent.
+An alternative variant with different-dimensional broadcasting support exists
+for Div:
 
-> Note: The opaque nature of the user-provided function restricts optimization
-> opportunities for the compiler. Try to express your computation in terms of
-> native XLA ops whenever possible; only use CustomCall as a last resort.
+**`Div(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - divide](https://openxla.org/stablehlo/spec#divide).
+
+## Domain
+
+See also
+[`HloInstruction::CreateDomain`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
+
+`Domain` may appear in HLO dumps, but it is not intended to be constructed
+manually by end users.
+
+> **Note:** `Domain` is only found in HLO. It is not found in StableHLO.
 
 ## Dot
 
 See also
 [`XlaBuilder::Dot`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-**`Dot(lhs, rhs)`**
+**`Dot(lhs, rhs, precision_config, preferred_element_type)`**
 
-Arguments | Type    | Semantics
---------- | ------- | ---------------
-`lhs`     | `XlaOp` | array of type T
-`rhs`     | `XlaOp` | array of type T
+| Arguments                | Type              | Semantics                   |
+| :----------------------- | :---------------- | :-------------------------- |
+| `lhs`                    | `XlaOp`           | array of type T             |
+| `rhs`                    | `XlaOp`           | array of type T             |
+| `precision_config`       | optional          | enum for level of precision |
+:                          : `PrecisionConfig` :                             :
+| `preferred_element_type` | optional          | enum of scalar element type |
+:                          : `PrimitiveType`   :                             :
 
 The exact semantics of this operation depend on the ranks of the operands:
 
-| Input                               | Output          | Semantics               |
-| ----------------------------------- | --------------- | ----------------------- |
-| vector [n] `dot` vector [n]         | scalar          | vector dot product      |
-| matrix [m x k] `dot` vector [k]     | vector [m]      | matrix-vector multiplication |
-| matrix [m x k] `dot` matrix [k x n] | matrix [m x n]  | matrix-matrix multiplication |
+| Input                       | Output         | Semantics                    |
+| :-------------------------- | :------------- | :--------------------------- |
+| vector [n] `dot` vector [n] | scalar         | vector dot product           |
+| matrix [m x k] `dot` vector | vector [m]     | matrix-vector multiplication |
+: [k]                         :                :                              :
+| matrix [m x k] `dot` matrix | matrix [m x n] | matrix-matrix multiplication |
+: [k x n]                     :                :                              :
 
 The operation performs sum of products over the second dimension of `lhs` (or
 the first if it has 1 dimension) and the first dimension of `rhs`. These are the
@@ -1042,24 +2323,46 @@ the first if it has 1 dimension) and the first dimension of `rhs`. These are the
 the same size. In practice, it can be used to perform dot products between
 vectors, vector/matrix multiplications or matrix/matrix multiplications.
 
-## DotGeneral
+`precision_config` is used to indicate the precision configuration. The level
+dictates whether hardware should attempt to generate more machine code
+instructions to provide more accurate dtype emulation when needed (i.e.
+emulating f32 on a TPU that only supports bf16 matmuls). Values may be
+`DEFAULT`, `HIGH`, `HIGHEST`. Additional details
+[in the MXU sections](https://cloud.google.com/blog/products/ai-machine-learning/bfloat16-the-secret-to-high-performance-on-cloud-tpus).
+
+`preferred_element_type` is a scalar element of higher/lower precision output
+types used for accumulation. `preferred_element_type` recommends the
+accumulation type for the given operation, however it is not guaranteed. This
+allows for some hardware backends to instead accumulate in a different type and
+convert to the preferred output type.
+
+For StableHLO information see
+[StableHLO - dot](https://openxla.org/stablehlo/spec#dot).
+
+### DotGeneral
 
 See also
 [`XlaBuilder::DotGeneral`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-**`DotGeneral(lhs, rhs, dimension_numbers)`**
+**`DotGeneral(lhs, rhs, dimension_numbers, precision_config,
+preferred_element_type)`**
 
-Arguments           | Type                  | Semantics
-------------------- | --------------------- | ---------------
-`lhs`               | `XlaOp`               | array of type T
-`rhs`               | `XlaOp`               | array of type T
-`dimension_numbers` | `DotDimensionNumbers` | contracting and batch dimension numbers
+| Arguments                | Type                  | Semantics              |
+| :----------------------- | :-------------------- | :--------------------- |
+| `lhs`                    | `XlaOp`               | array of type T        |
+| `rhs`                    | `XlaOp`               | array of type T        |
+| `dimension_numbers`      | `DotDimensionNumbers` | contracting and batch  |
+:                          :                       : dimension numbers      :
+| `precision_config`       | optional              | enum for level of      |
+:                          : `PrecisionConfig`     : precision              :
+| `preferred_element_type` | optional              | enum of scalar element |
+:                          : `PrimitiveType`       : type                   :
 
 Similar to Dot, but allows contracting and batch dimension numbers to be
 specified for both the `lhs` and `rhs`.
 
 | DotDimensionNumbers Fields   | Type           | Semantics                   |
-| ---------------------------- | -------------- | --------------------------- |
+| :--------------------------- | :------------- | :-------------------------- |
 | `lhs_contracting_dimensions` | repeated int64 | `lhs` contracting dimension |
 :                              :                : numbers                     :
 | `rhs_contracting_dimensions` | repeated int64 | `rhs` contracting dimension |
@@ -1079,17 +2382,17 @@ Example with contracting dimension numbers:
 
 ```cpp
 lhs = { {1.0, 2.0, 3.0},
-{4.0, 5.0, 6.0} }
+        {4.0, 5.0, 6.0} }
 
 rhs = { {1.0, 1.0, 1.0},
-{2.0, 2.0, 2.0} }
+        {2.0, 2.0, 2.0} }
 
 DotDimensionNumbers dnums;
 dnums.add_lhs_contracting_dimensions(1);
 dnums.add_rhs_contracting_dimensions(1);
 
-DotGeneral(lhs, rhs, dnums) -> { {6.0, 12.0},
-{15.0, 30.0} }
+DotGeneral(lhs, rhs, dnums) -> { { 6.0, 12.0},
+                                 {15.0, 30.0} }
 ```
 
 Associated batch dimension numbers from the `lhs` and `rhs` must have the same
@@ -1099,14 +2402,14 @@ Example with batch dimension numbers (batch size 2, 2x2 matrices):
 
 ```cpp
 lhs = { { {1.0, 2.0},
-{3.0, 4.0} },
-{ {5.0, 6.0},
-{7.0, 8.0} } }
+          {3.0, 4.0} },
+        { {5.0, 6.0},
+          {7.0, 8.0} } }
 
 rhs = { { {1.0, 0.0},
-{0.0, 1.0} },
-{ {1.0, 0.0},
-{0.0, 1.0} } }
+          {0.0, 1.0} },
+        { {1.0, 0.0},
+          {0.0, 1.0} } }
 
 DotDimensionNumbers dnums;
 dnums.add_lhs_contracting_dimensions(2);
@@ -1114,20 +2417,96 @@ dnums.add_rhs_contracting_dimensions(1);
 dnums.add_lhs_batch_dimensions(0);
 dnums.add_rhs_batch_dimensions(0);
 
-DotGeneral(lhs, rhs, dnums) -> { { {1.0, 2.0},
-{3.0, 4.0} },
-{ {5.0, 6.0},
-{7.0, 8.0} } }
+DotGeneral(lhs, rhs, dnums) -> {
+    { {1.0, 2.0},
+      {3.0, 4.0} },
+    { {5.0, 6.0},
+      {7.0, 8.0} } }
 ```
 
-| Input                               | Output            | Semantics        |
-| ----------------------------------- | ----------------- | ---------------- |
-| [b0, m, k] `dot` [b0, k, n]         | [b0, m, n]        |  batch matmul    |
-| [b0, b1, m, k] `dot` [b0, b1, k, n] | [b0, b1, m, n]    |  batch matmul    |
+Input                               | Output         | Semantics
+----------------------------------- | -------------- | ------------
+[b0, m, k] `dot` [b0, k, n]         | [b0, m, n]     | batch matmul
+[b0, b1, m, k] `dot` [b0, b1, k, n] | [b0, b1, m, n] | batch matmul
 
 It follows that the resulting dimension number starts with the batch dimension,
 then the `lhs` non-contracting/non-batch dimension, and finally the `rhs`
 non-contracting/non-batch dimension.
+
+`precision_config` is used to indicate the precision configuration. The level
+dictates whether hardware should attempt to generate more machine code
+instructions to provide more accurate dtype emulation when needed (i.e.
+emulating f32 on a TPU that only supports bf16 matmuls). Values may be
+`DEFAULT`, `HIGH`, `HIGHEST`. Additional details
+[can be found in the MXU sections](https://cloud.google.com/blog/products/ai-machine-learning/bfloat16-the-secret-to-high-performance-on-cloud-tpus).
+
+`preferred_element_type` is a scalar element of higher/lower precision output
+types used for accumulation. `preferred_element_type` recommends the
+accumulation type for the given operation, however it is not guaranteed. This
+allows for some hardware backends to instead accumulate in a different type and
+convert to the preferred output type.
+
+For StableHLO information see
+[StableHLO - dot_general](https://openxla.org/stablehlo/spec#dot_general).
+
+### ScaledDot
+
+See also
+[`XlaBuilder::ScaledDot`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+**`ScaledDot(lhs, lhs_scale, rhs, rhs_scale, dimension_number,
+precision_config,preferred_element_type)`**
+
+| Arguments                | Type                      | Semantics             |
+| ------------------------ | ------------------------- | --------------------- |
+| `lhs`                    | `XlaOp`                   | array of type T       |
+| `rhs`                    | `XlaOp`                   | array of type T       |
+| `lhs_scale`              | `XlaOp`                   | array of type T       |
+| `rhs_scale`              | `XlaOp`                   | array of type T       |
+| `dimension_number`       | `ScatterDimensionNumbers` | Dimension numbers for |
+:                          :                           : scatter operation     :
+| `precision_config`       | `PrecisionConfig`         | enum for level of     |
+:                          :                           : precision             :
+| `preferred_element_type` | optional `PrimitiveType`  | enum of scalar        |
+:                          :                           : element type          :
+
+Similar to [DotGeneral](#dotgeneral).
+
+Creates a scaled dot op with operands 'lhs', 'lhs_scale', 'rhs', and
+'rhs_scale', with contracting and batch dimensions specified in
+'dimension_numbers'.
+
+> **Note:** `ScaledDot` is only found in HLO. It is not found in StableHLO.
+
+### RaggedDot
+
+See also
+[`XlaBuilder::RaggedDot`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+For a breakdown of `RaggedDot` computation see
+[StableHLO - chlo.ragged_dot](https://openxla.org/stablehlo/generated/chlo?hl=en#chloragged_dot_chloraggeddotop)
+
+> **Note:** `RaggedDot` is only found in HLO. It is not found in StableHLO.
+
+## DynamicReshape
+
+See also
+[`XlaBuilder::DynamicReshape`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+This operation is functionally identical to [reshape](#reshape), but the result
+shape is specified dynamically via output_shape.
+
+**`DynamicReshape(operand, dim_sizes, new_size_bounds, dims_are_dynamic)`**
+
+Arguments          | Type              | Semantics
+------------------ | ----------------- | ------------------------------
+`operand`          | `XlaOp`           | N dimensional array of type T
+`dim_sizes`        | vector of `XlaOP` | N dimensional vector sizes
+`new_size_bounds`  | vector of `int63` | N dimensional vector of bounds
+`dims_are_dynamic` | vector of `bool`  | N dimensional dynamic dim
+
+For StableHLO information see
+[StableHLO - dynamic_reshape](https://openxla.org/stablehlo/spec#dynamic_reshape).
 
 ## DynamicSlice
 
@@ -1137,23 +2516,33 @@ See also
 DynamicSlice extracts a sub-array from the input array at dynamic
 `start_indices`. The size of the slice in each dimension is passed in
 `size_indices`, which specify the end point of exclusive slice intervals in each
-dimension: [start, start + size). The shape of `start_indices` must
+dimension: [start, start + size). The shape of `start_indices` must be
 1-dimensional, with dimension size equal to the number of dimensions of
 `operand`.
 
-**`DynamicSlice(operand, start_indices, size_indices)`**
+**`DynamicSlice(operand, start_indices, slice_sizes)`**
 
 | Arguments       | Type                  | Semantics                          |
 | --------------- | --------------------- | ---------------------------------- |
 | `operand`       | `XlaOp`               | N dimensional array of type T      |
-| `start_indices` | sequence of N `XlaOp` | List of N scalar integers containing the starting indices of the slice for each dimension. Value must be greater than or equal to zero. |
-| `size_indices`  | `ArraySlice<int64>`   | List of N integers containing the slice size for each dimension. Each value must be strictly greater than zero, and start + size must be less than or equal to the size of the dimension to avoid wrapping modulo dimension size. |
+| `start_indices` | sequence of N `XlaOp` | List of N scalar integers          |
+:                 :                       : containing the starting indices of :
+:                 :                       : the slice for each dimension.      :
+:                 :                       : Value must be greater than or      :
+:                 :                       : equal to zero.                     :
+| `size_indices`  | `ArraySlice<int64>`   | List of N integers containing the  |
+:                 :                       : slice size for each dimension.     :
+:                 :                       : Each value must be strictly        :
+:                 :                       : greater than zero, and start +     :
+:                 :                       : size must be less than or equal to :
+:                 :                       : the size of the dimension to avoid :
+:                 :                       : wrapping modulo dimension size.    :
 
 The effective slice indices are computed by applying the following
 transformation for each index `i` in `[1, N)` before performing the slice:
 
 ```cpp
-start_indices[i] = clamp(start_indices[i], 0, operand.dimension_size[i] - size_indices[i])
+start_indices[i] = clamp(start_indices[i], 0, operand.dimension_size[i] - slice_sizes[i])
 ```
 
 This ensures that the extracted slice is always in-bounds with respect to the
@@ -1163,11 +2552,11 @@ the transformation has no effect.
 1-dimensional example:
 
 ```cpp
-let a = {0.0, 1.0, 2.0, 3.0, 4.0}
-let s = {2}
+let a = {0.0, 1.0, 2.0, 3.0, 4.0};
+let s = {2};
 
-DynamicSlice(a, s, {2}) produces:
-{2.0, 3.0}
+DynamicSlice(a, s, {2});
+// Result: {2.0, 3.0}
 ```
 
 2-dimensional example:
@@ -1175,15 +2564,20 @@ DynamicSlice(a, s, {2}) produces:
 ```cpp
 let b =
 { {0.0,  1.0,  2.0},
-{3.0,  4.0,  5.0},
-{6.0,  7.0,  8.0},
-{9.0, 10.0, 11.0} }
+  {3.0,  4.0,  5.0},
+  {6.0,  7.0,  8.0},
+  {9.0, 10.0, 11.0} }
 let s = {2, 1}
 
-DynamicSlice(b, s, {2, 2}) produces:
-{ { 7.0,  8.0},
-{10.0, 11.0} }
+DynamicSlice(b, s, {2, 2});
+//Result:
+// { { 7.0,  8.0},
+//   {10.0, 11.0} }
 ```
+
+For StableHLO information see
+[StableHLO - dynamic_slice](https://openxla.org/stablehlo/spec#dynamic_slice).
+
 ## DynamicUpdateSlice
 
 See also
@@ -1201,8 +2595,19 @@ the number of dimensions of `operand`.
 | Arguments       | Type                  | Semantics                          |
 | --------------- | --------------------- | ---------------------------------- |
 | `operand`       | `XlaOp`               | N dimensional array of type T      |
-| `update`        | `XlaOp`               | N dimensional array of type T containing the slice update. Each dimension of update shape must be strictly greater than zero, and start + update must be less than or equal to the operand size for each dimension to avoid generating out-of-bounds update indices. |
-| `start_indices` | sequence of N `XlaOp` | List of N scalar integers containing the starting indices of the slice for each dimension. Value must be greater than or equal to zero. |
+| `update`        | `XlaOp`               | N dimensional array of type T      |
+:                 :                       : containing the slice update. Each  :
+:                 :                       : dimension of update shape must be  :
+:                 :                       : strictly greater than zero, and    :
+:                 :                       : start + update must be less than   :
+:                 :                       : or equal to the operand size for   :
+:                 :                       : each dimension to avoid generating :
+:                 :                       : out-of-bounds update indices.      :
+| `start_indices` | sequence of N `XlaOp` | List of N scalar integers          |
+:                 :                       : containing the starting indices of :
+:                 :                       : the slice for each dimension.      :
+:                 :                       : Value must be greater than or      :
+:                 :                       : equal to zero.                     :
 
 The effective slice indices are computed by applying the following
 transformation for each index `i` in `[1, N)` before performing the slice:
@@ -1222,8 +2627,8 @@ let a = {0.0, 1.0, 2.0, 3.0, 4.0}
 let u = {5.0, 6.0}
 let s = {2}
 
-DynamicUpdateSlice(a, u, s) produces:
-{0.0, 1.0, 5.0, 6.0, 4.0}
+DynamicUpdateSlice(a, u, s)
+// Result: {0.0, 1.0, 5.0, 6.0, 4.0}
 ```
 
 2-dimensional example:
@@ -1231,222 +2636,166 @@ DynamicUpdateSlice(a, u, s) produces:
 ```cpp
 let b =
 { {0.0,  1.0,  2.0},
-{3.0,  4.0,  5.0},
-{6.0,  7.0,  8.0},
-{9.0, 10.0, 11.0} }
+  {3.0,  4.0,  5.0},
+  {6.0,  7.0,  8.0},
+  {9.0, 10.0, 11.0} }
 let u =
-{ {12.0,  13.0},
-{14.0,  15.0},
-{16.0,  17.0} }
+{ {12.0, 13.0},
+  {14.0, 15.0},
+  {16.0, 17.0} }
 
 let s = {1, 1}
 
-DynamicUpdateSlice(b, u, s) produces:
-{ {0.0,  1.0,  2.0},
-{3.0, 12.0, 13.0},
-{6.0, 14.0, 15.0},
-{9.0, 16.0, 17.0} }
+DynamicUpdateSlice(b, u, s)
+// Result:
+// { {0.0,  1.0,  2.0},
+//   {3.0, 12.0, 13.0},
+//   {6.0, 14.0, 15.0},
+//   {9.0, 16.0, 17.0} }
 ```
 
-## Element-wise binary arithmetic operations
+For StableHLO information see
+[StableHLO - dynamic_update_slice](https://openxla.org/stablehlo/spec#dynamic_update_slice).
+
+## Erf
 
 See also
-[`XlaBuilder::Add`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+[`XlaBuilder::Erf`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-A set of element-wise binary arithmetic operations is supported.
-
-**`Op(lhs, rhs)`**
-
-Where `Op` is one of `Add` (addition), `Sub`(subtraction), `Mul`
-(multiplication), `Div` (division), `Pow` (power), `Rem` (remainder), `Max`
-(maximum), `Min` (minimum), `And` (logical AND), `Or` (logical
-OR), `Xor` (logical XOR), `ShiftLeft` (Left Shift),
-`ShiftRightArithmetic` (arithmetic Right Shift), `ShiftRightLogical` (logical
-Right Shift), `Atan2` (2-argument arctangent), or `Complex` (combines real and
-imaginary parts into a complex number)
-
-Arguments | Type    | Semantics
---------- | ------- | ----------------------------------------
-`lhs`     | `XlaOp` | left-hand-side operand: array of type T
-`rhs`     | `XlaOp` | right-hand-side operand: array of type T
-
-The arguments' shapes have to be either similar or compatible. See the
-[broadcasting](broadcasting.md) documentation about what it means for shapes to
-be compatible. The result of an operation has a shape which is the result of
-broadcasting the two input arrays. In this variant, operations between arrays of
-different ranks are *not* supported, unless one of the operands is a scalar.
-
-When `Op` is `Rem`, the sign of the result is taken from the dividend, and the
-absolute value of the result is always less than the divisor's absolute value.
-
-Integer division overflow (signed/unsigned division/remainder by zero or signed
-division/remainder of `INT_SMIN` with `-1`) produces an implementation defined
-value.
-
-An alternative variant with different-dimensional broadcasting support exists
-for these operations:
-
-**`Op(lhs, rhs, broadcast_dimensions)`**
-
-Where `Op` is the same as above. This variant of the operation should be used
-for arithmetic operations between arrays of different ranks (such as adding a
-matrix to a vector).
-
-The additional `broadcast_dimensions` operand is a slice of integers used to
-expand the number of dimensions of the lower-dimensional operand up to the
-number of dimensions of the higher-dimensional operand. `broadcast_dimensions`
-maps the dimensions of the lower-dimensional shape to the dimensions of the
-higher-dimensional shape. The unmapped dimensions of the expanded
-shape are filled with dimensions of size one. Degenerate-dimension broadcasting
-then broadcasts the shapes along these degenerate dimensions to equalize the
-shapes of both operands. The semantics are described in detail on the
-[broadcasting page](broadcasting.md).
-
-## Element-wise comparison operations
-
-See also
-[`XlaBuilder::Eq`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
-
-A set of standard element-wise binary comparison operations is supported. Note
-that standard IEEE 754 floating-point comparison semantics apply when comparing
-floating-point types.
-
-**`Op(lhs, rhs)`**
-
-Where `Op` is one of `Eq` (equal-to), `Ne` (not equal-to), `Ge`
-(greater-or-equal-than), `Gt` (greater-than), `Le` (less-or-equal-than), `Lt`
-(less-than). Another set of operators, EqTotalOrder, NeTotalOrder, GeTotalOrder,
-GtTotalOrder, LeTotalOrder, and LtTotalOrder, provide the same functionalities,
-except that they additionally support a total order over the floating point
-numbers, by enforcing -NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN.
-
-Arguments | Type    | Semantics
---------- | ------- | ----------------------------------------
-`lhs`     | `XlaOp` | left-hand-side operand: array of type T
-`rhs`     | `XlaOp` | right-hand-side operand: array of type T
-
-The arguments' shapes have to be either similar or compatible. See the
-[broadcasting](broadcasting.md) documentation about what it means for shapes to
-be compatible. The result of an operation has a shape which is the result of
-broadcasting the two input arrays with the element type `PRED`. In this variant,
-operations between arrays of different ranks are *not* supported, unless one of
-the operands is a scalar.
-
-An alternative variant with different-dimensional broadcasting support exists
-for these operations:
-
-**`Op(lhs, rhs, broadcast_dimensions)`**
-
-Where `Op` is the same as above. This variant of the operation should be used
-for comparison operations between arrays of different ranks (such as adding a
-matrix to a vector).
-
-The additional `broadcast_dimensions` operand is a slice of integers specifying
-the dimensions to use for broadcasting the operands. The semantics are described
-in detail on the [broadcasting page](broadcasting.md).
-
-## Element-wise unary functions
-
-XlaBuilder supports these element-wise unary functions:
-
-<!-- disableFinding(HTML_FORMAT) -->
-<b>`Abs(operand)`</b> Element-wise abs `x -> |x|`.
-
-<b>`Cbrt(operand)`</b> Element-wise cubic root operation `x -> cbrt(x)`.
-
-<b>`Ceil(operand)`</b> Element-wise ceil `x -> ⌈x⌉`.
-
-<b>`Clz(operand)`</b> Element-wise count leading zeros.
-
-<b>`Cos(operand)`</b> Element-wise cosine `x -> cos(x)`.
-
-<b>`Erf(operand)`</b> Element-wise error function `x -> erf(x)` where
+Element-wise error function `x -> erf(x)` where:
 
 $$\text{erf}(x) = \frac{2}{\sqrt{\pi}}\int_0^x e^{-t^2} \, dt$$.
 
-<b>`Exp(operand)`</b> Element-wise natural exponential `x -> e^x`.
-
-<b>`Expm1(operand)`</b> Element-wise natural exponential minus one
-`x -> e^x - 1`.
-
-<b>`Floor(operand)`</b> Element-wise floor `x -> ⌊x⌋`.
-
-<b>`Imag(operand)`</b> Element-wise imaginary part of a complex (or real)
-shape. `x -> imag(x)`. If the operand is a floating point type, returns 0.
-
-<b>`IsFinite(operand)`</b> Tests whether each element of `operand` is finite,
-i.e., is not positive or negative infinity, and is not `NaN`. Returns an array
-of `PRED` values with the same shape as the input, where each element is `true`
-if and only if the corresponding input element is finite.
-
-<b>`Log(operand)`</b> Element-wise natural logarithm `x -> ln(x)`.
-
-<b>`Log1p(operand)`</b> Element-wise shifted natural logarithm `x -> ln(1+x)`.
-
-<b>`Logistic(operand)`</b> Element-wise logistic function computation `x ->
-logistic(x)`.
-
-<b>`Neg(operand)`</b> Element-wise negation `x -> -x`.
-
-<b>`Not(operand)`</b> Element-wise logical not `x -> !(x)`.
-
-<b>`PopulationCount(operand)`</b> Computes the number of bits set in each
-element of `operand`.
-
-<b>`Real(operand)`</b> Element-wise real part of a complex (or real) shape.
-`x -> real(x)`. If the operand is a floating point type, returns the same value.
-
-<b>`Round(operand)`</b> Element-wise rounding, ties away from zero.
-
-<b>`RoundNearestEven(operand)`</b> Element-wise rounding, ties to nearest even.
-
-<b>`Rsqrt(operand)`</b> Element-wise reciprocal of square root operation
-`x -> 1.0 / sqrt(x)`.
-
-<b>`Sign(operand)`</b> Element-wise sign operation `x -> sgn(x)` where
-
-$$\text{sgn}(x) = \begin{cases} -1 & x < 0\\ -0 & x = -0\\ NaN & x = NaN\\ +0 &
-x = +0\\ 1 & x > 0 \end{cases}$$
-
-using the comparison operator of the element type of `operand`.
-
-<b>`Sin(operand)`</b> Element-wise sine `x -> sin(x)`.
-
-<b>`Sqrt(operand)`</b> Element-wise square root operation `x -> sqrt(x)`.
-
-<b>`Tan(operand)`</b> Element-wise tangent `x -> tan(x)`.
-
-<b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
+**`Erf(operand)`**
 
 Arguments | Type    | Semantics
 --------- | ------- | ---------------------------
 `operand` | `XlaOp` | The operand to the function
 
-The function is applied to each element in the `operand` array, resulting in an
-array with the same shape. It is allowed for `operand` to be a scalar
-(0-dimensional).
+Erf also supports the optional `result_accuracy` argument:
+
+**`Erf(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+> **Note:** `Erf` is only found in HLO and not found in StableHLO. CHLO `Erf` in
+> Frameworks will lower to HLO `Erf` see
+> [StableHLO - chlo.erf](https://openxla.org/stablehlo/generated/chlo?hl=en#chloerf_chloerfop)
+
+## Exp
+
+See also
+[`XlaBuilder::Exp`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise natural exponential `x -> e^x`.
+
+**`Exp(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+Exp also supports the optional `result_accuracy` argument:
+
+**`Exp(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+For StableHLO information see
+[StableHLO - exponential](https://openxla.org/stablehlo/spec#exponential).
+
+## Expm1
+
+See also
+[`XlaBuilder::Expm1`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise natural exponential minus one `x -> e^x - 1`.
+
+**`Expm1(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+Expm1 also supports the optional `result_accuracy` argument:
+
+**`Expm1(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+For StableHLO information see
+[StableHLO - exponential_minus_one](https://openxla.org/stablehlo/spec#exponential_minus_one).
 
 ## Fft
+
+See also
+[`XlaBuilder::Fft`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 The XLA FFT operation implements the forward and inverse Fourier Transforms for
 real and complex inputs/outputs. Multidimensional FFTs on up to 3 axes are
 supported.
 
-See also
-[`XlaBuilder::Fft`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+**`Fft(operand, ftt_type, fft_length)`**
 
 | Arguments    | Type                | Semantics                |
 | ------------ | ------------------- | ------------------------ |
-| `operand`    | `XlaOp`             | The array we are Fourier transforming. |
+| `operand`    | `XlaOp`             | The array we are Fourier |
+:              :                     : transforming.            :
 | `fft_type`   | `FftType`           | See the table below.     |
-| `fft_length` | `ArraySlice<int64>` | The time-domain lengths of the axes being transformed. This is needed in particular for IRFFT to right-size the innermost axis, since `RFFT(fft_length=[16])` has the same output shape as `RFFT(fft_length=[17])`. |
+| `fft_length` | `ArraySlice<int64>` | The time-domain lengths  |
+:              :                     : of the axes being        :
+:              :                     : transformed. This is     :
+:              :                     : needed in particular for :
+:              :                     : IRFFT to right-size the  :
+:              :                     : innermost axis, since    :
+:              :                     : `RFFT(fft_length=[16])`  :
+:              :                     : has the same output      :
+:              :                     : shape as                 :
+:              :                     : `RFFT(fft_length=[17])`. :
 
 | `FftType` | Semantics                                                        |
 | --------- | ---------------------------------------------------------------- |
 | `FFT`     | Forward complex-to-complex FFT. Shape is unchanged.              |
 | `IFFT`    | Inverse complex-to-complex FFT. Shape is unchanged.              |
-| `RFFT`    | Forward real-to-complex FFT. Shape of the innermost axis is reduced to `fft_length[-1] // 2 + 1` if `fft_length[-1]` is a non-zero value, omitting the reversed conjugate part of the transformed signal beyond the Nyquist frequency. |
-| `IRFFT`   | Inverse real-to-complex FFT (i.e. takes complex, returns real). Shape of the innermost axis is expanded to `fft_length[-1]` if `fft_length[-1]` is a non-zero value, inferring the part of the transformed signal beyond the Nyquist frequency from the reverse conjugate of the `1` to `fft_length[-1] // 2 + 1` entries. |
+| `RFFT`    | Forward real-to-complex FFT. Shape of the innermost axis is      |
+:           : reduced to `fft_length[-1] // 2 + 1` if `fft_length[-1]` is a    :
+:           : non-zero value, omitting the reversed conjugate part of the      :
+:           : transformed signal beyond the Nyquist frequency.                 :
+| `IRFFT`   | Inverse real-to-complex FFT (i.e. takes complex, returns real).  |
+:           : Shape of the innermost axis is expanded to `fft_length[-1]` if   :
+:           : `fft_length[-1]` is a non-zero value, inferring the part of the  :
+:           : transformed signal beyond the Nyquist frequency from the reverse :
+:           : conjugate of the `1` to `fft_length[-1] // 2 + 1` entries.       :
+
+For StableHLO information see
+[StableHLO - fft](https://openxla.org/stablehlo/spec#fft).
 
 #### Multidimensional FFT
 
@@ -1461,10 +2810,40 @@ complex->complex.
 
 CPU FFT is backed by Eigen's TensorFFT. GPU FFT uses cuFFT.
 
+## Floor
+
+See also
+[`XlaBuilder::Floor`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise floor `x -> ⌊x⌋`.
+
+**`Floor(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+For StableHLO information see
+[StableHLO - floor](https://openxla.org/stablehlo/spec#floor).
+
+## Fusion
+
+See also
+[`HloInstruction::CreateFusion`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
+
+`Fusion` operation represents HLO instructions and serves as a primitive in HLO.
+This op may appear in HLO dumps but is not intended to be constructed manually
+by end users.
+
+> **Note:** `Fusion` is only found in HLO. It is not found in StableHLO.
+
 ## Gather
 
 The XLA gather operation stitches together several slices (each slice at a
 potentially different runtime offset) of an input array.
+
+For StableHLO information see
+[StableHLO - gather](https://openxla.org/stablehlo/spec#gather).
 
 ### General Semantics
 
@@ -1472,19 +2851,27 @@ See also
 [`XlaBuilder::Gather`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 For a more intuitive description, see the "Informal Description" section below.
 
-**`gather(operand, start_indices, offset_dims, collapsed_slice_dims,
-          slice_sizes, start_index_map)`**
+**`gather(operand, start_indices, dimension_numbers, slice_sizes,
+indices_are_sorted)`**
 
-| Arguments              | Type                | Semantics                     |
-| ---------------------- | ------------------- | ----------------------------- |
-| `operand`              | `XlaOp`             | The array we’re gathering from. |
-| `start_indices`        | `XlaOp`             | Array containing the starting indices of the slices we gather. |
-| `index_vector_dim`     | `int64`             | The dimension in `start_indices` that "contains" the starting indices. See below for a detailed description. |
-| `offset_dims`          | `ArraySlice<int64>` | The set of dimensions in the output shape that offset into an array sliced from operand. |
-| `slice_sizes`          | `ArraySlice<int64>` | `slice_sizes[i]` is the bounds for the slice on dimension `i`.  |
-| `collapsed_slice_dims` | `ArraySlice<int64>` | The set of dimensions in each slice that are collapsed away. These dimensions must have size 1. |
-| `start_index_map`      | `ArraySlice<int64>` | A map that describes how to map indices in `start_indices` to legal indices into operand. |
-| `indices_are_sorted`   | `bool`              | Whether the indices are guaranteed to be sorted by the caller. |
+| Arguments            | Type                     | Semantics                  |
+| -------------------- | ------------------------ | -------------------------- |
+| `operand`            | `XlaOp`                  | The array we’re gathering  |
+:                      :                          : from.                      :
+| `start_indices`      | `XlaOp`                  | Array containing the       |
+:                      :                          : starting indices of the    :
+:                      :                          : slices we gather.          :
+| `dimension_numbers`  | `GatherDimensionNumbers` | The dimension in           |
+:                      :                          : `start_indices` that       :
+:                      :                          : "contains" the starting    :
+:                      :                          : indices. See below for a   :
+:                      :                          : detailed description.      :
+| `slice_sizes`        | `ArraySlice<int64>`      | `slice_sizes[i]` is the    |
+:                      :                          : bounds for the slice on    :
+:                      :                          : dimension `i`.             :
+| `indices_are_sorted` | `bool`                   | Whether the indices are    |
+:                      :                          : guaranteed to be sorted by :
+:                      :                          : the caller.                :
 
 For convenience, we label dimensions in the output array not in `offset_dims`
 as `batch_dims`.
@@ -1502,17 +2889,17 @@ shape of `start_indices` to be `[6,7,1]`).
 
 The bounds for the output array along dimension `i` is computed as follows:
 
-1. If `i` is present in `batch_dims` (i.e. is equal to `batch_dims[k]` for
-some `k`) then we pick the corresponding dimension bounds out of
-`start_indices.shape`, skipping `index_vector_dim` (i.e. pick
-`start_indices.shape.dims`[`k`] if `k` < `index_vector_dim` and
-`start_indices.shape.dims`[`k`+`1`] otherwise).
+1.  If `i` is present in `batch_dims` (i.e. is equal to `batch_dims[k]` for some
+    `k`) then we pick the corresponding dimension bounds out of
+    `start_indices.shape`, skipping `index_vector_dim` (i.e. pick
+    `start_indices.shape.dims`[`k`] if `k` < `index_vector_dim` and
+    `start_indices.shape.dims`[`k`+`1`] otherwise).
 
-2. If `i` is present in `offset_dims` (i.e. equal to `offset_dims`[`k`] for
-some `k`) then we pick the corresponding bound out of `slice_sizes` after
-accounting for `collapsed_slice_dims` (i.e. we pick
-`adjusted_slice_sizes`[`k`] where `adjusted_slice_sizes` is `slice_sizes`
-with the bounds at indices `collapsed_slice_dims` removed).
+2.  If `i` is present in `offset_dims` (i.e. equal to `offset_dims`[`k`] for
+    some `k`) then we pick the corresponding bound out of `slice_sizes` after
+    accounting for `collapsed_slice_dims` (i.e. we pick
+    `adjusted_slice_sizes`[`k`] where `adjusted_slice_sizes` is `slice_sizes`
+    with the bounds at indices `collapsed_slice_dims` removed).
 
 Formally, the operand index `In` corresponding to a given output index `Out` is
 calculated as follows:
@@ -1616,22 +3003,22 @@ Again, this acts as a batch dynamic slice `G`<sub>`0`</sub> and
 The gather operation in XLA generalizes the informal semantics outlined above in
 the following ways:
 
-1. We can configure which dimensions in the output shape are the offset
-dimensions (dimensions containing `O`<sub>`0`</sub>, `O`<sub>`1`</sub> in
-the last example). The output batch dimensions (dimensions containing
-`G`<sub>`0`</sub>, `G`<sub>`1`</sub> in the last example) are defined to be
-the output dimensions that are not offset dimensions.
+1.  We can configure which dimensions in the output shape are the offset
+    dimensions (dimensions containing `O`<sub>`0`</sub>, `O`<sub>`1`</sub> in
+    the last example). The output batch dimensions (dimensions containing
+    `G`<sub>`0`</sub>, `G`<sub>`1`</sub> in the last example) are defined to be
+    the output dimensions that are not offset dimensions.
 
-2. The number of output offset dimensions explicitly present in the output
-shape may be smaller than the input number of dimensions. These "missing"
-dimensions, which are listed explicitly as `collapsed_slice_dims`, must have a
-slice size of `1`. Since they have a slice size of `1` the only valid index
-for them is `0` and eliding them does not introduce ambiguity.
+2.  The number of output offset dimensions explicitly present in the output
+    shape may be smaller than the input number of dimensions. These "missing"
+    dimensions, which are listed explicitly as `collapsed_slice_dims`, must have
+    a slice size of `1`. Since they have a slice size of `1` the only valid
+    index for them is `0` and eliding them does not introduce ambiguity.
 
-3. The slice extracted from the "Gather Indices" array ((`X`, `Y`) in the last
-example) may have fewer elements than the input array's number of dimensions,
-and an explicit mapping dictates how the index should be expanded to have the
-same number of dimensions as the input.
+3.  The slice extracted from the "Gather Indices" array ((`X`, `Y`) in the last
+    example) may have fewer elements than the input array's number of
+    dimensions, and an explicit mapping dictates how the index should be
+    expanded to have the same number of dimensions as the input.
 
 As a final example, we use (2) and (3) to implement `tf.gather_nd`:
 
@@ -1666,48 +3053,11 @@ array shaped.
 | Arguments   | Type    | Semantics                                           |
 | ----------- | ------- | --------------------------------------------------- |
 | `operand`   | `XlaOp` | n dimensional input array                           |
-| `dimension` | `int64` | A value in the interval `[0, n)` that specifies the dimension |
+| `dimension` | `int64` | A value in the interval `[0, n)` that specifies the |
+:             :         : dimension                                           :
 
-## SetDimensionSize
-
-See also
-[`XlaBuilder::SetDimensionSize`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
-
-Sets the dynamic size of XlaOp's given dimension. The operand must be
-array shaped.
-
-**`SetDimensionSize(operand, size, dimension)`**
-
-| Arguments   | Type    | Semantics                                           |
-| ----------- | ------- | --------------------------------------------------- |
-| `operand`   | `XlaOp` | n dimensional input array.                          |
-| `size`      | `XlaOp` | int32 representing the runtime dynamic size.        |
-| `dimension` | `int64` | A value in the interval `[0, n)` that specifies the dimension. |
-
-Pass through the operand as result, with dynamic dimension tracked by the
-compiler.
-
-Padded values will be ignored by downstream reduction ops.
-
-```cpp
-let v: f32[10] = f32[10]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-let five: s32 = 5;
-let six: s32 = 6;
-
-// Setting dynamic dimension size doesn't change the upper bound of the static
-// shape.
-let padded_v_five: f32[10] = set_dimension_size(v, five, /*dimension=*/0);
-let padded_v_six: f32[10] = set_dimension_size(v, six, /*dimension=*/0);
-
-// sum == 1 + 2 + 3 + 4 + 5
-let sum:f32[] = reduce_sum(padded_v_five);
-// product == 1 * 2 * 3 * 4 * 5
-let product:f32[] = reduce_product(padded_v_five);
-
-// Changing padding size will yield different result.
-// sum == 1 + 2 + 3 + 4 + 5 + 6
-let sum:f32[] = reduce_sum(padded_v_six);
-```
+For StableHLO information see
+[StableHLO - get_dimension_size](https://openxla.org/stablehlo/spec#get_dimension_size).
 
 ## GetTupleElement
 
@@ -1725,46 +3075,81 @@ This is analogous to `std::get<int N>(t)` in C++. Conceptually:
 let v: f32[10] = f32[10]{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 let s: s32 = 5;
 let t: (f32[10], s32) = tuple(v, s);
-let element_1: s32 = gettupleelement(t, 1);  // Inferred shape matches s32.
+let element_1: s32 = gettupleelement(t, 1); // Inferred shape matches s32.
 ```
 
 See also `tf.tuple`.
+
+**`GetTupleElement(tuple_data, index)`**
+
+Argument     | Type    | Semantics
+------------ | ------- | --------------------
+`tuple_data` | `XlaOP` | The tuple
+`index`      | `int64` | Index of tuple shape
+
+For StableHLO information see
+[StableHLO - get_tuple_element](https://openxla.org/stablehlo/spec#get_tuple_element).
+
+## Imag
+
+See also
+[`XlaBuilder::Imag`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise imaginary part of a complex (or real) shape. `x -> imag(x)`. If the
+operand is a floating point type, returns 0.
+
+**`Imag(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+For StableHLO information see
+[StableHLO - imag](https://openxla.org/stablehlo/spec#imag).
 
 ## Infeed
 
 See also
 [`XlaBuilder::Infeed`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-**`Infeed(shape)`**
+**`Infeed(shape, config)`**
 
-| Argument | Type    | Semantics                                             |
-| -------- | ------- | ----------------------------------------------------- |
-| `shape`  | `Shape` | Shape of the data read from the Infeed interface. The layout field of the shape must be set to match the layout of the data sent to the device; otherwise its behavior is undefined. |
+| Argument | Type              | Semantics                                     |
+| -------- | ----------------- | --------------------------------------------- |
+| `shape`  | `Shape`           | Shape of the data read from the Infeed        |
+:          :                   : interface. The layout field of the shape must :
+:          :                   : be set to match the layout of the data sent   :
+:          :                   : to the device; otherwise its behavior is      :
+:          :                   : undefined.                                    :
+| `config` | optional `string` | Configuration of the op.                      |
 
 Reads a single data item from the implicit Infeed streaming interface of the
 device, interpreting the data as the given shape and its layout, and returns a
-`XlaOp` of the data. Multiple Infeed operations are allowed in a
-computation, but there must be a total order among the Infeed operations. For
-example, two Infeeds in the code below have a total order since there is a
-dependency between the while loops.
+`XlaOp` of the data. Multiple Infeed operations are allowed in a computation,
+but there must be a total order among the Infeed operations. For example, two
+`Infeed`'s in the code below have a total order since there is a dependency
+between the while loops.
 
 ```cpp
 result1 = while (condition, init = init_value) {
   Infeed(shape)
-}
+  }
 
 result2 = while (condition, init = result1) {
   Infeed(shape)
-}
+  }
 ```
 
 Nested tuple shapes are not supported. For an empty tuple shape, the Infeed
 operation is effectively a no-op and proceeds without reading any data from the
 Infeed of the device.
 
-> Note: We plan to allow multiple Infeed operations without a total order, in
-> which case the compiler will provide information about how the Infeed
+> **Note:** We plan to allow multiple Infeed operations without a total order,
+> in which case the compiler will provide information about how the Infeed
 > operations are serialized in the compiled program.
+
+For StableHLO information see
+[StableHLO - infeed](https://openxla.org/stablehlo/spec#infeed).
 
 ## Iota
 
@@ -1787,33 +3172,153 @@ Arguments        | Type    | Semantics
 For example, `Iota(s32[4, 8], 0)` returns
 
 ```cpp
-  [[0, 0, 0, 0, 0, 0, 0, 0 ],
-   [1, 1, 1, 1, 1, 1, 1, 1 ],
-   [2, 2, 2, 2, 2, 2, 2, 2 ],
-   [3, 3, 3, 3, 3, 3, 3, 3 ]]
+[[0, 0, 0, 0, 0, 0, 0, 0 ],
+ [1, 1, 1, 1, 1, 1, 1, 1 ],
+ [2, 2, 2, 2, 2, 2, 2, 2 ],
+ [3, 3, 3, 3, 3, 3, 3, 3 ]]
 ```
 
 `Iota(s32[4, 8], 1)` returns
 
 ```cpp
-  [[0, 1, 2, 3, 4, 5, 6, 7 ],
-   [0, 1, 2, 3, 4, 5, 6, 7 ],
-   [0, 1, 2, 3, 4, 5, 6, 7 ],
-   [0, 1, 2, 3, 4, 5, 6, 7 ]]
+[[0, 1, 2, 3, 4, 5, 6, 7 ],
+ [0, 1, 2, 3, 4, 5, 6, 7 ],
+ [0, 1, 2, 3, 4, 5, 6, 7 ],
+ [0, 1, 2, 3, 4, 5, 6, 7 ]]
 ```
+
+For StableHLO information see
+[StableHLO - iota](https://openxla.org/stablehlo/spec#iota).
+
+## IsFinite
+
+See also
+[`XlaBuilder::IsFinite`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Tests whether each element of `operand` is finite, i.e., is not positive or
+negative infinity, and is not `NaN`. Returns an array of `PRED` values with the
+same shape as the input, where each element is `true` if and only if the
+corresponding input element is finite.
+
+**`IsFinite(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+For StableHLO information see
+[StableHLO - is_finite](https://openxla.org/stablehlo/spec#is_finite).
+
+## Log
+
+See also
+[`XlaBuilder::Log`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise natural logarithm `x -> ln(x)`.
+
+**`Log(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+Log also supports the optional `result_accuracy` argument:
+
+**`Log(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+For StableHLO information see
+[StableHLO - log](https://openxla.org/stablehlo/spec#log).
+
+## Log1p
+
+See also
+[`XlaBuilder::Log1p`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise shifted natural logarithm `x -> ln(1+x)`.
+
+**`Log1p(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+Log1p also supports the optional `result_accuracy` argument:
+
+**`Log1p(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+For StableHLO information see
+[StableHLO - log_plus_one](https://openxla.org/stablehlo/spec#log_plus_one).
+
+## Logistic
+
+See also
+[`XlaBuilder::Logistic`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise logistic function computation `x -> logistic(x)`.
+
+**`Logistic(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+Logistic also supports the optional `result_accuracy` argument:
+
+**`Logistic(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+For StableHLO information see
+[StableHLO - logistic](https://openxla.org/stablehlo/spec#logistic).
 
 ## Map
 
 See also
 [`XlaBuilder::Map`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-**`Map(operands..., computation)`**
+**`Map(operands..., computation, dimensions)`**
 
 | Arguments         | Type                   | Semantics                      |
 | ----------------- | ---------------------- | ------------------------------ |
 | `operands`        | sequence of N `XlaOp`s | N arrays of types T_0..T_{N-1} |
-| `computation`     | `XlaComputation`       | computation of type `T_0, T_1, .., T_{N + M -1} -> S` with N parameters of type T and M of arbitrary type |
-| `dimensions`      | `int64` array          | array of map dimensions        |
+| `computation`     | `XlaComputation`       | Computation of type `T_0, T_1, |
+:                   :                        : .., T_{N + M -1} -> S` with N  :
+:                   :                        : parameters of type T and M of  :
+:                   :                        : arbitrary type.                :
+| `dimensions`      | `int64` array          | Array of map dimensions        |
+| `static_operands` | sequence of N `XlaOp`s | Static ops for the map         |
+:                   :                        : operation                      :
 
 Applies a scalar function over the given `operands` arrays, producing an array
 of the same dimensions where each element is the result of the mapped function
@@ -1828,12 +3333,259 @@ For example: `Map(op1, op2, op3, computation, par1)` maps `elem_out <-
 computation(elem1, elem2, elem3, par1)` at each (multi-dimensional) index in the
 input arrays to produce the output array.
 
+For StableHLO information see
+[StableHLO - map](https://openxla.org/stablehlo/spec#map).
+
+## Max
+
+See also
+[`XlaBuilder::Max`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise max operation on tensors `lhs` and `rhs`.
+
+**`Max(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Max:
+
+**`Max(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - maximum](https://openxla.org/stablehlo/spec#maximum).
+
+## Min
+
+See also
+[`XlaBuilder::Min`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise min operation on `lhs` and `rhs`.
+
+**`Min(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Min:
+
+**`Min(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - minimum](https://openxla.org/stablehlo/spec#minimum).
+
+## Mul
+
+See also
+[`XlaBuilder::Mul`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise product of `lhs` and `rhs`.
+
+**`Mul(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Mul:
+
+**`Mul(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - multiply](https://openxla.org/stablehlo/spec#multiply).
+
+## Neg
+
+See also
+[`XlaBuilder::Neg`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise negation `x -> -x`.
+
+**`Neg(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+For StableHLO information see
+[StableHLO - negate](https://github.com/openxla/stablehlo/blob/main/docs/spec.md#negate)
+
+## Not
+
+See also
+[`XlaBuilder::Not`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise logical not `x -> !(x)`.
+
+**`Not(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+For StableHLO information see
+[StableHLO - not](https://openxla.org/stablehlo/spec#not).
+
 ## OptimizationBarrier
+
+See also
+[`XlaBuilder::OptimizationBarrier`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Blocks any optimization pass from moving computations across the barrier.
 
+**`OptimizationBarrier(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
 Ensures that all inputs are evaluated before any operators that depend on the
 barrier's outputs.
+
+For StableHLO information see
+[StableHLO - optimization_barrier](https://openxla.org/stablehlo/spec#optimization_barrier).
+
+## Or
+
+See also
+[`XlaBuilder::Or`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise OR of `lhs` and `rhs` .
+
+**`Or(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Or:
+
+**`Or(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - or](https://openxla.org/stablehlo/spec#or).
+
+## Outfeed
+
+See also
+[`XlaBuilder::Outfeed`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Writes inputs to the outfeed.
+
+**`Outfeed(operand, shape_with_layout, outfeed_config)`**
+
+Arguments           | Type     | Semantics
+------------------- | -------- | ----------------------------------------------
+`operand`           | `XlaOp`  | array of type `T`
+`shape_with_layout` | `Shape`  | Defines the layout of the data transferred
+`outfeed_config`    | `string` | Constant of config for the Outfeed instruction
+
+`shape_with_layout` communicates the laid out shape that we want to outfeed.
+
+For StableHLO information see
+[StableHLO - outfeed](https://openxla.org/stablehlo/spec#outfeed).
 
 ## Pad
 
@@ -1845,8 +3597,11 @@ See also
 | Arguments        | Type            | Semantics                               |
 | ---------------- | --------------- | --------------------------------------- |
 | `operand`        | `XlaOp`         | array of type `T`                       |
-| `padding_value`  | `XlaOp`         | scalar of type `T` to fill in the added padding |
-| `padding_config` | `PaddingConfig` | padding amount on both edges (low, high) and between the elements of each dimension |
+| `padding_value`  | `XlaOp`         | scalar of type `T` to fill in the added |
+:                  :                 : padding                                 :
+| `padding_config` | `PaddingConfig` | padding amount on both edges (low,      |
+:                  :                 : high) and between the elements of each  :
+:                  :                 : dimension                               :
 
 Expands the given `operand` array by padding around the array as well as between
 the elements of the array with the given `padding_value`. `padding_config`
@@ -1874,39 +3629,161 @@ interior padding values are all 0. The figure below shows examples of different
 
 ![](images/ops_pad.png)
 
+For StableHLO information see
+[StableHLO - pad](https://openxla.org/stablehlo/spec#pad).
+
+## Parameter
+
+See also
+[`XlaBuilder::Parameter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+`Parameter` represents an argument input to a computation.
+
+> **Note:** `Parameter` is only found in HLO. It is not found in StableHLO.
+
+## PartitionID
+
+See also
+[`XlaBuilder::BuildPartitionId`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Produces `partition_id` of the current process.
+
+**`PartitionID(shape)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | -----------------
+`shape`   | `Shape` | Shape of the data
+
+`PartitionID` may appear in HLO dumps but it is not intended to be constructed
+manually by end users.
+
+For StableHLO information see
+[StableHLO - partition_id](https://openxla.org/stablehlo/spec#partition_id).
+
+## PopulationCount
+
+See also
+[`XlaBuilder::PopulationCount`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Computes the number of bits set in each element of `operand`.
+
+**`PopulationCount(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+For StableHLO information see
+[StableHLO - popcnt](https://openxla.org/stablehlo/spec#popcnt).
+
+## Pow
+
+See also
+[`XlaBuilder::Pow`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise exponentiation of `lhs` by `rhs`.
+
+**`Pow(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Pow:
+
+**`Pow(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - power](https://openxla.org/stablehlo/spec#power).
+
+## Real
+
+See also
+[`XlaBuilder::Real`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise real part of a complex (or real) shape. `x -> real(x)`. If the
+operand is a floating point type, `Real` returns the same value.
+
+**`Real(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+For StableHLO information see
+[StableHLO - real](https://openxla.org/stablehlo/spec#real).
+
 ## Recv
 
 See also
 [`XlaBuilder::Recv`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-**`Recv(shape, channel_handle)`**
+`Recv`, `RecvWithTokens`, and `RecvToHost` are operations that serve as
+communication primitives in HLO. These ops typically appear in HLO dumps as part
+of low-level input/output or cross-device transfer, but they are not intended to
+be constructed manually by end users.
 
-| Arguments        | Type            | Semantics                            |
-| ---------------- | --------------- | ------------------------------------ |
-| `shape`          | `Shape`         | shape of the data to receive         |
-| `channel_handle` | `ChannelHandle` | unique identifier for each send/recv pair |
+**`Recv(shape, handle)`**
+
+Arguments | Type            | Semantics
+--------- | --------------- | -----------------------------------------
+`shape`   | `Shape`         | shape of the data to receive
+`handle`  | `ChannelHandle` | unique identifier for each send/recv pair
 
 Receives data of the given shape from a `Send` instruction in another
 computation that shares the same channel handle. Returns a
 XlaOp for the received data.
 
-The client API of `Recv` operation represents synchronous communication.
-However, the instruction is internally decomposed into 2 HLO instructions
-(`Recv` and `RecvDone`) to enable asynchronous data transfers. See also
+For StableHLO information see
+[StableHLO - recv](https://openxla.org/stablehlo/spec#recv).
+
+### RecvDone
+
+See also
 [`HloInstruction::CreateRecv` and `HloInstruction::CreateRecvDone`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
-<b>`Recv(const Shape& shape, int64 channel_id)`</b>
+Similar to [`Send`](#send), the client API of `Recv` operation represents
+synchronous communication. However, the instruction is internally decomposed
+into 2 HLO instructions (`Recv` and `RecvDone`) to enable asynchronous data
+transfers.
 
-Allocates resources required to receive data from a `Send` instruction with the
-same channel_id. Returns a context for the allocated resources, which is used
-by a following `RecvDone` instruction to wait for the completion of the data
-transfer. The context is a tuple of {receive buffer (shape), request identifier
-(U32)} and it can only be used by a `RecvDone` instruction.
+**`Recv(const Shape& shape, int64 channel_id)`**
 
-**`RecvDone(HloInstruction context)`**
+Allocates resources required to receive data from a [`Send`](#send) instruction
+with the same channel_id. Returns a context for the allocated resources, which
+is used by a following `RecvDone` instruction to wait for the completion of the
+data transfer. The context is a tuple of {receive buffer (shape), request
+identifier (U32)} and it can only be used by a `RecvDone` instruction.
 
 Given a context created by a `Recv` instruction, waits for the data transfer to
-complete and returns the received data.
+complete and return the received data.
+
+> **Note:** `RecvDone` is only found in HLO. It is not found in StableHLO.
 
 ## Reduce
 
@@ -1915,14 +3792,21 @@ See also
 
 Applies a reduction function to one or more arrays in parallel.
 
-**`Reduce(operands..., init_values..., computation, dimensions)`**
+**`Reduce(operands..., init_values..., computation, dimensions_to_reduce)`**
 
-| Arguments     | Type                  | Semantics                        |
-| ------------- | --------------------- | -------------------------------- |
-| `operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_{N-1}`. |
-| `init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_{N-1}`. |
-| `computation` | `XlaComputation`      | computation of type `T_0, ..., T_{N-1}, T_0, ..., T_{N-1} ->` `Collate(T_0, ..., T_{N-1})`. |
-| `dimensions`  | `int64` array         | unordered array of dimensions to reduce. |
+| Arguments              | Type                  | Semantics                   |
+| :--------------------- | :-------------------- | :-------------------------- |
+| `operands`             | Sequence of N `XlaOp` | N arrays of types `T_0,..., |
+:                        :                       : T_{N-1}`.                   :
+| `init_values`          | Sequence of N `XlaOp` | N scalars of types          |
+:                        :                       : `T_0,..., T_{N-1}`.         :
+| `computation`          | `XlaComputation`      | computation of type         |
+:                        :                       : `T_0,..., T_{N-1}, T_0,     :
+:                        :                       : ...,T_{N-1} ->`             :
+:                        :                       : `Collate(T_0,...,           :
+:                        :                       : T_{N-1})`.                  :
+| `dimensions_to_reduce` | `int64` array         | unordered array of          |
+:                        :                       : dimensions to reduce.       :
 
 Where:
 
@@ -1942,9 +3826,12 @@ dimensions of which are described below.
 
 Different backends are allowed to reassociate the reduction computation. This
 can lead to numerical differences, as some reduction functions like addition are
-not associative for floats.
-However, if the range of the data is limited, floating-point addition is close
-enough to being associative for most practical uses.
+not associative for floats. However, if the range of the data is limited,
+floating-point addition is close enough to be associative for most practical
+uses.
+
+For StableHLO information see
+[StableHLO - reduce](https://openxla.org/stablehlo/spec#reduce).
 
 ### Examples
 
@@ -2077,7 +3964,7 @@ exponent and mantissa bits in the lower-precision format can be specified
 arbitrarily, although all bit sizes may not be supported on all hardware
 implementations.
 
-**`ReducePrecision(operand, mantissa_bits, exponent_bits)`**
+**`ReducePrecision(operand, exponent_bits, mantissa_bits)`**
 
 Arguments       | Type    | Semantics
 --------------- | ------- | -------------------------------------------------
@@ -2097,6 +3984,9 @@ must have a non-negative number of mantissa bits. The number of exponent or
 mantissa bits may exceed the corresponding value for type `T`; the corresponding
 portion of the conversion is then simply a no-op.
 
+For StableHLO information see
+[StableHLO - reduce_precision](https://openxla.org/stablehlo/spec#reduce_precision).
+
 ## ReduceScatter
 
 See also
@@ -2107,17 +3997,25 @@ then scatters the result by splitting it into `shard_count` blocks along the
 `scatter_dimension` and replica `i` in the replica group receives the `ith`
 shard.
 
-**`ReduceScatter(operand, computation, scatter_dim, shard_count,
-replica_group_ids, channel_id)`**
+**`ReduceScatter(operand, computation, scatter_dimension, shard_count,
+replica_groups, channel_id, layout, use_global_device_ids)`**
 
-| Arguments           | Type                 | Semantics                     |
-| ------------------- | -------------------- | ----------------------------- |
-| `operand`           | `XlaOp`              | Array or a non-empty tuple of arrays to reduce across replicas. |
-| `computation`       | `XlaComputation`     | Reduction computation         |
-| `scatter_dimension` | `int64`              | Dimension to scatter.         |
-| `shard_count`       | `int64`              | Number of blocks to split `scatter_dimension`  |
-| `replica_groups`    | vector of vectors of  `int64` | Groups between which the reductions are performed |
-| `channel_id`        | optional `int64`     | Optional channel ID for cross-module communication |
+| Arguments               | Type                  | Semantics                  |
+| ----------------------- | --------------------- | -------------------------- |
+| `operand`               | `XlaOp`               | Array or a non-empty tuple |
+:                         :                       : of arrays to reduce across :
+:                         :                       : replicas.                  :
+| `computation`           | `XlaComputation`      | Reduction computation      |
+| `scatter_dimension`     | `int64`               | Dimension to scatter.      |
+| `shard_count`           | `int64`               | Number of blocks to split  |
+:                         :                       : `scatter_dimension`        :
+| `replica_groups`        | `ReplicaGroup` vector | Groups between which the   |
+:                         :                       : reductions are performed   :
+| `channel_id`            | optional              | Optional channel ID for    |
+:                         : `ChannelHandle`       : cross-module communication :
+| `layout`                | optional `Layout`     | user-specified memory      |
+:                         :                       : layout                     :
+| `use_global_device_ids` | optional `bool`       | user-specified flag        |
 
 -   When `operand` is a tuple of arrays, the reduce-scatter is performed on each
     element of the tuple.
@@ -2135,12 +4033,38 @@ replica_group_ids, channel_id)`**
     must be equal to the size of each replica group.
 -   `channel_id` is used for cross-module communication: only `reduce-scatter`
     operations with the same `channel_id` can communicate with each other.
+-   `layout` See
+    [xla::shapes for more information on layouts.](https://openxla.org/xla/shapes)
+-   `use_global_device_ids` is a user-specified flag. When `false`(default) the
+    numbers in `replica_groups` are [`ReplicaId`](#replicaid) when `true` the
+    `replica_groups` represent a global id of (`ReplicaID`*`partition_count` +
+    `partition_id`). For example:
+    -   With 2 replicas and 4 partitions,
+    -   replica_groups={{0,1,4,5},{2,3,6,7}} and use_global_device_ids=true
+    -   group[0] = (0,0), (0,1), (1,0), (1,1)
+    -   group[1] = (0,2), (0,3), (1,2), (1,3)
+    -   where each pair is (replica_id, partition_id).
 
 The output shape is the input shape with the `scatter_dimension` made
 `shard_count` times smaller. For example, if there are two replicas and the
 operand has the value `[1.0, 2.25]` and `[3.0, 5.25]` respectively on the two
 replicas, then the output value from this op where `scatter_dim` is `0` will be
 `[4.0]` for the first replica and `[7.5]` for the second replica.
+
+For StableHLO information see
+[StableHLO - reduce_scatter](https://openxla.org/stablehlo/spec#reduce_scatter).
+
+### ReduceScatter - Example 1 - StableHLO
+
+![An example of ReduceScatter dataflow for StableHLO](images/ops_reduce_scatter_1.svg)
+
+In the above example, there are 2 replicas participating in the ReduceScatter.
+On each replica, the operand has shape f32[2,4]. An all-reduce (sum) is
+performed across the replicas, producing a reduced value of shape f32[2,4] on
+each replica. This reduced value is then split into 2 parts along dimension 1,
+so each part has shape f32[2,2]. Each replica within the process group receives
+the part corresponding to its position in the group. As a result, the output on
+each replica has shape f32[2,2].
 
 ## ReduceWindow
 
@@ -2159,14 +4083,36 @@ window_strides, padding)`**
 
 | Arguments           | Type                | Semantics                        |
 | ------------------- | ------------------- | -------------------------------- |
-| `operands`          | `N XlaOps`          | A sequence of N multi-dimensional arrays of types `T_0,..., T_{N-1}`, each representing the base area on which the window is placed. |
-| `init_values`       | `N XlaOps`          | The N starting values for the reduction, one for each of the N operands. See [Reduce](#reduce) for details. |
-| `computation`       | `XlaComputation`    | Reduction function of type `T_0, ..., T_{N-1}, T_0, ..., T_{N-1} -> Collate(T_0, ..., T_{N-1})`, to apply to elements in each window of all the input operands. |
-| `window_dimensions` | `ArraySlice<int64>` | array of integers for window dimension values |
-| `window_strides`    | `ArraySlice<int64>` | array of integers for window stride values |
-| `base_dilations`    | `ArraySlice<int64>` | array of integers for base dilation values |
-| `window_dilations`  | `ArraySlice<int64>` | array of integers for window dilation values |
-| `padding`           | `Padding`           | padding type for window (Padding::kSame, which pads so as to have the same output shape as input if the stride is 1, or Padding::kValid, which uses no padding and "stops" the window once it no longer fits) |
+| `operands`          | `N XlaOps`          | A sequence of N                  |
+:                     :                     : multi-dimensional arrays of      :
+:                     :                     : types `T_0,..., T_{N-1}`, each   :
+:                     :                     : representing the base area on    :
+:                     :                     : which the window is placed.      :
+| `init_values`       | `N XlaOps`          | The N starting values for the    |
+:                     :                     : reduction, one for each of the N :
+:                     :                     : operands. See [Reduce](#reduce)  :
+:                     :                     : for details.                     :
+| `computation`       | `XlaComputation`    | Reduction function of type `T_0, |
+:                     :                     : ..., T_{N-1}, T_0, ..., T_{N-1}  :
+:                     :                     : -> Collate(T_0, ..., T_{N-1})`,  :
+:                     :                     : to apply to elements in each     :
+:                     :                     : window of all the input          :
+:                     :                     : operands.                        :
+| `window_dimensions` | `ArraySlice<int64>` | array of integers for window     |
+:                     :                     : dimension values                 :
+| `window_strides`    | `ArraySlice<int64>` | array of integers for window     |
+:                     :                     : stride values                    :
+| `base_dilations`    | `ArraySlice<int64>` | array of integers for base       |
+:                     :                     : dilation values                  :
+| `window_dilations`  | `ArraySlice<int64>` | array of integers for window     |
+:                     :                     : dilation values                  :
+| `padding`           | `Padding`           | padding type for window          |
+:                     :                     : (Padding\:\:kSame, which pads so :
+:                     :                     : as to have the same output shape :
+:                     :                     : as input if the stride is 1, or  :
+:                     :                     : Padding\:\:kValid, which uses no :
+:                     :                     : padding and "stops" the window   :
+:                     :                     : once it no longer fits)          :
 
 Where:
 
@@ -2176,9 +4122,13 @@ Where:
 *   If `N > 1`, `Collate(T_0, ..., T_{N-1})` is a tuple of `N` elements of type
     `(T0,...T{N-1})`.
 
-Below code and figure shows an example of using `ReduceWindow`. Input is a
-matrix of size [4x6] and both window_dimensions and window_stride_dimensions are
-[2x3].
+For StableHLO information see
+[StableHLO - reduce_window](https://openxla.org/stablehlo/spec#reduce_window).
+
+### ReduceWindow - Example 1
+
+Input is a matrix of size [4x6] and both window_dimensions and
+window_stride_dimensions are [2x3].
 
 ```cpp
 // Create a computation for the reduction (maximum).
@@ -2232,6 +4182,85 @@ non-deterministic. Therefore, the reduction function should not be overly
 sensitive to reassociation. See the discussion about associativity in the
 context of [`Reduce`](#reduce) for more details.
 
+### ReduceWindow - Example 2 - StableHLO
+
+![An example of ReduceWindow dataflow for StableHLO](images/ops_reduce_window_2.svg)
+
+In the above example:
+
+Input) The operand has an input shape of S32[3,2]. With a values of
+`[[1,2],[3,4],[5,6]]`
+
+Step 1) Base dilation with factor 2 along the row dimension inserts holes
+between each row of the operand. Padding of 2 rows at the top and 1 row at the
+bottom is applied after dilation. As a result, the tensor becomes taller.
+
+Step 2) A window of shape [2,1] is defined, with window dilation [3,1]. This
+means each window selects two elements from the same column, but the second
+element is taken three rows below the first rather than directly beneath it.
+
+Step 3) The windows are then slid across the operand with stride [4,1]. This
+causes the window to move down four rows at a time, while shifting one column at
+a time horizontally. Padding cells are filled with the `init_value` (in this
+case `init_value = 0`). Values 'falling into' dilation cells are ignored.
+Because of the stride and padding, some windows overlap only zeros and holes,
+while others overlap real input values.
+
+Step 4) Within each window, the elements are combined using the reduction
+function (a, b) → a + b, starting from an initial value of 0. The top two
+windows see only padding and holes, so their results are 0. The bottom windows
+capture the values 3 and 4 from the input and return those as results.
+
+Results) The final output has shape S32[2,2], with values: `[[0,0],[3,4]]`
+
+## Rem
+
+See also
+[`XlaBuilder::Rem`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise remainder of dividend `lhs` and divisor `rhs`.
+
+The sign of the result is taken from the dividend, and the absolute value of the
+result is always less than the divisor's absolute value.
+
+**`Rem(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Rem:
+
+**`Rem(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - remainder](https://openxla.org/stablehlo/spec#remainder).
+
 ## ReplicaId
 
 See also
@@ -2246,10 +4275,13 @@ where `N` is the number of replicas. Since all the replicas are running the same
 program, a `ReplicaId()` call in the program will return a different value on
 each replica.
 
+For StableHLO information see
+[StableHLO - replica_id](https://openxla.org/stablehlo/spec#replica_id).
+
 ## Reshape
 
 See also
-[`XlaBuilder::Reshape`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h)
+[`XlaBuilder::Reshape`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 and the [`Collapse`](#collapse) operation.
 
 Reshapes the dimensions of an array into a new configuration.
@@ -2300,12 +4332,29 @@ Reshape(f32[1x1] {{5}}, {}) == 5;
 Reshape(5, {1,1}) == f32[1x1] {{5}};
 ```
 
+For StableHLO information see
+[StableHLO - reshape](https://openxla.org/stablehlo/spec#reshape).
+
+### Reshape (explicit)
+
+See also
+[`XlaBuilder::Reshape`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+**`Reshape(shape, operand)`**
+
+Reshape op that uses an explicit target shape.
+
+Arguments | Type    | Semantics
+--------- | ------- | ----------------------
+`shape`   | `Shape` | Output shape of type T
+`operand` | `XlaOp` | array of type T
+
 ## Rev (reverse)
 
 See also
 [`XlaBuilder::Rev`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b>`Rev(operand, dimensions)`</b>
+**`Rev(operand, dimensions)`**
 
 Arguments    | Type                | Semantics
 ------------ | ------------------- | ---------------------
@@ -2322,6 +4371,9 @@ the reversing dimensions, its index i is transformed into N - 1 - i).
 One use for the `Rev` operation is to reverse the convolution weight array along
 the two window dimensions during the gradient computation in neural networks.
 
+For StableHLO information see
+[StableHLO - reverse](https://openxla.org/stablehlo/spec#reverse).
+
 ## RngNormal
 
 See also
@@ -2332,13 +4384,17 @@ the $N(\mu, \sigma)$ normal distribution. The parameters $\mu$ and $\sigma$, and
 output shape have to have a floating point elemental type. The parameters
 furthermore have to be scalar valued.
 
-<b>`RngNormal(mu, sigma, shape)`</b>
+**`RngNormal(mu, sigma, shape)`**
 
-| Arguments | Type    | Semantics                                           |
-| --------- | ------- | --------------------------------------------------- |
+| Arguments | Type    | Semantics                                             |
+| --------- | ------- | ----------------------------------------------------- |
 | `mu`      | `XlaOp` | Scalar of type T specifying mean of generated numbers |
-| `sigma`   | `XlaOp` | Scalar of type T specifying standard deviation of generated |
-| `shape`   | `Shape` | Output shape of type T                              |
+| `sigma`   | `XlaOp` | Scalar of type T specifying standard deviation of     |
+:           :         : generated                                             :
+| `shape`   | `Shape` | Output shape of type T                                |
+
+For StableHLO information see
+[StableHLO - rng](https://openxla.org/stablehlo/spec#rng).
 
 ## RngUniform
 
@@ -2353,15 +4409,21 @@ only support F64, F32, F16, BF16, S64, U64, S32 and U32. Furthermore, the
 parameters need to be scalar valued. If $b <= a$ the result is
 implementation-defined.
 
-<b>`RngUniform(a, b, shape)`</b>
+**`RngUniform(a, b, shape)`**
 
-| Arguments | Type                    | Semantics                         |
-| --------- | ----------------------- | --------------------------------- |
-| `a`       | `XlaOp`                 | Scalar of type T specifying lower limit of interval |
-| `b`       | `XlaOp`                 | Scalar of type T specifying upper limit of interval |
-| `shape`   | `Shape`                 | Output shape of type T            |
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------------------------------
+`a`       | `XlaOp` | Scalar of type T specifying lower limit of interval
+`b`       | `XlaOp` | Scalar of type T specifying upper limit of interval
+`shape`   | `Shape` | Output shape of type T
+
+For StableHLO information see
+[StableHLO - rng](https://openxla.org/stablehlo/spec#rng).
 
 ## RngBitGenerator
+
+See also
+[`XlaBuilder::RngBitGenerator`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Generates an output with a given shape filled with uniform random bits using the
 specified algorithm (or backend default) and returns an updated state (with the
@@ -2374,7 +4436,7 @@ The output is guaranteed to be a deterministic function of the initial state but
 it is *not* guaranteed to be deterministic between backends and different
 compiler versions.
 
-<b>`RngBitGenerator(algorithm, key, shape)`</b>
+**`RngBitGenerator(algorithm, initial_state, shape)`**
 
 Arguments       | Type              | Semantics
 --------------- | ----------------- | -------------------------------------
@@ -2395,32 +4457,126 @@ Available values for `algorithm`:
     `initial_state` shape is `u64[3]` with arbitrary values.
     [Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.](http://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
 
+For StableHLO information see
+[StableHLO - rng_bit_generator](https://openxla.org/stablehlo/spec#rng_bit_generator).
+
+## RngGetAndUpdateState
+
+See also
+[`HloInstruction::CreateRngGetAndUpdateState`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
+
+The API of the various `Rng` operations are internally decomposed into HLO
+instructions including `RngGetAndUpdateState`.
+
+`RngGetAndUpdateState` serves as a primitive in HLO. This op may appear in HLO
+dumps, but it is not intended to be constructed manually by end users.
+
+> **Note:** `RngGetAndUpdateState` is only found in HLO. It is not found in
+> StableHLO.
+
+## Round
+
+See also
+[`XlaBuilder::Round`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise rounding, ties away from zero.
+
+**`Round(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+### RoundNearestAfz
+
+See also
+[`XlaBuilder::RoundNearestAfz`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise rounding towards the nearest integer, breaking ties away
+from zero.
+
+**`RoundNearestAfz(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+For StableHLO information see
+[StableHLO - round_nearest_afz](https://openxla.org/stablehlo/spec#round_nearest_afz).
+
+### RoundNearestEven
+
+See also
+[`XlaBuilder::RoundNearestEven`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise rounding, ties to the nearest even.
+
+**`RoundNearestEven(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+For StableHLO information see
+[StableHLO - round_nearest_even](https://openxla.org/stablehlo/spec#round_nearest_even).
+
+## Rsqrt
+
+See also
+[`XlaBuilder::Rsqrt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise reciprocal of square root operation `x -> 1.0 / sqrt(x)`.
+
+**`Rsqrt(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+Rsqrt also supports the optional `result_accuracy` argument:
+
+**`Rsqrt(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+For StableHLO information see
+[StableHLO - rsqrt](https://openxla.org/stablehlo/spec#rsqrt).
+
 ## Scatter
+
+See also
+[`XlaBuilder::Scatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 The XLA scatter operation generates a sequence of results which are the values
 of the input array `operands`, with several slices (at indices specified by
 `scatter_indices`) updated with the sequence of values in `updates` using
 `update_computation`.
 
-See also
-[`XlaBuilder::Scatter`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+**`Scatter(operands..., scatter_indices, updates..., update_computation,
+dimension_numbers, indices_are_sorted, unique_indices)`**
 
-**`scatter(operands..., scatter_indices, updates..., update_computation,
-index_vector_dim, update_window_dims, inserted_window_dims,
-scatter_dims_to_operand_dims)`**
-
-Arguments                      | Type                  | Semantics
------------------------------- | --------------------- | ---------
-`operands`                     | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N` to be scattered into.
-`scatter_indices`              | `XlaOp`               | Array containing the starting indices of the slices that must be scattered to.
-`updates`                      | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`. `updates[i]` contains the values that must be used for scattering `operands[i]`.
-`update_computation`           | `XlaComputation`      | Computation to be used for combining the existing values in the input array and the updates during scatter. This computation should be of type `T_0, ..., T_N, T_0, ..., T_N -> Collate(T_0, ..., T_N)`.
-`index_vector_dim`             | `int64`               | The dimension in `scatter_indices` that contains the starting indices.
-`update_window_dims`           | `ArraySlice<int64>`   | The set of dimensions in `updates` shape that are *window dimensions*.
-`inserted_window_dims`         | `ArraySlice<int64>`   | The set of *window dimensions* that must be inserted into `updates` shape.
-`scatter_dims_to_operand_dims` | `ArraySlice<int64>`   | A dimensions map from the scatter indices to the operand index space. This array is interpreted as mapping `i` to `scatter_dims_to_operand_dims[i]` . It has to be one-to-one and total.
-`indices_are_sorted`           | `bool`                | Whether the indices are guaranteed to be sorted by the caller.
-`unique_indices`               | `bool`                | Whether the indices are guaranteed to be unique by the caller.
+Arguments                      | Type                      | Semantics
+------------------------------ | ------------------------- | ---------
+`operands`                     | Sequence of N `XlaOp`     | N arrays of types `T_0, ..., T_N` to be scattered into.
+`scatter_indices`              | `XlaOp`                   | Array containing the starting indices of the slices that must be scattered to.
+`updates`                      | Sequence of N `XlaOp`     | N arrays of types `T_0, ..., T_N`. `updates[i]` contains the values that must be used for scattering `operands[i]`.
+`update_computation`           | `XlaComputation`          | Computation to be used for combining the existing values in the input array and the updates during scatter. This computation should be of type `T_0, ..., T_N, T_0, ..., T_N -> Collate(T_0, ..., T_N)`.
+`index_vector_dim`             | `int64`                   | The dimension in `scatter_indices` that contains the starting indices.
+`update_window_dims`           | `ArraySlice<int64>`       | The set of dimensions in `updates` shape that are *window dimensions*.
+`inserted_window_dims`         | `ArraySlice<int64>`       | The set of *window dimensions* that must be inserted into `updates` shape.
+`scatter_dims_to_operand_dims` | `ArraySlice<int64>`       | A dimensions map from the scatter indices to the operand index space. This array is interpreted as mapping `i` to `scatter_dims_to_operand_dims[i]` . It has to be one-to-one and total.
+`dimension_number`             | `ScatterDimensionNumbers` | Dimension numbers for scatter operation
+`indices_are_sorted`           | `bool`                    | Whether the indices are guaranteed to be sorted by the caller.
+`unique_indices`               | `bool`                    | Whether the indices are guaranteed to be unique by the caller.
 
 Where:
 
@@ -2536,6 +4692,48 @@ corresponding gather op.
 For a detailed informal description and examples, refer to the
 "Informal Description" section under `Gather`.
 
+For StableHLO information see
+[StableHLO - scatter](https://openxla.org/stablehlo/spec#scatter).
+
+### Scatter - Example 1 - StableHLO
+
+![An example of Scatter dataflow for StableHLO](images/ops_scatter_1.svg)
+
+In the above image, each row of the table is an example of one update index
+example. Let's review stepwise from left(Update Index) to right(Result Index):
+
+Input) `input` has shape S32[2,3,4,2]. `scatter_indices` have shape
+S64[2,2,3,2]. `updates` have shape S32[2,2,3,1,2].
+
+Update Index) As part of the input we are given `update_window_dims:[3,4]`. This
+tell us that `updates`'s dim 3 and dim 4 are window dimensions, highlighted in
+yellow. This allows us to derive that `update_scatter_dims` = [0,1,2].
+
+Update Scatter Index) Shows us the extracted `updated_scatter_dims` for each.
+(The non-yellow of column Update Index)
+
+Start Index) Looking at the `scatter_indices` tensor image we can see that our
+values from the previous step (Update scatter Index), give us the location of
+the start index. From `index_vector_dim` we are also told the dimension of the
+`starting_indices` that contains the starting indices, which for
+`scatter_indices` is dim 3 with a size 2.
+
+Full Start Index) `scatter_dims_to_operand_dims` = [2,1] tells us the first
+element of the index vector goes to operand dim 2. The second element of the
+index vector goes to operand dim 1. The remaining operand dimensions are filled
+with 0.
+
+Full Batching Index) We can see the purple highlighted area is shown in this
+column(full batching index), the update scatter index column, and update index
+column.
+
+Full Window Index) Computed from the `update_window_dimensions` [3,4].
+
+Result Index) The addition of Full Start Index, Full Batching Index, and Full
+Window Index in the `operand` tensor. Notice the green highlighted regions
+correspond to the `operand` figure as well. The last row is skipped because it
+falls outside of `operand` tensor.
+
 ## Select
 
 See also
@@ -2587,6 +4785,9 @@ Selections between tuples are supported. Tuples are considered to be scalar
 types for this purpose. If `on_true` and `on_false` are tuples (which must have
 the same shape!) then `pred` has to be a scalar of type `PRED`.
 
+For StableHLO information see
+[StableHLO - select](https://openxla.org/stablehlo/spec#select)
+
 ## SelectAndScatter
 
 See also
@@ -2620,19 +4821,35 @@ array must have the same shape as the result of applying a `ReduceWindow`
 operation on the `operand` array. `SelectAndScatter` can be used to
 backpropagate the gradient values for a pooling layer in a neural network.
 
-<b>`SelectAndScatter(operand, select, window_dimensions, window_strides,
-padding, source, init_value, scatter)`</b>
+**`SelectAndScatter(operand, select, window_dimensions, window_strides, padding,
+source, init_value, scatter)`**
 
 | Arguments           | Type                | Semantics                        |
 | ------------------- | ------------------- | -------------------------------- |
-| `operand`           | `XlaOp`             | array of type T over which the windows slide  |
-| `select`            | `XlaComputation`    | binary computation of type `T, T -> PRED`, to apply to all elements in each window; returns `true` if the first parameter is selected and returns `false` if the second parameter is selected |
-| `window_dimensions` | `ArraySlice<int64>` | array of integers for window dimension values  |
-| `window_strides`    | `ArraySlice<int64>` | array of integers for window stride values |
-| `padding`           | `Padding`           | padding type for window (Padding::kSame or Padding::kValid)  |
-| `source`            | `XlaOp`             | array of type T with the values to scatter  |
-| `init_value`        | `XlaOp`             | scalar value of type T for the initial value of the output array  |
-| `scatter`           | `XlaComputation`    | binary computation of type `T, T -> T`, to apply each scatter source element with its destination element |
+| `operand`           | `XlaOp`             | array of type T over which the   |
+:                     :                     : windows slide                    :
+| `select`            | `XlaComputation`    | binary computation of type `T, T |
+:                     :                     : -> PRED`, to apply to all        :
+:                     :                     : elements in each window; returns :
+:                     :                     : `true` if the first parameter is :
+:                     :                     : selected and returns `false` if  :
+:                     :                     : the second parameter is selected :
+| `window_dimensions` | `ArraySlice<int64>` | array of integers for window     |
+:                     :                     : dimension values                 :
+| `window_strides`    | `ArraySlice<int64>` | array of integers for window     |
+:                     :                     : stride values                    :
+| `padding`           | `Padding`           | padding type for window          |
+:                     :                     : (Padding\:\:kSame or             :
+:                     :                     : Padding\:\:kValid)               :
+| `source`            | `XlaOp`             | array of type T with the values  |
+:                     :                     : to scatter                       :
+| `init_value`        | `XlaOp`             | scalar value of type T for the   |
+:                     :                     : initial value of the output      :
+:                     :                     : array                            :
+| `scatter`           | `XlaComputation`    | binary computation of type `T, T |
+:                     :                     : -> T`, to apply each scatter     :
+:                     :                     : source element with its          :
+:                     :                     : destination element              :
 
 The figure below shows examples of using `SelectAndScatter`, with the `select`
 function computing the maximal value among its parameters. Note that when the
@@ -2648,27 +4865,36 @@ non-deterministic. Therefore, the `scatter` function should not be overly
 sensitive to reassociation. See the discussion about associativity in the
 context of [`Reduce`](#reduce) for more details.
 
+For StableHLO information see
+[StableHLO - select_and_scatter](https://openxla.org/stablehlo/spec#select_and_scatter).
+
 ## Send
 
 See also
 [`XlaBuilder::Send`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-**`Send(operand, channel_handle)`**
+`Send`, `SendWithTokens`, and `SendToHost` are operations that serve as
+communication primitives in HLO. These ops typically appear in HLO dumps as part
+of low-level input/output or cross-device transfer, but they are not intended to
+be constructed manually by end users.
 
-Arguments        | Type            | Semantics
----------------- | --------------- | -----------------------------------------
-`operand`        | `XlaOp`         | data to send (array of type T)
-`channel_handle` | `ChannelHandle` | unique identifier for each send/recv pair
+**`Send(operand, handle)`**
 
-Sends the given operand data to a `Recv` instruction in another computation
-that shares the same channel handle. Does not return any data.
+Arguments | Type            | Semantics
+--------- | --------------- | -----------------------------------------
+`operand` | `XlaOp`         | data to send (array of type T)
+`handle`  | `ChannelHandle` | unique identifier for each send/recv pair
 
-Similar to the `Recv` operation, the client API of `Send` operation represents
-synchronous communication, and is internally decomposed into 2 HLO instructions
-(`Send` and `SendDone`) to enable asynchronous data transfers. See also
+Sends the given operand data to a [`Recv`](#recv) instruction in another
+computation that shares the same channel handle. Does not return any data.
+
+Similar to the [`Recv`](#recv) operation, the client API of `Send` operation
+represents synchronous communication, and is internally decomposed into 2 HLO
+instructions (`Send` and `SendDone`) to enable asynchronous data transfers. See
+also
 [`HloInstruction::CreateSend` and `HloInstruction::CreateSendDone`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
 
-<b>`Send(HloInstruction operand, int64 channel_id)`</b>
+**`Send(HloInstruction operand, int64 channel_id)`**
 
 Initiates an asynchronous transfer of the operand to the resources allocated by
 the `Recv` instruction with the same channel id. Returns a context, which is
@@ -2676,12 +4902,22 @@ used by a following `SendDone` instruction to wait for the completion of the
 data transfer. The context is a tuple of {operand (shape), request identifier
 (U32)} and it can only be used by a `SendDone` instruction.
 
+For StableHLO information see
+[StableHLO - send](https://openxla.org/stablehlo/spec#send).
+
+### SendDone
+
+See also
+[`HloInstruction::CreateSendDone`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
+
 **`SendDone(HloInstruction context)`**
 
 Given a context created by a `Send` instruction, waits for the data transfer to
 complete. The instruction does not return any data.
 
-**Scheduling of channel instructions**
+> **Note:** `SendDone` is only found in HLO. It is not found in StableHLO.
+
+### Scheduling of channel instructions
 
 The execution order of the 4 instructions for each channel (`Recv`, `RecvDone`,
 `Send`, `SendDone`) is as below.
@@ -2699,6 +4935,237 @@ computations. For example, below schedules lead to deadlocks.
 
 ![](images/send_recv_schedule.png)
 
+## SetDimensionSize
+
+See also
+[`XlaBuilder::SetDimensionSize`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Sets the dynamic size of XlaOp's given dimension. The operand must be array
+shaped.
+
+**`SetDimensionSize(operand, val, dimension)`**
+
+| Arguments   | Type    | Semantics                                           |
+| ----------- | ------- | --------------------------------------------------- |
+| `operand`   | `XlaOp` | n dimensional input array.                          |
+| `val`       | `XlaOp` | int32 representing the runtime dynamic size.        |
+| `dimension` | `int64` | A value in the interval `[0, n)` that specifies the |
+:             :         : dimension.                                          :
+
+Pass through the operand as result, with dynamic dimension tracked by the
+compiler.
+
+Padded values will be ignored by downstream reduction ops.
+
+```cpp
+let v: f32[10] = f32[10]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+let five: s32 = 5;
+let six: s32 = 6;
+
+// Setting dynamic dimension size doesn't change the upper bound of the static
+// shape.
+let padded_v_five: f32[10] = set_dimension_size(v, five, /*dimension=*/0);
+let padded_v_six: f32[10] = set_dimension_size(v, six, /*dimension=*/0);
+
+// sum == 1 + 2 + 3 + 4 + 5
+let sum:f32[] = reduce_sum(padded_v_five);
+// product == 1 * 2 * 3 * 4 * 5
+let product:f32[] = reduce_product(padded_v_five);
+
+// Changing padding size will yield different result.
+// sum == 1 + 2 + 3 + 4 + 5 + 6
+let sum:f32[] = reduce_sum(padded_v_six);
+```
+
+## ShiftLeft
+
+See also
+[`XlaBuilder::ShiftLeft`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise left-shift operation on `lhs` by `rhs` number of bits.
+
+**`ShiftLeft(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for ShiftLeft:
+
+**`ShiftLeft(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - shift_left](https://openxla.org/stablehlo/spec#shift_left).
+
+## ShiftRightArithmetic
+
+See also
+[`XlaBuilder::ShiftRightArithmetic`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise arithmetic right-shift operation on `lhs` by `rhs` number
+of bits.
+
+**`ShiftRightArithmetic(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for ShiftRightArithmetic:
+
+**`ShiftRightArithmetic(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - shift_right_arithmetic](https://openxla.org/stablehlo/spec#shift_right_arithmetic).
+
+## ShiftRightLogical
+
+See also
+[`XlaBuilder::ShiftRightLogical`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise logical right-shift operation on `lhs` by `rhs` number of
+bits.
+
+**`ShiftRightLogical(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for ShiftRightLogical:
+
+**`ShiftRightLogical(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - shift_right_logical](https://openxla.org/stablehlo/spec#shift_right_logical).
+
+## Sign
+
+See also
+[`XlaBuilder::Sign`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+**`Sign(operand)`** Element-wise sign operation `x -> sgn(x)` where
+
+$$\text{sgn}(x) = \begin{cases} -1 & x < 0\\ -0 & x = -0\\ NaN & x = NaN\\ +0 &
+x = +0\\ 1 & x > 0 \end{cases}$$
+
+using the comparison operator of the element type of `operand`.
+
+**`Sign(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+For StableHLO information see
+[StableHLO - sign](https://openxla.org/stablehlo/spec#sign).
+
+## Sin
+
+**`Sin(operand)`** Element-wise sine `x -> sin(x)`.
+
+See also
+[`XlaBuilder::Sin`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+**`Sin(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+Sin also supports the optional `result_accuracy` argument:
+
+**`Sin(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+For StableHLO information see
+[StableHLO - sine](https://openxla.org/stablehlo/spec#sine).
+
 ## Slice
 
 See also
@@ -2714,17 +5181,28 @@ given as arguments to the slice operation.
 | Arguments       | Type                | Semantics                            |
 | --------------- | ------------------- | ------------------------------------ |
 | `operand`       | `XlaOp`             | N dimensional array of type T        |
-| `start_indices` | `ArraySlice<int64>` | List of N integers containing the  starting indices of the slice for each dimension. Values must be greater than or equal to zero. |
-| `limit_indices` | `ArraySlice<int64>` | List of N integers containing the ending indices (exclusive) for the slice for each dimension. Each value must be greater than or equal to the respective `start_indices` value for the dimension and less than or equal to the size of the dimension. |
-| `strides`      | `ArraySlice<int64>` | List of N integers that decides the input stride of the slice. The slice picks every `strides[d]` element in dimension `d`. |
-
+| `start_indices` | `ArraySlice<int64>` | List of N integers containing the    |
+:                 :                     : starting indices of the slice for    :
+:                 :                     : each dimension. Values must be       :
+:                 :                     : greater than or equal to zero.       :
+| `limit_indices` | `ArraySlice<int64>` | List of N integers containing the    |
+:                 :                     : ending indices (exclusive) for the   :
+:                 :                     : slice for each dimension. Each value :
+:                 :                     : must be greater than or equal to the :
+:                 :                     : respective `start_indices` value for :
+:                 :                     : the dimension and less than or equal :
+:                 :                     : to the size of the dimension.        :
+| `strides`       | `ArraySlice<int64>` | List of N integers that decides the  |
+:                 :                     : input stride of the slice. The slice :
+:                 :                     : picks every `strides[d]` element in  :
+:                 :                     : dimension `d`.                       :
 
 1-dimensional example:
 
 ```cpp
 let a = {0.0, 1.0, 2.0, 3.0, 4.0}
-Slice(a, {2}, {4}) produces:
-  {2.0, 3.0}
+Slice(a, {2}, {4})
+// Result: {2.0, 3.0}
 ```
 
 2-dimensional example:
@@ -2736,20 +5214,24 @@ let b =
    {6.0,  7.0,  8.0},
    {9.0, 10.0, 11.0} }
 
-Slice(b, {2, 1}, {4, 3}) produces:
-  { { 7.0,  8.0},
-    {10.0, 11.0} }
+Slice(b, {2, 1}, {4, 3})
+// Result:
+//   { { 7.0,  8.0},
+//     {10.0, 11.0} }
 ```
+
+For StableHLO information see
+[StableHLO - slice](https://openxla.org/stablehlo/spec#slice).
 
 ## Sort
 
 See also
 [`XlaBuilder::Sort`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-<b>`Sort(operands, comparator, dimension, is_stable)`</b>
+**`Sort(operands, comparator, dimension, is_stable)`**
 
 Arguments    | Type                | Semantics
------------- | ------------------- | --------------------
+------------ | ------------------- | --------------------------------------
 `operands`   | `ArraySlice<XlaOp>` | The operands to sort.
 `comparator` | `XlaComputation`    | The comparator computation to use.
 `dimension`  | `int64`             | The dimension along which to sort.
@@ -2800,6 +5282,147 @@ relative order of the equal values is preserved. Two elements `e1` and `e2` are
 equal if and only if `comparator(e1, e2) = comparator(e2, e1) = false`. By
 default, `is_stable` is set to false.
 
+For StableHLO information see
+[StableHLO - sort](https://openxla.org/stablehlo/spec#sort).
+
+## Sqrt
+
+See also
+[`XlaBuilder::Sqrt`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise square root operation `x -> sqrt(x)`.
+
+**`Sqrt(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+Sqrt also supports the optional `result_accuracy` argument:
+
+**`Sqrt(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+For StableHLO information see
+[StableHLO - sqrt](https://openxla.org/stablehlo/spec#sqrt).
+
+## Sub
+
+See also
+[`XlaBuilder::Sub`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise subtraction of `lhs` and `rhs`.
+
+**`Sub(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Sub:
+
+**`Sub(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - subtract](https://openxla.org/stablehlo/spec#subtract).
+
+## Tan
+
+See also
+[`XlaBuilder::Tan`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise tangent `x -> tan(x)`.
+
+**`Tan(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+Tan also supports the optional `result_accuracy` argument:
+
+**`Tan(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+For StableHLO information see
+[StableHLO - tan](https://openxla.org/stablehlo/spec#tan).
+
+## Tanh
+
+See also
+[`XlaBuilder::Tanh`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Element-wise hyperbolic tangent `x -> tanh(x)`.
+
+**`Tanh(operand)`**
+
+Arguments | Type    | Semantics
+--------- | ------- | ---------------------------
+`operand` | `XlaOp` | The operand to the function
+
+Tanh also supports the optional `result_accuracy` argument:
+
+**`Tanh(operand, result_accuracy)`**
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md).
+
+For StableHLO information see
+[StableHLO - tanh](https://openxla.org/stablehlo/spec#tanh).
+
 ## TopK
 
 See also
@@ -2810,11 +5433,15 @@ the last dimension of the given tensor.
 
 **`TopK(operand, k, largest)`**
 
-Arguments | Type    | Semantics
---------- | ------- | --------------------
-`operand` | `XlaOp` | The tensor from which to extract the top `k` elements. The tensor must have greater or equal to one dimensions. The size of the last dimension of the tensor must be greater or equal to `k`.
-`k`       | `int64` | The number of elements to extract.
-`largest` | `bool`  | Whether to extract the largest or smallest `k` elements.
+| Arguments | Type    | Semantics                                              |
+| --------- | ------- | ------------------------------------------------------ |
+| `operand` | `XlaOp` | The tensor from which to extract the top `k` elements. |
+:           :         : The tensor must have greater or equal to one           :
+:           :         : dimensions. The size of the last dimension of the      :
+:           :         : tensor must be greater or equal to `k`.                :
+| `k`       | `int64` | The number of elements to extract.                     |
+| `largest` | `bool`  | Whether to extract the largest or smallest `k`         |
+:           :         : elements.                                              :
 
 For a 1-dimensional input tensor (an array), finds the `k` largest or smallest
 entries in the array and outputs a tuple of two arrays `(values, indices)`. Thus
@@ -2832,11 +5459,15 @@ values.shape = indices.shape = [A, B, ..., P, k]
 
 If two elements within a row are equal, the lower-index element appears first.
 
+> **Note:** `TopK` is only found in HLO and is not found in StableHLO. CHLO
+> `TopK` in Frameworks will lower to HLO `TopK` see
+> [StableHLO - chlo.top_k](https://openxla.org/stablehlo/generated/chlo?hl=en#chlotop_k_chlotopkop)
+
 ## Transpose
 
 See also the `tf.reshape` operation.
 
-<b>`Transpose(operand)`</b>
+**`Transpose(operand, permutation)`**
 
 Arguments     | Type                | Semantics
 ------------- | ------------------- | ------------------------------
@@ -2849,6 +5480,9 @@ input_dimensions[permutation[i]] = output_dimensions[i]`.
 
 This is the same as Reshape(operand, permutation,
                             Permute(permutation, operand.shape.dimensions)).
+
+For StableHLO information see
+[StableHLO - transpose](https://openxla.org/stablehlo/spec#transpose).
 
 ## TriangularSolve
 
@@ -2864,14 +5498,23 @@ is either `op(a) = a`, or `op(a) = Transpose(a)`, or
 
 **`TriangularSolve(a, b, left_side, lower, unit_diagonal, transpose_a)`**
 
-| Arguments       | Type        | Semantics                                    |
-| --------------- | ----------- | -------------------------------------------- |
-| `a`             | `XlaOp`     | a > 2 dimensional array of a complex or floating-point type with shape `[..., M, M]`. |
-| `b`             | `XlaOp`     | a > 2 dimensional array of the same type with shape `[..., M, K]` if `left_side` is true, `[..., K, M]` otherwise. |
-| `left_side`     | `bool`      | indicates whether to solve a system of the form `op(a) * x = b` (`true`) or `x * op(a) = b` (`false`). |
-| `lower`         | `bool`      | whether to use the upper or lower triangle of `a`. |
-| `unit_diagonal` | `bool`      | if `true`, the diagonal elements of `a` are assumed to be `1` and not accessed. |
-| `transpose_a`   | `Transpose` | whether to use `a` as is, transpose it or take its conjugate transpose. |
+| Arguments       | Type        | Semantics                                   |
+| --------------- | ----------- | ------------------------------------------- |
+| `a`             | `XlaOp`     | a > 2 dimensional array of a complex or     |
+:                 :             : floating-point type with shape `[..., M,    :
+:                 :             : M]`.                                        :
+| `b`             | `XlaOp`     | a > 2 dimensional array of the same type    |
+:                 :             : with shape `[..., M, K]` if `left_side` is  :
+:                 :             : true, `[..., K, M]` otherwise.              :
+| `left_side`     | `bool`      | indicates whether to solve a system of the  |
+:                 :             : form `op(a) * x = b` (`true`) or `x *       :
+:                 :             : op(a) = b` (`false`).                       :
+| `lower`         | `bool`      | whether to use the upper or lower triangle  |
+:                 :             : of `a`.                                     :
+| `unit_diagonal` | `bool`      | if `true`, the diagonal elements of `a` are |
+:                 :             : assumed to be `1` and not accessed.         :
+| `transpose_a`   | `Transpose` | whether to use `a` as is, transpose it or   |
+:                 :             : take its conjugate transpose.               :
 
 Input data is read only from the lower/upper triangle of `a`, depending on the
 value of `lower`. Values from the other triangle are ignored. Output data is
@@ -2882,6 +5525,9 @@ If the number of dimensions of `a` and `b` are greater than 2, they are treated
 as batches of matrices, where all except the minor 2 dimensions are batch
 dimensions. `a` and `b` must have equal batch dimensions.
 
+For StableHLO information see
+[StableHLO - triangular_solve](https://openxla.org/stablehlo/spec#triangular_solve).
+
 ## Tuple
 
 See also
@@ -2889,6 +5535,12 @@ See also
 
 A tuple containing a variable number of data handles, each of which has its own
 shape.
+
+**`Tuple(elements)`**
+
+Arguments  | Type              | Semantics
+---------- | ----------------- | -----------------
+`elements` | vector of `XlaOp` | N array of type T
 
 This is analogous to `std::tuple` in C++. Conceptually:
 
@@ -2901,6 +5553,13 @@ let t: (f32[10], s32) = tuple(v, s);
 Tuples can be deconstructed (accessed) via the [`GetTupleElement`]
 (#gettupleelement) operation.
 
+For StableHLO information see
+[StableHLO - tuple](https://openxla.org/stablehlo/spec#tuple).
+
+> **Note:** In HLO, tuples are needed for most ops that return >1 result. While
+> in StableHLO/MLIR, variadic results can be expressed and tuples are not used,
+> except in custom_calls/get_tuple_element.
+
 ## While
 
 See also
@@ -2909,10 +5568,14 @@ See also
 **`While(condition, body, init)`**
 
 | Arguments   | Type             | Semantics                                |
-| ----------- | ---------------- | ---------------------------------------- |
-| `condition` | `XlaComputation` | XlaComputation of type `T -> PRED` which defines the termination condition of theloop. |
-| `body`      | `XlaComputation` | XlaComputation of type `T -> T` which defines the body of the loop. |
-| `init`      | `T`              | Initial value for the parameter of `condition` and `body`. |
+| :---------- | :--------------- | :--------------------------------------- |
+| `condition` | `XlaComputation` | XlaComputation of type `T -> PRED` which |
+:             :                  : defines the termination condition of the :
+:             :                  : loop.                                    :
+| `body`      | `XlaComputation` | XlaComputation of type `T -> T` which    |
+:             :                  : defines the body of the loop.            :
+| `init`      | `T`              | Initial value for the parameter of       |
+:             :                  : `condition` and `body`.                  :
 
 Sequentially executes the `body` until the `condition` fails. This is similar to
 a typical while loop in many other languages except for the differences and
@@ -2947,3 +5610,51 @@ while (result(0) < 1000) {
 ```
 
 ![](images/ops_while.png)
+
+For StableHLO information see
+[StableHLO - while](https://openxla.org/stablehlo/spec#while).
+
+## Xor
+
+See also
+[`XlaBuilder::Xor`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Performs element-wise XOR of `lhs` and `rhs`.
+
+**`Xor(lhs, rhs)`**
+
+Arguments | Type  | Semantics
+--------- | ----- | ---------------------------------------
+lhs       | XlaOp | Left-hand-side operand: array of type T
+rhs       | XlaOp | Left-hand-side operand: array of type T
+
+The arguments' shapes have to be either similar or compatible. See the
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
+be compatible. The result of an operation has a shape which is the result of
+broadcasting the two input arrays. In this variant, operations between arrays of
+different ranks are *not* supported, unless one of the operands is a scalar.
+
+An alternative variant with different-dimensional broadcasting support exists
+for Xor:
+
+**`Xor(lhs,rhs, broadcast_dimensions)`**
+
+| Arguments           | Type              | Semantics                        |
+| ------------------- | ----------------- | -------------------------------- |
+| lhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| rhs                 | XlaOp             | Left-hand-side operand: array of |
+:                     :                   : type T                           :
+| broadcast_dimension | ArraySlice<int64> | Which dimension in the target    |
+:                     :                   : shape each dimension of the      :
+:                     :                   : operand shape corresponds to     :
+
+This variant of the operation should be used for arithmetic operations between
+arrays of different ranks (such as adding a matrix to a vector).
+
+The additional broadcast_dimensions operand is a slice of integers specifying
+the dimensions to use for broadcasting the operands. The semantics are described
+in detail on the [broadcasting page](broadcasting.md).
+
+For StableHLO information see
+[StableHLO - xor](https://openxla.org/stablehlo/spec#xor).

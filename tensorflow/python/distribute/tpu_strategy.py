@@ -907,7 +907,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
         tpu_devices.append(replica_devices)
       self._tpu_devices = np.array(tpu_devices, dtype=object)
-
     self._host_device = device_util.get_host_for_device(self._tpu_devices[0][0])
 
     # Preload the data onto the TPUs. Currently we always preload onto logical
@@ -956,6 +955,48 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # This is a flag to enable data reorder which is used
     # to match IteratorGetNext's device with the TPUExecute device.
     self._enable_data_reorder = False
+
+  def _place_input_on_local_cpu_devices(self):
+    """Place input on local CPU devices.
+
+    For example, if the tpu_devices are:
+    '/job:worker/replica:0/task:0/device:TPU:0',
+    '/job:worker/replica:0/task:1/device:TPU:0',
+    '/job:worker/replica:0/task:1/device:TPU:1',
+    '/job:worker/replica:0/task:0/device:TPU:1',
+
+
+    the host_input_worker_devices will be:
+    {
+        '/job:worker/replica:0/task:0/device:CPU:0': [
+            '/job:worker/replica:0/task:0/device:TPU:0',
+        ],
+        '/job:worker/replica:0/task:1/device:CPU:0', [
+            '/job:worker/replica:0/task:1/device:TPU:0',
+        ],
+        '/job:worker/replica:0/task:1/device:CPU:1': [
+            '/job:worker/replica:0/task:1/device:TPU:1',
+        ],
+        '/job:worker/replica:0/task:0/device:CPU:1': [
+            '/job:worker/replica:0/task:0/device:TPU:1',
+        ],
+    }
+    This will make sure that the input is placed on the corresponding host CPU
+    device if the device assignment is set.
+    """
+    self._device_input_worker_devices = collections.OrderedDict()
+    self._host_input_worker_devices = collections.OrderedDict()
+    for tpu_device in self._tpu_devices[:, 0]:
+      host_device = device_util.get_host_for_device(
+          tpu_device,
+          device_index=tf_device.DeviceSpec.from_string(
+              tpu_device
+          ).device_index,
+      )
+      self._device_input_worker_devices.setdefault(host_device, [])
+      self._device_input_worker_devices[host_device].append(tpu_device)
+      self._host_input_worker_devices.setdefault(host_device, [])
+      self._host_input_worker_devices[host_device].append(host_device)
 
   def _get_replica_order(self):
     """Get the replica order based on the tpu device order.

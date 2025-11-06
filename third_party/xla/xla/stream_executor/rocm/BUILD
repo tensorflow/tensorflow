@@ -2,7 +2,6 @@
 
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_hipblaslt",
     "rocm_library",
 )
 load("//xla:xla.default.bzl", "xla_cc_test")
@@ -31,20 +30,11 @@ package_group(
 )
 
 cc_library(
-    name = "rocm_diagnostics",
-    srcs = ["rocm_diagnostics.cc"],
-    hdrs = ["rocm_diagnostics.h"],
-    tags = [
-        "gpu",
-        "rocm-only",
-    ],
+    name = "rocm_compute_capability",
+    hdrs = ["rocm_compute_capability.h"],
     deps = [
-        "//xla/tsl/platform:logging",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
+        "//xla/stream_executor:device_description_proto_cc",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -298,7 +288,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":rocm_diagnostics",
         ":rocm_driver_wrapper",
         ":rocm_executor",
         ":rocm_platform_id",
@@ -509,7 +498,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":miopen_if_static",  # build_cleaner: keep
-        ":rocm_diagnostics",
         ":rocm_executor",
         ":rocm_helpers",
         ":rocm_platform_id",
@@ -656,7 +644,7 @@ cc_library(
         "gpu",
         "rocm-only",
     ],
-    deps = if_rocm_hipblaslt([
+    deps = if_static([
         "@local_config_rocm//rocm:hipblaslt",
     ]),
 )
@@ -707,9 +695,9 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:dso_loader",
         "@local_tsl//tsl/platform:ml_dtypes",
-    ] + if_static([
+    ] + [
         ":hipblaslt_if_static",
-    ]),
+    ],
     alwayslink = True,
 )
 

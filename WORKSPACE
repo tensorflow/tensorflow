@@ -80,7 +80,13 @@ tf_workspace0()
 
 load(
     "@local_xla//third_party/py:python_wheel.bzl",
+    "nvidia_wheel_versions_repository",
     "python_wheel_version_suffix_repository",
+)
+
+nvidia_wheel_versions_repository(
+    name = "nvidia_wheel_versions",
+    versions_source = "//ci/official/requirements_updater:nvidia-requirements.txt",
 )
 
 python_wheel_version_suffix_repository(name = "tf_wheel_version_suffix")
@@ -95,6 +101,10 @@ cc_toolchain_deps()
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 
 load(
     "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",

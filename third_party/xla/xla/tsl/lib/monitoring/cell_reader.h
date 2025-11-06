@@ -150,12 +150,16 @@ ValueType CellReader<ValueType>::Delta(const LabelType&... labels) {
   std::unique_ptr<CollectedMetrics> metrics = internal::CollectMetrics();
   ValueType value = internal::GetLatestValueOrDefault<ValueType>(
       *metrics, metric_name_, labels_list);
-  ValueType initial_value = internal::GetLatestValueOrDefault<ValueType>(
-      *initial_metrics_, metric_name_, labels_list);
-  if (delta_map_.contains(labels_list)) {
-    initial_value = delta_map_[labels_list];
+  auto it = delta_map_.find(labels_list);
+  ValueType initial_value;
+  if (it == delta_map_.end()) {
+    initial_value = internal::GetLatestValueOrDefault<ValueType>(
+        *initial_metrics_, metric_name_, labels_list);
+    delta_map_[labels_list] = value;
+  } else {
+    initial_value = it->second;
+    it->second = value;
   }
-  delta_map_[labels_list] = value;
   return internal::GetDelta<ValueType>(value, initial_value);
 }
 

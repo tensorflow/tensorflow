@@ -28,11 +28,12 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -43,8 +44,9 @@ namespace gpu {
 
 CollectiveGroupThunk::CollectiveGroupThunk(
     const HloInstruction* instruction, Thunk::Kind kind,
-    std::vector<std::unique_ptr<Thunk>> thunks, AsyncStreamKind stream_kind)
-    : Thunk(kind, ThunkInfo::WithProfileAnnotation(instruction)),
+    std::vector<std::unique_ptr<Thunk>> thunks, AsyncStreamKind stream_kind,
+    ThunkId thunk_id)
+    : Thunk(kind, ThunkInfo::WithProfileAnnotation(instruction, thunk_id)),
       stream_kind_(stream_kind),
       async_events_(new CollectiveThunk::AsyncEvents()) {
   for (auto& thunk : thunks) {
@@ -102,17 +104,14 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
 
   Communicator* comm = *communicator_set.begin();
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
-  tsl::AsyncValueRef<Communicator::Event> group_event = gpu_comm->GroupExecute(
+  Future<> group_future = gpu_comm->GroupExecute(
       [this, &params](GpuCommunicator* comm) -> absl::Status {
         for (const std::unique_ptr<Thunk>& thunk : thunks_) {
           TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
         }
         return absl::OkStatus();
       });
-  tsl::BlockUntilReady(group_event);
-  if (group_event.IsError()) {
-    return group_event.GetError();
-  }
+  TF_RETURN_IF_ERROR(group_future.Await());
 
   TF_ASSIGN_OR_RETURN(se::Event * event,
                       async_events_->GetEvent(params.stream->parent()));
@@ -126,6 +125,14 @@ void CollectiveGroupThunk::ForAllThunks(
   fn(this);
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
     thunk->ForAllThunks(fn);
+  }
+}
+
+void CollectiveGroupThunk::ForAllThunksMutable(
+    absl::FunctionRef<void(Thunk*)> fn) {
+  fn(this);
+  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+    thunk->ForAllThunksMutable(fn);
   }
 }
 

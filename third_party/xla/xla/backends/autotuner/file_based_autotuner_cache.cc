@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SHA256.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -65,12 +66,11 @@ FileBasedAutotunerCache::FileBasedAutotunerCache(
 std::string FileBasedAutotunerCache::DeviceDescriptionToString(
     const se::DeviceDescription& device_desc) {
   std::string compute_capability;
-  if (auto* ccc = std::get_if<se::CudaComputeCapability>(
-          &device_desc.gpu_compute_capability())) {
+  if (auto* ccc =
+          device_desc.gpu_compute_capability().cuda_compute_capability()) {
     compute_capability = absl::StrCat("CUDA: ", ccc->major, ".", ccc->minor);
   } else {
-    auto* rcc = std::get_if<se::RocmComputeCapability>(
-        &device_desc.gpu_compute_capability());
+    auto* rcc = device_desc.gpu_compute_capability().rocm_compute_capability();
     compute_capability = absl::StrCat("ROCM: ", rcc->gfx_version());
   }
 
@@ -128,31 +128,38 @@ absl::StatusOr<AutotunerCacheKey> FileBasedAutotunerCache::GetProtoKey(
   return key;
 }
 
-std::optional<AutotunerCacheEntry> FileBasedAutotunerCache::Lookup(
+std::optional<AutotunerCacheInterface::Config> FileBasedAutotunerCache::Lookup(
     const HloInstruction* instr) {
   absl::StatusOr<std::string> map_key = GetMapKey(instr);
   if (!map_key.ok()) {
     LOG(ERROR) << "Failed to get map key: " << map_key.status();
     return std::nullopt;
   }
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   auto it = in_memory_cache_.find(*map_key);
   if (it == in_memory_cache_.end()) {
     return std::nullopt;
   }
-  return it->second;
+  AutotunerCacheInterface::Config config;
+  config.codegen_backend_name = it->second.codegen_backend();
+  config.backend_config = it->second.backend_config();
+  return config;
 }
 
-absl::Status FileBasedAutotunerCache::Insert(const HloInstruction* instr,
-                                             AutotunerCacheEntry& entry) {
+absl::Status FileBasedAutotunerCache::Insert(
+    const HloInstruction* instr,
+    const AutotunerCacheInterface::Config& best_config) {
   if (cache_config_.autotune_cache_mode ==
       FileBasedCacheConfig::CacheMode::READ) {
     return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(const std::string map_key, GetMapKey(instr));
   TF_ASSIGN_OR_RETURN(AutotunerCacheKey proto_key, GetProtoKey(instr));
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
+  AutotunerCacheEntry entry;
   *entry.mutable_key() = proto_key;
+  entry.set_codegen_backend(best_config.codegen_backend_name);
+  *entry.mutable_backend_config() = best_config.backend_config;
   in_memory_cache_[map_key] = entry;
   if (!cache_config_.autotune_cache_dir.empty()) {
     return Save(map_key, entry);
@@ -173,7 +180,7 @@ std::string FileBasedAutotunerCache::GetCacheFilePattern() {
 }
 
 absl::Status FileBasedAutotunerCache::Load() {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   const std::string file_pattern = GetCacheFilePattern();
   VLOG(1) << "Loading autotuner cache from: " << file_pattern;
 

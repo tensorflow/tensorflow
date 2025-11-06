@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "xla/ffi/type_id_registry.h"
+#include "xla/ffi/type_registry.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -62,8 +62,9 @@ TEST(ExecutionContextTest, InsertUserOwned) {
 }
 
 TEST(ExecutionContextTest, InsertUserOwnedWithTypeId) {
-  TF_ASSERT_OK_AND_ASSIGN(TypeIdRegistry::TypeId type_id,
-                          TypeIdRegistry::AssignExternalTypeId("I32UserData"));
+  TF_ASSERT_OK_AND_ASSIGN(TypeRegistry::TypeId type_id,
+                          TypeRegistry::AssignExternalTypeId(
+                              "I32UserData", TypeRegistry::TypeInfo{}));
 
   I32UserData user_data(42);
 

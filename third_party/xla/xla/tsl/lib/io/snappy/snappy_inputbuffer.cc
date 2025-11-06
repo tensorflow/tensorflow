@@ -100,8 +100,8 @@ absl::Status SnappyInputBuffer::Inflate() {
             compressed_block_length, " bytes.");
       } else {
         return errors::DataLoss(
-            strings::StrCat("Failed to read ", compressed_block_length,
-                            " bytes from file. Possible data corruption."));
+            absl::StrCat("Failed to read ", compressed_block_length,
+                         " bytes from file. Possible data corruption."));
       }
     }
   }

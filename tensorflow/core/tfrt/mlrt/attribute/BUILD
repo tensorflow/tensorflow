@@ -46,6 +46,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/tfrt/mlrt/bytecode",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",

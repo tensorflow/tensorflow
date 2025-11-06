@@ -19,12 +19,10 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -79,8 +77,6 @@ ENTRY e {
 }
 
 TEST_F(WithoutDotDimensionSorterTest, DimOrderCanBeChanged) {
-  // TODO: weekly-sync 24-12-10
-  GTEST_SKIP() << "Folder structure differences prevents finding of gpu_compiler_test_autotune_db.textproto.";
   const char* hlo_text_ref = R"(
 HloModule m
 

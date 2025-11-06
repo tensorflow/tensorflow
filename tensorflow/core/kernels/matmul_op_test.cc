@@ -17,7 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/algorithm/container.h"
-#include "absl/strings/match.h" 
+#include "absl/strings/match.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "xla/tsl/platform/status.h"

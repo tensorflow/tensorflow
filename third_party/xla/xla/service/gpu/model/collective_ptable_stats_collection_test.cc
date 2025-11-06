@@ -21,8 +21,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"

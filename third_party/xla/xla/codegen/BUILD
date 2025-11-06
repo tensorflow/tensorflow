@@ -47,6 +47,7 @@ xla_cc_test(
         "//xla/backends/gpu/codegen/triton:fusion_emitter",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
@@ -117,6 +118,7 @@ cc_library(
     deps = [
         ":kernel_source",
         "//xla:util",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
@@ -169,12 +171,38 @@ cc_library(
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
     deps = [
+        ":hlo_fusion_spec",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "ir_emission_utils_test",
+    srcs = ["ir_emission_utils_test.cc"],
+    deps = [
+        ":ir_emission_utils",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -193,6 +221,7 @@ cc_library(
         "//xla/codegen/intrinsic:rsqrt",
         "//xla/codegen/intrinsic:string_interner",
         "//xla/codegen/intrinsic:tanh",
+        "//xla/codegen/intrinsic:type",
         "//xla/codegen/intrinsic:vec_name_mangler",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -210,6 +239,18 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "intrinsic_lib_test",
+    srcs = ["intrinsic_lib_test.cc"],
+    deps = [
+        ":intrinsic_lib",
+        "//xla/codegen/intrinsic",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Analysis",
     ],
 )
 

@@ -145,6 +145,7 @@ class HloWeightPropagation : public DfsHloVisitorWithDefault {
   absl::Status HandleBitcastConvert(HloInstruction* bitcast_convert) override;
   absl::Status HandleOptimizationBarrier(
       HloInstruction* optimization_barrier) override;
+  absl::Status HandleAllGather(HloInstruction* all_gather) override;
 
  protected:
   HloDimensionAnalysis* analysis_;

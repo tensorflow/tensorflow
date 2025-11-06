@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
+#include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -53,6 +55,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -101,39 +104,62 @@ class AllReduceKernelTest : public ::testing::Test,
     TF_RETURN_IF_ERROR(executors[1]->EnablePeerAccessTo(executors[0]));
 
     std::vector<std::unique_ptr<se::Stream>> streams;
-    std::vector<se::DeviceMemoryHandle> local_input_buffers;
-    std::vector<se::DeviceMemoryHandle> data_buffers;
-    std::vector<se::DeviceMemoryHandle> signal_flags_buffers;
-    std::vector<se::DeviceMemoryBase> remote_input_buffers_span;
-    std::vector<se::DeviceMemoryBase> signal_flags_buffers_span;
+    std::vector<se::DeviceMemoryBase> allocated_buffers;
+    std::vector<se::DeviceMemoryBase> local_input_buffers;
+    std::vector<se::DeviceMemoryBase> data_buffers;
+    std::vector<se::DeviceMemoryBase> signal_flags_buffers;
 
+    uint64_t input_size = num_elements * sizeof(T);
+    uint64_t aligned_input_size =
+        xla::RoundUpTo<uint64_t>(input_size, kXlaAllocatedBufferAlignBytes);
+    uint64_t signal_size =
+        num_ranks * launch_dimensions.num_blocks() * sizeof(int32_t);
+    uint64_t aligned_signal_size =
+        xla::RoundUpTo<uint64_t>(signal_size, kXlaAllocatedBufferAlignBytes);
     for (int i = 0; i < num_ranks; ++i) {
       auto* executor = executors[i];
       streams.push_back(executor->CreateStream().value());
 
+      uint64_t total_size =
+          /*local_input_buffer_size=*/aligned_input_size +
+          /*data_buffer_size=*/aligned_input_size +
+          /*signal_buffer_size=*/aligned_signal_size;
+      allocated_buffers.emplace_back(executor->AllocateArray<T>(total_size));
       local_input_buffers.emplace_back(
-          executor, executor->AllocateArray<T>(num_elements));
-      TF_RET_CHECK(!local_input_buffers[i].memory().is_null());
+          allocated_buffers[i].GetByteSlice(0, aligned_input_size));
+      TF_RET_CHECK(!local_input_buffers[i].is_null());
 
-      data_buffers.emplace_back(executor,
-                                executor->AllocateArray<T>(num_elements));
-      TF_RET_CHECK(!data_buffers[i].memory().is_null());
+      data_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
+          aligned_input_size, aligned_input_size));
+      TF_RET_CHECK(!data_buffers[i].is_null());
 
-      signal_flags_buffers.emplace_back(
-          executor, executor->AllocateArray<uint32_t>(
-                        num_ranks * launch_dimensions.num_blocks()));
-      TF_RET_CHECK(!signal_flags_buffers[i].memory().is_null());
+      signal_flags_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
+          2 * aligned_input_size, aligned_signal_size));
+      TF_RET_CHECK(!signal_flags_buffers[i].is_null());
+      TF_RETURN_IF_ERROR(executor->SynchronousMemZero(&signal_flags_buffers[i],
+                                                      aligned_signal_size));
+      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&local_input_buffers[i],
+                                            input_data[i].data(), input_size));
+    }
 
-      TF_RETURN_IF_ERROR(executor->SynchronousMemZero(
-          signal_flags_buffers[i].memory_ptr(),
-          signal_flags_buffers[i].memory().size()));
+    std::vector<se::DeviceMemoryBase> metadata_buffers;
 
-      TF_RETURN_IF_ERROR(streams[i]->Memcpy(local_input_buffers[i].memory_ptr(),
-                                            input_data[i].data(),
-                                            num_elements * sizeof(T)));
+    for (int i = 0; i < num_ranks; ++i) {
+      CollectiveKernelMetadata metadata;
+      metadata.rank = i;
 
-      remote_input_buffers_span.push_back(data_buffers[i].memory());
-      signal_flags_buffers_span.push_back(signal_flags_buffers[i].memory());
+      for (int j = 0; j < num_ranks; ++j) {
+        // One-Shot all-reduce doesn't use an input buffer from the peers.
+        metadata.buffer_root_ptrs[j] = 0;
+        metadata.local_buffer_root_ptrs[j] =
+            (uint64_t)allocated_buffers[j].opaque();
+      }
+
+      metadata_buffers.emplace_back(executors[i]->AllocateArray<uint64_t>(
+          sizeof(CollectiveKernelMetadata)));
+
+      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&metadata_buffers[i], &metadata,
+                                            sizeof(CollectiveKernelMetadata)));
     }
 
     for (int i = 0; i < num_ranks; ++i) {
@@ -147,15 +173,16 @@ class AllReduceKernelTest : public ::testing::Test,
           primitive_util::NativeToPrimitiveType<T>(),
           /*reduction_kind=*/reduction_kind,
           /*all_reduce_strategy=*/params_.all_reduce_strategy,
-          /*remote_input_buffers=*/remote_input_buffers_span,
+          /*symmetric_input_buffer=*/data_buffers[i],
           // Memory is aliased for both input and output (similar to what nccl
           // would do).
-          /*local_input_buffer=*/local_input_buffers[i].memory(),
-          /*output_buffer=*/local_input_buffers[i].memory(),
+          /*local_input_buffer=*/local_input_buffers[i],
+          /*output_buffer=*/local_input_buffers[i],
           /*rank=*/RankId(i), /*num_ranks=*/num_ranks,
           /*num_elements=*/num_elements,
-          /*signal_flags_buffers=*/signal_flags_buffers_span,
-          /*signal_value=*/1));
+          /*symmetric_signal_buffer=*/signal_flags_buffers[i],
+          /*signal_value=*/1,
+          /*metadata=*/metadata_buffers[i]));
     }
 
     for (int i = 0; i < num_ranks; ++i) {
@@ -167,7 +194,7 @@ class AllReduceKernelTest : public ::testing::Test,
     for (int i = 0; i < num_ranks; ++i) {
       Array<T> output_results({num_elements});
       TF_RETURN_IF_ERROR(streams[i]->Memcpy(output_results.data(),
-                                            local_input_buffers[i].memory(),
+                                            local_input_buffers[i],
                                             num_elements * sizeof(T)));
 
       results.push_back(std::move(output_results));

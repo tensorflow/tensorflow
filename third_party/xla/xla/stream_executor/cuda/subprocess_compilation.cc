@@ -123,7 +123,7 @@ absl::StatusOr<SemanticVersion> GetToolVersion(absl::string_view tool_path) {
       new absl::flat_hash_map<std::string, absl::StatusOr<SemanticVersion>>
           ABSL_GUARDED_BY(mutex);
 
-  absl::MutexLock lock(&mutex);
+  absl::MutexLock lock(mutex);
   auto it = cache->find(tool_path);
   if (it != cache->end()) {
     return it->second;
@@ -233,7 +233,7 @@ static void LogPtxasTooOld(const std::string& ptxas_path, int cc_major,
   static absl::Mutex* const mutex = new absl::Mutex;
   static AlreadyLoggedSetTy* const already_logged = new AlreadyLoggedSetTy;
 
-  absl::MutexLock lock(mutex);
+  absl::MutexLock lock(*mutex);
 
   if (already_logged->insert(std::make_tuple(ptxas_path, cc_major, cc_minor))
           .second) {

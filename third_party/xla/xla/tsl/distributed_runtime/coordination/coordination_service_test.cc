@@ -95,7 +95,7 @@ class TestCoordinationClient : public CoordinationClient {
   TestCoordinationClient() = default;
 
   absl::Status GetStatus() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     return status_;
   }
 
@@ -109,7 +109,7 @@ class TestCoordinationClient : public CoordinationClient {
                               const ReportErrorToTaskRequest* request,
                               ReportErrorToTaskResponse* response,
                               StatusCallback done) override {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     status_ = absl::Status(static_cast<absl::StatusCode>(request->error_code()),
                            request->error_message());
     done(absl::OkStatus());
@@ -128,6 +128,7 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(GetTaskState);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(TryGetKeyValue);
+  UNIMPLEMENTED(IncrementKeyValue);
   UNIMPLEMENTED(GetKeyValueDir);
   UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(CancelBarrier);

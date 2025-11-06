@@ -27,10 +27,10 @@ string MatMulBCastToStr(const MatMulBCast& b) {
     return "invalid";
   }
   string ret;
-  strings::StrAppend(
-      &ret, "[", absl::StrJoin(b.output_batch_shape().dim_sizes(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.x_batch_indices(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.y_batch_indices(), ","), "]");
+  absl::StrAppend(&ret, "[",
+                  absl::StrJoin(b.output_batch_shape().dim_sizes(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.x_batch_indices(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.y_batch_indices(), ","), "]");
   return ret;
 }
 

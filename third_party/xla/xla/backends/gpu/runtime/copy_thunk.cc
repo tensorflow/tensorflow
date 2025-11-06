@@ -118,7 +118,7 @@ absl::Status CopyThunk::AsyncEvents::Emplace(se::StreamExecutor* executor,
                                              const HloInstruction* instr,
                                              std::unique_ptr<se::Event> event) {
   Key key = {executor, instr};
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   VLOG(3) << "Emplace event " << event.get();
   if (auto [it, inserted] = events_.try_emplace(key, std::move(event));
       inserted) {
@@ -132,7 +132,7 @@ absl::Status CopyThunk::AsyncEvents::Emplace(se::StreamExecutor* executor,
 absl::StatusOr<std::unique_ptr<se::Event>> CopyThunk::AsyncEvents::Extract(
     se::StreamExecutor* executor, const HloInstruction* instr) {
   Key key = {executor, instr};
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (auto event = events_.extract(key)) {
     VLOG(3) << "Extract event " << event.mapped().get();
     return std::move(event.mapped());

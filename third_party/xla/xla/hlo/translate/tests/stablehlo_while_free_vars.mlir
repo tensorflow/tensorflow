@@ -30,7 +30,7 @@
 // CHECK-NEXT:   %[[ARG2]] = f32[4] parameter(2)
 // CHECK-NEXT:   %[[TUPLE:tuple.*]] = (s32[], f32[4], s32[], s32[], f32[4]) tuple(%[[ARG0]], %[[ARG1]], %[[CONSTANT4]], %[[CONSTANT5]], %[[ARG2]])
 // CHECK-SAME:     sharding={{\{}}{replicated}, {devices=[2,2]<=[4] last_tile_dim_replicate}, {replicated}, {replicated}, {devices=[4]<=[4]}}
-// CHECK-NEXT:   %[[WHILE:while.25]] = (s32[], f32[4], s32[], s32[], f32[4]) while(%[[TUPLE]]), condition=%[[COND]], body=%[[BODY]]
+// CHECK-NEXT:   %[[WHILE:while.1]] = (s32[], f32[4], s32[], s32[], f32[4]) while(%[[TUPLE]]), condition=%[[COND]], body=%[[BODY]]
 // CHECK-SAME:     sharding={{\{}}{replicated}, {devices=[2,2]<=[4] last_tile_dim_replicate}, {replicated}, {replicated}, {devices=[4]<=[4]}}
 // CHECK-NEXT:   %[[GTE26:get-tuple-element.*]] = s32[] get-tuple-element(%[[WHILE]]), index=0
 // CHECK-NEXT:   ROOT %[[GTE27:get-tuple-element.*]] = f32[4] get-tuple-element(%[[WHILE]]), index=1, sharding={devices=[2,2]<=[4] last_tile_dim_replicate}

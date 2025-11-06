@@ -74,19 +74,20 @@ bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
 //    different for different invocations of the kernel with the same signal
 //    buffer.
 absl::Status RunAllReduceKernel(
-    se::Stream* stream,                                           //
-    const LaunchDimensions& launch_dimensions,                    //
-    PrimitiveType element_type,                                   //
-    ReductionKind reduction_kind,                                 //
-    se::gpu::AllReduceStrategy all_reduce_strategy,               //
-    absl::Span<const se::DeviceMemoryBase> remote_input_buffers,  //
-    se::DeviceMemoryBase local_input_buffer,                      //
-    se::DeviceMemoryBase output_buffer,                           //
-    RankId rank,                                                  //
-    int64_t num_ranks,                                            //
-    int64_t num_elements,                                         //
-    absl::Span<const se::DeviceMemoryBase> signal_flags_buffers,  //
-    uint32_t signal_value                                         //
+    se::Stream* stream,                              //
+    const LaunchDimensions& launch_dimensions,       //
+    PrimitiveType element_type,                      //
+    ReductionKind reduction_kind,                    //
+    se::gpu::AllReduceStrategy all_reduce_strategy,  //
+    se::DeviceMemoryBase symmetric_input_buffer,     //
+    se::DeviceMemoryBase local_input_buffer,         //
+    se::DeviceMemoryBase output_buffer,              //
+    RankId rank,                                     //
+    int64_t num_ranks,                               //
+    int64_t num_elements,                            //
+    se::DeviceMemoryBase symmetric_signal_buffer,    //
+    uint32_t signal_value,                           //
+    se::DeviceMemoryBase metadata                    //
 );
 
 }  // namespace xla::gpu

@@ -48,6 +48,12 @@ absl::StatusOr<int64_t> GetDeviceMemoryInBytes(absl::string_view device_kind) {
   if (device_kind == "TPU v6 lite") {
     return 32LL * kGB;
   }
+  if (device_kind == "NVIDIA H100 80GB HBM3") {
+    return 80LL * kGB;
+  }
+  if (device_kind == "NVIDIA B200") {
+    return 192LL * kGB;
+  }
   return absl::InvalidArgumentError(absl::StrCat(
       "`GetDeviceMemoryInBytes` is not supported for device kind: ",
       device_kind));

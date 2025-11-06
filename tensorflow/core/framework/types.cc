@@ -152,7 +152,7 @@ string DataTypeStringInternal(DataType dtype) {
       return "variant";
     default:
       LOG(ERROR) << "Unrecognized DataType enum value " << dtype;
-      return strings::StrCat("unknown dtype enum (", dtype, ")");
+      return absl::StrCat("unknown dtype enum (", dtype, ")");
   }
 }
 }  // end namespace
@@ -160,7 +160,7 @@ string DataTypeStringInternal(DataType dtype) {
 string DataTypeString(DataType dtype) {
   if (IsRefType(dtype)) {
     DataType non_ref = static_cast<DataType>(dtype - kDataTypeRefOffset);
-    return strings::StrCat(DataTypeStringInternal(non_ref), "_ref");
+    return absl::StrCat(DataTypeStringInternal(non_ref), "_ref");
   }
   return DataTypeStringInternal(dtype);
 }
@@ -284,8 +284,7 @@ string DeviceTypeString(const DeviceType& device_type) {
 string DataTypeSliceString(const DataTypeSlice types) {
   string out;
   for (auto it = types.begin(); it != types.end(); ++it) {
-    strings::StrAppend(&out, ((it == types.begin()) ? "" : ", "),
-                       DataTypeString(*it));
+    absl::StrAppend(&out, it == types.begin() ? "" : ", ", DataTypeString(*it));
   }
   return out;
 }

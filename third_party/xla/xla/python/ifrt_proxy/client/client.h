@@ -41,7 +41,6 @@
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
@@ -55,6 +54,7 @@
 #include "xla/python/ifrt_proxy/client/memory.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -96,8 +96,14 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) override;
 
-  xla::ifrt::Future<> GetReadyFuture(
-      absl::Span<const ValueRef> values) override;
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
+      absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
+      ArrayCopySemantics semantics) override {
+    return absl::UnimplementedError(
+        "ReshardArrays is not supported for the IFRT proxy client.");
+  }
+
+  tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<ValueRef> values) override {

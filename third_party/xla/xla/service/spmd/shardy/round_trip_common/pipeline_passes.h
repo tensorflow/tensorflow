@@ -31,8 +31,7 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm,
 // pipelines that need to be called after each pipeline converts an HLO
 // sharding/SDY sharding string into an `sdy.sharding` attribute.
 void addCommonPostImportPasses(mlir::OpPassManager& pm,
-                               bool importFuncCalls = false,
-                               bool importOnlyUninlineableFuncCalls = true);
+                               bool importFuncCalls = false);
 
 }  // namespace sdy
 }  // namespace xla

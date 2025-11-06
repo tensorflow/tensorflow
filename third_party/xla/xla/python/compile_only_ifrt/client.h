@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/service/computation_placer.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -171,6 +172,12 @@ class CompileOnlyIfrtCompiler final
     return Unimplemented("Compile not implemented.");
   }
 
+  absl::Status IsExecutableVersionCompatible(
+      const xla::ifrt::ExecutableVersion& executable_version,
+      const xla::ifrt::DeviceListRef& devices) const override {
+    return absl::UnimplementedError("Not implemented");
+  }
+
   absl::StatusOr<ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<ifrt::DeserializeExecutableOptions> options) override {
@@ -256,9 +263,17 @@ class CompileOnlyIfRtClient final
     return Unimplemented("RemapArrays not available with compile-only client.");
   }
 
-  ifrt::Future<> GetReadyFuture(
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArraySpec> specs,
+      xla::ifrt::ArrayCopySemantics semantics) override {
+    return Unimplemented(
+        "ReshardArrays not available with compile-only client.");
+  }
+
+  tsl::Future<> GetReadyFuture(
       absl::Span<const ifrt::ValueRef> values) override {
-    return ifrt::Future<>(Unimplemented(
+    return tsl::Future<>(Unimplemented(
         "GetReadyFuture not available with compile-only client."));
   }
 

@@ -677,7 +677,7 @@ xla::PrimitiveType XlaOpKernelContext::output_xla_type(int index) {
   return type;
 }
 
-void XlaOpKernelContext::SetOutput(int index, const xla::XlaOp& handle) {
+void XlaOpKernelContext::SetOutput(int index, const xla::XlaOp handle) {
   SetOutputExpression(
       index,
       XlaExpression::XlaOp(handle, context_->expected_output_dtype(index)));
@@ -688,7 +688,7 @@ void XlaOpKernelContext::SetConstantOutput(int index, const Tensor& constant) {
 }
 
 void XlaOpKernelContext::SetTensorListOutput(int index,
-                                             const xla::XlaOp& handle) {
+                                             const xla::XlaOp handle) {
   SetOutputExpression(index, XlaExpression::TensorList(handle));
 }
 
@@ -811,7 +811,7 @@ const xla::XlaComputation* XlaOpKernelContext::GetOrCreateMul(
 
 const Tensor& XlaOpKernelContext::GetInputTensorByName(absl::string_view name) {
   const Tensor* tensor;
-  CHECK(context_->input(name, &tensor).ok());
+  CHECK_OK(context_->input(name, &tensor));
   return *tensor;
 }
 

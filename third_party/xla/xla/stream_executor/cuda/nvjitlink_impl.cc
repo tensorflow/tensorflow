@@ -283,10 +283,13 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
     return ToStatus(create_result, error_log);
   }
 
-  // TODO(b/437088681): Re-enable heap checking when calling
-  // nvJitLinkAddData. The compiler does not seem to free resources properly
-  // on error.
-  absl::LeakCheckDisabler disabler;
+  std::optional<absl::LeakCheckDisabler> disabler;
+  absl::StatusOr<NvJitLinkVersion> version = GetNvJitLinkVersion();
+  if (!version.ok() || std::get<0>(*version) < 13) {
+    // libnvjitlink prior to CUDA 13 has a memory leak when calling
+    // nvJitLinkAddData when the input PTX is invalid.
+    disabler.emplace();
+  }
 
   nvJitLinkResult result =
       nvJitLinkAddData(link_handle, NVJITLINK_INPUT_PTX, ptx_contents.data(),

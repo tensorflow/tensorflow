@@ -22,19 +22,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_execution_profile.h"
-#include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/service_executable_run_options.h"
@@ -370,9 +370,21 @@ class Executable {
 
   // The shape (including layout) that results from this execution. This is the
   // shape of the DeviceMemoryBase result value in ExecuteOnStream above.
-  const Shape& result_shape() const {
+  virtual Shape result_shape() const {
     CHECK(hlo_module_ != nullptr);
     return hlo_module_->config().entry_computation_layout().result_shape();
+  }
+
+  virtual ComputationLayout compute_computation_layout() const {
+    CHECK(hlo_module_ != nullptr);
+    return hlo_module_->compute_computation_layout();
+  }
+
+  virtual absl::string_view name() const {
+    if (has_module()) {
+      return module().name();
+    }
+    return "<unknown executable>";
   }
 
   // Returns the size of the executable in bytes. Returns -1 if this query is
@@ -388,7 +400,7 @@ class Executable {
     // Since both `hlo_proto()` and `buffer_assignment_proto()` return a
     // pointer to hlo_proto_, having the mutex is not enough to make this
     // function thread-safe.
-    absl::MutexLock lock(&hlo_proto_mutex_);
+    absl::MutexLock lock(hlo_proto_mutex_);
     hlo_proto_ = std::move(hlo_proto);
   }
   bool dumping_snapshot() const {
@@ -398,7 +410,7 @@ class Executable {
   }
 
   HloProto const* hlo_proto() const {
-    absl::MutexLock lock(&hlo_proto_mutex_);
+    absl::MutexLock lock(hlo_proto_mutex_);
     if (hlo_proto_ != nullptr && !hlo_proto_->has_hlo_module()) {
       *hlo_proto_->mutable_hlo_module() = module().ToProto();
     }
@@ -406,7 +418,7 @@ class Executable {
   }
 
   const BufferAssignmentProto* buffer_assignment_proto() const {
-    absl::MutexLock lock(&hlo_proto_mutex_);
+    absl::MutexLock lock(hlo_proto_mutex_);
     return hlo_proto_ != nullptr && hlo_proto_->has_buffer_assignment()
                ? &hlo_proto_->buffer_assignment()
                : nullptr;
@@ -427,7 +439,8 @@ class Executable {
 
   // Returns the allocations resulting from buffer assignment, or an empty span
   // if unimplemented.
-  virtual absl::Span<const BufferAllocation> GetAllocations() const {
+  virtual absl::Span<const BufferAllocation* absl_nonnull const>
+  GetAllocations() const {
     return {};
   }
 

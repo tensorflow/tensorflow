@@ -225,8 +225,9 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ThunkExecutor::TracedExecute(
   }
 
   // Create a producer traceme to capture the start event.
-  tsl::profiler::TraceMeProducer producer([&] { return thunk.TraceMeEncode(); },
-                                          tsl::profiler::ContextType::kGeneric);
+  tsl::profiler::TraceMeProducer producer(
+      [&] { return thunk.TraceMeEncode(params.run_id, params.device_ordinal); },
+      tsl::profiler::ContextType::kGeneric);
 
   auto execute_event = thunk.Execute(params);
 
@@ -643,7 +644,7 @@ void ThunkExecutor::ProcessCompletedOutEdges(
   // We still continue processing the nodes DAG to eventually mark sink nodes
   // completed as it's easier than to add a special abort handling logic.
   if (ABSL_PREDICT_FALSE(node_event.IsError())) {
-    absl::MutexLock lock(&state->abort_mutex);
+    absl::MutexLock lock(state->abort_mutex);
     state->abort = true;
     state->abort_status.Update(node_event.GetError());
   }
@@ -683,7 +684,7 @@ void ThunkExecutor::ProcessCompletedOutEdges(
     // forward it to the caller via the execute event.
     if (ABSL_PREDICT_FALSE(state->abort.load(std::memory_order_relaxed))) {
       auto take_error = [&] {
-        absl::MutexLock lock(&state->abort_mutex);
+        absl::MutexLock lock(state->abort_mutex);
         DCHECK(!state->abort_status.ok())
             << "Abort status must be set if execution is aborted";
         return std::move(state->abort_status);

@@ -37,7 +37,9 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
+#include "xla/ffi/type_registry.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/device_memory.h"
@@ -56,7 +59,6 @@ limitations under the License.
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla::ffi {
 
@@ -722,6 +724,10 @@ struct ResultEncoding<stage, absl::Status> {
 template <typename T>
 struct ResultEncoding<ExecutionStage::kInstantiate,
                       absl::StatusOr<std::unique_ptr<T>>> {
+  static XLA_FFI_TypeId state_type_id() {
+    return XLA_FFI_TypeId{TypeRegistry::GetTypeId<T>().value()};
+  }
+
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
                                XLA_FFI_ExecutionContext* ctx,
                                absl::StatusOr<std::unique_ptr<T>> state) {

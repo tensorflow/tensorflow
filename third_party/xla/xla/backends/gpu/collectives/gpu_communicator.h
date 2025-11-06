@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/future.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::gpu {
 
@@ -44,7 +44,7 @@ class GpuCommunicator : public Communicator {
 
   // Executes f in a group. f should invoke synchronous collective methods like
   // LaunchAllReduce and not asynchronous collective methods like AllReduce.
-  virtual tsl::AsyncValueRef<Communicator::Event> GroupExecute(
+  virtual Future<> GroupExecute(
       absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) = 0;
 
   virtual absl::Status LaunchAllReduce(se::DeviceMemoryBase send_buffer,

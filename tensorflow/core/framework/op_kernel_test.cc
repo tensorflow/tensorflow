@@ -509,12 +509,12 @@ TEST_F(OpKernelTest, AllocateOutput) {
 
   // Allocating to index -1 should fail (Only 0 should work).
   absl::Status s = ctx->allocate_output(-1, TensorShape({}), &output);
-  EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
+  EXPECT_THAT(s, absl_testing::StatusIs(error::INTERNAL));
   EXPECT_THAT(s.message(), ::testing::ContainsRegex("bad index=-1"));
 
   // Allocating to index 1 should fail (Only 0 should work).
   s = ctx->allocate_output(1, TensorShape({}), &output);
-  EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
+  EXPECT_THAT(s, absl_testing::StatusIs(error::INTERNAL));
   EXPECT_THAT(s.message(), ::testing::ContainsRegex("bad index=1"));
 
   // Testing allocate_output when allocator attributes are set.
@@ -524,12 +524,12 @@ TEST_F(OpKernelTest, AllocateOutput) {
 
   // Index -1 should fail as only 1 output for the op.
   s = ctx->allocate_output(-1, TensorShape({}), &output, attrs);
-  EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
+  EXPECT_THAT(s, absl_testing::StatusIs(error::INTERNAL));
   EXPECT_THAT(s.message(), ::testing::ContainsRegex("bad index=-1"));
 
   // Index 1 should fail as only 1 output for the op.
   s = ctx->allocate_output(1, TensorShape({}), &output, attrs);
-  EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
+  EXPECT_THAT(s, absl_testing::StatusIs(error::INTERNAL));
   EXPECT_THAT(s.message(), ::testing::ContainsRegex("bad index=1"));
 }
 
@@ -1110,7 +1110,7 @@ void BM_ConcatInputRange(::testing::benchmark::State& state) {
   node_def.mutable_attr()->insert({"T", attr_T});
   node_def.mutable_attr()->insert({"Tidx", attr_Tidx});
   for (size_t i = 0; i < 5; ++i) {
-    node_def.add_input(strings::StrCat("a:", i));
+    node_def.add_input(absl::StrCat("a:", i));
   }
 
   BM_InputRangeHelper(state, node_def, "values", 0, 4);
@@ -1125,7 +1125,7 @@ void BM_SelectInputRange(::testing::benchmark::State& state) {
   attr_T.set_type(DT_FLOAT);
   node_def.mutable_attr()->insert({"T", attr_T});
   for (size_t i = 0; i < 3; ++i) {
-    node_def.add_input(strings::StrCat("a:", i));
+    node_def.add_input(absl::StrCat("a:", i));
   }
 
   BM_InputRangeHelper(state, node_def, "condition", 0, 1);
@@ -1146,7 +1146,7 @@ void BM_TraceString(::testing::benchmark::State& state) {
   transpose_b.set_b(true);
   node_def.mutable_attr()->insert({"transpose_b", transpose_b});
   for (size_t i = 0; i < 2; ++i) {
-    node_def.add_input(strings::StrCat("a:", i));
+    node_def.add_input(absl::StrCat("a:", i));
   }
 
   // Build OpKernel and OpKernelContext

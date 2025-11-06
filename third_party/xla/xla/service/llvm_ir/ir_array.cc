@@ -345,27 +345,28 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
 
   const ShapeUtil::BitcastDecomposition decomposition =
       ShapeUtil::DecomposeBitcast(operand_shape, shape);
+  CHECK(decomposition.has_value());
 
   // In case the bitcast is just a reshape, we can use SourceIndexOfReshape()
   // instead. This will reuse linear() if possible, so we don't have to build a
   // new 'linear_index'.
   if (std::holds_alternative<ShapeUtil::BitcastDecompositionReshape>(
-          decomposition)) {
+          *decomposition)) {
     return SourceIndexOfReshape(shape, operand_shape, builder);
   }
 
   if (std::holds_alternative<ShapeUtil::BitcastDecompositionTranspose>(
-          decomposition)) {
+          *decomposition)) {
     const auto& decomposition_transpose =
-        std::get<ShapeUtil::BitcastDecompositionTranspose>(decomposition);
+        std::get<ShapeUtil::BitcastDecompositionTranspose>(*decomposition);
     return SourceIndexOfTranspose(shape, operand_shape,
                                   decomposition_transpose.transpose_dims);
   }
 
   CHECK(std::holds_alternative<ShapeUtil::BitcastDecompositionTrt>(
-      decomposition));
+      *decomposition));
   const auto& decomposition_trt =
-      std::get<ShapeUtil::BitcastDecompositionTrt>(decomposition);
+      std::get<ShapeUtil::BitcastDecompositionTrt>(*decomposition);
 
   Index index = *this;
   if (!decomposition_trt.IsTranspose2Identity()) {

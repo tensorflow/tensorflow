@@ -49,10 +49,14 @@ std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
 //   done_ops: Set of HLO opcodes that are done operations (e.g. AllReduceDone).
 //   non_optimized_ops: Set of HLO opcodes that are not optimized (e.g.
 //   AllReduce).
+//   return_tuple: Whether to return the results of all operations in a tuple.
+//   this is useful for a non-optimized HLO modules sine the compiler will
+//   optimize collective calls otherwise. For non-optimized HLO modules it's
+//   better to turn off since otherwise memory consuption will be too high.
 std::unique_ptr<HloModule> ExtractCollectiveOperationsIntoNewModule(
     const std::vector<HloInstruction*>& instructions,
     const absl::flat_hash_set<HloOpcode>& done_ops,
-    const absl::flat_hash_set<HloOpcode>& non_optimized_ops);
+    const absl::flat_hash_set<HloOpcode>& non_optimized_ops, bool return_tuple);
 
 // Extracts producer and consumer HLO instruction into a new HLO module
 // replacing its operands with parameter instructions.

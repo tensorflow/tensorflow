@@ -18,12 +18,12 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <tuple>
-#include <utility>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
 namespace sdy {
@@ -107,13 +108,15 @@ StringAttr createFuncOpOrGetFromCache(
     mlir::IRRewriter& rewriter, SymbolTable& symbolTable,
     ManualAxesAttr manualAxesAttr,
     std::optional<TensorShardingPerValueAttr> inShardings,
-    std::optional<TensorShardingPerValueAttr> outShardings) {
-  auto key = std::make_tuple(namedComputationOp.getName(),
-                             namedComputationOp.getInShardings().value_or(
-                                 TensorShardingPerValueAttr()),
-                             namedComputationOp.getOutShardings().value_or(
-                                 TensorShardingPerValueAttr()),
-                             manualAxesAttr);
+    std::optional<TensorShardingPerValueAttr> outShardings,
+    bool dedupFunctionsFully) {
+  auto key = std::make_tuple(
+      namedComputationOp.getName(),
+      dedupFunctionsFully ? TensorShardingPerValueAttr()
+                          : inShardings.value_or(TensorShardingPerValueAttr()),
+      dedupFunctionsFully ? TensorShardingPerValueAttr()
+                          : outShardings.value_or(TensorShardingPerValueAttr()),
+      manualAxesAttr);
   if (auto it = funcCache.find(key); it != funcCache.end()) {
     return it->second;
   }
@@ -130,6 +133,17 @@ class ExportNamedComputationsPass
                                mlir::OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ExportNamedComputationsPass)
+
+  explicit ExportNamedComputationsPass(bool dedupFunctionsFully) {
+    this->dedupFunctionsFully = dedupFunctionsFully;
+  }
+
+  ExportNamedComputationsPass() = default;
+
+  explicit ExportNamedComputationsPass(
+      const ExportNamedComputationsPass& other) {
+    this->dedupFunctionsFully = other.dedupFunctionsFully;
+  }
 
   llvm::SmallDenseMap<ComputationKey, StringAttr> funcCache;
 
@@ -156,7 +170,7 @@ class ExportNamedComputationsPass
       }
       StringAttr funcSymName = createFuncOpOrGetFromCache(
           namedComputationOp, funcCache, rewriter, symbolTable, manualAxesAttr,
-          inShardings, outShardings);
+          inShardings, outShardings, dedupFunctionsFully);
 
       // Replace the `NamedComputationOp` with a `CallOp`.
       rewriter.setInsertionPoint(namedComputationOp);
@@ -167,9 +181,14 @@ class ExportNamedComputationsPass
           namedComputationOp.getOperands());
       callOp->setAttrs(callOpAttrs);
 
-      // Copy the output shardings to the call op.
-      if (outShardings.has_value()) {
-        mlir::sdy::setShardings(callOp, *outShardings);
+      // Copy the func output shardings to the call op.
+      // TODO(enver): Add explicit reshard if callOp and funcOp result shardings
+      // mismatch.
+      FuncOp funcOp = symbolTable.lookup<FuncOp>(funcSymName);
+      if (TensorShardingPerValueAttr funcResultShardings =
+              getFuncResultShardings(callOp, funcOp, symbolTable);
+          funcResultShardings) {
+        mlir::sdy::setShardings(callOp, funcResultShardings);
         if (manualAxesAttr) {
           callOp->setAttr(kManualAxes, manualAxesAttr);
         }
@@ -187,16 +206,26 @@ class ExportNamedComputationsPass
            "`FuncOp` and `CallOp` have the same shardings as the original "
            "`NamedComputationOp`s operands/results.";
   }
+
+  Option<bool> dedupFunctionsFully{
+      *this, "dedup-functions-fully",
+      llvm::cl::desc(
+          "Whether to deduplicate functions fully, regardless of the input and "
+          "output shardings of functions, and it keeps one callee function for "
+          "each caller function. The default is false, meaning it will "
+          "deduplicate only if the input and output shardings are the same."),
+      llvm::cl::init(false)};
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createExportNamedComputationsPass() {
-  return std::make_unique<ExportNamedComputationsPass>();
+std::unique_ptr<mlir::Pass> createExportNamedComputationsPass(
+    bool dedupFunctionsFully) {
+  return std::make_unique<ExportNamedComputationsPass>(dedupFunctionsFully);
 }
 
 void registerExportNamedComputationsPass() {
-  mlir::registerPass(createExportNamedComputationsPass);
+  mlir::registerPass(std::make_unique<ExportNamedComputationsPass>);
 }
 
 }  // namespace sdy

@@ -56,7 +56,7 @@ class NVPTXCompiler : public GpuCompiler {
   explicit NVPTXCompiler();
 
   absl::Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::GpuComputeCapability gpu_version,
+      HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
       se::dnn::VersionInfo dnn_version,
       const se::SemanticVersion& toolkit_version) override;
 
@@ -69,11 +69,13 @@ class NVPTXCompiler : public GpuCompiler {
   bool RequiresCollectiveScheduleLinearizer(
       const HloModule* module, se::StreamExecutor* stream_exec) override;
 
+  // target_config must outlive the pipeline.
   absl::Status AddConvAndGemmAutotuningPasses(
       HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
       const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-      se::StreamExecutor* stream_exec) override;
+      se::StreamExecutor* stream_exec,
+      const Compiler::TargetConfig* target_config) override;
 
   absl::Status AddGemmFusionAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
@@ -81,6 +83,14 @@ class NVPTXCompiler : public GpuCompiler {
       const MultiProcessKeyValueStore& key_value_store,
       const se::SemanticVersion& toolkit_version,
       se::StreamExecutor* stream_executor) override;
+
+  // target_config must outlive the pipeline.
+  absl::Status AddFusionAutotuningPass(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
+      stream_executor::StreamExecutor* stream_executor,
+      const Compiler::TargetConfig* target_config,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn) override;
 
   absl::Status RunCudnnCompilerPasses(HloModule* module,
                                       se::StreamExecutor* stream_exec,
@@ -102,7 +112,6 @@ class NVPTXCompiler : public GpuCompiler {
  private:
   absl::StatusOr<std::vector<uint8_t>> LinkModules(
       const stream_executor::DeviceDescription& device_description,
-      se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules,
       const DebugOptions& debug_options) override;
 

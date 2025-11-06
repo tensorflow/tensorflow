@@ -209,11 +209,11 @@ TEST(CAPI, MultiClientSetGetConfigInOp) {
     TFE_Op* set_op = TFE_NewOp(ctx, "TestSetConfigKeyValue", status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     TFE_TensorHandle* my_key = TestScalarTensorHandle(
-        ctx, tstring(strings::StrCat("worker_", worker_id)));
+        ctx, tstring(absl::StrCat("worker_", worker_id)));
     TFE_OpAddInput(set_op, my_key, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-    TFE_TensorHandle* my_val = TestScalarTensorHandle(
-        ctx, tstring(strings::StrCat("value_", worker_id)));
+    TFE_TensorHandle* my_val =
+        TestScalarTensorHandle(ctx, tstring(absl::StrCat("value_", worker_id)));
     TFE_OpAddInput(set_op, my_val, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     int num_retvals = 0;
@@ -226,8 +226,7 @@ TEST(CAPI, MultiClientSetGetConfigInOp) {
     TFE_Op* get_op = TFE_NewOp(ctx, "TestGetConfigKeyValue", status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     TFE_TensorHandle* next_key = TestScalarTensorHandle(
-        ctx,
-        tstring(strings::StrCat("worker_", (worker_id + 1) % cluster_size)));
+        ctx, tstring(absl::StrCat("worker_", (worker_id + 1) % cluster_size)));
     TFE_OpAddInput(get_op, next_key, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
@@ -240,8 +239,8 @@ TEST(CAPI, MultiClientSetGetConfigInOp) {
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     const tstring& next_val = *static_cast<tstring*>(TF_TensorData(t));
     const tstring& expected_val =
-        tstring(strings::StrCat("value_", (worker_id + 1) % cluster_size));
-    EXPECT_EQ(next_val, expected_val) << strings::StrCat(
+        tstring(absl::StrCat("value_", (worker_id + 1) % cluster_size));
+    EXPECT_EQ(next_val, expected_val) << absl::StrCat(
         "Expecting value ", expected_val, ", but got ", next_val);
 
     TFE_DeleteTensorHandle(next_key);
@@ -296,16 +295,15 @@ TEST(CAPI, MultiClientCoordinationSetGetConfigs) {
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
     // For each worker i, set (keyi, valuei)
-    const std::string& key = tensorflow::strings::StrCat("key", worker_id);
-    TFE_InsertConfigKeyValue(
-        ctx, key.c_str(),
-        tensorflow::strings::StrCat("value", worker_id).c_str(), status);
+    const std::string& key = absl::StrCat("key", worker_id);
+    TFE_InsertConfigKeyValue(ctx, key.c_str(),
+                             absl::StrCat("value", worker_id).c_str(), status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     counter1.Block();
 
     const int next_id = (worker_id + 1) % cluster_size;
     // Setting next_key errors out because it has been set by another worker
-    const std::string& next_key = tensorflow::strings::StrCat("key", next_id);
+    const std::string& next_key = absl::StrCat("key", next_id);
     TFE_InsertConfigKeyValue(ctx, next_key.c_str(), "some_value", status);
     EXPECT_EQ(TF_ALREADY_EXISTS, TF_GetCode(status)) << TF_Message(status);
     // Getting next_key returns the value set by another worker
@@ -315,7 +313,7 @@ TEST(CAPI, MultiClientCoordinationSetGetConfigs) {
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     std::string value_str{static_cast<const char*>(value_buf->data),
                           value_buf->length};
-    EXPECT_EQ(value_str, tensorflow::strings::StrCat("value", next_id));
+    EXPECT_EQ(value_str, absl::StrCat("value", next_id));
     TF_DeleteBuffer(value_buf);
     counter2.Block();
 
@@ -447,7 +445,7 @@ TEST_P(SingleClientCoordinationServiceTest, TestSetGetConfigInOp) {
     client_job->set_name("localhost");
     const int client_port = tensorflow::testing::PickUnusedPortOrDie();
     client_job->mutable_tasks()->insert(
-        {0, strings::StrCat("localhost:", client_port)});
+        {0, absl::StrCat("localhost:", client_port)});
     server_def.set_job_name("localhost");
   }
   server_def.mutable_default_session_config()
@@ -517,7 +515,7 @@ TEST_P(SingleClientCoordinationServiceTest, TestSetGetConfigInOp) {
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   const tstring& get_val = *static_cast<tstring*>(TF_TensorData(t));
   EXPECT_EQ(get_val, "test_val")
-      << strings::StrCat("Expecting value test_val but got ", get_val);
+      << absl::StrCat("Expecting value test_val but got ", get_val);
   TFE_DeleteTensorHandle(get_key);
   TFE_DeleteTensorHandle(retvals[0]);
   TF_DeleteTensor(t);
@@ -564,7 +562,7 @@ TEST_P(SingleClientCoordinationServiceTest, TestSetGetConfigInOp) {
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   const tstring& get_fn_val = *static_cast<tstring*>(TF_TensorData(t));
   EXPECT_EQ(get_fn_val, "test_fn_val")
-      << strings::StrCat("Expecting value test_fn_val but got ", get_fn_val);
+      << absl::StrCat("Expecting value test_fn_val but got ", get_fn_val);
   TFE_DeleteTensorHandle(get_key);
   TFE_DeleteTensorHandle(fn_retvals[0]);
   TF_DeleteTensor(t);

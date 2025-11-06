@@ -106,35 +106,12 @@ git merge upstream/master --no-edit
 - The first Jenkins CI job might result in failure due to additional failed
   unit tests introduced from new commits upstream. Examine the reason behind
   those failed cases.
-- In case those cases can't be easily fixed, modify the bazel target for that
-  test to add one more of the`no_rocm`, `no_rocm_v2`, `no_cuda` tags to it.
+- In case those cases can't be easily fixed, modify the run test script
+  to exclude these failing test and check if they pass in the next iteration of the weekly sync.
 
-  For example:\
-  for the test `//tensorflow/python/kernel_tests:conv_ops_test`\
-  the definition for the test-target `conv_ops_test` will be in the file
-  `tensorflow/python/kernel_tests/BUILD`.
-  - Adding `tags = ["no_rocm",]` to that target, will result in removing this
-    test from rocm* CI runs.
-  - Adding `tags = ["no_rocm_v2",]` to that target, will result in removing this
-    test from rocm-v2 CI run.
-  - Adding `tags = ["no_cuda",]` to that target, will result in removing this
-    test from cuda* CI runs.
-  - Adding `tags = ["no_rocm","no_cuda",]` to that target, will result in
-    removing this test from both the rocm* and cuda* CI runs.
-
-  grep for "tags" in the tensorflow/.../BUILD files for a concrete example of
-  how to add tags to a target
-
-  Note that
-  - `no_rocm_v2` tag is for tests that pass when run with TF 1.X, but fail when run with TF 2.X
-  - `no_cuda` tag is for "our" consumption only, it should not be upstreamed.
-  - `no_gpu` tag is used to indicate which tests are excluded from GPU CI in the
-    upstream repo. We should not add this tag to any tests.
-
-  If you skip tests in the weekly sync, leave a comment in the format `TODO(rocm): weekly-sync YY-MM-DD` so we can enable it later once it's fixed upstream.
+- If you skip tests in the weekly sync, leave a comment in the format `TODO(rocm): weekly-sync YY-MM-DD` so we can enable it later once it's fixed upstream.
 
 - Document the list of excluded tests amending the commit.
-  Also update [this  Excel spreadsheet](https://amdcloud-my.sharepoint.com/:x:/r/personal/deven_amd_com/Documents/TF%20CI%20Unit%20Test%20Status.xlsx?d=w42bd3e2e76534209bd0438aa92857fa6&csf=1&e=5zpGPh)
 
 - Push to the working branch once again to let the pull request be tested
   again. Repeat the process until we see a green check mark on the PR.

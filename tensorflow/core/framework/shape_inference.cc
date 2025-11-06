@@ -286,23 +286,23 @@ string InferenceContext::DebugString(ShapeHandle s) {
   if (RankKnown(s)) {
     std::vector<string> vals;
     for (auto d : s->dims_) vals.push_back(DebugString(d));
-    return strings::StrCat("[", absl::StrJoin(vals, ","), "]");
+    return absl::StrCat("[", absl::StrJoin(vals, ","), "]");
   } else {
     return "?";
   }
 }
 
 string InferenceContext::DebugString(DimensionHandle d) {
-  return ValueKnown(d) ? strings::StrCat(Value(d)) : "?";
+  return ValueKnown(d) ? absl::StrCat(Value(d)) : "?";
 }
 
 string InferenceContext::DebugString() const {
-  return strings::StrCat("InferenceContext for node: ", attrs_.SummarizeNode());
+  return absl::StrCat("InferenceContext for node: ", attrs_.SummarizeNode());
 }
 
 string InferenceContext::DebugString(const ShapeAndType& shape_and_type) {
-  return strings::StrCat(DebugString(shape_and_type.shape), ":",
-                         DataTypeString(shape_and_type.dtype));
+  return absl::StrCat(DebugString(shape_and_type.shape), ":",
+                      DataTypeString(shape_and_type.dtype));
 }
 
 string InferenceContext::DebugString(
@@ -311,7 +311,7 @@ string InferenceContext::DebugString(
   for (const ShapeAndType& s : shape_and_types) {
     pieces.push_back(DebugString(s));
   }
-  return strings::StrCat("[", absl::StrJoin(pieces, ","), "]");
+  return absl::StrCat("[", absl::StrJoin(pieces, ","), "]");
 }
 
 absl::Status InferenceContext::WithRank(ShapeHandle shape, int64_t rank,
@@ -1187,7 +1187,7 @@ absl::Status InferenceContext::AttachContext(const absl::Status& status) {
         i < input_tensors_as_shapes_size &&
         input_tensors_as_shapes_[i].IsSet() &&
         RankKnown(input_tensors_as_shapes_[i])) {
-      input_from_tensors_as_shape_str.push_back(strings::StrCat(
+      input_from_tensors_as_shape_str.push_back(absl::StrCat(
           "input[", i, "] = ", DebugString(input_tensors_as_shapes_[i])));
     } else if (requested_input_tensor_[i] && i < input_tensors_size &&
                input_tensors_[i] != nullptr) {
@@ -1197,22 +1197,22 @@ absl::Status InferenceContext::AttachContext(const absl::Status& status) {
     }
   }
 
-  string error_context = strings::StrCat(
-      " for '", attrs_.SummarizeNode(),
-      "' with input shapes: ", absl::StrJoin(input_shapes, ", "));
+  string error_context =
+      absl::StrCat(" for '", attrs_.SummarizeNode(),
+                   "' with input shapes: ", absl::StrJoin(input_shapes, ", "));
   if (!input_from_tensors_str.empty()) {
-    strings::StrAppend(&error_context, " and with computed input tensors: ",
-                       absl::StrJoin(input_from_tensors_str, ", "));
+    absl::StrAppend(&error_context, " and with computed input tensors: ",
+                    absl::StrJoin(input_from_tensors_str, ", "));
   }
   if (!input_from_tensors_as_shape_str.empty()) {
-    strings::StrAppend(&error_context,
-                       " and with input tensors computed as partial shapes: ",
-                       absl::StrJoin(input_from_tensors_as_shape_str, ","));
+    absl::StrAppend(&error_context,
+                    " and with input tensors computed as partial shapes: ",
+                    absl::StrJoin(input_from_tensors_as_shape_str, ","));
   }
 
-  strings::StrAppend(&error_context, ".");
+  absl::StrAppend(&error_context, ".");
   return errors::CreateWithUpdatedMessage(
-      status, strings::StrCat(status.message(), error_context));
+      status, absl::StrCat(status.message(), error_context));
 }
 
 bool InferenceContext::MergeHandleShapesAndTypes(

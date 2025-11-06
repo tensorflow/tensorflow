@@ -49,7 +49,7 @@ class LocalConnectionState : public ConnectionState {
             bool is_largest, absl::AnyInvocable<void() &&> on_done) override {
     tsl::RCReference<ChunkDestination> dest;
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       auto it = dests_.find(req_id);
       CHECK(it != dests_.end());
       if (is_largest) {
@@ -71,7 +71,7 @@ class LocalConnectionState : public ConnectionState {
             tsl::RCReference<ChunkDestination> dest) {
     size_t req_id;
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       dests_[next_req_id_].dest = std::move(dest);
       req_id = next_req_id_;
       ++next_req_id_;
@@ -213,7 +213,7 @@ TEST(SlabAllocator, BasicSubAllocations) {
     auto thread = std::unique_ptr<tsl::Thread>(
         tsl::Env::Default()->StartThread({}, "test-thread", [&] {
           for (size_t i = 0; i < 200; ++i) {
-            absl::MutexLock l(&mu);
+            absl::MutexLock l(mu);
             auto cond = [&]() {
               return allocs.size() >= std::min(static_cast<size_t>(200 - i),
                                                static_cast<size_t>(4));
@@ -226,7 +226,7 @@ TEST(SlabAllocator, BasicSubAllocations) {
     SlabAllocator allocator(alloc, 4096);
     for (size_t i = 0; i < 200; ++i) {
       auto alloc = allocator.Allocate(allocator.max_allocation_size());
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       allocs.push_back(std::move(alloc));
     }
   }

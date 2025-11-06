@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace xla {
 
@@ -43,10 +44,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
 // Converts an CHLO/MHLO module to XLA HLO.
 // TODO(b/345414638): Delete `use_shardy` when we move Shardy as the first pass
 // in the XLA pipeline.
-absl::Status MlirToXlaComputation(mlir::ModuleOp module,
-                                  XlaComputation& xla_computation,
-                                  bool use_tuple_args, bool return_tuple,
-                                  ExecutableBuildOptions* exec_build_options);
+absl::Status MlirToXlaComputation(
+    mlir::ModuleOp module, XlaComputation& xla_computation, bool use_tuple_args,
+    bool return_tuple, ExecutableBuildOptions* exec_build_options,
+    const mlir::mhlo::ChloLegalizeToHighLevelMhloPassOptions& chlo_opts =
+        mlir::mhlo::getDefaultChloToHighLevelMhloOptions());
 
 // Converts an MHLO/CHLO module string to an XLA computation.
 absl::Status ParseMlirModuleStringAndConvertToXlaComputation(

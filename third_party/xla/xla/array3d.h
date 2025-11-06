@@ -16,17 +16,12 @@ limitations under the License.
 #ifndef XLA_ARRAY3D_H_
 #define XLA_ARRAY3D_H_
 
-#include <algorithm>
-#include <functional>
+#include <cstdint>
 #include <initializer_list>
-#include <iterator>
-#include <memory>
-#include <numeric>
-#include <random>
+#include <vector>
 
 #include "xla/array.h"
-#include "xla/tsl/platform/logging.h"
-#include "xla/types.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -66,6 +61,19 @@ class Array3D : public Array<T> {
   int64_t n1() const { return this->dim(0); }
   int64_t n2() const { return this->dim(1); }
   int64_t n3() const { return this->dim(2); }
+
+  void FillUnique(T start_value = 0) {
+    int shift2 = Log2Ceiling<uint64_t>(n2());
+    int shift3 = Log2Ceiling<uint64_t>(n3());
+    for (int64_t i0 = 0; i0 < n1(); ++i0) {
+      for (int64_t i1 = 0; i1 < n2(); ++i1) {
+        for (int64_t i2 = 0; i2 < n3(); ++i2) {
+          (*this)(i0, i1, i2) =
+              ((i0 << (shift3 + shift2)) | (i1 << shift2) | i2) + start_value;
+        }
+      }
+    }
+  }
 };
 
 }  // namespace xla

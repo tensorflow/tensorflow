@@ -854,7 +854,9 @@ def ShapeEquals(tensor_proto, shape):
     raise TypeError("`shape` must be a list or tuple, but got type "
                     f"{type(shape)}.")
   tensor_shape_list = [d.size for d in tensor_proto.tensor_shape.dim]
-  return all(x == y for x, y in zip(tensor_shape_list, shape))
+  return len(tensor_shape_list) == len(shape) and all(
+      x == y for x, y in zip(tensor_shape_list, shape)
+  )
 
 
 def _ConstantValue(tensor, partial):

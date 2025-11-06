@@ -15,125 +15,99 @@ limitations under the License.
 
 #include "xla/stream_executor/plugin_registry.h"
 
-#include <optional>
 #include <string>
 
-#include "absl/base/const_init.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
 
 namespace stream_executor {
 
-// Returns the string representation of the specified PluginKind.
-std::string PluginKindString(PluginKind plugin_kind) {
-  switch (plugin_kind) {
-    case PluginKind::kBlas:
-      return "BLAS";
-    case PluginKind::kDnn:
-      return "DNN";
-    case PluginKind::kFft:
-      return "FFT";
-    case PluginKind::kInvalid:
-    default:
-      return "kInvalid";
-  }
-}
-
-static absl::Mutex& GetPluginRegistryMutex() {
-  static absl::Mutex mu(absl::kConstInit);
-  return mu;
-}
-
-/* static */ PluginRegistry* PluginRegistry::instance_ = nullptr;
-
-PluginRegistry::PluginRegistry() {}
-
 /* static */ PluginRegistry* PluginRegistry::Instance() {
-  absl::MutexLock lock{&GetPluginRegistryMutex()};
-  if (instance_ == nullptr) {
-    instance_ = new PluginRegistry();
-  }
-  return instance_;
+  static PluginRegistry* instance = new PluginRegistry();
+  return instance;
 }
 
-template <typename FACTORY_TYPE>
-absl::Status PluginRegistry::RegisterFactoryInternal(
-    const std::string& plugin_name, FACTORY_TYPE factory,
-    std::optional<FACTORY_TYPE>* factories) {
-  absl::MutexLock lock{&GetPluginRegistryMutex()};
+template <typename FactoryT>
+PluginKind GetPluginKind() {
+  if constexpr (std::is_same_v<FactoryT, PluginRegistry::BlasFactory>) {
+    return PluginKind::kBlas;
+  } else if constexpr (std::is_same_v<FactoryT, PluginRegistry::DnnFactory>) {
+    return PluginKind::kDnn;
+  } else if constexpr (std::is_same_v<FactoryT, PluginRegistry::FftFactory>) {
+    return PluginKind::kFft;
+  } else {
+    static_assert(false, "Unsupported factory type");
+  }
+}
+template <typename FactoryT>
+absl::string_view GetPluginName() {
+  if constexpr (std::is_same_v<FactoryT, PluginRegistry::BlasFactory>) {
+    return "BLAS";
+  } else if constexpr (std::is_same_v<FactoryT, PluginRegistry::DnnFactory>) {
+    return "DNN";
+  } else if constexpr (std::is_same_v<FactoryT, PluginRegistry::FftFactory>) {
+    return "FFT";
+  } else {
+    static_assert(false, "Unsupported factory type");
+  }
+}
 
-  if (factories->has_value()) {
+template <typename FactoryT>
+absl::Status PluginRegistry::RegisterFactory(Platform::Id platform_id,
+                                             const std::string& name,
+                                             FactoryT factory) {
+  PluginKind plugin_kind = GetPluginKind<FactoryT>();
+  absl::MutexLock lock(registry_mutex_);
+  auto [_, inserted] = factories_.insert({{platform_id, plugin_kind}, factory});
+  if (!inserted) {
     return absl::AlreadyExistsError(
         absl::StrFormat("Attempting to register factory for plugin %s when "
                         "one has already been registered",
-                        plugin_name));
+                        name));
   }
-
-  (*factories) = factory;
   return absl::OkStatus();
+}
+
+template <typename FactoryT>
+absl::StatusOr<FactoryT> PluginRegistry::GetFactory(
+    Platform::Id platform_id) const {
+  PluginKind plugin_kind = GetPluginKind<FactoryT>();
+  absl::MutexLock lock(registry_mutex_);
+  auto it = factories_.find({platform_id, plugin_kind});
+  if (it == factories_.end()) {
+    absl::string_view name = GetPluginName<FactoryT>();
+    return absl::FailedPreconditionError(
+        absl::StrFormat("No suitable %s plugin registered. Have you linked in "
+                        "a %s-providing plugin?",
+                        name, name));
+  }
+  return std::get<FactoryT>(it->second);
 }
 
 bool PluginRegistry::HasFactory(Platform::Id platform_id,
                                 PluginKind plugin_kind) const {
-  auto iter = factories_.find(platform_id);
-  if (iter == factories_.end()) {
-    return false;
-  }
-
-  switch (plugin_kind) {
-    case PluginKind::kBlas:
-      return iter->second.blas.has_value();
-    case PluginKind::kDnn:
-      return iter->second.dnn.has_value();
-    case PluginKind::kFft:
-      return iter->second.fft.has_value();
-    default:
-      break;
-  }
-
-  LOG(ERROR) << "Invalid plugin kind specified: "
-             << PluginKindString(plugin_kind);
-  return false;
+  absl::MutexLock lock(registry_mutex_);
+  return factories_.contains({platform_id, plugin_kind});
 }
 
 // Explicit instantiations to support types exposed in user/public API.
-#define EMIT_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE, FACTORY_VAR, PLUGIN_STRING) \
-                                                                              \
-  template absl::Status                                                       \
-  PluginRegistry::RegisterFactoryInternal<PluginRegistry::FACTORY_TYPE>(      \
-      const std::string& plugin_name, PluginRegistry::FACTORY_TYPE factory,   \
-      std::optional<PluginRegistry::FACTORY_TYPE>* factories);                \
-                                                                              \
-  template <>                                                                 \
-  absl::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>( \
-      Platform::Id platform_id, const std::string& name,                      \
-      PluginRegistry::FACTORY_TYPE factory) {                                 \
-    return RegisterFactoryInternal(name, factory,                             \
-                                   &factories_[platform_id].FACTORY_VAR);     \
-  }                                                                           \
-                                                                              \
-  template <>                                                                 \
-  absl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
-      Platform::Id platform_id) {                                             \
-    auto plugin_id = factories_[platform_id].FACTORY_VAR;                     \
-                                                                              \
-    if (!plugin_id.has_value()) {                                             \
-      return absl::FailedPreconditionError(                                   \
-          "No suitable " PLUGIN_STRING                                        \
-          " plugin registered. Have you linked in a " PLUGIN_STRING           \
-          "-providing plugin?");                                              \
-    } else {                                                                  \
-      VLOG(2) << "Selecting default " PLUGIN_STRING " plugin";                \
-    }                                                                         \
-    return factories_[platform_id].FACTORY_VAR.value();                       \
-  }
+#define EMIT_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE)                \
+                                                                 \
+  template absl::Status                                          \
+  PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>( \
+      Platform::Id platform_id, const std::string& name,         \
+      PluginRegistry::FACTORY_TYPE factory);                     \
+                                                                 \
+  template absl::StatusOr<PluginRegistry::FACTORY_TYPE>          \
+  PluginRegistry::GetFactory(Platform::Id platform_id) const;
 
-EMIT_PLUGIN_SPECIALIZATIONS(BlasFactory, blas, "BLAS");
-EMIT_PLUGIN_SPECIALIZATIONS(DnnFactory, dnn, "DNN");
-EMIT_PLUGIN_SPECIALIZATIONS(FftFactory, fft, "FFT");
+EMIT_PLUGIN_SPECIALIZATIONS(BlasFactory);
+EMIT_PLUGIN_SPECIALIZATIONS(DnnFactory);
+EMIT_PLUGIN_SPECIALIZATIONS(FftFactory);
 
 }  // namespace stream_executor

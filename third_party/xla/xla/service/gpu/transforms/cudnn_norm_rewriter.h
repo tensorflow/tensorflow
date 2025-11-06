@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 
 namespace xla {
 namespace gpu {
@@ -30,7 +30,8 @@ namespace gpu {
 // forward and backward passes of layer norm patterns are implemented.
 class CudnnNormRewriter : public HloModulePass {
  public:
-  explicit CudnnNormRewriter(se::CudaComputeCapability cuda_compute_capability);
+  explicit CudnnNormRewriter(
+      const se::CudaComputeCapability& cuda_compute_capability);
   absl::string_view name() const override { return "norm-rewriter"; }
 
   using HloPassInterface::Run;

@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

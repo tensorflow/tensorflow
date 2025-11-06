@@ -51,7 +51,7 @@ std::list<SlowOperationAlarm*>* outstanding_alarms ABSL_PT_GUARDED_BY(mu) =
 
 void SlowOperationAlarm::AlarmLoop() {
   while (true) {
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
 
     // Fire any alarms which are ready.
     absl::Time now = absl::Now();
@@ -97,13 +97,13 @@ void SlowOperationAlarm::ScheduleAlarm(SlowOperationAlarm* alarm) {
         tsl::ThreadOptions(), "SlowOperationAlarm", [] { AlarmLoop(); });
   });
 
-  absl::MutexLock lock(&mu);
+  absl::MutexLock lock(mu);
   outstanding_alarms->push_back(alarm);
   ready->Signal();
 }
 
 void SlowOperationAlarm::UnscheduleAlarm(const SlowOperationAlarm* alarm) {
-  absl::MutexLock lock(&mu);
+  absl::MutexLock lock(mu);
   CHECK(outstanding_alarms != nullptr);
   auto it = absl::c_find(*outstanding_alarms, alarm);
   if (it != outstanding_alarms->end()) {

@@ -376,7 +376,7 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
       literal = std::make_unique<xla::MutableBorrowingLiteral>(
           cpu_tensor->tensor_data().data(), shape);
     }
-    xla::PjRtFuture<> future =
+    tsl::Future<void> future =
         pjrt_tensor_buffer->pjrt_buffer()->ToLiteral(literal.get());
     future.OnReady([literal = std::move(literal),
                     done](const absl::Status& status) { done(status); });

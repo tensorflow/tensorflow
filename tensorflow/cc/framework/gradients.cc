@@ -421,7 +421,7 @@ absl::Status SymbolicGradientBuilder::ProcessWhileLoop(
   // We've seen all the exit nodes for this loop and have collected all the
   // backprops. Create the gradient graph for the while loop.
   Scope while_scope =
-      scope_.NewSubScope(strings::StrCat(while_ctx->frame_name(), "_grad"));
+      scope_.NewSubScope(absl::StrCat(while_ctx->frame_name(), "_grad"));
   std::vector<Output> dy;
   for (Node* n : while_ctx->exit_nodes()) dy.push_back(backprops[n]);
   std::vector<Output> dx;

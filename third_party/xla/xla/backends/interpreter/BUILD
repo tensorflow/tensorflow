@@ -1,7 +1,3 @@
-load(
-    "//xla/tsl:tsl.bzl",
-    "if_google",
-)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -71,10 +67,7 @@ cc_library(
     name = "platform_id",
     srcs = ["platform_id.cc"],
     hdrs = ["platform_id.h"],
-    deps = ["//xla/stream_executor:platform"] + if_google(
-        ["@com_google_protobuf//:any_cc_proto"],
-        ["@com_google_protobuf//:protobuf_headers"],
-    ),
+    deps = ["//xla/stream_executor:platform"],
 )
 
 cc_library(

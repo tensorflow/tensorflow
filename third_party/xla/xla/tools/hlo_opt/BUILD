@@ -2,6 +2,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load(
     "//xla/stream_executor:build_defs.bzl",
@@ -45,6 +46,7 @@ cc_library(
         "//xla/service:conditional_to_select",
         "//xla/service:executable",
         "//xla/service:gather_expander",
+        "//xla/service:hlo_graph_dumper",
         "//xla/service:map_inliner",
         "//xla/service:platform_util",
         "//xla/service:reduce_scatter_reassociate",
@@ -85,6 +87,7 @@ cc_library(
         "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/tools/hlo_opt:opt_lib",
         "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
@@ -163,15 +166,14 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/codegen:ir_compiler",
-        "//xla/backends/cpu/codegen:jit_compiler",
         "//xla/backends/cpu/codegen:target_machine_features",
-        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/tools/hlo_opt:opt_lib",
         "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "//xla/service:batchnorm_expander",
+        "//xla/service:buffer_value",
         "//xla/service:change_op_data_type",
         "//xla/service:copy_insertion",
         "//xla/service:cpu_plugin",
@@ -186,7 +188,6 @@ cc_library(
         "//xla/service:sharding_propagation",
         "//xla/service:transpose_folding",
         "//xla/service/cpu:conv_canonicalization",
-        "//xla/service/cpu:cpu_compiler_pure",
         "//xla/service/cpu:cpu_executable",
         "//xla/service/cpu:cpu_instruction_fusion",
         "//xla/service/cpu:cpu_layout_assignment",

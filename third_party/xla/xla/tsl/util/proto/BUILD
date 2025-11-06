@@ -59,3 +59,24 @@ tsl_cc_test(
         "@local_tsl//tsl/platform:protobuf",
     ],
 )
+
+cc_library(
+    name = "parse_text_proto",
+    testonly = True,
+    hdrs = ["parse_text_proto.h"],
+    deps = [
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+tsl_cc_test(
+    name = "parse_text_proto_test",
+    srcs = ["parse_text_proto_test.cc"],
+    deps = [
+        ":parse_text_proto",
+        ":proto_matchers_test_protos_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

@@ -16,12 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_FUSION_DYNAMIC_MEMCPY_REWRITER_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_FUSION_DYNAMIC_MEMCPY_REWRITER_H_
 
-#include <utility>
-
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 

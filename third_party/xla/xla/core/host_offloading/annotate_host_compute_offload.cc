@@ -51,16 +51,6 @@ void AnnotateComputationHostOffload(HloComputation& computation) {
 }
 }  // namespace
 
-absl::StatusOr<bool> AnnotateHostComputeOffload::RunOnModuleGroup(
-    HloModuleGroup* module_group,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  bool modified = false;
-  for (HloModule* module : module_group->modules()) {
-    TF_ASSIGN_OR_RETURN(bool m, Run(module, execution_threads));
-    modified |= m;
-  }
-  return modified;
-}
 
 absl::StatusOr<bool> AnnotateHostComputeOffload::Run(
     HloModule* module,

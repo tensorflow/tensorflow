@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
@@ -37,10 +38,12 @@ class CollectiveCombinerAnnotator : public HloModulePass {
  public:
   CollectiveCombinerAnnotator(se::DeviceDescription device_info,
                               const GpuAliasInfo* alias_info,
-                              int64_t pointer_size)
+                              int64_t pointer_size,
+                              SymbolicExprContext* symbolic_expr_context)
       : device_info_(std::move(device_info)),
         alias_info_(alias_info),
-        pointer_size_(pointer_size) {}
+        pointer_size_(pointer_size),
+        symbolic_expr_context_(symbolic_expr_context) {}
 
   absl::StatusOr<bool> Run(
       HloModule* module,
@@ -54,6 +57,7 @@ class CollectiveCombinerAnnotator : public HloModulePass {
   const se::DeviceDescription device_info_;
   const GpuAliasInfo* alias_info_;
   const int64_t pointer_size_;
+  SymbolicExprContext* symbolic_expr_context_;
 };
 
 // Returns true if `instr` is a combinable sync collective. False otherwise.

@@ -36,7 +36,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
 using ::testing::Not;
 

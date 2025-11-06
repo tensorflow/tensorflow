@@ -270,9 +270,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "np_interop_test",
     srcs = ["np_interop_test.py"],
-    tags = [
-        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
-    ],
     deps = [
         ":np_math_ops",
         "//tensorflow:tensorflow_py",

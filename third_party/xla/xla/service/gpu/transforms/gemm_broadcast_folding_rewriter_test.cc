@@ -23,9 +23,8 @@ limitations under the License.
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {

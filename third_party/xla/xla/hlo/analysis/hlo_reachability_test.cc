@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "xla/hlo/analysis/hlo_reachability.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/random/random.h"
 #include "absl/strings/string_view.h"
@@ -257,7 +260,11 @@ TEST_F(HloReachabilityTest, ReplaceInstructions) {
 
 class HloReachabilityMapBitSetBenchmark {
  public:
-  explicit HloReachabilityMapBitSetBenchmark(int size) : a_(size), b_(size) {
+  explicit HloReachabilityMapBitSetBenchmark(int size) {
+    size_t nwords = (size + 63) / 64;
+    std::vector<uint64_t> space(2 * nwords);
+    a_ = HloReachabilityMap::BitSet(&space[0], size);
+    b_ = HloReachabilityMap::BitSet(&space[nwords], size);
     // Initialize the bit sets to random inputs. Done out of caution -- note
     // that a sufficiently smart optimizer might realize that the bit sets
     // are otherwise initialized to 0.

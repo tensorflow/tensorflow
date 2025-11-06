@@ -75,11 +75,11 @@ class RemoteCopyNode : public AsyncEagerNode {
 
   string DebugString() const override {
     string out = "[RemoteCopyNode]";
-    strings::StrAppend(&out, " send_device: ", send_device_->name());
-    strings::StrAppend(&out, ", recv_device: ", recv_device_->name());
-    strings::StrAppend(&out, ", send_tensor: ", src_->DebugString());
-    strings::StrAppend(
-        &out, ", recv_tensor: ", captured_state_->dst()->DebugString());
+    absl::StrAppend(&out, " send_device: ", send_device_->name());
+    absl::StrAppend(&out, ", recv_device: ", recv_device_->name());
+    absl::StrAppend(&out, ", send_tensor: ", src_->DebugString());
+    absl::StrAppend(&out,
+                    ", recv_tensor: ", captured_state_->dst()->DebugString());
     return out;
   }
 

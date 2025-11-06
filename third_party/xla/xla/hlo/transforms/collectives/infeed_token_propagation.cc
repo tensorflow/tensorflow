@@ -172,8 +172,10 @@ absl::StatusOr<HloInstruction*> InsertTokenIntoTuple(HloInstruction* tuple,
   HloInstruction* original_tuple = TupleUtil::Duplicate(tuple);
   for (HloInstruction* original_user : original_users) {
     for (int64_t idx : original_user->operand_indices(tuple)) {
+      // We expect the shape to be same, but checking that it is the same is
+      // expensive.
       TF_RETURN_IF_ERROR(
-          original_user->ReplaceOperandWith(idx, original_tuple));
+          original_user->ReplaceOperandWithDifferentShape(idx, original_tuple));
     }
   }
 
@@ -231,8 +233,10 @@ absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
     // insert tokens into the input tuple.
     if (branch_tuple->opcode() == HloOpcode::kParameter) {
       branch_tuple = TupleUtil::Duplicate(branch_tuple);
-      TF_RETURN_IF_ERROR(
-          conditional->ReplaceOperandWith(branch_operand_idx, branch_tuple));
+      // We expect the shape to be same, but checking that it is the same is
+      // expensive.
+      TF_RETURN_IF_ERROR(conditional->ReplaceOperandWithDifferentShape(
+          branch_operand_idx, branch_tuple));
     }
 
     // Explicitly make the root of the branch a tuple.
@@ -326,7 +330,9 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
   // insert tokens into the input tuple.
   if (loop_tuple->opcode() == HloOpcode::kParameter) {
     loop_tuple = TupleUtil::Duplicate(loop_tuple);
-    TF_RETURN_IF_ERROR(loop->ReplaceOperandWith(0, loop_tuple));
+    // We expect the shape to be same, but checking that it is the same is
+    // expensive.
+    TF_RETURN_IF_ERROR(loop->ReplaceOperandWithDifferentShape(0, loop_tuple));
   }
 
   // Explicitly make the root of the body a tuple.
@@ -466,7 +472,10 @@ absl::Status InfeedTokenPropagation::PropagateToken(
           // Parent outfeed happens after child infeed. Stitch via parent input
           // token.
           CHECK_EQ(begin->opcode(), HloOpcode::kOutfeed);
-          TF_RETURN_IF_ERROR(begin->ReplaceOperandWith(1, output_token_));
+          // We expect the shape to be same, but checking that it is the same
+          // is expensive.
+          TF_RETURN_IF_ERROR(
+              begin->ReplaceOperandWithDifferentShape(1, output_token_));
           output_token_ = end;
         } else {
           LOG(WARNING) << absl::StrFormat(

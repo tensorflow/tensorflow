@@ -303,7 +303,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
   if (data->phase == ACTIVITY_API_PHASE_ENTER) {
     if (options_.api_tracking_set.find(cbid) !=
         options_.api_tracking_set.end()) {
-      absl::MutexLock lock(&api_call_start_mutex_);
+      absl::MutexLock lock(api_call_start_mutex_);
       api_call_start_time_.emplace(data->correlation_id,
                                    RocmTracer::GetTimestamp());
     }
@@ -316,7 +316,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
 
     if (options_.api_tracking_set.find(cbid) !=
         options_.api_tracking_set.end()) {
-      absl::MutexLock lock(&api_call_start_mutex_);
+      absl::MutexLock lock(api_call_start_mutex_);
       if (api_call_start_time_.find(data->correlation_id) !=
           api_call_start_time_.end()) {
         enter_time = api_call_start_time_.at(data->correlation_id);

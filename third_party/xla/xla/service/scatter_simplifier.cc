@@ -157,6 +157,7 @@ absl::StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
 
     auto* call_op = scatter->AddInstruction(HloInstruction::CreateCall(
         scatter->shape(), scatter_operands_and_updates, called_computation));
+    call_op->set_original_value(scatter->original_value());
     TF_RETURN_IF_ERROR(scatter->ReplaceAllUsesWith(call_op));
     TF_ASSIGN_OR_RETURN(auto map, CallInliner::Inline(call_op));
     return map[call_op];

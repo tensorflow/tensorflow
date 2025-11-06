@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 
 #include <climits>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -468,14 +470,14 @@ class PerDeviceCollector {
   }
 
   void AddEvent(CuptiTracerEvent&& event) {
-    absl::MutexLock l(&m_);
+    absl::MutexLock l(m_);
     events_.emplace_back(std::move(event));
   }
 
   size_t Flush(uint64_t start_gpu_ns, uint64_t end_gpu_ns,
                XPlaneBuilder* device_plane, XPlaneBuilder* host_plane,
                XPlaneBuilder* nvtx_plane) {
-    absl::MutexLock l(&m_);
+    absl::MutexLock l(m_);
     // Tracking event types per line.
     absl::flat_hash_map<int64_t, absl::flat_hash_set<CuptiTracerEventType>>
         events_types_per_line;
@@ -678,6 +680,7 @@ class EventInQueue {
 
 void PmSamples::PopulateCounterLine(XPlaneBuilder* plane,
                                     uint64_t start_gpu_time_ns) {
+  absl::flat_hash_map<std::string, int> skipped_nan_count_per_metric;
   XLineBuilder line = plane->GetOrCreateCounterLine();
   std::vector<std::pair<XEventMetadata*, XStatMetadata*>> counter_metadata;
   counter_metadata.reserve(metrics_.size());
@@ -688,6 +691,10 @@ void PmSamples::PopulateCounterLine(XPlaneBuilder* plane,
   for (auto& sampler_range : sampler_ranges_) {
     DCHECK_EQ(metrics_.size(), sampler_range.metric_values.size());
     for (int i = 0; i < sampler_range.metric_values.size(); ++i) {
+      if (std::isnan(sampler_range.metric_values[i])) {
+        ++skipped_nan_count_per_metric[counter_metadata[i].first->name()];
+        continue;
+      }
       XEventBuilder event = line.AddEvent(
           tsl::profiler::Timespan(
               tsl::profiler::NanoToPico(sampler_range.start_timestamp_ns -
@@ -697,6 +704,13 @@ void PmSamples::PopulateCounterLine(XPlaneBuilder* plane,
       event.AddStatValue(*counter_metadata[i].second,
                          sampler_range.metric_values[i]);
     }
+  }
+  for (const auto& [metric, count] : skipped_nan_count_per_metric) {
+    plane->AddStatValue(
+        *plane->GetOrCreateStatMetadata(tsl::profiler::GetStatTypeStr(
+            tsl::profiler::StatType::kNanCounterEvents)),
+        absl::StrFormat("Skipped %d NaN counter events for %s: ", count,
+                        metric));
   }
 }
 

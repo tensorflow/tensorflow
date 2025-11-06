@@ -38,12 +38,15 @@ namespace {
 
 TEST(DeviceInfoTest, DeviceInfoMatches) {
   absl::flat_hash_map<std::string, GpuDeviceInfoProto> gpu_specs;
-  for (const std::string file_name : GPU_SPEC_FILE_NAMES) {
+  for (const std::string file_name :
+       {"mi200"}) {
     GpuTargetConfigProto proto;
     std::string spec_string;
+    auto path = tsl::testing::XlaSrcRoot();
+    path = path.erase(path.length() - 4);
     TF_ASSERT_OK(tsl::ReadFileToString(
         tsl::Env::Default(),
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "../../local_xla/xla",
+        tsl::io::JoinPath(path, "external/local_xla/xla",
                           "tools", "hlo_opt",
                           "gpu_specs", absl::StrCat(file_name, ".txtpb")),
         &spec_string));

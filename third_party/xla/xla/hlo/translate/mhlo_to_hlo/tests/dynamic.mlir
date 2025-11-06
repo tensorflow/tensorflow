@@ -17,5 +17,5 @@ func.func @main(%arg0: tensor<?x1xi64, #mhlo.type_extensions<bounds = [4, ?]>>) 
   // CHECK-NEXT: %[[SHAPE0:.*]] = s32[] reshape(%[[SHAPE0x1]])
   // CHECK-NEXT: %[[SHAPE1x1:.*]] = s32[1] slice(%[[SHAPE]]), slice={[1:2]}
   // CHECK-NEXT: %[[SHAPE1:.*]] = s32[] reshape(%[[SHAPE1x1]])
-  // CHECK-NEXT: ROOT %dynamic-reshape.10 = s64[1,<=4] dynamic-reshape(%[[ARG0]], %[[SHAPE0]], %[[SHAPE1]])
+  // CHECK-NEXT: ROOT %dynamic-reshape.1 = s64[1,<=4] dynamic-reshape(%[[ARG0]], %[[SHAPE0]], %[[SHAPE1]])
 }

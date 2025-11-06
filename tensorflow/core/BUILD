@@ -61,15 +61,14 @@
 # //tensorflow/tensorflow.bzl) will include the necessary symbols in binary
 # build targets.
 
-# Placeholder: load py_proto_library
+load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load(
     "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
 )
-
-# Placeholder: load java_proto_library
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -500,8 +499,6 @@ cc_library(
         "@local_tsl//tsl/platform:framework_lite_hdrs",
         "@local_xla//xla/tsl/framework:numeric_types.h",
         "@local_xla//xla/tsl/framework:type_traits.h",
-        "@local_xla//xla/tsl/platform/default:integral_types.h",
-        "@local_xla//xla/tsl/platform/default:logging.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -1083,6 +1080,7 @@ cc_library(
 #         "@com_google_absl//absl/status:statusor",
 #         "@com_google_absl//absl/strings",
 #         "@com_google_absl//absl/types:optional",
+#         "@local_xla//xla/tsl/concurrency:executor",
 #         "@local_xla//xla/tsl/framework/fixedpoint",
 #         "@local_xla//xla/tsl/util:safe_reinterpret_cast",
 #         "//tensorflow/core/platform:resource",
@@ -1546,8 +1544,6 @@ cc_library(
     hdrs = [
         "//tensorflow/core/platform:tflite_portable_logging_hdrs",
         "@local_tsl//tsl/platform:tflite_portable_logging_hdrs",
-        "@local_xla//xla/tsl/platform/default:integral_types.h",
-        "@local_xla//xla/tsl/platform/default:logging.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),

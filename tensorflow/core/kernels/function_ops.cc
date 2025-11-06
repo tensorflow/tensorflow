@@ -323,8 +323,8 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       VLOG(1) << "Instantiating " << func_name << " on " << target_device;
       tsl::profiler::TraceMe activity(
           [&] {
-            return strings::StrCat("RemoteCall: Instantiate: ", func_name,
-                                   " on ", target_device);
+            return absl::StrCat("RemoteCall: Instantiate: ", func_name, " on ",
+                                target_device);
           },
           tsl::profiler::TraceMeLevel::kInfo);
       FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
@@ -435,7 +435,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 string RemoteCallOp::TraceString(const OpKernelContext& ctx,
                                  bool verbose) const {
   string trace_string = tsl::profiler::TraceMeOp(
-      strings::StrCat(name_view(), "__", func_.name()), type_string_view());
+      absl::StrCat(name_view(), "__", func_.name()), type_string_view());
   if (verbose) {
     string shape = ShapeTraceString(ctx);
     if (!shape.empty()) {

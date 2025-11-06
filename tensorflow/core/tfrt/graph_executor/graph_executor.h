@@ -273,6 +273,27 @@ class GraphExecutor {
       absl::Span<const std::string> target_tensor_names,
       std::vector<tensorflow::Tensor>* outputs);
 
+  // Similar as `Run`, but it requires additional input parameters to specify
+  // the `graph_name`, the sorted input/output names and the original indices of
+  // the inputs/outputs. The caller must guarantee that inputs are in the same
+  // order as of `sorted_input_names`. The sorted input/output names are needed
+  // to consistently build the key for looking up the `LoadedClientGraph` in the
+  // cache. The original indices are needed to map the results to the original
+  // inputs/outputs. The `graph_name` will be used to lookup the compiled graph
+  // in the cache. It is usually the signature name of the graph. If it is
+  // empty, a joined name will be constructed from the sorted input/output names
+  // to lookup the `LoadedClientGraph` in the cache.
+  absl::Status RunWithSortedInputsOutputs(
+      const RunOptions& run_options, absl::string_view graph_name,
+      absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
+      absl::Span<const std::string> sorted_input_names,
+      absl::Span<const tensorflow::DataType> sorted_input_dtypes,
+      absl::Span<const std::string> sorted_output_names,
+      absl::Span<const std::string> sorted_target_node_names,
+      absl::Span<const int> input_original_indices,
+      absl::Span<const int> output_original_indices,
+      std::vector<tensorflow::Tensor>* outputs);
+
   // Runs the graph identified by `graph_name` using the input `inputs` and
   // stores the output of the execution in `outputs`. It is the client's
   // responsibility to ensure `graph_name` corresponds to logically different
@@ -384,6 +405,13 @@ class GraphExecutor {
 
 void RegisterMlirDialect(mlir::DialectRegistry& registry,
                          tensorflow::BackendCompiler* backend_compiler);
+
+// Sort the strings in `names` and store the results in `sorted_names`. In
+// addition, the original index in `names` for the item `sorted_names[i]` is
+// stored in `original_indices[i]`.
+void CreateSortedNamesAndOriginalIndices(absl::Span<const std::string> names,
+                                         std::vector<std::string>& sorted_names,
+                                         std::vector<int>& original_indices);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

@@ -165,11 +165,10 @@ class Service {
       const ExecutionHandle& handle, absl::Span<GlobalData* const> arguments,
       ExecutionProfile* execution_profile);
 
-  // Executes one or more computations in parallel with the provided global data
-  // passed as immutable arguments. Returns global data output for each
+  // Executes a computation instance. Returns global data output for the
   // computation.
-  absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> ExecuteGraphParallel(
-      absl::Span<const XlaComputationInstance> computations);
+  absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> ExecuteGraph(
+      const XlaComputationInstance& computation);
 
   // Requests one or more device handles from the target.
   //
@@ -296,9 +295,9 @@ class Service {
   // Same as BuildExecutable() above, but builds a list of Executables for the
   // given computations that may interact with each other.
   absl::StatusOr<std::vector<std::unique_ptr<Executable>>> BuildExecutables(
-      const std::vector<const HloModuleProto*>& module_protos,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-      Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
+      const HloModuleProto* module_proto,
+      std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
+      std::vector<se::StreamExecutor*> executors,
       const Compiler::CompileOptions& options, bool run_backend_only = false);
 
  protected:
@@ -306,8 +305,8 @@ class Service {
   // AotCompilationResult(s), which can be persisted to later load Executable
   // objects.
   absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  BuildAotResults(const std::vector<const HloModuleProto*>& module_protos,
-                  std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
+  BuildAotResults(const HloModuleProto* module_proto,
+                  std::unique_ptr<HloModuleConfig> module_config,
                   Backend* backend,
                   std::vector<std::vector<se::StreamExecutor*>> executors,
                   const Compiler::CompileOptions& options,
@@ -322,16 +321,6 @@ class Service {
       absl::Span<const std::vector<const ShapedBuffer*>> arguments,
       Backend* backend, const DeviceHandle& device_handle,
       const std::string& result_tag, ExecutionProfile* profile);
-
-  // Runs the given executables with the given arguments and register the result
-  // from each executable in the allocation tracker. The handles of the result
-  // from the tracker are returned.
-  absl::StatusOr<std::vector<GlobalDataHandle>>
-  ExecuteParallelAndRegisterResult(
-      absl::Span<Executable* const> executables,
-      absl::Span<const std::vector<std::vector<const ShapedBuffer*>>> arguments,
-      Backend* backend, absl::Span<const DeviceHandle> device_handles,
-      absl::Span<const std::string> result_tags, ExecutionProfile* profile);
 
   // Returns the stream executors assigned to the replicas represented by the
   // given device handle. Each device_handle is a virtual replicated device that

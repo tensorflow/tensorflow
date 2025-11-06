@@ -591,8 +591,8 @@ TEST(VariantTest, TensorListTest) {
   EXPECT_EQ(y_unknown.TypeName(), "TensorList");
   EXPECT_EQ(y_unknown.TypeId(), TypeIndex::Make<VariantTensorDataProto>());
   EXPECT_EQ(y_unknown.DebugString(),
-            strings::StrCat(
-                "Variant<type: TensorList value: ", data.DebugString(), ">"));
+            absl::StrCat("Variant<type: TensorList value: ", data.DebugString(),
+                         ">"));
 }
 
 template <bool BIG>

@@ -48,17 +48,77 @@ absl::string_view GetCusparseVersion() { return TF_CUSPARSE_VERSION; }
 absl::string_view GetNcclVersion() { return TF_NCCL_VERSION; }
 absl::string_view GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
 absl::string_view GetNvshmemVersion() { return XLA_NVSHMEM_VERSION; }
-absl::string_view GetHipVersion() { return TF_HIPRUNTIME_SOVERSION; }
-absl::string_view GetRocblasVersion() { return TF_ROCBLAS_SOVERSION; }
-absl::string_view GetHipblasltVersion() { return TF_HIPBLASLT_SOVERSION; }
-absl::string_view GetMiopenVersion() { return TF_MIOPEN_SOVERSION; }
-absl::string_view GetHipfftVersion() { return TF_HIPFFT_SOVERSION; }
-absl::string_view GetRocsolverVersion() { return TF_ROCSOLVER_SOVERSION; }
-absl::string_view GetHipsparseVersion() { return TF_HIPSPARSE_SOVERSION; }
-absl::string_view GetRoctracerVersion() { return TF_ROCTRACER_SOVERSION; }
-absl::string_view GetHipsolverVersion() { return TF_HIPSOLVER_SOVERSION; }
-absl::string_view GetRocrandVersion() { return TF_ROCRAND_SOVERSION; }
+absl::string_view GetHipVersion() {
+#if TENSORFLOW_USE_ROCM
+  return TF_HIPRUNTIME_SOVERSION;
+#else   // TENSORFLOW_USE_ROCM
+  return "";
+#endif  // TENSORFLOW_USE_ROCM
+}
+absl::string_view GetRocblasVersion() {
+#if TENSORFLOW_USE_ROCM
+  return TF_ROCBLAS_SOVERSION;
+#else   // TENSORFLOW_USE_ROCM
+  return "";
+#endif  // TENSORFLOW_USE_ROCM
+}
 
+std::string GetHipblasltVersion() {
+#if TENSORFLOW_USE_ROCM
+  return TF_HIPBLASLT_SOVERSION;
+#else   // TENSORFLOW_USE_ROCM
+  return "";
+#endif  // TENSORFLOW_USE_ROCM
+}
+std::string GetMiopenVersion() {
+#if TENSORFLOW_USE_ROCM
+  return TF_MIOPEN_SOVERSION;
+#else   // TENSORFLOW_USE_ROCM
+  return "";
+#endif  // TENSORFLOW_USE_ROCM
+}
+std::string GetHipfftVersion() {
+#if TENSORFLOW_USE_ROCM
+  return TF_HIPFFT_SOVERSION;
+#else   // TENSORFLOW_USE_ROCM
+  return "";
+#endif  // TENSORFLOW_USE_ROCM
+}
+std::string GetRocsolverVersion() {
+#if TENSORFLOW_USE_ROCM
+  return TF_ROCSOLVER_SOVERSION;
+#else   // TENSORFLOW_USE_ROCM
+  return "";
+#endif  // TENSORFLOW_USE_ROCM
+}
+std::string GetHipsparseVersion() {
+#if TENSORFLOW_USE_ROCM
+  return TF_HIPSPARSE_SOVERSION;
+#else   // TENSORFLOW_USE_ROCM
+  return "";
+#endif  // TENSORFLOW_USE_ROCM
+}
+std::string GetRoctracerVersion() {
+#if TENSORFLOW_USE_ROCM
+  return TF_ROCTRACER_SOVERSION;
+#else   // TENSORFLOW_USE_ROCM
+  return "";
+#endif  // TENSORFLOW_USE_ROCM
+}
+std::string GetHipsolverVersion() {
+#if TENSORFLOW_USE_ROCM
+  return TF_HIPSOLVER_SOVERSION;
+#else   // TENSORFLOW_USE_ROCM
+  return "";
+#endif  // TENSORFLOW_USE_ROCM
+}
+std::string GetRocrandVersion() {
+#if TENSORFLOW_USE_ROCM
+  return TF_ROCRAND_SOVERSION;
+#else   // TENSORFLOW_USE_ROCM
+  return "";
+#endif  // TENSORFLOW_USE_ROCM
+}
 
 absl::StatusOr<void*> GetDsoHandle(const std::string& name,
                                    absl::string_view version) {
@@ -97,6 +157,10 @@ absl::StatusOr<void*> GetCudaDriverDsoHandle() {
   }
 #endif
   return GetDsoHandle("cuda", "1");
+}
+
+absl::StatusOr<void*> GetNvmlDsoHandle() {
+  return GetDsoHandle("nvidia-ml", "1");
 }
 
 absl::StatusOr<void*> GetCudaRuntimeDsoHandle() {

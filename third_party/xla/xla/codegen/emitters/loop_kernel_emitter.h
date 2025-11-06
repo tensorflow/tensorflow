@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape.h"
 
 namespace xla::emitters {
@@ -43,7 +43,7 @@ namespace xla::emitters {
 // Generic loop fusion.
 class LoopFusionKernelEmitter final : public MlirKernelEmitter {
  public:
-  LoopFusionKernelEmitter(mlir::MLIRContext& mlir_context,
+  LoopFusionKernelEmitter(gpu::SymbolicExprContext& symbolic_expr_context,
                           const HloFusionInstruction& fusion,
                           const HloFusionSpec& fusion_spec,
                           const BufferAssignment* buffer_assignment,
@@ -56,7 +56,7 @@ class LoopFusionKernelEmitter final : public MlirKernelEmitter {
 
   static IndexingMap ComputeWorkItemIdToOutputIndexing(
       const WorkDimensions& work_dimensions, const Shape& root_shape,
-      mlir::MLIRContext* ctx);
+      gpu::SymbolicExprContext* ctx);
 
   // Get the shape that will be used for loop indexing for the given fusion
   // specification.
@@ -65,7 +65,8 @@ class LoopFusionKernelEmitter final : public MlirKernelEmitter {
   std::string name() const final { return "loop_fusion_kernel_emitter"; }
 
  private:
-  IndexingMap ComputeWorkItemIdToOutputIndexing(mlir::MLIRContext* ctx) const;
+  IndexingMap ComputeWorkItemIdToOutputIndexing(
+      gpu::SymbolicExprContext* ctx) const;
 
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
@@ -74,7 +75,7 @@ class LoopFusionKernelEmitter final : public MlirKernelEmitter {
       const HloFusionInstruction& fusion) const;
 
  private:
-  mlir::MLIRContext& mlir_context_;
+  gpu::SymbolicExprContext& symbolic_expr_context_;
   const HloFusionInstruction& fusion_;
   const HloFusionSpec& fusion_spec_;
   const BufferAssignment* buffer_assignment_;

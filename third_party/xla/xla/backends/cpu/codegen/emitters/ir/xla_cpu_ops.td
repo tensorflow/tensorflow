@@ -19,10 +19,13 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.td"
 include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_types.td"
+include "xla/codegen/emitters/ir/xla_attrs.td"
 
 class XLACPU_Op<string mnemonic, list<Trait> traits = []> :
       Op<XlaCpuDialect, mnemonic, traits> {
 }
+
+def TensorOrMemRef : AnyTypeOf<[AnyMemRef, AnyRankedTensor]>;
 
 //===----------------------------------------------------------------------===//
 // !xla_cpu.load
@@ -42,10 +45,37 @@ def XLACPU_LoadOp : XLACPU_Op<"load"> {
   let arguments = (ins XLACPU_CallFrame:$call_frame,
                        I32Attr:$index);
 
-  let results = (outs AnyStaticShapeTensor:$result);
+  let results = (outs TensorOrMemRef:$result);
 
   let assemblyFormat = [{
     $call_frame `,` $index attr-dict `:` type($result)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// !xla_cpu.extract_workgroup_id
+//===----------------------------------------------------------------------===//
+
+def XLACPU_ExtractWorkgroupIdOp : XLACPU_Op<"extract_workgroup_id"> {
+  let summary = "Extracts the workgroup id from the call frame";
+
+  let description = [{
+    Given a call frame, returns the workgroup id in the dimension provided.
+
+    ```mlir
+    %0 = xla_cpu.extract_workgroup_id %call_frame, x
+    %1 = xla_cpu.extract_workgroup_id %call_frame, y
+    %2 = xla_cpu.extract_workgroup_id %call_frame, z
+    ```
+  }];
+
+  let arguments = (ins XLACPU_CallFrame:$call_frame,
+                       WorkGroupDimensionAttr:$dimension);
+
+  let results = (outs Index);
+
+  let assemblyFormat = [{
+    $call_frame `,` $dimension attr-dict
   }];
 }
 

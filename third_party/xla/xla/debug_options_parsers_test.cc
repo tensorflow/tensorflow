@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/repeated_field.h"
 #include "xla/debug_options_flags.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/dump.h"
@@ -390,10 +391,13 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
   const auto& enabled_features =
       debug_options.xla_gpu_unsupported_generic_triton_emitter_features();
 
-  // Check that the default setting is empty.
+  // Check default setting.
   ASSERT_THAT(
       enabled_features,
-      ElementsAre(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM));
+      testing::UnorderedElementsAre(
+          DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM,
+          DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES,
+          DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION));
 
   // Initialize the flag objects.
   std::vector<tsl::Flag> flag_objects;
@@ -401,24 +405,23 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
 
   // Adding options.
   SetXlaFlagsEnvVar(
-      "--xla_gpu_unsupported_generic_triton_emitter_features=+allow_all_gemm_"
-      "shapes");
+      "--xla_gpu_unsupported_generic_triton_emitter_features="
+      "-allow_all_gemm_shapes");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_features.size(), 2);
   EXPECT_THAT(
       enabled_features,
-      ElementsAre(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM,
-                  DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES));
+      testing::UnorderedElementsAre(
+          DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM,
+          DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION));
 
   // Overwriting options.
   SetXlaFlagsEnvVar(
       "--xla_gpu_unsupported_generic_triton_emitter_features=disable_legacy_"
       "gemm,allow_all_ops_in_gemm_fusion");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_features.size(), 2);
   EXPECT_THAT(
       enabled_features,
-      ElementsAre(
+      testing::UnorderedElementsAre(
           DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM,
           DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION));
 
@@ -427,10 +430,9 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
       "--xla_gpu_unsupported_generic_triton_emitter_features=-disable_legacy_"
       "gemm,-unspecified,+enable_nested_gemm,+allow_all_ops_in_gemm_fusion");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_features.size(), 2);
   EXPECT_THAT(
       enabled_features,
-      ElementsAre(
+      testing::UnorderedElementsAre(
           DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION,
           DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM));
 }
@@ -497,7 +499,7 @@ void TestLibraryFusionType(absl::string_view lib) {
       absl::StrCat("--xla_cpu_experimental_", lib, "_fusion_type");
 
   {
-    const tsl::protobuf::RepeatedField<int> enabled_types =
+    const google::protobuf::RepeatedField<int> enabled_types =
         lib == "onednn"
             ? debug_options.xla_cpu_experimental_onednn_fusion_type()
             : debug_options.xla_cpu_experimental_xnn_fusion_type();
@@ -510,7 +512,7 @@ void TestLibraryFusionType(absl::string_view lib) {
     // Overwriting the default setting.
     SetXlaFlagsEnvVar(absl::StrCat(flag_name, "=dot,eltwise"));
     ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-    const tsl::protobuf::RepeatedField<int> enabled_types =
+    const google::protobuf::RepeatedField<int> enabled_types =
         lib == "onednn"
             ? debug_options.xla_cpu_experimental_onednn_fusion_type()
             : debug_options.xla_cpu_experimental_xnn_fusion_type();
@@ -525,7 +527,7 @@ void TestLibraryFusionType(absl::string_view lib) {
     // Adding / removing options from the existing setting.
     SetXlaFlagsEnvVar(absl::StrCat(flag_name, "=+reduce,-eltwise"));
     ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-    const tsl::protobuf::RepeatedField<int> enabled_types =
+    const google::protobuf::RepeatedField<int> enabled_types =
         lib == "onednn"
             ? debug_options.xla_cpu_experimental_onednn_fusion_type()
             : debug_options.xla_cpu_experimental_xnn_fusion_type();

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/integrations/stream_executor_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -144,7 +145,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
     if (cplatform->UseBfcAllocator()) {
       device_allocator = new PluggableDeviceBFCAllocator(
           sub_allocator, total_bytes, options,
-          strings::StrCat("PluggableDevice_", tf_device_id.value(), "_bfc"),
+          absl::StrCat("PluggableDevice_", tf_device_id.value(), "_bfc"),
           cplatform->ForceMemoryGrowth());
     } else {
       device_allocator = new PluggableDeviceSimpleAllocator(sub_allocator);

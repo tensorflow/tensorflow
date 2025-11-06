@@ -42,6 +42,14 @@ absl::Status DumpCompileInputs(absl::string_view path,
                                mlir::ModuleOp module,
                                const xla::PjRtTopologyDescription& topology);
 
+// Dumps the compile inputs (module, options, topology) to the specified
+// path if the compile options specify a dump path via `xla_dump_to`.
+//
+// Does nothing if the compile options does not set `xla_dump_to`.
+absl::Status MaybeDumpCompileInputs(
+    xla::CompileOptions compile_options, mlir::ModuleOp module,
+    const xla::PjRtTopologyDescription& topology);
+
 }  // namespace pjrt
 
 #endif  // XLA_PJRT_DUMP_DUMP_H_

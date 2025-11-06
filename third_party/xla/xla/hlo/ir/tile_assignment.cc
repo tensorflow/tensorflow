@@ -476,13 +476,13 @@ int64_t IotaTileAssignment::value_at(absl::Span<const int64_t> index) const {
 
 TileAssignment::TileAssignment(const TileAssignment& other) {
   iota_ = other.iota_;
-  absl::MutexLock other_lock(&other.mu_);
+  absl::MutexLock other_lock(other.mu_);
   shared_array_ = other.shared_array_;
   array_ = other.array_;
 }
 
 TileAssignment::TileAssignment(TileAssignment&& other) {
-  absl::MutexLock other_lock(&other.mu_);
+  absl::MutexLock other_lock(other.mu_);
   iota_ = other.iota_;
   shared_array_ = std::move(other.shared_array_);
   array_ = other.array_;
@@ -493,11 +493,11 @@ TileAssignment& TileAssignment::operator=(const TileAssignment& other) {
   std::shared_ptr<const Array<int64_t>> shared_array;
   const Array<int64_t>* array;
   {
-    absl::MutexLock other_lock(&other.mu_);
+    absl::MutexLock other_lock(other.mu_);
     shared_array = other.shared_array_;
     array = other.array_;
   }
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   shared_array_ = shared_array;
   array_ = array;
   return *this;
@@ -508,11 +508,11 @@ TileAssignment& TileAssignment::operator=(TileAssignment&& other) {
   std::shared_ptr<const Array<int64_t>> shared_array;
   const Array<int64_t>* array;
   {
-    absl::MutexLock other_lock(&other.mu_);
+    absl::MutexLock other_lock(other.mu_);
     shared_array = std::move(other.shared_array_);
     array = other.array_;
   }
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   shared_array_ = shared_array;
   array_ = array;
   return *this;
@@ -526,31 +526,31 @@ bool TileAssignment::operator==(const TileAssignment& other) const {
 }
 
 int64_t TileAssignment::operator()(absl::Span<const int64_t> indexes) const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return array_ ? (*array_)(indexes) : iota_->value_at(indexes);
 }
 
 absl::Span<const int64_t> TileAssignment::dimensions() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return array_ ? array_->dimensions() : iota_->dims();
 }
 
 int64_t TileAssignment::num_dimensions() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return array_ ? array_->num_dimensions() : iota_->ndims();
 }
 
 int64_t TileAssignment::dim(int64_t n) const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return array_ ? array_->dim(n) : iota_->dim(n);
 }
 int64_t TileAssignment::num_elements() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return array_ ? array_->num_elements() : iota_->num_elements();
 }
 
 int64_t TileAssignment::first() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return array_ ? *array_->begin() : 0;
 }
 
@@ -558,7 +558,7 @@ void TileAssignment::Each(
     absl::FunctionRef<void(absl::Span<const int64_t>, int64_t)> f) const {
   Array<int64_t> const* array;
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     MaybeMaterializeFullArray();
     array = array_;
   }
@@ -570,7 +570,7 @@ absl::Status TileAssignment::EachStatus(
     const {
   Array<int64_t> const* array;
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     MaybeMaterializeFullArray();
     array = array_;
   }
@@ -632,18 +632,18 @@ bool TileAssignment::UsesDevice(int64_t device) const {
 }
 
 const Array<int64_t>& TileAssignment::array() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   MaybeMaterializeFullArray();
   return *array_;
 }
 std::shared_ptr<const Array<int64_t>> TileAssignment::shared_array() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   MaybeMaterializeFullArray();
   return shared_array_;
 }
 
 std::shared_ptr<Array<int64_t>> TileAssignment::shared_array_clone() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   MaybeMaterializeFullArray();
   return std::make_shared<Array<int64_t>>(*array_);
 }

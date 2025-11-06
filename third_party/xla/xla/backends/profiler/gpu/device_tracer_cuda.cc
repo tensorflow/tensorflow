@@ -118,8 +118,8 @@ absl::Status GpuTracer::DoStart() {
   for (int i = 0; i < collector_options.num_gpus; ++i) {
     xplanes_.push_back(std::make_unique<tensorflow::profiler::XPlane>());
   }
-  cupti_tracer_->Enable(options_, cupti_collector_.get(), xplanes_)
-      .IgnoreError();
+  TF_RETURN_IF_ERROR(
+      cupti_tracer_->Enable(options_, cupti_collector_.get(), xplanes_));
   return absl::OkStatus();
 }
 

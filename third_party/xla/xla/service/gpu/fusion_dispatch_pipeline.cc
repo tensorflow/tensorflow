@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/transforms/fusion_block_level_rewriter.h"
 #include "xla/service/gpu/transforms/fusion_dynamic_memcpy_rewriter.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -28,10 +29,12 @@ namespace gpu {
 
 HloPassPipeline FusionDispatchPipeline(
     const se::DeviceDescription& device_description,
-    HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+    SymbolicExprContext* symbolic_expr_context) {
   HloPassPipeline pipeline("fusion-dispatch-pipeline");
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FusionBlockLevelRewriter>(device_description, shape_size_fn);
+  pipeline.AddPass<FusionBlockLevelRewriter>(device_description, shape_size_fn,
+                                             symbolic_expr_context);
   pipeline.AddPass<FusionDynamicMemcpyRewriter>();
   return pipeline;
 }

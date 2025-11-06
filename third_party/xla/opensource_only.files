@@ -25,6 +25,7 @@ tensorflow/third_party/py/python_repo.bzl:
 tensorflow/third_party/py/python_wheel.bzl:
 tensorflow/third_party/py/rules_pywrap/def_file_filter_tool.py:
 tensorflow/third_party/py/rules_pywrap/wrapped_py_init.cc:
+tensorflow/third_party/py/setup_py_nvidia_dependencies_util.py:
 tensorflow/third_party/py/unpack_wheel_and_unzip_archive_files.py:
 tensorflow/tools/def_file_filter/BUILD.tpl:
 tensorflow/tools/def_file_filter/BUILD:
@@ -78,8 +79,6 @@ xla/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_rocm.tpl:
 xla/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_sycl.tpl:
 xla/third_party/gpus/crosstool/sycl_cc_toolchain_config.bzl.tpl:
 xla/third_party/gpus/crosstool/windows/msvc_wrapper_for_nvcc.py.tpl:
-xla/third_party/gpus/cuda/BUILD.tpl:
-xla/third_party/gpus/cuda/BUILD.windows.tpl:
 xla/third_party/gpus/cuda/LICENSE:
 xla/third_party/gpus/cuda/build_defs.bzl.tpl:
 xla/third_party/gpus/cuda/cuda_config.h.tpl:
@@ -137,8 +136,6 @@ xla/third_party/nccl/build_defs.bzl.tpl:
 xla/third_party/nccl/generated_names.bzl.tpl:
 xla/third_party/nccl/hermetic/cuda_nccl.BUILD.tpl:
 xla/third_party/nccl/hermetic/nccl_configure.bzl:
-xla/third_party/nccl/nccl_configure.bzl:
-xla/third_party/nccl/system.BUILD.tpl:
 xla/third_party/nvshmem/hermetic/nvidia_nvshmem.BUILD.tpl:
 xla/third_party/nvshmem/hermetic/nvshmem_json_init_repository.bzl:
 xla/third_party/nvshmem/hermetic/nvshmem_redist_init_repository.bzl:

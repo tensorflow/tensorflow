@@ -112,6 +112,7 @@ class TFL_VariadicTensorOf<list<Type> allowedRuntimeTypes,
   Variadic<TensorOf<allowedOpTypes>>,
   TFL_RuntimeType<Variadic<TensorOf<allowedRuntimeTypes>>>;
 
+def TFL_I2 : I<2>;
 def TFL_I4 : I<4>;
 def TFL_Int32Or64 : SignlessIntOfWidths<[32, 64]>;
 
@@ -827,6 +828,8 @@ def TFL_CeilOp: TFL_Op<"ceil", [
   let arguments = (ins TFL_FpTensor:$x);
 
   let results = (outs TFL_FpTensor:$y);
+
+  let hasFolder = 1;
 
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
@@ -1587,8 +1590,8 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
   }];
 
   let arguments = (
-      ins TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, TFL_Quint8, TFL_Str]>:$lhs,
-      TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, TFL_Quint8, TFL_Str]>:$rhs);
+      ins TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, QI16, TFL_Quint8, TFL_Str]>:$lhs,
+      TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, QI16, TFL_Quint8, TFL_Str]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -1618,7 +1621,7 @@ def TFL_DivOp : TFL_Op<"div", [
     // TODO(fengliuai): NoQuantizableResult is only correct for int8
     // quantization. update to handle Uint8 quantization.
     BinaryOpSameElementTypeConstraint,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
+    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 6>,
     ResultsBroadcastableShape,
     Pure,
     QuantizableResult,
@@ -1727,8 +1730,8 @@ def TFL_EqualOp: TFL_Op<"equal", [
 
   let arguments = (
     ins
-    TFL_TensorOf<[I1, F32, I16, I32, I64, QI8, QUI8, UI8, TFL_Str]>:$x,
-    TFL_TensorOf<[I1, F32, I16, I32, I64, QI8, QUI8, UI8, TFL_Str]>:$y
+    TFL_TensorOf<[I1, F32, I16, I32, I64, QI8, QUI8, QI16, UI8, TFL_Str]>:$x,
+    TFL_TensorOf<[I1, F32, I16, I32, I64, QI8, QUI8, QI16, UI8, TFL_Str]>:$y
   );
 
   let results = (outs TFL_BoolTensor:$output);
@@ -2453,8 +2456,8 @@ def TFL_SliceOp : TFL_Op<"slice", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     Pure,
     SameOperandsAndResultsScale,
-    TFL_RuntimePredOpTrait<"input must have rank at most 5",
-      TFL_OperandHasRankAtMostPred<0, 5>>,
+    TFL_RuntimePredOpTrait<"input must have rank at most 6",
+      TFL_OperandHasRankAtMostPred<0, 6>>,
     TFL_OperandHasRankAtMost<1, 1>,
     TFL_OperandHasRankAtMost<2, 1>]> {
   let summary = "Return a slice from 'input'.";
@@ -4018,7 +4021,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     SameOperandsAndResultsScale,
-    TFL_RuntimePredOpTrait<"input (with new_axis) must have rank at most 5",
+    TFL_RuntimePredOpTrait<"input (with new_axis) must have rank at most 6",
       CPred<"TFL::VerifyStridedSliceOpInputRankConstraints(llvm::cast<StridedSliceOp>($_op))">>,
     TFL_OperandHasRank<1, 1>,
     TFL_OperandHasRank<2, 1>,
@@ -4070,13 +4073,10 @@ def TFL_CastOp : TFL_Op<"cast", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I4, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
+    TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I2, TFL_I4, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
   );
 
-  // TODO(b/393644251): Temporary support for INT4 TFL_CastOp. Runtime
-  // probably already supports INT4. We should remove the INT4 support here or
-  // make sure the runtime supports is there, as part of closing the bug.
-  let results = (outs TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I4, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
+  let results = (outs TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I2, TFL_I4, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
 
   // TFLite's cast op does not utilize CastOptions, instead derives types
   // from the TfLiteTensors.

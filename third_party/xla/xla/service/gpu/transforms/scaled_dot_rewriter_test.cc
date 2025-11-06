@@ -58,10 +58,10 @@ TEST_P(ScaledDotRewriterTestFixture, ScaledDot) {
 
         ENTRY main {
           lhs = $0[1024,512] parameter(0)
-          lhs_scale = $1[32,2] parameter(1)
-          rhs = $0[64,512] parameter(2)
+          rhs = $0[64,512] parameter(1)
+          lhs_scale = $1[32,2] parameter(2)
           rhs_scale = $1[64,2] parameter(3)
-          ROOT dot = f32[1024,64] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+          ROOT dot = f32[1024,64] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
             lhs_contracting_dims={1},
             rhs_contracting_dims={1}
         }

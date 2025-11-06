@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <variant>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
@@ -60,8 +61,7 @@ ENTRY swap_conv {
   TF_ASSERT_OK_AND_ASSIGN(se::GpuComputeCapability gpu_compute_capability,
                           GpuComputeCapability());
 
-  if (std::get_if<se::CudaComputeCapability>(&gpu_compute_capability)
-          ->IsAtLeastHopper()) {
+  if (gpu_compute_capability.cuda_compute_capability()->IsAtLeastHopper()) {
     MatchOptimizedHloWithShapes(hlo_text,
                                 R"(
 // CHECK: [[cudnn_conv_1_0:%[^ ]+]] = (f32[1,32,32,128]{3,2,1,0}, u8[{{.*}}]{0}) custom-call(f32[1,30,30,512]{3,2,1,0} {{[^ ]+}}, f32[128,3,3,512]{3,2,1,0} {{[^ ]+}}), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForward"
@@ -92,8 +92,7 @@ ENTRY swap_conv {
   TF_ASSERT_OK_AND_ASSIGN(se::GpuComputeCapability gpu_compute_capability,
                           GpuComputeCapability());
 
-  if (std::get_if<se::CudaComputeCapability>(&gpu_compute_capability)
-          ->IsAtLeastHopper()) {
+  if (gpu_compute_capability.cuda_compute_capability()->IsAtLeastHopper()) {
     MatchOptimizedHloWithShapes(hlo_text,
                                 R"(
 // CHECK: [[cudnn_conv_1_0:%[^ ]+]] = (f32[1,32,32,128]{3,2,1,0}, u8[{{[0-9]*}}]{0}) custom-call(f32[1,30,30,512]{3,2,1,0} {{[^ ]+}}, f32[128,3,3,512]{3,2,1,0} {{[^ ]+}}), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForward"

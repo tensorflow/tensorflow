@@ -1,0 +1,61 @@
+// RUN: hlo-opt %s --platform=gpu --split-input-file --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb | FileCheck  %s
+
+e {
+  a = s4[4,16]{1,0:E(4)} parameter(0)
+  b = s4[32,16]{1,0:E(4)} all-gather(a), dimensions={0}
+}
+
+// CHECK-NOT: convert
+// CHECK: s8[4,8]{1,0} bitcast
+// CHECK: s8[32,8]{1,0} all-gather-done
+// CHECK: s4[32,16]{1,0:E(4)} bitcast
+
+// -----
+
+e {
+  a = s4[4,2]{1,0:E(4)} parameter(0)
+  b = s4[4,4]{1,0:E(4)} all-gather(a), dimensions={1}
+}
+
+// CHECK-NOT: convert
+// CHECK:      s4[4,2]{1,0:E(4)} parameter
+// CHECK-NEXT: s4[2,4]{1,0:E(4)} transpose
+// CHECK-NEXT: s8[2,2]{0,1} bitcast
+// CHECK:      s8[2,4]{0,1} all-gather-done
+// CHECK-NEXT: s4[4,4]{1,0:E(4)} bitcast
+// CHECK-NEXT: s4[4,4]{1,0:E(4)} transpose
+
+// -----
+
+e {
+  a = f4e2m1fn[80,20]{1,0:E(4)} parameter(0)
+  b = f4e2m1fn[80,20]{1,0:E(4)} all-to-all(a), dimensions={0}
+}
+
+// CHECK-NOT: convert
+// CHECK: s8[80,10]{1,0} bitcast
+// CHECK: s8[80,10]{1,0} async-done
+// CHECK: f4e2m1fn[80,20]{1,0:E(4)} bitcast
+
+// -----
+
+e {
+  a = u4[5,14,6]{2,0,1:E(4)} parameter(0)
+  b = u4[5,14,6]{2,0,1:E(4)} collective-broadcast(a), replica_groups={}
+}
+
+// CHECK-NOT: convert
+// CHECK: s8[5,14,3]{2,0,1} async-done
+// CHECK: u4[5,14,6]{2,0,1:E(4)} bitcast
+
+// -----
+
+e {
+  a = u4[18]{0:E(4)} parameter(0)
+  b = u4[18]{0:E(4)} collective-permute(a), source_target_pairs={}
+}
+
+// CHECK-NOT: convert
+// CHECK: s8[9]{0} bitcast
+// CHECK: s8[9]{0} collective-permute-done
+// CHECK: u4[18]{0:E(4)} bitcast

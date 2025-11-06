@@ -138,9 +138,8 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
               return client.GetDataServiceMetadata(dataset_id, metadata);
             },
             /*description=*/
-            tensorflow::strings::StrCat(
-                "Get data service metadata for dataset ", dataset_id,
-                " from dispatcher at ", address),
+            absl::StrCat("Get data service metadata for dataset ", dataset_id,
+                         " from dispatcher at ", address),
             deadline_micros);
         Py_END_ALLOW_THREADS;
         tensorflow::MaybeRaiseFromStatus(status);

@@ -90,7 +90,7 @@ class QueueInterface : public ResourceBase {
   virtual const DataTypeVector& component_dtypes() const = 0;
 
   string DebugString() const override {
-    return strings::StrCat("A Queue of size: ", size());
+    return absl::StrCat("A Queue of size: ", size());
   }
 
  protected:

@@ -157,9 +157,6 @@ absl::StatusOr<se::DeviceMemory<uint8_t>> ScratchAllocator::AllocateBytes(
 absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
     const GpuConvConfig& config, se::Stream* stream, bool use_fallback,
     const se::NumericOptions& numeric_options) {
-  TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
-                      GetDNNConvKindFromCudnnConvKind(config.kind));
-
   TF_ASSIGN_OR_RETURN(se::dnn::DataType input_type,
                       GetDNNDataTypeFromPrimitiveType(config.input_type));
 
@@ -173,6 +170,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
   if (dnn == nullptr) {
     return absl::InvalidArgumentError("No DNN in stream executor.");
   }
+  se::dnn::ConvolutionKind kind = CudnnConvKindToProto(config.kind);
   switch (kind) {
     default:
       return Internal("Unknown ConvolutionKind %d", kind);
@@ -259,9 +257,6 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
                     const se::NumericOptions& numeric_options) {
   TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
 
-  TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
-                      GetDNNConvKindFromCudnnConvKind(config.kind));
-
   TF_ASSIGN_OR_RETURN(se::dnn::DataType dtype,
                       GetDNNDataTypeFromPrimitiveType(config.output_type));
 
@@ -275,8 +270,9 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
     return absl::InvalidArgumentError("No DNN in stream executor.");
   }
   TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
-      kind, dtype, dtype, stream, params.config->input_descriptor,
-      params.input_buf, params.config->filter_descriptor, params.filter_buf,
+      CudnnConvKindToProto(config.kind), dtype, dtype, stream,
+      params.config->input_descriptor, params.input_buf,
+      params.config->filter_descriptor, params.filter_buf,
       params.config->output_descriptor, params.output_buf,
       params.config->conv_desc,
       /* use_fallback = */ false, scratch_allocator, numeric_options,
@@ -409,7 +405,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
   // Putting the lock in here rather than in PickBestAlgorithmNoCache lets us
   // avoid ever doing duplicate work.  If we have a cache miss, only one thread
   // will run PickBestAlgorithmImpl for a particular device.
-  absl::MutexLock lock(&GetGpuMutex(stream_exec));
+  absl::MutexLock lock(GetGpuMutex(stream_exec));
 
   // Make sure any previous activity on this executor is done. We don't want
   // other work still running on the GPU to interfere with autotuning.

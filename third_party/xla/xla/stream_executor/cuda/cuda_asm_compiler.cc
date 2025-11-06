@@ -77,7 +77,7 @@ absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
   static auto& ptx_cache ABSL_GUARDED_BY(ptx_cache_mutex) =
       *new absl::flat_hash_map<PtxCacheKey, PtxCompilerResult>();
 
-  absl::MutexLock lock(&ptx_cache_mutex);
+  absl::MutexLock lock(ptx_cache_mutex);
   PtxCacheKey cache_key{cc, ptx, compilation_options.ToTuple()};
   auto it = ptx_cache.find(cache_key);
   if (it == ptx_cache.end()) {

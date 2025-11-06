@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Utils/IndexingUtils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -107,6 +108,10 @@ LogicalResult LayoutAttr::verifyLayout(
   if (getMinorToMajor().size() != shape.size()) {
     emit_error() << "layout has " << getMinorToMajor().size()
                  << " dimensions, but shape has " << shape.size();
+    return failure();
+  }
+  if (!isPermutationVector(getMinorToMajor().asArrayRef())) {
+    emit_error() << "layout is not a permutation";
     return failure();
   }
   return success();

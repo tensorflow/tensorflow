@@ -241,7 +241,6 @@ cuda_py_strict_test(
     shard_count = 50,
     tags = [
         "no_cuda_asan",  # b/179032113
-        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
     deps = [
         "//tensorflow/python/eager:context",
@@ -264,7 +263,6 @@ cuda_py_strict_test(
     name = "cwise_ops_binary_test",
     size = "medium",
     srcs = ["cwise_ops_binary_test.py"],
-    tags = ["cuda-only"], #TODO(rocm): weekly sync 240919
     shard_count = 50,
     # b/140155647: Error just outside of tolerance
     xla_enable_strict_auto_jit = False,
@@ -510,7 +508,6 @@ cuda_py_strict_test(
     shard_count = 20,
     tags = [
         "no_mac_arm64",
-        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
     xla_enable_strict_auto_jit = False,  # b/161856380
     deps = [

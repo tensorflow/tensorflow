@@ -126,6 +126,9 @@ class HloDataflowAnalysis {
   // Returns a vector of all HloValues stabily sorted by HloValue::Id.
   const std::vector<HloValue*>& values() const { return values_vector_; }
 
+  // Returns a new value Id to use.
+  HloValue::Id NewValueId() { return next_value_id_++; }
+
   // Returns the call graph used for computing the dataflow.
   const CallGraph& call_graph() const { return *call_graph_; }
 
@@ -318,6 +321,15 @@ class HloDataflowAnalysis {
 
   // An explicit graph holding phi values and edges.
   PhiGraph phi_graph_;
+
+  // Caches for CanShareOperandBufferWithUser.
+  mutable absl::flat_hash_map<
+      HloInstruction*,
+      absl::flat_hash_map<ShapeIndex, std::vector<HloOperandIndex>>>
+      cache_share_buffer_with_user_;
+  mutable absl::flat_hash_map<std::pair<HloInstruction*, ShapeIndex>,
+                              absl::flat_hash_set<HloUse>>
+      cache_share_buffer_with_operand_;
 };
 
 }  // namespace xla

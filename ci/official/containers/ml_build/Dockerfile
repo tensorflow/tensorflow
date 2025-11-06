@@ -37,15 +37,15 @@ RUN /setup.python.sh python3.14-nogil /builder.requirements.txt
 RUN /setup.python.sh python3.12 /builder.requirements.txt
 
 COPY setup.sources.cudnn.sh /setup.sources.cudnn.sh
-ARG INSTALL_CUDNN=false
-ARG CUDA_PACKAGES_FILE=cuda12.1_cudnn9.1.packages.txt
-COPY ${CUDA_PACKAGES_FILE} /cudnn.packages.txt
+ARG INSTALL_NVIDIA_PACKAGES=false
+ARG NVIDIA_PACKAGES_FILE=cuda12.1_cudnn9.1.packages.txt
+COPY ${NVIDIA_PACKAGES_FILE} /nvidia.packages.txt
 
-RUN if [ "${INSTALL_CUDNN}" = "true" ]; then \
-      echo "Installing cudnn"; \
-      /setup.sources.cudnn.sh && /setup.packages.sh /cudnn.packages.txt; \
+RUN if [ "${INSTALL_NVIDIA_PACKAGES}" = "true" ]; then \
+      echo "Installing Nvidia packages"; \
+      /setup.sources.cudnn.sh && /setup.packages.sh /nvidia.packages.txt; \
     else \
-      echo "cudnn is not installed"; \
+      echo "Nvidia packages are not installed"; \
     fi
 
 # Setup links for TensorFlow to compile.

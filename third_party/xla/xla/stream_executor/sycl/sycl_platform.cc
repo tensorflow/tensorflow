@@ -27,17 +27,17 @@ limitations under the License.
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 
 namespace stream_executor {
-namespace gpu {
+namespace sycl {
 
 SyclPlatform::SyclPlatform() : name_("SYCL") {}
 
 SyclPlatform::~SyclPlatform() {}
 
-Platform::Id SyclPlatform::id() const { return sycl::kSyclPlatformId; }
+Platform::Id SyclPlatform::id() const { return kSyclPlatformId; }
 
 int SyclPlatform::VisibleDeviceCount() const {
   // Initialized in a thread-safe manner the first time this is run.
@@ -64,11 +64,11 @@ SyclPlatform::GetUncachedExecutor(int ordinal) {
       "GetUncachedExecutor is unimplemented for SYCL platform.");
 }
 
-}  // namespace gpu
+}  // namespace sycl
 
 static void InitializeSyclPlatform() {
-  TF_CHECK_OK(
-      PlatformManager::RegisterPlatform(std::make_unique<gpu::SyclPlatform>()));
+  TF_CHECK_OK(PlatformManager::RegisterPlatform(
+      std::make_unique<sycl::SyclPlatform>()));
 }
 
 }  // namespace stream_executor

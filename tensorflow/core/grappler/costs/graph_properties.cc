@@ -689,7 +689,7 @@ class SymbolicShapeRefiner {
             vals.push_back(ic->DebugString(d));
           }
         }
-        return strings::StrCat("[", absl::StrJoin(vals, ","), "]");
+        return absl::StrCat("[", absl::StrJoin(vals, ","), "]");
       } else {
         return "?";
       }

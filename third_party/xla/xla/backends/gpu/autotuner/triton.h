@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
@@ -35,9 +36,11 @@ namespace gpu {
 
 class TritonBackend : public GpuCodegenBackend {
  public:
-  explicit TritonBackend(stream_executor::StreamExecutor* stream_executor,
-                         const DebugOptions* debug_options, Compiler* compiler)
-      : GpuCodegenBackend("Triton", stream_executor, debug_options, compiler) {}
+  explicit TritonBackend(const DebugOptions* debug_options, Compiler* compiler,
+                         const Compiler::TargetConfig* target_config,
+                         SymbolicExprContext* symbolic_expr_context)
+      : GpuCodegenBackend("Triton", debug_options, compiler, target_config),
+        symbolic_expr_context_(symbolic_expr_context) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
@@ -55,6 +58,7 @@ class TritonBackend : public GpuCodegenBackend {
       const Compiler::CompileOptions& options) override;
 
   bool IsSupported(const HloInstruction& instr);
+  SymbolicExprContext* symbolic_expr_context_;
 };
 
 }  // namespace gpu

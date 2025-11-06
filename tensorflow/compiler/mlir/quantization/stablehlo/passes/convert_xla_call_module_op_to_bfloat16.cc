@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "shardy/dialect/sdy/ir/register.h"  // from @shardy
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"  // IWYU pragma: keep
@@ -54,6 +55,7 @@ absl::StatusOr<std::string> ConvertSerializedStableHloModuleToBfloat16(
   }
 
   MLIRContext context;
+  mlir::sdy::loadAllRequiredDialects(&context);
   OwningOpRef<ModuleOp> stablehlo_module_op =
       mlir::stablehlo::deserializePortableArtifact(serialized_stablehlo_module,
                                                    &context);
@@ -77,7 +79,8 @@ absl::StatusOr<std::string> ConvertSerializedStableHloModuleToBfloat16(
   std::string bytecode;
   llvm::raw_string_ostream os(bytecode);
   if (failed(mlir::stablehlo::serializePortableArtifact(
-          stablehlo_module_op.get(), version.value().toString(), os))) {
+          stablehlo_module_op.get(), version.value().toString(), os,
+          /*allowOtherDialects=*/true))) {
     return absl::InternalError("Failed to serialize StableHLO module.");
   }
   return bytecode;

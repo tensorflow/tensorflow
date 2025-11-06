@@ -15,8 +15,15 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 
+#include <memory>
+#include <utility>
+
 #include "absl/status/status.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -27,11 +34,53 @@ absl::Status MemzeroThunk::ExecuteOnStream(const ExecuteParams& params) {
   return params.stream->MemZero(&dest_data, dest_data.size());
 }
 
+absl::StatusOr<std::unique_ptr<MemzeroThunk>> MemzeroThunk::FromProto(
+    ThunkInfo thunk_info, const MemzeroThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest,
+                      BufferAllocation::Slice::FromProto(
+                          thunk_proto.dest_buffer(), buffer_allocations));
+  return std::make_unique<MemzeroThunk>(std::move(thunk_info), dest);
+}
+
+absl::StatusOr<ThunkProto> MemzeroThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  MemzeroThunkProto* memzero_thunk_proto = proto.mutable_memzero_thunk();
+  TF_ASSIGN_OR_RETURN(*memzero_thunk_proto->mutable_dest_buffer(),
+                      dest_.ToProto());
+  return proto;
+}
+
 absl::Status Memset32BitValueThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   se::DeviceMemoryBase dest_data =
       params.buffer_allocations->GetDeviceAddress(dest_);
   return params.stream->Memset32(&dest_data, value_, dest_data.size());
+}
+
+absl::StatusOr<std::unique_ptr<Memset32BitValueThunk>>
+Memset32BitValueThunk::FromProto(
+    ThunkInfo thunk_info, const Memset32BitValueThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest,
+                      BufferAllocation::Slice::FromProto(
+                          thunk_proto.dest_buffer(), buffer_allocations));
+  return std::make_unique<Memset32BitValueThunk>(std::move(thunk_info),
+                                                 thunk_proto.value(), dest);
+}
+
+absl::StatusOr<ThunkProto> Memset32BitValueThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  Memset32BitValueThunkProto* memset_thunk_proto =
+      proto.mutable_memset32bit_value_thunk();
+  TF_ASSIGN_OR_RETURN(*memset_thunk_proto->mutable_dest_buffer(),
+                      dest_.ToProto());
+  memset_thunk_proto->set_value(value_);
+  return proto;
 }
 
 }  // namespace gpu

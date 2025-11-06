@@ -127,11 +127,11 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
       // We assume the buffer will be small, so we allocate it on the stack.
       // TODO(b/181654096): Replace AllocaOp with AllocOp.
       auto result = lb.create<memref::AllocaOp>(resultType, ranks[i]);
-      lb.create<scf::ForOp>(zero, ranks[i], one, std::nullopt,
-                            [&one, &result](OpBuilder &b, Location l, Value idx,
+      lb.create<scf::ForOp>(zero, ranks[i], one, mlir::ValueRange(),
+                            [&one, &result](OpBuilder& b, Location l, Value idx,
                                             ValueRange /*vr*/) {
                               b.create<memref::StoreOp>(l, one, result, idx);
-                              b.create<scf::YieldOp>(l, std::nullopt);
+                              b.create<scf::YieldOp>(l, mlir::ValueRange());
                             });
       resultShapes.push_back(result);
     }
@@ -300,7 +300,8 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
                                    b.create<memref::StoreOp>(l, outputSize,
                                                              resultShapes[i],
                                                              outputDimension);
-                                   b.create<scf::YieldOp>(l, std::nullopt);
+                                   b.create<scf::YieldOp>(l,
+                                                          mlir::ValueRange());
                                  });
                            }
                            b.create<scf::YieldOp>(l, newDimensionOffset);
@@ -380,12 +381,12 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
     Value zero = lb.create<arith::ConstantIndexOp>(0);
     Value one = lb.create<arith::ConstantIndexOp>(1);
     lb.create<scf::ForOp>(
-        zero, newRank, one, std::nullopt,
-        [&](OpBuilder &b, Location l, Value idx, ValueRange /*vr*/) {
+        zero, newRank, one, mlir::ValueRange(),
+        [&](OpBuilder& b, Location l, Value idx, ValueRange /*vr*/) {
           Value idxWithOffset = b.create<arith::AddIOp>(l, idx, leadingOnes);
           auto size = b.create<memref::LoadOp>(l, extentMemref, idxWithOffset);
           b.create<memref::StoreOp>(l, size, result, idx);
-          b.create<scf::YieldOp>(l, std::nullopt);
+          b.create<scf::YieldOp>(l, mlir::ValueRange());
         });
     return result;
   }

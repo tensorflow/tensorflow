@@ -93,8 +93,8 @@ TEST(CollectMetricsTest, Counter) {
   counter_without_labels->GetCell()->IncrementBy(7);
 
   for (const bool collect_metric_descriptors : {true, false}) {
-    SCOPED_TRACE(strings::StrCat("collect_metric_descriptors: ",
-                                 collect_metric_descriptors));
+    SCOPED_TRACE(absl::StrCat("collect_metric_descriptors: ",
+                              collect_metric_descriptors));
 
     auto* collection_registry = CollectionRegistry::Default();
     CollectionRegistry::CollectMetricsOptions options;
@@ -183,8 +183,8 @@ TEST(CollectMetricsTest, Gauge) {
   inteter_gauge_without_labels->GetCell()->Set(7);
 
   for (const bool collect_metric_descriptors : {true, false}) {
-    SCOPED_TRACE(strings::StrCat("collect_metric_descriptors: ",
-                                 collect_metric_descriptors));
+    SCOPED_TRACE(absl::StrCat("collect_metric_descriptors: ",
+                              collect_metric_descriptors));
 
     auto* collection_registry = CollectionRegistry::Default();
     CollectionRegistry::CollectMetricsOptions options;
@@ -289,8 +289,8 @@ TEST(CollectMetricsTest, Sampler) {
   without_labels.Add(0.5);
 
   for (const bool collect_metric_descriptors : {true, false}) {
-    SCOPED_TRACE(strings::StrCat("collect_metric_descriptors: ",
-                                 collect_metric_descriptors));
+    SCOPED_TRACE(absl::StrCat("collect_metric_descriptors: ",
+                              collect_metric_descriptors));
 
     auto* collection_registry = CollectionRegistry::Default();
     CollectionRegistry::CollectMetricsOptions options;
@@ -383,8 +383,8 @@ TEST(CollectMetricsTest, PercentileSampler) {
   sampler_without_labels->GetCell()->Add(0.5);
 
   for (const bool collect_metric_descriptors : {true, false}) {
-    SCOPED_TRACE(strings::StrCat("collect_metric_descriptors: ",
-                                 collect_metric_descriptors));
+    SCOPED_TRACE(absl::StrCat("collect_metric_descriptors: ",
+                              collect_metric_descriptors));
 
     auto* collection_registry = CollectionRegistry::Default();
     CollectionRegistry::CollectMetricsOptions options;

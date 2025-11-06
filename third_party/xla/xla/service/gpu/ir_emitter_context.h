@@ -1,3 +1,4 @@
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 /* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,18 +28,20 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/name_uniquer.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -66,14 +69,15 @@ class IrEmitterContext {
                    const ExecutionStreamAssignment* execution_stream_assignment,
                    std::string platform_name,
                    const se::DeviceDescription& gpu_device_info,
-                   mlir::MLIRContext* mlir_context, llvm::Module* llvm_module,
+                   SymbolicExprContext* symbolic_expr_context,
+                   llvm::Module* llvm_module,
                    llvm::Module* llvm_module_constants, bool emit_kernels)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         execution_stream_assignment_(execution_stream_assignment),
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
-        mlir_context_(mlir_context),
+        symbolic_expr_context_(symbolic_expr_context),
         llvm_module_(llvm_module),
         llvm_module_constants_(llvm_module_constants),
         emit_kernels_(emit_kernels) {}
@@ -97,16 +101,21 @@ class IrEmitterContext {
     return gpu_device_info_.gpu_compute_capability();
   }
   se::CudaComputeCapability cuda_compute_capability() const {
-    auto* cc =
-        std::get_if<se::CudaComputeCapability>(&gpu_compute_capability());
+    auto* cc = gpu_compute_capability().cuda_compute_capability();
     return cc != nullptr ? *cc : se::CudaComputeCapability();
   }
   se::RocmComputeCapability rocm_compute_capability() const {
-    auto* cc =
-        std::get_if<se::RocmComputeCapability>(&gpu_compute_capability());
+    auto* cc = gpu_compute_capability().rocm_compute_capability();
     return cc != nullptr ? *cc : se::RocmComputeCapability();
   }
-  mlir::MLIRContext* mlir_context() { return mlir_context_; }
+
+  // TODO: b/451959933 - Add nullability annotation to be explicit about this
+  // pointer: go/totw/230. Alternatively, return by reference instead of pointer
+  // (and require reference in ctor) to signal that it is always present.
+  SymbolicExprContext* symbolic_expr_context() {
+    return symbolic_expr_context_;
+  }
+
   llvm::Module* llvm_module() { return llvm_module_; }
   // A separate module can optionally be used to emit constants.
   llvm::Module* llvm_module_constants() {
@@ -114,6 +123,16 @@ class IrEmitterContext {
                                                : llvm_module_constants_;
   }
   NameUniquer* name_uniquer() { return &name_uniquer_; }
+
+  absl::StatusOr<InlinedModule*> get_inlined_module() {
+    if (inlined_module_ == nullptr) {
+      TF_ASSIGN_OR_RETURN(InlinedModule inlined_module,
+                          GetInlinedModule(hlo_module_));
+      inlined_module_ =
+          std::make_unique<InlinedModule>(std::move(inlined_module));
+    }
+    return inlined_module_.get();
+  }
 
   std::vector<GpuExecutable::ConstantInfo>& constants() { return constants_; }
 
@@ -139,24 +158,30 @@ class IrEmitterContext {
 
   bool emit_kernels() const { return emit_kernels_; }
 
+  ThunkId GetNextThunkId() { return thunk_id_generator_.GetNextThunkId(); }
+
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
   const ExecutionStreamAssignment* execution_stream_assignment_;
   std::string platform_name_;
   const se::DeviceDescription& gpu_device_info_;
-  mlir::MLIRContext* mlir_context_;
+  SymbolicExprContext* symbolic_expr_context_;
   llvm::Module* llvm_module_;
   llvm::Module* llvm_module_constants_;
   NameUniquer name_uniquer_;
   std::vector<GpuExecutable::ConstantInfo> constants_;
   KernelReuseCache kernel_cache_;
+  std::unique_ptr<InlinedModule> inlined_module_;
 
   CollectivesAsyncEvents collectives_async_events_;
   InstructionToHostExecuteAsyncEvents instruction_to_host_execute_async_events_;
 
   // We should not emit kernels when loading thunks from a compilation result.
   const bool emit_kernels_;
+
+  // Generates unique IDs for thunk creation.
+  ThunkIdGenerator thunk_id_generator_;
 };
 
 }  // namespace gpu

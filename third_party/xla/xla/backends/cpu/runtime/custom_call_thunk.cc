@@ -397,10 +397,10 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(
 CustomCallThunk::BufferUses CustomCallThunk::buffer_uses() const {
   BufferUses buffer_uses;
   for (const auto& argument : op_buffers_.arguments_buffers) {
-    buffer_uses.emplace_back(argument, BufferUse::kRead);
+    buffer_uses.emplace_back(BufferUse::Read(argument));
   }
   for (const auto& result : op_buffers_.results_buffers) {
-    buffer_uses.emplace_back(result, BufferUse::kWrite);
+    buffer_uses.emplace_back(BufferUse::Write(result));
   }
   return buffer_uses;
 }

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
@@ -28,11 +29,16 @@ namespace xla::cpu {
 
 inline constexpr absl::string_view kOneDnnFusionKind = "__onednn_fusion";
 
+bool IsOneDnnSupportedDType(PrimitiveType dtype);
+bool IsOneDnnSupportedDType(PrimitiveType dtype,
+                            const TargetMachineFeatures* cpu_features);
+
 // Returns true if the dot operation is supported by oneDNN. Returns an error
 // if the dot operation shape is invalid.
 absl::StatusOr<bool> IsOneDnnDotSupported(
     const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
-    const Shape& rhs_shape, const Shape& out_shape);
+    const Shape& rhs_shape, const Shape& out_shape,
+    const TargetMachineFeatures* cpu_features = nullptr);
 
 }  // namespace xla::cpu
 

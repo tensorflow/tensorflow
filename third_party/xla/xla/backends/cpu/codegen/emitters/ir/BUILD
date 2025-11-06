@@ -68,7 +68,10 @@ gentbl_cc_library(
     },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "xla_cpu_ops.td",
-    deps = [":xla_cpu_td_files"],
+    deps = [
+        ":xla_cpu_td_files",
+        "//xla/codegen/emitters/ir:xla_td_files",
+    ],
 )
 
 cc_library(

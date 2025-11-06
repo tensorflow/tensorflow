@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -63,6 +63,23 @@ void TilingSpace::AppendRTVar(const HloInstruction* hlo, int64_t operand_id,
       rt_var,
   });
   hlo_to_rt_var_[std::make_pair(hlo, operand_id)] = &rt_vars_.back();
+}
+
+void TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
+  switch (hlo.opcode()) {
+    case HloOpcode::kDot:
+      ProcessDot(hlo);
+      break;
+    case HloOpcode::kReduce:
+      ProcessReduce(hlo);
+      break;
+    case HloOpcode::kDynamicSlice:
+      ProcessDynamicSlice(hlo);
+      break;
+    default:
+      // TODO(goncharov): should have a explicit list of supported instructions?
+      break;
+  }
 }
 
 // Add dot contraction dimensions in the order of contracting dimensions.
@@ -143,7 +160,8 @@ const TilingSpace::DimensionInfo& TilingSpace::GetDimensionInfo(
     const HloInstruction& hlo, int64_t dim_position) const {
   auto it = hlo_to_dimension_.find(std::make_pair(&hlo, dim_position));
   CHECK(it != hlo_to_dimension_.end())
-      << "Dimension not found: " << hlo.ToString() << " " << dim_position;
+      << "Dimension not found for " << hlo.ToString() << " dimension "
+      << dim_position;
   return *it->second;
 }
 
@@ -151,7 +169,8 @@ const TilingSpace::RTVarInfo& TilingSpace::GetRTVarInfo(
     const HloInstruction& hlo, int64_t operand_id) const {
   auto it = hlo_to_rt_var_.find(std::make_pair(&hlo, operand_id));
   CHECK(it != hlo_to_rt_var_.end())
-      << "Runtime variable not found: " << hlo.ToString();
+      << "Runtime variable not found for " << hlo.ToString() << " operand "
+      << operand_id;
   return *it->second;
 }
 
@@ -163,8 +182,10 @@ std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
   for (const HloInstructionAdaptor& root : roots) {
     const Shape& root_shape = root.shape();
     if (!root.shape().IsArray() && root.opcode() != HloOpcode::kReduce) {
-      LOG(FATAL) << "Unsupported root shape: " << root_shape.ToString();
+      LOG(FATAL) << "Unsupported root shape " << root_shape.ToString()
+                 << " for root " << root.instruction().ToString();
     }
+    // TODO(goncharov): why do we only care about the first shape of a tuple?
     absl::Span<const int64_t> dims =
         GetFirstShape(&root.instruction()).dimensions();
     llvm::SmallVector<DimTile> dim_tiles;
@@ -186,19 +207,7 @@ std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
   // Iterator in reversed post-order (use-before-def).
   auto post_order = fusion.MakeInstructionPostOrder();
   for (auto it = post_order.rbegin(); it != post_order.rend(); ++it) {
-    switch (it->instruction().opcode()) {
-      case HloOpcode::kDot:
-        tiling_space->ProcessDot(it->instruction());
-        break;
-      case HloOpcode::kReduce:
-        tiling_space->ProcessReduce(it->instruction());
-        break;
-      case HloOpcode::kDynamicSlice:
-        tiling_space->ProcessDynamicSlice(it->instruction());
-        break;
-      default:
-        break;
-    }
+    tiling_space->ProcessInstruction(it->instruction());
   }
   return tiling_space;
 }

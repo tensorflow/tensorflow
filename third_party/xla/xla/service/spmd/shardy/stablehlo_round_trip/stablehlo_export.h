@@ -33,11 +33,13 @@ struct StablehloExportPipelineOptions
         "calls - the HLO sharding constraint op. Else export "
         "them to MHLO copy ops. By default, export to MHLO copy ops."),
     llvm::cl::init(false)};
-  Option<bool> keepShardMapBodyAsFunc{
-      *this, "keep-shard-map-body-as-func",
+  Option<bool> dedupFunctionsFully{
+      *this, "dedup-functions-fully",
       llvm::cl::desc(
-          "Whether to keep the body of the shard map as a function. Else the "
-          "body will be inlined. By default, inline the body."),
+          "Whether to deduplicate functions fully, regardless of the input and "
+          "output shardings of functions, and it keeps one callee function for "
+          "each caller function. The default is false, meaning it will "
+          "deduplicate only if the input and output shardings are the same."),
       llvm::cl::init(false)};
 };
 

@@ -51,3 +51,18 @@ message GemmConfigProto {
   bool grad_y = 12;
   xla.BlasComputationTypeProto compute_type = 13;
 }
+
+enum BlasLtEpilogueProto {
+  EPILOGUE_DEFAULT = 0;
+  EPILOGUE_RELU = 1;
+  EPILOGUE_BIAS = 2;
+  EPILOGUE_BIAS_THEN_RELU = 3;
+  EPILOGUE_GELU = 4;
+  EPILOGUE_SILU = 5;
+  EPILOGUE_SILU_WITH_AUX = 6;
+  EPILOGUE_GELU_WITH_AUX = 7;
+  EPILOGUE_BIAS_THEN_GELU = 8;
+  EPILOGUE_BIAS_THEN_SILU = 9;
+  EPILOGUE_BIAS_THEN_GELU_WITH_AUX = 10;
+  EPILOGUE_BIAS_THEN_SILU_WITH_AUX = 11;
+}

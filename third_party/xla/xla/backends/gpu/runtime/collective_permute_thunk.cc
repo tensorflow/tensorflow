@@ -71,7 +71,8 @@ absl::StatusOr<const int64_t> GetCurrentId(
       const DeviceAssignment::LogicalID current_logical_id,
       collective_params->device_assn->LogicalIdForDevice(global_device_id));
   const int64_t current_id =
-      config.config.group_mode == CollectiveOpGroupMode::kCrossReplica
+      config.config.group_mode ==
+              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
           ? current_logical_id.replica_id
           : current_logical_id.computation_id;
   return current_id;
@@ -129,7 +130,8 @@ CollectivePermuteStartThunk::CollectivePermuteStartThunk(
   // With a collective permute, all execution instances together form one
   // replica group.
   const int64_t num_participants =
-      config.group_mode == CollectiveOpGroupMode::kCrossReplica
+      config.group_mode ==
+              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
           ? replica_count
           : partition_count;
   config.replica_groups.emplace_back();
@@ -190,7 +192,7 @@ absl::Status CollectivePermuteStartThunk::Initialize(
     TF_ASSIGN_OR_RETURN(const int64_t current_id,
                         GetCurrentId(params.collective_params, config_));
     {
-      absl::MutexLock lock(&barrier_mutex_);
+      absl::MutexLock lock(barrier_mutex_);
       if (receiver_barrier_events_.find(current_id) ==
           receiver_barrier_events_.end()) {
         TF_ASSIGN_OR_RETURN(auto receiver_event,
@@ -274,7 +276,7 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
     // Receiving side will record an event and the sender will wait for the
     // event before proceeding.
     if (source_id) {
-      absl::MutexLock lock(&barrier_mutex_);
+      absl::MutexLock lock(barrier_mutex_);
       auto receiver_event = receiver_barrier_events_.find(current_id);
       TF_RETURN_IF_ERROR(stream.RecordEvent(receiver_event->second.get()));
     }
@@ -283,7 +285,7 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
                         comm_handle.comm->NumRanks());
 
     auto rendezvous_name = absl::StrFormat(
-        "rendezvous before calling collective-permute; run_id=%d; op id:%d; "
+        "rendezvous before calling collective-permute; run_id=%ld; op id:%d; "
         "num_local_participants:%d",
         params.collective_params->run_id.ToInt(), config_.config.op_id,
         num_local_participants);
@@ -298,7 +300,7 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
 
     // For sending side, wait for the recorded event from the receiving side.
     if (target_id) {
-      absl::MutexLock lock(&barrier_mutex_);
+      absl::MutexLock lock(barrier_mutex_);
       auto receiver_event = receiver_barrier_events_.find(*target_id);
       TF_RETURN_IF_ERROR(stream.WaitFor(receiver_event->second.get()));
     }
@@ -316,7 +318,7 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
     // wait for the sender's event before proceeding to ensure
     // data has been copied.
     if (target_id) {
-      absl::MutexLock lock(&barrier_mutex_);
+      absl::MutexLock lock(barrier_mutex_);
       auto sender_event = sender_barrier_events_.find(current_id);
       TF_RETURN_IF_ERROR(stream.RecordEvent(sender_event->second.get()));
     }
@@ -325,7 +327,7 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
                         comm_handle.comm->NumRanks());
 
     auto rendezvous_name = absl::StrFormat(
-        "rendezvous after calling collective-permute; run_id=%d; op id:%d; "
+        "rendezvous after calling collective-permute; run_id=%ld; op id:%d; "
         "num_local_participants:%d",
         params.collective_params->run_id.ToInt(), config_.config.op_id,
         num_local_participants);
@@ -340,7 +342,7 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
 
     // For receiving side, wait for the recorded event from the sending side.
     if (source_id) {
-      absl::MutexLock lock(&barrier_mutex_);
+      absl::MutexLock lock(barrier_mutex_);
       auto sender_event = sender_barrier_events_.find(*source_id);
       TF_RETURN_IF_ERROR(stream.WaitFor(sender_event->second.get()));
     }
@@ -380,10 +382,8 @@ absl::Status RunCollectivePermute(
   //
 
   int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "Performing collective permute from device ordinal: "
-          << device_ordinal << " current_id " << current_id;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
-                                          use_symmetric_buffer));
+  VLOG(3) << "[" << device_ordinal
+          << "] Performing collective permute, current_id " << current_id;
 
   std::optional<int64_t> source_id = source_target.source;
   std::optional<int64_t> target_id = source_target.target;
@@ -415,17 +415,16 @@ absl::Status RunCollectivePermute(
         const auto src_addr = src_addrs.at(idx);
         const auto dest_addr = dest_addrs.at(idx);
         const auto buffer = buffers.at(idx);
-        auto event = comm->CollectivePermute(
+        auto future = comm->CollectivePermute(
             src_addr, dest_addr, buffer.element_type, buffer.element_count,
             source_rank, target_ranks, GpuCollectives::On(stream));
-        tsl::BlockUntilReady(event);
-        if (event.IsError()) {
-          return event.GetError();
-        }
+        TF_RETURN_IF_ERROR(future.Await());
       }
     } else {
+      TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
+                                              use_symmetric_buffer));
       auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
-      tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
+      auto future = gpu_comm->GroupExecute(
           [source_rank, &buffers, &src_addrs, &dest_addrs, &target_ranks,
            &stream](GpuCommunicator* comm) -> absl::Status {
             for (uint64_t idx = 0; idx < buffers.size(); ++idx) {
@@ -439,10 +438,7 @@ absl::Status RunCollectivePermute(
             }
             return absl::OkStatus();
           });
-      tsl::BlockUntilReady(event);
-      if (event.IsError()) {
-        return event.GetError();
-      }
+      TF_RETURN_IF_ERROR(future.Await());
     }
   }
 

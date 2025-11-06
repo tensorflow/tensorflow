@@ -69,10 +69,12 @@ cc_library(
     hdrs = ["communicator.h"],
     deps = [
         ":rank_id",
+        "//xla:future",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/service:collective_ops_utils",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:platform",
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",

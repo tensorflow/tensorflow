@@ -427,9 +427,8 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
       [&]() { return GetTracingMetadata(args, exec_ctx, kernel_runner); });
 
   if (fallback_request_state.log_device_placement() || VLOG_IS_ON(1)) {
-    string msg =
-        strings::StrCat("Executing op ", frame.op_name().GetValue().str(),
-                        " in device ", frame.device().GetValue().str());
+    string msg = absl::StrCat("Executing op ", frame.op_name().GetValue().str(),
+                              " in device ", frame.device().GetValue().str());
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
     }

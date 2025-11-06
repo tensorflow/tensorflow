@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
@@ -46,6 +45,7 @@ limitations under the License.
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace Eigen {
@@ -147,7 +147,12 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
       const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
       ifrt::ArrayCopySemantics semantics) override;
 
-  ifrt::Future<> GetReadyFuture(
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArraySpec> specs,
+      xla::ifrt::ArrayCopySemantics semantics) override;
+
+  tsl::Future<> GetReadyFuture(
       absl::Span<const ifrt::ValueRef> values) override;
 
   absl::StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(

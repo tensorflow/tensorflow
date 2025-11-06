@@ -43,11 +43,11 @@ TEST(UtilsTest, TestGetSmName) {
                 10, 0, FeatureExtension::kForwardCompatibleFeatures}),
             "sm_100f");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
-                10, 1, FeatureExtension::kAcceleratedFeatures}),
-            "sm_101a");
-  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
                 10, 3, FeatureExtension::kAcceleratedFeatures}),
             "sm_103a");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
+                11, 0, FeatureExtension::kAcceleratedFeatures}),
+            "sm_110a");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
                 12, 0, FeatureExtension::kAcceleratedFeatures}),
             "sm_120a");

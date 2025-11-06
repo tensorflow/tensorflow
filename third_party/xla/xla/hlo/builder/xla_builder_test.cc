@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
@@ -57,6 +59,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tuple_tree.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
@@ -70,6 +73,7 @@ namespace m = ::xla::match;
 
 using ::testing::_;
 using ::testing::HasSubstr;
+using ::testing::Property;
 using ::testing::Test;
 using ::tsl::testing::StatusIs;
 
@@ -4029,6 +4033,84 @@ TEST(XlaBuilderTest, InstructionNameFromMetadataWithDot) {
   HloInstruction* constant = module->entry_computation()->root_instruction();
   EXPECT_EQ(constant->name().substr(0, constant->name().find_first_of('.')),
             "inputs_x");
+}
+
+TEST(XlaBuilderTest, BuildProtoWritesFullRootId) {
+  XlaBuilder b_root(TestName());
+
+  auto b_call = b_root.CreateSubBuilder("the_only_to_apply");
+  auto p0 = Parameter(b_call.get(), 0, ShapeUtil::MakeShape(F32, {}), "p0");
+  auto p1 = Parameter(b_call.get(), 1, ShapeUtil::MakeShape(F32, {}), "p1");
+  Add(p0, p1);
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputationId call, b_call->BuildSubComputation());
+
+  std::unique_ptr<XlaBuilder> b = b_root.CreateSubBuilder("main");
+
+  auto x = Parameter(b.get(), 0, ShapeUtil::MakeShape(F32, {}), "x");
+  auto y = Parameter(b.get(), 1, ShapeUtil::MakeShape(F32, {}), "y");
+  auto one = ConstantR0<float>(b.get(), 1);
+  auto two = ConstantR0<float>(b.get(), 2);
+  Add(Call(b.get(), call, {x, y}), Call(b.get(), call, {one, two}));
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputationId main, b->BuildSubComputation());
+
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, b_root.Build(main));
+  const HloModuleProto& proto = computation.proto();
+
+  EXPECT_EQ(proto.computations_size(), 2);
+  // Root ids should be full unique ids and match the unique id of an
+  // instruction.
+  for (const HloComputationProto& computation_proto : proto.computations()) {
+    EXPECT_THAT(computation_proto.instructions(),
+                Contains(Property(
+                    &HloInstructionProto::id,
+                    HloInstruction::CalculateUniqueId(
+                        computation_proto.id(), computation_proto.root_id()))));
+  }
+}
+
+TEST(XlaBuilderTest, OriginalValue) {
+  XlaBuilder b(TestName());
+  auto create_parameter_with_original_value =
+      [&b](int64_t index, const Shape& shape, const std::string& param_name,
+           const xla::OriginalArray& original_array) {
+        auto original_value = std::make_shared<xla::OriginalValue>(shape);
+        original_value->mutable_tree()->begin()->second = original_array;
+        b.SetOriginalValue(original_value->ToProto());
+        return Parameter(&b, index, shape, param_name);
+      };
+
+  TF_ASSERT_OK_AND_ASSIGN(const Shape shape0, ParseShape("f32[2, 4]"));
+  auto original_array0 = xla::OriginalArray{"x", {}};
+  auto param0 = create_parameter_with_original_value(0, shape0, "param0",
+                                                     original_array0);
+
+  TF_ASSERT_OK_AND_ASSIGN(const Shape shape1, ParseShape("f32[2, 4]"));
+  auto original_array1 = xla::OriginalArray{"y", {}};
+  auto param1 = create_parameter_with_original_value(1, shape1, "param1",
+                                                     original_array1);
+
+  GetTupleElement(Tuple(&b, {param0, param1}), 1);
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<xla::HloModule> module,
+                          BuildHloModule(b));
+
+  HloInstruction* gte = GetRoot(*module);
+  EXPECT_THAT(gte->opcode(), HloOpcode::kGetTupleElement);
+  xla::OriginalValue expected_gte_original_value(
+      TupleTree<std::optional<xla::OriginalArray>>::Node::Leaf(
+          original_array1));
+  std::shared_ptr<xla::OriginalValue> gte_original_value =
+      gte->original_value();
+  EXPECT_NE(gte_original_value, nullptr);
+  EXPECT_THAT(*gte_original_value, expected_gte_original_value);
+
+  const HloInstruction* tuple = gte->operand(0);
+  EXPECT_THAT(tuple->opcode(), HloOpcode::kTuple);
+  std::shared_ptr<xla::OriginalValue> tuple_original_value =
+      tuple->original_value();
+  xla::OriginalValue expected_tuple_original_value(
+      {original_array0, original_array1});
+  EXPECT_NE(tuple_original_value, nullptr);
+  EXPECT_THAT(*tuple_original_value, expected_tuple_original_value);
 }
 
 }  // namespace

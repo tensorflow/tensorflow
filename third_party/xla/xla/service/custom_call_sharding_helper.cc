@@ -65,7 +65,7 @@ ABSL_CONST_INIT absl::Mutex partitioners_mutex(absl::kConstInit);
 
 const CustomCallPartitioner* GetCustomCallPartitioner(
     const std::string& custom_call_target) {
-  absl::MutexLock partitioners_lock(&partitioners_mutex);
+  absl::MutexLock partitioners_lock(partitioners_mutex);
   auto& partitioners = GetPartitioners();
   auto it = partitioners.find(custom_call_target);
   if (it == partitioners.end()) {
@@ -77,15 +77,15 @@ const CustomCallPartitioner* GetCustomCallPartitioner(
 void RegisterCustomCallPartitioner(
     absl::string_view custom_call_target,
     std::unique_ptr<CustomCallPartitioner> partitioner) {
-  absl::MutexLock partitioners_lock(&partitioners_mutex);
+  absl::MutexLock partitioners_lock(partitioners_mutex);
   auto& partitioners = GetPartitioners();
   // Warn if something has already been registered. We prefer to keep the
   // existing object as other threads are more likely to observe it.
   auto [it, did_insert] =
       partitioners.try_emplace(custom_call_target, std::move(partitioner));
   if (!did_insert) {
-    LOG(ERROR) << "Failed to register custom call partitioner for "
-               << custom_call_target;
+    VLOG(1) << "Failed to register custom call partitioner for "
+            << custom_call_target;
   }
 }
 

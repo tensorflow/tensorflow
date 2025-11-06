@@ -70,7 +70,8 @@ ENTRY entry {
   multiply.52 = f32[32,128]{0,1} multiply(dot.2, broadcast.12), sharding={devices=[2,1]0,1}
   add.93 = f32[32,128]{1,0} add(Arg_1.2, multiply.52), sharding={devices=[2,1]0,1}
   reduce.43 = f32[] reduce(maximum.33, constant.5), dimensions={0,1}, to_apply=region_0.39, sharding={replicated}
-  ROOT tuple.109 = (f32[32,128]{1,0}, f32[]) tuple(add.93, reduce.43), sharding={{devices=[2,1]0,1}, {replicated}}
+  all-gather = f32[64, 128]{1,0} all-gather(Arg_1.2), channel_id=1, replica_groups={{0,1}}, dimensions={0}, use_global_device_ids=true
+  ROOT tuple.109 = (f32[32,128]{1,0}, f32[], f32[64,128]{1,0}) tuple(add.93, reduce.43, all-gather), sharding={{devices=[2,1]0,1}, {replicated}}
 }
 )";
 
@@ -81,6 +82,7 @@ ENTRY entry {
       HloDimensionAnalysis::Run(*module));
   EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "copy"));
   EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "Arg_1.2"));
+  EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "all-gather"));
 }
 
 TEST_F(HloDimensionAnalysisTest, RepeatWhile) {

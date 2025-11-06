@@ -22,6 +22,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
 #include "absl/synchronization/notification.h"
+#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -68,12 +72,12 @@ se::CudaComputeCapability GetComputeCapability() {
 }
 
 bool IsRocm() {
-  return std::holds_alternative<se::RocmComputeCapability>(
-      se::GPUMachineManager()
-          ->ExecutorForDevice(0)
-          .value()
-          ->GetDeviceDescription()
-          .gpu_compute_capability());
+  return se::GPUMachineManager()
+      ->ExecutorForDevice(0)
+      .value()
+      ->GetDeviceDescription()
+      .gpu_compute_capability()
+      .IsRocm();
 }
 
 void ExpectErrorMessageSubstr(const Status& s, StringPiece substr) {

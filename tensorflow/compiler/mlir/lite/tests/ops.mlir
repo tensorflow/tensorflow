@@ -1209,6 +1209,40 @@ func.func @testEqualInt16(tensor<? x i16>, tensor<? x i16>) -> tensor<? x i1> {
   func.return %0#0 : tensor<? x i1>
 }
 
+// CHECK-LABEL: testEqualQuant
+func.func @testEqualQuant(%arg0: tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>, %arg1: tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>) -> tensor<1x80x1xi1> {
+  %0 = "tfl.equal"(%arg0, %arg1) : (tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>, tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>) -> tensor<1x80x1xi1>
+  func.return %0 : tensor<1x80x1xi1>
+}
+
+// CHECK-LABEL: testEqualQuantWithQI16
+func.func @testEqualQuantWithQI16(%arg0: tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>, %arg1: tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>) -> tensor<1x80x1xi1> {
+  %0 = "tfl.equal"(%arg0, %arg1) : (tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>, tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>) -> tensor<1x80x1xi1>
+  func.return %0 : tensor<1x80x1xi1>
+}
+
+// -----
+
+// CHECK-LABEL: testNotEqual
+func.func @testNotEqual(tensor<? x f32>, tensor<? x f32>) -> tensor<? x i1> {
+^bb0(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>):
+  // CHECK: tfl.not_equal(%arg0, %arg1)
+  %0 = "tfl.not_equal"(%arg0, %arg1) : (tensor<? x f32>, tensor<? x f32>) -> tensor<? x i1>
+  func.return %0#0 : tensor<? x i1>
+}
+
+// CHECK-LABEL: testNotEqualQuant
+func.func @testNotEqualQuant(%arg0: tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>, %arg1: tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>) -> tensor<1x80x1xi1> {
+  %0 = "tfl.not_equal"(%arg0, %arg1) : (tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>, tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>) -> tensor<1x80x1xi1>
+  func.return %0 : tensor<1x80x1xi1>
+}
+
+// CHECK-LABEL: testNotEqualQuantWithQI16
+func.func @testNotEqualQuantWithQI16(%arg0: tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>, %arg1: tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>) -> tensor<1x80x1xi1> {
+  %0 = "tfl.not_equal"(%arg0, %arg1) : (tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>, tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>) -> tensor<1x80x1xi1>
+  func.return %0 : tensor<1x80x1xi1>
+}
+
 // -----
 
 // CHECK-LABEL: testPad
@@ -1771,10 +1805,20 @@ func.func @testStridedSliceWithInvalidOutputType(%arg0: tensor<12x2x2x5xf32>, %a
 
 // -----
 
-func.func @testStridedSliceWithInvalidInputRank(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x1x1x2x2x5xf32> {
-  // expected-error @+1 {{op failed to verify that input (with new_axis) must have rank at most 5}}
-  %0 = "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 6 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x1x1x2x2x5xf32>
-  func.return %0 : tensor<1x1x1x2x2x5xf32>
+// CHECK-LABEL: testStridedSliceWith6DInputRank
+func.func @testStridedSliceWith6DInputRank(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x1x12x2x2x5xf32> {
+  // CHECK: "tfl.strided_slice"
+  %0 = "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 3 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x1x12x2x2x5xf32>
+  func.return %0 : tensor<1x1x12x2x2x5xf32>
+}
+
+// -----
+
+// test invalid strided slice input rank (exceeds 6)
+func.func @testStridedSliceWithInvalidInputRank(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x1x1x12x2x2x5xf32> {
+  // expected-error @+1 {{op failed to verify that input (with new_axis) must have rank at most 6}}
+  %0 = "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 7 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x1x1x12x2x2x5xf32>
+  func.return %0 : tensor<1x1x1x12x2x2x5xf32>
 }
 
 // -----

@@ -107,7 +107,7 @@ XnnFusionThunk::XnnExecutable::Invoke(
     external_values.push_back(value);
   }
 
-  DCHECK_NE(runtime, nullptr) << "XNNPACK runtime is not initialized";
+  DCHECK_NE(runtime.get(), nullptr) << "XNNPACK runtime is not initialized";
   XNN_RETURN_IF_ERROR(xnn_setup_runtime_v2(
       runtime.get(), external_values.size(), external_values.data()));
 
@@ -149,10 +149,8 @@ XnnFusionThunk::CreateXnnExecutable(
         capturing_builder_(arguments_, results_, arguments_buffers));
   }
 
-  uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
-#ifdef NDEBUG
-  flags |= XNN_FLAG_SLINKY_NO_CHECKS;
-#endif
+    uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS |
+                   XNN_FLAG_DONT_SPIN_WORKERS;
 
   TF_ASSIGN_OR_RETURN(
       executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {
@@ -194,10 +192,8 @@ absl::Status XnnFusionThunk::UpdateXnnExecutable(
       executable.subgraph,
       capturing_builder_(arguments_, results_, arguments_buffers));
 
-  uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
-#ifdef NDEBUG
-  flags |= XNN_FLAG_SLINKY_NO_CHECKS;
-#endif
+  uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS |
+                   XNN_FLAG_DONT_SPIN_WORKERS;
 
   TF_ASSIGN_OR_RETURN(
       executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {

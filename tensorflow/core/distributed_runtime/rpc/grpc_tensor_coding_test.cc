@@ -75,7 +75,7 @@ class GrpcTensorCodingTest : public ::testing::Test {
         test::FillValues<tstring>(&a, v);
         Validate(a, (elems == 0));
       }
-      v.push_back(strings::StrCat("This is string ", elems));
+      v.push_back(absl::StrCat("This is string ", elems));
     }
   }
 };

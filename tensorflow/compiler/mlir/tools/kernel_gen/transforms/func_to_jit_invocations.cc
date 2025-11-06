@@ -67,7 +67,7 @@ LogicalResult RewriteToFullJit(func::FuncOp op) {
   // Create the JIT compile op.
   auto jit_compile_op = rewriter.create<tf_framework::JITCompileOp>(
       loc, rewriter.getType<tf_framework::JITCallableType>(),
-      /*ctx=*/std::nullopt);
+      /*ctx=*/mlir::Value());
 
   // Move the original functions operations into the body.
   {

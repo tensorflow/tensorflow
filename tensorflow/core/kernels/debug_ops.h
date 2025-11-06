@@ -66,7 +66,7 @@ class CopyOp : public OpKernel {
               "Unexpected number of semicolons in debug_ops_spec element: ",
               debug_op_spec));
       debug_op_and_url_specs_.push_back(
-          DebugWatchAndURLSpec(strings::StrCat(tensor_name_, ":", items[0]),
+          DebugWatchAndURLSpec(absl::StrCat(tensor_name_, ":", items[0]),
                                items[1], items[2] == "1"));
     }
   }

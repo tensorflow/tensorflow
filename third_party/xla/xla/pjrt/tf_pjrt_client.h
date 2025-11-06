@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
@@ -77,19 +78,18 @@ class TfPjRtBuffer : public PjRtBuffer {
       override {
     return wrapped_->AcquireExternalReference();
   }
-  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override {
+  Future<> ToLiteral(MutableLiteralBase* literal) override {
     return wrapped_->ToLiteral(literal);
   }
-  PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
-      override {
+  Future<> LazyToLiteral(
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override {
     return wrapped_->LazyToLiteral(std::move(generator));
   }
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override {
     return wrapped_->GetOnDeviceSizeInBytes();
   }
-  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
-                             int64_t transfer_size) override {
+  Future<> CopyRawToHost(void* dst, int64_t offset,
+                         int64_t transfer_size) override {
     return wrapped_->CopyRawToHost(dst, offset, transfer_size);
   }
   void Delete() override { wrapped_->Delete(); }
@@ -101,12 +101,12 @@ class TfPjRtBuffer : public PjRtBuffer {
   bool IsDeleted() const override { return wrapped_->IsDeleted(); }
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
-  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+  void CopyToRemoteDevice(Future<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override {
     wrapped_->CopyToRemoteDevice(std::move(serialized_descriptor),
                                  std::move(on_done));
   }
-  PjRtFuture<> GetReadyFuture() override { return wrapped_->GetReadyFuture(); }
+  Future<> GetReadyFuture() override { return wrapped_->GetReadyFuture(); }
   bool IsOnCpu() const override { return wrapped_->IsOnCpu(); }
 
   // Not thread-safe. The caller should promises to have some external
@@ -158,19 +158,16 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      std::optional<std::vector<PjRtFuture<>>>& returned_futures)
-      const override;
+      std::optional<std::vector<Future<>>>& returned_futures) const override;
   using PjRtLoadedExecutable::ExecuteSharded;
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future,
+      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
       bool fill_future) const override;
   using PjRtLoadedExecutable::ExecutePortable;
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future,
+      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
       bool fill_future) const override;
 
   void Delete() override { return wrapped_->Delete(); }

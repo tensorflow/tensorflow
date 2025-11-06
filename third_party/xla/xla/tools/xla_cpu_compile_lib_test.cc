@@ -94,7 +94,7 @@ TEST_F(XlaCompileLibTest, WriteResultFileWritesTheFile) {
 
   TimerStats stats;
   {
-    absl::MutexLock ml(&stats.stats_mutex);
+    absl::MutexLock ml(stats.stats_mutex);
     stats.cumulative_secs = 5.5;
     stats.max_secs = 5.5;
   }

@@ -32,6 +32,16 @@ absl::StatusOr<CustomKernel> GetPtxCustomKernel(std::string kernel_name,
                                                 se::BlockDim block_dim,
                                                 se::ThreadDim thread_dim,
                                                 size_t shared_memory_bytes = 0);
-}
 
+absl::StatusOr<CustomKernel> GetPtxCustomKernel(
+    std::string kernel_name, absl::string_view ptx, int num_args,
+    se::BlockDim block_dim, se::ThreadDim thread_dim,
+    se::ClusterDim cluster_dim, size_t shared_memory_bytes = 0);
+
+absl::StatusOr<CustomKernel> GetOwnedPtxCustomKernel(
+    std::string kernel_name, std::string ptx, int num_args,
+    se::BlockDim block_dim, se::ThreadDim thread_dim,
+    size_t shared_memory_bytes = 0);
+
+}  // namespace xla::gpu::kernel
 #endif  // XLA_SERVICE_GPU_KERNELS_PTX_CUSTOM_KERNEL_H_

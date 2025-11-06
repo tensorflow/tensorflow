@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
 namespace xla {
 
@@ -178,6 +180,17 @@ ExecutableRunOptions& ExecutableRunOptions::set_local_device_count(
 }
 int ExecutableRunOptions::local_device_count() const {
   return local_device_count_;
+}
+
+ExecutableRunOptions& ExecutableRunOptions::set_clique_keys(
+    std::vector<std::unique_ptr<CliqueKey>>* clique_keys) {
+  clique_keys_ = clique_keys;
+  return *this;
+}
+
+std::vector<std::unique_ptr<CliqueKey>>* ExecutableRunOptions::clique_keys()
+    const {
+  return clique_keys_;
 }
 
 }  // namespace xla

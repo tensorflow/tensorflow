@@ -16,8 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_NUMA_H_
 #define TENSORFLOW_TSL_PLATFORM_NUMA_H_
 
-#include "xla/tsl/platform/types.h"
-#include "tsl/platform/platform.h"
+#include <cstddef>
 
 namespace tsl {
 namespace port {

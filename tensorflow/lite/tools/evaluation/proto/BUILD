@@ -13,9 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-# Placeholder: load py_proto_library
-# Placeholder: load java_proto_library
-# Placeholder: load proto_library
+load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",

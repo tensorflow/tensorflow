@@ -29,6 +29,7 @@ namespace ifrt {
 
 char Executable::ID = 0;
 char LoadedExecutable::ID = 0;
+[[maybe_unused]] char ExecutableVersion::ID = 0;
 
 absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto(
     SerDesVersion version) const {

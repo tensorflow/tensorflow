@@ -46,7 +46,7 @@ tsl::AsyncValueRef<GpuEvent> AfterAll(
   for (auto& event : events) {
     event.AndThen([state, event = event.AsPtr()]() {
       if (event.IsError()) {
-        absl::MutexLock lock(&state->mutex);
+        absl::MutexLock lock(state->mutex);
         state->error_status = event.GetError();
       }
 

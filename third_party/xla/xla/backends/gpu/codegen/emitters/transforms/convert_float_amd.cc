@@ -43,8 +43,10 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/status.h"
 
 namespace xla {
@@ -216,7 +218,8 @@ struct RewriteFp8TruncFPattern : public Fp8OpRewritePattern<arith::TruncFOp> {
     llvm::transform(inputs, inputs.begin(), [&](mlir::Value v) -> mlir::Value {
       if (v.getType().getIntOrFloatBitWidth() < f32_ty.getWidth()) {
         return b.create<arith::ExtFOp>(f32_ty, v);
-      } else if (v.getType() != f32_ty) {
+      }
+      if (v.getType() != f32_ty) {
         return b.create<arith::TruncFOp>(f32_ty, v);
       } else {
         return v;

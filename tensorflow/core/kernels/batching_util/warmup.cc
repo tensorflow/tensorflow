@@ -38,7 +38,7 @@ void WarmupStateRegistry::Handle::Release() {
 
 absl::StatusOr<WarmupStateRegistry::Handle> WarmupStateRegistry::Register(
     const Key& model_key, std::unique_ptr<PerModelData> per_model_data) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   VLOG(1) << "Registering model " << model_key.name << ":" << model_key.version
           << " to warm-up registry";
   if (!states_.insert(std::pair(model_key, std::move(per_model_data))).second) {
@@ -50,7 +50,7 @@ absl::StatusOr<WarmupStateRegistry::Handle> WarmupStateRegistry::Register(
 }
 
 void WarmupStateRegistry::Unregister(const Key& model_key) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
 
   VLOG(1) << "Unregistering model " << model_key.name << ":"
           << model_key.version << " from warm-up registry";
@@ -59,7 +59,7 @@ void WarmupStateRegistry::Unregister(const Key& model_key) {
 
 const WarmupStateRegistry::PerModelData* WarmupStateRegistry::Lookup(
     const Key& model_key) {
-  absl::ReaderMutexLock l(&mu_);
+  absl::ReaderMutexLock l(mu_);
   return states_.contains(model_key) ? states_[model_key].get() : nullptr;
 }
 

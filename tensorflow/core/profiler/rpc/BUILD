@@ -38,6 +38,7 @@ cc_library(
             "//tensorflow/core/data/service:__pkg__",
             "//tensorflow/core/distributed_runtime/rpc:__pkg__",
             "//tensorflow_serving/model_servers:__pkg__",
+            "@local_xla//xla/backends/profiler/subprocess:__pkg__",
         ],
     ),
     deps = [

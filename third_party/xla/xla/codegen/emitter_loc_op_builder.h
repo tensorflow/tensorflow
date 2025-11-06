@@ -185,6 +185,33 @@ class EmitterLocOpBuilder : public mlir::ImplicitLocOpBuilder {
         std::forward<Arg6>(arg6));
   }
 
+  template <typename OpTy, typename Arg0, typename Arg1, typename Arg2,
+            typename Arg3, typename Arg4, typename Arg5, typename Arg6,
+            typename Arg7>
+  OpTy create(Arg0&& arg0, Arg1&& arg1, Arg2&& arg2, Arg3&& arg3, Arg4&& arg4,
+              Arg5&& arg5, Arg6&& arg6, Arg7&& arg7,
+              SourceLocation location = SourceLocation::current()) {
+    return OpBuilder::create<OpTy>(
+        Loc(location), std::forward<Arg0>(arg0), std::forward<Arg1>(arg1),
+        std::forward<Arg2>(arg2), std::forward<Arg3>(arg3),
+        std::forward<Arg4>(arg4), std::forward<Arg5>(arg5),
+        std::forward<Arg6>(arg6), std::forward<Arg7>(arg7));
+  }
+
+  template <typename OpTy, typename Arg0, typename Arg1, typename Arg2,
+            typename Arg3, typename Arg4, typename Arg5, typename Arg6,
+            typename Arg7, typename Arg8>
+  OpTy create(Arg0&& arg0, Arg1&& arg1, Arg2&& arg2, Arg3&& arg3, Arg4&& arg4,
+              Arg5&& arg5, Arg6&& arg6, Arg7&& arg7, Arg8&& arg8,
+              SourceLocation location = SourceLocation::current()) {
+    return OpBuilder::create<OpTy>(
+        Loc(location), std::forward<Arg0>(arg0), std::forward<Arg1>(arg1),
+        std::forward<Arg2>(arg2), std::forward<Arg3>(arg3),
+        std::forward<Arg4>(arg4), std::forward<Arg5>(arg5),
+        std::forward<Arg6>(arg6), std::forward<Arg7>(arg7),
+        std::forward<Arg8>(arg8));
+  }
+
   mlir::Location current_loc() const { return current_loc_; }
 
   bool annotate_loc() const { return annotate_loc_; }

@@ -116,24 +116,23 @@ TEST(VirtualPlacerTest, EmptyJobName) {
     std::unordered_map<string, DeviceProperties> devices;
     DeviceProperties cpu_device;
     cpu_device.set_type("CPU");
-    devices[strings::StrCat("/job:", job_name, "/replica:0/task:0/cpu:0")] =
+    devices[absl::StrCat("/job:", job_name, "/replica:0/task:0/cpu:0")] =
         cpu_device;
     DeviceProperties gpu_device;
     gpu_device.set_type("GPU");
-    devices[strings::StrCat("/job:", job_name,
-                            "/replica:0/task:0/device:GPU:0")] = gpu_device;
+    devices[absl::StrCat("/job:", job_name, "/replica:0/task:0/device:GPU:0")] =
+        gpu_device;
     VirtualCluster cluster(devices);
     VirtualPlacer placer(devices);
 
     NodeDef node;
     node.set_op("Conv2D");
     node.set_device("/device:CPU:0");
-    EXPECT_EQ(strings::StrCat("/job:", job_name, "/replica:0/task:0/cpu:0"),
+    EXPECT_EQ(absl::StrCat("/job:", job_name, "/replica:0/task:0/cpu:0"),
               placer.get_canonical_device_name(node));
     node.set_device("/device:GPU:0");
-    EXPECT_EQ(
-        strings::StrCat("/job:", job_name, "/replica:0/task:0/device:GPU:0"),
-        placer.get_canonical_device_name(node));
+    EXPECT_EQ(absl::StrCat("/job:", job_name, "/replica:0/task:0/device:GPU:0"),
+              placer.get_canonical_device_name(node));
   }
 
   // When more than one job names are used, we use default "localhost"
@@ -180,8 +179,7 @@ TEST(VirtualPlacerTest, DefaultDevice) {
 
   // If there is any GPU, then gpu:0 is default device.
   for (int i = 0; i < 8; i++) {
-    devices[strings::StrCat("/job:worker/replica:0/task:0/gpu:", i)] =
-        gpu_device;
+    devices[absl::StrCat("/job:worker/replica:0/task:0/gpu:", i)] = gpu_device;
     EXPECT_EQ("/job:worker/replica:0/task:0/gpu:0",
               GetDefaultDeviceName(devices));
   }
@@ -195,10 +193,10 @@ TEST(VirtualPlacerTest, MultiReplica) {
   DeviceProperties gpu_device;
   gpu_device.set_type("GPU");
   for (int i = 0; i < 8; i++) {
-    devices[strings::StrCat("/job:worker/replica:", i, "/task:0/cpu:0")] =
+    devices[absl::StrCat("/job:worker/replica:", i, "/task:0/cpu:0")] =
         cpu_device;
     for (int j = 0; j < 8; j++) {
-      devices[strings::StrCat("/job:worker/replica:", i, "/task:0/gpu:", j)] =
+      devices[absl::StrCat("/job:worker/replica:", i, "/task:0/gpu:", j)] =
           gpu_device;
     }
   }
@@ -231,8 +229,7 @@ TEST(VirtualPlacerTest, MultiReplica) {
   // Now add PS replicas; with multiple job names present in the cluster,
   // device names in nodes should specify job names correctly.
   for (int i = 0; i < 4; i++) {
-    devices[strings::StrCat("/job:ps/replica:", i, "/task:0/cpu:0")] =
-        cpu_device;
+    devices[absl::StrCat("/job:ps/replica:", i, "/task:0/cpu:0")] = cpu_device;
   }
   cluster.reset(new VirtualCluster(devices));
   placer.reset(new VirtualPlacer(cluster->GetDevices()));

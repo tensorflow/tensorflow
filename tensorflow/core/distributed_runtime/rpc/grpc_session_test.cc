@@ -73,7 +73,7 @@ static void IsSingleFloatValue(const Tensor& val, float expected_val) {
 
 static SessionOptions Options(const string& target, int placement_period) {
   SessionOptions options;
-  options.target = strings::StrCat("grpc://", target);
+  options.target = absl::StrCat("grpc://", target);
   options.config.set_isolate_session_state(false);
   options.config.set_placement_period(placement_period);
   options.config.mutable_graph_options()
@@ -263,7 +263,7 @@ TEST(GrpcSessionTest, NonLocalWithFilters) {
       &cluster));
 
   SessionOptions options;
-  options.target = strings::StrCat("grpc://", cluster->targets()[0]);
+  options.target = absl::StrCat("grpc://", cluster->targets()[0]);
   options.config.add_device_filters(cluster->devices()[0].name());
 
   std::unique_ptr<Session> session(NewRemote(options));
@@ -827,7 +827,7 @@ TEST(GrpcSessionTest, LongErrorMessage) {
     a->set_assigned_device_name(dev_a);
     std::vector<char> long_string_buffer(1024 * 1024, 'x');
     absl::string_view long_string(long_string_buffer.data(), 1024 * 1024);
-    string name = strings::StrCat(long_string, "fantasia!");
+    string name = absl::StrCat(long_string, "fantasia!");
     auto a_err = test::graph::Error(&g, a, name);
     a_err->set_assigned_device_name(dev_a);
     auto a2 = test::graph::Add(&g, a, a_err);

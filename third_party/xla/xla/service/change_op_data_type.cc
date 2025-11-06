@@ -18,9 +18,11 @@ limitations under the License.
 #include <optional>
 
 #include "xla/service/hlo_creation_utils.h"
-#if defined(INTEL_MKL)
+
+#ifdef XLA_ONEDNN
 #include "xla/service/cpu/onednn_contraction_rewriter.h"
-#endif  // INTEL_MKL
+#include "xla/xla.pb.h"
+#endif  // XLA_ONEDNN
 
 namespace xla {
 namespace {
@@ -62,11 +64,17 @@ absl::StatusOr<bool> ChangeOpDataType::Run(
       if (it == to_type_map_.end()) {
         continue;
       }
-#if defined(INTEL_MKL)
-      if (cpu::OneDnnContractionRewriter::ShouldRewriteInstr(instr, true)) {
+
+#ifdef XLA_ONEDNN
+      // TODO(penporn): Move this logic outside of this pass.
+      const DebugOptions& debug_options = module->config().debug_options();
+      if (debug_options.xla_cpu_use_onednn() &&
+          !debug_options.xla_cpu_experimental_onednn_custom_call() &&
+          cpu::OneDnnContractionRewriter::ShouldRewriteInstr(instr, true)) {
         continue;
       }
-#endif  // INTEL_MKL
+#endif  // XLA_ONEDNN
+
       const PrimitiveType to_type = it->second;
       absl::InlinedVector<HloInstruction*, 8> new_operands;
       for (HloInstruction* operand : instr->mutable_operands()) {

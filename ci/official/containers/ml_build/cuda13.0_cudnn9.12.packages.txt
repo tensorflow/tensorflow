@@ -17,5 +17,7 @@ libcublas-dev-13-0
 libnccl-dev=2.27.7-1+cuda13.0
 libnccl2=2.27.7-1+cuda13.0
 # CuDNN: https://docs.nvidia.com/deeplearning/sdk/cudnn-install/index.html#ubuntu-network-installation
+libcudnn9-headers-cuda-13=9.12.0.46-1
+libcudnn9-static-cuda-13=9.12.0.46-1
 libcudnn9-dev-cuda-13=9.12.0.46-1
 libcudnn9-cuda-13=9.12.0.46-1

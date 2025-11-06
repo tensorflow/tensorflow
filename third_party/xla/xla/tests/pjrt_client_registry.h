@@ -62,7 +62,7 @@ class PjRtClientTestFactoryRegistry {
       return;
     }
 
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     factory_ = std::move(factory);
     registered_device_shape_representation_fn_ =
         std::move(registered_device_shape_representation_fn);
@@ -73,7 +73,7 @@ class PjRtClientTestFactoryRegistry {
   // Return the device shape representation of 'host_shape'.
   DeviceShapeRepresentationFn GetDeviceShapeRepresentationFn(
       PjRtClient* pjrt_client) ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return registered_device_shape_representation_fn_(pjrt_client);
   }
 
@@ -82,17 +82,17 @@ class PjRtClientTestFactoryRegistry {
   // integer representing the size of the shape in bytes as opposed to a Shape.
   DeviceShapeSizeFn GetDeviceShapeSizeFn(PjRtClient* pjrt_client)
       ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return registered_device_shape_size_fn_(pjrt_client);
   }
 
   bool HasRegisteredFactory() ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return factory_ != nullptr;
   }
 
   std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> Get() const {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return factory_;
   }
 

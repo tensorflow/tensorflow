@@ -169,7 +169,7 @@ class Counter {
             &metric_def_, [&](MetricCollectorGetter getter) {
               auto metric_collector = getter.Get(&metric_def_);
 
-              absl::MutexLock l(&mu_);
+              absl::MutexLock l(mu_);
               for (const auto& cell : cells_) {
                 metric_collector.CollectValue(cell.first, cell.second.value());
               }
@@ -231,7 +231,7 @@ CounterCell* Counter<NumLabels>::GetCell(const Labels&... labels)
                 "provided in GetCell(...).");
 
   const LabelArray& label_array = {{labels...}};
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   const auto found_it = cells_.find(label_array);
   if (found_it != cells_.end()) {
     return &(found_it->second);

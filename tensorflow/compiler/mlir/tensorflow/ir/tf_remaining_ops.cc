@@ -188,5 +188,6 @@ std::optional<std::string> _SendOp::GetResourceInstanceStr() {
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
+using namespace mlir;  // NOLINT
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.cc.inc"

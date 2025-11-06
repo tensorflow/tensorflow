@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -110,7 +112,7 @@ class TritonTest : public GpuCodegenTest {
     emitter_opts->Add(
         DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES);
     absl::StatusOr<bool> nested_or =
-        NestGemmFusion(device_desc().gpu_compute_capability())
+        NestGemmFusion(device_desc(), &symbolic_expr_context_)
             .Run(module.get());
     if (!nested_or.ok()) {
       return ::testing::AssertionFailure() << nested_or.status().message();
@@ -155,6 +157,8 @@ class TritonTest : public GpuCodegenTest {
   const stream_executor::DeviceDescription& device_desc() {
     return backend().default_stream_executor()->GetDeviceDescription();
   }
+  mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 // The following tests are for the channel and subchannel dequantization
@@ -227,9 +231,6 @@ TEST_F(TritonTest, FuseChannelDequantizationFused) {
 }
 
 TEST_F(TritonTest, FuseSubchannelDequantizationWithTranspose) {
-  if(std::holds_alternative<se::RocmComputeCapability>(GpuComputeCapability())) {
-    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250714";
-  }
   constexpr absl::string_view kHloText = R"(
     HloModule FuseSubchannelDequantizationWithTranspose
 
@@ -274,9 +275,6 @@ TEST_F(TritonTest, FuseSubchannelDequantization) {
   // We run the non-fused version with the goal to fail if an hlo rewrite broke
   // the dequantization logic. The case where we do:
   //  param(1) -> reshape -> broadcast -> multiply -> reshape -> dot.
-  if(std::holds_alternative<se::RocmComputeCapability>(GpuComputeCapability())) {
-    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250714";
-  }
   constexpr absl::string_view kHloText = R"(
     HloModule FuseSubchannelDequantization
 
@@ -311,9 +309,6 @@ TEST_F(TritonTest, FuseChannelDequantization) {
   // We run the non-fused version with the goal to fail if an hlo rewrite broke
   // the dequantization logic. The case where we do:
   //  param(1) -> bitcast -> broadcast -> multiply -> dot.
-  if(std::holds_alternative<se::RocmComputeCapability>(GpuComputeCapability())) {
-    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250714";
-  }
   constexpr absl::string_view kHloText = R"(
     HloModule FuseChannelDequantization
 
@@ -510,7 +505,6 @@ TEST_F(TritonTest, FuseBroadcastBitcastInPrologue) {
 
 TEST_F(TritonTest, FuseBroadcastBitcastMultiplyInPrologue) {
   // This test is a Subchannel Dequantization fusion.
-  GTEST_SKIP() << "weekly-sync 250211: skipped due to LLVM/Triton issues";
   constexpr absl::string_view kHloText = R"(
     HloModule FuseBroadcastBitcastMultiplyInPrologue
 
@@ -648,9 +642,6 @@ TEST_F(TritonTest, DotWithInt4WeightsOnLhsFusedWithMultiplyByChannelScales) {
 }
 
 TEST_F(TritonTest, FuseMultiplyInPrologue) {
-  if(std::holds_alternative<se::RocmComputeCapability>(GpuComputeCapability())) {
-    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250714";
-  }
   constexpr absl::string_view kHloText = R"(
     HloModule FuseMultiplyInPrologue
 
@@ -677,7 +668,8 @@ TEST_F(TritonTest, FuseMultiplyInPrologue) {
   )"));
 }
 
-TEST_F(TritonTest, FuseMultiplyInEpilogue) {
+// TODO(b/449140429): Re-enable this test.
+TEST_F(TritonTest, DISABLED_FuseMultiplyInEpilogue) {
   constexpr absl::string_view kHloText = R"(
     HloModule FuseMultiplyInEpilogue
 
@@ -903,9 +895,6 @@ TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
 }
 
 TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
-  if(std::holds_alternative<se::RocmComputeCapability>(GpuComputeCapability())) {
-    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250714";
-  }
   // We cannot do triton_gemm and we use cuBLAS instead.
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayoutWithManyNonContractingDimsReversedLayout

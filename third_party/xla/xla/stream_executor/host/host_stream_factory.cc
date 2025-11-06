@@ -46,7 +46,7 @@ namespace host {
 // static
 void HostStreamFactory::Register(std::unique_ptr<HostStreamFactory> factory,
                                  int priority) {
-  absl::MutexLock l(get_host_stream_factory_lock());
+  absl::MutexLock l(*get_host_stream_factory_lock());
   FactoryItem& factory_item = host_stream_factory();
   if (factory_item.factory == nullptr) {
     factory_item.factory = std::move(factory);
@@ -61,7 +61,7 @@ void HostStreamFactory::Register(std::unique_ptr<HostStreamFactory> factory,
 
 // static
 const HostStreamFactory* HostStreamFactory::GetFactory() {
-  absl::ReaderMutexLock l(get_host_stream_factory_lock());
+  absl::ReaderMutexLock l(*get_host_stream_factory_lock());
   FactoryItem& factory_item = host_stream_factory();
   return factory_item.factory.get();
 }

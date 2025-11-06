@@ -43,6 +43,9 @@ class LibraryMatcher {
         case DebugOptions::LIBRARY_FUSION_TYPE_ELTWISE:
           fuse_eltwise_ = true;
           break;
+        case DebugOptions::LIBRARY_FUSION_TYPE_REDUCE:
+          fuse_reduce_ = true;
+          break;
         default:
           LOG(ERROR) << "Unsupported fusion type: " << *it;
       }
@@ -80,9 +83,13 @@ class LibraryMatcher {
   // Returns whether elementwise ops can start a fusion.
   bool fuse_eltwise() const { return fuse_eltwise_; }
 
+  // Returns whether reduce ops can start a fusion.
+  bool fuse_reduce() const { return fuse_reduce_; }
+
  protected:
   bool fuse_dot_ = false;
   bool fuse_eltwise_ = false;
+  bool fuse_reduce_ = false;
   const TargetMachineFeatures* target_machine_features_;
 };
 

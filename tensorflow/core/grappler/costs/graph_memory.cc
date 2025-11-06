@@ -122,7 +122,7 @@ static GraphMemory::LiveTensor* FindOrCreateLiveTensor(
     const string& node_name, int output_id,
     std::unordered_map<string, GraphMemory::LiveTensor*>* live_tensors,
     std::deque<GraphMemory::LiveTensor>* device_tensors) {
-  string name = strings::StrCat(node_name, ":", output_id);
+  string name = absl::StrCat(node_name, ":", output_id);
   GraphMemory::LiveTensor* live;
   auto it = live_tensors->find(name);
   if (it == live_tensors->end()) {

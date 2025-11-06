@@ -1,0 +1,30 @@
+// RUN: gpu_test_correctness %s
+// RUN: cpu_test_correctness %s
+
+fusion {
+  p0 = f32[10,11,12] parameter(0)
+  p1 = f32[1,11,12] parameter(1)
+  p2 = f32[8,11,12] parameter(2)
+  p3 = f32[1,11,12] parameter(3)
+  p4 = s32[] parameter(4)
+  c0 = s32[] constant(0)
+  cmp = pred[] compare(p4, c0), direction=EQ
+  broadcast = pred[1,11,12] broadcast(cmp), dimensions={}
+  select = f32[1,11,12] select(broadcast, p1, p3)
+  dus0 = f32[10,11,12] dynamic-update-slice(p0, select, c0, c0, c0)
+  dus1 = f32[8,11,12] dynamic-update-slice(p2, select, c0, c0, c0)
+  ROOT tuple = (f32[10,11,12], f32[8,11,12]) tuple(dus0, dus1)
+}
+
+ENTRY main {
+  %param_0 = f32[10,11,12] parameter(0)
+  %param_1 = f32[1,11,12] parameter(1)
+  %param_2 = f32[8,11,12] parameter(2)
+  %param_3 = f32[1,11,12] parameter(3)
+  %param_4 = s32[] parameter(4)
+  // On CPU the input/output alias, this is resulting in a double free so we
+  // need to copy the input.
+  %param_0_copy = f32[10,11,12] copy(%param_0)
+  %param_2_copy = f32[8,11,12] copy(%param_2)
+  ROOT %fusion = (f32[10,11,12], f32[8,11,12]) fusion(%param_0_copy, %param_1, %param_2_copy, %param_3, %param_4), kind=kLoop, calls=fusion
+}

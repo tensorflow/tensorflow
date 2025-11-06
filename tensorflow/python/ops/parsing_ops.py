@@ -936,23 +936,16 @@ def decode_raw(input_bytes,
          [14136, 13622, 13108, 12594]], dtype=int16)>
 
   Args:
-    input_bytes:
-      Each element of the input Tensor is converted to an array of bytes.
-
-      Currently, this must be a tensor of strings (bytes), although semantically
-      the operation should support any input.
-    out_type:
-      `DType` of the output. Acceptable types are `half`, `float`, `double`,
-      `int32`, `uint16`, `uint8`, `int16`, `int8`, `int64`.
-    little_endian:
-      Whether the `input_bytes` data is in little-endian format. Data will be
-      converted into host byte order if necessary.
-    fixed_length:
-      If set, the first `fixed_length` bytes of each element will be converted.
-      Data will be zero-padded or truncated to the specified length.
-
+    input_bytes: Each element of the input Tensor is converted to an array of
+      bytes.  Currently, this must be a tensor of strings (bytes), although
+      semantically the operation should support any input.
+    out_type: `DType` of the output. Acceptable types are `half`, `float`,
+      `double`, `int32`, `uint16`, `uint8`, `int16`, `int8`, `int64`.
+    little_endian: Whether the `input_bytes` data is in little-endian format.
+      Data will be converted into host byte order if necessary.
+    fixed_length: If set, the first `fixed_length` bytes of each element will be
+      converted. Data will be zero-padded or truncated to the specified length.
       `fixed_length` must be a multiple of the size of `out_type`.
-
       `fixed_length` must be specified if the elements of `input_bytes` are of
       variable length.
     name: A name for the operation (optional).
@@ -1034,24 +1027,22 @@ def decode_csv(records,
   Note that we allow leading and trailing spaces with int or float field.
 
   Args:
-    records: A `Tensor` of type `string`.
-      Each string is a record/row in the csv and all records should have
-      the same format.
-    record_defaults: A list of `Tensor` objects with specific types.
-      Acceptable types are `float32`, `float64`, `int32`, `int64`, `string`.
-      One tensor per column of the input record, with either a
-      scalar default value for that column or an empty vector if the column is
-      required.
-    field_delim: An optional `string`. Defaults to `","`.
-      char delimiter to separate fields in a record.
-    use_quote_delim: An optional `bool`. Defaults to `True`.
-      If false, treats double quotation marks as regular
-      characters inside of the string fields (ignoring RFC 4180, Section 2,
-      Bullet 5).
+    records: A `Tensor` of type `string`. Each string is a record/row in the csv
+      and all records should have the same format.
+    record_defaults: A list of `Tensor` objects with specific types. Acceptable
+      types are `float32`, `float64`, `int32`, `int64`, `string`. One tensor per
+      column of the input record, with either a scalar default value for that
+      column or an empty vector if the column is required.
+    field_delim: An optional `string`. Defaults to `","`. char delimiter to
+      separate fields in a record.
+    use_quote_delim: An optional `bool`. Defaults to `True`. If false, treats
+      double quotation marks as regular characters inside of the string fields
+      (ignoring RFC 4180, Section 2, Bullet 5).
     name: A name for the operation (optional).
     na_value: Additional string to recognize as NA/NaN.
     select_cols: Optional sorted list of column indices to select. If specified,
-      only this subset of columns will be parsed and returned.
+      only this subset of columns will be parsed and returned. It only works on
+      `records` except for `record_defaults`.
 
   Returns:
     A list of `Tensor` objects. Has the same type as `record_defaults`.
@@ -1083,23 +1074,21 @@ def decode_csv_v2(records,
   Note that we allow leading and trailing spaces with int or float field.
 
   Args:
-    records: A `Tensor` of type `string`.
-      Each string is a record/row in the csv and all records should have
-      the same format.
-    record_defaults: A list of `Tensor` objects with specific types.
-      Acceptable types are `float32`, `float64`, `int32`, `int64`, `string`.
-      One tensor per column of the input record, with either a
-      scalar default value for that column or an empty vector if the column is
-      required.
-    field_delim: An optional `string`. Defaults to `","`.
-      char delimiter to separate fields in a record.
-    use_quote_delim: An optional `bool`. Defaults to `True`.
-      If false, treats double quotation marks as regular
-      characters inside of the string fields (ignoring RFC 4180, Section 2,
-      Bullet 5).
+    records: A `Tensor` of type `string`. Each string is a record/row in the csv
+      and all records should have the same format.
+    record_defaults: A list of `Tensor` objects with specific types. Acceptable
+      types are `float32`, `float64`, `int32`, `int64`, `string`. One tensor per
+      column of the input record, with either a scalar default value for that
+      column or an empty vector if the column is required.
+    field_delim: An optional `string`. Defaults to `","`. char delimiter to
+      separate fields in a record.
+    use_quote_delim: An optional `bool`. Defaults to `True`. If false, treats
+      double quotation marks as regular characters inside of the string fields
+      (ignoring RFC 4180, Section 2, Bullet 5).
     na_value: Additional string to recognize as NA/NaN.
     select_cols: Optional sorted list of column indices to select. If specified,
-      only this subset of columns will be parsed and returned.
+      only this subset of columns will be parsed and returned. It only works on
+      `records` except for `record_defaults`.
     name: A name for the operation (optional).
 
   Returns:

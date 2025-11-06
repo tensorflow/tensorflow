@@ -246,11 +246,14 @@ def _set_doc(doc):
 # pylint: disable=redefined-builtin
 @tf_export(v1=["math.argmax", "argmax"])
 @dispatch.add_dispatch_support
-@deprecation.deprecated_args(None, "Use the `axis` argument instead",
-                             "dimension")
+@deprecation.deprecated_args(
+    None, "Use the `axis` argument instead", "dimension"
+)
 @_set_doc(
-    (gen_math_ops.arg_max.__doc__ or '').replace("dimensions",
-                                         "axes").replace("dimension", "axis"))
+    (gen_math_ops.arg_max.__doc__ or "")
+    .replace("dimensions", "axes")
+    .replace("dimension", "axis")
+)
 def argmax(input,
            axis=None,
            name=None,
@@ -295,16 +298,37 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   """
   if axis is None:
     axis = 0
+
+  if hasattr(axis, "dtype"):
+    allowed_dtypes = {
+        dtypes.int8,
+        dtypes.uint8,
+        dtypes.int16,
+        dtypes.uint16,
+        dtypes.int32,
+        dtypes.int64,
+    }
+    if axis.dtype not in allowed_dtypes:
+      raise TypeError(f"axis tensor dtypes {axis.dtype} is not supported")
+    castable_types = {dtypes.int8, dtypes.int16, dtypes.uint8, dtypes.uint16}
+    if axis.dtype in castable_types:
+      axis = cast(axis, dtypes.int32)
+  elif not isinstance(axis, int):
+    raise TypeError("axis must be int or Tensor with integer datatype")
+
   return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
 
 @tf_export(v1=["math.argmin", "argmin"])
 @dispatch.add_dispatch_support
-@deprecation.deprecated_args(None, "Use the `axis` argument instead",
-                             "dimension")
+@deprecation.deprecated_args(
+    None, "Use the `axis` argument instead", "dimension"
+)
 @_set_doc(
-    (gen_math_ops.arg_min.__doc__ or '').replace("dimensions",
-                                         "axes").replace("dimension", "axis"))
+    (gen_math_ops.arg_min.__doc__ or "")
+    .replace("dimensions", "axes")
+    .replace("dimension", "axis")
+)
 def argmin(input,
            axis=None,
            name=None,
@@ -535,8 +559,9 @@ def _mul(x, y, name=None):
 
 
 if gen_math_ops.mul.__doc__ is not None:
-  _mul.__doc__ = (
-      gen_math_ops.mul.__doc__ + ("" if _mul.__doc__ is None else _mul.__doc__))
+  _mul.__doc__ = gen_math_ops.mul.__doc__ + (
+      "" if _mul.__doc__ is None else _mul.__doc__
+  )
 
 
 @tf_export("math.subtract", "subtract")
@@ -558,8 +583,9 @@ def _sub(x, y, name=None):
 
 
 if gen_math_ops.sub.__doc__ is not None:
-  _sub.__doc__ = (
-      gen_math_ops.sub.__doc__ + ("" if _sub.__doc__ is None else _sub.__doc__))
+  _sub.__doc__ = gen_math_ops.sub.__doc__ + (
+      "" if _sub.__doc__ is None else _sub.__doc__
+  )
 
 negative = gen_math_ops.neg
 
@@ -5243,7 +5269,7 @@ def tensordot(a, b, axes, name=None):
   In general, `order(c) = order(a) + order(b) - 2*len(axes[0])`.
 
   For example:
-  
+
    ```python
    import numpy as np
    import tensorflow as tf
@@ -5252,28 +5278,28 @@ def tensordot(a, b, axes, name=None):
    b = np.arange(24).reshape(4,3,2)
    c = tf.tensordot(a,b, axes=([1,0],[0,1]))
    c
-   
+
    <tf.Tensor: shape=(5, 2), dtype=int64, numpy=
    array([[4400, 4730],
        [4532, 4874],
        [4664, 5018],
        [4796, 5162],
        [4928, 5306]])>
-  
+
   # Another example
   d = tf.random.uniform((3,4,5))
   e = tf.random.uniform((5,3,2))
   f = tf.tensordot(d,e, axes=([2,0],[0,1]))
   f
-  
+
   <tf.Tensor: shape=(4, 2), dtype=float32, numpy=
   array([[4.8271146, 4.493    ],
        [5.8537536, 5.492961 ],
        [5.2579894, 5.2020206],
        [3.5817177, 4.2104754]], dtype=float32)>
-       
+
     ```
-    
+
   Args:
     a: `Tensor` of type `float32` or `float64`.
     b: `Tensor` with the same type as `a`.

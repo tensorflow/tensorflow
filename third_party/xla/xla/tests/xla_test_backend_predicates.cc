@@ -113,4 +113,8 @@ bool BackendIsStrict(absl::string_view device) {
 bool BackendSupportsFloat64() { return !DeviceTypeIs(kTpu); }
 bool BackendSupportsComplex128() { return !DeviceTypeIs(kTpu); }
 
+bool UsingStreamExecutorGpuClient() {
+  return std::getenv("XLA_TEST_USE_STREAM_EXECUTOR_GPU_CLIENT") != nullptr;
+}
+
 }  // namespace xla::test

@@ -40,7 +40,7 @@ dependencies of your app's `build.gradle` file:
 ```
 dependencies {
   ...
-  implementation 'com.google.android.gms:play-services-tflite-gpu:16.0.0'
+  implementation 'com.google.android.gms:play-services-tflite-gpu:16.4.0'
 }
 ```
 

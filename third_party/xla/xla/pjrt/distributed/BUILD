@@ -74,6 +74,8 @@ cc_library(
         "//xla/tsl/distributed_runtime/coordination:coordination_client",
         "//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//xla/tsl/distributed_runtime/rpc/coordination:grpc_coordination_client",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/log",

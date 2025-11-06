@@ -21,10 +21,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -168,6 +170,86 @@ TEST(CudaExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
                           platform->ExecutorForDevice(0));
   EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
               Not(absl_testing::IsOk()));
+}
+
+TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithUnifiedMemory) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto unified_memory_allocator,
+      executor->CreateMemoryAllocator(MemoryType::kUnified));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          unified_memory_allocator->Allocate(256));
+  EXPECT_THAT(executor->GetPointerMemorySpace(allocation->opaque()),
+              IsOkAndHolds(MemoryType::kUnified));
+}
+
+TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithHostMemory) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          executor->HostMemoryAllocate(256));
+  EXPECT_THAT(executor->GetPointerMemorySpace(allocation->opaque()),
+              IsOkAndHolds(MemoryType::kHost));
+}
+
+TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithDeviceMemory) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+
+  DeviceMemoryBase allocation = executor->Allocate(256);
+  EXPECT_NE(allocation.opaque(), nullptr);
+  EXPECT_THAT(executor->GetPointerMemorySpace(allocation.opaque()),
+              absl_testing::IsOkAndHolds(MemoryType::kDevice));
+}
+
+TEST(CudaExecutorTest, AllocateMemoryWithVmmApi) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+
+  auto cuda_executor = dynamic_cast<CudaExecutor*>(executor);
+  ASSERT_NE(cuda_executor, nullptr);
+  DeviceMemoryBase ptr =
+      cuda_executor->Allocate(1024, static_cast<int>(MemoryType::kP2P));
+
+  EXPECT_NE(ptr.opaque(), nullptr);
+  EXPECT_EQ(ptr.size(), 1024);
+  EXPECT_THAT(executor->GetPointerMemorySpace(ptr.opaque()),
+              absl_testing::IsOkAndHolds(MemoryType::kDevice));
+
+  TF_ASSERT_OK_AND_ASSIGN(CudaExecutor::VmmMemoryHandle handle,
+                          cuda_executor->RetainVmmMemoryHandle(ptr.opaque()));
+  EXPECT_NE(handle.handle(), 0);
+}
+
+TEST(CudaExecutorTest,
+     RetainVmmMemoryHandleForTheMemoryAllocatedWithoutVmmApi) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+
+  auto cuda_executor = dynamic_cast<CudaExecutor*>(executor);
+  ASSERT_NE(cuda_executor, nullptr);
+  DeviceMemoryBase ptr =
+      cuda_executor->Allocate(1024, static_cast<int>(MemoryType::kDevice));
+
+  EXPECT_NE(ptr.opaque(), nullptr);
+  EXPECT_EQ(ptr.size(), 1024);
+
+  EXPECT_THAT(cuda_executor->RetainVmmMemoryHandle(ptr.opaque()),
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 }  // namespace
 }  // namespace stream_executor::gpu

@@ -134,6 +134,8 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   se::Stream* stream() const { return stream_.get(); }
 
+  se::Stream* d2h_stream() const { return d2h_stream_.get(); }
+
   se::StreamExecutor* executor() const { return executor_; }
 
   tsl::AsyncValueRef<GpuEvent> SetLastCollectiveLaunchEvent(
@@ -152,6 +154,7 @@ class TfrtGpuDevice final : public PjRtDevice {
   const PjRtLocalHardwareId local_hardware_id_;
   se::StreamExecutor* executor_;
   std::unique_ptr<se::Stream> stream_;
+  std::unique_ptr<se::Stream> d2h_stream_;
   absl::InlinedVector<PjRtMemorySpace*, 1> memory_spaces_;
   absl::flat_hash_map<int, PjRtMemorySpace*> memory_spaces_by_kind_id_;
 

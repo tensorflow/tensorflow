@@ -221,8 +221,7 @@ class Samples(object):
 
     Args:
       datum: `ProfileDatum` to add a sample for.
-      location_ids: List of numberic location ids for this
-        sample.
+      location_ids: List of numeric location ids for this sample.
     """
     node_name = datum.node_exec_stats.node_name
     if node_name in self._node_name_to_sample:

@@ -36,7 +36,7 @@ extern "C" {
 // https://github.com/openxla/xla/blob/main/xla/pjrt/layout_mode.h for more
 // details.
 
-#define PJRT_API_LAYOUTS_EXTENSION_VERSION 1
+#define PJRT_API_LAYOUTS_EXTENSION_VERSION 2
 
 // -------------------------------- Data types ---------------------------------
 
@@ -108,6 +108,22 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args,
 typedef PJRT_Error* PJRT_Layouts_PJRT_Client_GetDefaultLayout(
     PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args* args);
 
+struct PJRT_Layouts_PJRT_Topology_GetDefaultLayout_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_TopologyDescription* topology_description;
+  PJRT_Buffer_Type type;
+  const int64_t* dims;
+  size_t num_dims;
+  PJRT_Layouts_MemoryLayout* layout;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_PJRT_Topology_GetDefaultLayout_Args,
+                          layout);
+
+// Returns the default memory layout for a topology.
+typedef PJRT_Error* PJRT_Layouts_PJRT_Topology_GetDefaultLayout(
+    PJRT_Layouts_PJRT_Topology_GetDefaultLayout_Args* args);
+
 // --------------------------- Extension entrypoint ----------------------------
 
 typedef struct PJRT_Layouts_Extension {
@@ -115,14 +131,14 @@ typedef struct PJRT_Layouts_Extension {
 
   PJRT_Layouts_MemoryLayout_Destroy* PJRT_Layouts_MemoryLayout_Destroy;
   PJRT_Layouts_MemoryLayout_Serialize* PJRT_Layouts_MemoryLayout_Serialize;
-
   PJRT_Layouts_PJRT_Client_GetDefaultLayout*
       PJRT_Layouts_PJRT_Client_GetDefaultLayout;
-
   PJRT_Layouts_PJRT_Buffer_MemoryLayout* PJRT_Layouts_PJRT_Buffer_MemoryLayout;
+  PJRT_Layouts_PJRT_Topology_GetDefaultLayout*
+      PJRT_Layouts_PJRT_Topology_GetDefaultLayout;
 } PJRT_Layouts_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_Extension,
-                          PJRT_Layouts_PJRT_Buffer_MemoryLayout);
+                          PJRT_Layouts_PJRT_Topology_GetDefaultLayout);
 
 #ifdef __cplusplus
 }

@@ -41,6 +41,14 @@ END
 Additional string to recognize as NA/NaN.
 END
   }
+  attr {
+    name: "select_cols"
+    description: <<END
+Optional sorted list of column indices to select. If specified,
+only this subset of columns will be parsed and returned.
+It only works on `records` except for `record_defaults`.
+END
+  }
   summary: "Convert CSV records to tensors. Each column maps to one tensor."
   description: <<END
 RFC 4180 format is expected for the CSV records.

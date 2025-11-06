@@ -69,13 +69,13 @@ struct CudaComputeCapability {
     kVolta = 7,
     kAmpere = 8,
     kHopper = 9,
-    kBlackwell = 10
+    kBlackwell = 10,
+    kBlackwell_12 = 12
   };
 
   constexpr CudaComputeCapability() = default;
   constexpr CudaComputeCapability(int major, int minor)
       : CudaComputeCapability(major, minor, FeatureExtension::kNone) {}
-
   constexpr CudaComputeCapability(int major, int minor,
                                   FeatureExtension feature_extension)
       : major{major}, minor{minor}, feature_extension{feature_extension} {}
@@ -87,14 +87,6 @@ struct CudaComputeCapability {
   // "major.minor<feature_extension>", example: "8.6" or "9.0a" or "10.0f".
   static absl::StatusOr<CudaComputeCapability> FromString(
       absl::string_view cuda_arch_name);
-
-  // Returns a CudaComputeCapability with the given major and minor versions
-  // and the accelerated feature extension enabled if supported.
-  // This function only exists for backwards compatibility reasons.
-  // TODO(hebecker): Remove this function once extensions are supported
-  // natively and all users have been migrated.
-  static CudaComputeCapability FromIntWithAutoFeatureExtension(int major,
-                                                               int minor);
 
   constexpr static CudaComputeCapability Pascal() {
     return CudaComputeCapability{kPascal, 0};
@@ -210,6 +202,12 @@ struct CudaComputeCapability {
   // on a GPU with compute capability `other`.
   bool CanRunOn(const CudaComputeCapability& other) const {
     return other.SupportsAllFeaturesOf(*this);
+  }
+
+  // Returns a copy of this compute capability without any feature extension
+  // set.
+  CudaComputeCapability WithoutAnyFeatureExtension() const {
+    return CudaComputeCapability{major, minor, FeatureExtension::kNone};
   }
 
   // Returns a string representation of the compute capability. The format is

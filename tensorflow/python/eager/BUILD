@@ -1003,7 +1003,10 @@ tf_py_strict_test(
 py_strict_library(
     name = "wrap_function",
     srcs = ["wrap_function.py"],
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/orbax/export:__subpackages__",
+    ],
     deps = [
         ":context",
         ":function",

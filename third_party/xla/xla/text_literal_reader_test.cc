@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "xla/text_literal_reader.h"
 
+#include <cmath>
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
@@ -26,6 +30,9 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 
 TEST(TextLiteralReaderTest, ReadsR3File) {
   std::string contents = R"(f32[1,2,3]
@@ -50,6 +57,36 @@ TEST(TextLiteralReaderTest, ReadsR3File) {
   EXPECT_EQ(45.5, literal.Get<float>({0, 1, 0}));
   EXPECT_EQ(46.5, literal.Get<float>({0, 1, 1}));
   EXPECT_EQ(47.5, literal.Get<float>({0, 1, 2}));
+}
+
+TEST(TextLiteralReaderTest,
+     WhitespaceOnlyLineAfterShapeDoesNotCrashAndYieldsScalarNaN) {
+  // Equivalent to the fuzzed input: "f32[]\n "
+  std::string contents = "f32[]\n ";
+
+  std::string fname =
+      tsl::testing::TmpDir() + "/WhitespaceOnlyAfterShape.data.txt";
+  ASSERT_THAT(tsl::WriteStringToFile(tsl::Env::Default(), fname, contents),
+              IsOk());
+
+  absl::StatusOr<Literal> literal = TextLiteralReader::ReadPath(fname);
+  EXPECT_THAT(literal, IsOk());
+  EXPECT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {}), literal->shape()));
+  float value = literal->Get<float>({});
+  EXPECT_TRUE(std::isnan(value));
+}
+
+TEST(TextLiteralReaderTest, MissingColonReturnsInvalidArgument) {
+  std::string contents = R"(f32[1]
+ (0) 1.0
+)";
+
+  std::string fname = tsl::testing::TmpDir() + "/MissingColon.data.txt";
+  ASSERT_THAT(tsl::WriteStringToFile(tsl::Env::Default(), fname, contents),
+              IsOk());
+  absl::StatusOr<Literal> literal = TextLiteralReader::ReadPath(fname);
+  EXPECT_THAT(literal, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

@@ -27,7 +27,10 @@ package(
         tags = [
             "nomsan",  # The execution engine doesn't work with msan, see b/248097619.
         ],
-        deps = ["@pypi_lit//:pkg"],  # copybara:comment
+        deps = [
+            "@pypi_lit//:pkg",
+            "@pypi//lit"
+        ],  # copybara:comment
     )
     for src in glob(["**/*.mlir"])
 ]

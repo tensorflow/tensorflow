@@ -962,12 +962,18 @@ cc_library(
     hdrs = ["utils/deserialize_mlir_module_utils.h"],
     deps = [
         ":error_util",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@local_xla//xla:status_macros",
+        "@local_xla//xla/tsl/lib/io:inputstream_interface",
+        "@local_xla//xla/tsl/lib/io:zlib_compression_options",
+        "@local_xla//xla/tsl/lib/io:zlib_inputstream",
     ],
 )
 
@@ -976,10 +982,20 @@ cc_library(
     srcs = ["utils/serialize_mlir_module_utils.cc"],
     hdrs = ["utils/serialize_mlir_module_utils.h"],
     deps = [
-        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:flags_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_xla//xla/tsl/lib/io:zlib_compression_options",
+        "@local_xla//xla/tsl/lib/io:zlib_outputbuffer",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -987,6 +1003,7 @@ tf_cc_test(
     name = "serialize_mlir_module_utils_test",
     srcs = ["utils/serialize_mlir_module_utils_test.cc"],
     deps = [
+        ":deserialize_mlir_module_utils",
         ":serialize_mlir_module_utils",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:test",

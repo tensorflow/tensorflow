@@ -181,10 +181,7 @@ class MatOpsDotAddTest
     auto stream_executor = client_->platform()->ExecutorForDevice(0).value();
     auto gpu_compute_capability =
         stream_executor->GetDeviceDescription().gpu_compute_capability();
-    if ((std::holds_alternative<stream_executor::CudaComputeCapability>(
-            gpu_compute_capability)) ||
-        std::holds_alternative<stream_executor::RocmComputeCapability>(
-            gpu_compute_capability)) {
+    if (gpu_compute_capability.IsCuda() || gpu_compute_capability.IsRocm()) {
       return true;
     }
     return false;

@@ -297,4 +297,8 @@ absl::Status HloWeightPropagation::HandleOptimizationBarrier(
   return absl::OkStatus();
 }
 
+absl::Status HloWeightPropagation::HandleAllGather(HloInstruction* all_gather) {
+  return HandleSimpleOp(all_gather);
+}
+
 }  // namespace xla

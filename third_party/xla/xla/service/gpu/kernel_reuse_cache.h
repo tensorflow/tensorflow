@@ -47,7 +47,7 @@ class KernelReuseCache {
     std::optional<se::ClusterDim> cluster_dim;
     int64_t shmem_bytes = 0;
     std::string binary;
-    std::optional<stream_executor::gpu::TmaMetadata> tma_metadata;
+    stream_executor::gpu::TmaMetadata tma_metadata;
   };
   struct NamedBinary {
     std::string name;

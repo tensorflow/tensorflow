@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -45,7 +46,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/service/pattern_matcher.h"
@@ -66,7 +67,6 @@ namespace gpu {
 namespace {
 
 namespace m = ::xla::match;
-using tsl::testing::StatusIs;
 
 struct ModuleAndNestedFusionMetadata {
   std::unique_ptr<VerifiedHloModule> module;
@@ -113,12 +113,12 @@ class TritonTest : public GpuCodegenTest {
   }
 
   stream_executor::GpuComputeCapability CudaAmpereOrRocm() {
-    if (std::holds_alternative<stream_executor::RocmComputeCapability>(
-            GpuComputeCapability())) {
+    if (GpuComputeCapability().IsRocm()) {
       return stream_executor::GpuComputeCapability{
           device_desc().rocm_compute_capability()};
     }
-    return se::CudaComputeCapability::Ampere();
+    return stream_executor::GpuComputeCapability{
+        se::CudaComputeCapability::Ampere()};
   }
 
   // Returns the module, its fusion computation and associated block level
@@ -128,9 +128,9 @@ class TritonTest : public GpuCodegenTest {
   GetModuleAndNestedFusionMetadata(absl::string_view hlo_text) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                         ParseAndReturnVerifiedModule(hlo_text));
-    TF_ASSIGN_OR_RETURN(
-        bool fusion_was_nested,
-        NestGemmFusion(GpuComputeCapability()).Run(module.get()));
+    TF_ASSIGN_OR_RETURN(bool fusion_was_nested,
+                        NestGemmFusion(device_desc(), &symbolic_expr_context_)
+                            .Run(module.get()));
     if (!fusion_was_nested) {
       return absl::InternalError("Failed to nest the GEMM fusion.");
     }
@@ -151,6 +151,9 @@ class TritonTest : public GpuCodegenTest {
   const stream_executor::DeviceDescription& device_desc() {
     return backend().default_stream_executor()->GetDeviceDescription();
   }
+
+  mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 class TritonGemmTest : public TritonTest {
@@ -264,7 +267,7 @@ ENTRY e {
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
                                  R"(
-CHECK: %[[LOAD:.*]] = triton_xla.extract {{.*}} : tensor<16x16xi8>
+CHECK: %[[LOAD:.*]] = xtile.extract {{.*}} -> tensor<16x16xi8>
 CHECK: %[[TRUNCI:.*]] = arith.trunci %[[LOAD]] : tensor<16x16xi8> to tensor<16x16xi1>
 CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
 )"));
@@ -356,7 +359,7 @@ ENTRY e {
     CHECK: %[[V2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
     CHECK: %[[CLAMP0:.*]] = arith.maxsi %[[V2]], %[[c0]] : i32
     CHECK: %[[CLAMP1:.*]] = arith.minsi %[[CLAMP0]], %[[c3]] : i32
-    CHECK: %[[OFFSET:.*]] = arith.index_castui %[[CLAMP1]] : i32 to index
+    CHECK: %[[OFFSET:.*]] = arith.index_cast %[[CLAMP1]] : i32 to index
     CHECK: triton_xla.extract from %[[ARG1]] {{.*}} [%[[OFFSET]], 0, 0] [1, 32, 32] [0, 1, 1]
     CHECK: tt.dot
   )"));
@@ -478,10 +481,6 @@ CHECK: mma
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
 // moved to deviceless test file.
 TEST_F(TritonGemmTest, FailIfTooMuchShmem) {
-  if (std::holds_alternative<se::RocmComputeCapability>(
-    GpuComputeCapability())) {
-    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250514";
-  }
   auto cc = se::CudaComputeCapability::Ampere();
   const se::DeviceDescription device_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -510,16 +509,17 @@ ENTRY entry {
 })";
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module1_and_metadata,
                           GetModuleAndNestedFusionMetadata(absl::Substitute(
-                              kHloTextTemplate, 16, 32, 512, 8)));
+                              kHloTextTemplate, 256, 256, 256, 8)));
 
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
-  EXPECT_THAT(TritonWrapper("test_fn", fusion1, cc, device_info,
-                            module1_and_metadata.block_level_parameters,
-                            &llvm_module, mlir_context),
-              absl_testing::StatusIs(
-                  tsl::error::RESOURCE_EXHAUSTED,
-                  ::testing::HasSubstr("Shared memory size limit exceeded")));
+    EXPECT_THAT(
+      TritonWrapper("test_fn", fusion1, se::GpuComputeCapability{cc},
+                    device_info, module1_and_metadata.block_level_parameters,
+                    &llvm_module, symbolic_expr_context_),
+      absl_testing::StatusIs(
+          tsl::error::RESOURCE_EXHAUSTED,
+          ::testing::HasSubstr("Shared memory size limit exceeded")));
 
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
                           GetModuleAndNestedFusionMetadata(absl::Substitute(
@@ -530,9 +530,9 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
-      TritonWrapper("test_fn", fusion2, cc, device_info,
-                    module2_and_metadata.block_level_parameters, &llvm_module,
-                    mlir_context));
+      TritonWrapper("test_fn", fusion2, se::GpuComputeCapability{cc},
+                    device_info, module2_and_metadata.block_level_parameters,
+                    &llvm_module, symbolic_expr_context_));
   // Use optin shared memory which is > shared_memory_per_block.
   EXPECT_GT(result.shmem_bytes, device_info.shared_memory_per_block());
 }
@@ -746,10 +746,6 @@ ENTRY e {
 // post-optimization HLO. (Though I'm not entirely sure it's even worth keeping
 // it.)
 TEST_F(TritonGemmTest, NonMajorMostInputBatchWorksCorrectly) {
-  if (std::holds_alternative<se::RocmComputeCapability>(
-    GpuComputeCapability())) {
-    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250514";
-  }
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -864,11 +860,12 @@ ENTRY entry {
 
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
-  EXPECT_THAT(TritonWrapper("test_fn", fusion1, cc, device_info,
-                            module1_and_metadata.block_level_parameters,
-                            &llvm_module, mlir_context),
-              absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-                                     "Tiling complexity heuristic exceeded"));
+  EXPECT_THAT(
+      TritonWrapper("test_fn", fusion1, se::GpuComputeCapability{cc},
+                    device_info, module1_and_metadata.block_level_parameters,
+                    &llvm_module, symbolic_expr_context_),
+      absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
+                             "Tiling complexity heuristic exceeded"));
 
   // Succeeds if the tiling is not too complex.
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
@@ -878,9 +875,10 @@ ENTRY entry {
   const HloFusionInstruction* fusion2 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
 
-  TF_EXPECT_OK(TritonWrapper("test_fn", fusion2, cc, device_info,
+  TF_EXPECT_OK(TritonWrapper("test_fn", fusion2, se::GpuComputeCapability{cc},
+                             device_info,
                              module2_and_metadata.block_level_parameters,
-                             &llvm_module, mlir_context)
+                             &llvm_module, symbolic_expr_context_)
                    .status());
 }
 
@@ -1213,8 +1211,7 @@ ENTRY e {
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
 TEST_F(TritonGemmTest, DoNotFuseConcatenationOfSplitNonContractingDimension) {
-  if (std::holds_alternative<se::RocmComputeCapability>(
-          GpuComputeCapability())) {
+  if (GpuComputeCapability().IsRocm()) {
     GTEST_SKIP() << "Not using autotuner on ROCM yet.";
   }
   if (!SupportsBF16(GpuComputeCapability())) {
@@ -1641,10 +1638,6 @@ ENTRY e {
 // in the codegen directory.
 TEST_F(TritonGemmTestWithSplitK,
        SplitKDoesNotBreakSlicedFragmentedContractingDimension) {
-  if (std::holds_alternative<se::RocmComputeCapability>(
-    GpuComputeCapability())) {
-    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250514";
-  }
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[16,8,128]{2,1,0} parameter(0)
@@ -1782,10 +1775,6 @@ ENTRY e {
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
 TEST_F(TritonGemmTest, SplitLHSOutputTransposeAloneIsNotFused) {
-  if (std::holds_alternative<se::RocmComputeCapability>(
-    GpuComputeCapability())) {
-    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250714";
-  }
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -1824,8 +1813,7 @@ TEST_F(TritonGemmTest, DISABLED_SplitLHSInputOutputIsFused) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  if (std::holds_alternative<se::RocmComputeCapability>(
-          GpuComputeCapability())) {
+  if (GpuComputeCapability().IsRocm()) {
     GTEST_SKIP() << "Skipped until corresponding issue on ROCm is fixed.";
   }
 
@@ -1981,8 +1969,7 @@ ENTRY e {
 // probably be made deviceless and repurposed to test that opt-in shared memory
 // is used only.
 TEST_F(CompareTest, UsingOptinSharedMemoryProducesSameResult) {
-  if (std::holds_alternative<se::RocmComputeCapability>(
-          GpuComputeCapability())) {
+  if (GpuComputeCapability().IsRocm()) {
     GTEST_SKIP() << "No Optin Shared Memory on AMD.";
   }
   const se::DeviceDescription dev_info =
@@ -2037,7 +2024,7 @@ ENTRY e {
       TritonWrapper("test_fn", triton_dot_fusion, GpuComputeCapability(),
                     dev_info,
                     optin_shmem_module_and_metadata.block_level_parameters,
-                    &llvm_module, mlir_context));
+                    &llvm_module, symbolic_expr_context_));
   // The config is chosen so that the used memory size is slightly above the
   // 48 kB boundary of standard / opt-in shared memory so that any GPU that
   // has the opt-in one should be able to execute the test.
@@ -2087,10 +2074,6 @@ TEST_F(CompareTest, SplitK) {
   // slightly different.
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
-  }
-  if (std::holds_alternative<se::RocmComputeCapability>(
-    GpuComputeCapability())) {
-    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250514";
   }
   constexpr absl::string_view hlo_text_ref = R"(
 HloModule t
@@ -2171,10 +2154,6 @@ ENTRY e {
 }
 
 TEST_F(CompareTest, SplitKBatch) {
-  if (std::holds_alternative<se::RocmComputeCapability>(
-    GpuComputeCapability())) {
-    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250514";
-  }
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }

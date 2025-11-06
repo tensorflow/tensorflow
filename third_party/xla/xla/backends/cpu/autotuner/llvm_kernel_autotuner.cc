@@ -45,16 +45,16 @@ absl::StatusOr<bool> LlvmKernelAutotuner::Run(
   TF_ASSIGN_OR_RETURN(auto compiler,
                       CpuCodegenBackend::CreateBackendCompiler());
   TF_ASSIGN_OR_RETURN(auto backend, LlvmKernelBackend::Create(compiler.get()));
-  ProfileOptions profile_options;
-  profile_options.should_populate_output_buffer = false;
-  std::unique_ptr<Profiler> profiler = CpuProfiler::Create(profile_options);
+  std::unique_ptr<Profiler> profiler = CpuProfiler::Create(ProfileOptions());
 
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends;
   codegen_backends.push_back(std::move(backend));
 
+  AutotuneConfig autotune_config;
+  autotune_config.check_buffers = false;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Autotuner> autotuner,
                       Autotuner::Create(std::move(codegen_backends),
-                                        std::move(profiler), AutotuneConfig(),
+                                        std::move(profiler), autotune_config,
                                         /*cache=*/nullptr));
 
   bool hlo_changed = false;

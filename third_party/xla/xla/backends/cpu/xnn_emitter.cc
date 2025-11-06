@@ -456,11 +456,11 @@ static absl::StatusOr<XnnSubgraph> EmitXnnSubgraph(
       } break;
 
       case HloOpcode::kReduce: {
-        if (!IsReduceOpSupportedByXnn(instr)) {
-          return InvalidArgument(
-              "Unsupported reduce instruction in XNN fusion: %s",
-              instr->ToString());
-        }
+        // FIXME: Validate the reduce instruction.
+        // One cannot directly use IsReduceOpSupportedByXnn since the invariant
+        // value is not necessarily included into the same fusion. This might
+        // happen if the original instruction has multiple users or was rejected
+        // by the fusion compiler pass.
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineReduceOp(subgraph.get(), tensor_ids, instr));
       } break;

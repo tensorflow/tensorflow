@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/alias_passthrough_params.h"
 
+#include <gtest/gtest.h>
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {

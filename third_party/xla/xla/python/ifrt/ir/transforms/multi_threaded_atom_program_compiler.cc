@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/transforms/multi_threaded_atom_program_compiler.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,7 +28,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/constants.h"
@@ -47,7 +46,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/python/ifrt/with_user_context.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -147,55 +146,43 @@ MultiThreadedAtomProgramCompiler::GetXlaCompileOptions(
   // compile options.
   auto compile_options_key =
       call_op->getAttrOfType<mlir::StringAttr>(kIfrtCompileOptionsKey);
-  bool has_compile_options = false;
-  if (compile_options_overrides_ != nullptr && compile_options_key != nullptr) {
-    if (auto compile_options_override =
-            compile_options_overrides_->find(compile_options_key.str());
-        compile_options_override != compile_options_overrides_->end()) {
-      if (auto xla_options = llvm::dyn_cast<XlaCompileOptions>(
-              compile_options_override->second.get())) {
-        compile_options = xla_options->compile_options;
-        has_compile_options = true;
-      } else {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "The `", kIfrtCompileOptionsKey.str(), "` compile options key `",
-            compile_options_key.str(),
-            "` has an entry that is not of type `XlaCompileOptions`, but the "
-            "atom program is an XLA program."));
-      }
-    }
+  TF_ASSIGN_OR_RETURN(
+      std::optional<xla::CompileOptions> compile_options_override,
+      GetModuleXlaCompileOverrides(compile_options_key,
+                                   compile_options_overrides_));
+
+  if (compile_options_override.has_value()) {
+    return compile_options_override.value();
   }
 
-  if (!has_compile_options) {
-    auto& exec_build_options = compile_options.executable_build_options;
-    // Executable build options are constructed using logical ids, which are
-    // later converted into real Device ids by using the logical ids as
-    // indices into the device list given at compilation invocation time.
-    llvm::ArrayRef<int> logical_device_ids = call_op.getDevices();
-    if (call_op->hasAttrOfType<mlir::UnitAttr>(kIfrtLocalViewAttrName)) {
-      exec_build_options.set_num_replicas(logical_device_ids.size());
-      exec_build_options.set_num_partitions(1);
-      xla::DeviceAssignment device_assignment(logical_device_ids.size(), 1);
-      for (const auto [i, device_id] : llvm::enumerate(logical_device_ids)) {
-        device_assignment(i, 0) = device_id;
-      }
-      exec_build_options.set_device_assignment(device_assignment);
-    } else {
-      exec_build_options.set_num_replicas(1);
-      exec_build_options.set_num_partitions(logical_device_ids.size());
-      xla::DeviceAssignment device_assignment(1, logical_device_ids.size());
-      for (const auto [i, device_id] : llvm::enumerate(logical_device_ids)) {
-        device_assignment(0, i) = device_id;
-      }
-      exec_build_options.set_device_assignment(device_assignment);
-      exec_build_options.set_use_spmd_partitioning(true);
-      if (enable_sharding_propagation_) {
-        mlir::func::FuncOp main_func = GetMainFunction(module_op);
-        exec_build_options.set_allow_spmd_sharding_propagation_to_parameters(
-            GetInputShardingPropagation(main_func));
-        exec_build_options.set_allow_spmd_sharding_propagation_to_output(
-            GetOutputShardingPropagation(main_func));
-      }
+  auto& exec_build_options = compile_options.executable_build_options;
+  // Executable build options are constructed using logical ids, which are
+  // later converted into real Device ids by using the logical ids as
+  // indices into the device list given at compilation invocation time.
+  llvm::ArrayRef<int> logical_device_ids = call_op.getDevices();
+  if (call_op->hasAttrOfType<mlir::UnitAttr>(kIfrtLocalViewAttrName)) {
+    exec_build_options.set_num_replicas(logical_device_ids.size());
+    exec_build_options.set_num_partitions(1);
+    xla::DeviceAssignment device_assignment(logical_device_ids.size(), 1);
+    for (const auto [i, device_id] : llvm::enumerate(logical_device_ids)) {
+      device_assignment(i, 0) = device_id;
+    }
+    exec_build_options.set_device_assignment(device_assignment);
+  } else {
+    exec_build_options.set_num_replicas(1);
+    exec_build_options.set_num_partitions(logical_device_ids.size());
+    xla::DeviceAssignment device_assignment(1, logical_device_ids.size());
+    for (const auto [i, device_id] : llvm::enumerate(logical_device_ids)) {
+      device_assignment(0, i) = device_id;
+    }
+    exec_build_options.set_device_assignment(device_assignment);
+    exec_build_options.set_use_spmd_partitioning(true);
+    if (enable_sharding_propagation_) {
+      mlir::func::FuncOp main_func = GetMainFunction(module_op);
+      exec_build_options.set_allow_spmd_sharding_propagation_to_parameters(
+          GetInputShardingPropagation(main_func));
+      exec_build_options.set_allow_spmd_sharding_propagation_to_output(
+          GetOutputShardingPropagation(main_func));
     }
   }
 
@@ -215,16 +202,16 @@ absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileXla(
   auto hlo_program = std::make_unique<HloProgram>(
       /*context=*/nullptr,  // Shares the same long-living context.
       mlir::OwningOpRef<mlir::ModuleOp>(module_op.clone()));
-  Promise<AtomProgramCompileResult> promise = CompileFuture::CreatePromise();
-  CompileFuture future(promise);
+  auto [promise, future] = CompileFuture::MakePromise();
   ScheduleWork(
-      thread_pool, [this, hlo_program = std::move(hlo_program),
-                    compile_options = std::move(compile_options),
-                    promise = std::move(promise)]() mutable {
+      thread_pool,
+      WithCurrentUserContext([this, hlo_program = std::move(hlo_program),
+                              compile_options = std::move(compile_options),
+                              promise = std::move(promise)]() mutable {
         promise.Set(compiler_->CompileXla(std::move(hlo_program),
                                           std::move(compile_options)));
-      });
-  return future;
+      }));
+  return std::move(future);
 }
 
 absl::StatusOr<CompileFuture>
@@ -257,8 +244,7 @@ MultiThreadedAtomProgramCompiler::CompileMpmdReshard(mlir::ModuleOp module_op) {
         << "Unsupported return type `" << mlir::debugString(result_type) << "`";
     out_arrays_types.push_back(array_type);
   }
-  auto promise = CompileFuture::CreatePromise();
-  CompileFuture future(promise);
+  auto [promise, future] = CompileFuture::MakePromise();
   // No need to dispatch from a different thread because MpmdReshard uses its
   // own thread pool already.
   auto compile_result = compiler_->CompileMpmdReshard(

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
@@ -149,10 +150,10 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
   auto literal = LiteralUtil::CreateR2({{1, 2, 3}, {4, 5, 6}});
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
-      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0],
+                                    /*device_layout=*/nullptr));
 
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-  PjRtFuture<> future(promise);
+  auto [promise, future] = Future<>::MakePromise();
   auto blocked_buffer =
       std::move(*(buffer->DonateWithControlDependency(future)));
   EXPECT_TRUE(buffer->IsDeleted());

@@ -108,9 +108,11 @@ static std::optional<FoldableSelect> MatchFoldableSelect(
   // Match replica-id or partition-id.
   CollectiveOpGroupMode collective_mode;
   if (HloPredicateIsOp<HloOpcode::kReplicaId>(id_op)) {
-    collective_mode = CollectiveOpGroupMode::kCrossReplica;
+    collective_mode =
+        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA;
   } else if (HloPredicateIsOp<HloOpcode::kPartitionId>(id_op)) {
-    collective_mode = CollectiveOpGroupMode::kCrossPartition;
+    collective_mode =
+        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION;
   } else {
     return std::nullopt;
   }

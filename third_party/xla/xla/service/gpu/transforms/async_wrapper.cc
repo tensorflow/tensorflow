@@ -28,8 +28,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 

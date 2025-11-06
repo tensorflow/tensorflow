@@ -62,7 +62,6 @@ cc_library(
         ":atomic_rmw_utils",
         ":convert_pure_call_ops_pass",
         ":passes_inc_gen",
-        ":propagate_alias_scopes",  # buildcleaner: keep
         ":simplify_affine_pass",
         ":simplify_arith_pass",
         "//xla:shape_util",
@@ -85,6 +84,7 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
         "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu/model/experimental:symbolic_expr",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor/cuda:cuda_compute_capability",
@@ -93,6 +93,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -109,6 +110,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:GPUToLLVMSPVTransforms",
         "@llvm-project//mlir:GPUToNVVMTransforms",
         "@llvm-project//mlir:GPUToROCDLTransforms",
         "@llvm-project//mlir:IR",
@@ -117,6 +119,7 @@ cc_library(
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MathToLLVM",
         "@llvm-project//mlir:MathTransforms",
+        "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ROCDLDialect",
@@ -126,6 +129,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:UBToLLVM",
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
@@ -196,25 +200,6 @@ cc_library(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-    ],
-)
-
-cc_library(
-    name = "propagate_alias_scopes",
-    srcs = ["propagate_alias_scopes.cc"],
-    deps = [
-        ":passes_inc_gen",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:CallOpInterfaces",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
     ],
 )
 

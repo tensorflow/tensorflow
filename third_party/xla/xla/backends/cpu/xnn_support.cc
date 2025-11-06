@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "xnnpack.h"
-#include "absl/algorithm/container.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -79,6 +78,11 @@ absl::StatusOr<bool> IsDotSupportedByXnn(
     const TargetMachineFeatures* cpu_features, bool use_cost_model) {
   // Check data types.
   if (!AreDtypesSupported(lhs_shape, rhs_shape, out_shape, cpu_features)) {
+    return false;
+  }
+  if (!IsLayoutSupportedByXnn(lhs_shape) ||
+      !IsLayoutSupportedByXnn(rhs_shape) ||
+      !IsLayoutSupportedByXnn(out_shape)) {
     return false;
   }
 

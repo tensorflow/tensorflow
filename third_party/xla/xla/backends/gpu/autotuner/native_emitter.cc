@@ -36,10 +36,19 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Returns true if the given instruction is a fusion instruction that is
+// supported by the native emitter backend.
+//
+// There is no guarantee that the native emitter backend can actually compile if
+// it has a config for another backend, and we currently don't have an easy way
+// to check that. Therefore, we only support fusions that are already set up to
+// go through the native emitter.
 bool IsSupported(const HloInstruction& instr) {
-  return instr.opcode() == HloOpcode::kFusion &&
-         // TODO: b/440062644 - Support multi-output fusions.
-         !Cast<HloFusionInstruction>(&instr)->IsMultiOutputFusion();
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  auto fusion_kind = Cast<HloFusionInstruction>(&instr)->fusion_kind();
+  return fusion_kind != HloInstruction::FusionKind::kCustom;
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>

@@ -437,7 +437,7 @@ class CountDownPromise {
     assert(state_->count.load() >= count && "Invalid count down value");
 
     if (XLA_FFI_PREDICT_FALSE(!error.success())) {
-      const std::lock_guard<std::mutex> lock(state_->mutex);
+      std::lock_guard<std::mutex> lock(state_->mutex);  // NOLINT
       state_->is_error.store(true, std::memory_order_release);
       state_->error = error;
     }
@@ -448,7 +448,7 @@ class CountDownPromise {
       bool is_error = state_->is_error.load(std::memory_order_acquire);
       if (XLA_FFI_PREDICT_FALSE(is_error)) {
         auto take_error = [&] {
-          const std::lock_guard<std::mutex> lock(state_->mutex);
+          std::lock_guard<std::mutex> lock(state_->mutex);  // NOLINT
           return state_->error;
         };
         state_->promise.SetError(take_error());
@@ -476,7 +476,7 @@ class CountDownPromise {
     std::atomic<int64_t> count;
     std::atomic<bool> is_error;
 
-    std::mutex mutex;
+    std::mutex mutex;  // NOLINT
     Error error;
   };
 
@@ -1139,6 +1139,8 @@ struct ResultEncoding<ExecutionStage::kInstantiate,
   static_assert(std::is_same_v<decltype(T::id), TypeId>,
                 "State type must have a static `TypeId id` field");
 
+  static XLA_FFI_TypeId state_type_id() { return T::id; }
+
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
                                XLA_FFI_ExecutionContext* ctx,
@@ -1463,14 +1465,20 @@ struct CtxDecoding<FfiExecutionContext> {
 // Type Registration
 //===----------------------------------------------------------------------===//
 
-#define XLA_FFI_REGISTER_TYPE(API, NAME, TYPE_ID) \
-  XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, __COUNTER__)
-#define XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, N) \
-  XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, N)
-#define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, N) \
-  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error* \
-      xla_ffi_type_##N##_registered_ =                 \
-          [] { return ::xla::ffi::Ffi::RegisterTypeId(API, NAME, TYPE_ID); }()
+template <typename T>
+constexpr XLA_FFI_TypeInfo TypeInfo() {
+  return XLA_FFI_TypeInfo{[](void* ptr) { delete static_cast<T*>(ptr); }};
+}
+
+#define XLA_FFI_REGISTER_TYPE(API, NAME, TYPE_ID, TYPE_INFO) \
+  XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, TYPE_INFO, __COUNTER__)
+#define XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, TYPE_INFO, N) \
+  XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, TYPE_INFO, N)
+#define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, TYPE_INFO, N)              \
+  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error*                         \
+      xla_ffi_type_##N##_registered_ = [] {                                    \
+        return ::xla::ffi::Ffi::RegisterTypeId(API, NAME, TYPE_ID, TYPE_INFO); \
+      }()
 
 //===----------------------------------------------------------------------===//
 // UserData

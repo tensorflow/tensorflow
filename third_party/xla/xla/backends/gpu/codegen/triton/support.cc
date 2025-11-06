@@ -63,7 +63,11 @@ bool IsTritonSupportedDataType(PrimitiveType type,
       return true;
     case F8E5M2:
     case F8E4M3FN:
-      return std::holds_alternative<se::CudaComputeCapability>(gpu_version);
+      return std::holds_alternative<se::CudaComputeCapability>(gpu_version) ||
+             std::holds_alternative<se::RocmComputeCapability>(gpu_version);
+    case F8E5M2FNUZ:
+    case F8E4M3FNUZ:
+      return std::holds_alternative<se::RocmComputeCapability>(gpu_version);
     case BF16:
       return std::holds_alternative<se::CudaComputeCapability>(gpu_version) ||
              (std::holds_alternative<se::RocmComputeCapability>(gpu_version) &&
@@ -92,7 +96,9 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
   absl::flat_hash_set<HloOpcode> ret{HloOpcode::kAbs, HloOpcode::kCopy};
 
   if (element_type != PrimitiveType::F8E5M2 &&
-      element_type != PrimitiveType::F8E4M3FN) {
+      element_type != PrimitiveType::F8E4M3FN &&
+      element_type != PrimitiveType::F8E5M2FNUZ &&
+      element_type != PrimitiveType::F8E4M3FNUZ) {
     ret.insert(HloOpcode::kNegate);
   }
 
@@ -105,11 +111,11 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
       element_type == PrimitiveType::F32 ||
       element_type == PrimitiveType::F64) {
     absl::flat_hash_set<HloOpcode> additional_opcodes{
-        HloOpcode::kCos,   HloOpcode::kExp,   HloOpcode::kExpm1,
-        HloOpcode::kFloor, HloOpcode::kCeil,  HloOpcode::kLog,
-        HloOpcode::kLog1p, HloOpcode::kRsqrt, HloOpcode::kSin,
-        HloOpcode::kSqrt,  HloOpcode::kCbrt,  HloOpcode::kTan,
-        HloOpcode::kTanh,  HloOpcode::kErf};
+        HloOpcode::kCos,  HloOpcode::kFloor, HloOpcode::kLog1p,
+        HloOpcode::kSqrt, HloOpcode::kTanh,  HloOpcode::kAcosh,
+        HloOpcode::kExp,  HloOpcode::kExpm1, HloOpcode::kCbrt,
+        HloOpcode::kErf,  HloOpcode::kLog,   HloOpcode::kTan,
+        HloOpcode::kCeil, HloOpcode::kRsqrt, HloOpcode::kSin};
     ret.insert(additional_opcodes.begin(), additional_opcodes.end());
   }
 
@@ -140,9 +146,11 @@ CodegenDecision IsTritonSupportedConversion(
     return error_message();
   }
 
-  bool is_f8_conversion =
-      any_is(PrimitiveType::F8E4M3FN) && any_is(PrimitiveType::F8E5M2);
-  bool is_f8 = any_is(PrimitiveType::F8E4M3FN) || any_is(PrimitiveType::F8E5M2);
+  auto supported_fp8_types = {F8E4M3FN, F8E5M2, F8E4M3FNUZ, F8E5M2FNUZ};
+  bool is_input_fp8 = absl::c_linear_search(supported_fp8_types, input);
+  bool is_output_fp8 = absl::c_linear_search(supported_fp8_types, output);
+  bool is_f8_conversion = is_input_fp8 && is_output_fp8;
+  bool is_f8 = is_input_fp8 || is_output_fp8;
   bool is_f16_or_f32 = any_is(PrimitiveType::F16) ||
                        any_is(PrimitiveType::BF16) ||
                        any_is(PrimitiveType::F32);
@@ -171,7 +179,9 @@ absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
     PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
   if (element_type == PrimitiveType::S4 || element_type == PrimitiveType::U16 ||
       element_type == PrimitiveType::F8E5M2 ||
-      element_type == PrimitiveType::F8E4M3FN) {
+      element_type == PrimitiveType::F8E4M3FN ||
+      element_type == PrimitiveType::F8E5M2FNUZ ||
+      element_type == PrimitiveType::F8E4M3FNUZ) {
     return {};
   }
 
@@ -207,6 +217,7 @@ absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
     ret.insert(HloOpcode::kAtan2);
     ret.insert(HloOpcode::kPower);
     ret.insert(HloOpcode::kRemainder);
+    ret.insert(HloOpcode::kDivide);
   }
 
   return ret;
@@ -220,7 +231,9 @@ absl::flat_hash_set<HloOpcode> TritonSupportedTernaryElementwiseOps(
   }
 
   if (element_type == PrimitiveType::F8E5M2 ||
-      element_type == PrimitiveType::F8E4M3FN) {
+      element_type == PrimitiveType::F8E4M3FN ||
+      element_type == PrimitiveType::F8E5M2FNUZ ||
+      element_type == PrimitiveType::F8E4M3FNUZ) {
     return {HloOpcode::kSelect};
   }
 
@@ -248,7 +261,9 @@ CodegenDecision CanTritonHandleReduce(
     const HloReduceInstruction& reduce,
     const se::GpuComputeCapability& gpu_version) {
   if (reduce.shape().element_type() == PrimitiveType::F8E4M3FN ||
-      reduce.shape().element_type() == PrimitiveType::F8E5M2) {
+      reduce.shape().element_type() == PrimitiveType::F8E5M2 ||
+      reduce.shape().element_type() == PrimitiveType::F8E5M2FNUZ ||
+      reduce.shape().element_type() == PrimitiveType::F8E4M3FNUZ) {
     return CodegenDecision::Forbid(
         "F8E4M3FN and F8E5M2 are not supported for reductions.");
   }
@@ -296,7 +311,8 @@ absl::Status CheckSupportedCheckDotDimensions(const HloDotInstruction& dot) {
   return absl::OkStatus();
 }
 
-bool IsSupportedDotAlgorithm(PrecisionConfig::Algorithm algorithm) {
+bool IsSupportedDotAlgorithm(PrecisionConfig::Algorithm algorithm,
+                             const se::GpuComputeCapability& gpu_version) {
   switch (algorithm) {
     case PrecisionConfig::ALG_UNSET:
     case PrecisionConfig::ALG_DOT_F16_F16_F16:
@@ -309,8 +325,13 @@ bool IsSupportedDotAlgorithm(PrecisionConfig::Algorithm algorithm) {
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
-      return true;
+      if (std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
+        return true;
+      }
     case PrecisionConfig::ALG_DOT_BF16_BF16_BF16:
+      if (std::holds_alternative<se::RocmComputeCapability>(gpu_version)) {
+        return true;
+      }
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
     default:
@@ -336,7 +357,17 @@ CodegenDecision AreTypesSupportedByAlgUnsetDot(
     }
   }
 
-  auto supported_float_types = {BF16, F16, F32, F64, F8E5M2, F8E4M3FN};
+  if (input_type == F8E4M3FN || input_type == F8E5M2 ||
+      input_type == F8E5M2FNUZ || input_type == F8E4M3FNUZ) {
+    if (auto* rocm_cc = std::get_if<se::RocmComputeCapability>(&gpu_version);
+        rocm_cc) {
+      return CodegenDecision::Forbid(
+          "Not supported Dot operation on Rocm.");
+    }
+  }
+
+  auto supported_float_types = {BF16, F16, F32, F64, F8E4M3FN, F8E5M2,
+                                F8E4M3FNUZ, F8E5M2FNUZ};
   if (absl::c_linear_search(supported_float_types, input_type)) {
     return CodegenDecision::Allow();
   }
@@ -347,11 +378,15 @@ CodegenDecision AreTypesSupportedByAlgUnsetDot(
 
   auto partially_supported_signed_types = {S4, S8, S16, S32, S64};
   if (absl::c_linear_search(partially_supported_signed_types, input_type)) {
-    if (absl::c_linear_search(partially_supported_signed_types, result_type)) {
+    if ((absl::c_linear_search(partially_supported_signed_types, result_type) &&
+          std::holds_alternative<se::CudaComputeCapability>(gpu_version)) ||
+        (input_type == S4 &&
+          std::holds_alternative<se::RocmComputeCapability>(gpu_version))) {
       return CodegenDecision::Forbid(
           "Dot operation does not support these signed integer types.");
     }
-    if (primitive_util::IsFloatingPointType(result_type)) {
+    if (primitive_util::IsFloatingPointType(result_type) &&
+        std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
       return CodegenDecision::Forbid(
           "Dot operation does not support floating point input and signed "
           "integer result types.");
@@ -467,7 +502,7 @@ CodegenDecision IsTritonSupportedDot(
   const PrecisionConfig& precision_config = dot.precision_config();
   const PrecisionConfig::Algorithm algorithm = precision_config.algorithm();
 
-  if (!IsSupportedDotAlgorithm(algorithm)) {
+  if (!IsSupportedDotAlgorithm(algorithm, gpu_version)) {
     return CodegenDecision::Forbid(
         absl::StrCat("Unsupported dot algorithm: ",
                      PrecisionConfig::Algorithm_Name(algorithm)));
@@ -496,8 +531,9 @@ CodegenDecision IsTritonSupportedDot(
 // - of kind `__triton_nested_gemm_fusion`;
 // - to have a single user that is either a `dot` or a `concatenate`;
 // - calls a supported computation.
-CodegenDecision IsSupportedFusion(const HloFusionInstruction& hlo,
-                                  const se::GpuComputeCapability& capability) {
+CodegenDecision IsTritonSupportedFusion(
+    const HloFusionInstruction& hlo,
+    const se::GpuComputeCapability& capability) {
   // TODO(b/393299275): test cases when there are multiple dot users of the
   // same fusion.
   if (hlo.user_count() != 1) {
@@ -625,6 +661,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     return CodegenDecision(
         element_type != PrimitiveType::F8E4M3FN &&
             element_type != PrimitiveType::F8E5M2 &&
+            element_type != PrimitiveType::F8E4M3FNUZ &&
+            element_type != PrimitiveType::F8E5M2FNUZ &&
             element_type != PrimitiveType::S4,
         "F8E4M3FN, F8E5M2 and S4 are not supported for iota.");
   }
@@ -642,9 +680,10 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       return CodegenDecision::Forbid(
           "dynamic slice is supported but not enabled yet");
     case HloOpcode::kBitcast:
-      if (instr.shape().element_type() !=
-          instr.operand(0)->shape().element_type()) {
-        return CodegenDecision::Forbid("Bitcast-convert is not supported");
+      if (ShapeUtil::ElementsIn(instr.operand(0)->shape()) !=
+          ShapeUtil::ElementsIn(instr.shape())) {
+        return CodegenDecision::Forbid(
+            "only bitcasts with the same number of elements are supported");
       }
       return CodegenDecision(instr.shape().element_type() != S4,
                              "S4 is not supported.");
@@ -658,8 +697,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       return IsTritonSupportedDot(*Cast<HloDotInstruction>(&instr),
                                   gpu_version);
     case HloOpcode::kFusion:
-      return IsSupportedFusion(*Cast<HloFusionInstruction>(&instr),
-                               gpu_version);
+      return IsTritonSupportedFusion(*Cast<HloFusionInstruction>(&instr),
+                                     gpu_version);
     default:
       // Not all instructions have a special handling.
       break;
@@ -687,10 +726,12 @@ namespace internal {
 bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kDynamicReshape:
+    case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGather:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kReduceWindow:
+    case HloOpcode::kScaledDot:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSetDimensionSize:

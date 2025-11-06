@@ -263,7 +263,7 @@ class TensorArray : public ResourceBase {
   string DebugString() const override {
     mutex_lock l(mu_);
     CHECK(!closed_);
-    return strings::StrCat("TensorArray[", tensors_.size(), "]");
+    return absl::StrCat("TensorArray[", tensors_.size(), "]");
   }
 
   bool IsClosed() {

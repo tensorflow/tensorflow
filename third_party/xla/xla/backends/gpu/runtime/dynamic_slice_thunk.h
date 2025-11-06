@@ -101,6 +101,11 @@ class DynamicSliceThunk : public Thunk {
           << "Induction variable update module expected with signature "
              "`(integer[]) -> integer[]`.";
     }
+
+    absl::StatusOr<OffsetAsFunctionOfIndvarModulesMetadataProto> ToProto()
+        const;
+    static absl::StatusOr<OffsetAsFunctionOfIndvarModulesMetadata> FromProto(
+        const OffsetAsFunctionOfIndvarModulesMetadataProto& proto);
   };
 
   DynamicSliceThunk(
@@ -131,6 +136,7 @@ class DynamicSliceThunk : public Thunk {
     std::optional<Shape> orig_shape;
     std::optional<Shape> sliced_shape;
     std::optional<uint64_t> offset_byte_size;
+    std::string ToString() const;
   };
 
   const SequentialThunk* get_embedded_thunk() const {
@@ -163,6 +169,31 @@ class DynamicSliceThunk : public Thunk {
   }
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
+  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  // `buffer_allocations`: the actual buffer allocations; required to parse the
+  // `arguments` (BufferAllocation::Slice) -- the tensors that we are later
+  // slicing from.
+  // `fake_allocations`: The fake allocations that are used as
+  // placeholders during creation of the embedded thunk. These are being
+  // replaced during execution in `ExecuteOnStream` with the actual (dynamic)
+  // slices. We have to create these outside of this method to manage their
+  // lifetime correctly.
+  static absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> FromProto(
+      ThunkInfo thunk_info, const DynamicSliceThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      absl::Span<const BufferAllocation> fake_allocations);
+
+  std::optional<const OffsetAsFunctionOfIndvarModulesMetadata*>
+  get_offset_function() const {
+    if (offset_as_function_of_indvar_metadata_.has_value()) {
+      return &offset_as_function_of_indvar_metadata_.value();
+    } else {
+      return std::nullopt;
+    }
+  }
 
  private:
   std::unique_ptr<SequentialThunk> embedded_thunk_;
@@ -194,6 +225,20 @@ class DynamicSliceThunk : public Thunk {
       offset_as_function_of_indvar_metadata_;
 };
 
+absl::StatusOr<OptionalDynamicSliceOffsetsProto>
+SerializeOptionalDynamicSliceOffsetsToProto(
+    const std::optional<std::vector<DynamicSliceThunk::Offset>>& offsets_item,
+    const std::optional<
+        DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata>&
+        offset_as_function_of_indvar_metadata);
+
+absl::StatusOr<std::optional<std::vector<DynamicSliceThunk::Offset>>>
+DeserializeOptionalDynamicSliceOffsetsFromProto(
+    const OptionalDynamicSliceOffsetsProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    const std::optional<
+        DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata>&
+        offset_as_function_of_indvar_metadata);
 }  // namespace gpu
 }  // namespace xla
 

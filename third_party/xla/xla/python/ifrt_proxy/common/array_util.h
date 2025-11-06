@@ -88,7 +88,7 @@ absl::StatusOr<std::unique_ptr<std::string>> SerializeStringHostBuffer(
     absl::Span<const absl::Cord> cords);
 
 absl::StatusOr<std::vector<absl::Cord>> DeserializeStringHostBufferFromString(
-    const std::string& serialized_string_buffer);
+    absl::string_view serialized_string_buffer);
 
 // Callers must ensure that the `preallocated_buffer` consists of `N`
 // `absl::Cord` objects, where N is the number of string elements in the

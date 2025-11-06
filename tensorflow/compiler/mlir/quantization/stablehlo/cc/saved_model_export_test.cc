@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
@@ -51,8 +52,6 @@ using ::testing::IsEmpty;
 using ::testing::SizeIs;
 using ::testing::StrEq;
 using ::tsl::protobuf::TextFormat;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 TEST(CreateExportedModelTest, CreateExportedModelBasicFieldsSet) {
   GraphDef graph_def{};

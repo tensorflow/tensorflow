@@ -48,7 +48,7 @@ static absl::Status ReadEntireFile(Env* env, const string& filename,
 class WholeFileReader : public ReaderBase {
  public:
   WholeFileReader(Env* env, const string& node_name)
-      : ReaderBase(strings::StrCat("WholeFileReader '", node_name, "'")),
+      : ReaderBase(absl::StrCat("WholeFileReader '", node_name, "'")),
         env_(env) {}
 
   absl::Status ReadLocked(tstring* key, tstring* value, bool* produced,

@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iomanip>
-#include <iterator>
 #include <limits>
 #include <memory>
 #include <string>
@@ -29,7 +28,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/meta/type_traits.h"
@@ -40,24 +38,22 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/bit_cast.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/executable_run_options.h"
 #include "xla/fp_util.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/shaped_buffer.h"
-#include "xla/shape.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/tests/exhaustive/error_spec.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace exhaustive_op_test {
@@ -483,40 +479,17 @@ absl::StatusOr<Literal> ExhaustiveOpTestBase<T, N>::RunComputation(
     absl::Span<const Literal* const> input_literals) {
   // Copy debug options from ClientLibraryTestBase.  In particular, we're
   // interested in disabling constant folding.
-  ExecutableBuildOptions build_opts;
-  *build_opts.mutable_debug_options() = *mutable_debug_options();
-
-  std::vector<ScopedShapedBuffer> input_buffers;
-  absl::c_transform(input_literals, std::back_inserter(input_buffers),
-                    [&](const Literal* input_literal) {
-                      return client_
-                          ->LiteralToShapedBuffer(*input_literal,
-                                                  /*device_ordinal=*/0)
-                          .value();
-                    });
-  std::vector<const Shape*> input_shapes;
-  absl::c_transform(input_buffers, std::back_inserter(input_shapes),
-                    [&](const ScopedShapedBuffer& buffer) {
-                      return &buffer.on_device_shape();
-                    });
-
-  TF_ASSIGN_OR_RETURN(auto executables,
-                      client_->Compile(computation, input_shapes, build_opts));
-
-  std::vector<const ShapedBuffer*> input_buffer_pointers;
-  absl::c_transform(input_buffers, std::back_inserter(input_buffer_pointers),
-                    [&](const ScopedShapedBuffer& buffer) { return &buffer; });
-
-  ExecutableRunOptions run_opts;
-  run_opts.set_allocator(client_->backend().memory_allocator());
-  run_opts.set_intra_op_thread_pool(
-      client_->backend().eigen_intra_op_thread_pool_device());
-  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
-                      executables[0]->Run(input_buffer_pointers, run_opts));
-
-  TF_ASSIGN_OR_RETURN(Literal result_literal,
-                      client_->ShapedBufferToLiteral(result));
-  return std::move(result_literal);
+  ExecutionOptions execution_options;
+  *execution_options.mutable_debug_options() = *mutable_debug_options();
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig config,
+      HloModule::CreateModuleConfigFromProto(computation.proto(),
+                                             execution_options.debug_options(),
+                                             &execution_options));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      HloModule::CreateFromProto(computation.proto(), std::move(config)));
+  return Execute(std::move(module), input_literals);
 }
 
 template <PrimitiveType T, size_t N>

@@ -28,16 +28,11 @@ namespace xla {
 
 // Annotates host compute offloaded instructions with the frontend attribute
 // `_xla_compute_type=host`.
-class AnnotateHostComputeOffload : public HloModuleGroupPass {
+class AnnotateHostComputeOffload : public HloModulePass {
  public:
   absl::string_view name() const override {
     return "annotate-host-compute-offload";
   }
-
-  using HloPassInterface::RunOnModuleGroup;
-  absl::StatusOr<bool> RunOnModuleGroup(
-      HloModuleGroup* module_group,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   absl::StatusOr<bool> Run(
       HloModule* module,

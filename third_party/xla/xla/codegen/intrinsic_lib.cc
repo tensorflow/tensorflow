@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/rsqrt.h"
 #include "xla/codegen/intrinsic/string_interner.h"
 #include "xla/codegen/intrinsic/tanh.h"
+#include "xla/codegen/intrinsic/type.h"
 #include "xla/codegen/intrinsic/vec_name_mangler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/xla_data.pb.h"
@@ -154,22 +155,8 @@ class IntrinsicAdapter : public IntrinsicFunction {
   }
   std::string GenerateMangledSimdPrefix(
       absl::Span<const Type> types) const override {
-    std::vector<intrinsic::VecParamCardinality> param_cardinalities;
-    auto front = types.front();
-    // Remove the return type if it's in the types list:
-    for (const auto& type :
-         types.first(types.size() - Intrinsic::kLastArgIsReturnType)) {
-      if (type.is_scalar()) {
-        param_cardinalities.push_back(intrinsic::VecParamCardinality::kScalar);
-      } else {
-        param_cardinalities.push_back(intrinsic::VecParamCardinality::kVector);
-      }
-      CHECK(type.vector_width() == front.vector_width())
-          << "All types must have the same vector width.";
-    }
-    return intrinsic::GetMangledNamePrefix(Intrinsic::kIsMasked,
-                                           front.vector_width().value_or(1),
-                                           param_cardinalities);
+    return intrinsic::GetMangledNamePrefix(
+        Intrinsic::kIsMasked, Intrinsic::kLastArgIsReturnType, types);
   }
 };
 
@@ -227,6 +214,19 @@ GetCalledApproximatableFunctions(
   return called_targets;
 }
 
+bool ElementTypesMatch(const std::vector<Type>& types1,
+                       const std::vector<Type>& types2) {
+  if (types1.size() != types2.size()) {
+    return false;
+  }
+  for (int i = 0; i < types1.size(); ++i) {
+    if (types1[i].element_type() != types2[i].element_type()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // anonymous namespace
 
 std::vector<llvm::VecDesc> IntrinsicFunctionLib::Vectorizations() {
@@ -238,8 +238,8 @@ std::vector<llvm::VecDesc> IntrinsicFunctionLib::Vectorizations() {
          math_func->SupportedVectorTypes(options_.features)) {
       for (const auto& vector_types :
            math_func->SupportedVectorTypes(options_.features)) {
-        if (target_types.front().element_type() !=
-            vector_types.front().element_type()) {
+        if (!ElementTypesMatch(target_types, vector_types) ||
+            target_types.front().is_vector()) {
           continue;
         }
         absl::string_view target_name = intrinsic::StringInterner::Get().Intern(

@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/BuiltinOps.h"

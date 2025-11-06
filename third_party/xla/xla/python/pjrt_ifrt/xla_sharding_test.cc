@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"

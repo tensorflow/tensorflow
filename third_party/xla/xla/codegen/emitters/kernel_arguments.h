@@ -84,6 +84,19 @@ class KernelArguments {
       const BufferAlignment& buffer_alignment,
       const HloInstruction* hlo_instruction);
 
+  // Certain kernels require output arguments to be interleaved with input
+  // arguments. This function creates a KernelArguments object where the output
+  // arguments are interleaved with the input arguments according to the
+  // provided indices.
+  // Example: If hlo_instruction->operands() has 3 elements and hlo_instruction
+  // shape yields 2 output arguments, and interleaved_output_indices = {1, 4}:
+  // - Final argument order will be: input0, output0, input1, input2, output1
+  static absl::StatusOr<KernelArguments> Create(
+      const BufferAssignment& buffer_assignment,
+      const BufferAlignment& buffer_alignment,
+      const HloInstruction* hlo_instruction,
+      absl::Span<const int32_t> interleaved_output_indices);
+
   explicit KernelArguments(std::vector<KernelArgument>&& args)
       : args_(std::move(args)) {}
 

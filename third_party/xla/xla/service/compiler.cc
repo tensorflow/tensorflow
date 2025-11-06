@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/debug_options_flags.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/service/metrics_hook_interface.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
@@ -102,15 +101,14 @@ std::unique_ptr<tsl::protobuf::Message> Compiler::ComputeDefaultBackendConfig(
 // Define a default version where metadata is not used.
 absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 Compiler::CompileAheadOfTime(
-    std::unique_ptr<HloModuleGroup> module_group,
-    const AotCompilationOptions& options,
+    std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {
   if (metadata != nullptr) {
     return Unimplemented(
         "Populating AotCompilationMetadata is not implemented on this "
         "compiler.");
   }
-  return CompileAheadOfTime(std::move(module_group), options);
+  return CompileAheadOfTime(std::move(hlo_module), options);
 }
 
 /* static */ absl::flat_hash_map<se::Platform::Id, Compiler::CompilerFactory>*
@@ -130,7 +128,7 @@ Compiler::GetPlatformCompilers() {
 
 /* static */ void Compiler::RegisterCompilerFactory(
     se::Platform::Id platform_id, CompilerFactory compiler_factory) {
-  absl::MutexLock lock(&platform_compiler_mutex_);
+  absl::MutexLock lock(platform_compiler_mutex_);
   auto* factories = GetPlatformCompilerFactories();
   CHECK(factories->find(platform_id) == factories->end())
       << "Compiler factory already registered for platform";
@@ -139,7 +137,7 @@ Compiler::GetPlatformCompilers() {
 
 /* static */ absl::StatusOr<std::unique_ptr<Compiler>> Compiler::GetForPlatform(
     const se::Platform* platform) {
-  absl::MutexLock lock(&platform_compiler_mutex_);
+  absl::MutexLock lock(platform_compiler_mutex_);
 
   auto* factories = GetPlatformCompilerFactories();
   auto it = factories->find(platform->id());

@@ -1385,7 +1385,10 @@ Status BaseGPUDeviceFactory::GetDeviceDetails(
   auto desc = std::move(desc_status).value();
   (*details)["device_name"] = desc->name();
 #if GOOGLE_CUDA
-  (*details)["compute_capability"] = desc->cuda_compute_capability().ToString();
+  // Some users of this API expect the compute capability to be in the format
+  // X.Y. Therefore we don't expose the feature extension here.
+  (*details)["compute_capability"] =
+      desc->cuda_compute_capability().WithoutAnyFeatureExtension().ToString();
 #endif  // GOOGLE_CUDA
   return OkStatus();
 }
@@ -1944,7 +1947,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
               /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),
               /*should_stage_host_to_device_transfers=*/true,
               /*gpu_run_options=*/std::move(gpu_run_options),
-              /*kv_store=*/nullptr, /*distributed_client=*/nullptr,
+              /*kv_store=*/nullptr,
               /*abort_collectives_on_failure=*/false, /*gpu_topology=*/nullptr,
               /*num_nodes=*/std::nullopt);
 

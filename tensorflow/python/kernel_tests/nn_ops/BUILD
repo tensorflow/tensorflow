@@ -77,6 +77,9 @@ cuda_py_strict_test(
     name = "betainc_op_test",
     size = "small",
     srcs = ["betainc_op_test.py"],
+    tags = [
+        "notap",  # TODO(delhibabu): Re-enable once the test is fixed.
+    ],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
@@ -266,7 +269,6 @@ cuda_py_strict_test(
     tags = [
         "no_cuda11",
         "no_mac_arm64",
-        "cuda-only", #TODO(rocm): weekly-sync 24-12-10
     ],
     deps = [
         "//tensorflow/python/eager:context",

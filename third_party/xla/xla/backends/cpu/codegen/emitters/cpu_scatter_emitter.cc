@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/scatter_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -91,22 +92,23 @@ namespace ma = ::mlir::arith;
 namespace scf = ::mlir::scf;
 
 std::vector<emitters::EpilogueSpecification> CpuScatterFusion::GetEpilogues(
-    const HloFusionInstruction& fusion, mlir::MLIRContext* context) const {
+    const HloFusionInstruction& fusion,
+    gpu::SymbolicExprContext* symbolic_expr_context) const {
   const auto* scatter = fusion_->fused_expression_root();
   // We don't actually support epilogues for scatter, but this is how we tell
   // the base class that we don't want it to generate code for the scatter.
   return {emitters::EpilogueSpecification::FromIdentityIndexing(
-      scatter, scatter, context)};
+      scatter, scatter, symbolic_expr_context)};
 }
 
 std::optional<IndexingMap> CpuScatterFusion::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, mlir::MLIRContext* ctx) const {
+    int64_t root_index, gpu::SymbolicExprContext* ctx) const {
   return std::nullopt;
 }
 
 std::optional<IndexingMap> CpuScatterFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
-    mlir::MLIRContext* ctx) const {
+    gpu::SymbolicExprContext* ctx) const {
   const auto* scatter =
       DynCast<HloScatterInstruction>(fusion_->fused_expression_root());
   CHECK(ScatterSimplifier::IsSimplifiedScatter(scatter))
@@ -181,12 +183,13 @@ SmallVector<Value> EmitScatterComputation(
   return {atomic_rmw->getResult(0)};
 }
 
-CpuScatterFusion::CpuScatterFusion(const BufferAssignment& buffer_assignment,
-                                   const HloFusionInstruction* fusion,
-                                   mlir::MLIRContext* context)
+CpuScatterFusion::CpuScatterFusion(
+    const BufferAssignment& buffer_assignment,
+    const HloFusionInstruction* fusion,
+    gpu::SymbolicExprContext* symbolic_expr_context)
     : buffer_assignment_(buffer_assignment),
       fusion_(fusion),
-      context_(context) {
+      symbolic_expr_context_(symbolic_expr_context) {
   const auto* scatter = Cast<HloScatterInstruction>(
       fusion->fused_instructions_computation()->root_instruction());
   auto update_shape = scatter->scatter_updates().front()->shape();
@@ -249,7 +252,7 @@ IndexingMap GetScatterIndexingMap(
 }
 
 absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
-  mlir::OpBuilder builder(context_);
+  mlir::OpBuilder builder(symbolic_expr_context_->GetMLIRContext());
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                       CreateNamedMlirModuleOp(*fusion_, builder));
 
@@ -273,9 +276,10 @@ absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
                            std::string(module_name), buffer_assignment_));
 
   std::vector<emitters::EpilogueSpecification> epilogues =
-      GetEpilogues(*fusion_, context_);
+      GetEpilogues(*fusion_, symbolic_expr_context_);
   emitters::PartitionedComputations computations(
-      fusion_->fused_instructions_computation(), context_, epilogues);
+      fusion_->fused_instructions_computation(), symbolic_expr_context_,
+      epilogues);
   TF_ASSIGN_OR_RETURN(
       emitters::CallTargetProvider call_targets,
       EmitCallTargets(mlir_module.get(), *fusion_, computations, epilogues));

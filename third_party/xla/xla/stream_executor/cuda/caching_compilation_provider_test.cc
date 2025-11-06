@@ -336,7 +336,7 @@ TEST(CachingCompilationProviderTest, CompilationInterlockWorks) {
 
   EXPECT_CALL(*mock_compilation_provider, Compile)
       .WillOnce([&]() {
-        absl::MutexLock lock(&mutex);
+        absl::MutexLock lock(mutex);
         compilation_started = true;
         mutex.Await(absl::Condition(&compilation_supposed_to_be_done));
         return kAssembly;
@@ -357,7 +357,7 @@ TEST(CachingCompilationProviderTest, CompilationInterlockWorks) {
     {
       // We wait for the other compilation to start, so that the cache is in
       // pending state.
-      absl::MutexLock lock(&mutex);
+      absl::MutexLock lock(mutex);
       mutex.Await(absl::Condition(&compilation_started));
     }
     // This call makes sure we mutate the cache while the other compilation is
@@ -366,7 +366,7 @@ TEST(CachingCompilationProviderTest, CompilationInterlockWorks) {
                     CudaComputeCapability{10, 0}, "ptx2", CompilationOptions()),
                 absl_testing::IsOkAndHolds(kAssembly));
     // Then we let the other compilation finish
-    absl::MutexLock lock(&mutex);
+    absl::MutexLock lock(mutex);
     compilation_supposed_to_be_done = true;
   });
 }
@@ -382,7 +382,7 @@ TEST(CachingCompilationProviderTest,
 
   EXPECT_CALL(*mock_compilation_provider, CompileToRelocatableModule)
       .WillOnce([&]() {
-        absl::MutexLock lock(&mutex);
+        absl::MutexLock lock(mutex);
         compilation_started = true;
         mutex.Await(absl::Condition(&compilation_supposed_to_be_done));
         return kModule;
@@ -403,7 +403,7 @@ TEST(CachingCompilationProviderTest,
     {
       // We wait for the other compilation to start, so that the cache is in
       // pending state.
-      absl::MutexLock lock(&mutex);
+      absl::MutexLock lock(mutex);
       mutex.Await(absl::Condition(&compilation_started));
     }
     // This call makes sure we mutate the cache while the other compilation is
@@ -412,7 +412,7 @@ TEST(CachingCompilationProviderTest,
                     CudaComputeCapability{10, 0}, "ptx2", CompilationOptions()),
                 absl_testing::IsOkAndHolds(kModule));
     // Then we let the other compilation finish
-    absl::MutexLock lock(&mutex);
+    absl::MutexLock lock(mutex);
     compilation_supposed_to_be_done = true;
   });
 }

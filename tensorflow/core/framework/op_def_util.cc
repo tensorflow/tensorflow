@@ -51,10 +51,10 @@ absl::Status AllowedTypeValue(DataType dt, const OpDef::AttrDef& attr) {
   string allowed_str;
   for (int i = 0; i < allowed_values.list().type_size(); ++i) {
     if (!allowed_str.empty()) {
-      strings::StrAppend(&allowed_str, ", ");
+      absl::StrAppend(&allowed_str, ", ");
     }
-    strings::StrAppend(&allowed_str,
-                       DataTypeString(allowed_values.list().type(i)));
+    absl::StrAppend(&allowed_str,
+                    DataTypeString(allowed_values.list().type(i)));
   }
   return errors::InvalidArgument(
       "Value for attr '", attr.name(), "' of ", DataTypeString(dt),
@@ -71,9 +71,9 @@ absl::Status AllowedStringValue(const string& str, const OpDef::AttrDef& attr) {
   string allowed_str;
   for (const string& allowed : allowed_values.list().s()) {
     if (!allowed_str.empty()) {
-      strings::StrAppend(&allowed_str, ", ");
+      absl::StrAppend(&allowed_str, ", ");
     }
-    strings::StrAppend(&allowed_str, "\"", allowed, "\"");
+    absl::StrAppend(&allowed_str, "\"", allowed, "\"");
   }
   return errors::InvalidArgument(
       "Value for attr '", attr.name(), "' of \"", str,
@@ -193,8 +193,8 @@ const ApiDef::Arg* FindInputArg(absl::string_view name, const ApiDef& api_def) {
 static absl::Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
                                 bool output,
                                 absl::flat_hash_set<absl::string_view>* names) {
-  const string suffix = strings::StrCat(
-      output ? " for output '" : " for input '", arg.name(), "'");
+  const string suffix =
+      absl::StrCat(output ? " for output '" : " for input '", arg.name(), "'");
   VALIDATE(names->emplace(arg.name()).second, "Duplicate name: ", arg.name());
   VALIDATE(HasAttrStyleType(arg), "Missing type", suffix);
 
@@ -321,7 +321,7 @@ absl::Status ValidateOpDef(const OpDef& op_def) {
     // Validate allowed_values
     if (attr.has_allowed_values()) {
       const string list_type =
-          is_list ? attr.type() : strings::StrCat("list(", attr.type(), ")");
+          is_list ? attr.type() : absl::StrCat("list(", attr.type(), ")");
       TF_RETURN_WITH_CONTEXT_IF_ERROR(
           AttrValueHasType(attr.allowed_values(), list_type), " for attr '",
           attr.name(), "' in Op '", op_def.name(), "'");
@@ -381,18 +381,18 @@ namespace {
 string SummarizeArgs(const protobuf::RepeatedPtrField<OpDef::ArgDef>& args) {
   string ret;
   for (const OpDef::ArgDef& arg : args) {
-    if (!ret.empty()) strings::StrAppend(&ret, ", ");
-    strings::StrAppend(&ret, arg.name(), ":");
-    if (arg.is_ref()) strings::StrAppend(&ret, "Ref(");
+    if (!ret.empty()) absl::StrAppend(&ret, ", ");
+    absl::StrAppend(&ret, arg.name(), ":");
+    if (arg.is_ref()) absl::StrAppend(&ret, "Ref(");
     if (!arg.number_attr().empty()) {
-      strings::StrAppend(&ret, arg.number_attr(), "*");
+      absl::StrAppend(&ret, arg.number_attr(), "*");
     }
     if (arg.type() != DT_INVALID) {
-      strings::StrAppend(&ret, DataTypeString(arg.type()));
+      absl::StrAppend(&ret, DataTypeString(arg.type()));
     } else {
-      strings::StrAppend(&ret, arg.type_attr());
+      absl::StrAppend(&ret, arg.type_attr());
     }
-    if (arg.is_ref()) strings::StrAppend(&ret, ")");
+    if (arg.is_ref()) absl::StrAppend(&ret, ")");
   }
   return ret;
 }
@@ -400,40 +400,40 @@ string SummarizeArgs(const protobuf::RepeatedPtrField<OpDef::ArgDef>& args) {
 }  // namespace
 
 string SummarizeOpDef(const OpDef& op_def) {
-  string ret = strings::StrCat("Op<name=", op_def.name());
-  strings::StrAppend(&ret, "; signature=", SummarizeArgs(op_def.input_arg()),
-                     " -> ", SummarizeArgs(op_def.output_arg()));
+  string ret = absl::StrCat("Op<name=", op_def.name());
+  absl::StrAppend(&ret, "; signature=", SummarizeArgs(op_def.input_arg()),
+                  " -> ", SummarizeArgs(op_def.output_arg()));
   for (int i = 0; i < op_def.attr_size(); ++i) {
-    strings::StrAppend(&ret, "; attr=", op_def.attr(i).name(), ":",
-                       op_def.attr(i).type());
+    absl::StrAppend(&ret, "; attr=", op_def.attr(i).name(), ":",
+                    op_def.attr(i).type());
     if (op_def.attr(i).has_default_value()) {
-      strings::StrAppend(&ret, ",default=",
-                         SummarizeAttrValue(op_def.attr(i).default_value()));
+      absl::StrAppend(&ret, ",default=",
+                      SummarizeAttrValue(op_def.attr(i).default_value()));
     }
     if (op_def.attr(i).has_minimum()) {
-      strings::StrAppend(&ret, ",min=", op_def.attr(i).minimum());
+      absl::StrAppend(&ret, ",min=", op_def.attr(i).minimum());
     }
     if (op_def.attr(i).has_allowed_values()) {
-      strings::StrAppend(&ret, ",allowed=",
-                         SummarizeAttrValue(op_def.attr(i).allowed_values()));
+      absl::StrAppend(&ret, ",allowed=",
+                      SummarizeAttrValue(op_def.attr(i).allowed_values()));
     }
   }
   if (op_def.is_commutative()) {
-    strings::StrAppend(&ret, "; is_commutative=true");
+    absl::StrAppend(&ret, "; is_commutative=true");
   }
   if (op_def.is_aggregate()) {
-    strings::StrAppend(&ret, "; is_aggregate=true");
+    absl::StrAppend(&ret, "; is_aggregate=true");
   }
   if (op_def.is_stateful()) {
-    strings::StrAppend(&ret, "; is_stateful=true");
+    absl::StrAppend(&ret, "; is_stateful=true");
   }
   if (op_def.allows_uninitialized_input()) {
-    strings::StrAppend(&ret, "; allows_uninitialized_input=true");
+    absl::StrAppend(&ret, "; allows_uninitialized_input=true");
   }
   if (op_def.is_distributed_communication()) {
-    strings::StrAppend(&ret, "; is_distributed_communication=true");
+    absl::StrAppend(&ret, "; is_distributed_communication=true");
   }
-  strings::StrAppend(&ret, ">");
+  absl::StrAppend(&ret, ">");
   return ret;
 }
 
@@ -497,7 +497,7 @@ bool HigherMinimum(const OpDef::AttrDef& old_attr,
 
 string MinStr(const OpDef::AttrDef& attr) {
   if (!attr.has_minimum()) return "no minimum";
-  return strings::StrCat(attr.minimum());
+  return absl::StrCat(attr.minimum());
 }
 
 typedef absl::flat_hash_map<absl::string_view, const OpDef::AttrDef*> AttrMap;
@@ -511,7 +511,7 @@ void FillAttrMap(const OpDef& op_def, AttrMap* attr_map) {
 // initialized to false).
 void AddComma(string* s, bool* add_comma) {
   if (*add_comma) {
-    strings::StrAppend(s, ", ");
+    absl::StrAppend(s, ", ");
   } else {
     *add_comma = true;
   }
@@ -520,7 +520,7 @@ void AddComma(string* s, bool* add_comma) {
 // Will add the `name` from arg if name is true.
 void AddName(string* s, bool name, const OpDef::ArgDef& arg) {
   if (name) {
-    strings::StrAppend(s, arg.name(), ":");
+    absl::StrAppend(s, arg.name(), ":");
   }
 }
 
@@ -549,7 +549,7 @@ string ComputeArgSignature(
         // Both old and new have the list(type) attr, so can use it directly.
         AddComma(&s, &add_comma);
         AddName(&s, names, arg);
-        strings::StrAppend(&s, arg.type_list_attr());
+        absl::StrAppend(&s, arg.type_list_attr());
         ref->push_back(arg.is_ref());
       } else {
         // Missing the list(type) attr in the old, so use the default
@@ -561,7 +561,7 @@ string ComputeArgSignature(
         for (int i = 0; i < type_list.size(); ++i) {
           AddComma(&s, &add_comma);
           AddName(&s, names, arg);
-          strings::StrAppend(
+          absl::StrAppend(
               &s, DataTypeString(static_cast<DataType>(type_list.Get(i))));
           ref->push_back(arg.is_ref());
         }
@@ -576,7 +576,7 @@ string ComputeArgSignature(
             gtl::FindPtrOrNull(old_attrs, arg.number_attr());
         if (old_attr) {
           // Both old and new have the number attr, so can use it directly.
-          strings::StrAppend(&type, arg.number_attr(), " * ");
+          absl::StrAppend(&type, arg.number_attr(), " * ");
         } else {
           // Missing the number attr in the old, so use the default
           // value for the attr from new instead.
@@ -588,27 +588,27 @@ string ComputeArgSignature(
 
       if (arg.type() != DT_INVALID) {
         // int32, float, etc. case
-        strings::StrAppend(&type, DataTypeString(arg.type()));
+        absl::StrAppend(&type, DataTypeString(arg.type()));
       } else {
         const OpDef::AttrDef* old_attr =
             gtl::FindPtrOrNull(old_attrs, arg.type_attr());
         if (old_attr) {
           // Both old and new have the type attr, so can use it directly.
-          strings::StrAppend(&type, arg.type_attr());
+          absl::StrAppend(&type, arg.type_attr());
         } else {
           // Missing the type attr in the old, so use the default
           // value for the attr from new instead.
           const OpDef::AttrDef* new_attr =
               gtl::FindPtrOrNull(new_attrs, arg.type_attr());
-          strings::StrAppend(&type,
-                             DataTypeString(new_attr->default_value().type()));
+          absl::StrAppend(&type,
+                          DataTypeString(new_attr->default_value().type()));
         }
       }
 
       // Record `num` * `type` in the signature.
       for (int i = 0; i < num; ++i) {
         AddComma(&s, &add_comma);
-        strings::StrAppend(&s, type);
+        absl::StrAppend(&s, type);
         ref->push_back(arg.is_ref());
       }
     }

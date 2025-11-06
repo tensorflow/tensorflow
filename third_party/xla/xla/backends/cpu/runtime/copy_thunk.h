@@ -46,7 +46,7 @@ class CopyThunk final : public Thunk {
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final {
-    return {{src_buffer_, BufferUse::kRead}, {dst_buffer_, BufferUse::kWrite}};
+    return {BufferUse::Read(src_buffer_), BufferUse::Write(dst_buffer_)};
   }
 
   const Shape& src_shape() const { return src_shape_; }

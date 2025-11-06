@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/match.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -41,6 +42,7 @@ limitations under the License.
 
 namespace xla::codegen::intrinsic {
 
+using ::xla::codegen::intrinsics::DeviceType;
 using ::xla::codegen::intrinsics::Rsqrt;
 using ::xla::codegen::intrinsics::Type;
 
@@ -65,10 +67,13 @@ JitRunner CreateJitRunnerWithRsqrt(Type type) {
   auto module = std::make_unique<llvm::Module>("test_module", *context);
   std::unique_ptr<llvm::TargetMachine> target_machine =
       xla::codegen::intrinsic::CreateHostTargetMachine();
+  const auto features = target_machine->getTargetFeatureString().str();
+  DeviceType device_type = absl::StrContains(features, "+sse4a")
+                               ? DeviceType::kAmdCpu
+                               : DeviceType::kIntelCpu;
   llvm::Function* rsqrt_func =
-      Rsqrt::CreateDefinition(
-          module.get(), {target_machine->getTargetFeatureString().str(), false},
-          type)
+      Rsqrt::CreateDefinition(module.get(), {features, device_type, false},
+                              type)
           .value();
   rsqrt_func->setLinkage(llvm::Function::ExternalLinkage);
   CreateOneOverSqrt(*context, *module, Type::TypeToIrType(type, *context));

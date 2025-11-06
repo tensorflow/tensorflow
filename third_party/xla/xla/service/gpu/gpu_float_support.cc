@@ -40,6 +40,11 @@ bool GpuFloatSupport::SupportsMixedPrecisions(const HloInstruction& hlo) const {
 
   switch (hlo.opcode()) {
     // Handled by Triton GEMM or cuBLAS.
+    case HloOpcode::kScaledDot:
+      // We accept any scaled dot, because there is a rewrite pass that will
+      // lower it to a dot + multiply for unsupported types.
+      return true;
+    // Handled by Triton GEMM or cuBLAS.
     case HloOpcode::kDot: {
       const PrimitiveType lhs_type = hlo.operand(0)->shape().element_type();
       const PrimitiveType rhs_type = hlo.operand(1)->shape().element_type();
@@ -63,8 +68,11 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kReduceScatter:
-    // Handled by Triton GEMM.
-    case HloOpcode::kDot:
+    case HloOpcode::kScaledDot:
+      // We accept any scaled dot, because there is a rewrite pass that will
+      // lower it to a dot + multiply for unsupported types.
+      return true;
+    case HloOpcode::kDot:  // Handled by Triton GEMM.
       using TypeAndCC =
           std::pair<PrimitiveType, stream_executor::CudaComputeCapability>;
       for (auto [type, cc] :
@@ -72,7 +80,7 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
             TypeAndCC(F8E5M2, se::CudaComputeCapability::Hopper())}) {
         if (LowPrecisionType() == type) {
           auto* cuda_compute_capability =
-              std::get_if<se::CudaComputeCapability>(&compute_capability_);
+              compute_capability_.cuda_compute_capability();
           // Do not normalize supported types inside Triton fused computations.
           return cuda_compute_capability &&
                  cuda_compute_capability->SupportsAllFeaturesOf(cc) &&
@@ -112,16 +120,14 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kExp:
     case HloOpcode::kLog:
       if (LowPrecisionType() == BF16) {
-        auto* cuda_compute_capability =
-            std::get_if<se::CudaComputeCapability>(&compute_capability_);
-        return cuda_compute_capability != nullptr;
+        return compute_capability_.IsCuda();
       }
       return false;
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
       if (LowPrecisionType() == BF16) {
         auto* cuda_compute_capability =
-            std::get_if<se::CudaComputeCapability>(&compute_capability_);
+            compute_capability_.cuda_compute_capability();
         return cuda_compute_capability != nullptr &&
                cuda_compute_capability->IsAtLeastAmpere();
       }
@@ -131,7 +137,7 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kSubtract: {
       if (LowPrecisionType() == BF16) {
         auto* cuda_compute_capability =
-            std::get_if<se::CudaComputeCapability>(&compute_capability_);
+            compute_capability_.cuda_compute_capability();
         return cuda_compute_capability != nullptr &&
                cuda_compute_capability->IsAtLeastHopper();
       }

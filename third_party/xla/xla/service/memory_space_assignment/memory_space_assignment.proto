@@ -46,20 +46,6 @@ message SlicedPrefetchOptions {
   uint64 preferred_slice_size = 5;
 }
 
-// Memory space assignment options for prefetching windows of data
-message WindowPrefetchDetail {
-  message WindowDetail {
-    reserved 3;
-
-    // Index of the operand that is window prefetched.
-    int64 operand = 1;
-    // Window buffer size in bytes.
-    int64 size = 2;
-  }
-
-  repeated WindowDetail windows = 1;
-}
-
 // Options for memory-bound loop optimizations in memory space assignment. If
 // enabled, this pass can optimize memory-bound unrolled loops to maximize the
 // bandwidth utilized and minimize the execution time.
@@ -145,6 +131,33 @@ message PreferredPrefetchOverrides {
   repeated PreferredPrefetchOverride overrides = 1;
 }
 
+// Specifies details on how to randomally select HloPositions for perturbation.
+//
+// Each HloPosition is randomally assigned (based on the seed) to a value in the
+// range [0...1). If it is within the range
+// [selection_range_begin...selection_range_end) it will have its prefetch
+// priority overridden based on the value of MsaSortOrderOverrideOptions.
+// Anything outside this range will be left as-is.
+//
+// We use the selection range (rather than just supplying the probability) to be
+// able to binary search in the case where there's just one instruction that
+// needs to have its priority fixed.
+//
+// The probability of any HloPosition to be perturbed is
+// selection_range_end-selection_range_begin.
+//
+// NOTE: different HloPositions with the same computation graph (the same
+// instruction fingerprint) will be considered as identical, and hence will
+// receive the same priority from the HloRandomFilter.
+message HloRandomFilter {
+  // Defaults to 1234
+  optional int64 seed = 1;
+  // Defaults to 0.
+  optional double selection_range_begin = 2;
+  // Defaults to 1.
+  optional double selection_range_end = 3;
+}
+
 // A message that identifies one or more HloPositions.
 message HloPositionMatcher {
   // Regex to match the entire instruction HLO. The HLO string is constructed
@@ -163,6 +176,8 @@ message HloPositionMatcher {
   optional int64 size_lte = 5;
   // Filters instructions that have a use that matches the filter.
   optional HloOperandFilter hlo_use_filter = 6;
+  // Filters instructions randomly.
+  optional HloRandomFilter hlo_random_filter = 7;
 }
 
 // Options to override preferred prefetch time for an operand.
@@ -176,6 +191,10 @@ message MsaSortOrderOverrideOptions {
     // multiple buffers are to be assigned last (within the same override
     // config) other tie breakers and stable sort order will take effect.
     bool assign_last = 2;
+    // Set the specific priority value, where lower values means "before" higher
+    // values. If multiple buffers are to be assigned the same value, other tie
+    // breakers and stable sort order will take effect.
+    int64 assign_value = 3;
   }
 }
 

@@ -139,13 +139,17 @@ absl::StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
     const Shape& shape, mlir::Builder builder) {
   auto element_type_or =
       ConvertPrimitiveTypeToMlirType(shape.element_type(), builder);
-  if (!element_type_or.ok()) return element_type_or.status();
+  if (!element_type_or.ok()) {
+    return element_type_or.status();
+  }
 
   using mlir::MemRefType;
   auto dimensions = shape.dimensions();
   llvm::SmallVector<int64_t, 4> array(dimensions.begin(), dimensions.end());
   auto permutation_or = GetPermutationIfAvailable(shape, builder);
-  if (!permutation_or.ok()) return permutation_or.status();
+  if (!permutation_or.ok()) {
+    return permutation_or.status();
+  }
   return MemRefType::get(array, element_type_or.value(),
                          permutation_or.value());
 }
@@ -194,9 +198,10 @@ mlir::Value CreateTupleValue(mlir::OpBuilder* func_builder, mlir::Location loc,
   }
 
   llvm::SmallVector<mlir::Value> flatten_sub_values;
-  for (auto child_type : tuple_type.getTypes())
+  for (auto child_type : tuple_type.getTypes()) {
     flatten_sub_values.push_back(
         CreateTupleValue(func_builder, loc, flatten_values, child_type));
+  }
 
   return func_builder->create<mlir::stablehlo::TupleOp>(loc, flatten_sub_values)
       .getResult();
@@ -206,7 +211,9 @@ mlir::Operation* CreateTupleFromOpResults(mlir::OpBuilder* func_builder,
                                           mlir::Location loc,
                                           mlir::Operation* op,
                                           mlir::Type type) {
-  if (!mlir::isa<mlir::TupleType>(type)) return op;
+  if (!mlir::isa<mlir::TupleType>(type)) {
+    return op;
+  }
 
   mlir::ValueRange flattened_results_ref(op->getResults());
   auto result =

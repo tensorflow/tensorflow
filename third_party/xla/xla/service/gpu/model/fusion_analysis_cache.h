@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_FUSION_ANALYSIS_CACHE_H_
 #define XLA_SERVICE_GPU_MODEL_FUSION_ANALYSIS_CACHE_H_
 
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -49,6 +50,10 @@ class HloFusionAnalysisCache {
   // removes all producer-consumer fusions that involve this instruction.
   void Invalidate(const HloInstruction& instruction);
 
+  // Removes the cache entry for the given instruction, if it exists. Also
+  // removes all producer-consumer fusions that involve this instruction.
+  void Invalidate(int64_t instruction_id);
+
   // Delete all cache entries.
   void Clear();
 
@@ -58,16 +63,16 @@ class HloFusionAnalysisCache {
   absl::Mutex mutex_;
 
   // All `int` keys and values here are unique instruction IDs.
-  absl::node_hash_map<int, HloFusionAnalysis> analyses_;
-  absl::node_hash_map<std::pair<int, int>, HloFusionAnalysis>
+  absl::node_hash_map<int64_t, HloFusionAnalysis> analyses_;
+  absl::node_hash_map<std::pair<int64_t, int64_t>, HloFusionAnalysis>
       producer_consumer_analyses_;
 
   // For each instruction `producer`, contains the `consumer`s for which we have
   // entries {`producer`, `consumer`} in `producer_consumer_analyses_`.
-  absl::flat_hash_map<int, std::vector<int>> consumers_for_producers_;
+  absl::flat_hash_map<int64_t, std::vector<int64_t>> consumers_for_producers_;
   // For each instruction `consumer`, contains the `producer`s for which we have
   // entries {`producer`, `consumer`} in `producer_consumer_analyses_`.
-  absl::flat_hash_map<int, std::vector<int>> producers_for_consumers_;
+  absl::flat_hash_map<int64_t, std::vector<int64_t>> producers_for_consumers_;
 };
 
 }  // namespace xla::gpu

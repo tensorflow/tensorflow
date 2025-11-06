@@ -5,7 +5,7 @@ load(
     "xla_cc_test",
     "xla_py_test_deps",
 )
-load("//xla/python:package_groups.bzl", "XLA_PYTHON_XLA_CLIENT_USERS", "XLA_PYTHON_XLA_EXTENSION_USERS")
+load("//xla/python:package_groups.bzl", "XLA_PYTHON_PROFILER_USERS", "XLA_PYTHON_XLA_CLIENT_USERS", "XLA_PYTHON_XLA_EXTENSION_USERS")
 load("//xla/python:pywrap.bzl", "nanobind_pywrap_extension")
 load(
     "//xla/tsl:tsl.bzl",
@@ -121,8 +121,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
         "@nanobind",
+        "@rules_python//python/cc:current_py_cc_headers",  # buildcleaner: keep
     ],
 )
 
@@ -335,6 +335,7 @@ cc_library(
     hdrs = ["safe_static_init.h"],
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/synchronization",
         "@nanobind",
@@ -424,6 +425,18 @@ py_strict_test(
         ]),
 )
 
+nanobind_pywrap_extension(
+    name = "_gpu_ondevice_tracing",
+    srcs = ["gpu_ondevice_tracing.cc"],
+    pytype_srcs = ["_gpu_ondevice_tracing.pyi"],
+    visibility = internal_visibility([":jax"] + XLA_PYTHON_PROFILER_USERS),
+    deps = [
+        "//xla/tsl/profiler/backends/gpu:ondevice_event_receiver",
+        "//xla/tsl/profiler/backends/gpu:ondevice_trace_event",
+        "@nanobind",
+    ],
+)
+
 cc_library(
     name = "logging",
     srcs = ["logging.cc"],
@@ -485,8 +498,8 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         "@com_google_absl//absl/strings:str_format",
-        "@local_config_python//:python_headers",
         "@nanobind",
+        "@rules_python//python/cc:current_py_cc_headers",
     ],
 )
 
@@ -505,7 +518,7 @@ cc_library(
         # copybara:uncomment_begin
         # "//third_party/py/numpy:multiarray",  # build_cleaner: keep
         # copybara:uncomment_end
-        "@local_config_python//:python_headers",
+        "@rules_python//python/cc:current_py_cc_headers",
         "//xla/tsl/python/lib/core:numpy",
     ],
 )

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "xla/future.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/raw_buffer.h"
@@ -33,7 +34,7 @@ class PjRtStreamExecutorDeviceEvent : public PjRtDeviceEvent {
  public:
   explicit PjRtStreamExecutorDeviceEvent(
       tsl::AsyncValueRef<BufferSequencingEvent> event,
-      const char* callee_type = "CpuTrackedDeviceEvent",
+      const char* callee_type = "PjRtStreamExecutorDeviceEvent",
       const char* callee_method = "Unknown")
       : event_(std::move(event)),
         callee_type_(callee_type),
@@ -47,12 +48,46 @@ class PjRtStreamExecutorDeviceEvent : public PjRtDeviceEvent {
     return event_.GetAsyncValue();
   }
 
-  PjRtFuture<> GetReadyFuture() override;
+  Future<> GetReadyFuture() override;
 
  private:
   tsl::AsyncValueRef<BufferSequencingEvent> event_;
   const char* callee_type_;
   const char* callee_method_;
+};
+
+class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
+ public:
+  PjRtStreamExecutorDeviceEventPromise(PjRtMemorySpace* memory_space,
+                                       LocalDeviceState* local_device,
+                                       tsl::thread::ThreadPool* thread_pool);
+
+  tsl::AsyncValue* async_value() const override {
+    return event_.GetAsyncValue();
+  }
+
+  void Set(tsl::RCReference<PjRtDeviceEvent> event) override;
+
+  void SetError(absl::Status s) override {
+    av_->SetError(s);
+    event_.SetError(std::move(s));
+  }
+
+  void SetFromSEEvent(BufferSequencingEventRef event);
+
+  void SetReady() override;
+
+  const tsl::AsyncValueRef<BufferSequencingEvent>& event() const {
+    return event_;
+  }
+
+  tsl::RCReference<tsl::IndirectAsyncValue>& av() { return av_; }
+
+ private:
+  PjRtMemorySpace* memory_space_;
+  LocalDeviceState* local_device_;
+  tsl::RCReference<tsl::IndirectAsyncValue> av_;
+  tsl::AsyncValueRef<BufferSequencingEvent> event_;
 };
 
 class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {
@@ -104,7 +139,7 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {
                         xla::Shape shape) override;
 
   void CopyToLiteralAsync(
-      PjRtFuture<>::Promise promise,
+      Promise<> promise,
       tsl::RCReference<PjRtDeviceEventPromise> device_promise,
       MutableLiteralBase* literal, xla::Shape shape) override;
   void CopyTo(tsl::RCReference<CommonPjRtRawBuffer> dst_raw_buffer,

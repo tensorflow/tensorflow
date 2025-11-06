@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "xla/debug_options_flags.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"

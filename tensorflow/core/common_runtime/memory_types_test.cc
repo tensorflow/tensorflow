@@ -52,7 +52,7 @@ TEST(MemoryTypeChecker, Int32NotOk) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // There is no kernel for casting int32/host memory to float/device
   // memory.
-  EXPECT_TRUE(errors::IsInternal(ValidateMemoryTypes(DEVICE_GPU, g)));
+  EXPECT_TRUE(absl::IsInternal(ValidateMemoryTypes(DEVICE_GPU, g)));
 
   // But we can insert _HostSend/_HostRecv to ensure the invariant.
   TF_EXPECT_OK(EnsureMemoryTypes(DEVICE_GPU, "/device:GPU:0", g));

@@ -40,7 +40,7 @@ class XfeedQueue {
   // the elements of a tuple and may be nullptr if the buffer is a tuple index
   // buffer.
   void EnqueueDestination(BufferType buffers) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     enqueued_buffers_.push_back(std::move(buffers));
 
     EnqueueHook();
@@ -56,7 +56,7 @@ class XfeedQueue {
     bool became_empty;
     BufferType current_buffer;
     {
-      absl::MutexLock l(&mu_,
+      absl::MutexLock l(mu_,
                         absl::Condition(this, &XfeedQueue::IsBufferEnqueued));
       current_buffer = std::move(enqueued_buffers_.front());
       enqueued_buffers_.pop_front();
