@@ -427,8 +427,9 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
       [&]() { return GetTracingMetadata(args, exec_ctx, kernel_runner); });
 
   if (fallback_request_state.log_device_placement() || VLOG_IS_ON(1)) {
-    string msg = absl::StrCat("Executing op ", frame.op_name().GetValue().str(),
-                              " in device ", frame.device().GetValue().str());
+    std::string msg =
+        absl::StrCat("Executing op ", frame.op_name().GetValue().str(),
+                     " in device ", frame.device().GetValue().str());
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
     }
@@ -865,10 +866,10 @@ llvm::Expected<bool> Predicate(
 
       CASE(float);
       CASE(double);
-      CASE(uint8);
-      CASE(int8);
-      CASE(int16);
-      CASE(int32);
+      CASE(uint8_t);
+      CASE(int8_t);
+      CASE(int16_t);
+      CASE(int32_t);
       CASE(int64_t);
       CASE(bool);
 #undef CASE
