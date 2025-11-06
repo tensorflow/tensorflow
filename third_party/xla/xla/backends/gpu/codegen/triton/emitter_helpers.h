@@ -63,45 +63,6 @@ std::string MlirToString(T&& value) {
   return result;
 }
 
-// This is a wrapper around mlir::Value that can hold either a scalar or a
-// non-0D tensor. An attempt to use this class with 0D tensors will CHECK-fail
-// because 0D tensors are not supported by Triton.
-class ScalarOrTensor {
-  using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
-
- public:
-  ScalarOrTensor() = default;
-
-  // Wraps the given value in a ScalarOrTensor. CHECK-fails if the
-  // value is a 0D tensor, because Triton does not support 0D tensors.
-  explicit ScalarOrTensor(mlir::Value value);
-
-  bool IsScalar() const { return !IsTensor(); }
-  bool IsTensor() const { return mlir::isa<TensorValue>(value_); }
-
-  mlir::Value UnwrapScalar() const {
-    CHECK(IsScalar());
-    return value_;
-  }
-
-  TensorValue UnwrapTensor() const {
-    CHECK(IsTensor());
-    return mlir::cast<TensorValue>(value_);
-  }
-
-  // Returns the underlying value regardless of whether it is a scalar or a
-  // tensor. Only call this method in contexts where the consumer of the result
-  // both needs to use an `mlir::Value` and functions identically for scalars
-  // and tensors. In other cases, prefer to use the `UnwrapScalar` or
-  // `UnwrapTensor` methods.
-  mlir::Value UnwrapUnsafe() const { return value_; }
-
-  mlir::Type getType() const { return value_.getType(); }
-
- private:
-  mlir::Value value_;
-};
-
 // Triton requires that all block dimensions are a power of 2.
 // TODO(b/353484968): Delete this function once we have constraints to only
 // propagate tile sizes that are a power of 2.
