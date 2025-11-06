@@ -16,6 +16,7 @@ limitations under the License.
 #include "tsl/platform/numbers.h"
 
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <string>
@@ -75,6 +76,8 @@ TEST(HumanReadableNum, Basic) {
   EXPECT_EQ(HumanReadableNum(1048576), "1.05M");
   EXPECT_EQ(HumanReadableNum(23956812342), "23.96B");
   EXPECT_EQ(HumanReadableNum(123456789012345678), "1.23E+17");
+  EXPECT_EQ(HumanReadableNum(std::numeric_limits<int64_t>::max()), "9.22E+18");
+  EXPECT_EQ(HumanReadableNum(std::numeric_limits<int64_t>::min()), "-9.22E+18");
 }
 
 TEST(HumanReadableNumBytes, Bytes) {
@@ -101,7 +104,8 @@ TEST(HumanReadableNumBytes, Bytes) {
   EXPECT_EQ("-4B", HumanReadableNumBytes(-4));
   EXPECT_EQ("-1000B", HumanReadableNumBytes(-1000));
   EXPECT_EQ("-11.77MiB", HumanReadableNumBytes(-12345678));
-  EXPECT_EQ("-8E", HumanReadableNumBytes(kint64min));
+  EXPECT_EQ("-8.00EiB",
+            HumanReadableNumBytes(std::numeric_limits<int64_t>::min()));
 }
 
 TEST(HumanReadableElapsedTime, Basic) {
