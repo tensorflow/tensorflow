@@ -77,7 +77,7 @@ class OneHotOp : public OpKernel {
     const int axis = (axis_ == -1) ? indices_dims : axis_;
 
     // The one-hot dimension.
-    const int32_t depth_v = depth.scalar<int32>()();
+    const int32_t depth_v = depth.scalar<int32_t>()();
     OP_REQUIRES(
         ctx, depth_v >= 0,
         errors::InvalidArgument("depth must be non-negative, got: ", depth_v));
@@ -122,7 +122,7 @@ class OneHotOp : public OpKernel {
   }
 
  private:
-  int32 axis_;
+  int32_t axis_;
 
   OneHotOp(const OneHotOp&) = delete;
   void operator=(const OneHotOp&) = delete;

@@ -133,7 +133,7 @@ void ConcatPluggableDevice(
   size_t num_inputs = inputs.size();
   std::vector<ptrdiff_t> sizes;
   sizes.reserve(num_inputs);
-  int64 row_size = 0;
+  int64_t row_size = 0;
   for (const auto& input : inputs) {
     sizes.push_back(input->dimension(1));
     row_size += sizes.back();
@@ -145,9 +145,9 @@ void ConcatPluggableDevice(
   for (const auto& input : inputs) {
     inp.push_back(&(*input)(0, 0));
   }
-  const int64 dim0 = output->dimension(0);
-  for (int64 i = 0; i < dim0; ++i) {
-    for (int64 j = 0; j < num_inputs; ++j) {
+  const int64_t dim0 = output->dimension(0);
+  for (int64_t i = 0; i < dim0; ++i) {
+    for (int64_t j = 0; j < num_inputs; ++j) {
       auto size = sizes[j];
       se::DeviceMemoryBase out_base{out, size * sizeof(T)};
       se::DeviceMemoryBase inp_base{const_cast<T*>(inp[j]), size * sizeof(T)};
@@ -284,7 +284,7 @@ class TensorListGetItem : public OpKernel {
                                         DataTypeString(element_dtype_),
                                         " but list elements ",
                                         DataTypeString(l->element_dtype)));
-    int32_t index = c->input(1).scalar<int32>()();
+    int32_t index = c->input(1).scalar<int32_t>()();
     OP_REQUIRES(c, index < l->tensors().size(),
                 errors::InvalidArgument("Trying to access element ", index,
                                         " in a list with ", l->tensors().size(),
@@ -693,7 +693,7 @@ class TensorListGather : public OpKernel {
     // element tensors.
     if (!tensor_list->element_shape.IsFullyDefined()) {
       for (int index = 0; index < indices.NumElements(); ++index) {
-        const int i = indices.flat<int32>()(index);
+        const int i = indices.flat<int32_t>()(index);
 
         OP_REQUIRES(c, 0 <= i && i < tensor_list->tensors().size(),
                     absl::InvalidArgumentError(absl::StrCat(
@@ -728,7 +728,7 @@ class TensorListGather : public OpKernel {
     inputs_flat.reserve(indices.NumElements());
     Tensor zeros;
     for (int index = 0; index < indices.NumElements(); ++index) {
-      const int i = indices.flat<int32>()(index);
+      const int i = indices.flat<int32_t>()(index);
       OP_REQUIRES(
           c, i < tensor_list->tensors().size(),
           errors::InvalidArgument("Index ", i, " out o range; list only has ",
@@ -832,7 +832,7 @@ absl::Status Scatter(OpKernelContext* c, const Tensor& value,
   const auto copy_tensor = IsPluggableDevice(c) ? &CopyTensorPluggableDevice<T>
                                                 : &CopyTensor<Device, T>;
   for (int index = 0; index < indices.NumElements(); ++index) {
-    const int i = indices.flat<int32>()(index);
+    const int i = indices.flat<int32_t>()(index);
     Tensor tmp = value.Slice(index, index + 1);
     TensorShape tmp_shape = tmp.shape();
     tmp_shape.RemoveDim(0);
@@ -885,7 +885,7 @@ class TensorListScatterIntoExistingList : public OpKernel {
     // Resize the list if needed to accommodate all indices.
     TensorList* output_list = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
-    const auto indices_vec = indices.vec<int32>();
+    const auto indices_vec = indices.vec<int32_t>();
     int32_t max_index =
         (indices.NumElements() == 0)
             ? -1
@@ -956,7 +956,7 @@ class TensorListScatter : public OpKernel {
     {
       int highest_index = -1;
       for (int index = 0; index < indices.NumElements(); ++index) {
-        const int i = indices.flat<int32>()(index);
+        const int i = indices.flat<int32_t>()(index);
         OP_REQUIRES(
             c, i >= 0,
             errors::InvalidArgument(

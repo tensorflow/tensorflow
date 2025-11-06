@@ -36,7 +36,7 @@ namespace {
 
 class Mutex : public ResourceBase {
  public:
-  explicit Mutex(OpKernelContext* c, const string& name)
+  explicit Mutex(OpKernelContext* c, const std::string& name)
       : locked_(false),
         thread_pool_(new thread::ThreadPool(
             c->env(), ThreadOptions(),
@@ -46,7 +46,9 @@ class Mutex : public ResourceBase {
     VLOG(2) << "Creating mutex with name " << name << ": " << this;
   }
 
-  string DebugString() const override { return absl::StrCat("Mutex ", name_); }
+  std::string DebugString() const override {
+    return absl::StrCat("Mutex ", name_);
+  }
 
   class LockReleaser {
    public:
@@ -127,7 +129,7 @@ class Mutex : public ResourceBase {
   condition_variable cv_ TF_GUARDED_BY(mu_);
   bool locked_ TF_GUARDED_BY(mu_);
   std::unique_ptr<thread::ThreadPool> thread_pool_;
-  string name_;
+  std::string name_;
 };
 
 }  // namespace

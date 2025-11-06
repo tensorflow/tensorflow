@@ -47,8 +47,8 @@ struct PoolParameters {
   // Updates context->status if there is an invalid input.
   // explicit_paddings has eight elements if padding==EXPLIICT, and zero
   // elements otherwise.
-  PoolParameters(OpKernelContext* context, const std::vector<int32>& ksize,
-                 const std::vector<int32>& stride, Padding padding,
+  PoolParameters(OpKernelContext* context, const std::vector<int32_t>& ksize,
+                 const std::vector<int32_t>& stride, Padding padding,
                  std::vector<int64_t> explicit_paddings,
                  TensorFormat data_format, const TensorShape& tensor_in_shape);
 
@@ -90,7 +90,7 @@ template <typename Device, typename T>
 class MaxPoolingOp : public OpKernel {
  public:
   explicit MaxPoolingOp(OpKernelConstruction* context) : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     auto status = context->GetAttr("data_format", &data_format);
     if (status.ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
@@ -297,8 +297,8 @@ class MaxPoolingOp : public OpKernel {
     }
   }
 
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
@@ -338,7 +338,7 @@ template <typename Device, typename T>
 class MaxPoolingV2Op : public OpKernel {
  public:
   explicit MaxPoolingV2Op(OpKernelConstruction* context) : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     auto status = context->GetAttr("data_format", &data_format);
     if (status.ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
@@ -375,17 +375,17 @@ class MaxPoolingV2Op : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in = context->input(0);
 
-    std::vector<int32> ksize = ksize_;
-    std::vector<int32> stride = stride_;
+    std::vector<int32_t> ksize = ksize_;
+    std::vector<int32_t> stride = stride_;
 
     if (context->num_inputs() != 1) {
       const Tensor& tensor_ksize = context->input(1);
-      auto value_ksize = tensor_ksize.flat<int32>();
+      auto value_ksize = tensor_ksize.flat<int32_t>();
       ksize.resize(tensor_ksize.shape().num_elements());
       std::copy_n(&value_ksize(0), ksize.size(), ksize.begin());
 
       const Tensor& tensor_stride = context->input(2);
-      auto value_stride = tensor_stride.flat<int32>();
+      auto value_stride = tensor_stride.flat<int32_t>();
       stride.resize(tensor_stride.shape().num_elements());
       std::copy_n(&value_stride(0), stride.size(), stride.begin());
     }
@@ -572,8 +572,8 @@ class MaxPoolingV2Op : public OpKernel {
     }
   }
 
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };
