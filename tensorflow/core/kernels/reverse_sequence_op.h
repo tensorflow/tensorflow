@@ -49,8 +49,8 @@ class ReverseGenerator {
 
  private:
   typename TTypes<T, Dims>::ConstTensor input_;
-  int32 batch_dim_;
-  int32 seq_dim_;
+  int32_t batch_dim_;
+  int32_t seq_dim_;
   typename TTypes<Tlen>::ConstVec seq_lengths_;
 };
 
