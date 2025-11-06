@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -206,13 +207,20 @@ absl::Status CreateTritonIrAndFileCheckForDot(
                       test->ParseAndReturnVerifiedModule(hlo_text));
   auto* comp = verified_module->GetComputationWithName(triton_fusion_name);
   TF_RET_CHECK(comp != nullptr);
-  return CreateTritonIrAndFileCheck(*comp, /*block_level_parameters=*/{},
-                                    filecheck_pattern);
+  return CreateTritonIrAndFileCheckForDot(*comp, filecheck_pattern);
 }
 
 absl::Status CreateTritonIrAndFileCheckForDot(
     const HloComputation& computation, absl::string_view filecheck_pattern) {
-  return CreateTritonIrAndFileCheck(computation, /*block_level_parameters=*/{},
+  BlockLevelParameters block_level_parameters;
+  if (auto gpu_config =
+          computation.FusionInstruction()->backend_config<GpuBackendConfig>();
+      gpu_config.ok() && gpu_config->has_fusion_backend_config() &&
+      gpu_config->fusion_backend_config().has_block_level_fusion_config()) {
+    block_level_parameters = BlockLevelParameters::FromBlockLevelFusionConfig(
+        gpu_config->fusion_backend_config().block_level_fusion_config());
+  }
+  return CreateTritonIrAndFileCheck(computation, block_level_parameters,
                                     filecheck_pattern);
 }
 

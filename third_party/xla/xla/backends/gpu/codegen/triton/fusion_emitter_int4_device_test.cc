@@ -107,6 +107,7 @@ class TritonTest : public GpuCodegenTest {
             .mutable_debug_options()
             .mutable_xla_gpu_unsupported_generic_triton_emitter_features();
     emitter_opts->Add(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
+    emitter_opts->Add(DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM);
     emitter_opts->Add(
         DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION);
     emitter_opts->Add(
