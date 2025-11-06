@@ -44,7 +44,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
@@ -159,7 +159,7 @@ absl::StatusOr<std::vector<CudnnBackendConfig>> GetAlgorithms(
     se::dnn::DnnSupport* dnn, se::dnn::ConvolutionKind conv_kind,
     se::dnn::DataType input_type, se::dnn::DataType output_type,
     se::Stream* stream, const GpuConvConfig& gpu_conv_config,
-    const se::NumericOptions& numeric_options, bool use_fallback) {
+    const se::EngineOptions& engine_options, bool use_fallback) {
   std::vector<std::unique_ptr<const se::dnn::ConvRunner>> conv_runners;
   std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>>
       fused_conv_runners;
@@ -180,7 +180,7 @@ absl::StatusOr<std::vector<CudnnBackendConfig>> GetAlgorithms(
           gpu_conv_config.input_descriptor, gpu_conv_config.filter_descriptor,
           gpu_conv_config.bias_descriptor, gpu_conv_config.output_descriptor,
           gpu_conv_config.conv_desc, use_fallback, gpu_conv_config.fusion->mode,
-          numeric_options, &fused_conv_runners));
+          engine_options, &fused_conv_runners));
       break;
     }
     case se::dnn::ConvolutionKind::FORWARD_GRAPH: {
@@ -188,7 +188,7 @@ absl::StatusOr<std::vector<CudnnBackendConfig>> GetAlgorithms(
           conv_kind, input_type, output_type, stream,
           gpu_conv_config.input_descriptor, gpu_conv_config.filter_descriptor,
           gpu_conv_config.output_descriptor, gpu_conv_config.conv_desc,
-          use_fallback, numeric_options, &graph_conv_runners,
+          use_fallback, engine_options, &graph_conv_runners,
           gpu_conv_config.serialized_graph));
       break;
     }
@@ -204,7 +204,7 @@ absl::StatusOr<std::vector<CudnnBackendConfig>> GetAlgorithms(
           gpu_conv_config.output_descriptor,
           /*output_data=*/se::DeviceMemoryBase(nullptr),
           gpu_conv_config.conv_desc, use_fallback,
-          /*scratch_allocator=*/nullptr, numeric_options, &conv_runners));
+          /*scratch_allocator=*/nullptr, engine_options, &conv_runners));
       break;
     }
     default:
@@ -269,8 +269,9 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
   bool allow_tf32 = absl::c_all_of(
       instr->precision_config().operand_precision(),
       [](int precision) { return precision <= PrecisionConfig::HIGH; });
-  const se::NumericOptions numeric_options{
-      RequireDeterminism(instr->GetModule()->config()), allow_tf32};
+  const se::EngineOptions engine_options{
+      RequireDeterminism(instr->GetModule()->config()), allow_tf32,
+      /*require_command_buffer=*/false};
 
   // Try to get algorithms without fallback first, as fallback algorithms can be
   // very slow.
@@ -278,13 +279,13 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
   TF_ASSIGN_OR_RETURN(
       algorithm_configs,
       GetAlgorithms(dnn, conv_kind, input_type, output_type, stream,
-                    gpu_conv_config, numeric_options, /*use_fallback=*/false));
+                    gpu_conv_config, engine_options, /*use_fallback=*/false));
 
   if (algorithm_configs.empty()) {
     TF_ASSIGN_OR_RETURN(
         algorithm_configs,
         GetAlgorithms(dnn, conv_kind, input_type, output_type, stream,
-                      gpu_conv_config, numeric_options, /*use_fallback=*/true));
+                      gpu_conv_config, engine_options, /*use_fallback=*/true));
   }
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
