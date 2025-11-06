@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "benchmark/benchmark.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"

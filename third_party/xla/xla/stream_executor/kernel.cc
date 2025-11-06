@@ -15,33 +15,11 @@ limitations under the License.
 
 #include "xla/stream_executor/kernel.h"
 
-#include <cstdint>
-#include <optional>
 #include <string>
 
 #include "absl/strings/string_view.h"
 
 namespace stream_executor {
-
-std::optional<int64_t> KernelMetadata::registers_per_thread() const {
-  return registers_per_thread_;
-}
-
-std::optional<int64_t> KernelMetadata::shared_memory_bytes() const {
-  return shared_memory_bytes_;
-}
-
-void KernelMetadata::set_registers_per_thread(int registers_per_thread) {
-  registers_per_thread_ = registers_per_thread;
-}
-
-void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
-  shared_memory_bytes_ = shared_memory_bytes;
-}
-
-//===----------------------------------------------------------------------===//
-// Kernel
-//===----------------------------------------------------------------------===//
 
 void Kernel::set_name(absl::string_view name) { name_ = std::string(name); }
 

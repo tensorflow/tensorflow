@@ -44,7 +44,7 @@ class TFProfTensor {
   }
 
   // If pointers are provided, they are filled by the method.
-  void Display(string* formatted_str, TFProfTensorProto* tfprof_tensor_pb);
+  void Display(std::string* formatted_str, TFProfTensorProto* tfprof_tensor_pb);
 
  private:
   // Max length of tensor value displayed to CLI.
@@ -70,7 +70,7 @@ class TFProfTensor {
       dim->add_value_int64(int64_val);
       absl::StrAppendFormat(&formatted_str_, "%d ",
                             dim->value_int64(dim->value_int64_size() - 1));
-    } else if (typeid(value) == typeid(string)) {
+    } else if (typeid(value) == typeid(std::string)) {
       dim->add_value_str(sstream.str());
       absl::StrAppend(&formatted_str_, "'",
                       dim->value_str(dim->value_str_size() - 1), "' ");
@@ -103,7 +103,7 @@ class TFProfTensor {
         dim->add_value_int64(int64_val);
         absl::StrAppendFormat(&formatted_str_, "%d ",
                               dim->value_int64(dim->value_int64_size() - 1));
-      } else if (typeid(values[nstart]) == typeid(string)) {
+      } else if (typeid(values[nstart]) == typeid(std::string)) {
         dim->add_value_str(sstream.str());
         absl::StrAppend(&formatted_str_, "'",
                         dim->value_str(dim->value_str_size() - 1), "' ");
@@ -131,7 +131,7 @@ class TFProfTensor {
             absl::StrAppendFormat(
                 &formatted_str_, "%d ",
                 dim->value_int64(dim->value_int64_size() - 1));
-          } else if (typeid(values[nstart]) == typeid(string)) {
+          } else if (typeid(values[nstart]) == typeid(std::string)) {
             dim->add_value_str(sstream.str());
             absl::StrAppend(&formatted_str_, "'",
                             dim->value_str(dim->value_str_size() - 1), "' ");
@@ -167,7 +167,7 @@ class TFProfTensor {
 
   TFProfTensorProto tfprof_tensor_pb_;
   std::unique_ptr<Tensor> tensor_;
-  string formatted_str_;
+  std::string formatted_str_;
 };
 }  // namespace tfprof
 }  // namespace tensorflow
