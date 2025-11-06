@@ -298,11 +298,10 @@ class PerDeviceCollector {
                           occ_stats.occupancy_pct);
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kOccupancyMinGridSize)),
-                          static_cast<tsl::int32>(occ_stats.min_grid_size));
-      xevent.AddStatValue(
-          *plane->GetOrCreateStatMetadata(
-              GetStatTypeStr(StatType::kOccupancySuggestedBlockSize)),
-          static_cast<tsl::int32>(occ_stats.suggested_block_size));
+                          static_cast<int32_t>(occ_stats.min_grid_size));
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
+                              StatType::kOccupancySuggestedBlockSize)),
+                          static_cast<int32_t>(occ_stats.suggested_block_size));
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kKernelDetails)),
                           *plane->GetOrCreateStatMetadata(ToXStat(
@@ -398,7 +397,7 @@ class PerDeviceCollector {
               });
   }
 
-  bool IsHostEvent(const RocmTracerEvent& event, tsl::int64* line_id) {
+  bool IsHostEvent(const RocmTracerEvent& event, int64_t* line_id) {
     // DriverCallback(i.e. kernel launching) events are host events.
     if (event.source == RocmTracerEventSource::ApiCallback) {
       *line_id = event.thread_id;
@@ -438,7 +437,7 @@ class PerDeviceCollector {
     int host_ev_cnt = 0, dev_ev_cnt = 0;
     absl::MutexLock l(events_mutex);
     // Tracking event types per line.
-    absl::flat_hash_map<tsl::int64, absl::flat_hash_set<RocmTracerEventType>>
+    absl::flat_hash_map<int64_t, absl::flat_hash_set<RocmTracerEventType>>
         events_types_per_line;
     for (const RocmTracerEvent& event : events) {
       int64_t line_id = RocmTracerEvent::kInvalidThreadId;
@@ -673,7 +672,7 @@ void RocmTraceCollectorImpl::Flush() {
 
   // device ids for GPUs filled in by roctracer are not zero indexed.
   // They are offset by number of CPUs on the machine
-  tsl::uint32 min_device_id = INT32_MAX;
+  uint32_t min_device_id = INT32_MAX;
   ;
   for (auto& event : aggregated_events_) {
     if (event.device_id < min_device_id) {
