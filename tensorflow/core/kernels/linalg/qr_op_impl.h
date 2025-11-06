@@ -89,8 +89,9 @@ class QrOp : public LinearAlgebraOp<Scalar> {
                   2 * min_size * min_size * min_size / 3.;
     // TODO(jpoulson): Increase the cost if full_matrices is true in a manner
     // that reflects the algorithm used for the expansion.
-    return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64_t>(cost);
+    return cost >= static_cast<double>(std::numeric_limits<int64_t>::max())
+               ? std::numeric_limits<int64_t>::max()
+               : static_cast<int64_t>(cost);
   }
 
   using Matrix = typename Base::Matrix;

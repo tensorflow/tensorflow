@@ -75,8 +75,9 @@ class TridiagonalMatMulOp : public LinearAlgebraOp<Scalar> {
 
     const double cost = num_rhss * ((3 * num_eqs - 2) * mult_cost +
                                     (2 * num_eqs - 2) * add_cost);
-    return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64_t>(cost);
+    return cost >= static_cast<double>(std::numeric_limits<int64_t>::max())
+               ? std::numeric_limits<int64_t>::max()
+               : static_cast<int64_t>(cost);
   }
 
   // Needed to prevent writing result to the same location where input is.
