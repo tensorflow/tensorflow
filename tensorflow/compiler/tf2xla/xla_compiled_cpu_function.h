@@ -129,14 +129,14 @@ class XlaCompiledCpuFunction {
 
     // Result parameter i is described by
     // buffer_infos[result_index_table[i]].
-    const int32* result_index_table_ = nullptr;
+    const int32_t* result_index_table_ = nullptr;
 
     // There are num_results result parameters.
     int64_t num_results_ = 0;
 
     // Entry parameter i is described by
     // buffer_infos[arg_index_table[i]].
-    const int32* arg_index_table_ = nullptr;
+    const int32_t* arg_index_table_ = nullptr;
 
     // There are num_args entry parameters.
     int64_t num_args_ = 0;
@@ -210,7 +210,7 @@ class XlaCompiledCpuFunction {
   // TODO(fschneider): For now this always returns an empty string because there
   // is no support for error reporting in XLA. Remove this once all callers are
   // updated.
-  string error_msg() const { return error_msg_; }
+  std::string error_msg() const { return error_msg_; }
 
   void set_error_msg(absl::string_view error_msg) { error_msg_ = error_msg; }
 
@@ -303,7 +303,7 @@ class XlaCompiledCpuFunction {
   // The index remains constant for every instance of XlaCompiledCpuFunction
   // generated from the same static data, and might not be cheap to determine.
   // Recommended usage is to capture this in a variable for re-use.
-  int LookupArgIndex(const string& name) const;
+  int LookupArgIndex(const std::string& name) const;
 
   // Returns the 0-based index for the variable with the given `name`.
   // Returns -1 if the name wasn't found, or data isn't available.
@@ -319,7 +319,7 @@ class XlaCompiledCpuFunction {
   // The index remains constant for every instance of XlaCompiledCpuFunction
   // generated from the same static data, and might not be cheap to determine.
   // Recommended usage is to capture this in a variable for re-use.
-  int LookupResultIndex(const string& name) const;
+  int LookupResultIndex(const std::string& name) const;
 
   // Returns the name of the argument at `index`.
   // Returns nullptr if `HasNameIndices() == false` or `index` is out of range.
@@ -365,7 +365,7 @@ class XlaCompiledCpuFunction {
     return buffer_infos_;
   }
 
-  int32 num_buffers() const { return num_buffers_; }
+  int32_t num_buffers() const { return num_buffers_; }
 
   void** buffer_table() const { return buffer_table_; }
 
@@ -424,7 +424,7 @@ class XlaCompiledCpuFunction {
   }
 
   static void set_static_data_result_index_table(
-      StaticData* static_data, const int32* result_index_table) {
+      StaticData* static_data, const int32_t* result_index_table) {
     static_data->result_index_table_ = result_index_table;
   }
 
@@ -434,7 +434,7 @@ class XlaCompiledCpuFunction {
   }
 
   static void set_static_data_arg_index_table(StaticData* static_data,
-                                              const int32* arg_index_table) {
+                                              const int32_t* arg_index_table) {
     static_data->arg_index_table_ = arg_index_table;
   }
 
@@ -531,21 +531,21 @@ class XlaCompiledCpuFunction {
 
   // Describes the buffers used by the XLA computation.
   const xla::cpu::BufferAllocationInfo* const buffer_infos_;
-  const int32 num_buffers_;
+  const int32_t num_buffers_;
 
   // Indices of expanded result tuple.
-  const int32 num_results_;
-  const int32* const result_index_table_;
+  const int32_t num_results_;
+  const int32_t* const result_index_table_;
 
   // Argument i needs to be placed in buffer_table_[arg_index_to_temp_index_[i]]
   // for XLA generated code to be able to find it.
-  const int32* const arg_index_table_;
+  const int32_t* const arg_index_table_;
 
   // The number of incoming arguments.
-  const int32 num_args_;
+  const int32_t num_args_;
 
   // The number of incoming variables.
-  const int32 num_variables_;
+  const int32_t num_variables_;
 
   // Shapes of the input arguments.
   const ShapeInfo* const arg_shape_infos_;

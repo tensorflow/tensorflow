@@ -128,7 +128,7 @@ class StatelessRandomUniformOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
-  string device_type_string_;
+  std::string device_type_string_;
 
   StatelessRandomUniformOp(const StatelessRandomUniformOp&) = delete;
   void operator=(const StatelessRandomUniformOp&) = delete;
@@ -177,7 +177,7 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
-  string device_type_string_;
+  std::string device_type_string_;
 
   StatelessRandomUniformIntOp(const StatelessRandomUniformIntOp&) = delete;
   void operator=(const StatelessRandomUniformIntOp&) = delete;
@@ -225,7 +225,7 @@ class StatelessRandomUniformFullIntOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
-  string device_type_string_;
+  std::string device_type_string_;
 
   StatelessRandomUniformFullIntOp(const StatelessRandomUniformFullIntOp&) =
       delete;
@@ -295,7 +295,7 @@ class StatelessRandomNormalOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
-  string device_type_string_;
+  std::string device_type_string_;
 
   StatelessRandomNormalOp(const StatelessRandomNormalOp&) = delete;
   void operator=(const StatelessRandomNormalOp&) = delete;
@@ -330,7 +330,7 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
-  string device_type_string_;
+  std::string device_type_string_;
 
   StatelessTruncatedNormalOp(const StatelessTruncatedNormalOp&) = delete;
   void operator=(const StatelessTruncatedNormalOp&) = delete;
@@ -369,7 +369,7 @@ class GetKeyCounterOp : public XlaOpKernel {
   }
 
  private:
-  string device_type_string_;
+  std::string device_type_string_;
 
   GetKeyCounterOp(const GetKeyCounterOp&) = delete;
   void operator=(const GetKeyCounterOp&) = delete;
@@ -392,7 +392,7 @@ class GetAlgOp : public XlaOpKernel {
   }
 
  private:
-  string device_type_string_;
+  std::string device_type_string_;
 
   GetAlgOp(const GetAlgOp&) = delete;
   void operator=(const GetAlgOp&) = delete;
@@ -430,7 +430,7 @@ class GetKeyCounterAlgOp : public XlaOpKernel {
   }
 
  private:
-  string device_type_string_;
+  std::string device_type_string_;
 
   GetKeyCounterAlgOp(const GetKeyCounterAlgOp&) = delete;
   void operator=(const GetKeyCounterAlgOp&) = delete;
