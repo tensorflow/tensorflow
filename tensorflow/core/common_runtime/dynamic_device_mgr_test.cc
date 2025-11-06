@@ -134,7 +134,7 @@ TEST(DynamicDeviceMgrTest, RemoveDeviceFromMgrBuffer) {
 TEST(DynamicDeviceMgrTest, RemoveDeviceByNameFromMgr) {
   std::unique_ptr<Device> d0(CreateDevice("CPU", "/device:CPU:0"));
   std::unique_ptr<Device> d1(CreateDevice("CPU", "/device:CPU:1"));
-  string d1_name = "/device:CPU:1";
+  std::string d1_name = "/device:CPU:1";
 
   auto dm = std::make_unique<DynamicDeviceMgr>();
   std::vector<std::unique_ptr<Device>> devices;
@@ -143,7 +143,7 @@ TEST(DynamicDeviceMgrTest, RemoveDeviceByNameFromMgr) {
   TF_CHECK_OK(dm->AddDevices(std::move(devices)));
   EXPECT_EQ(dm->ListDevices().size(), 2);
 
-  std::vector<string> removed_devices{d1_name};
+  std::vector<std::string> removed_devices{d1_name};
   TF_CHECK_OK(dm->RemoveDevicesByName(removed_devices));
   EXPECT_EQ(dm->ListDevices().size(), 1);
 }
@@ -185,8 +185,8 @@ TEST(DynamicDeviceMgrTest, RemoveNonExistingDeviceFromMgr) {
 
 TEST(DynamicDeviceMgrTest, RemoveNonExistingDeviceByNameFromMgr) {
   std::unique_ptr<Device> d0(CreateDevice("GPU", "/device:GPU:0"));
-  string d0_name = "/device:GPU:0";
-  string d1_name = "/device:CPU:0";
+  std::string d0_name = "/device:GPU:0";
+  std::string d1_name = "/device:CPU:0";
 
   auto dm = std::make_unique<DynamicDeviceMgr>();
   std::vector<std::unique_ptr<Device>> devices;
@@ -194,7 +194,7 @@ TEST(DynamicDeviceMgrTest, RemoveNonExistingDeviceByNameFromMgr) {
   TF_CHECK_OK(dm->AddDevices(std::move(devices)));
   EXPECT_EQ(dm->ListDevices().size(), 1);
 
-  std::vector<string> removed_devices{d0_name, d1_name};
+  std::vector<std::string> removed_devices{d0_name, d1_name};
   absl::Status s = dm->RemoveDevicesByName(removed_devices);
   EXPECT_TRUE(absl::StrContains(s.message(), "unknown device"));
   EXPECT_EQ(dm->ListDevices().size(), 1);  // d0 *not* removed
