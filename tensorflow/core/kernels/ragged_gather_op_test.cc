@@ -65,7 +65,7 @@ TEST_F(RaggedGatherOpTest, RaggedGather) {
   // indices = [2, 1, 0, 3]
   // params = [[.1, .2, .3], [], [.4, .5, .6, .7], [.8, .9]]
   // params.shape = [4, None]
-  BuildRaggedGatherGraph<float, int32>(
+  BuildRaggedGatherGraph<float, int32_t>(
       TensorShape({4}),                     // indices.shape
       {2, 1, 0, 3},                         // indices
       {{0, 3, 3, 7, 9}},                    // params_nested_splits
@@ -87,7 +87,7 @@ TEST_F(RaggedGatherOpTest, RaggedGather_3DParams) {
   // indices = [2, 1, 0, 2, 3]
   // params = [[[]], [[.1, 2], [.3]], [], [[.4, .5], [.6, .7, .8]], [[.9]]]
   // params.shape = [5, None, None]
-  BuildRaggedGatherGraph<float, int32>(
+  BuildRaggedGatherGraph<float, int32_t>(
       TensorShape({5}),                             // indices.shape
       {2, 1, 0, 2, 3},                              // indices
       {{0, 1, 3, 3, 5, 6}, {0, 0, 2, 3, 5, 8, 9}},  // params_nested_splits
@@ -111,7 +111,7 @@ TEST_F(RaggedGatherOpTest, RaggedGather_4DParams) {
   // indices = [2, 1, 0, 2]
   // params = [[[]], [[[1, 2], [3, 4], [5, 6]], [[7, 8]]], []]
   // params.shape = [4, None, None, 2]
-  BuildRaggedGatherGraph<int32, int32>(
+  BuildRaggedGatherGraph<int32_t, int32_t>(
       TensorShape({4}),              // indices.shape
       {2, 1, 0, 2},                  // indices
       {{0, 1, 3, 3}, {0, 0, 3, 4}},  // params_nested_splits
@@ -129,15 +129,15 @@ TEST_F(RaggedGatherOpTest, RaggedGather_4DParams) {
                                    test::AsTensor<int64_t>({0, 0, 2, 3, 3}));
   test::ExpectTensorEqual<int64_t>(*GetOutput(1),
                                    test::AsTensor<int64_t>({0, 3, 4, 4}));
-  test::ExpectTensorEqual<int32>(
+  test::ExpectTensorEqual<int32_t>(
       *GetOutput(2),
-      test::AsTensor<int32>({1, 2, 3, 4, 5, 6, 7, 8}, TensorShape({4, 2})));
+      test::AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8}, TensorShape({4, 2})));
 }
 
 TEST_F(RaggedGatherOpTest, RaggedGather_2DIndices) {
   // indices = [[2, 1], [0, 3]]
   // params = [[.1, .2, .3], [], [.4, .5, .6, .7], [.8, .9]]
-  BuildRaggedGatherGraph<float, int32>(
+  BuildRaggedGatherGraph<float, int32_t>(
       TensorShape({2, 2}),                  // indices.shape
       {2, 1, 0, 3},                         // indices
       {{0, 3, 3, 7, 9}},                    // params_nested_splits
@@ -161,7 +161,7 @@ TEST_F(RaggedGatherOpTest, RaggedGather_2DIndices) {
 TEST_F(RaggedGatherOpTest, RaggedGather_ScalarIndices) {
   // indices = 2
   // params = [[.1, .2, .3], [], [.4, .5, .6, .7], [.8, .9]]
-  BuildRaggedGatherGraph<float, int32>(
+  BuildRaggedGatherGraph<float, int32_t>(
       TensorShape({}),                      // indices.shape
       {2},                                  // indices
       {{0, 3, 3, 7, 9}},                    // params_nested_splits
@@ -178,7 +178,7 @@ TEST_F(RaggedGatherOpTest, RaggedGather_ScalarIndices) {
 TEST_F(RaggedGatherOpTest, RaggedGather_OutOfBounds) {
   // indices = [2, 10]
   // params = [[.1, .2, .3], [], [.4, .5, .6, .7], [.8, .9]]
-  BuildRaggedGatherGraph<float, int32>(
+  BuildRaggedGatherGraph<float, int32_t>(
       TensorShape({2}),                     // indices.shape
       {2, 10},                              // indices
       {{0, 3, 3, 7, 9}},                    // params_nested_splits
@@ -189,7 +189,7 @@ TEST_F(RaggedGatherOpTest, RaggedGather_OutOfBounds) {
 }
 
 TEST_F(RaggedGatherOpTest, InvalidSplitsNotSorted) {
-  BuildRaggedGatherGraph<float, int32>(
+  BuildRaggedGatherGraph<float, int32_t>(
       TensorShape({2}),                     // indices.shape
       {0, 2},                               // indices
       {{0, 3, 5, 2, 9}},                    // params_nested_splits
@@ -200,7 +200,7 @@ TEST_F(RaggedGatherOpTest, InvalidSplitsNotSorted) {
 }
 
 TEST_F(RaggedGatherOpTest, InvalidSplitsNegative) {
-  BuildRaggedGatherGraph<float, int32>(
+  BuildRaggedGatherGraph<float, int32_t>(
       TensorShape({2}),                     // indices.shape
       {0, 2},                               // indices
       {{-1, 3, 2, 7, 9}},                   // params_nested_splits
@@ -211,7 +211,7 @@ TEST_F(RaggedGatherOpTest, InvalidSplitsNegative) {
 }
 
 TEST_F(RaggedGatherOpTest, InvalidSplitsEmpty) {
-  BuildRaggedGatherGraph<float, int32>(
+  BuildRaggedGatherGraph<float, int32_t>(
       TensorShape({0}),  // indices.shape
       {},                // indices
       {{}},              // params_nested_splits
@@ -222,7 +222,7 @@ TEST_F(RaggedGatherOpTest, InvalidSplitsEmpty) {
 }
 
 TEST_F(RaggedGatherOpTest, InvalidSplitsTooBig) {
-  BuildRaggedGatherGraph<float, int32>(
+  BuildRaggedGatherGraph<float, int32_t>(
       TensorShape({2}),                     // indices.shape
       {0, 2},                               // indices
       {{0, 20, 40, 80, 100}},               // params_nested_splits
@@ -234,7 +234,7 @@ TEST_F(RaggedGatherOpTest, InvalidSplitsTooBig) {
 }
 
 TEST_F(RaggedGatherOpTest, BadValuesShape) {
-  BuildRaggedGatherGraph<float, int32>(
+  BuildRaggedGatherGraph<float, int32_t>(
       TensorShape({0}),  // indices.shape
       {},                // indices
       {{0}},             // params_nested_splits
