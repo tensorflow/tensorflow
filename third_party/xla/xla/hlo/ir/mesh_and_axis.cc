@@ -249,10 +249,47 @@ bool AxisRef::Overlaps(const AxisRef& other) const {
          other_sub_axis.pre_size < this_sub_axis.next_pre_size();
 }
 
+bool AxisRef::CanCoexistWithoutOverlap(const AxisRef& other) const {
+  // Check if the axes are on different mesh dimensions. If so, they can always
+  // coexist and never overlap.
+  if (mesh_axis_index() != other.mesh_axis_index()) {
+    return true;
+  }
+
+  // If one AxisRef is a full axis it will always overlap the other axis on the
+  // same dimension.
+  if (!sub_axis_info_.has_value() || !other.sub_axis_info_.has_value()) {
+    return false;
+  }
+
+  const SubAxis& this_sub_axis = sub_axis_info_.value();
+  const SubAxis& other_sub_axis = other.sub_axis_info_.value();
+
+  int64_t this_pre_size = this_sub_axis.pre_size;
+  int64_t other_pre_size = other_sub_axis.pre_size;
+  int64_t this_next_pre_size = this_sub_axis.next_pre_size();
+  int64_t other_next_pre_size = other_sub_axis.next_pre_size();
+
+  // Check for overlapping sub-axes
+  bool overlaps = (this_next_pre_size > other_pre_size) &&
+                  (other_next_pre_size > this_pre_size);
+  if (overlaps) {
+    return false;
+  }
+  // Assert that sub-axes can coexist.
+  auto [min_pre_size, max_pre_size] =
+      std::minmax(this_pre_size, other_pre_size);
+  auto [min_next_pre_size, max_next_pre_size] =
+      std::minmax(this_next_pre_size, other_next_pre_size);
+
+  // Sub-axes don't overlap, check if the gap is valid.
+  return max_pre_size % min_next_pre_size == 0;
+}
+
 bool ValidateSpanOfAxes(absl::Span<const AxisRef> axes) {
   for (int64_t i = 0; i < axes.size() - 1; ++i) {
     for (int64_t j = i + 1; j < axes.size(); ++j) {
-      if (!axes[i].CanCoexist(axes[j]) || axes[i].Overlaps(axes[j])) {
+      if (!axes[i].CanCoexistWithoutOverlap(axes[j])) {
         return false;
       }
     }

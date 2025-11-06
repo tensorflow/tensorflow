@@ -176,8 +176,8 @@ class AxisRef {
   static AxisRef FromProto(const AxisRefProto& proto);
 
   bool CanCoexist(const AxisRef& other) const;
-
   bool Overlaps(const AxisRef& other) const;
+  bool CanCoexistWithoutOverlap(const AxisRef& other) const;
 
   // Validates that the given mesh is compatible for this axis ref.
   absl::Status Validate(const Mesh& mesh) const;

@@ -288,4 +288,33 @@ TEST(MeshAndAxisTest, AxisRefOverlaps) {
   overlaps(AxisRef(0, {4, 2}), AxisRef(0, {1, 2}), false);
 }
 
+TEST(MeshAndAxisTest, AxisRefCanCoexistWithoutOverlap) {
+  auto coexistWithoutOverlap = [](AxisRef a, AxisRef b, bool expected) {
+    EXPECT_EQ(a.CanCoexistWithoutOverlap(b), expected);
+    EXPECT_EQ(b.CanCoexistWithoutOverlap(a), expected);
+  };
+
+  coexistWithoutOverlap(AxisRef(0), AxisRef(1), true);
+  coexistWithoutOverlap(AxisRef(0), AxisRef(1, {1, 2}), true);
+  coexistWithoutOverlap(AxisRef(0), AxisRef(1, {2, 2}), true);
+  coexistWithoutOverlap(AxisRef(0, {1, 2}), AxisRef(0, {2, 4}), true);
+  coexistWithoutOverlap(AxisRef(0, {1, 2}), AxisRef(0, {6, 2}), true);
+  coexistWithoutOverlap(AxisRef(0, {1, 4}), AxisRef(0, {4, 2}), true);
+  coexistWithoutOverlap(AxisRef(0, {1, 4}), AxisRef(0, {8, 2}), true);
+  coexistWithoutOverlap(AxisRef(0, {4, 2}), AxisRef(0, {1, 2}), true);
+
+  coexistWithoutOverlap(AxisRef(0), AxisRef(0), false);
+  coexistWithoutOverlap(AxisRef(0), AxisRef(0, {2, 2}), false);
+  coexistWithoutOverlap(AxisRef(0), AxisRef(0, {2, 4}), false);
+  coexistWithoutOverlap(AxisRef(0, {2, 2}), AxisRef(0, {2, 2}), false);
+  coexistWithoutOverlap(AxisRef(0, {1, 2}), AxisRef(0, {1, 4}), false);
+  coexistWithoutOverlap(AxisRef(2, {1, 2}), AxisRef(2, {1, 4}), false);
+  coexistWithoutOverlap(AxisRef(0, {1, 4}), AxisRef(0, {2, 2}), false);
+  coexistWithoutOverlap(AxisRef(0, {1, 4}), AxisRef(0, {2, 4}), false);
+  coexistWithoutOverlap(AxisRef(0, {1, 2}), AxisRef(0, {1, 3}), false);
+  coexistWithoutOverlap(AxisRef(0, {1, 2}), AxisRef(0, {3, 2}), false);
+  coexistWithoutOverlap(AxisRef(0, {1, 3}), AxisRef(0, {2, 3}), false);
+  coexistWithoutOverlap(AxisRef(0, {2, 8}), AxisRef(0, {4, 2}), false);
+}
+
 }  // namespace xla
