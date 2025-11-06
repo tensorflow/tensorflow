@@ -125,7 +125,7 @@ absl::Status update_inferred_type(Node* target, const FullTypeDef& t,
   return absl::OkStatus();
 }
 
-absl::StatusOr<FullTypeDef> run_inference(const string& fn_name,
+absl::StatusOr<FullTypeDef> run_inference(const std::string& fn_name,
                                           const TypeRefVector& in_types) {
   // TODO(b/224776031): Things remaining to implement:
   //  * look up function by name
