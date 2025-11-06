@@ -56,12 +56,12 @@ class SaveDatasetOp : public HybridAsyncOpKernel {
 
   absl::Status WriteData(OpKernelContext* ctx, DatasetBase* dataset,
                          std::unique_ptr<CapturedFunction> captured_func,
-                         const std::string& run_dir, uint64* num_elements);
+                         const std::string& run_dir, uint64_t* num_elements);
 
   absl::Status WriteMetadataFile(Env* env, const std::string& path,
-                                 uint64 run_id,
+                                 uint64_t run_id,
                                  const DataTypeVector& output_dtypes,
-                                 uint64 num_elements, bool finalized);
+                                 uint64_t num_elements, bool finalized);
 
   bool use_shard_func_;
   std::string compression_;
