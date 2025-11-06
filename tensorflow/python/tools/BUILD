@@ -399,6 +399,7 @@ py_strict_test(
     ],
     tags = [
         "noasan",  # TODO(b/222716501)
+        "notap",  # b/456542868
     ],
     deps = [
         ":saved_model_cli_lib",
@@ -594,6 +595,7 @@ tf_py_test(
     size = "small",
     srcs = ["saved_model_cli_sanitize_list_test.py"],
     python_version = "PY3",
+    tags = ["notap"],  # b/456542868
     deps = [
         ":saved_model_cli",
         "//tensorflow/python/platform:client_testlib",
