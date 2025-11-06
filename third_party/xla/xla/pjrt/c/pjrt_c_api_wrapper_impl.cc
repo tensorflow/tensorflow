@@ -833,7 +833,7 @@ absl::StatusOr<xla::CompileOptions> ParseCompileOptions(
     absl::string_view options_str) {
   xla::CompileOptionsProto options_proto;
   // Open source ParseFromString doesn't support string_view.
-  if (!options_proto.ParseFromArray(options_str.data(), options_str.size())) {
+  if (!options_proto.ParseFromString(options_str)) {
     return tsl::errors::InvalidArgument(
         "PJRT_Client_Compile: failed to deserialize CompileOptionsProto");
   }
@@ -860,7 +860,7 @@ ParsePjrtProgram(std::optional<mlir::MLIRContext>& context,
   } else if (format_str == pjrt::kHloFormat) {
     xla::HloModuleProto module_proto;
     // Open source ParseFromString doesn't support string_view.
-    if (!module_proto.ParseFromArray(module_str.data(), module_str.size())) {
+    if (!module_proto.ParseFromString(module_str)) {
       return tsl::errors::InvalidArgument(
           "PJRT_Client_Compile: failed to deserialize HloModuleProto");
     }
@@ -2574,8 +2574,8 @@ PJRT_Error* PJRT_TopologyDescription_Deserialize(
       PJRT_TopologyDescription_Attributes_Args_STRUCT_SIZE, args->struct_size));
 
   xla::PjRtTopologyDescriptionProto proto;
-  if (!proto.ParseFromArray(args->serialized_topology,
-                            args->serialized_topology_size)) {
+  if (!proto.ParseFromString(absl::string_view(
+          args->serialized_topology, args->serialized_topology_size))) {
     return new PJRT_Error{xla::InvalidArgument(
         "Failed to parse PjRtTopologyDescriptionProto at the C API level, "
         "from binary string of size: %d",
