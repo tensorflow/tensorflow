@@ -51,7 +51,7 @@ class NodeExecStatsInterface {
   // Called when the statistics collection for the node has finished. Once this
   // method is called, the caller should not make assumptions about the validity
   // of this object.
-  virtual void Done(const string& device) = 0;
+  virtual void Done(const std::string& device) = 0;
 
   // Called immediately after this node starts being processed by the executor.
   virtual void RecordExecutorStarted() = 0;
@@ -101,7 +101,7 @@ class NodeExecStatsWrapper : public NodeExecStatsInterface {
   // Destructor calls Finalize() to release the TrackingAllocators.
   ~NodeExecStatsWrapper() override { Finalize(); }
 
-  void Done(const string& device) override;
+  void Done(const std::string& device) override;
   void RecordExecutorStarted() override;
   void RecordComputeStarted() override;
   void RecordComputeEnded() override;
@@ -148,7 +148,8 @@ class StepStatsCollectorInterface {
   // `err` message needs to contain device name and allocator name, e.g.:
   // "ResourceExhaustedError: OOM when allocating tensor ...
   // on /job:localhost/replica:0/task:0/device:GPU:0 by allocator GPU_0_bfc"
-  virtual string ReportAllocsOnResourceExhausted(absl::string_view err) = 0;
+  virtual std::string ReportAllocsOnResourceExhausted(
+      absl::string_view err) = 0;
 };
 
 // StepStatsCollector manages the collection of a StepStats object.
@@ -164,19 +165,19 @@ class StepStatsCollector : public StepStatsCollectorInterface {
   // device_map.
   void BuildCostModel(
       CostModelManager* cost_model_manager,
-      const std::unordered_map<string, const Graph*>& device_map);
+      const std::unordered_map<std::string, const Graph*>& device_map);
 
   // Saves node statistics to the DeviceStats object associated with device.
   // Should be called before Finalize.
-  void Save(const string& device, NodeExecStats* node_stats_pb);
-  void Save(const string& device, NodeExecStatsWrapper* node_stats);
+  void Save(const std::string& device, NodeExecStats* node_stats_pb);
+  void Save(const std::string& device, NodeExecStatsWrapper* node_stats);
 
   // Saves thread name.
-  void SaveThreadName(const string& device, const uint32 thread_id,
-                      const string& thread_name);
+  void SaveThreadName(const std::string& device, const uint32_t thread_id,
+                      const std::string& thread_name);
 
   NodeExecStatsInterface* CreateNodeExecStats(const NodeDef* node) override;
-  string ReportAllocsOnResourceExhausted(absl::string_view err) override;
+  std::string ReportAllocsOnResourceExhausted(absl::string_view err) override;
 
   // The following 2 Finalize methods populate the StepStats passed
   // from the constructor. Calling it more than once won't have any effect.
@@ -188,19 +189,21 @@ class StepStatsCollector : public StepStatsCollectorInterface {
  private:
   // TODO(suharshs): Make this configurable if its not possible to find a value
   // that works for all cases.
-  static constexpr uint64 kMaxCollectedNodes = 1 << 20;
+  static constexpr uint64_t kMaxCollectedNodes = 1 << 20;
 
   typedef std::vector<std::unique_ptr<NodeExecStatsWrapper>> NodeStatsVector;
-  typedef std::unordered_map<uint32, string> ThreadNamesMap;
+  typedef std::unordered_map<uint32_t, std::string> ThreadNamesMap;
 
   void FinalizeInternal() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutex mu_;
   bool finalized_ TF_GUARDED_BY(mu_);
-  std::unordered_map<string, NodeStatsVector> dev_stats_ TF_GUARDED_BY(mu_);
-  std::unordered_map<string, ThreadNamesMap> thread_names_ TF_GUARDED_BY(mu_);
+  std::unordered_map<std::string, NodeStatsVector> dev_stats_
+      TF_GUARDED_BY(mu_);
+  std::unordered_map<std::string, ThreadNamesMap> thread_names_
+      TF_GUARDED_BY(mu_);
   StepStats* step_stats_ TF_GUARDED_BY(mu_);
-  uint64 collected_nodes_ TF_GUARDED_BY(mu_) = 0;
+  uint64_t collected_nodes_ TF_GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace tensorflow

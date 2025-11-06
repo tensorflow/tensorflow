@@ -88,11 +88,9 @@ using AlgorithmEmitter = absl::StatusOr<Value> (*)(EmitterLocOpBuilder,
 // must override any accumulated result if the last partial product is
 // non-finite. See b/115844437.
 Value ZeroNaNs(EmitterLocOpBuilder b, Value input) {
-  Value positive_inf =
-      CreateConst<float>(b, b.getF32Type(),
-                         std::numeric_limits<float>::infinity(),
-                         mlir::cast<ShapedType>(input.getType()).getShape())
-          .UnwrapTensor();
+  Value positive_inf = CreateConst<float>(
+      b, b.getF32Type(), std::numeric_limits<float>::infinity(),
+      mlir::cast<ShapedType>(input.getType()).getShape());
   Value abs_input = b.create<math::AbsFOp>(input);
   Value is_finite = b.create<arith::CmpFOp>(arith::CmpFPredicate::OGT,
                                             positive_inf, abs_input);
