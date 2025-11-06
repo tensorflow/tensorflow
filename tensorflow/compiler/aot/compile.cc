@@ -212,7 +212,7 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   return CompileXla(client, computation, aot_opts, compile_result);
 }
 
-static absl::Status ReadProtoFile(const string& fname,
+static absl::Status ReadProtoFile(const std::string& fname,
                                   protobuf::Message* proto) {
   if (absl::EndsWith(fname, ".pbtxt")) {
     return ReadTextProto(Env::Default(), fname, proto);
@@ -297,7 +297,7 @@ absl::Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(ReadProtoFile(flags.config, &config));
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   if (flags.dump_fetch_nodes) {
-    std::set<string> nodes;
+    std::set<std::string> nodes;
     for (const tf2xla::Fetch& fetch : config.fetch()) {
       nodes.insert(fetch.id().node_name());
     }
@@ -368,7 +368,7 @@ absl::Status Main(const MainFlags& flags) {
       GenerateMetadata(codegen_opts, compile_result, &metadata_result));
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_metadata_object,
                                        metadata_result.object_file_data));
-  string header;
+  std::string header;
   TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
                                     metadata_result, embedded_constant_buffers,
                                     &header));
