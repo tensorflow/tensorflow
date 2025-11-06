@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -739,6 +740,11 @@ class HloComputation {
   // 'extra_parameters' allows to specify additional parameters that should be
   // added to the computation.
   //
+  // 'new_root' allows specifying a new root instruction for the clone. If it's
+  // a pointer to an instruction in the computation being cloned, the new root
+  // is that instruction. If it's a span, the new root is a tuple instruction,
+  // where the instructions in the span are the tuple elements.
+  //
   // All relevant instructions are cloned, *including* unique_ptr in the
   // `replacements` map.
   std::unique_ptr<HloComputation> CloneWithReplacements(
@@ -746,7 +752,9 @@ class HloComputation {
                                 std::unique_ptr<HloInstruction>>* replacements,
       absl::Span<const HloInstruction* const> extra_parameters = {},
       HloCloneContext* context = nullptr, const std::string& suffix = "clone",
-      const HloInstruction* new_root = nullptr);
+      std::variant<const HloInstruction*,
+                   const absl::Span<HloInstruction* const>>
+          new_root = nullptr);
 
   // Like CloneWithReplacements(), but this is a const method and `context` must
   // be specified.
@@ -757,7 +765,9 @@ class HloComputation {
           nullptr,
       absl::Span<const HloInstruction* const> extra_parameters = {},
       const std::string& suffix = "clone",
-      const HloInstruction* new_root = nullptr) const;
+      std::variant<const HloInstruction*,
+                   const absl::Span<HloInstruction* const>>
+          new_root = nullptr) const;
 
   // Convenience overloads for CloneWithReplacements.  You want to do
   //

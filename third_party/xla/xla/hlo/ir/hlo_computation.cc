@@ -26,6 +26,7 @@ limitations under the License.
 #include <stack>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -2020,7 +2022,8 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
                               std::unique_ptr<HloInstruction>>* replacements,
     absl::Span<const HloInstruction* const> extra_parameters,
     HloCloneContext* context, const std::string& suffix,
-    const HloInstruction* new_root) {
+    std::variant<const HloInstruction*, const absl::Span<HloInstruction* const>>
+        new_root) {
   std::unique_ptr<HloCloneContext> context_ptr;
   if (context == nullptr) {
     context_ptr = std::make_unique<HloCloneContext>(parent(), suffix);
@@ -2035,11 +2038,9 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
     const absl::flat_hash_map<const HloInstruction*,
                               std::unique_ptr<HloInstruction>>* replacements,
     absl::Span<const HloInstruction* const> extra_parameters,
-    const std::string& suffix, const HloInstruction* new_root) const {
-  if (new_root == nullptr) {
-    new_root = root_instruction();
-  }
-
+    const std::string& suffix,
+    std::variant<const HloInstruction*, const absl::Span<HloInstruction* const>>
+        new_root) const {
   // Look up instr in the replacements map, and return either the replacement,
   // or instr, if the replacement isn't present.
   //
@@ -2132,8 +2133,39 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
   for (auto& instr : instructions) {
     builder.AddInstruction(std::move(instr));
   }
+
+  // Figure out the new root instruction for the clone. There are three cases:
+  // 1. The new root is just the old root (nullptr `new_root` instruction)
+  // 2. The new root is a different instruction in the computation (non-null
+  // `new_root` instruction)
+  // 3. The new root is a tuple of instructions, where the instructions are part
+  // of the computation, but the tuple did not previously exist (`new_root`
+  // span).
+  HloInstruction* new_root_instruction;
+  std::visit(absl::Overload{
+                 [&](const HloInstruction* arg) {
+                   if (arg == nullptr) {
+                     new_root_instruction =
+                         context.GetInstruction(replace(root_instruction()));
+                   } else {
+                     new_root_instruction =
+                         context.GetInstruction(replace(arg));
+                   }
+                 },
+                 [&](const absl::Span<HloInstruction* const> arg) {
+                   std::vector<HloInstruction*> root_replacements;
+                   for (HloInstruction* instr : arg) {
+                     root_replacements.push_back(
+                         context.GetInstruction(replace(instr)));
+                   }
+                   new_root_instruction = builder.AddInstruction(
+                       HloInstruction::CreateTuple(root_replacements));
+                 },
+             },
+             new_root);
+
   auto result = builder.Build(
-      /*root_instruction=*/context.GetInstruction(replace(new_root)));
+      /*root_instruction=*/new_root_instruction);
 
   // Clone control dependencies.
   for (auto instr : postorder) {
