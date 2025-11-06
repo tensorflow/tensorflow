@@ -35,7 +35,7 @@ class RepeatDatasetParams : public DatasetParams {
   RepeatDatasetParams(T input_dataset_params, int64_t count,
                       DataTypeVector output_dtypes,
                       std::vector<PartialTensorShape> output_shapes,
-                      string node_name)
+                      std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         count_(count) {
@@ -49,7 +49,8 @@ class RepeatDatasetParams : public DatasetParams {
     return {CreateTensor<int64_t>(TensorShape({}), {count_})};
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back(RepeatDatasetOp::kInputDataset);
     input_names->emplace_back(RepeatDatasetOp::kCount);
@@ -64,7 +65,9 @@ class RepeatDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override { return RepeatDatasetOp::kDatasetType; }
+  std::string dataset_type() const override {
+    return RepeatDatasetOp::kDatasetType;
+  }
 
  private:
   int64_t count_;
