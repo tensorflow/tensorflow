@@ -476,8 +476,8 @@ xla_test(
 )
 
 cuda_library(
-    name = "buffer_debug_nan_count_kernel_cuda",
-    srcs = ["buffer_debug_nan_count_kernel_cuda.cu.cc"],
+    name = "buffer_debug_float_check_kernel_cuda",
+    srcs = ["buffer_debug_float_check_kernel_cuda.cu.cc"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     tags = [
         "cuda-only",
@@ -487,7 +487,7 @@ cuda_library(
         ":cuda_platform",
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",
         "//xla/stream_executor:kernel_spec",
-        "//xla/stream_executor/gpu:buffer_debug_nan_count_kernel",
+        "//xla/stream_executor/gpu:buffer_debug_float_check_kernel",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base",
@@ -497,12 +497,12 @@ cuda_library(
 )
 
 xla_test(
-    name = "buffer_debug_nan_count_kernel_cuda_test",
-    srcs = ["buffer_debug_nan_count_kernel_cuda_test.cc"],
+    name = "buffer_debug_float_check_kernel_cuda_test",
+    srcs = ["buffer_debug_float_check_kernel_cuda_test.cc"],
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
-        ":buffer_debug_nan_count_kernel_cuda",
+        ":buffer_debug_float_check_kernel_cuda",
         "//xla:types",
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",
         "//xla/backends/gpu/runtime:thunk_id",
@@ -514,8 +514,8 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:buffer_debug_float_check_kernel",
         "//xla/stream_executor/gpu:buffer_debug_log",
-        "//xla/stream_executor/gpu:buffer_debug_nan_count_kernel",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
@@ -1305,6 +1305,7 @@ cc_library(
     deps = [
         ":all_reduce_kernel_cuda",
         ":buffer_comparator_kernel_cuda",
+        ":buffer_debug_float_check_kernel_cuda",
         ":buffer_debug_xor_checksum_kernel_cuda",
         ":cublas_plugin",
         ":cuda_platform",

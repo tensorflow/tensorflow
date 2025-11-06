@@ -995,8 +995,8 @@ cc_library(
 )
 
 cc_library(
-    name = "buffer_debug_nan_count_kernel",
-    hdrs = ["buffer_debug_nan_count_kernel.h"],
+    name = "buffer_debug_float_check_kernel",
+    hdrs = ["buffer_debug_float_check_kernel.h"],
     deps = [
         "//xla:types",
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",

@@ -45,7 +45,7 @@ message BufferDebugLogEntryProto {
   enum CheckType {
     CHECK_TYPE_UNSPECIFIED = 0;
     CHECK_TYPE_CHECKSUM = 1;
-    CHECK_TYPE_NAN_COUNT = 2;
+    CHECK_TYPE_FLOAT_CHECKS = 2;
   }
 
   CheckType check_type = 6;

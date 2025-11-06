@@ -73,7 +73,7 @@ TEST(BufferDebugLogEntryMetadataStoreTest, EntriesToProto) {
       /*buffer_idx=*/8,
       /*execution_id=*/9,
       /*is_input=*/false,
-      BufferDebugLogEntryProto::CHECK_TYPE_NAN_COUNT,
+      BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS,
   });
   std::vector<BufferDebugLogEntry> entries = {
       {
@@ -103,7 +103,7 @@ TEST(BufferDebugLogEntryMetadataStoreTest, EntriesToProto) {
                   execution_id: 9
                   is_input_buffer: false
                   checksum: 56785678,
-                  check_type: CHECK_TYPE_NAN_COUNT
+                  check_type: CHECK_TYPE_FLOAT_CHECKS
                 }
               )pb"));
 }

@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/buffers_checksum_thunk.h"
-#include "xla/backends/gpu/runtime/buffers_nan_count_thunk.h"
+#include "xla/backends/gpu/runtime/buffers_float_check_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -437,7 +437,7 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
   }
 }
 
-TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugNanCounterThunks) {
+TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
   static constexpr ThunkId kTestThunkId = ThunkId(123);
   DebugOptions debug_options;
   debug_options.set_xla_gpu_detect_nan(
@@ -480,7 +480,7 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugNanCounterThunks) {
   auto root_thunk =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
 
-  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kNanCounter);
+  ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kFloatChecker);
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           pass.Run(root_thunk.get(), debug_options, &hlo_module,
                                    device_info, allocator));
@@ -490,7 +490,7 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugNanCounterThunks) {
   // 1. CustomCallThunk (buffer debug log init)
   // 2. SequentialThunk
   //    1. FakeThunk
-  //    2. BuffersDebugNanCountThunk (nan counter output buffers)
+  //    2. BuffersDebugFloatCheckThunk (float check output buffers)
   // 3. CustomCallThunk (buffer debug log dump)
   const std::vector<std::unique_ptr<Thunk>>& new_thunks = root_thunk->thunks();
   EXPECT_THAT(new_thunks, SizeIs(3));
@@ -512,10 +512,10 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugNanCounterThunks) {
       static_cast<const SequentialThunk&>(*new_thunks[1]).thunks();
   EXPECT_THAT(sub_thunks, SizeIs(2));
   EXPECT_THAT(sub_thunks[0], Pointer(fake_thunk_ptr));
-  EXPECT_EQ(sub_thunks[1]->kind(), Thunk::Kind::kBuffersDebugNanCount);
+  EXPECT_EQ(sub_thunks[1]->kind(), Thunk::Kind::kBuffersDebugFloatCheck);
 
-  const BuffersDebugNanCountThunk& buffer_debug_after_fake_thunk =
-      static_cast<const BuffersDebugNanCountThunk&>(*sub_thunks[1]);
+  const BuffersDebugFloatCheckThunk& buffer_debug_after_fake_thunk =
+      static_cast<const BuffersDebugFloatCheckThunk&>(*sub_thunks[1]);
   EXPECT_THAT(buffer_debug_after_fake_thunk.buffer_slices(),
               UnorderedElementsAre(Pair(1, slice_o), Pair(2, slice_io)));
 }

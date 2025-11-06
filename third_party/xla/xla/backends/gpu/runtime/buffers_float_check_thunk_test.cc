@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/buffers_nan_count_thunk.h"
+#include "xla/backends/gpu/runtime/buffers_float_check_thunk.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -71,7 +71,7 @@ MATCHER_P2(IsEntryWithMetadata, store, metadata, "") {
       *actual_metadata, result_listener);
 }
 
-class BuffersDebugNanCountThunkTest : public ::testing::Test {
+class BuffersDebugFloatCheckThunkTest : public ::testing::Test {
  protected:
   void SetUp() override {
     TF_ASSERT_OK_AND_ASSIGN(platform_,
@@ -85,7 +85,7 @@ class BuffersDebugNanCountThunkTest : public ::testing::Test {
              .cuda_compute_capability()
              .IsAtLeastPascal()) {
       GTEST_SKIP()
-          << "buffer nan-counting is not supported on CUDA architectures "
+          << "buffer float checking is not supported on CUDA architectures "
              "older than Pascal due to missing atomic fetch_add with "
              "system scope";
     }
@@ -97,7 +97,7 @@ class BuffersDebugNanCountThunkTest : public ::testing::Test {
   std::unique_ptr<se::StreamExecutorMemoryAllocator> allocator_;
 };
 
-TEST_F(BuffersDebugNanCountThunkTest, CalculatesNanCounts) {
+TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
   static constexpr size_t kLogSize = BufferDebugLog::RequiredSizeForEntries(10);
   static constexpr size_t kInputElems = 1024;
   static constexpr size_t kInputSizeInBytes = kInputElems * sizeof(float);
@@ -154,7 +154,7 @@ TEST_F(BuffersDebugNanCountThunkTest, CalculatesNanCounts) {
       /*collective_params=*/nullptr, /*collective_cliques=*/nullptr);
   auto metadata_store = std::make_shared<BufferDebugLogEntryMetadataStore>();
 
-  BuffersDebugNanCountThunk thunk(
+  BuffersDebugFloatCheckThunk thunk(
       Thunk::ThunkInfo(), log_slice,
       /*checked_thunk_id=*/ThunkId(123),
       {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
@@ -165,8 +165,8 @@ TEST_F(BuffersDebugNanCountThunkTest, CalculatesNanCounts) {
   TF_ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugLogEntry> entries,
                           device_log.ReadFromDevice(*stream_));
 
-  // BuffersDebugNanCountThunk launches a kernel for each input buffer, they may
-  // complete in any order.
+  // BuffersDebugFloatCheckThunk launches a kernel for each input buffer, they
+  // may complete in any order.
   EXPECT_THAT(entries,
               UnorderedElementsAre(
                   IsEntryWithMetadata(
@@ -176,7 +176,7 @@ TEST_F(BuffersDebugNanCountThunkTest, CalculatesNanCounts) {
                           /*buffer_idx=*/0,
                           /*execution_id=*/0,
                           /*is_input=*/true,
-                          BufferDebugLogEntryProto::CHECK_TYPE_NAN_COUNT,
+                          BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS,
                       }),
                   IsEntryWithMetadata(
                       metadata_store,
@@ -185,7 +185,7 @@ TEST_F(BuffersDebugNanCountThunkTest, CalculatesNanCounts) {
                           /*buffer_idx=*/1,
                           /*execution_id=*/0,
                           /*is_input=*/true,
-                          BufferDebugLogEntryProto::CHECK_TYPE_NAN_COUNT,
+                          BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS,
                       })));
 }
 

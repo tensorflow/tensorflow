@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/buffers_checksum_thunk.h"
-#include "xla/backends/gpu/runtime/buffers_nan_count_thunk.h"
+#include "xla/backends/gpu/runtime/buffers_float_check_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -134,7 +134,7 @@ std::unique_ptr<Thunk> WrapWithChecksumThunk(
   return wrapped_thunk;
 }
 
-std::unique_ptr<Thunk> WrapWithNanCounterThunk(
+std::unique_ptr<Thunk> WrapWithFloatCheckThunk(
     std::unique_ptr<Thunk> thunk, BufferAllocation::Slice log_slice,
     const Thunk& predecessor_thunk, Thunk& successor_thunk,
     std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store) {
@@ -168,7 +168,7 @@ std::unique_ptr<Thunk> WrapWithNanCounterThunk(
     if (!use.HasDefinedContentsOnOutput()) {
       VLOG(1) << "Buffer " << buffer_idx << " in thunk "
               << thunk->thunk_info().thunk_id
-              << " has no defined contents on output, skipping";
+              << " has no defined contents, skipping";
       continue;
     }
     buffers_to_check.emplace(buffer_idx, use.slice());
@@ -183,18 +183,18 @@ std::unique_ptr<Thunk> WrapWithNanCounterThunk(
   }
 
   VLOG(1) << "Wrapping thunk " << thunk->thunk_info().thunk_id
-          << " with nan counter thunk due to presence of buffers: "
+          << " with float check thunk due to presence of buffers: "
           << buffers_to_check.size();
   std::vector<std::unique_ptr<Thunk>> thunk_and_checks;
   Thunk* thunk_ptr = thunk.get();
   thunk_and_checks.push_back(std::move(thunk));
-  auto buffer_debug_nan_counter_thunk =
-      std::make_unique<BuffersDebugNanCountThunk>(
+  auto buffer_debug_float_check_thunk =
+      std::make_unique<BuffersDebugFloatCheckThunk>(
           Thunk::ThunkInfo(), log_slice, thunk_ptr->thunk_info().thunk_id,
           std::move(buffers_to_check),
           /*runs_before_checked_thunk=*/false, std::move(metadata_store));
-  buffer_debug_nan_counter_thunk->add_control_predecessor(thunk_ptr);
-  thunk_and_checks.push_back(std::move(buffer_debug_nan_counter_thunk));
+  buffer_debug_float_check_thunk->add_control_predecessor(thunk_ptr);
+  thunk_and_checks.push_back(std::move(buffer_debug_float_check_thunk));
   auto wrapped_thunk = std::make_unique<SequentialThunk>(
       Thunk::ThunkInfo(), std::move(thunk_and_checks));
   wrapped_thunk->add_control_predecessor(&predecessor_thunk);
@@ -229,22 +229,24 @@ absl::Status DumpBufferDebugLog(
   VLOG(1) << "read " << buffer_debug_log_proto.entries_size() << " entries";
   DumpPerExecutionProtobufToFile(*hlo_module, buffer_debug_log_proto,
                                  debug_options, "buffer_debug_log", nullptr);
-  int non_zero_nan_count_modules_count = 0;
+  int non_zero_float_check_modules_count = 0;
   for (const auto& entry : buffer_debug_log_proto.entries()) {
-    if (entry.check_type() == BufferDebugLogEntryProto::CHECK_TYPE_NAN_COUNT &&
+    if (entry.check_type() ==
+            BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS &&
         entry.checksum() > 0) {
-      LOG(ERROR) << "Found entry with non zero nan count " << entry.checksum()
-                 << " for thunk " << entry.thunk_id() << " and execution "
-                 << entry.execution_id() << " for module: \n"
+      LOG(ERROR) << "Found entry with non zero float check count "
+                 << entry.checksum() << " for thunk " << entry.thunk_id()
+                 << " and execution " << entry.execution_id()
+                 << " for module: \n"
                  << hlo_module->ToString();
-      non_zero_nan_count_modules_count++;
+      non_zero_float_check_modules_count++;
     }
   }
-  if (non_zero_nan_count_modules_count > 0 &&
+  if (non_zero_float_check_modules_count > 0 &&
       hlo_module->config().debug_options().xla_gpu_detect_nan() ==
           DebugOptions::NAN_CHECK_DETECTION_MODE_FAIL) {
-    LOG(FATAL) << "Found " << non_zero_nan_count_modules_count
-               << " modules with non zero nan count";
+    LOG(FATAL) << "Found " << non_zero_float_check_modules_count
+               << " modules with non zero float check count";
   }
   return absl::OkStatus();
 }
@@ -417,9 +419,9 @@ absl::StatusOr<bool> ThunkBufferDebugPass::Run(
             std::move(thunk), log_slice,
             /*predecessor_thunk=*/*buffer_debug_init_thunk,
             /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store);
-      case Mode::kNanCounter:
-        VLOG(1) << "Wrapping with nan counter thunk";
-        return WrapWithNanCounterThunk(
+      case Mode::kFloatChecker:
+        VLOG(1) << "Wrapping with float check thunk";
+        return WrapWithFloatCheckThunk(
             std::move(thunk), log_slice,
             /*predecessor_thunk=*/*buffer_debug_init_thunk,
             /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store);

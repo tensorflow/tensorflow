@@ -29,8 +29,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/buffer_debug_float_check_kernel.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
-#include "xla/stream_executor/gpu/buffer_debug_nan_count_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -52,7 +52,7 @@ namespace {
 using xla::gpu::BufferDebugLogEntryId;
 using xla::gpu::ThunkId;
 
-class NanCountKernelTest : public ::testing::Test {
+class FloatCheckKernelTest : public ::testing::Test {
  protected:
   void SetUp() override {
     TF_ASSERT_OK_AND_ASSIGN(platform_,
@@ -82,7 +82,7 @@ class NanCountKernelTest : public ::testing::Test {
   }
 
   template <typename Kernel, typename T>
-  absl::Status AppendNanCountOnDevice(
+  absl::Status AppendFloatCheckOnDevice(
       BufferDebugLogEntryId entry_id, const std::vector<T>& input,
       se::gpu::BufferDebugLog& buffer_debug_log,
       stream_executor::ThreadDim dim = stream_executor::ThreadDim(1, 1, 1)) {
@@ -118,7 +118,7 @@ class NanCountKernelTest : public ::testing::Test {
   std::unique_ptr<se::StreamExecutorMemoryAllocator> allocator_;
 };
 
-TEST_F(NanCountKernelTest, CountsNansForF32) {
+TEST_F(FloatCheckKernelTest, ChecksFloatsForF32) {
   se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   std::vector<float> input = {1.0f, std::numeric_limits<float>::quiet_NaN(),
                               2.0f, std::numeric_limits<float>::quiet_NaN()};
@@ -126,7 +126,7 @@ TEST_F(NanCountKernelTest, CountsNansForF32) {
       se::gpu::BufferDebugLog device_log,
       se::gpu::BufferDebugLog::CreateOnDevice(*stream_, mem));
 
-  TF_EXPECT_OK(AppendNanCountOnDevice<gpu::BufferDebugNanCountF32Kernel>(
+  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
       BufferDebugLogEntryId{123}, input, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
@@ -134,7 +134,7 @@ TEST_F(NanCountKernelTest, CountsNansForF32) {
   EXPECT_EQ(host_log[0].value, 2);
 }
 
-TEST_F(NanCountKernelTest, CountsNansForBf16) {
+TEST_F(FloatCheckKernelTest, ChecksFloatsForBf16) {
   se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   std::vector<xla::bfloat16> input = {
       xla::bfloat16(1.0f),
@@ -145,7 +145,7 @@ TEST_F(NanCountKernelTest, CountsNansForBf16) {
       se::gpu::BufferDebugLog device_log,
       se::gpu::BufferDebugLog::CreateOnDevice(*stream_, mem));
 
-  TF_EXPECT_OK(AppendNanCountOnDevice<gpu::BufferDebugNanCountBf16Kernel>(
+  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckBf16Kernel>(
       BufferDebugLogEntryId{0}, input, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
@@ -153,7 +153,7 @@ TEST_F(NanCountKernelTest, CountsNansForBf16) {
   EXPECT_EQ(host_log[0].value, 2);
 }
 
-TEST_F(NanCountKernelTest, CountsNansInParallel) {
+TEST_F(FloatCheckKernelTest, ChecksFloatsInParallel) {
   se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   std::vector<float> input(1024, 1.0f);
   input[100] = std::numeric_limits<float>::quiet_NaN();
@@ -164,9 +164,9 @@ TEST_F(NanCountKernelTest, CountsNansInParallel) {
       se::gpu::BufferDebugLog device_log,
       se::gpu::BufferDebugLog::CreateOnDevice(*stream_, mem));
 
-  TF_EXPECT_OK(AppendNanCountOnDevice<gpu::BufferDebugNanCountF32Kernel>(
+  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
       BufferDebugLogEntryId{0}, input, device_log, se::ThreadDim(2, 4, 8)));
-  TF_EXPECT_OK(AppendNanCountOnDevice<gpu::BufferDebugNanCountF32Kernel>(
+  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
       BufferDebugLogEntryId{0}, input, device_log, se::ThreadDim(2, 4, 8)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));

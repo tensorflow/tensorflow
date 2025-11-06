@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_GPU_BUFFER_DEBUG_NAN_COUNT_KERNEL_H_
-#define XLA_STREAM_EXECUTOR_GPU_BUFFER_DEBUG_NAN_COUNT_KERNEL_H_
+#ifndef XLA_STREAM_EXECUTOR_GPU_BUFFER_DEBUG_FLOAT_CHECK_KERNEL_H_
+#define XLA_STREAM_EXECUTOR_GPU_BUFFER_DEBUG_FLOAT_CHECK_KERNEL_H_
 
 #include <cstdint>
 
@@ -29,14 +29,14 @@ namespace stream_executor::gpu {
 // appends it to the buffer debug log.
 //
 // This kernel MUST execute on a single thread block.
-struct BufferDebugNanCountF32Kernel {
+struct BufferDebugFloatCheckF32Kernel {
   using KernelType =
       TypedKernel<xla::gpu::BufferDebugLogEntryId, DeviceMemory<float>,
                   uint64_t, DeviceMemory<xla::gpu::BufferDebugLogHeader>,
                   DeviceMemory<xla::gpu::BufferDebugLogEntry>>;
 };
 
-struct BufferDebugNanCountBf16Kernel {
+struct BufferDebugFloatCheckBf16Kernel {
   using KernelType = TypedKernel<xla::gpu::BufferDebugLogEntryId,
                                  DeviceMemory<Eigen::bfloat16>, uint64_t,
                                  DeviceMemory<xla::gpu::BufferDebugLogHeader>,
@@ -45,4 +45,4 @@ struct BufferDebugNanCountBf16Kernel {
 
 }  // namespace stream_executor::gpu
 
-#endif  // XLA_STREAM_EXECUTOR_GPU_BUFFER_DEBUG_NAN_COUNT_KERNEL_H_
+#endif  // XLA_STREAM_EXECUTOR_GPU_BUFFER_DEBUG_FLOAT_CHECK_KERNEL_H_

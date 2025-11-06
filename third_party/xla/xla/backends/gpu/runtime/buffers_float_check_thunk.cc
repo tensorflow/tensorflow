@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/buffers_nan_count_thunk.h"
+#include "xla/backends/gpu/runtime/buffers_float_check_thunk.h"
 
 #include <cstdint>
 #include <string>
@@ -27,8 +27,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/buffer_debug_float_check_kernel.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
-#include "xla/stream_executor/gpu/buffer_debug_nan_count_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -40,18 +40,19 @@ namespace xla::gpu {
 
 namespace se = stream_executor;
 
-absl::Status BuffersDebugNanCountThunk::Initialize(
+absl::Status BuffersDebugFloatCheckThunk::Initialize(
     const InitializeParams& params) {
   if (params.executor->GetPlatform()->id() != se::cuda::kCudaPlatformId) {
-    VLOG(1)
-        << "Buffer nan-counting not supported on non-CUDA platforms, skipping";
+    VLOG(1) << "Buffer float checking not supported on non-CUDA platforms, "
+               "skipping";
     return absl::OkStatus();
   }
   if (!params.executor->GetDeviceDescription()
            .cuda_compute_capability()
            .IsAtLeastPascal()) {
     VLOG(1)
-        << "Buffer nan-counting not supported on CUDA architectures older than "
+        << "Buffer float checking not supported on CUDA architectures older "
+           "than "
            "Pascal due to missing atomic fetch_add with system scope, skipping";
     return absl::OkStatus();
   }
@@ -59,27 +60,28 @@ absl::Status BuffersDebugNanCountThunk::Initialize(
   se::gpu::GpuKernelRegistry registry =
       se::gpu::GpuKernelRegistry::GetGlobalRegistry();
   TF_ASSIGN_OR_RETURN(
-      kernel_f32_, registry.LoadKernel<se::gpu::BufferDebugNanCountF32Kernel>(
+      kernel_f32_, registry.LoadKernel<se::gpu::BufferDebugFloatCheckF32Kernel>(
                        params.executor));
   TF_ASSIGN_OR_RETURN(
-      kernel_bf16_, registry.LoadKernel<se::gpu::BufferDebugNanCountBf16Kernel>(
-                        params.executor));
+      kernel_bf16_,
+      registry.LoadKernel<se::gpu::BufferDebugFloatCheckBf16Kernel>(
+          params.executor));
 
-  VLOG(1) << "NanCount kernel loaded";
+  VLOG(1) << "FloatCheck kernel loaded";
   return absl::OkStatus();
 }
 
-absl::Status BuffersDebugNanCountThunk::ExecuteOnStream(
+absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
   if (!kernel_f32_.has_value()) {
     // Initialize didn't load the kernel. This can happen when we're running on
     // an unsupported platform.
-    VLOG(1) << "NanCount kernel not loaded, skipping";
+    VLOG(1) << "FloatCheck kernel not loaded, skipping";
     return absl::OkStatus();
   }
 
-  VLOG(1) << "BuffersDebugNanCountThunk::ExecuteOnStream";
+  VLOG(1) << "BuffersDebugFloatCheckThunk::ExecuteOnStream";
 
   const se::ThreadDim thread_dim(
       executor->GetDeviceDescription().threads_per_block_limit(), 1, 1);
@@ -96,7 +98,7 @@ absl::Status BuffersDebugNanCountThunk::ExecuteOnStream(
         buffer_idx,
         execution_id,
         /*is_input=*/runs_before_checked_thunk_,
-        BufferDebugLogEntryProto::CHECK_TYPE_NAN_COUNT,
+        BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS,
     };
     const BufferDebugLogEntryId entry_id = metadata_store_->AssignId(metadata);
 
@@ -120,7 +122,7 @@ absl::Status BuffersDebugNanCountThunk::ExecuteOnStream(
           bf16_buffer, bf16_buffer.size(), buffer_debug_log.GetDeviceHeader(),
           buffer_debug_log.GetDeviceEntries()));
     } else {
-      VLOG(1) << "Unsupported primitive type for NaN counting: "
+      VLOG(1) << "Unsupported primitive type for float checking: "
               << PrimitiveType_Name(buffer_type);
     }
   }
@@ -128,7 +130,7 @@ absl::Status BuffersDebugNanCountThunk::ExecuteOnStream(
   return absl::OkStatus();
 }
 
-std::string BuffersDebugNanCountThunk::ToString(int indent) const {
+std::string BuffersDebugFloatCheckThunk::ToString(int indent) const {
   std::string result;
   absl::StrAppend(&result, ", buffers = ", checked_thunk_buffers_.size());
   for (const auto& [buffer_idx, buffer] : checked_thunk_buffers_) {

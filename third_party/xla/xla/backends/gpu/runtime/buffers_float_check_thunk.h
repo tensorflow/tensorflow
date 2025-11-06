@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_BUFFERS_NAN_COUNT_THUNK_H_
-#define XLA_BACKENDS_GPU_RUNTIME_BUFFERS_NAN_COUNT_THUNK_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_BUFFERS_FLOAT_CHECK_THUNK_H_
+#define XLA_BACKENDS_GPU_RUNTIME_BUFFERS_FLOAT_CHECK_THUNK_H_
 
 #include <atomic>
 #include <cstddef>
@@ -29,20 +29,20 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/gpu/buffer_debug_nan_count_kernel.h"
+#include "xla/stream_executor/gpu/buffer_debug_float_check_kernel.h"
 
 namespace xla::gpu {
 
-class BuffersDebugNanCountThunk : public Thunk {
+class BuffersDebugFloatCheckThunk : public Thunk {
  public:
-  explicit BuffersDebugNanCountThunk(
+  explicit BuffersDebugFloatCheckThunk(
       ThunkInfo info, BufferAllocation::Slice log_slice,
       ThunkId checked_thunk_id,
       absl::flat_hash_map<size_t, BufferAllocation::Slice>
           checked_thunk_buffers,
       bool runs_before_checked_thunk,
       std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store)
-      : Thunk(Thunk::Kind::kBuffersDebugNanCount, std::move(info)),
+      : Thunk(Thunk::Kind::kBuffersDebugFloatCheck, std::move(info)),
         log_slice_(log_slice),
         checked_thunk_id_(checked_thunk_id),
         checked_thunk_buffers_(std::move(checked_thunk_buffers)),
@@ -55,7 +55,7 @@ class BuffersDebugNanCountThunk : public Thunk {
   std::string ToString(int indent) const override;
 
   BufferUses buffer_uses() const override {
-    // Intentionally left empty to not nan-count the nan-counting thunk.
+    // Intentionally left empty to not float-check the float-checking thunk.
     return {};
   }
 
@@ -66,9 +66,11 @@ class BuffersDebugNanCountThunk : public Thunk {
 
  private:
   // Loaded in Initialize.
-  std::optional<stream_executor::gpu::BufferDebugNanCountF32Kernel::KernelType>
+  std::optional<
+      stream_executor::gpu::BufferDebugFloatCheckF32Kernel::KernelType>
       kernel_f32_;
-  std::optional<stream_executor::gpu::BufferDebugNanCountBf16Kernel::KernelType>
+  std::optional<
+      stream_executor::gpu::BufferDebugFloatCheckBf16Kernel::KernelType>
       kernel_bf16_;
   BufferAllocation::Slice log_slice_;
   ThunkId checked_thunk_id_;
@@ -80,4 +82,4 @@ class BuffersDebugNanCountThunk : public Thunk {
 
 }  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_BUFFERS_NAN_COUNT_THUNK_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_BUFFERS_FLOAT_CHECK_THUNK_H_

@@ -258,7 +258,7 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kAllToAllDone);
     CASE(kAllToAllStart);
     CASE(kBuffersDebugChecksum);
-    CASE(kBuffersDebugNanCount);
+    CASE(kBuffersDebugFloatCheck);
     CASE(kCholesky);
     CASE(kCollectiveBroadcast);
     CASE(kCollectiveBroadcastDone);

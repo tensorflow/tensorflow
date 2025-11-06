@@ -32,7 +32,7 @@ class ThunkBufferDebugPass : public ThunkPassInterface {
  public:
   enum class Mode {
     kChecksum,
-    kNanCounter,
+    kFloatChecker,
   };
 
   explicit ThunkBufferDebugPass(Mode mode) : mode_(mode) {}
