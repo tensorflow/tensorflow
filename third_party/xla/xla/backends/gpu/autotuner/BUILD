@@ -847,6 +847,30 @@ xla_test(
     ],
 )
 
+cc_library(
+    name = "miopen",
+    srcs = ["miopen.cc"],
+    hdrs = ["miopen.h"],
+    deps = [
+        ":gpu_codegen_backend",
+        "//xla:autotuning_proto_cc",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compiler",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/protobuf:dnn_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
 xla_cc_test(
     name = "legacy_cache_test",
     srcs = ["legacy_cache_test.cc"],
@@ -919,4 +943,37 @@ xla_cc_binary(
         ":factory_rocm",
         "//xla/stream_executor/rocm:all_runtime",
     ]),
+)
+
+xla_test(
+    name = "miopen_test",
+    srcs = ["miopen_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "rocm-only",
+    ],
+    deps = [
+        ":miopen",
+        "//xla:autotuning_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compiler",
+        "//xla/service:platform_util",
+        "//xla/service/gpu:amdgpu_compiler",
+        "//xla/service/gpu:amdgpu_compiler_impl",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/rocm:rocm_platform_id",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/protobuf:dnn_proto_cc",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
