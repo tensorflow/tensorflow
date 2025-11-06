@@ -106,9 +106,9 @@ namespace {
 
 // Time the execution of kernels (in CPU cycles). Meant to be used as RAII.
 struct CompilationTimer {
-  uint64 start_cycles = profile_utils::CpuUtils::GetCurrentClockCycle();
+  uint64_t start_cycles = profile_utils::CpuUtils::GetCurrentClockCycle();
 
-  uint64 ElapsedCycles() {
+  uint64_t ElapsedCycles() {
     return profile_utils::CpuUtils::GetCurrentClockCycle() - start_cycles;
   }
 
