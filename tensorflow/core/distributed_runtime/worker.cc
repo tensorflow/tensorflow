@@ -251,7 +251,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
 
         if (s.ok()) {
           for (const auto& p : *out) {
-            const string& key = p.first;
+            const std::string& key = p.first;
             const Tensor& val = p.second;
             response->AddRecv(key, val);
           }
@@ -271,7 +271,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
                                MutableRunGraphResponseWrapper* response,
                                StatusCallback done) {
   const int64_t step_id = request->step_id();
-  const string& graph_handle = request->graph_handle();
+  const std::string& graph_handle = request->graph_handle();
   TRACEPRINTF("PartialRunGraph: %lld", step_id);
   absl::Status s = recent_request_ids_.TrackUnique(
       request->request_id(), "PartialRunGraph (Worker)", request);
@@ -345,7 +345,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
         if (s.ok()) {
           // Construct and return the resp.
           for (const auto& p : *out) {
-            const string& key = p.first;
+            const std::string& key = p.first;
             const Tensor& val = p.second;
             response->AddRecv(key, val);
           }
@@ -378,7 +378,7 @@ void Worker::CleanupGraphAsync(const CleanupGraphRequest* request,
 void Worker::CleanupAllAsync(const CleanupAllRequest* request,
                              CleanupAllResponse* response,
                              StatusCallback done) {
-  std::vector<string> containers;
+  std::vector<std::string> containers;
   for (const auto& c : request->container()) containers.push_back(c);
   env_->device_mgr->ClearContainers(containers);
   done(absl::OkStatus());
@@ -474,7 +474,7 @@ void Worker::GetStepSequenceAsync(const GetStepSequenceRequest* request,
 absl::Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
                                        Device** src_dev) {
   // Figures out which device the tensor is hosted on.
-  string local_name = DeviceNameUtils::LocalName(parsed.src_device);
+  std::string local_name = DeviceNameUtils::LocalName(parsed.src_device);
   TF_RETURN_IF_ERROR(env_->device_mgr->LookupDevice(local_name, src_dev));
 
   // Does the device have the right incarnation number we expect?
