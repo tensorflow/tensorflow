@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -190,7 +189,7 @@ static const char *const kCublasNotInitializedExplanation =
 bool CUDABlas::Init() {
   absl::MutexLock lock(mu_);
 
-  std::unique_ptr<ActivateContext> activation = parent_->Activate();
+  std::unique_ptr<ActivateContext> activation = stream_->parent()->Activate();
   cublasStatus_t ret = cublasCreate(&blas_);
   if (ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to create cublas handle: " << ToString(ret);
@@ -211,26 +210,26 @@ bool CUDABlas::Init() {
   return true;
 }
 
-CUDABlas::CUDABlas(StreamExecutor *parent)
-    : parent_(CHECK_NOTNULL(parent)),
+CUDABlas::CUDABlas(const Stream* stream)
+    : stream_(CHECK_NOTNULL(stream)),
       blas_(nullptr)
 #if CUDA_VERSION >= 11000
       ,
-      blas_lt_(parent)
+      blas_lt_(stream->parent())
 #endif
 {
 }
 
 CUDABlas::~CUDABlas() {
   if (blas_ != nullptr) {
-    std::unique_ptr<ActivateContext> activation = parent_->Activate();
+    std::unique_ptr<ActivateContext> activation = stream_->parent()->Activate();
     cublasDestroy(blas_);
   }
 }
 
 bool CUDABlas::SetStream(Stream *stream) {
   CHECK(blas_ != nullptr);
-  std::unique_ptr<ActivateContext> activation = parent_->Activate();
+  std::unique_ptr<ActivateContext> activation = stream_->parent()->Activate();
 
   auto handle =
       (stream != nullptr)
@@ -399,7 +398,7 @@ absl::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
     }
   }
 
-  std::unique_ptr<ActivateContext> activation = parent_->Activate();
+  std::unique_ptr<ActivateContext> activation = stream_->parent()->Activate();
   ScopedCublasPointerMode pointer_mode{blas_};
   if (!pointer_mode.Init(pointer_mode_host ? CUBLAS_POINTER_MODE_HOST
                                            : CUBLAS_POINTER_MODE_DEVICE)) {
@@ -1394,28 +1393,5 @@ absl::Status CUDABlas::GetVersion(std::string *version) {
   return absl::OkStatus();
 }
 
-void initialize_cublas() {
-  absl::Status status =
-      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::BlasFactory>(
-          kCudaPlatformId, "cuBLAS",
-          [](::stream_executor::StreamExecutor *parent) -> blas::BlasSupport * {
-            CUDABlas *blas = new CUDABlas(parent);
-            if (!blas->Init()) {
-              // Note: Init() will log a more specific error.
-              delete blas;
-              return nullptr;
-            }
-            return blas;
-          });
-
-  if (!status.ok()) {
-    LOG(INFO) << "Unable to register cuBLAS factory: " << status.message();
-  }
-}
-
 }  // namespace cuda
 }  // namespace stream_executor
-
-STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_cublas, {
-  stream_executor::cuda::initialize_cublas();
-});
