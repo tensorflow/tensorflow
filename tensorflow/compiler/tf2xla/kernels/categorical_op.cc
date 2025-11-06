@@ -185,7 +185,7 @@ class StatelessCategoricalOp : public CategoricalOp {
 
  private:
   DataType dtype_;
-  string device_type_string_;
+  std::string device_type_string_;
 
   StatelessCategoricalOp(const StatelessCategoricalOp&) = delete;
   void operator=(const StatelessCategoricalOp&) = delete;

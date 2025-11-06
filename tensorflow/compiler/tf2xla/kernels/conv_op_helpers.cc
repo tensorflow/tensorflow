@@ -163,8 +163,8 @@ absl::Status CheckConvAttrs(const ConvOpAttrs& attrs) {
 absl::Status ConvBackpropComputeDimensionsV2XlaShapes(
     absl::string_view label, int num_spatial_dims,
     const xla::Shape& input_shape, const xla::Shape& filter_shape,
-    const xla::Shape& out_backprop_shape, absl::Span<const int32> dilations,
-    const std::vector<int32>& strides, Padding padding,
+    const xla::Shape& out_backprop_shape, absl::Span<const int32_t> dilations,
+    const std::vector<int32_t>& strides, Padding padding,
     TensorFormat data_format, ConvBackpropDimensions* dims,
     absl::Span<const int64_t> explicit_paddings) {
   TensorShape input_tensor_shape, filter_tensor_shape,
@@ -203,7 +203,7 @@ absl::StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims,
         ctx->GetAttr("explicit_paddings", &attrs.explicit_paddings));
   }
 
-  string data_format;
+  std::string data_format;
   TF_RETURN_IF_ERROR(ctx->GetAttr("data_format", &data_format));
   if (!FormatFromString(data_format, &attrs.data_format)) {
     return errors::InvalidArgument("Invalid data format: ", data_format);
@@ -231,7 +231,7 @@ absl::StatusOr<ConvNDOpAttrs> ConvNDOpAttrs::Create(OpKernelConstruction* ctx) {
         ctx->GetAttr("explicit_paddings", &attrs.explicit_paddings));
   }
 
-  string data_format_str;
+  std::string data_format_str;
   TF_RETURN_IF_ERROR(ctx->GetAttr("data_format", &data_format_str));
   if (!(data_format_str == "CHANNELS_LAST" ||
         data_format_str == "CHANNELS_FIRST")) {

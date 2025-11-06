@@ -42,7 +42,7 @@ class XlaDequantizeOp : public XlaOpKernel {
     xla::QuantizedRange range(min_range_, max_range_);
 
     xla::XlaOp output =
-        xla::Dequantize<uint8>(input, range, mode_, transpose_output_);
+        xla::Dequantize<uint8_t>(input, range, mode_, transpose_output_);
     context->SetOutput(0, output);
   }
 
@@ -50,7 +50,7 @@ class XlaDequantizeOp : public XlaOpKernel {
   float min_range_;
   float max_range_;
   bool transpose_output_;
-  string mode_;
+  std::string mode_;
   XlaDequantizeOp(const XlaDequantizeOp&) = delete;
   void operator=(const XlaDequantizeOp&) = delete;
 };
