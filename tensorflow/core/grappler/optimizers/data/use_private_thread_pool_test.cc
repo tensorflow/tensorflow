@@ -42,25 +42,25 @@ TEST_P(ThreadPoolOpAlreadySetTest, PrivateThreadPool) {
   NodeDef *start_val = graph_utils::AddScalarConstNode<int64_t>(0, &graph);
   NodeDef *stop_val = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
   NodeDef *step_val = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
-  std::vector<string> range_inputs(3);
+  std::vector<std::string> range_inputs(3);
   range_inputs[0] = start_val->name();
   range_inputs[1] = stop_val->name();
   range_inputs[2] = step_val->name();
-  std::vector<std::pair<string, AttrValue>> range_attrs;
+  std::vector<std::pair<std::string, AttrValue>> range_attrs;
   NodeDef *range_node = graph_utils::AddNode("range", "RangeDataset",
                                              range_inputs, range_attrs, &graph);
   NodeDef *num_of_threads_val =
       graph_utils::AddScalarConstNode<int64_t>(num_of_threads, &graph);
-  std::vector<string> private_threads_inputs(2);
+  std::vector<std::string> private_threads_inputs(2);
   private_threads_inputs[0] = range_node->name();
   private_threads_inputs[1] = num_of_threads_val->name();
-  std::vector<std::pair<string, AttrValue>> private_threads_attrs;
+  std::vector<std::pair<std::string, AttrValue>> private_threads_attrs;
   NodeDef *private_threads_node = graph_utils::AddNode(
       "private_thread_pool", "PrivateThreadPoolDataset", private_threads_inputs,
       private_threads_attrs, &graph);
-  std::vector<string> sink_inputs(1);
+  std::vector<std::string> sink_inputs(1);
   sink_inputs[0] = private_threads_node->name();
-  std::vector<std::pair<string, AttrValue>> sink_attrs;
+  std::vector<std::pair<std::string, AttrValue>> sink_attrs;
   NodeDef *sink_node =
       graph_utils::AddNode("Sink", "Identity", sink_inputs, sink_attrs, &graph);
   item.fetch.push_back(sink_node->name());
@@ -93,10 +93,10 @@ INSTANTIATE_TEST_SUITE_P(Test, ThreadPoolOpAlreadySetTest,
 //
 // If we can not find the sink node or sink node op is "_Retval", we don't apply
 // the optimization; otherwise, we insert the op to use private thread pool.
-class ThreadPoolOpNotSetTest : public ::testing::TestWithParam<string> {};
+class ThreadPoolOpNotSetTest : public ::testing::TestWithParam<std::string> {};
 
 TEST_P(ThreadPoolOpNotSetTest, PrivateThreadPool) {
-  const string op = GetParam();
+  const std::string op = GetParam();
   GrapplerItem item;
 
   item.graph = test::function::GDef(
