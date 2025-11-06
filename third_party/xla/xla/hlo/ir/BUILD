@@ -188,6 +188,7 @@ cc_library(
         ":tile_assignment",
         "//xla:array",
         "//xla:xla_data_proto_cc",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",

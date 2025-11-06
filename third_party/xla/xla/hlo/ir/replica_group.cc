@@ -131,59 +131,14 @@ void HandleMultiAxisRefPerDimension(std::vector<AxisRef>& axes,
   out_aggregate_axes = permuted_aggregate_axes;
 }
 
-bool ValidateSingleDimensionAxes(int64_t dim, std::vector<AxisRef>& axes,
-                                 const Mesh& mesh_) {
-  // If there's only one axis, nothing to check.
-  if (axes.size() <= 1) {
-    return true;
-  }
-  // --- Step 1: Deduplication ---
-  // If one is a "full" axis (no sub_axis_info), it subsumes all other AxisRefs
-  // with sub_axis_info.
-  for (const AxisRef& axis : axes) {
-    if (!axis.sub_axis_info().has_value()) {
-      LOG(WARNING) << "MeshAxesReplicaGroupList: Redundant axis definition at "
-                      "dimension: "
-                   << dim
-                   << ". Keeping only the full axis: " << axis.ToString(mesh_);
-      axes = {axis};
-      return true;
-    }
-  }
-  // --- Step 2: Overlap Check ---
-  // At this point, all remaining axes MUST have sub_axis_info().
-  // Verify that the remaining multiple sub-axes do not overlap.
-  CHECK(ValidateSpanOfAxes(axes))
-      << "Overlapping sub-axes detected in set of axes: "
-      << absl::StrJoin(axes, ",",
-                       [&mesh_](std::string* out, const AxisRef& axis) {
-                         absl::StrAppend(out, axis.ToString(mesh_));
-                       });
-
-  return true;  // Passed all checks for this dimension.
-}
-
 MeshAxesReplicaGroupList::MeshAxesReplicaGroupList(Mesh mesh,
                                                    std::vector<AxisRef> axes)
     : mesh_(std::move(mesh)), axes_(std::move(axes)) {
-  if (num_devices_per_group() == 1) {
-    LOG(ERROR) << "MeshAxesReplicaGroupList: " << ToString()
-               << " has only one device per replica group.";
-  }
+  CHECK_GT(num_devices_per_group(), 1)
+      << "MeshAxesReplicaGroupList: " << ToString()
+      << " has only one device per replica group.";
 
-  absl::flat_hash_set<int64_t> dimensions;
-  absl::flat_hash_map<int64_t, std::vector<AxisRef>> dim_to_axes;
-  for (const AxisRef& axis : axes_) {
-    CHECK_OK(axis.Validate(mesh_));
-    dim_to_axes[axis.mesh_axis_index()].push_back(axis);
-    dimensions.insert(axis.mesh_axis_index());
-  }
-
-  // Validate input AxisRefs.
-  for (int64_t dim : dimensions) {
-    std::vector<AxisRef>& axes = dim_to_axes[dim];
-    CHECK(ValidateSingleDimensionAxes(dim, axes, mesh_));
-  }
+  CHECK_OK(ValidateSpanOfAxes(axes_, mesh_));
 }
 
 int64_t MeshAxesReplicaGroupList::num_replica_groups() const {
