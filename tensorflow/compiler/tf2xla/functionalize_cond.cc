@@ -83,11 +83,11 @@ struct ClusterTupleLessThan {
 };
 
 // TODO(jpienaar): Move to OutputTensor.
-string DebugString(const OutputTensor& tensor) {
+std::string DebugString(const OutputTensor& tensor) {
   return absl::StrCat(tensor.node->name(), ":", tensor.index);
 }
 
-string Branch_Name(BranchType b) {
+std::string Branch_Name(BranchType b) {
   switch (b) {
     case BranchType::kElseBranch:
       return "else";
@@ -100,13 +100,13 @@ string Branch_Name(BranchType b) {
   }
 }
 
-string DebugString(StateMap::CondId cond_state) {
+std::string DebugString(StateMap::CondId cond_state) {
   if (cond_state == nullptr || cond_state->empty()) return "{}";
   using value_type = StateMap::CondState::value_type;
   return absl::StrCat(
       "{",
       absl::StrJoin(*cond_state, ", ",
-                    [](string* output, const value_type& pred_branch) {
+                    [](std::string* output, const value_type& pred_branch) {
                       const OutputTensor& pred = pred_branch.first;
                       const BranchType& branch = pred_branch.second;
                       if (branch == BranchType::kNeither)
@@ -200,7 +200,7 @@ struct CondArgNode {
   explicit CondArgNode(Node* src, int src_output)
       : src(src), src_output(src_output) {}
 
-  string ToString() const {
+  std::string ToString() const {
     return absl::StrCat("src=", src->name(), ":", src_output,
                         " switches=", NodesToString(switches));
   }
@@ -212,11 +212,11 @@ struct CondArgNode {
 };
 using CondArgNodes = std::vector<CondArgNode>;
 
-string DebugString(const CondArgNodes& nodes) {
+std::string DebugString(const CondArgNodes& nodes) {
   return absl::StrCat(
       "[",
       absl::StrJoin(nodes, ", ",
-                    [](string* output, const CondArgNode& node) {
+                    [](std::string* output, const CondArgNode& node) {
                       absl::StrAppend(output, node.ToString());
                     }),
       "]");
@@ -263,20 +263,20 @@ void StateMap::ResetAncestorId(const Node* node, StateMap::AncestorId id) {
 
 void StateMap::MarkDead(const Node* node) { ResetCondId(node, dead_id_); }
 
-string StateMap::CondStateToString(const Node* node) const {
+std::string StateMap::CondStateToString(const Node* node) const {
   return CondStateToString(LookupCondId(node));
 }
 
-string StateMap::CondStateToString(StateMap::CondId id) const {
+std::string StateMap::CondStateToString(StateMap::CondId id) const {
   return DebugString(id);
 }
 
-string StateMap::AncestorStateToString(const Node* node) const {
+std::string StateMap::AncestorStateToString(const Node* node) const {
   if (auto id = LookupAncestorId(node)) {
     return absl::StrCat(
         "{",
         absl::StrJoin(*id, ",",
-                      [](string* output, const AncestorNode& ancestor) {
+                      [](std::string* output, const AncestorNode& ancestor) {
                         absl::StrAppend(output,
                                         ancestor.output_tensor.node->name(),
                                         ":", ancestor.output_tensor.index);
@@ -340,7 +340,7 @@ class Conditional {
 
   // Internal name of conditional. The name is based on the first merge node
   // added.
-  string name() const;
+  std::string name() const;
 
   // The FunctionalizeCond instance that created this.
   FunctionalizeCond* parent_;
@@ -751,7 +751,7 @@ absl::Status Conditional::BuildIfNode(Graph* graph,
   VLOG(2) << "Build cond function for " << name();
   NodeDebugInfo debug_info((*merges_.begin())->def());
   NodeDefBuilder builder(name(), "If", library, &debug_info);
-  const string branch_name[] = {"else_branch", "then_branch"};
+  const std::string branch_name[] = {"else_branch", "then_branch"};
   for (auto branch : {BranchType::kElseBranch, BranchType::kThenBranch}) {
     int branch_index = static_cast<int>(branch);
 
@@ -817,7 +817,7 @@ absl::Status Conditional::BuildIfNode(Graph* graph,
   builder.Attr("Tcond", DT_BOOL);
   // Add some internal attributes which need to be propagated.
   for (absl::string_view attr_name : kAttrsToPropagate) {
-    string attr_val;
+    std::string attr_val;
     if (GetNodeAttr(predicate_.node->def(), attr_name, &attr_val).ok()) {
       builder.Attr(attr_name, attr_val);
     }
@@ -949,7 +949,7 @@ absl::Status Conditional::BuildAndReplace(
   return absl::OkStatus();
 }
 
-string Conditional::name() const {
+std::string Conditional::name() const {
   CHECK(!merges_.empty());
   return absl::StrCat((*merges_.begin())->name(), "_if");
 }
@@ -958,7 +958,7 @@ absl::Status FunctionalizeCond::AddIdentityNode(const Node* replacee,
                                                 Node* if_node, int port) {
   NodeBuilder id_builder(replacee->name(), "Identity");
   id_builder.Input(if_node, port);
-  string outside_compilation;
+  std::string outside_compilation;
   if (GetNodeAttr(if_node->def(), kXlaOutsideCompilationAttr,
                   &outside_compilation)
           .ok()) {
@@ -1580,7 +1580,7 @@ absl::Status FunctionalizeCond::FunctionalizeInternal() {
   return absl::OkStatus();
 }
 
-void FunctionalizeCond::DumpGraphWithCondState(const string& name) {
+void FunctionalizeCond::DumpGraphWithCondState(const std::string& name) {
   const char* const kCondGroupDebugAttr = "_XlaFunctionalizeCondGroup";
 
   for (Node* n : graph_->nodes()) {

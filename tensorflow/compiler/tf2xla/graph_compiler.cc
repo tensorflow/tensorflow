@@ -292,12 +292,12 @@ absl::Status GraphCompiler::CompileFunctionalNode(Node* n,
     }
   }
   if (add_token_input_output) {
-    std::vector<string> token_input_nodes;
+    std::vector<std::string> token_input_nodes;
     TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(&func.attr()),
                                    kXlaTokenInputNodesAttrName,
                                    &token_input_nodes));
     std::vector<xla::XlaOp> token_inputs;
-    for (const string& node_name : token_input_nodes) {
+    for (const std::string& node_name : token_input_nodes) {
       auto token_or = compiler->GetNodeToken(node_name);
       TF_RETURN_IF_ERROR(token_or.status());
       token_inputs.push_back(std::move(token_or).value());
