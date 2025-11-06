@@ -341,7 +341,7 @@ std::optional<ProfiledInstructionsProto> ProfileFromConfig(
   ProfiledInstructionsProto profile;
   absl::string_view from_config = config.fdo_profile();
   LOG(INFO) << "Attempting to parse as a binary proto.";
-  if (profile.ParseFromArray(from_config.data(), from_config.size())) {
+  if (profile.ParseFromString(from_config)) {
     LOG(INFO) << "Using PGLE profile from fdo_profile (binary)";
     return profile;
   }

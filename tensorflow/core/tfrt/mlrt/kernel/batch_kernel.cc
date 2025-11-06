@@ -244,7 +244,7 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
     return absl::OkStatus();
   }
 
-  string DebugString() const final { return "MlrtBatchResource"; }
+  std::string DebugString() const final { return "MlrtBatchResource"; }
 
   mlrt::bc::Function batch_function() const { return batch_function_; }
 
