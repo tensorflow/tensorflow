@@ -37,7 +37,7 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_Create(
   auto profiler = std::make_unique<PLUGIN_Profiler>();
   profiler->stopped = true;
   tensorflow::ProfileOptions options;
-  options.ParseFromArray(args->options, args->options_size);
+  options.ParseFromString(absl::string_view(args->options, args->options_size));
   profiler->impl = std::make_unique<tsl::profiler::ProfilerCollection>(
       tsl::profiler::CreateProfilers(options));
 
