@@ -48,7 +48,7 @@ template <typename T>
 std::unique_ptr<typename T::Stub> CreateStub(
     const std::string& service_address) {
   ::grpc::ChannelArguments channel_args;
-  channel_args.SetMaxReceiveMessageSize(std::numeric_limits<int32>::max());
+  channel_args.SetMaxReceiveMessageSize(std::numeric_limits<int32_t>::max());
   // Default URI prefix is "dns:///" if not provided.
   auto channel = ::grpc::CreateCustomChannel(
       service_address, ::grpc::InsecureChannelCredentials(), channel_args);

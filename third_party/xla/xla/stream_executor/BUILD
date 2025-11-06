@@ -319,8 +319,8 @@ cc_library(
 )
 
 cc_library(
-    name = "numeric_options",
-    hdrs = ["numeric_options.h"],
+    name = "engine_options",
+    hdrs = ["engine_options.h"],
 )
 
 cc_library(
@@ -346,7 +346,7 @@ cc_library(
         ":blas_proto_cc",
         ":data_type",
         ":device_memory",
-        ":numeric_options",
+        ":engine_options",
         ":scratch_allocator",
         ":stream",
         "//xla/tsl/protobuf:dnn_proto_cc",
@@ -367,7 +367,7 @@ cc_library(
         ":data_type",
         ":device_description_proto_cc",
         ":device_memory",
-        ":numeric_options",
+        ":engine_options",
         ":scratch_allocator",
         ":stream",
         "//xla:util",

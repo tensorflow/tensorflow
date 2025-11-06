@@ -39,7 +39,7 @@ class XlaCompilationAllocator : public Allocator {
   XlaCompilationAllocator() {}
   ~XlaCompilationAllocator() override {}
 
-  string Name() override { return "xla_compilation"; }
+  std::string Name() override { return "xla_compilation"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     // Regardless of the size requested, always allocates an XlaExpression.
