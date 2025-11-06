@@ -196,20 +196,21 @@ class PjRtTopologyDescription {
   }
 
   // Returns the bounds of the chips within a single host.
-  virtual absl::StatusOr<PjRtDeviceDimensions> ChipsPerHostBounds() const {
-    return absl::UnimplementedError("GetChipsPerHostBounds is unsupported.");
+  // The product of all dimensions should equal to ChipsPerProcess().
+  virtual absl::StatusOr<PjRtDeviceDimensions> ChipsPerProcessBounds() const {
+    return absl::UnimplementedError("GetChipsPerProcessBounds is unsupported.");
   }
 
   // Returns the total bounds of all chips in the topology.
-  // Usually this equals to the product of `ChipsPerHostBounds()` and
-  // `HostBounds()`.
+  // The product of all dimensions should equal to ChipCount().
   virtual absl::StatusOr<PjRtDeviceDimensions> ChipBounds() const {
     return absl::UnimplementedError("ChipBounds is unsupported.");
   }
 
   // Returns the total bounds of all hosts in the topology.
-  virtual absl::StatusOr<PjRtDeviceDimensions> HostBounds() const {
-    return absl::UnimplementedError("HostBounds is unsupported.");
+  // The product of all dimensions should equal to ProcessCount().
+  virtual absl::StatusOr<PjRtDeviceDimensions> ProcessBounds() const {
+    return absl::UnimplementedError("ProcessBounds is unsupported.");
   }
 
   // Serializes the topology for use in cache keys. (No guarantees on
