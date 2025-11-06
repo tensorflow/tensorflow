@@ -54,7 +54,7 @@ std::function<int64_t(int64_t)> RamBudgetFunc(int64_t budget) {
   return [budget](int64_t) { return budget; };
 }
 
-int64_t CountParametersOnNode(const string& node_name,
+int64_t CountParametersOnNode(const std::string& node_name,
                               const Model::ModelParameters& parameters) {
   int64_t cnt = 0;
   for (const auto& pair : parameters) {
@@ -865,10 +865,11 @@ TEST(AsyncInterleaveManyGradientTest, Model) {
       (new_output_time - output_time) / kParameterStep, kComparisonPrecision);
 }
 
-class AsyncKnownRatioGradientTest : public ::testing::TestWithParam<string> {};
+class AsyncKnownRatioGradientTest
+    : public ::testing::TestWithParam<std::string> {};
 
 TEST_P(AsyncKnownRatioGradientTest, Model) {
-  const string parameter_name = GetParam();
+  const std::string parameter_name = GetParam();
   const double input_time = 100;
   const int64_t num_inputs_per_output = 2;
 
@@ -1165,7 +1166,7 @@ TEST(SaveModelTest, Model) {
 
   // Make Save->Load roundtrip.
   Env* env = Env::Default();
-  string tmpFile;
+  std::string tmpFile;
   EXPECT_TRUE(env->LocalTempFilename(&tmpFile));
   tmpFile += "_autotune_model_test";
 
