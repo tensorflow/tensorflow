@@ -33,7 +33,7 @@ TEST(CoreUtilTest, ParseShardingFromDevice) {
   Graph graph(OpRegistry::Global());
 
   auto core_from_sharding =
-      [](std::optional<xla::OpSharding> sharding) -> int64 {
+      [](std::optional<xla::OpSharding> sharding) -> int64_t {
     if (sharding.has_value() &&
         sharding.value().type() == xla::OpSharding::MAXIMAL) {
       return sharding.value().tile_assignment_devices(0);
