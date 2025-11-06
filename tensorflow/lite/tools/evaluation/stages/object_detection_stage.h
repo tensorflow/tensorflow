@@ -70,9 +70,7 @@ class ObjectDetectionStage : public EvaluationStage {
 
   // Provides a pointer to the underlying TfLiteInferenceStage.
   // Returns non-null value only if this stage has been initialized.
-  TfliteInferenceStage* const GetInferenceStage() {
-    return inference_stage_.get();
-  }
+  TfliteInferenceStage* GetInferenceStage() { return inference_stage_.get(); }
 
   // Returns a const pointer to the latest inference output.
   const ObjectDetectionResult* GetLatestPrediction() {

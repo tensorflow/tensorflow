@@ -63,9 +63,7 @@ class ImageClassificationStage : public EvaluationStage {
 
   // Provides a pointer to the underlying TfLiteInferenceStage.
   // Returns non-null value only if this stage has been initialized.
-  TfliteInferenceStage* const GetInferenceStage() {
-    return inference_stage_.get();
-  }
+  TfliteInferenceStage* GetInferenceStage() { return inference_stage_.get(); }
 
  private:
   const std::vector<std::string>* all_labels_ = nullptr;
