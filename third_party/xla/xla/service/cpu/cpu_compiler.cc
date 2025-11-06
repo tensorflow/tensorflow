@@ -504,6 +504,10 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
       !absl::c_contains(module->config()
                             .debug_options()
                             .xla_cpu_experimental_xnn_fusion_type(),
+                        DebugOptions::LIBRARY_FUSION_TYPE_REDUCE) &&
+      !absl::c_contains(module->config()
+                            .debug_options()
+                            .xla_cpu_experimental_ynn_fusion_type(),
                         DebugOptions::LIBRARY_FUSION_TYPE_REDUCE)) {
     // Needs to happen after algebraic simplifier.
     pipeline->AddPass<TreeReductionRewriter>();
