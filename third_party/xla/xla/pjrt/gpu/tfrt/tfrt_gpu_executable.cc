@@ -385,10 +385,6 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
 
   TF_ASSIGN_OR_RETURN(std::vector<Shape> output_shapes, GetOutputShapes());
   const Shape& result_shape = output_shapes[executable_idx];
-  if (!options.untuple_result && result_shape.IsTuple()) {
-    return InvalidArgument(
-        "Tuple results must be untupled using ExecuteOptions::untuple_result.");
-  }
 
   // `scheduled_event` indicates whether gpu computation is dispatched to the
   // stream and whether there was an error.
@@ -521,9 +517,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   std::vector<tsl::AsyncValueRef<GpuDeviceMemory>> output_buffers;
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
   auto gpu_executable = executables_[executable_idx];
-  bool untuple_result = options.untuple_result;
   bool result_is_tuple = result_shape.IsTuple();
-  if (options.untuple_result && result_shape.IsTuple()) {
+  if (result_shape.IsTuple()) {
     output_buffers.reserve(result_shape.tuple_shapes().size());
     outputs.reserve(output_buffers.size());
     for (int i = 0; i < result_shape.tuple_shapes().size(); ++i) {
@@ -592,7 +587,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       [replica, partition, device, launch_id(options.launch_id),
        output_buffers(output_buffers), complete_event(complete_event.CopyRef()),
        scheduled_event(scheduled_event.CopyRef()),
-       untuple_result(untuple_result), result_is_tuple(result_is_tuple),
+       result_is_tuple(result_is_tuple),
        donation_transactions(std::move(donation_transactions)),
        parameter_shapes(on_device_executable_parameter_shapes_[executable_idx]),
        gpu_executable(std::move(gpu_executable)),
@@ -745,7 +740,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
 
         ExecutionOutput& execution_output = result_buffer_or_status.value();
         ScopedShapedBuffer output = execution_output.ConsumeResult();
-        if (untuple_result && result_is_tuple) {
+        if (result_is_tuple) {
           for (int i = 0; i < output_buffers.size(); ++i) {
             ScopedShapedBuffer tuple_buffer = output.TakeSubTree({i});
             stream_executor::DeviceMemoryBase* elem =

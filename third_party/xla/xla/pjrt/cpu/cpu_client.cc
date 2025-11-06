@@ -1924,14 +1924,6 @@ PjRtCpuExecutable::Execute(
     std::optional<std::vector<Future<>>>& returned_futures) const {
   RunId run_id(options.launch_id);
   tsl::profiler::TraceMe trace_me("PjRtCpuExecutable::Execute");
-  if (!options.untuple_result && cpu_executable_->module()
-                                     .config()
-                                     .entry_computation_layout()
-                                     .result_shape()
-                                     .IsTuple()) {
-    return InvalidArgument(
-        "Tuple results must be untupled using ExecuteOptions::untuple_result.");
-  }
   if (device_assignment_ == nullptr) {
     return InvalidArgument("Execute expects a non-null device_assignment");
   }
@@ -2064,14 +2056,6 @@ PjRtCpuExecutable::ExecuteSharded(
   tsl::profiler::TraceMe trace_me("PjRtCpuExecutable::ExecuteSharded");
   if (device_assignment_ == nullptr) {
     return InvalidArgument("ExecuteShard expects a non-null device_assignment");
-  }
-  if (!options.untuple_result && cpu_executable_->module()
-                                     .config()
-                                     .entry_computation_layout()
-                                     .result_shape()
-                                     .IsTuple()) {
-    return InvalidArgument(
-        "Tuple results must be untupled using ExecuteOptions::untuple_result.");
   }
   for (int i = 0; i < addressable_devices_.size(); ++i) {
     if (addressable_devices_[i] == device) {

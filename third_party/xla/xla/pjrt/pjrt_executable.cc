@@ -149,7 +149,7 @@ absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
   ExecuteOptionsProto proto;
 
   proto.set_arguments_are_tupled(false);
-  proto.set_untuple_result(untuple_result);
+  proto.set_untuple_result(true);
   proto.set_launch_id(launch_id);
   if (context != nullptr) {
     return absl::UnimplementedError(
