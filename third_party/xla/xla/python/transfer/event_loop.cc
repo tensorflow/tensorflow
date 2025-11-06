@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <arpa/inet.h>
 #include <linux/tcp.h>
+#include <netdb.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -25,9 +26,11 @@ limitations under the License.
 
 #include <atomic>
 #include <cerrno>
+#include <charconv>
 #include <memory>
 #include <queue>
 #include <string>
+#include <system_error>  // NOLINT
 #include <utility>
 #include <vector>
 
@@ -40,6 +43,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -222,8 +227,8 @@ class SocketListener::Handler : public PollEventLoop::Handler {
   }
 
   absl::StatusOr<int> Accept(SocketAddress& recv_addr) {
-    socklen_t addr_len = sizeof(recv_addr);
-    int cfd = accept4(fd_, reinterpret_cast<sockaddr*>(&recv_addr), &addr_len,
+    socklen_t addr_len = sizeof(recv_addr.mutable_address());
+    int cfd = accept4(fd_, &recv_addr.mutable_address(), &addr_len,
                       accept_flags_ | SOCK_CLOEXEC);
     if (cfd == -1) {
       return absl::ErrnoToStatus(errno, "accept");
@@ -252,7 +257,7 @@ absl::StatusOr<std::unique_ptr<SocketListener>> SocketListener::Listen(
     absl::AnyInvocable<void(int socket_fd, const SocketAddress& addr)>
         on_accept,
     int accept_flags) {
-  std::unique_ptr<SocketListener> result(new SocketListener());
+  auto result = std::make_unique<SocketListener>();
   int sfd = socket(addr.address().sa_family,
                    SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
   if (sfd == -1) {
@@ -266,9 +271,7 @@ absl::StatusOr<std::unique_ptr<SocketListener>> SocketListener::Listen(
   if (setsockopt(sfd, SOL_SOCKET, SO_REUSEPORT, &value, sizeof(value)) != 0) {
     return absl::ErrnoToStatus(errno, "setsockopt");
   }
-  if (bind(sfd, reinterpret_cast<const struct sockaddr*>(&addr.address()),
-           addr.address().sa_family == AF_INET6 ? sizeof(sockaddr_in6)
-                                                : sizeof(sockaddr_in)) != 0) {
+  if (bind(sfd, &addr.address(), addr.len()) != 0) {
     return absl::ErrnoToStatus(errno, "bind");
   }
   if (listen(sfd, 1024) != 0) {
@@ -276,27 +279,13 @@ absl::StatusOr<std::unique_ptr<SocketListener>> SocketListener::Listen(
   }
   result->handler_ =
       new SocketListener::Handler(sfd, accept_flags, std::move(on_accept));
-  if (addr.address().sa_family == AF_INET6) {
-    sockaddr_in6 new_sock_name = addr.address_ipv6();
-    sockaddr_in6 new_sock_name2;
-    socklen_t addr_len = sizeof(new_sock_name2);
-    if (getsockname(sfd, reinterpret_cast<struct sockaddr*>(&new_sock_name2),
-                    &addr_len) != 0) {
-      return absl::ErrnoToStatus(errno, "getsockname");
-    }
-    new_sock_name.sin6_port = new_sock_name2.sin6_port;
-    result->addr_ = SocketAddress(new_sock_name);
-  } else {
-    sockaddr_in new_sock_name = addr.address_ipv4();
-    sockaddr_in new_sock_name2;
-    socklen_t addr_len = sizeof(new_sock_name2);
-    if (getsockname(sfd, reinterpret_cast<struct sockaddr*>(&new_sock_name2),
-                    &addr_len) != 0) {
-      return absl::ErrnoToStatus(errno, "getsockname");
-    }
-    new_sock_name.sin_port = new_sock_name2.sin_port;
-    result->addr_ = SocketAddress(new_sock_name);
+
+  sockaddr_storage bound_storage;
+  socklen_t bound_len = sizeof(bound_storage);
+  if (getsockname(sfd, (sockaddr*)&bound_storage, &bound_len) != 0) {
+    return absl::ErrnoToStatus(errno, "getsockname");
   }
+  result->addr_ = SocketAddress(bound_storage);
   return result;
 }
 
@@ -317,103 +306,111 @@ void SocketListener::Start() {
 }
 
 SocketAddress::SocketAddress() {
-  memset(this, 0, sizeof(SocketAddress));
-  saddr6_.sin6_family = AF_INET6;
+  memset(&storage_, 0, sizeof(storage_));
+  storage_.ss_family = AF_INET6;
 }
 
 SocketAddress::SocketAddress(const sockaddr_in& saddr) {
-  memcpy(&saddr4_, &saddr, sizeof(saddr));
+  memcpy(&storage_, &saddr, sizeof(saddr));
 }
 
 SocketAddress::SocketAddress(const sockaddr_in6& saddr) {
-  memcpy(&saddr6_, &saddr, sizeof(saddr));
+  memcpy(&storage_, &saddr, sizeof(saddr));
+}
+
+SocketAddress::SocketAddress(const sockaddr_storage& saddr) : storage_(saddr) {}
+
+socklen_t SocketAddress::len() const {
+  switch (storage_.ss_family) {
+    case AF_INET6:
+      return sizeof(sockaddr_in6);
+    case AF_INET:
+      return sizeof(sockaddr_in);
+    default:
+      return sizeof(sockaddr_storage);
+  }
 }
 
 std::string SocketAddress::ToString() const {
-  if (saddr_.sa_family == AF_INET6) {
-    char tmp[INET6_ADDRSTRLEN + 16];
-    tmp[0] = '[';
-    inet_ntop(AF_INET6, &saddr6_.sin6_addr, &tmp[1], sizeof(tmp) - 1);
-    int pos = strlen(&tmp[0]);
-    pos += snprintf(&tmp[pos], sizeof(tmp) - pos, "]:%d",
-                    ntohs(saddr6_.sin6_port));
-    return std::string(tmp, pos);
-  } else if (saddr_.sa_family == AF_INET) {
-    char tmp[INET_ADDRSTRLEN + 16];
-    inet_ntop(AF_INET, &saddr4_.sin_addr, &tmp[0], sizeof(tmp) - 1);
-    int pos = strlen(&tmp[0]);
-    pos +=
-        snprintf(&tmp[pos], sizeof(tmp) - pos, ":%d", ntohs(saddr4_.sin_port));
-    return std::string(tmp, pos);
-  } else {
-    LOG(FATAL) << "Invalid IPAddress";
+  char host[NI_MAXHOST], serv[NI_MAXSERV];
+  int flags = NI_NUMERICHOST | NI_NUMERICSERV;
+  if (getnameinfo(&address(), len(), host, sizeof(host), serv, sizeof(serv),
+                  flags) == 0) {
+    if (storage_.ss_family == AF_INET6) {
+      return absl::StrCat("[", host, "]:", serv);
+    }
+    return absl::StrCat(host, ":", serv);
   }
+  LOG(FATAL) << "Invalid IPAddress";
 }
 
-int ParsePort(const std::string& addr, size_t it, uint32_t& parsed_port) {
-  size_t port_pos = addr.find(':', it);
-  if (port_pos == std::string::npos) {
-    return -1;
+absl::StatusOr<uint16_t> ParsePort(absl::string_view colon_port) {
+  if (!absl::ConsumePrefix(&colon_port, ":")) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Missing colon for port: '", colon_port, "'"));
   }
-  for (size_t i = port_pos + 1; i < addr.size(); ++i) {
-    if (!(addr[i] >= '0' && addr[i] <= '9')) {
-      return -1;
-    }
-    parsed_port = parsed_port * 10 + (addr[i] - '0');
-    if (parsed_port >= 65536) {
-      return -1;
-    }
+  uint16_t parsed_port;
+  const char* last = colon_port.data() + colon_port.size();
+  auto [ptr, ec] =
+      std::from_chars(colon_port.data(), last, parsed_port, /*base=*/10);
+  if (ec != std::errc{}) {
+    return absl::ErrnoToStatus(static_cast<int>(ec),
+                               absl::StrCat("std::from_chars could not parse '",
+                                            colon_port, "' as a valid port"));
   }
-  return 0;
+  if (ptr != last) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Encountered non-numeric characters while parsing port: '",
+                     colon_port, "'"));
+  }
+  return parsed_port;
 }
 
-int SocketAddress::Parse(const std::string& addr, SocketAddress& out) {
-  memset(&out, 0, sizeof(SocketAddress));
-  if (!addr.empty() && addr.data()[0] == '[') {
+absl::StatusOr<SocketAddress> SocketAddress::Parse(absl::string_view addr) {
+  SocketAddress out;
+  memset(&out.storage_, 0, sizeof(out.storage_));
+  std::string ip_address;
+  absl::string_view colon_port;
+  if (absl::ConsumePrefix(&addr, "[")) {
     size_t it = addr.find(']');
     if (it == std::string::npos) {
-      return -1;
+      return absl::InvalidArgumentError(
+          absl::StrCat("IPv6 address missing closing bracket: '", addr, "'"));
     }
-    if (it - 1 >= INET6_ADDRSTRLEN) {
-      return -1;
-    }
-    char tmp[INET6_ADDRSTRLEN];
-    uint32_t parsed_port = 0;
-    if (ParsePort(addr, it, parsed_port) != 0) {
-      return -1;
-    }
-    out.saddr6_.sin6_family = AF_INET6;
-    out.saddr6_.sin6_port = htons(static_cast<uint16_t>(parsed_port));
-    memcpy(&tmp[0], &addr.data()[1], it - 1);
-    tmp[it - 1] = 0;
-    return inet_pton(AF_INET6, &tmp[0], &out.saddr6_.sin6_addr);
+    ip_address = addr.substr(0, it);
+    colon_port = addr.substr(it + 1);
+    out.storage_.ss_family = AF_INET6;
   } else {
     size_t it = addr.find(':');
     if (it == std::string::npos) {
-      return -1;
+      return absl::InvalidArgumentError(
+          absl::StrCat("IPv4 address missing colon for port: '", addr, "'"));
     }
-    if (it >= INET_ADDRSTRLEN) {
-      return -1;
-    }
-    uint32_t parsed_port = 0;
-    if (ParsePort(addr, it, parsed_port) != 0) {
-      return -1;
-    }
-    char tmp[INET_ADDRSTRLEN];
-    memcpy(&tmp[0], &addr.data()[0], it);
-    tmp[it] = 0;
-    out.saddr4_.sin_family = AF_INET;
-    out.saddr4_.sin_port = htons(static_cast<uint16_t>(parsed_port));
-    return inet_pton(AF_INET, &tmp[0], &out.saddr4_.sin_addr);
+    ip_address = addr.substr(0, it);
+    colon_port = addr.substr(it);
+    out.storage_.ss_family = AF_INET;
   }
-  return -1;
-}
+  absl::StatusOr<uint16_t> parsed_port = ParsePort(colon_port);
+  if (!parsed_port.ok()) {
+    return parsed_port.status();
+  }
 
-absl::StatusOr<SocketAddress> SocketAddress::Parse(const std::string& addr) {
-  SocketAddress out;
-  if (Parse(addr, out) == -1) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Could not parse ip address: ", addr));
+  void* sin_addr_dst;
+  if (out.storage_.ss_family == AF_INET6) {
+    sockaddr_in6* v6 = (sockaddr_in6*)&out.storage_;
+    v6->sin6_port = htons(*parsed_port);
+    sin_addr_dst = &v6->sin6_addr;
+  } else {
+    CHECK_EQ(out.storage_.ss_family, AF_INET);
+    sockaddr_in* v4 = (sockaddr_in*)&out.storage_;
+    v4->sin_port = htons(*parsed_port);
+    sin_addr_dst = &v4->sin_addr;
+  }
+  if (inet_pton(out.storage_.ss_family, ip_address.c_str(), sin_addr_dst) ==
+      -1) {
+    return absl::ErrnoToStatus(
+        errno, absl::StrCat("inet_pton failed when parsing address: '",
+                            ip_address, "'"));
   }
   return out;
 }
