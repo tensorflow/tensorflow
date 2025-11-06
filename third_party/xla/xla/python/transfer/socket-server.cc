@@ -194,7 +194,7 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
 
   void HandlePacket(absl::string_view buffer) override {
     SocketTransferRequest req;
-    if (!req.ParseFromArray(buffer.data(), buffer.size())) {
+    if (!req.ParseFromString(buffer)) {
       Poison(absl::InternalError("Could not parse SocketTransferRequest."));
       return;
     }
