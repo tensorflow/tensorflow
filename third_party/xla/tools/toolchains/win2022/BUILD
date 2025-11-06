@@ -21,5 +21,6 @@ platform(
         "OSFamily": "Windows",
         "Pool": "win2022",
         "dockerNetwork": "off",
+        "cache-silo-key": "20251105-1762360217",
     },
 )

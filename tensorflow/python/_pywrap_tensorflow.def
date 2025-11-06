@@ -784,6 +784,7 @@ EXPORTS
   ?add_ret_check_failure@MakeErrorStream@status_macros@xla@@QEAAAEAVMakeErrorStreamWithOutput@123@PEBD@Z
   ?checkInput@FileCheck@llvm@@QEAA_NAEAVSourceMgr@2@VStringRef@2@PEAV?$vector@UFileCheckDiag@llvm@@V?$allocator@UFileCheckDiag@llvm@@@std@@@std@@@Z
   ?clear_value@AttrValue@tensorflow@@QEAAXXZ
+  ?configureGpuToNVVMConversionLegality@mlir@@YAXAEAVConversionTarget@1@@Z
   ?cost@PyListChecker@py_dispatch@tensorflow@@UEBAHXZ
   ?cost@PyUnionChecker@py_dispatch@tensorflow@@UEBAHXZ
   ?create@ModuleOp@mlir@@SA?AV12@AEAVOpBuilder@2@VLocation@2@V?$optional@VStringRef@llvm@@@std@@@Z
