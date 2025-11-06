@@ -6,7 +6,7 @@ be separate to avoid cyclic references.
 
 load("@local_config_remote_execution//:remote_execution.bzl", "gpu_test_tags")
 load("@local_config_rocm//rocm:build_defs.bzl", "is_rocm_configured")
-load("@local_xla//third_party/py/rules_pywrap:pywrap.default.bzl", "use_pywrap_rules")
+load("//third_party/py/rules_pywrap:pywrap.default.bzl", "use_pywrap_rules")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "is_cuda_configured")
 
