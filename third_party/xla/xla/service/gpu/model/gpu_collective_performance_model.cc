@@ -19,7 +19,6 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <cstdlib>
-#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -34,10 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/nvml/include/nvml.h"
-#endif  // GOOGLE_CUDA
 namespace xla {
 namespace gpu {
 
@@ -334,16 +329,13 @@ absl::Duration ComputeAllreduceTimeImpl(
           /*num_blocks=*/num_channels, /*num_threads_per_block=*/num_threads);
   total_time += compute_time_per_channel;
 
-  uint32_t supported_p2p =
-      GpuPerformanceWithCollectiveModel::CheckIfNvlinkSupportsP2P();
-
-  if (supported_p2p == 0) {
-    VLOG(8) << "Nvlink doesn't support p2p communication. Model will "
-               "continue using default system bandwidth.";
-  } else {
+  if (gpu_device_info.device_interconnect_info().active_links) {
     VLOG(8) << "Nvlink supports p2p communication, setting intra node "
                "bandwidth to nvlink bw.";
     bw_intra_node = bandwidth_settings.GetNvlinkBw();
+  } else {
+    VLOG(8) << "Nvlink doesn't support p2p communication. Model will "
+               "continue using default system bandwidth.";
   }
 
   double bus_bandwidth = bw_intra_node * num_channels;
@@ -374,31 +366,6 @@ RocmBandwidthSettings CreateSettings(
 }
 
 }  // namespace
-
-/*static*/ uint32_t
-GpuPerformanceWithCollectiveModel::CheckIfNvlinkSupportsP2P() {
-#if GOOGLE_CUDA
-  // We will use nvml library to detect nvlink capability
-  // to see if it supports p2p communication.
-  // Then gpu 0 will be used to query for nvlink capability, note that
-  // we only look at link 0 of gpu 0 since all other links are assumed
-  // to have the same capability.
-  nvmlDevice_t nvml_device;
-  nvmlReturn_t get_device_result = nvmlDeviceGetHandleByIndex(0, &nvml_device);
-  CHECK(get_device_result == NVML_SUCCESS);
-
-  uint32_t supported_p2p = 0;
-
-  nvmlReturn_t nvlink_cap_result = nvmlDeviceGetNvLinkCapability(
-      nvml_device, /*nvlink link number*/ 0, NVML_NVLINK_CAP_P2P_SUPPORTED,
-      &supported_p2p);
-  CHECK(nvlink_cap_result == NVML_SUCCESS ||
-        nvlink_cap_result == NVML_ERROR_NOT_SUPPORTED);
-  return supported_p2p;
-#else
-  return 0;
-#endif  // GOOGLE_CUDA
-}
 
 /*static*/ absl::Duration
 GpuPerformanceWithCollectiveModel::ComputeAllreduceTime(

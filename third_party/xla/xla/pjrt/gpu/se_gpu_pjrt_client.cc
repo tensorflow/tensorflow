@@ -137,7 +137,6 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#include "third_party/gpus/cuda/nvml/include/nvml.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -1173,14 +1172,13 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     device_proto->set_core_count(desc->core_count());
     device_proto->set_shared_memory_per_block_optin(
         desc->shared_memory_per_block_optin());
-#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 12040
-    if (std::stoi(compute_capability) >= 9) {
-      auto fabric_info = GetDeviceFabricInfo(ordinal_and_device.first);
-      if (fabric_info.ok()) {
-        device_proto->set_fabric_uuid(*fabric_info);
-      }
+
+    stream_executor::DeviceInterconnectInfo info =
+        desc->device_interconnect_info();
+    if (!info.cluster_uuid.empty() && !info.clique_id.empty()) {
+      device_proto->set_fabric_uuid(
+          absl::StrCat(info.cluster_uuid, "/", info.clique_id));
     }
-#endif  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 12040
   }
 
   GlobalTopologyProto global_topology;
@@ -1442,60 +1440,6 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     devices.push_back(std::move(device));
   }
   return devices;
-}
-
-absl::StatusOr<std::string> GetDeviceFabricInfo(const int device_ordinal) {
-#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 12040
-  char pciBusId[] = "00000000:00:00.0";
-  cudaDeviceGetPCIBusId(pciBusId, sizeof(pciBusId), device_ordinal);
-  nvmlDevice_t device;
-
-  nvmlReturn_t get_bus_id_status =
-      nvmlDeviceGetHandleByPciBusId_v2(pciBusId, &device);
-  // NVML library is not a part of the CUDA toolkit, so there might be a
-  // situation when user is using CUDA 12.4 an higher, but the host NVML
-  // version doen't have the required functions.
-  if (get_bus_id_status == NVML_ERROR_FUNCTION_NOT_FOUND) {
-    return absl::InternalError("NVML library doesn't have required functions.");
-  }
-  CHECK_EQ(get_bus_id_status, NVML_SUCCESS);
-
-  nvmlGpuFabricInfoV_t fabricInfo = {
-      .version = nvmlGpuFabricInfo_v2,
-      .state = NVML_GPU_FABRIC_STATE_NOT_SUPPORTED};
-
-  nvmlReturn_t get_fabric_info_status =
-      nvmlDeviceGetGpuFabricInfoV(device, &fabricInfo);
-  if (get_fabric_info_status == NVML_ERROR_FUNCTION_NOT_FOUND) {
-    return absl::InternalError("NVML library doesn't have required functions.");
-  }
-  CHECK_EQ(get_fabric_info_status, NVML_SUCCESS);
-
-  if (fabricInfo.state == NVML_GPU_FABRIC_STATE_NOT_SUPPORTED) {
-    std::string error_message =
-        "NVML doesn't support extracting fabric info or NVLink is not used by "
-        "the device.";
-    VLOG(2) << error_message;
-    return absl::InternalError(error_message);
-  }
-
-  CHECK_EQ(sizeof(fabricInfo.clusterUuid), 16);
-  std::string uuid_str = absl::StrFormat(
-      "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-      fabricInfo.clusterUuid[0], fabricInfo.clusterUuid[1],
-      fabricInfo.clusterUuid[2], fabricInfo.clusterUuid[3],
-      fabricInfo.clusterUuid[4], fabricInfo.clusterUuid[5],
-      fabricInfo.clusterUuid[6], fabricInfo.clusterUuid[7],
-      fabricInfo.clusterUuid[8], fabricInfo.clusterUuid[9],
-      fabricInfo.clusterUuid[10], fabricInfo.clusterUuid[11],
-      fabricInfo.clusterUuid[12], fabricInfo.clusterUuid[13],
-      fabricInfo.clusterUuid[14], fabricInfo.clusterUuid[15]);
-  return absl::StrCat(uuid_str, "/", std::to_string(fabricInfo.cliqueId));
-#else   // defined(GOOGLE_CUDA) && CUDA_VERSION >= 12040
-  std::string error_message = "NVML usage is not supported";
-  VLOG(2) << error_message;
-  return absl::InternalError(error_message);
-#endif  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 12040
 }
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
