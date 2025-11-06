@@ -195,28 +195,24 @@ __global__ void AppendNanCount(xla::gpu::BufferDebugLogEntryId entry_id,
   }
 }
 
-absl::StatusOr<se::KernelLoaderSpec> GetNanCountF32KernelSpec() {
+se::KernelLoaderSpec GetNanCountF32KernelSpec(int arity) {
   return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
       absl::bit_cast<void*>(&AppendNanCount<float>),
-      "BufferDebugNanCountF32Kernel",
-      /*arity=*/5);
+      "BufferDebugNanCountF32Kernel", arity);
 }
 
-absl::StatusOr<se::KernelLoaderSpec> GetNanCountBf16KernelSpec() {
+se::KernelLoaderSpec GetNanCountBf16KernelSpec(int arity) {
   return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
       absl::bit_cast<void*>(&AppendNanCount<__nv_bfloat16>),
-      "BufferDebugNanCountBf16Kernel",
-      /*arity=*/5);
+      "BufferDebugNanCountBf16Kernel", arity);
 }
 
 }  // namespace
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     BufferDebugNanCountF32Kernel, se::gpu::BufferDebugNanCountF32Kernel,
-    se::cuda::kCudaPlatformId,
-    ([](size_t _arity) { return GetNanCountF32KernelSpec().value(); }));
+    se::cuda::kCudaPlatformId, GetNanCountF32KernelSpec);
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     BufferDebugNanCountBf16Kernel, se::gpu::BufferDebugNanCountBf16Kernel,
-    se::cuda::kCudaPlatformId,
-    ([](size_t _arity) { return GetNanCountBf16KernelSpec().value(); }));
+    se::cuda::kCudaPlatformId, GetNanCountBf16KernelSpec);
