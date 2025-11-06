@@ -12,29 +12,30 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdint>
-#include <utility>
-#define EIGEN_USE_THREADS
+
 #include "xla/service/cpu/cpu_runtime.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <tuple>
+#include <utility>
 
 #include "absl/strings/str_format.h"
-#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/array2d.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/runtime_custom_call_status.h"
 #include "xla/service/cpu/runtime_matmul.h"
-#include "xla/service/cpu/runtime_matmul_acl.h"
 #include "xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/types.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
 namespace {
