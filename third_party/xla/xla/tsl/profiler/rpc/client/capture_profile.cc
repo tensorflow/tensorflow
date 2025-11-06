@@ -56,7 +56,7 @@ using tensorflow::ProfileResponse;
 using tensorflow::RemoteProfilerSessionManagerOptions;
 using tensorflow::profiler::XSpace;
 
-constexpr uint64 kMaxEvents = 1000000;
+constexpr uint64_t kMaxEvents = 1000000;
 const absl::string_view kXPlanePb = "xplane.pb";
 
 MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,

@@ -777,7 +777,7 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
     ]) + [
         "//xla/service:matmul_indexing_utils",
-        "//xla/stream_executor:numeric_options",
+        "//xla/stream_executor:engine_options",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
