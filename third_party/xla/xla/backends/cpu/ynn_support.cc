@@ -159,9 +159,7 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
           // {F32, F32, F32},
           // TODO(b/449998002): We don't have fast fp16 kernels yet.
           // {F16, F16, F32},
-          // TODO(b/452693819): We plan to enable this in stages, starting with
-          // int8, and enable bf16 later.
-          // {BF16, BF16, F32},
+          {BF16, BF16, F32},
           {S8, S8, S32},
           {U8, S8, S32},
           // TODO(b/441600372): We don't have fast int4 kernels yet. Even the
