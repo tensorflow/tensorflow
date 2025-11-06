@@ -140,8 +140,8 @@ absl::Status ConvertSavedModelToTFLiteFlatBuffer(
   mlir::TFL::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
-  std::vector<string> node_names;
-  std::vector<string> node_dtypes;
+  std::vector<std::string> node_names;
+  std::vector<std::string> node_dtypes;
   std::vector<std::optional<std::vector<int>>> node_shapes;
   std::vector<std::optional<double>> node_mins;
   std::vector<std::optional<double>> node_maxs;
