@@ -61,13 +61,13 @@ struct FusedComputationArgs {
 
 struct FusedComputationPattern {
   FusedComputationType fused_computation;
-  std::vector<string> fused_ops;
+  std::vector<std::string> fused_ops;
 };
 
 // Parse attributes from the kernel construction context, and verifies that they
 // specify valid fused computation pattern.
 absl::Status InitializeFusedComputation(
-    OpKernelConstruction* context, const string& kernel_name,
+    OpKernelConstruction* context, const std::string& kernel_name,
     const std::vector<FusedComputationPattern>& patterns,
     FusedComputationType* fused_computation,
     FusedComputationArgs* fused_computation_args);
