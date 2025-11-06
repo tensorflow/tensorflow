@@ -83,10 +83,10 @@ class UniqueOp : public OpKernel {
     // TODO(dga):  Make unique polymorphic for returning int32 and int64
     // vectors to support large tensors.
     OP_REQUIRES(context,
-                input.NumElements() <= std::numeric_limits<int32>::max(),
+                input.NumElements() <= std::numeric_limits<int32_t>::max(),
                 errors::InvalidArgument(
                     "unique does not support input tensors larger than ",
-                    std::numeric_limits<int32>::max(), " elements"));
+                    std::numeric_limits<int32_t>::max(), " elements"));
 
     int64_t axis = 0;
     std::vector<int64_t> new_sizes{1, input.NumElements(), 1};
@@ -115,7 +115,7 @@ class UniqueOp : public OpKernel {
                         "axis tensor should be int32 or int64, but got ",
                         DataTypeString(axis_tensor.dtype())));
         if (axis_tensor.dtype() == DT_INT32) {
-          axis = internal::SubtleMustCopy(axis_tensor.scalar<int32>()());
+          axis = internal::SubtleMustCopy(axis_tensor.scalar<int32_t>()());
         } else {
           axis = internal::SubtleMustCopy(axis_tensor.scalar<int64_t>()());
         }
