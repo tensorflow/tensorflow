@@ -32,7 +32,7 @@ namespace {
 void SetupGrapplerItem(GrapplerItem *item) {
   MutableGraphView graph(&item->graph);
 
-  std::vector<std::pair<string, AttrValue>> common_attrs(2);
+  std::vector<std::pair<std::string, AttrValue>> common_attrs(2);
   AttrValue shapes_attr;
   SetAttrValue(std::vector<TensorShape>({{}}), &shapes_attr);
   common_attrs[0] = std::make_pair("output_shapes", shapes_attr);
@@ -44,7 +44,7 @@ void SetupGrapplerItem(GrapplerItem *item) {
   NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
   NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
-  std::vector<string> range_inputs(3);
+  std::vector<std::string> range_inputs(3);
   range_inputs[0] = start_node->name();
   range_inputs[1] = stop_node->name();
   range_inputs[2] = step_node->name();
@@ -60,7 +60,7 @@ void SetupGrapplerItem(GrapplerItem *item) {
 }
 
 struct ParameterizedSlackTest
-    : ::testing::TestWithParam<std::tuple<string, int>> {};
+    : ::testing::TestWithParam<std::tuple<std::string, int>> {};
 
 TEST_P(ParameterizedSlackTest, BasicTest) {
   GrapplerItem item;

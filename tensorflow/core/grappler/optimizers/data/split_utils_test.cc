@@ -72,11 +72,11 @@ void RunFunction(const FunctionDef& func,
                  std::vector<Tensor>* results) {
   using test::function::NDef;
   std::vector<NodeDef> nodes;
-  std::vector<string> inputs;
+  std::vector<std::string> inputs;
   std::vector<std::pair<std::string, Tensor>> feeds;
   for (int i = 0; i < input_tensors.size(); i++) {
     const Tensor& tensor = input_tensors[i];
-    string input_name = absl::StrCat("input_", i);
+    std::string input_name = absl::StrCat("input_", i);
     nodes.push_back(
         NDef(input_name, "Placeholder", {}, {{"dtype", tensor.dtype()}}));
     inputs.push_back(input_name);
@@ -93,7 +93,7 @@ void RunFunction(const FunctionDef& func,
     session.reset(new_session);
   }
   TF_ASSERT_OK(session->Create(graph_def));
-  std::vector<string> outputs;
+  std::vector<std::string> outputs;
   const int num_outputs = func.ret_size();
   for (int i = 0; i < num_outputs; i++) {
     outputs.push_back(absl::StrCat("f:", i));
@@ -108,18 +108,18 @@ void RunSplitFunctions(const FunctionDef& first, const FunctionDef& second,
                        int num_captured_inputs, std::vector<Tensor>* results) {
   using test::function::NDef;
   std::vector<NodeDef> nodes;
-  std::vector<string> first_inputs;
+  std::vector<std::string> first_inputs;
   std::vector<std::pair<std::string, Tensor>> feeds;
   for (int i = 0; i < input_tensors.size(); i++) {
     const Tensor& tensor = input_tensors[i];
-    string input_name = absl::StrCat("input_", i);
+    std::string input_name = absl::StrCat("input_", i);
     nodes.push_back(
         NDef(input_name, "Placeholder", {}, {{"dtype", tensor.dtype()}}));
     first_inputs.push_back(input_name);
     feeds.push_back({input_name, tensor});
   }
   nodes.push_back(NDef("first", first.signature().name(), first_inputs, {}));
-  std::vector<string> second_inputs;
+  std::vector<std::string> second_inputs;
   const int num_outputs_of_first = first.ret_size();
   for (int i = 0; i < num_outputs_of_first; i++) {
     second_inputs.push_back(absl::StrCat("first:", i));
@@ -139,7 +139,7 @@ void RunSplitFunctions(const FunctionDef& first, const FunctionDef& second,
     session.reset(new_session);
   }
   TF_ASSERT_OK(session->Create(graph_def));
-  std::vector<string> second_outputs;
+  std::vector<std::string> second_outputs;
   const int num_outputs_of_second = second.ret_size();
   for (int i = 0; i < num_outputs_of_second; i++) {
     second_outputs.push_back(absl::StrCat("second:", i));
@@ -168,8 +168,8 @@ void CheckSplitFunctions(const FunctionDef& orig, const FunctionDef& first,
   }
 }
 
-std::vector<string> GetNodeNames(const FunctionDef& function) {
-  std::vector<string> node_names;
+std::vector<std::string> GetNodeNames(const FunctionDef& function) {
+  std::vector<std::string> node_names;
   for (const NodeDef& node : function.node_def()) {
     node_names.push_back(node.name());
   }
