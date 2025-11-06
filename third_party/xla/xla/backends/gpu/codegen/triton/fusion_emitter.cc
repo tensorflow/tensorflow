@@ -216,10 +216,10 @@ Value MakeIndex(EmitterLocOpBuilder& b, int64_t value) {
 // Emit a value as Index clamped to [lower, upper].
 Value EmitClampedIndex(EmitterLocOpBuilder b, Value value, int64_t lower,
                        int64_t upper) {
-  Value clamped_index = b.create<arith::MaxSIOp>(
-      value, CreateConst(b, value.getType(), lower).UnwrapUnsafe());
+  Value clamped_index =
+      b.create<arith::MaxSIOp>(value, CreateConst(b, value.getType(), lower));
   clamped_index = b.create<arith::MinSIOp>(
-      clamped_index, CreateConst(b, value.getType(), upper).UnwrapUnsafe());
+      clamped_index, CreateConst(b, value.getType(), upper));
   return b.create<arith::IndexCastOp>(b.getIndexType(), clamped_index);
 }
 
@@ -401,10 +401,10 @@ absl::StatusOr<ScalarOrTensor> EmitReduce(
     TensorValue range = Iota(b, input_reduction_dimension_size);
     TensorValue bcast =
         BroadcastInDims(b, range, input_shape, {reduction_dimension});
-    ScalarOrTensor constant = CreateConst(
+    TensorValue constant = CreateConst(
         b, b.getI32Type(), source_tensor_reduction_dimension_size, input_shape);
-    Value mask = b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, bcast,
-                                         constant.UnwrapUnsafe());
+    Value mask =
+        b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, bcast, constant);
 
     TensorValue neutral = BroadcastInDims(
         b, values[tiled_hlo_reduce.operand(1)], input_shape, /*dims=*/{});
@@ -551,8 +551,7 @@ absl::StatusOr<TensorValue> EmitTiledIota(
   Value range = b.create<arith::MulIOp>(
       Iota(b, padded_tile_sizes[iota_dim]),
       Splat(b,
-            CreateConst(b, b.getI32Type(), tiled_iota.tile_strides()[iota_dim])
-                .UnwrapUnsafe(),
+            CreateConst(b, b.getI32Type(), tiled_iota.tile_strides()[iota_dim]),
             padded_tile_sizes[iota_dim]));
 
   // Then, add the base offset to the iota components.
@@ -755,11 +754,9 @@ absl::StatusOr<TensorValue> MaskDotOperand(
     // contracting dimension---i.e. tiles whose index exceeds the number of
     // full tiles (tiles without padding).
     Type result_type = dot_operand_value.getType();
-    Value tile_size_value =
-        CreateConst(b, b.getI32Type(), tile_size, {}).UnwrapScalar();
+    Value tile_size_value = CreateConst(b, b.getI32Type(), tile_size);
     Value num_full_tiles = b.create<arith::DivSIOp>(
-        CreateConst(b, b.getI32Type(), contracting_dimension_size, {})
-            .UnwrapScalar(),
+        CreateConst(b, b.getI32Type(), contracting_dimension_size),
         tile_size_value);
     // if tile_index >= num_full_tiles...
     auto cond = b.create<arith::CmpIOp>(arith::CmpIPredicate::sge,
@@ -781,8 +778,7 @@ absl::StatusOr<TensorValue> MaskDotOperand(
       Value indices = b.create<arith::AddIOp>(range, broadcasted_tile_offset);
 
       Value boundary = CreateConst(b, b.getI32Type(),
-                                   contracting_dimension_size, {tile_size})
-                           .UnwrapTensor();
+                                   contracting_dimension_size, {tile_size});
 
       Value mask =
           b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, indices, boundary);
@@ -793,10 +789,10 @@ absl::StatusOr<TensorValue> MaskDotOperand(
           auto element_type,
           TritonType(b, dot_operand.hlo()->shape().element_type()));
 
-      ScalarOrTensor zero = CreateConst(b, element_type, 0.0f, tile_shape);
+      TensorValue zero = CreateConst(b, element_type, 0.0f, tile_shape);
 
-      Value masked_dot_operand = b.create<arith::SelectOp>(
-          mask, dot_operand_value, zero.UnwrapTensor());
+      Value masked_dot_operand =
+          b.create<arith::SelectOp>(mask, dot_operand_value, zero);
       b.create<mlir::scf::YieldOp>(masked_dot_operand);
     }
     // else ...
@@ -946,8 +942,7 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
   TF_ASSIGN_OR_RETURN(Type accumulator_type,
                       triton::GetDotAccumulatorType(b, dot));
   Value accumulator =
-      CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes_no_unit_dims)
-          .UnwrapTensor();
+      CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes_no_unit_dims);
 
   TF_ASSIGN_OR_RETURN(int64_t loop_iteration_count,
                       GetDotLoopIterationCount(tiled_hlo_dot));
@@ -1082,8 +1077,7 @@ absl::StatusOr<ScalarOrTensor> EmitScaledDot(
 
   Type accumulator_type = b.getF32Type();
   Value accumulator =
-      CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes_no_unit_dims)
-          .UnwrapTensor();
+      CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes_no_unit_dims);
 
   TF_ASSIGN_OR_RETURN(int64_t loop_iteration_count,
                       GetDotLoopIterationCount(tiled_hlo_dot));
@@ -1272,8 +1266,7 @@ absl::StatusOr<ScalarOrTensor> EmitConcatenate(
     // directly populates the `else` block of the previous `if_op`.
     if (if_ops.size() < tiled_concatenate.operands().size() - 1) {
       limit += operand->hlo()->shape().dimensions()[concatenate_dimension];
-      Value offset_limit =
-          CreateConst(b, b.getIndexType(), limit, {}).UnwrapScalar();
+      Value offset_limit = CreateConst(b, b.getIndexType(), limit);
 
       auto cond =
           b.create<arith::CmpIOp>(arith::CmpIPredicate::slt,
@@ -1354,8 +1347,7 @@ absl::StatusOr<ScalarOrTensor> EmitPad(
     // RHS for the compare is splat(pad_input_dim_size - tile_offset).
     Value tile_offset_i32 = Cast(b, tile_offset, i32_type);
     Value threshold = b.create<arith::SubIOp>(
-        CreateConst(b, i32_type, pad_input_dim_size).UnwrapScalar(),
-        tile_offset_i32);
+        CreateConst(b, i32_type, pad_input_dim_size), tile_offset_i32);
     TensorValue threshold_splat = Splat(b, threshold, padded_tile_sizes);
     Value cmp = b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, bcast,
                                         threshold_splat);
@@ -1445,7 +1437,8 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
 
   if (hlo->opcode() == HloOpcode::kConstant) {
     if (ShapeUtil::IsEffectiveScalar(hlo->shape())) {
-      return EmitConstant(b, *hlo);
+      TF_ASSIGN_OR_RETURN(TensorValue constant, EmitConstant(b, *hlo));
+      return MakeScalarOrTensor(b, constant);
     }
     return absl::UnimplementedError(
         absl::StrCat("Unsupported non-scalar constant ", hlo->ToString()));
@@ -1588,7 +1581,8 @@ absl::StatusOr<ScalarOrTensor> EmitScope(
       TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
       continue;
     } else if (hlo->opcode() == HloOpcode::kConstant) {
-      TF_ASSIGN_OR_RETURN(result, EmitConstant(b, *hlo));
+      TF_ASSIGN_OR_RETURN(TensorValue constant, EmitConstant(b, *hlo));
+      result = MakeScalarOrTensor(b, constant);
     } else if (hlo->opcode() == HloOpcode::kBroadcast) {
       return absl::InvalidArgumentError(
           "Broadcast is not yet supported in EmitScope().");

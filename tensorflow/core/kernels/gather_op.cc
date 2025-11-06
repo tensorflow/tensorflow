@@ -74,7 +74,7 @@ class GatherOp : public OpKernel {
                   absl::InvalidArgumentError("axis must be scalar"));
 
       if (axis_tensor.dtype() == DT_INT32) {
-        axis = axis_tensor.scalar<int32>()();
+        axis = axis_tensor.scalar<int32_t>()();
       } else if (axis_tensor.dtype() == DT_INT64) {
         axis = axis_tensor.scalar<int64_t>()();
       } else {
@@ -83,7 +83,7 @@ class GatherOp : public OpKernel {
       }
     }
     // special case to avoid checkfail when axis = kint64max.
-    OP_REQUIRES(c, axis < kint64max,
+    OP_REQUIRES(c, axis < std::numeric_limits<int64_t>::max(),
                 absl::InvalidArgumentError("axis must be less than kint64max"));
 
     int64_t min_params_dim = axis < 0 ? -axis : axis + 1;
@@ -197,7 +197,7 @@ class GatherOp : public OpKernel {
  private:
   // The number of batch dimensions, as passed in the batch_dims attribute.
   // It must be less than or equal to rank(indices).
-  int32 batch_dims_ = 0;
+  int32_t batch_dims_ = 0;
 };
 
 #define REGISTER_GATHER_FULL(dev, type, index_type)                    \

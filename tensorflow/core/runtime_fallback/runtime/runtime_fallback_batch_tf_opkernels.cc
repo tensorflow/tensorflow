@@ -193,7 +193,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
     return absl::OkStatus();
   }
 
-  string DebugString() const final { return "FallbackBatchResource"; }
+  std::string DebugString() const final { return "FallbackBatchResource"; }
 
   const tsl::RCReference<const tfrt::Function>& batch_function() const {
     return bef_func_;
