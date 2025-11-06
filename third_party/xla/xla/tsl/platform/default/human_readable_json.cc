@@ -51,7 +51,7 @@ absl::StatusOr<std::string> ProtoToHumanReadableJson(
   return std::string("[human readable output not available for lite protos]");
 }
 
-absl::Status HumanReadableJsonToProto(const string& str,
+absl::Status HumanReadableJsonToProto(const std::string& str,
                                       protobuf::Message* proto) {
   proto->Clear();
   auto status = protobuf::util::JsonStringToMessage(str, proto);
@@ -65,7 +65,7 @@ absl::Status HumanReadableJsonToProto(const string& str,
   return absl::OkStatus();
 }
 
-absl::Status HumanReadableJsonToProto(const string& str,
+absl::Status HumanReadableJsonToProto(const std::string& str,
                                       protobuf::MessageLite* proto) {
   return errors::Internal("Cannot parse JSON protos on Android");
 }
