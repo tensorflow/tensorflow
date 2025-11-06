@@ -117,7 +117,7 @@ class GrpcRemoteMaster : public MasterInterface {
   // Start tracing, attaching a unique ID to both the trace and the RPC.
   tsl::profiler::TraceMe* NewTraceRpc(absl::string_view name,
                                       ::grpc::ClientContext* ctx) {
-    string trace_id = absl::StrCat(tsl::tracing::GetUniqueArg());
+    std::string trace_id = absl::StrCat(tsl::tracing::GetUniqueArg());
     ctx->AddMetadata(GrpcIdKey(), trace_id);
     return new tsl::profiler::TraceMe(
         [&] { return absl::StrCat(name, ":", trace_id); },
@@ -129,7 +129,7 @@ class GrpcRemoteMaster : public MasterInterface {
       CallOptions* call_options, const Request* request, Response* response,
       ::grpc::Status (MasterServiceStub::*pfunc)(::grpc::ClientContext*,
                                                  const Request&, Response*),
-      string trace_string = {}) {
+      std::string trace_string = {}) {
     absl::Duration timeout = absl::Milliseconds(call_options->GetTimeout());
     absl::Time expired_time = absl::FromUnixMicros(Env::Default()->NowMicros());
     if (timeout > absl::ZeroDuration()) {
