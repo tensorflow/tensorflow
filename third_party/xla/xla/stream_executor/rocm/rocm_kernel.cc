@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"

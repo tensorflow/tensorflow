@@ -32,7 +32,7 @@ namespace mlir::triton::xla {
 
 std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
-    bool allow_tma);
+    bool allow_tma, int num_stages);
 std::unique_ptr<mlir::Pass> CreateTritonXLASqueezeDimsPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLAFoldTransposePass();
 std::unique_ptr<mlir::Pass> CreateGeneralizeKernelSignaturePass();

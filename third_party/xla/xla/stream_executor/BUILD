@@ -581,11 +581,26 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "kernel_metadata",
+    hdrs = ["kernel_metadata.h"],
+)
+
+xla_cc_test(
+    name = "kernel_metadata_test",
+    srcs = ["kernel_metadata_test.cc"],
+    deps = [
+        ":kernel_metadata",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "kernel",
     srcs = ["kernel.cc"],
     hdrs = ["kernel.h"],
     deps = [
         ":device_memory",
+        ":kernel_metadata",
         ":launch_dim",
         ":stream",
         "@com_google_absl//absl/base:core_headers",
@@ -860,6 +875,7 @@ xla_cc_test(
     deps = [
         ":device_memory",
         ":kernel",
+        ":kernel_metadata",
         ":platform",
         ":platform_manager",
         ":stream_executor_h",

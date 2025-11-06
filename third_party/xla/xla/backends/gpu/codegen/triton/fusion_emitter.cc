@@ -2002,7 +2002,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   }
 
   CreateTritonXlaPipeline(&pm, gpu_cc, /*rewrite_int4=*/is_xla_fusion,
-                          block_level_parameters.is_tma_allowed);
+                          block_level_parameters.is_tma_allowed,
+                          block_level_parameters.num_stages);
 
   int num_warps = block_level_parameters.num_warps;
   int num_ctas = block_level_parameters.num_ctas;

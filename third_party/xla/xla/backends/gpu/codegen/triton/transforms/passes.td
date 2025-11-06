@@ -28,6 +28,8 @@ def TritonXLAExtractInsertToTritonPass : Pass<"triton-xla-extract-insert-to-trit
   let options = [
     Option<"allow_tma_", "allow_tma", "bool", "false",
            "Whether to permit lowering to TMA.">,
+    Option<"num_stages_", "num_stages", "int", "1",
+           "Number of stages for pipelining.">,
   ];
   let dependentDialects = [
     "triton::TritonDialect",

@@ -71,6 +71,17 @@ namespace xgt = xg::triton;
 
 namespace {
 
+bool HasBroadcastConsumer(Operation* op) {
+  llvm::SetVector<Operation*> slice;
+  mlir::getForwardSlice(op, &slice);
+  for (Operation* sliced_op : slice) {
+    if (llvm::isa<triton::BroadcastOp>(sliced_op)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 PointerType GetTensorPtrType(Type type) {
   return PointerType::get(
       xgt::StorageType(type),
@@ -150,7 +161,8 @@ bool IsOffsetDivisibilityGuaranteed(mlir::Value offset_val,
 //      minor tile dimension (in bytes) must be divisible by 16, it is
 //      sufficient to check that the offset in the minor dimension (in bytes) is
 //      divisible by 16.
-bool CanUseTma(bool allow_tma, const ArrayRef<int64_t>& original_shape,
+bool CanUseTma(Operation* op, bool allow_tma, int num_stages,
+               const ArrayRef<int64_t>& original_shape,
                const ArrayRef<int64_t>& tile_shape,
                const ArrayRef<int64_t>& tile_strides, ValueRange offsets,
                const TypedValue<PointerType>& pointer,
@@ -167,6 +179,15 @@ bool CanUseTma(bool allow_tma, const ArrayRef<int64_t>& original_shape,
   auto func_op =
       mlir::dyn_cast<func::FuncOp>(block_arg.getOwner()->getParentOp());
   if (!func_op) {
+    return false;
+  }
+
+  // TODO(b/421858850): CUDA_ERROR_MISALIGNED_ADDRESS errors are
+  // happening for some cases when pipelining stages are > 2. The pattern
+  // observed is that these happen in the presence of a broadcast.
+  // This is a temporary solution. We should remove this once we have a fix for
+  // the error.
+  if (num_stages > 2 && HasBroadcastConsumer(op)) {
     return false;
   }
 
@@ -493,8 +514,10 @@ static std::pair<Value, Value> CreateTensorOfPointersAndMask(
 
 class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
  public:
-  RewriteExtract(mlir::MLIRContext* context, bool allow_tma)
-      : OpRewritePattern(context), allow_tma_(allow_tma) {}
+  RewriteExtract(mlir::MLIRContext* context, bool allow_tma, int num_stages)
+      : OpRewritePattern(context),
+        allow_tma_(allow_tma),
+        num_stages_(num_stages) {}
   using OpRewritePattern::OpRewritePattern;
 
  private:
@@ -521,8 +544,8 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
     auto sizes = op.getStaticSizes();
     auto strides = to_vector(op.getStaticStrides());
 
-    if (CanUseTma(allow_tma_, src_shape, sizes, strides, offsets, op.getSrc(),
-                  src_layout)) {
+    if (CanUseTma(op, allow_tma_, num_stages_, src_shape, sizes, strides,
+                  offsets, op.getSrc(), src_layout)) {
       if (auto result = CanonicalizeTileStrides(strides, sizes, src_shape);
           !result.ok()) {
         return rewriter.notifyMatchFailure(op, result.message());
@@ -584,12 +607,15 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
   }
 
   const bool allow_tma_;
+  const int num_stages_;
 };
 
 class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
  public:
-  RewriteInsert(mlir::MLIRContext* context, bool allow_tma)
-      : OpRewritePattern(context), allow_tma_(allow_tma) {}
+  RewriteInsert(mlir::MLIRContext* context, bool allow_tma, int num_stages)
+      : OpRewritePattern(context),
+        allow_tma_(allow_tma),
+        num_stages_(num_stages) {}
   using OpRewritePattern::OpRewritePattern;
 
  private:
@@ -624,8 +650,8 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
     SmallVector<unsigned> reduced_dims = to_vector(*reduction_mask);
     absl::c_sort(reduced_dims);
 
-    if (CanUseTma(allow_tma_, dst_shape, sizes, strides, offsets, op.getDst(),
-                  dst_layout)) {
+    if (CanUseTma(op, allow_tma_, num_stages_, dst_shape, sizes, strides,
+                  offsets, op.getDst(), dst_layout)) {
       if (auto result = CanonicalizeTileStrides(strides, sizes, dst_shape);
           !result.ok()) {
         return rewriter.notifyMatchFailure(op, result.message());
@@ -670,6 +696,7 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
   }
 
   const bool allow_tma_;
+  const int num_stages_;
 };
 
 // Rewriting tensor::InsertOp as tt.store.
@@ -730,8 +757,8 @@ class TritonXLAExtractInsertToTritonPass
   void runOnOperation() override {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<RewriteExtract, RewriteInsert>(mlir_context,
-                                                allow_tma_.getValue());
+    patterns.add<RewriteExtract, RewriteInsert>(
+        mlir_context, allow_tma_.getValue(), num_stages_.getValue());
     patterns.add<RewriteScalarExtract, RewriteScalarInsert>(mlir_context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
@@ -754,9 +781,9 @@ std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass() {
 }
 
 std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
-    bool allow_tma) {
+    bool allow_tma, int num_stages) {
   return std::make_unique<TritonXLAExtractInsertToTritonPass>(
-      TritonXLAExtractInsertToTritonPassOptions{allow_tma});
+      TritonXLAExtractInsertToTritonPassOptions{allow_tma, num_stages});
 }
 
 }  // namespace mlir::triton::xla
