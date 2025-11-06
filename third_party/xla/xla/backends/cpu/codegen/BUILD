@@ -1,6 +1,6 @@
 load("//xla:py_strict.bzl", "py_strict_test")
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "if_llvm_aarch64_available",
@@ -28,6 +28,7 @@ cc_library(
     name = "builtin_definition_generator",
     srcs = ["builtin_definition_generator.cc"],
     hdrs = ["builtin_definition_generator.h"],
+    copts = tsl_copts(),
     deps = [
         ":builtin_fp16",
         ":builtin_pow",
