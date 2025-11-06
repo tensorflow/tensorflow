@@ -167,7 +167,7 @@ TEST_P(ThreadSafeBufferTest, BlockWriterWhenBufferIsFull) {
     ASSERT_THAT(buffer.Push(Tensor("Test tensor")), absl_testing::IsOk());
   }
 
-  uint64 push_time = 0;
+  uint64_t push_time = 0;
   auto thread = absl::WrapUnique(Env::Default()->StartThread(
       /*thread_options=*/{}, /*name=*/"writer_thread", [&buffer, &push_time]() {
         ASSERT_THAT(buffer.Push(Tensor("Test tensor")), absl_testing::IsOk());
@@ -176,7 +176,7 @@ TEST_P(ThreadSafeBufferTest, BlockWriterWhenBufferIsFull) {
 
   // Popping an element unblocks the `Push` call.
   Env::Default()->SleepForMicroseconds(10000);
-  uint64 pop_time = Env::Default()->NowMicros();
+  uint64_t pop_time = Env::Default()->NowMicros();
   ASSERT_THAT(buffer.Pop(), absl_testing::IsOk());
   thread.reset();
   EXPECT_LE(pop_time, push_time);

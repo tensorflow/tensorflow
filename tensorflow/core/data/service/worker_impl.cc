@@ -183,9 +183,9 @@ absl::Status DataServiceWorkerImpl::Start(
     mutex_lock l(mu_);
     return !cancelled_;
   };
-  TF_RETURN_IF_ERROR(grpc_util::Retry([this]() { return Heartbeat(); },
-                                      should_retry, "Worker heartbeat.",
-                                      /*deadline_micros=*/kint64max));
+  TF_RETURN_IF_ERROR(grpc_util::Retry(
+      [this]() { return Heartbeat(); }, should_retry, "Worker heartbeat.",
+      /*deadline_micros=*/std::numeric_limits<int64_t>::max()));
   LOG(INFO) << "Worker registered with dispatcher running at "
             << config_.dispatcher_address()
             << ". Worker config: " << config_.DebugString();
@@ -248,10 +248,10 @@ DataServiceWorkerImpl::CreateDispatcherClient() const TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     return !cancelled_;
   };
-  TF_RETURN_IF_ERROR(
-      grpc_util::Retry([&dispatcher]() { return dispatcher->Initialize(); },
-                       should_retry, "Initialize dispatcher client.",
-                       /*deadline_micros=*/kint64max));
+  TF_RETURN_IF_ERROR(grpc_util::Retry(
+      [&dispatcher]() { return dispatcher->Initialize(); }, should_retry,
+      "Initialize dispatcher client.",
+      /*deadline_micros=*/std::numeric_limits<int64_t>::max()));
   return dispatcher;
 }
 
