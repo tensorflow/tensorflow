@@ -19,7 +19,7 @@ limitations under the License.
 namespace tsl {
 namespace random {
 template <>
-void SingleSampleAdapter<PhiloxRandom>::SkipFromGenerator(uint64 num_skips) {
+void SingleSampleAdapter<PhiloxRandom>::SkipFromGenerator(uint64_t num_skips) {
   // Use the O(1) PhiloxRandom::Skip instead of the default O(N) impl.
   generator_->Skip(num_skips);
 }
