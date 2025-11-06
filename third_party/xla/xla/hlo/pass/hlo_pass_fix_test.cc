@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <utility>
 
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
