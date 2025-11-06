@@ -81,8 +81,9 @@ absl::StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
   std::string tfr_lib_dir;
   TF_RETURN_IF_ERROR(ReadStringFromEnvVar(
       kTFRLibEnv, "tensorflow/compiler/mlir/tfr/resources", &tfr_lib_dir));
-  string composite_mlir_dir = io::JoinPath(env->GetRunfilesDir(), tfr_lib_dir);
-  std::vector<string> files;
+  std::string composite_mlir_dir =
+      io::JoinPath(env->GetRunfilesDir(), tfr_lib_dir);
+  std::vector<std::string> files;
   TF_RETURN_IF_ERROR(env->GetChildren(composite_mlir_dir, &files));
   if (files.empty()) {
     return errors::Internal(absl::StrCat(
@@ -90,7 +91,7 @@ absl::StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
   }
   std::string tfr_raw_text;
   for (const auto& file : files) {
-    string fullpath = io::JoinPath(composite_mlir_dir, file);
+    std::string fullpath = io::JoinPath(composite_mlir_dir, file);
     if (env->MatchPath(fullpath, io::JoinPath(composite_mlir_dir, "*.mlir"))) {
       std::string text;
       TF_RETURN_IF_ERROR(ReadFileToString(env, fullpath, &text));
