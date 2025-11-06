@@ -4864,7 +4864,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
         dilations_attr.template getValues<int64_t>().begin(),
         dilations_attr.template getValues<int64_t>().end()};
     auto strides_attr = GetI64ElementsAttr(op.getStrides());
-    std::vector<tensorflow::int32> strides{
+    std::vector<int32_t> strides{
         strides_attr.template getValues<int64_t>().begin(),
         strides_attr.template getValues<int64_t>().end()};
 
@@ -5064,7 +5064,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
         dilations_attr.template getValues<int64_t>().begin(),
         dilations_attr.template getValues<int64_t>().end()};
     auto strides_attr = GetI64ElementsAttr(op.getStrides());
-    std::vector<tensorflow::int32> strides{
+    std::vector<int32_t> strides{
         strides_attr.template getValues<int64_t>().begin(),
         strides_attr.template getValues<int64_t>().end()};
 
