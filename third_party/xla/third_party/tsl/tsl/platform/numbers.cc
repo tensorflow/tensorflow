@@ -14,12 +14,9 @@ limitations under the License.
 
 #include "tsl/platform/numbers.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-
 #include <algorithm>
 #include <charconv>
-#include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -32,9 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/stringprintf.h"
 
 namespace tsl {
 
@@ -201,46 +196,45 @@ bool HexStringToUint64(absl::string_view s, uint64_t* result) {
   return true;
 }
 
-std::string HumanReadableNum(int64_t value) {
+std::string HumanReadableNum(int64_t signed_value) {
   std::string s;
-  if (value < 0) {
-    s += "-";
+
+  uint64_t value = static_cast<uint64_t>(signed_value);
+  if (signed_value < 0) {
+    s = "-";
     value = -value;
   }
   if (value < 1000) {
-    Appendf(&s, "%lld", static_cast<long long>(value));
+    absl::StrAppendFormat(&s, "%d", value);
   } else if (value >= static_cast<int64_t>(1e15)) {
     // Number bigger than 1E15; use that notation.
-    Appendf(&s, "%0.3G", static_cast<double>(value));
+    absl::StrAppendFormat(&s, "%0.3G", static_cast<double>(value));
   } else {
-    static const char units[] = "kMBT";
-    const char* unit = units;
+    static absl::string_view kUnits = "kMBT";
+    auto unit = kUnits.begin();
     while (value >= static_cast<int64_t>(1000000)) {
       value /= static_cast<int64_t>(1000);
       ++unit;
-      CHECK(unit < units + TF_ARRAYSIZE(units));
+      CHECK(unit < kUnits.end());
     }
-    Appendf(&s, "%.2f%c", value / 1000.0, *unit);
+    absl::StrAppendFormat(&s, "%.2f%c", value / 1000.0, *unit);
   }
   return s;
 }
 
-std::string HumanReadableNumBytes(int64_t num_bytes) {
-  if (num_bytes == kint64min) {
-    // Special case for number with not representable negation.
-    return "-8E";
-  }
-
+std::string HumanReadableNumBytes(int64_t signed_num_bytes) {
   static absl::string_view kNegSign = "-";
-  absl::string_view neg_str = (num_bytes < 0) ? kNegSign : "";
-  if (num_bytes < 0) {
+  absl::string_view sign_str;
+  uint64_t num_bytes = static_cast<uint64_t>(signed_num_bytes);
+  if (signed_num_bytes < 0) {
     num_bytes = -num_bytes;
+    sign_str = kNegSign;
   }
 
   // Special case for bytes.
   if (num_bytes < 1024) {
     // No fractions for bytes.
-    return absl::StrCat(neg_str, num_bytes, "B");
+    return absl::StrCat(sign_str, num_bytes, "B");
   }
 
   static absl::string_view kUnits = "KMGTPE";  // int64 only goes up to E.
@@ -252,7 +246,7 @@ std::string HumanReadableNumBytes(int64_t num_bytes) {
   }
 
   // We use SI prefixes.
-  return absl::StrFormat("%s%.*f%ciB", neg_str, *unit == 'K' ? 1 : 2,
+  return absl::StrFormat("%s%.*f%ciB", sign_str, *unit == 'K' ? 1 : 2,
                          num_bytes / 1024.0, *unit);
 }
 
@@ -269,43 +263,43 @@ std::string HumanReadableElapsedTime(double seconds) {
   // the tested condition and returning, e.g., "1e+03 us" instead of "1 ms".
   const double microseconds = seconds * 1.0e6;
   if (microseconds < 999.5) {
-    strings::Appendf(&human_readable, "%0.3g us", microseconds);
+    absl::StrAppendFormat(&human_readable, "%0.3g us", microseconds);
     return human_readable;
   }
   double milliseconds = seconds * 1e3;
   if (milliseconds >= .995 && milliseconds < 1) {
-    // Round half to even in Appendf would convert this to 0.999 ms.
+    // Round half to even in StrAppendFormat would convert this to 0.999 ms.
     milliseconds = 1.0;
   }
   if (milliseconds < 999.5) {
-    strings::Appendf(&human_readable, "%0.3g ms", milliseconds);
+    absl::StrAppendFormat(&human_readable, "%0.3g ms", milliseconds);
     return human_readable;
   }
   if (seconds < 60.0) {
-    strings::Appendf(&human_readable, "%0.3g s", seconds);
+    absl::StrAppendFormat(&human_readable, "%0.3g s", seconds);
     return human_readable;
   }
   seconds /= 60.0;
   if (seconds < 60.0) {
-    strings::Appendf(&human_readable, "%0.3g min", seconds);
+    absl::StrAppendFormat(&human_readable, "%0.3g min", seconds);
     return human_readable;
   }
   seconds /= 60.0;
   if (seconds < 24.0) {
-    strings::Appendf(&human_readable, "%0.3g h", seconds);
+    absl::StrAppendFormat(&human_readable, "%0.3g h", seconds);
     return human_readable;
   }
   seconds /= 24.0;
   if (seconds < 30.0) {
-    strings::Appendf(&human_readable, "%0.3g days", seconds);
+    absl::StrAppendFormat(&human_readable, "%0.3g days", seconds);
     return human_readable;
   }
   if (seconds < 365.2425) {
-    strings::Appendf(&human_readable, "%0.3g months", seconds / 30.436875);
+    absl::StrAppendFormat(&human_readable, "%0.3g months", seconds / 30.436875);
     return human_readable;
   }
   seconds /= 365.2425;
-  strings::Appendf(&human_readable, "%0.3g years", seconds);
+  absl::StrAppendFormat(&human_readable, "%0.3g years", seconds);
   return human_readable;
 }
 
