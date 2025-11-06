@@ -104,7 +104,7 @@ class Env {
                          const std::string& value);
 
   absl::Status SetOption(const std::string& scheme, const std::string& key,
-                         const std::vector<string>& values);
+                         const std::vector<std::string>& values);
 
   absl::Status SetOption(const std::string& scheme, const std::string& key,
                          const std::vector<int64_t>& values);
@@ -211,11 +211,11 @@ class Env {
   /// Returns true if all the listed files exist, false otherwise.
   /// if status is not null, populate the vector with a detailed status
   /// for each file.
-  bool FilesExist(const std::vector<string>& files,
+  bool FilesExist(const std::vector<std::string>& files,
                   std::vector<absl::Status>* status);
 
-  bool FilesExist(const std::vector<string>& files, TransactionToken* token,
-                  std::vector<absl::Status>* status) {
+  bool FilesExist(const std::vector<std::string>& files,
+                  TransactionToken* token, std::vector<absl::Status>* status) {
     return true;
   }
 
@@ -223,10 +223,11 @@ class Env {
   /// directory. The names are relative to "dir".
   ///
   /// Original contents of *results are dropped.
-  absl::Status GetChildren(const std::string& dir, std::vector<string>* result);
+  absl::Status GetChildren(const std::string& dir,
+                           std::vector<std::string>* result);
 
   absl::Status GetChildren(const std::string& dir, TransactionToken* token,
-                           std::vector<string>* result) {
+                           std::vector<std::string>* result) {
     return absl::OkStatus();
   }
 
@@ -240,11 +241,11 @@ class Env {
   ///
   /// More details about `pattern` in FileSystem::GetMatchingPaths.
   virtual absl::Status GetMatchingPaths(const std::string& pattern,
-                                        std::vector<string>* results);
+                                        std::vector<std::string>* results);
 
   absl::Status GetMatchingPaths(const std::string& pattern,
                                 TransactionToken* token,
-                                std::vector<string>* results) {
+                                std::vector<std::string>* results) {
     return absl::OkStatus();
   }
 
@@ -348,10 +349,10 @@ class Env {
   absl::Status HasAtomicMove(const std::string& path, bool* has_atomic_move);
 
   /// Stores the size of `fname` in `*file_size`.
-  absl::Status GetFileSize(const std::string& fname, uint64* file_size);
+  absl::Status GetFileSize(const std::string& fname, uint64_t* file_size);
 
   absl::Status GetFileSize(const std::string& fname, TransactionToken* token,
-                           uint64* file_size) {
+                           uint64_t* file_size) {
     return absl::OkStatus();
   }
 
@@ -426,19 +427,19 @@ class Env {
   // provide a routine to get the absolute time.
 
   /// \brief Returns the number of nano-seconds since the Unix epoch.
-  virtual uint64 NowNanos() const { return EnvTime::NowNanos(); }
+  virtual uint64_t NowNanos() const { return EnvTime::NowNanos(); }
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
-  virtual uint64 NowMicros() const { return EnvTime::NowMicros(); }
+  virtual uint64_t NowMicros() const { return EnvTime::NowMicros(); }
 
   /// \brief Returns the number of seconds since the Unix epoch.
-  virtual uint64 NowSeconds() const { return EnvTime::NowSeconds(); }
+  virtual uint64_t NowSeconds() const { return EnvTime::NowSeconds(); }
 
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   virtual void SleepForMicroseconds(int64_t micros) = 0;
 
   /// Returns the process ID of the calling process.
-  int32 GetProcessId();
+  int32_t GetProcessId();
 
   /// \brief Returns a new thread that is running fn() and is identified
   /// (for debugging/performance-analysis) by "name".
@@ -511,7 +512,7 @@ class Env {
                                             const std::string& version) = 0;
 
   // Returns a possible list of local temporary directories.
-  virtual void GetLocalTempDirectories(std::vector<string>* list) = 0;
+  virtual void GetLocalTempDirectories(std::vector<std::string>* list) = 0;
 
  private:
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
@@ -538,7 +539,7 @@ class EnvWrapper : public Env {
   }
 
   absl::Status GetRegisteredFileSystemSchemes(
-      std::vector<string>* schemes) override {
+      std::vector<std::string>* schemes) override {
     return target_->GetRegisteredFileSystemSchemes(schemes);
   }
 
@@ -551,7 +552,7 @@ class EnvWrapper : public Env {
     return target_->MatchPath(path, pattern);
   }
 
-  uint64 NowMicros() const override { return target_->NowMicros(); }
+  uint64_t NowMicros() const override { return target_->NowMicros(); }
   void SleepForMicroseconds(int64_t micros) override {
     target_->SleepForMicroseconds(micros);
   }
@@ -595,7 +596,7 @@ class EnvWrapper : public Env {
   std::string GetRunfilesDir() override { return target_->GetRunfilesDir(); }
 
  private:
-  void GetLocalTempDirectories(std::vector<string>* list) override {
+  void GetLocalTempDirectories(std::vector<std::string>* list) override {
     target_->GetLocalTempDirectories(list);
   }
 
@@ -700,7 +701,8 @@ struct Register {
     // after TF 2.6+.
     if (try_modular_filesystems) {
       const char* env_value = getenv("TF_USE_MODULAR_FILESYSTEM");
-      string load_plugin = env_value ? absl::AsciiStrToLower(env_value) : "";
+      std::string load_plugin =
+          env_value ? absl::AsciiStrToLower(env_value) : "";
       if (load_plugin == "true" || load_plugin == "1") {
         // We don't register the static filesystem and wait for SIG IO one
         LOG(WARNING) << "Using modular file system for '" << scheme << "'."
