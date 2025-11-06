@@ -615,6 +615,26 @@ cc_library(
 )
 
 cc_library(
+    name = "kernel_args_packed_vector",
+    hdrs = ["kernel_args_packed_vector.h"],
+    deps = [
+        ":kernel",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "kernel_args_packed_vector_test",
+    srcs = ["kernel_args_packed_vector_test.cc"],
+    deps = [
+        ":kernel_args_packed_vector",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "semantic_version",
     srcs = ["semantic_version.cc"],
     hdrs = ["semantic_version.h"],
