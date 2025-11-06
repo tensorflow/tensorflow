@@ -30,10 +30,10 @@ namespace py = pybind11;
 
 namespace tensorflow {
 
-string TransformGraphWithStringInputs(string graph_def_string,
-                                      string inputs_string,
-                                      string outputs_string,
-                                      string transforms_string) {
+std::string TransformGraphWithStringInputs(std::string graph_def_string,
+                                           std::string inputs_string,
+                                           std::string outputs_string,
+                                           std::string transforms_string) {
   GraphDef graph_def;
   if (!graph_def.ParseFromString(graph_def_string)) {
     MaybeRaiseFromStatus(
@@ -46,15 +46,15 @@ string TransformGraphWithStringInputs(string graph_def_string,
   if (!parse_status.ok()) {
     MaybeRaiseFromStatus(parse_status);
   }
-  std::vector<string> inputs = str_util::Split(inputs_string, ',');
-  std::vector<string> outputs = str_util::Split(outputs_string, ',');
+  std::vector<std::string> inputs = str_util::Split(inputs_string, ',');
+  std::vector<std::string> outputs = str_util::Split(outputs_string, ',');
 
   absl::Status transform_status = graph_transforms::TransformGraph(
       inputs, outputs, params_list, &graph_def);
   if (!transform_status.ok()) {
     MaybeRaiseFromStatus(transform_status);
   }
-  string result;
+  std::string result;
   if (!graph_def.SerializeToString(&result)) {
     MaybeRaiseFromStatus(
         errors::InvalidArgument("Couldn't serialize output as a GraphDef"));

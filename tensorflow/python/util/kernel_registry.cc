@@ -27,7 +27,7 @@ limitations under the License.
 namespace tensorflow {
 namespace swig {
 
-string TryFindKernelClass(const string& serialized_node_def) {
+std::string TryFindKernelClass(const std::string& serialized_node_def) {
   tensorflow::NodeDef node_def;
   if (!node_def.ParseFromString(serialized_node_def)) {
     LOG(WARNING) << "Error parsing node_def";
@@ -50,7 +50,7 @@ string TryFindKernelClass(const string& serialized_node_def) {
                  << node_def.ShortDebugString();
     return "";
   }
-  string class_name = "";
+  std::string class_name = "";
   status = tensorflow::FindKernelDef(
       tensorflow::DeviceType(parsed_name.type.c_str()), node_def,
       nullptr /* kernel_def */, &class_name);
