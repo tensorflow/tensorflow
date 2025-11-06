@@ -215,9 +215,9 @@ ENTRY e {
       this, *module->GetComputationWithName("reduce_fusion"),
       block_level_parameters,
       R"(
-CHECK: %[[INIT_VALUE_TO_TENSOR:.*]] = xtile.to_tensor %{{.*}} : f32
+CHECK: %[[INIT:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
 CHECK: %[[REDUCE_INPUT:.*]] = arith.select {{.*}}
-CHECK: %[[RES:.*]] = stablehlo.reduce(%[[REDUCE_INPUT]] init: %[[INIT_VALUE_TO_TENSOR]]) across dimensions = [0] : (tensor<256x16xf32>, tensor<f32>) -> tensor<16xf32>
+CHECK: %[[RES:.*]] = stablehlo.reduce(%[[REDUCE_INPUT]] init: %[[INIT]]) across dimensions = [0] : (tensor<256x16xf32>, tensor<f32>) -> tensor<16xf32>
 CHECK: reducer(%[[ARG_0:.*]]: tensor<f32>, %[[ARG_1:.*]]: tensor<f32>)  {
 CHECK:   %[[SUM:.*]] = arith.addf %[[ARG_0]], %[[ARG_1]] : tensor<f32>
 CHECK:   stablehlo.return %[[SUM]] : tensor<f32>
