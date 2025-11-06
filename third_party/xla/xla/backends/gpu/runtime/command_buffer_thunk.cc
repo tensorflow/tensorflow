@@ -236,6 +236,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
       !enable_command_buffers_during_profiling_) {
     VLOG(1) << "Execute command buffer thunk as a regular thunk sequence "
                "because we detected active profiling session";
+    TraceMe trace("WARNING: CommandBuffer disabled when profiling");
     return thunks_->ExecuteOnStream(params);
   }
 
@@ -346,7 +347,7 @@ void CommandBufferThunk::TrackCommandBuffers(
 }
 
 void CommandBufferThunk::EvictCommandBuffers() {
-  TraceMe trace([&] { return "EvictCommandBuffers"; });
+  TraceMe trace("EvictCommandBuffers");
 
   auto* global_state = GetGlobalState();
   absl::MutexLock global_state_lock(global_state->mutex);
