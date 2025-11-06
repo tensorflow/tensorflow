@@ -330,7 +330,7 @@ class SnapshotManager {
   absl::StatusOr<std::vector<Source>> CreateSources(
       const DatasetDef& dataset_def) const;
   // Returns the total number of splits.
-  absl::StatusOr<int64> GetSplitsCardinality();
+  absl::StatusOr<int64_t> GetSplitsCardinality();
   // Resets a source when it runs out of splits, to support repetitions.
   absl::Status ResetSource(Source& source, int64_t source_index);
   int64_t num_sources() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
