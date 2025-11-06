@@ -71,7 +71,7 @@ namespace ops_util = ::mlir::TF::collection_ops_util;
 
 // Pad the merged tensor shape to multiples of 1024B, so delinearization
 // skipping optimization in XLA can get activated.
-constexpr int32 kAllReducePadding = 1024;
+constexpr int32_t kAllReducePadding = 1024;
 
 // Returns true if `successor` depends on `predecessor`.
 // TODO(jiawenhao): Repeatedly computing dependency sets for a large cluster can
