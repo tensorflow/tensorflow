@@ -2032,8 +2032,7 @@ ENTRY main {
 // CHECK-SAME: %[[OUT:.*]]: memref<49xf32>
 
 // CHECK: %[[EXTRACT:.*]] = xtile.extract %[[IN]]{{.*}}
-// CHECK: %[[PAD_VALUE:.*]] = arith.constant 1.000000e+00 : f32
-// CHECK: %[[TO_TENSOR_PAD_VALUE:.*]] = xtile.to_tensor %[[PAD_VALUE]]
+// CHECK: %[[PAD_VALUE:.*]] = arith.constant dense<1.000000e+00> : tensor<f32>
 // CHECK: %[[TILE_OFFSET:.*]] = xla.apply_indexing
 // CHECK: %[[IOTA_VAL:.*]] = stablehlo.iota dim = 0 : tensor<32xi32>
 // CHECK: %[[IOTA:.*]] = stablehlo.broadcast_in_dim %[[IOTA_VAL]], dims = [0] : (tensor<32xi32>) -> tensor<32xi32>
@@ -2043,7 +2042,7 @@ ENTRY main {
 // CHECK: %[[TO_TENSOR_THRESHOLD:.*]] = xtile.to_tensor %[[THRESHOLD]]
 // CHECK: %[[THRESHOLD_SPLAT:.*]] = stablehlo.broadcast_in_dim %[[TO_TENSOR_THRESHOLD]], dims = []
 // CHECK: %[[MASK:.*]] = arith.cmpi slt, %[[IOTA]], %[[THRESHOLD_SPLAT]]
-// CHECK: %[[PAD_SPLAT:.*]] = stablehlo.broadcast_in_dim %[[TO_TENSOR_PAD_VALUE]], dims = []
+// CHECK: %[[PAD_SPLAT:.*]] = stablehlo.broadcast_in_dim %[[PAD_VALUE]], dims = []
 // CHECK: %[[SELECT:.*]] = arith.select %[[MASK]], %[[EXTRACT]], %[[PAD_SPLAT]]
 
 // CHECK:   xtile.insert %[[SELECT]] into %[[OUT]]

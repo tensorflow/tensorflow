@@ -128,47 +128,41 @@ T ScalarConstantValue(const HloInstruction& instr, PrimitiveType dst_type) {
 
 // Create a scalar constant.
 template <typename T>
-ScalarOrTensor CreateConst(EmitterLocOpBuilder& b, mlir::Type type, T value) {
+mlir::Value CreateConst(EmitterLocOpBuilder& b, mlir::Type type, T value) {
   if (mlir::isa<mlir::IntegerType>(type)) {
-    auto result =
-        b.create<mlir::arith::ConstantOp>(b.getIntegerAttr(type, value));
-    return ScalarOrTensor(result);
+    return b.create<mlir::arith::ConstantOp>(b.getIntegerAttr(type, value));
   }
 
   if (mlir::isa<mlir::IndexType>(type)) {
-    auto result = b.create<mlir::arith::ConstantOp>(b.getIndexAttr(value));
-    return ScalarOrTensor(result);
+    return b.create<mlir::arith::ConstantOp>(b.getIndexAttr(value));
   }
 
   if (mlir::isa<mlir::FloatType>(type)) {
-    auto result = b.create<mlir::arith::ConstantOp>(
+    return b.create<mlir::arith::ConstantOp>(
         b.getFloatAttr(type, static_cast<double>(value)));
-    return ScalarOrTensor(result);
   }
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
 }
 
 // Create a tensor constant.
 template <typename T>
-ScalarOrTensor CreateConst(EmitterLocOpBuilder& b, mlir::Type type, T value,
-                           llvm::ArrayRef<int64_t> shape) {
-  if (shape.empty()) {
-    return CreateConst<T>(b, type, value);
-  }
+mlir::TypedValue<mlir::RankedTensorType> CreateConst(
+    EmitterLocOpBuilder& b, mlir::Type type, T value,
+    llvm::ArrayRef<int64_t> shape) {
   auto tensor_type = mlir::RankedTensorType::get(shape, type);
   if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
-    auto result =
+    mlir::Value result =
         b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
             tensor_type,
             mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
                         /*isSigned=*/false, /*implicitTrunc=*/true)));
-    return ScalarOrTensor(result);
+    return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(result);
   }
   if (auto float_type = mlir::dyn_cast<mlir::FloatType>(type)) {
-    auto result =
+    mlir::Value result =
         b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
             tensor_type, b.getFloatAttr(type, static_cast<double>(value))));
-    return ScalarOrTensor(result);
+    return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(result);
   }
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
 }
@@ -178,10 +172,9 @@ template <typename T>
 mlir::Value ConstLike(EmitterLocOpBuilder& b, mlir::Value like, T new_value) {
   if (auto src_shaped_ty = mlir::dyn_cast<mlir::ShapedType>(like.getType())) {
     mlir::Type src_ty = src_shaped_ty.getElementType();
-    return CreateConst(b, src_ty, new_value, src_shaped_ty.getShape())
-        .UnwrapUnsafe();
+    return CreateConst(b, src_ty, new_value, src_shaped_ty.getShape());
   }
-  return CreateConst(b, like.getType(), new_value).UnwrapUnsafe();
+  return CreateConst(b, like.getType(), new_value);
 }
 
 inline mlir::Value ZerosLike(EmitterLocOpBuilder& b, mlir::Value x) {
@@ -199,8 +192,8 @@ mlir::Value Cast(EmitterLocOpBuilder& b, mlir::Value value,
                  mlir::Type dst_element_ty);
 
 // Emits a scalar constant.
-absl::StatusOr<ScalarOrTensor> EmitConstant(EmitterLocOpBuilder& b,
-                                            const HloInstruction& constant);
+absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
+    EmitterLocOpBuilder& b, const HloInstruction& constant);
 
 bool IsSupportedElementwiseLibdeviceFunction(const HloInstruction& hlo);
 

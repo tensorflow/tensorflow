@@ -22,12 +22,12 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 TEST(WavToSpectrogramTest, WavToSpectrogramTest) {
-  const tensorflow::string input_wav =
+  const std::string input_wav =
       tensorflow::io::JoinPath(tensorflow::testing::TmpDir(), "input_wav.wav");
-  const tensorflow::string output_image = tensorflow::io::JoinPath(
+  const std::string output_image = tensorflow::io::JoinPath(
       tensorflow::testing::TmpDir(), "output_image.png");
   float audio[8] = {-1.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f};
-  tensorflow::string wav_string;
+  std::string wav_string;
   TF_ASSERT_OK(
       tensorflow::wav::EncodeAudioAsS16LEWav(audio, 44100, 1, 8, &wav_string));
   TF_ASSERT_OK(tensorflow::WriteStringToFile(tensorflow::Env::Default(),
