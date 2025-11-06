@@ -47,7 +47,7 @@ struct RecordReaderOptions {
   int64_t buffer_size = 0;
 
   static RecordReaderOptions CreateRecordReaderOptions(
-      const string& compression_type);
+      const std::string& compression_type);
 
 #if !defined(IS_SLIM_BUILD)
   // Options specific to compression.
@@ -68,8 +68,8 @@ class RecordReader {
   //  uint32    masked crc of length
   //  byte      data[length]
   //  uint32    masked crc of data
-  static constexpr size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
-  static constexpr size_t kFooterSize = sizeof(uint32);
+  static constexpr size_t kHeaderSize = sizeof(uint64_t) + sizeof(uint32_t);
+  static constexpr size_t kFooterSize = sizeof(uint32_t);
 
   // Statistics (sizes are in units of bytes)
   struct Stats {
@@ -94,14 +94,14 @@ class RecordReader {
   // Read the record at "*offset" into *record and update *offset to
   // point to the offset of the next record.  Returns OK on success,
   // OUT_OF_RANGE for end of file, or something else for an error.
-  absl::Status ReadRecord(uint64* offset, tstring* record);
+  absl::Status ReadRecord(uint64_t* offset, tstring* record);
 
   // Skip num_to_skip record starting at "*offset" and update *offset
   // to point to the offset of the next num_to_skip + 1 record.
   // Return OK on success, OUT_OF_RANGE for end of file, or something
   // else for an error. "*num_skipped" records the number of records that
   // are actually skipped. It should be equal to num_to_skip on success.
-  absl::Status SkipRecords(uint64* offset, int num_to_skip, int* num_skipped);
+  absl::Status SkipRecords(uint64_t* offset, int num_to_skip, int* num_skipped);
 
   // Return the metadata of the Record file.
   //
@@ -115,8 +115,8 @@ class RecordReader {
   absl::Status GetMetadata(Metadata* md);
 
  private:
-  absl::Status ReadChecksummed(uint64 offset, size_t n, tstring* result);
-  absl::Status PositionInputStream(uint64 offset);
+  absl::Status ReadChecksummed(uint64_t offset, size_t n, tstring* result);
+  absl::Status PositionInputStream(uint64_t offset);
 
   RecordReaderOptions options_;
   std::unique_ptr<InputStreamInterface> input_stream_;
@@ -156,11 +156,11 @@ class SequentialRecordReader {
   }
 
   // Return the current offset in the file.
-  uint64 TellOffset() { return offset_; }
+  uint64_t TellOffset() { return offset_; }
 
   // Seek to this offset within the file and set this offset as the current
   // offset. Trying to seek backward will throw error.
-  absl::Status SeekOffset(uint64 offset) {
+  absl::Status SeekOffset(uint64_t offset) {
     if (offset < offset_)
       return errors::InvalidArgument(
           "Trying to seek offset: ", offset,
@@ -171,7 +171,7 @@ class SequentialRecordReader {
 
  private:
   RecordReader underlying_;
-  uint64 offset_ = 0;
+  uint64_t offset_ = 0;
 };
 
 }  // namespace io
