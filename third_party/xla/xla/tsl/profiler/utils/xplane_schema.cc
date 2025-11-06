@@ -568,7 +568,7 @@ bool IsInternalEvent(std::optional<int64_t> event_type) {
 bool IsInternalStat(std::optional<int64_t> stat_type) {
   if (!stat_type.has_value()) return false;
   switch (*stat_type) {
-    case StatType::kKernelDetails:
+    // case StatType::kKernelDetails:  # removed for rocm gpu kernel details
     case StatType::kProducerType:
     case StatType::kProducerId:
     case StatType::kConsumerType:
