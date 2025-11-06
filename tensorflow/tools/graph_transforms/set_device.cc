@@ -23,7 +23,7 @@ namespace graph_transforms {
 absl::Status SetDevice(const GraphDef& input_graph_def,
                        const TransformFuncContext& context,
                        GraphDef* output_graph_def) {
-  string new_device;
+  std::string new_device;
   TF_RETURN_IF_ERROR(context.GetOneStringParameter("device", "", &new_device));
   bool if_default;
   TF_RETURN_IF_ERROR(

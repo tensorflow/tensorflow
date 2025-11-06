@@ -58,9 +58,9 @@ class QuantizeNodesTest : public ::testing::Test {
  protected:
   void TestTransformedVersusFloatGraph(
       const TransformFunc& transform_function, const GraphDef& float_graph_def,
-      const std::vector<std::pair<string, Tensor>>& float_inputs,
-      const std::vector<std::pair<string, Tensor>>& transformed_inputs,
-      const std::vector<string>& output_names,
+      const std::vector<std::pair<std::string, Tensor>>& float_inputs,
+      const std::vector<std::pair<std::string, Tensor>>& transformed_inputs,
+      const std::vector<std::string>& output_names,
       const TransformFuncContext& in_context, double threshold,
       GraphDef* transformed_graph_def) {
     std::unique_ptr<Session> float_session(NewSession(SessionOptions()));
@@ -70,8 +70,8 @@ class QuantizeNodesTest : public ::testing::Test {
         float_session->Run(float_inputs, output_names, {}, &float_outputs));
 
     TransformFuncContext context(in_context);
-    std::vector<string> input_names;
-    for (const std::pair<const string&, const Tensor&> float_input :
+    std::vector<std::string> input_names;
+    for (const std::pair<const std::string&, const Tensor&> float_input :
          float_inputs) {
       context.input_names.push_back(float_input.first);
     }
@@ -97,15 +97,15 @@ class QuantizeNodesTest : public ::testing::Test {
 
   void TestQuantizedVersusFloatGraph(
       const GraphDef& float_graph_def,
-      const std::vector<std::pair<string, Tensor>>& inputs,
-      const std::vector<string>& output_names) {
+      const std::vector<std::pair<std::string, Tensor>>& inputs,
+      const std::vector<std::string>& output_names) {
     GraphDef quantized_graph_def;
     TestTransformedVersusFloatGraph(QuantizeNodes, float_graph_def, inputs,
                                     inputs, output_names, {}, 1.0,
                                     &quantized_graph_def);
     // Reshape is not included here because it can be added as part of the
     // quantization process.
-    const std::set<string> quantizable_ops = {
+    const std::set<std::string> quantizable_ops = {
         "Add",   "BiasAdd",        "Concat",  "Conv2D",  "MatMul", "Relu",
         "Relu6", "ResizeBilinear", "AvgPool", "MaxPool", "Mul"};
     for (const NodeDef& node : quantized_graph_def.node()) {
@@ -117,15 +117,15 @@ class QuantizeNodesTest : public ::testing::Test {
 
   void TestGraphWithInputRange(
       const GraphDef& float_graph_def,
-      const std::vector<std::pair<string, Tensor>>& float_inputs,
-      const std::vector<string>& output_names, float range_min,
+      const std::vector<std::pair<std::string, Tensor>>& float_inputs,
+      const std::vector<std::string>& output_names, float range_min,
       float range_max) {
     TransformFuncContext context;
     context.params["input_min"] = {absl::StrCat(range_min)};
     context.params["input_max"] = {absl::StrCat(range_max)};
 
-    std::vector<std::pair<string, Tensor>> quantized_inputs;
-    for (const std::pair<string, Tensor>& float_input : float_inputs) {
+    std::vector<std::pair<std::string, Tensor>> quantized_inputs;
+    for (const std::pair<std::string, Tensor>& float_input : float_inputs) {
       const Tensor& float_tensor = float_input.second;
       Tensor quantized_tensor(DT_QUINT8, float_tensor.shape());
       FloatTensorToQuantizedInPlace<quint8>(float_tensor, range_min, range_max,
@@ -141,9 +141,9 @@ class QuantizeNodesTest : public ::testing::Test {
 
   void TestGraphWithFallbackRange(
       const GraphDef& float_graph_def,
-      const std::vector<std::pair<string, Tensor>>& float_inputs,
-      const std::vector<string>& output_names, float range_min, float range_max,
-      GraphDef* quantized_graph_def) {
+      const std::vector<std::pair<std::string, Tensor>>& float_inputs,
+      const std::vector<std::string>& output_names, float range_min,
+      float range_max, GraphDef* quantized_graph_def) {
     TransformFuncContext context;
     context.params["fallback_min"] = {absl::StrCat(range_min)};
     context.params["fallback_max"] = {absl::StrCat(range_max)};
@@ -152,12 +152,12 @@ class QuantizeNodesTest : public ::testing::Test {
                                     context, 2.0, quantized_graph_def);
   }
 
-  void TestIgnoreOps(std::initializer_list<string> ops_to_ignore) {
+  void TestIgnoreOps(std::initializer_list<std::string> ops_to_ignore) {
     auto root = tensorflow::Scope::NewRootScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
     // A small helper to construct a Const op.
-    auto const_op = [&](const string& name, const TensorShape& shape,
+    auto const_op = [&](const std::string& name, const TensorShape& shape,
                         std::initializer_list<float> values) {
       Tensor tensor(DT_FLOAT, shape);
       test::FillValues<float>(&tensor, values);
@@ -190,7 +190,7 @@ class QuantizeNodesTest : public ::testing::Test {
 
     // Make sure the quantized graph still contains the op that should have
     // been ignored by QuantizeNodes.
-    for (const string& op_name : ops_to_ignore) {
+    for (const std::string& op_name : ops_to_ignore) {
       bool exists_in_quantized_graph = false;
       for (const NodeDef& node : quantized_graph_def.node()) {
         if (node.op() == op_name) {
@@ -314,7 +314,8 @@ class QuantizeNodesTest : public ::testing::Test {
 
   void TestQuantizeConv2D(int depth, int input_width, int input_height,
                           int input_batch_count, int filter_size,
-                          int filter_count, int stride, const string& padding,
+                          int filter_count, int stride,
+                          const std::string& padding,
                           const std::vector<float>& input_values,
                           const std::vector<float>& filter_values) {
     auto root = tensorflow::Scope::NewRootScope();
@@ -369,7 +370,7 @@ class QuantizeNodesTest : public ::testing::Test {
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
     Tensor shape_tensor(DT_INT32, TensorShape({}));
-    test::FillValues<int32>(&shape_tensor, {0});
+    test::FillValues<int32_t>(&shape_tensor, {0});
     Output shape_op =
         Const(root.WithOpName("shape_op"), Input::Initializer(shape_tensor));
 
@@ -509,13 +510,13 @@ class QuantizeNodesTest : public ::testing::Test {
                    quantized_min_op, quantized_max_op);
 
     Tensor dequantize_reshape_dims_tensor(DT_INT32, TensorShape({1}));
-    test::FillValues<int32>(&dequantize_reshape_dims_tensor, {-1});
+    test::FillValues<int32_t>(&dequantize_reshape_dims_tensor, {-1});
     Output dequantize_reshape_dims =
         Const(root.WithOpName("dequantize_reshape_dims"),
               Input::Initializer(dequantize_reshape_dims_tensor));
 
     Tensor dequantize_reduction_dims_tensor(DT_INT32, TensorShape({}));
-    test::FillValues<int32>(&dequantize_reduction_dims_tensor, {0});
+    test::FillValues<int32_t>(&dequantize_reduction_dims_tensor, {0});
     Output dequantize_reduction_dims =
         Const(root.WithOpName("dequantize_reduction_dims"),
               Input::Initializer(dequantize_reduction_dims_tensor));
@@ -547,7 +548,7 @@ class QuantizeNodesTest : public ::testing::Test {
         RemoveRedundantQuantizations, float_graph_def, {}, {},
         {"final_dequantize"}, {}, 1.0, &removed_graph_def);
 
-    std::map<string, const NodeDef*> node_map;
+    std::map<std::string, const NodeDef*> node_map;
     MapNamesToNodes(removed_graph_def, &node_map);
     EXPECT_EQ(1, node_map.count("final_dequantize"));
     EXPECT_EQ("quantized_op", node_map.at("final_dequantize")->input(0));
@@ -608,13 +609,13 @@ class QuantizeNodesTest : public ::testing::Test {
                    requantize_op.output_min, requantize_op.output_max);
 
     Tensor dequantize_reshape_dims_tensor(DT_INT32, TensorShape({1}));
-    test::FillValues<int32>(&dequantize_reshape_dims_tensor, {-1});
+    test::FillValues<int32_t>(&dequantize_reshape_dims_tensor, {-1});
     Output dequantize_reshape_dims =
         Const(root.WithOpName("dequantize_reshape_dims"),
               Input::Initializer(dequantize_reshape_dims_tensor));
 
     Tensor dequantize_reduction_dims_tensor(DT_INT32, TensorShape({}));
-    test::FillValues<int32>(&dequantize_reduction_dims_tensor, {0});
+    test::FillValues<int32_t>(&dequantize_reduction_dims_tensor, {0});
     Output dequantize_reduction_dims =
         Const(root.WithOpName("dequantize_reduction_dims"),
               Input::Initializer(dequantize_reduction_dims_tensor));
@@ -646,7 +647,7 @@ class QuantizeNodesTest : public ::testing::Test {
         RemoveRedundantQuantizations, float_graph_def, {}, {},
         {"final_dequantize"}, {}, 1.0, &removed_graph_def);
 
-    std::map<string, const NodeDef*> node_map;
+    std::map<std::string, const NodeDef*> node_map;
     MapNamesToNodes(removed_graph_def, &node_map);
     EXPECT_EQ(1, node_map.count("final_dequantize"));
     EXPECT_EQ("requantize_op", node_map.at("final_dequantize")->input(0));
@@ -657,7 +658,7 @@ class QuantizeNodesTest : public ::testing::Test {
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
     Tensor size_tensor(DT_INT32, TensorShape({2}));
-    test::FillValues<int32>(&size_tensor, {256, 256});
+    test::FillValues<int32_t>(&size_tensor, {256, 256});
 
     Output constant_op = Const(root.WithOpName("size_tensor_op"),
                                Input::Initializer(size_tensor));
@@ -734,13 +735,13 @@ class QuantizeNodesTest : public ::testing::Test {
                    requantize_op.output_min, requantize_op.output_max);
 
     Tensor dequantize_reshape_dims_tensor(DT_INT32, TensorShape({1}));
-    test::FillValues<int32>(&dequantize_reshape_dims_tensor, {-1});
+    test::FillValues<int32_t>(&dequantize_reshape_dims_tensor, {-1});
     Output dequantize_reshape_dims =
         Const(root.WithOpName("dequantize_reshape_dims"),
               Input::Initializer(dequantize_reshape_dims_tensor));
 
     Tensor dequantize_reduction_dims_tensor(DT_INT32, TensorShape({}));
-    test::FillValues<int32>(&dequantize_reduction_dims_tensor, {0});
+    test::FillValues<int32_t>(&dequantize_reduction_dims_tensor, {0});
     Output dequantize_reduction_dims =
         Const(root.WithOpName("dequantize_reduction_dims"),
               Input::Initializer(dequantize_reduction_dims_tensor));
@@ -774,7 +775,7 @@ class QuantizeNodesTest : public ::testing::Test {
         RemoveRedundantQuantizations, float_graph_def, {}, {},
         {"final_dequantize", "relu_op"}, {}, 1.0, &removed_graph_def);
 
-    std::map<string, int> op_type_count;
+    std::map<std::string, int> op_type_count;
     for (const NodeDef& node : removed_graph_def.node()) {
       ++op_type_count[node.op()];
     }
@@ -808,7 +809,7 @@ class QuantizeNodesTest : public ::testing::Test {
     TestQuantizedVersusFloatGraph(
         float_graph_def, {{"placeholder_op", input_tensor}}, {"relu_op"});
 
-    std::map<string, const NodeDef*> node_map;
+    std::map<std::string, const NodeDef*> node_map;
     MapNamesToNodes(quantized_graph_def, &node_map);
     EXPECT_NE("placeholder_op", node_map.at("relu_op")->input(0));
     EXPECT_EQ("Placeholder", node_map.at("placeholder_op")->op());
@@ -1117,7 +1118,7 @@ class QuantizeNodesTest : public ::testing::Test {
                                     {"fake_quant_op"}, {}, 1.0,
                                     &converted_graph_def);
 
-    std::map<string, const NodeDef*> node_map;
+    std::map<std::string, const NodeDef*> node_map;
     MapNamesToNodes(converted_graph_def, &node_map);
     EXPECT_EQ("MaxPool", node_map.at("fake_quant_op")->op());
     EXPECT_EQ("FakeQuantWithMinMaxVars",
@@ -1148,13 +1149,13 @@ class QuantizeNodesTest : public ::testing::Test {
                    quantized_min_op, quantized_max_op);
 
     Tensor quantize_reshape_dims1_tensor(DT_INT32, TensorShape({1}));
-    test::FillValues<int32>(&quantize_reshape_dims1_tensor, {-1});
+    test::FillValues<int32_t>(&quantize_reshape_dims1_tensor, {-1});
     Output quantize_reshape_dims1 =
         Const(root.WithOpName("dequantize_reshape_dims1"),
               Input::Initializer(quantize_reshape_dims1_tensor));
 
     Tensor quantize_reduction_dims1_tensor(DT_INT32, TensorShape({}));
-    test::FillValues<int32>(&quantize_reduction_dims1_tensor, {0});
+    test::FillValues<int32_t>(&quantize_reduction_dims1_tensor, {0});
     Output quantize_reduction_dims1 =
         Const(root.WithOpName("quantize_reduction_dims1"),
               Input::Initializer(quantize_reduction_dims1_tensor));
@@ -1175,13 +1176,13 @@ class QuantizeNodesTest : public ::testing::Test {
                             QuantizeV2::Attrs().Mode("MIN_FIRST"));
 
     Tensor quantize_reshape_dims2_tensor(DT_INT32, TensorShape({1}));
-    test::FillValues<int32>(&quantize_reshape_dims2_tensor, {-1});
+    test::FillValues<int32_t>(&quantize_reshape_dims2_tensor, {-1});
     Output quantize_reshape_dims2 =
         Const(root.WithOpName("dequantize_reshape_dims2"),
               Input::Initializer(quantize_reshape_dims2_tensor));
 
     Tensor quantize_reduction_dims2_tensor(DT_INT32, TensorShape({}));
-    test::FillValues<int32>(&quantize_reduction_dims2_tensor, {0});
+    test::FillValues<int32_t>(&quantize_reduction_dims2_tensor, {0});
     Output quantize_reduction_dims2 =
         Const(root.WithOpName("quantize_reduction_dims2"),
               Input::Initializer(quantize_reduction_dims2_tensor));
@@ -1219,7 +1220,7 @@ class QuantizeNodesTest : public ::testing::Test {
     TestTransformedVersusFloatGraph(MergeDuplicateNodes, float_graph_def, {},
                                     {}, {"add_op"}, {}, 1.0, &merged_graph_def);
 
-    std::map<string, int> op_map;
+    std::map<std::string, int> op_map;
     for (const NodeDef& node : merged_graph_def.node()) {
       ++op_map[node.op()];
     }
@@ -1255,10 +1256,10 @@ class QuantizeNodesTest : public ::testing::Test {
     TestTransformedVersusFloatGraph(MergeDuplicateNodes, float_graph_def, {},
                                     {}, {"mul_op"}, {}, 1.0, &merged_graph_def);
 
-    std::map<string, const NodeDef*> node_map;
+    std::map<std::string, const NodeDef*> node_map;
     MapNamesToNodes(merged_graph_def, &node_map);
     EXPECT_EQ(1, (node_map.count("a_op") + node_map.count("b_op")));
-    string remaining_const;
+    std::string remaining_const;
     if (node_map.count("a_op")) {
       remaining_const = "a_op";
     } else {
@@ -1304,11 +1305,11 @@ class QuantizeNodesTest : public ::testing::Test {
     TestTransformedVersusFloatGraph(MergeDuplicateNodes, float_graph_def, {},
                                     {}, {"mul_op"}, {}, 1.0, &merged_graph_def);
 
-    std::map<string, const NodeDef*> node_map;
+    std::map<std::string, const NodeDef*> node_map;
     MapNamesToNodes(merged_graph_def, &node_map);
     EXPECT_EQ(1, (node_map.count("a_op") + node_map.count("b_op")));
     EXPECT_EQ(1, (node_map.count("a_relu_op") + node_map.count("b_relu_op")));
-    string remaining_relu;
+    std::string remaining_relu;
     if (node_map.count("a_relu_op")) {
       remaining_relu = "a_relu_op";
     } else {
@@ -1361,7 +1362,7 @@ class QuantizeNodesTest : public ::testing::Test {
                                     {"mul_op1", "final_mul_op"}, {}, 1.0,
                                     &merged_graph_def);
 
-    std::map<string, const NodeDef*> node_map;
+    std::map<std::string, const NodeDef*> node_map;
     MapNamesToNodes(merged_graph_def, &node_map);
     EXPECT_EQ(1, node_map.count("a_op"));
     EXPECT_EQ(1, node_map.count("b_op"));
@@ -1370,7 +1371,7 @@ class QuantizeNodesTest : public ::testing::Test {
     EXPECT_EQ(1, node_map.count("mul_op1"));
     EXPECT_EQ(1, node_map.count("final_mul_op"));
     EXPECT_EQ(1, (node_map.count("mul_op2") + node_map.count("mul_op3")));
-    string remaining_mul;
+    std::string remaining_mul;
     if (node_map.count("mul_op2")) {
       remaining_mul = "mul_op2";
     } else {
@@ -1388,7 +1389,7 @@ class QuantizeNodesTest : public ::testing::Test {
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
     Tensor int_constant_tensor(DT_INT32, TensorShape({4, 5}));
-    test::FillIota<int32>(&int_constant_tensor, 1);
+    test::FillIota<int32_t>(&int_constant_tensor, 1);
     Output int_constant = Const(root.WithOpName("int_constant"),
                                 Input::Initializer(int_constant_tensor));
 
@@ -1421,7 +1422,7 @@ class QuantizeNodesTest : public ::testing::Test {
         {"excluded_float_caster", "included_relu_op"}, {}, 1.0,
         &quantized_graph_def);
 
-    std::map<string, const NodeDef*> node_map;
+    std::map<std::string, const NodeDef*> node_map;
     MapNamesToNodes(quantized_graph_def, &node_map);
     ASSERT_EQ(1, node_map.count("excluded_reshape_op"));
     EXPECT_EQ("Reshape", node_map.at("excluded_reshape_op")->op());

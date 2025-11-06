@@ -30,29 +30,29 @@ namespace graph_transforms {
 absl::Status InsertLogging(const GraphDef& input_graph_def,
                            const TransformFuncContext& context,
                            GraphDef* output_graph_def) {
-  std::unordered_set<string> ops;
+  std::unordered_set<std::string> ops;
   bool has_ops;
   if (context.params.count("op")) {
     has_ops = true;
-    for (const string& op : context.params.at("op")) {
+    for (const std::string& op : context.params.at("op")) {
       ops.insert(op);
     }
   } else {
     has_ops = false;
   }
 
-  std::unordered_set<string> prefixes;
+  std::unordered_set<std::string> prefixes;
   bool has_prefixes;
   if (context.params.count("prefix")) {
     has_prefixes = true;
-    for (const string& prefix : context.params.at("prefix")) {
+    for (const std::string& prefix : context.params.at("prefix")) {
       prefixes.insert(prefix);
     }
   } else {
     has_prefixes = false;
   }
 
-  string message;
+  std::string message;
   TF_RETURN_IF_ERROR(context.GetOneStringParameter("message", "", &message));
 
   bool show_name;
@@ -69,15 +69,16 @@ absl::Status InsertLogging(const GraphDef& input_graph_def,
   TF_RETURN_IF_ERROR(
       context.GetOneInt32Parameter("summarize", 1024, &summarize));
 
-  std::unordered_map<string, std::set<int>> node_outputs;
+  std::unordered_map<std::string, std::set<int>> node_outputs;
   for (const NodeDef& node : input_graph_def.node()) {
-    for (const string& input : node.input()) {
-      const string canonical_input = CanonicalInputName(input);
-      string prefix;
-      string name;
-      string suffix;
+    for (const std::string& input : node.input()) {
+      const std::string canonical_input = CanonicalInputName(input);
+      std::string prefix;
+      std::string name;
+      std::string suffix;
       NodeNamePartsFromInput(canonical_input, &prefix, &name, &suffix);
-      const string output_index_string = suffix.substr(1, suffix.size() - 1);
+      const std::string output_index_string =
+          suffix.substr(1, suffix.size() - 1);
       int32_t output_index;
       if (!absl::SimpleAtoi(output_index_string, &output_index)) {
         return errors::InvalidArgument("Couldn't understand output number in ",
@@ -87,8 +88,8 @@ absl::Status InsertLogging(const GraphDef& input_graph_def,
     }
   }
 
-  std::map<string, string> inputs_to_rename;
-  std::unordered_set<string> ignore_when_renaming;
+  std::map<std::string, std::string> inputs_to_rename;
+  std::unordered_set<std::string> ignore_when_renaming;
   GraphDef logged_graph_def;
   for (const NodeDef& node : input_graph_def.node()) {
     NodeDef* new_node = logged_graph_def.mutable_node()->Add();
@@ -99,7 +100,7 @@ absl::Status InsertLogging(const GraphDef& input_graph_def,
     }
     const bool op_matches = (ops.count(node.op()) > 0);
     bool prefix_matches = false;
-    for (const string& prefix : prefixes) {
+    for (const std::string& prefix : prefixes) {
       if (absl::StartsWith(node.name(), prefix)) {
         prefix_matches = true;
       }
@@ -107,14 +108,14 @@ absl::Status InsertLogging(const GraphDef& input_graph_def,
     // If we're not looking for ops, or we found the right op, and if we're not
     // looking for prefixes or we found the right prefix, then add logging here.
     if ((!has_ops || op_matches) && (!has_prefixes || prefix_matches)) {
-      const string name_suffix = "__print__";
+      const std::string name_suffix = "__print__";
       DataTypeVector input_types;
       DataTypeVector output_types;
       TF_RETURN_IF_ERROR(GetInOutTypes(node, &input_types, &output_types));
       NodeDef* print_node = logged_graph_def.mutable_node()->Add();
       print_node->set_op("Print");
       print_node->set_name(absl::StrCat(node.name(), name_suffix));
-      string node_message;
+      std::string node_message;
       if (show_op) {
         node_message += ";" + node.op() + ";";
       }

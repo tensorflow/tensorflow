@@ -30,23 +30,23 @@ namespace graph_transforms {
 absl::Status ObfuscateNames(const GraphDef& input_graph_def,
                             const TransformFuncContext& context,
                             GraphDef* output_graph_def) {
-  std::unordered_set<string> required_nodes;
-  for (const string& input : context.input_names) {
+  std::unordered_set<std::string> required_nodes;
+  for (const std::string& input : context.input_names) {
     required_nodes.insert(input);
   }
-  for (const string& output : context.output_names) {
+  for (const std::string& output : context.output_names) {
     required_nodes.insert(output);
   }
 
-  const string valid_chars =
+  const std::string valid_chars =
       "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const int64_t chars_size = valid_chars.size();
 
-  std::map<string, string> new_names;
+  std::map<std::string, std::string> new_names;
   int64_t name_index = 0;
   for (const NodeDef& input_node : input_graph_def.node()) {
-    const string& old_name = input_node.name();
-    string new_name;
+    const std::string& old_name = input_node.name();
+    std::string new_name;
     if (required_nodes.count(old_name)) {
       new_name = old_name;
     } else {
@@ -72,19 +72,19 @@ absl::Status ObfuscateNames(const GraphDef& input_graph_def,
   for (const NodeDef& input_node : input_graph_def.node()) {
     NodeDef* node = output_graph_def->mutable_node()->Add();
     *node = input_node;
-    const string& old_name = input_node.name();
+    const std::string& old_name = input_node.name();
     node->set_name(new_names[old_name]);
     node->mutable_input()->Clear();
-    for (const string& input_name : input_node.input()) {
-      string prefix;
-      string input_node_name;
-      string suffix;
+    for (const std::string& input_name : input_node.input()) {
+      std::string prefix;
+      std::string input_node_name;
+      std::string suffix;
       NodeNamePartsFromInput(input_name, &prefix, &input_node_name, &suffix);
       if (new_names.count(input_node_name) == 0) {
         return errors::InvalidArgument("No node named ", input_node_name,
                                        " for input to ", old_name);
       }
-      string new_input_name = prefix + new_names[input_node_name] + suffix;
+      std::string new_input_name = prefix + new_names[input_node_name] + suffix;
       *(node->mutable_input()->Add()) = new_input_name;
     }
   }

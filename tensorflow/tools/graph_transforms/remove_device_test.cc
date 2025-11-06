@@ -82,7 +82,7 @@ class RemoveDeviceTest : public ::testing::Test {
     context.output_names = {"mul_node1"};
     TF_ASSERT_OK(RemoveDevice(graph_def, context, &result));
 
-    std::map<string, const NodeDef*> node_lookup;
+    std::map<std::string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
     EXPECT_EQ("", node_lookup.at("mul_node1")->device());
     EXPECT_EQ("", node_lookup.at("add_node2")->device());

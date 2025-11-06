@@ -45,8 +45,8 @@ absl::Status FoldBatchNorms(const GraphDef& input_graph_def,
           {"Const"},         // mul_values_node
         }
       },  // clang-format on
-      [](const NodeMatch& match, const std::set<string>& input_nodes,
-         const std::set<string>& output_nodes,
+      [](const NodeMatch& match, const std::set<std::string>& input_nodes,
+         const std::set<std::string>& output_nodes,
          std::vector<NodeDef>* new_nodes) {
         // Find all the nodes we expect in the subgraph.
         const NodeDef& mul_node = match.node;

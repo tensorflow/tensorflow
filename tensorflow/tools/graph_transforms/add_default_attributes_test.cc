@@ -53,7 +53,7 @@ class AddDefaultAttributesTest : public ::testing::Test {
     GraphDef result;
     TF_ASSERT_OK(AddDefaultAttributes(graph_def, {}, &result));
 
-    std::map<string, const NodeDef*> nodes;
+    std::map<std::string, const NodeDef*> nodes;
     MapNamesToNodes(result, &nodes);
     EXPECT_EQ(5, nodes.at("lrn_node1")->attr().at("depth_radius").i());
     EXPECT_NEAR(1.0f, nodes.at("lrn_node1")->attr().at("bias").f(), 1e-5f);

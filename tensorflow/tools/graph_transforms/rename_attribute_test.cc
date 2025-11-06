@@ -83,15 +83,15 @@ class RenameAttributeTest : public ::testing::Test {
     TransformFuncContext context;
     context.input_names = {};
     context.output_names = {"mul_node1"};
-    context.params.insert(
-        std::pair<string, std::vector<string>>({"op_name", {string("*")}}));
-    context.params.insert(std::pair<string, std::vector<string>>(
-        {"old_attribute_name", {string("foo")}}));
-    context.params.insert(std::pair<string, std::vector<string>>(
-        {"new_attribute_name", {string("baz")}}));
+    context.params.insert(std::pair<std::string, std::vector<std::string>>(
+        {"op_name", {std::string("*")}}));
+    context.params.insert(std::pair<std::string, std::vector<std::string>>(
+        {"old_attribute_name", {std::string("foo")}}));
+    context.params.insert(std::pair<std::string, std::vector<std::string>>(
+        {"new_attribute_name", {std::string("baz")}}));
     TF_ASSERT_OK(RenameAttribute(graph_def, context, &wildcard_result));
 
-    std::map<string, const NodeDef*> node_lookup;
+    std::map<std::string, const NodeDef*> node_lookup;
     MapNamesToNodes(wildcard_result, &node_lookup);
     EXPECT_EQ(0, node_lookup.at("mul_node1")->attr().count("foo"));
     EXPECT_EQ(1, node_lookup.at("mul_node1")->attr().count("baz"));
@@ -106,11 +106,14 @@ class RenameAttributeTest : public ::testing::Test {
     targeted_context.input_names = {};
     targeted_context.output_names = {"mul_node1"};
     targeted_context.params.insert(
-        std::pair<string, std::vector<string>>({"op_name", {string("Mul")}}));
-    targeted_context.params.insert(std::pair<string, std::vector<string>>(
-        {"old_attribute_name", {string("foo")}}));
-    targeted_context.params.insert(std::pair<string, std::vector<string>>(
-        {"new_attribute_name", {string("baz")}}));
+        std::pair<std::string, std::vector<std::string>>(
+            {"op_name", {std::string("Mul")}}));
+    targeted_context.params.insert(
+        std::pair<std::string, std::vector<std::string>>(
+            {"old_attribute_name", {std::string("foo")}}));
+    targeted_context.params.insert(
+        std::pair<std::string, std::vector<std::string>>(
+            {"new_attribute_name", {std::string("baz")}}));
     TF_ASSERT_OK(
         RenameAttribute(graph_def, targeted_context, &targeted_result));
 
