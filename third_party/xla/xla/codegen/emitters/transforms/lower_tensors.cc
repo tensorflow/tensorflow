@@ -62,6 +62,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
