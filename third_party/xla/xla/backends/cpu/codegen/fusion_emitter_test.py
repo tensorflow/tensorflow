@@ -55,6 +55,7 @@ class LoopFusionTest(parameterized.TestCase):
     mlir_context = testlib_cpu.MLIRContext()
     symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
     kernel_definition = testlib_cpu.emit_fusion_kernel(
+        mlir_context,
         symbolic_expr_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
@@ -116,6 +117,7 @@ class LoopFusionTest(parameterized.TestCase):
     mlir_context = testlib_cpu.MLIRContext()
     symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
     kernel_definition = testlib_cpu.emit_fusion_kernel(
+        mlir_context,
         symbolic_expr_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
@@ -172,6 +174,7 @@ class LoopFusionTest(parameterized.TestCase):
     mlir_context = testlib_cpu.MLIRContext()
     symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
     kernel_definition = testlib_cpu.emit_fusion_kernel(
+        mlir_context,
         symbolic_expr_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
@@ -225,6 +228,7 @@ class LoopFusionTest(parameterized.TestCase):
     mlir_context = testlib_cpu.MLIRContext()
     symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
     kernel_definition = testlib_cpu.emit_fusion_kernel(
+        mlir_context,
         symbolic_expr_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
@@ -275,6 +279,7 @@ class FusionEmitterTest(parameterized.TestCase):
     mlir_context = testlib_cpu.MLIRContext()
     symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
     kernel_definition = testlib_cpu.emit_fusion_kernel(
+        mlir_context,
         symbolic_expr_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,

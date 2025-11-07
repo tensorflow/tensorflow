@@ -172,7 +172,8 @@ absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
   auto compiler_instance = fusion_compiler_pool_->GetInstance();
   TF_ASSIGN_OR_RETURN(
       KernelDefinition mlir_kernel_definition,
-      EmitFusionKernel(*compiler_instance->symbolic_expr_context, *fusion,
+      EmitFusionKernel(*compiler_instance->mlir_context,
+                       *compiler_instance->symbolic_expr_context, *fusion,
                        buffer_assignment_, use_unique_c_name_));
 
   {

@@ -203,11 +203,11 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   kernel_runner_module.def(
       "emit_fusion_kernel",
-      [](SymbolicExprContext& symbolic_expr_context,
+      [](mlir::MLIRContext& mlir_context, SymbolicExprContext& expr_context,
          const HloFusionInstruction& fusion,
          const BufferAssignment* buffer_assignment) {
-        auto kernel_definition = EmitFusionKernel(symbolic_expr_context, fusion,
-                                                  buffer_assignment, false);
+        auto kernel_definition = EmitFusionKernel(
+            mlir_context, expr_context, fusion, buffer_assignment, false);
         if (!kernel_definition.ok()) {
           throw std::runtime_error(kernel_definition.status().ToString());
         }

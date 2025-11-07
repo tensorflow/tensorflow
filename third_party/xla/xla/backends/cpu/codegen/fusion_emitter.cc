@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
@@ -63,6 +64,8 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla::cpu {
+
+using ::mlir::MLIRContext;
 
 static absl::StatusOr<std::string> GetName(const HloFusionInstruction& fusion,
                                            bool use_unique_c_name) {
@@ -279,15 +282,16 @@ EmitDynamicUpdateSliceFusionKernel(SymbolicExprContext& context,
 }
 
 absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
-    SymbolicExprContext& context, const HloFusionInstruction& fusion,
+    MLIRContext& mlir_context, SymbolicExprContext& expr_context,
+    const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, bool use_unique_c_name) {
   if (fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
     TF_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
     const HloInstruction& hero =
         FindNonTrivialHero(*fusion.fused_expression_root());
     if (hero.opcode() == HloOpcode::kConcatenate) {
-      return EmitConcatenateFusionKernel(context, fusion, buffer_assignment,
-                                         name);
+      return EmitConcatenateFusionKernel(expr_context, fusion,
+                                         buffer_assignment, name);
     }
     auto fusion_spec = GetLoopFusionSpec(fusion);
     if (IsDynamicUpdateSliceFusion(fusion_spec)) {
@@ -296,11 +300,11 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
           CanEmitFusedDynamicUpdateSliceInPlace(fusion_spec.fusion(),
                                                 buffer_assignment, &fusion));
       if (dus_inplace) {
-        return EmitDynamicUpdateSliceFusionKernel(context, fusion,
+        return EmitDynamicUpdateSliceFusionKernel(expr_context, fusion,
                                                   buffer_assignment, name);
       }
     }
-    return EmitLoopFusionKernel(context, fusion, buffer_assignment, name);
+    return EmitLoopFusionKernel(expr_context, fusion, buffer_assignment, name);
   }
 
   return absl::UnimplementedError("Fusion kind not supported.");

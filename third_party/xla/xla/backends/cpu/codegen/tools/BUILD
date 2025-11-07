@@ -82,7 +82,6 @@ xla_cc_binary(
     deps = [
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/backends/cpu/codegen:fusion_emitter",
-        "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/tools:test_lib",
         "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
