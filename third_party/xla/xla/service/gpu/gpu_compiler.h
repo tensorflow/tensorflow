@@ -139,6 +139,10 @@ class GpuCompiler : public LLVMCompiler {
       AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
       bool is_rocm);
 
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutableFromAotResult(
+      const AotCompilationResult& aot_result,
+      const se::StreamExecutor& stream_exec) override;
+
  protected:
   struct BackendCompileResult {
     std::string asm_text;

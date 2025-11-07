@@ -1633,6 +1633,7 @@ cc_library(
         ":ir_emitter_context",
         ":ir_emitter_unnested",
         ":kernel_reuse_cache",
+        ":legacy_gpu_aot_compilation_result",
         ":matmul_utils",
         ":metrics",
         ":pre_scheduling_copy_insertion_pipeline",
@@ -1994,6 +1995,34 @@ xla_test(
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:regexp",
+    ],
+)
+
+cc_library(
+    name = "legacy_gpu_aot_compilation_result",
+    srcs = ["legacy_gpu_aot_compilation_result.cc"],
+    hdrs = ["legacy_gpu_aot_compilation_result.h"],
+    # Explicitely restrict the visibility since this is an internal implementation detail of the
+    # gpu_compiler.
+    visibility = [],
+    deps = [
+        ":executable_proto_cc",
+        ":gpu_executable",
+        ":gpu_latency_hiding_scheduler",
+        ":ir_emission_utils",
+        "//xla:util",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service:buffer_value",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
