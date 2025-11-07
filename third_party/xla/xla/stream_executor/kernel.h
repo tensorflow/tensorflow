@@ -92,40 +92,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 
 namespace stream_executor {
 
 //===----------------------------------------------------------------------===//
-// Kernel metadata
-//===----------------------------------------------------------------------===//
-
-// KernelMetadata holds runtime-queryable attributes of a loaded kernel, such as
-// registers allocated, shared memory used, etc.
-// Not all platforms support reporting of all information, so each accessor
-// returns false if the associated field is not populated in the underlying
-// platform.
-class KernelMetadata {
- public:
-  KernelMetadata() = default;
-
-  // Returns the number of registers used per thread executing this kernel.
-  std::optional<int64_t> registers_per_thread() const;
-
-  // Returns the amount of [static] shared memory used per block executing this
-  // kernel. Note that dynamic shared memory allocations are not (and can not)
-  // be reported here (since they're not specified until kernel launch time).
-  std::optional<int64_t> shared_memory_bytes() const;
-
-  void set_registers_per_thread(int registers_per_thread);
-  void set_shared_memory_bytes(int shared_memory_bytes);
-
- private:
-  std::optional<int64_t> registers_per_thread_;
-  std::optional<int64_t> shared_memory_bytes_;
-};
-
 //===----------------------------------------------------------------------===//
 // Kernel arguments
 //===----------------------------------------------------------------------===//
