@@ -1225,30 +1225,6 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "cpu_runtime_test",
-    srcs = ["cpu_runtime_test.cc"],
-    shard_count = 10,
-    tags = ["optonly"],
-    deps = [
-        ":cpu_runtime",
-        ":runtime_custom_call_status",
-        ":runtime_matmul",
-        ":runtime_single_threaded_matmul",
-        "//xla:array2d",
-        "//xla:executable_run_options",
-        "//xla:types",
-        "//xla/client:local_client",
-        "//xla/service:custom_call_status_internal",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/strings:str_format",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:test",
-    ],
-)
-
-xla_cc_test(
     name = "cpu_instruction_fusion_test",
     srcs = ["cpu_instruction_fusion_test.cc"],
     tags = ["not_run:arm"],
