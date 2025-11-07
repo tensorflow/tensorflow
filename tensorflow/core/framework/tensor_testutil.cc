@@ -279,6 +279,8 @@ void ExpectEqual(const Tensor& x, const Tensor& y, Tolerance t) {
       return ExpectEqual<float8_e4m3b11fnuz>(x, y, t);
     case DT_FLOAT8_E5M2FNUZ:
       return ExpectEqual<float8_e5m2fnuz>(x, y, t);
+    case DT_FLOAT4_E2M1FN:
+      return ExpectEqual<float4_e2m1fn>(x, y, t);
     case DT_INT4:
       return ExpectEqual<int4>(x, y, t);
     case DT_UINT4:

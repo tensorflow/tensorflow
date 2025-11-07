@@ -479,6 +479,19 @@ tf_export(
     "dtypes.experimental.float8_e5m2fnuz", "experimental.float8_e5m2fnuz"
 ).export_constant(__name__, "float8_e5m2fnuz")
 
+float4_e2m1fn = DType(types_pb2.DT_FLOAT4_E2M1FN)
+doc_typealias.document(
+    obj=float4_e2m1fn,
+    doc=(
+        "4-bit float with 2 exponent bits and 1 mantissa bits, with extended"
+        " finite range.  This type has no representation for both inf and NaN."
+    ),
+)
+tf_export(
+    "dtypes.experimental.float4_e2m1fn", "experimental.float4_e2m1fn"
+).export_constant(__name__, "float4_e2m1fn")
+
+
 int4 = DType(types_pb2.DT_INT4)
 doc_typealias.document(obj=int4, doc="Signed 4-bit integer.")
 tf_export("dtypes.experimental.int4", "experimental.int4").export_constant(
@@ -533,6 +546,7 @@ float8_e4m3fn_ref = DType(types_pb2.DT_FLOAT8_E4M3FN_REF)
 float8_e4m3fnuz_ref = DType(types_pb2.DT_FLOAT8_E4M3FNUZ_REF)
 float8_e4m3b11fnuz_ref = DType(types_pb2.DT_FLOAT8_E4M3B11FNUZ_REF)
 float8_e5m2fnuz_ref = DType(types_pb2.DT_FLOAT8_E5M2FNUZ_REF)
+float4_e2m1fn_ref = DType(types_pb2.DT_FLOAT4_E2M1FN_REF)
 int4_ref = DType(types_pb2.DT_INT4_REF)
 uint4_ref = DType(types_pb2.DT_UINT4_REF)
 int2_ref = DType(types_pb2.DT_INT2_REF)
@@ -567,6 +581,7 @@ _INTERN_TABLE = {
     types_pb2.DT_FLOAT8_E4M3FNUZ: float8_e4m3fnuz,
     types_pb2.DT_FLOAT8_E4M3B11FNUZ: float8_e4m3b11fnuz,
     types_pb2.DT_FLOAT8_E5M2FNUZ: float8_e5m2fnuz,
+    types_pb2.DT_FLOAT4_E2M1FN: float4_e2m1fn,
     types_pb2.DT_INT4: int4,
     types_pb2.DT_UINT4: uint4,
     types_pb2.DT_INT2: int2,
@@ -599,6 +614,7 @@ _INTERN_TABLE = {
     types_pb2.DT_FLOAT8_E4M3FNUZ_REF: float8_e4m3fnuz_ref,
     types_pb2.DT_FLOAT8_E4M3B11FNUZ_REF: float8_e4m3b11fnuz_ref,
     types_pb2.DT_FLOAT8_E5M2FNUZ_REF: float8_e5m2fnuz_ref,
+    types_pb2.DT_FLOAT4_E2M1FN_REF: float4_e2m1fn_ref,
     types_pb2.DT_INT4_REF: int4_ref,
     types_pb2.DT_UINT4_REF: uint4_ref,
     types_pb2.DT_INT2_REF: int2_ref,
@@ -635,6 +651,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_FLOAT8_E4M3FNUZ: "float8_e4m3fnuz",
     types_pb2.DT_FLOAT8_E4M3B11FNUZ: "float8_e4m3b11fnuz",
     types_pb2.DT_FLOAT8_E5M2FNUZ: "float8_e5m2fnuz",
+    types_pb2.DT_FLOAT4_E2M1FN: "float4_e2m1fn",
     types_pb2.DT_INT4: "int4",
     types_pb2.DT_UINT4: "uint4",
     types_pb2.DT_INT2: "int2",
@@ -667,6 +684,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_FLOAT8_E4M3FNUZ_REF: "float8_e4m3fnuz_ref",
     types_pb2.DT_FLOAT8_E4M3B11FNUZ_REF: "float8_e4m3b11fnuz_ref",
     types_pb2.DT_FLOAT8_E5M2FNUZ_REF: "float8_e5m2fnuz_ref",
+    types_pb2.DT_FLOAT4_E2M1FN_REF: "float4_e2m1fn_ref",
     types_pb2.DT_INT4_REF: "int4_ref",
     types_pb2.DT_UINT4_REF: "uint4_ref",
     types_pb2.DT_INT2_REF: "int2_ref",
@@ -704,6 +722,7 @@ _np_float8_e4m3fnuz = ml_dtypes.float8_e4m3fnuz
 _np_float8_e4m3b11fnuz = ml_dtypes.float8_e4m3b11fnuz
 _np_float8_e5m2 = ml_dtypes.float8_e5m2
 _np_float8_e5m2fnuz = ml_dtypes.float8_e5m2fnuz
+_np_float4_e2m1fn = ml_dtypes.float4_e2m1fn
 _np_int4 = ml_dtypes.int4
 _np_uint4 = ml_dtypes.uint4
 _np_int2 = ml_dtypes.int2
@@ -742,6 +761,7 @@ _NP_TO_TF = {
     _np_float8_e4m3fnuz: float8_e4m3fnuz,
     _np_float8_e4m3b11fnuz: float8_e4m3b11fnuz,
     _np_float8_e5m2fnuz: float8_e5m2fnuz,
+    _np_float4_e2m1fn: float4_e2m1fn,
     _np_int4: int4,
     _np_uint4: uint4,
     _np_int2: int2,
@@ -797,6 +817,7 @@ _TF_TO_NP = {
     types_pb2.DT_FLOAT8_E4M3FNUZ: _np_float8_e4m3fnuz,
     types_pb2.DT_FLOAT8_E4M3B11FNUZ: _np_float8_e4m3b11fnuz,
     types_pb2.DT_FLOAT8_E5M2FNUZ: _np_float8_e5m2fnuz,
+    types_pb2.DT_FLOAT4_E2M1FN: _np_float4_e2m1fn,
     types_pb2.DT_INT4: _np_int4,
     types_pb2.DT_UINT4: _np_uint4,
     types_pb2.DT_INT2: _np_int2,
@@ -828,6 +849,7 @@ _TF_TO_NP = {
     types_pb2.DT_FLOAT8_E4M3FNUZ_REF: _np_float8_e4m3fnuz,
     types_pb2.DT_FLOAT8_E4M3B11FNUZ_REF: _np_float8_e4m3b11fnuz,
     types_pb2.DT_FLOAT8_E5M2FNUZ_REF: _np_float8_e5m2fnuz,
+    types_pb2.DT_FLOAT4_E2M1FN_REF: _np_float4_e2m1fn,
     types_pb2.DT_INT4_REF: _np_int4,
     types_pb2.DT_UINT4_REF: _np_uint4,
     types_pb2.DT_INT2_REF: _np_int2,

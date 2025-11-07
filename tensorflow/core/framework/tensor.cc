@@ -574,6 +574,29 @@ template <>
 struct ProtoHelper<float8_e5m2fnuz>
     : public Float8ProtoHelper<float8_e5m2fnuz> {};
 
+template <typename Float4>
+struct Float4ProtoHelper {
+  typedef std::string RepeatedFieldType;
+  static const Float4* Begin(const TensorProto& proto) {
+    // Read from float8_val
+    return reinterpret_cast<const Float4*>(proto.float8_val().data());
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    // Size is the number of bytes in float8_val
+    return proto.float8_val().size();
+  }
+  static void Fill(const Float4* data, size_t n, TensorProto* proto) {
+    proto->mutable_float8_val()->reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+      proto->mutable_float8_val()->push_back(
+          Eigen::numext::bit_cast<uint8_t>(data[i]));
+    }
+  }
+};
+
+template <>
+struct ProtoHelper<float4_e2m1fn> : public Float4ProtoHelper<float4_e2m1fn> {};
+
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64_t n)
     : BufferBase(a, TypedAllocator::Allocate<T>(a, n, AllocationAttributes())),
@@ -966,6 +989,7 @@ absl::Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
     CASE(float8_e4m3fnuz, SINGLE_ARG(STMTS))                   \
     CASE(float8_e4m3b11fnuz, SINGLE_ARG(STMTS))                \
     CASE(float8_e5m2fnuz, SINGLE_ARG(STMTS))                   \
+    CASE(float4_e2m1fn, SINGLE_ARG(STMTS))                     \
     CASE(int4, SINGLE_ARG(STMTS))                              \
     CASE(uint4, SINGLE_ARG(STMTS))                             \
     CASE(int2, SINGLE_ARG(STMTS))                              \
@@ -1267,6 +1291,10 @@ float PrintOneElement(float8_e4m3b11fnuz f, bool print_v2) {
   return static_cast<float>(f);
 }
 
+float PrintOneElement(float4_e2m1fn f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
 int16_t PrintOneElement(int4 a, bool print_v2) {
   return static_cast<int16_t>(a);
 }
@@ -1468,6 +1496,10 @@ std::string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
     case DT_FLOAT8_E4M3B11FNUZ:
       return SummarizeArray<float8_e4m3b11fnuz>(limit, num_elts, shape_, data,
                                                 print_v2);
+    case DT_FLOAT4_E2M1FN:
+      return SummarizeArray<float4_e2m1fn>(limit, num_elts, shape_, data,
+                                           print_v2);
+      break;
     case DT_FLOAT:
       return SummarizeArray<float>(limit, num_elts, shape_, data, print_v2);
       break;
