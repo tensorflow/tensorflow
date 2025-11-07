@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,6 +25,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -563,7 +563,9 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
 
   xla::ExecuteOptions execute_options;
   return ExecuteReplicatedImpl(
-      [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices)
+      [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices,
+          absl::AnyInvocable<OpaqueExecutable*(int64_t)>
+              executable_provider_arg)
           -> absl::StatusOr<
               std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> {
         tsl::recordphase::RecordScoped rs("HloRunnerPjRt_Execute",
@@ -581,15 +583,17 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
-    std::function<OpaqueExecutable*(int64_t)> executable_provider,
-    std::function<int64_t(int64_t)> argument_count_provider,
-    std::function<const Literal*(int64_t, int64_t)> argument_provider,
+    absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+    absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+    absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
     const HloRunnerInterface::ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
   TF_RET_CHECK(device_assignment->computation_count() == 1)
       << "Only single-computation execution is supported.";
   return ExecuteReplicatedImpl(
-      [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices)
+      [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices,
+          absl::AnyInvocable<OpaqueExecutable*(int64_t)>
+              executable_provider_arg)
           -> absl::StatusOr<
               std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> {
         tsl::recordphase::RecordScoped rs("HloRunnerPjRt_Execute",
@@ -613,7 +617,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
             }
             TF_ASSIGN_OR_RETURN(HloRunnerPjRtExecutable* const executable,
                                 HloRunnerPjRtExecutable::TryUnwrap(
-                                    *this, executable_provider(i)));
+                                    *this, executable_provider_arg(i)));
             TF_ASSIGN_OR_RETURN(
                 PjRtLoadedExecutable * pjrt_executable,
                 executable->GetOrLoadExecutable(pjrt_client_.get()));
@@ -650,18 +654,19 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
         }
         return results;
       },
-      executable_provider, argument_count_provider, argument_provider, options,
-      device_assignment);
+      std::move(executable_provider), std::move(argument_count_provider),
+      std::move(argument_provider), options, device_assignment);
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
-    std::function<
+    absl::AnyInvocable<
         absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>(
-            absl::Span<const std::vector<PjRtBuffer*>>)>
+            absl::Span<const std::vector<PjRtBuffer*>>,
+            absl::AnyInvocable<OpaqueExecutable*(int64_t)>)>
         execution_helper,
-    std::function<OpaqueExecutable*(int64_t)> executable_provider,
-    std::function<int64_t(int64_t)> argument_count_provider,
-    std::function<const Literal*(int64_t, int64_t)> argument_provider,
+    absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+    absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+    absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
     const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
   TF_RET_CHECK(options.infeed_values.empty() ||
@@ -770,7 +775,8 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
   TF_ASSIGN_OR_RETURN(
       const std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
           result_buffers,
-      execution_helper(BufferMatToPointerMat(argument_buffer_slices)));
+      execution_helper(BufferMatToPointerMat(argument_buffer_slices),
+                       std::move(executable_provider)));
   VLOG(1) << "Replicated execution terminated";
 
   // Get the result from execution.

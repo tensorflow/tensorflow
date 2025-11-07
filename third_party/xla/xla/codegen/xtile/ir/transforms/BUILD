@@ -31,6 +31,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "convert_elementwise_0d_tensor_to_scalar_pass.cc",
         "verify_legal_xtile_ops.cc",
     ],
     hdrs = ["passes.h"],
@@ -39,6 +40,7 @@ cc_library(
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/xtile/ir:xtile",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

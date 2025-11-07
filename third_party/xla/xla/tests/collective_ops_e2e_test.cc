@@ -22,11 +22,11 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -154,11 +154,10 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
         reference_platform, /*intra_op_parallelism_threads=*/0);
   }
 
-  // TODO(b/449655621) Use absl::AnyInvocable instead of std::function.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      const std::function<OpaqueExecutable*(int64_t)> executable_provider,
-      const std::function<int64_t(int64_t)> argument_count_provider,
-      const std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const int64_t num_replicas, const bool run_hlo_passes,
       DeviceAssignment* const device_assignment) {
     // TODO(b/441865120): Use designated initializers this once XLA moves to
