@@ -2026,6 +2026,53 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "gpu_aot_compilation_result",
+    hdrs = ["gpu_aot_compilation_result.h"],
+    deps = [
+        ":gpu_executable",
+        ":gpu_executable_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_aot_compilation_result_test",
+    srcs = ["gpu_aot_compilation_result_test.cc"],
+    deps = [
+        ":gpu_aot_compilation_result",
+        ":gpu_executable",
+        ":launch_dimensions",
+        "//xla:literal_util",
+        "//xla/backends/gpu/runtime:kernel_thunk",
+        "//xla/backends/gpu/runtime:sequential_thunk",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/codegen/emitters:kernel_arguments",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service:executable",
+        "//xla/service:hlo_module_config",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:mock_platform",
+        "//xla/stream_executor:mock_stream_executor",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/gpu:tma_metadata",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_test(
     name = "gpu_offloading_test",
     srcs = ["gpu_offloading_test.cc"],

@@ -1,0 +1,88 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef XLA_SERVICE_GPU_GPU_AOT_COMPILATION_RESULT_H_
+#define XLA_SERVICE_GPU_GPU_AOT_COMPILATION_RESULT_H_
+
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/compiler.h"
+#include "xla/service/executable.h"
+#include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
+
+namespace xla::gpu {
+
+// `AotCompilationResult` implementation for GPU, containing a serialized
+// `GpuExecutable`.
+//
+// Unlike `LegacyGpuAotCompilationResult`, this result contains the entire
+// optimized executable, including the Thunks, as opposed to just the optimized
+// HLO.
+class GpuAotCompilationResult : public AotCompilationResult {
+ public:
+  static absl::StatusOr<std::unique_ptr<GpuAotCompilationResult>> Create(
+      GpuExecutableProto executable) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModule> module,
+        HloModule::CreateFromProtoWithConfig(executable.hlo_module()));
+
+    return absl::WrapUnique(
+        new GpuAotCompilationResult(std::move(executable), std::move(module)));
+  }
+
+  absl::StatusOr<std::string> SerializeAsString() const final {
+    std::string serialized = executable_.SerializeAsString();
+    if (serialized.empty()) {
+      return absl::InternalError("Failed to serialize GpuExecutableProto.");
+    }
+    return serialized;
+  }
+
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      Compiler* compiler, const se::StreamExecutor* stream_exec) &&
+      final {
+    return GpuExecutable::FromProto(executable_,
+                                    stream_exec->GetDeviceDescription(),
+                                    stream_exec->GetPlatform()->Name());
+  }
+
+  const HloModule* optimized_module() const final { return hlo_module_.get(); };
+
+  std::unique_ptr<HloModule> consume_optimized_module() final {
+    return std::move(hlo_module_);
+  };
+
+ private:
+  explicit GpuAotCompilationResult(GpuExecutableProto executable,
+                                   std::unique_ptr<HloModule> hlo_module)
+      : executable_(std::move(executable)),
+        hlo_module_(std::move(hlo_module)) {}
+
+  GpuExecutableProto executable_;
+  std::unique_ptr<HloModule> hlo_module_;
+};
+
+}  // namespace xla::gpu
+
+#endif  // XLA_SERVICE_GPU_GPU_AOT_COMPILATION_RESULT_H_
