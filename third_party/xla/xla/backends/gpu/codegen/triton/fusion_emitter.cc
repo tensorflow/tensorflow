@@ -1286,11 +1286,6 @@ absl::StatusOr<TensorValue> EmitPad(
     const TiledHloInstruction& tiled_pad,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values,
     Value pid) {
-  if (!IsTritonSupportedInstruction(*tiled_pad.hlo(),
-                                    device_info.gpu_compute_capability())) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("Pad is not supported: ", tiled_pad.hlo()->ToString()));
-  }
   // TODO(b/393299275): get rid of calls to `GetPaddedTileSizes` once tiling
   // is using power of twos everywhere, including when propagating into the
   // prologue of reductions.
@@ -1495,19 +1490,6 @@ absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     // Skip generating nested fusions, they are emitted by their consumer.
     if (hlo->parent()->IsFusionComputation() &&
         hlo->opcode() == HloOpcode::kFusion) {
-      if (hlo->GetModule()
-              ->config()
-              .debug_options()
-              .xla_gpu_experimental_scaled_dot_with_triton()) {
-        continue;
-      }
-      CodegenDecision decision = IsTritonSupportedInstruction(
-          *hlo, device_info.gpu_compute_capability());
-      if (!decision.CanFuse()) {
-        return absl::FailedPreconditionError(
-            absl::StrCat("Fusion ", hlo->ToString(),
-                         " is not supported: ", decision.Explain()));
-      }
       VLOG(1) << "Skipping nested fusion: " << hlo->ToString();
       continue;
     }
@@ -1845,11 +1827,48 @@ mlir::MemRefType GetMemRefType(const Shape& shape, mlir::Type element_type) {
   return mlir::MemRefType::get(shape.dimensions(), storage_type, layout);
 }
 
+absl::Status IsTritonSupportedFusion(const HloFusionInstruction& fusion,
+                                     const se::DeviceDescription& device_info) {
+  const HloComputation* computation = fusion.fused_instructions_computation();
+  for (const HloInstruction* hlo : computation->instructions()) {
+    // Skip generating nested fusions, they are emitted by their consumer.
+    if (hlo->parent()->IsFusionComputation() &&
+        hlo->opcode() == HloOpcode::kFusion) {
+      if (hlo->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_experimental_scaled_dot_with_triton()) {
+        continue;
+      }
+      CodegenDecision decision = IsTritonSupportedInstruction(
+          *hlo, device_info.gpu_compute_capability());
+      if (!decision.CanFuse()) {
+        return absl::FailedPreconditionError(
+            absl::StrCat("Fusion ", hlo->ToString(),
+                         " is not supported: ", decision.Explain()));
+      }
+      VLOG(1) << "Skipping nested fusion: " << hlo->ToString();
+      continue;
+    }
+
+    if (hlo->opcode() == HloOpcode::kPad) {
+      if (!IsTritonSupportedInstruction(*hlo,
+                                        device_info.gpu_compute_capability())) {
+        return absl::FailedPreconditionError(
+            absl::StrCat("Pad is not supported: ", hlo->ToString()));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     SymbolicExprContext& symbolic_expr_context) {
+  TF_RETURN_IF_ERROR(IsTritonSupportedFusion(*fusion, device_info));
+
   // TODO: b/451959933 - Use reference or check pointer.
   mlir::MLIRContext& mlir_context = *symbolic_expr_context.GetMLIRContext();
   TF_ASSIGN_OR_RETURN(auto triton_module,
