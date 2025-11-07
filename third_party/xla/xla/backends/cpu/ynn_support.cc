@@ -197,6 +197,13 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
     return false;
   }
 
+  if (std::max({dot_canonical_dims.m, dot_canonical_dims.k,
+                dot_canonical_dims.n}) < 8) {
+    // If this dot is small, our overhead is probably too significant.
+    // TODO(b/458529782): This is here as a workaround for an unrelated bug.
+    return false;
+  }
+
   // YNNPACK supports transposing the inputs efficiently if possible (they will
   // fuse with dot packing), but we don't currently support generating the
   // necessary transposes.
