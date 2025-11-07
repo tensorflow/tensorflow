@@ -365,6 +365,10 @@ nanobind_pywrap_extension(
     name = "_profiler",
     srcs = ["profiler.cc"],
     pytype_srcs = ["_profiler.pyi"],
+    visibility = internal_visibility([
+        ":jax",
+        "//third_party/py/torch_tpu:__subpackages__",
+    ]),
     deps = [
         ":aggregate_profile",
         ":profiler_utils",
@@ -401,6 +405,10 @@ nanobind_pywrap_extension(
         "-fno-strict-aliasing",
     ],
     pytype_srcs = ["_profile_data.pyi"],
+    visibility = internal_visibility([
+        ":jax",
+        "//third_party/py/torch_tpu:__subpackages__",
+    ]),
     deps = [
         "//xla/python/profiler:profile_data_lib",
         "@local_tsl//tsl/platform:protobuf",
