@@ -240,6 +240,7 @@ def _rocm_lib_paths(repository_ctx, lib, basedir):
         repository_ctx.path("%s/lib64/stubs/%s" % (basedir, file_name)),
         repository_ctx.path("%s/lib/x86_64-linux-gnu/%s" % (basedir, file_name)),
         repository_ctx.path("%s/lib/%s" % (basedir, file_name)),
+        repository_ctx.path("%s/lib/%s.0" % (basedir, file_name)),  # hipblaslt has this pattern
         repository_ctx.path("%s/%s" % (basedir, file_name)),
     ]
 
@@ -310,7 +311,7 @@ def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
 
     return libs
 
-def _find_libs(repository_ctx, rocm_config, miopen_path, rccl_path, bash_bin):
+def _find_libs(repository_ctx, rocm_config, bash_bin):
     """Returns the ROCm libraries on the system.
 
     Args:
@@ -321,29 +322,28 @@ def _find_libs(repository_ctx, rocm_config, miopen_path, rccl_path, bash_bin):
     Returns:
       Map of library names to structs of filename and path
     """
+    repo_path = str(repository_ctx.path(rocm_config.rocm_toolkit_path))
     libs_paths = [
         (name, _rocm_lib_paths(repository_ctx, name, path))
         for name, path in [
-            ("amdhip64", rocm_config.rocm_toolkit_path),
-            ("rocblas", rocm_config.rocm_toolkit_path),
-            ("hiprand", rocm_config.rocm_toolkit_path),
-            ("MIOpen", miopen_path),
-            ("rccl", rccl_path),
-            ("hipsparse", rocm_config.rocm_toolkit_path),
-            ("roctracer64", rocm_config.rocm_toolkit_path),
-            ("rocsolver", rocm_config.rocm_toolkit_path),
-            ("hipfft", rocm_config.rocm_toolkit_path),
-            ("rocrand", rocm_config.rocm_toolkit_path),
-            ("rocprofiler-sdk", rocm_config.rocm_toolkit_path),
+            ("amdhip64", repo_path),
+            ("rocblas", repo_path),
+            ("hiprand", repo_path),
+            ("MIOpen", repo_path),
+            ("rccl", repo_path),
+            ("hipsparse", repo_path),
+            ("roctracer64", repo_path),
+            ("rocsolver", repo_path),
+            ("rocsolver", repo_path),
+            ("hipsolver", repo_path),
+            ("hipfft", repo_path),
+            ("rocrand", repo_path),
+            ("hipblas", repo_path),
+            ("hipblaslt", repo_path),
+            ("rocprofiler-sdk", repo_path),
         ]
     ]
-    if int(rocm_config.rocm_version_number) >= 40500:
-        libs_paths.append(("hipsolver", _rocm_lib_paths(repository_ctx, "hipsolver", rocm_config.rocm_toolkit_path)))
-        libs_paths.append(("hipblas", _rocm_lib_paths(repository_ctx, "hipblas", rocm_config.rocm_toolkit_path)))
 
-    # hipblaslt may be absent even in versions of ROCm where it exists
-    # (it is not installed by default in some containers). Autodetect.
-    libs_paths.append(("hipblaslt", _rocm_lib_paths(repository_ctx, "hipblaslt", rocm_config.rocm_toolkit_path), True))
     return _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin)
 
 def find_rocm_config(repository_ctx, rocm_path):
@@ -584,16 +584,12 @@ def _create_local_rocm_repository(repository_ctx):
     rocm_config = _setup_rocm_distro_dir(repository_ctx)
     rocm_version_number = int(rocm_config.rocm_version_number)
 
-    # For ROCm 5.2 and above, find MIOpen and RCCL in the main rocm lib path
-    miopen_path = rocm_config.rocm_toolkit_path + "/miopen" if rocm_version_number < 50200 else rocm_config.rocm_toolkit_path
-    rccl_path = rocm_config.rocm_toolkit_path + "/rccl" if rocm_version_number < 50200 else rocm_config.rocm_toolkit_path
-
     # Copy header and library files to execroot.
     # rocm_toolkit_path
     rocm_toolkit_path = _remove_root_dir(rocm_config.rocm_toolkit_path, "rocm")
 
     bash_bin = get_bash_bin(repository_ctx)
-    rocm_libs = _find_libs(repository_ctx, rocm_config, miopen_path, rccl_path, bash_bin)
+    rocm_libs = _find_libs(repository_ctx, rocm_config, bash_bin)
     rocm_lib_srcs = []
     rocm_lib_outs = []
     for lib in rocm_libs.values():
@@ -602,8 +598,6 @@ def _create_local_rocm_repository(repository_ctx):
             rocm_lib_outs.append("rocm/lib/" + lib.file_name)
 
     clang_offload_bundler_path = rocm_toolkit_path + "/llvm/bin/clang-offload-bundler"
-
-    have_hipblaslt = "1" if rocm_libs["hipblaslt"] != None else "0"
 
     # Set up BUILD file for rocm/
     repository_ctx.template(
@@ -619,7 +613,7 @@ def _create_local_rocm_repository(repository_ctx):
             ),
             "%{rocm_gpu_architectures}": str(rocm_config.amdgpu_targets),
             "%{rocm_version_number}": str(rocm_version_number),
-            "%{rocm_hipblaslt}": "True" if rocm_libs["hipblaslt"] != None else "False",
+            "%{rocm_hipblaslt}": "True",
         },
     )
 
@@ -631,13 +625,6 @@ def _create_local_rocm_repository(repository_ctx):
 
     is_rocm_clang = _use_rocm_clang(repository_ctx)
     tf_sysroot = _tf_sysroot(repository_ctx)
-
-    if rocm_libs["hipblaslt"] != None:
-        repository_dict["%{hipblaslt_lib}"] = rocm_libs["hipblaslt"].file_name
-
-    if rocm_version_number >= 40500:
-        repository_dict["%{hipsolver_lib}"] = rocm_libs["hipsolver"].file_name
-        repository_dict["%{hipblas_lib}"] = rocm_libs["hipblas"].file_name
 
     multiple_paths = repository_ctx.os.environ.get(_TF_ROCM_MULTIPLE_PATHS)
     if multiple_paths:
@@ -743,7 +730,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{rocm_version_number}": rocm_config.rocm_version_number,
             "%{miopen_version_number}": rocm_config.miopen_version_number,
             "%{hipruntime_version_number}": rocm_config.hipruntime_version_number,
-            "%{hipblaslt_flag}": have_hipblaslt,
+            "%{hipblaslt_flag}": "1",
             "%{hip_soversion_number}": rocm_libs["amdhip64"].soversion,
             "%{rocblas_soversion_number}": rocm_libs["rocblas"].soversion,
             "%{hipblaslt_soversion_number}": rocm_libs["hipblaslt"].soversion if rocm_libs["hipblaslt"] != None else "",
@@ -770,7 +757,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{rocm_version_number}": rocm_config.rocm_version_number,
             "%{miopen_version_number}": rocm_config.miopen_version_number,
             "%{hipruntime_version_number}": rocm_config.hipruntime_version_number,
-            "%{hipblaslt_flag}": have_hipblaslt,
+            "%{hipblaslt_flag}": "1",
             "%{hip_soversion_number}": rocm_libs["amdhip64"].soversion,
             "%{rocblas_soversion_number}": rocm_libs["rocblas"].soversion,
             "%{hipblaslt_soversion_number}": rocm_libs["hipblaslt"].soversion if rocm_libs["hipblaslt"] != None else "",
