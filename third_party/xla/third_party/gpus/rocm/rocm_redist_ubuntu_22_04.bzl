@@ -18,6 +18,14 @@ rocm_redist_ubuntu_22_04 = {
                 sha256 = "9d1bb3a5006a5b69655abbd890efaad1d347b3cd66b5d0a7fe60a6885494b19b",
             ),
             struct(
+                url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/h/hipblaslt6.4.1/hipblaslt6.4.1_0.12.1.60401-83~22.04_amd64.deb",
+                sha256 = "b53019fa5e46dc1ec4725960da9c30c6564db7adc10eb176f00d6dc99f565f3a",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/h/hipblaslt-dev6.4.1/hipblaslt-dev6.4.1_0.12.1.60401-83~22.04_amd64.deb",
+                sha256 = "23a8ed2da0d56cf79336eef3d502c57daf06934e8ca7225b4e6b449e59de3dab",
+            ),
+            struct(
                 url = "https://repo.radeon.com/rocm/apt/6.4.1/pool/main/h/hipblas-dev/hipblas-dev_2.4.0.60401-83~22.04_amd64.deb",
                 sha256 = "df5dd894a6840693f060fcdd1e96c0e8cf9eed16b2763643f17a5a9c4baa69a5",
             ),
@@ -217,6 +225,14 @@ rocm_redist_ubuntu_22_04 = {
             struct(
                 url = "https://repo.radeon.com/rocm/apt/6.2/pool/main/h/hipblas6.2.0/hipblas6.2.0_2.2.0.60200-66~22.04_amd64.deb",
                 sha256 = "fbd647e1b13e7aa2c14c9581f9102c069ddab9ecb47a4b226d433ec37b19e92d",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.2/pool/main/h/hipblaslt6.2.0/hipblaslt6.2.0_0.8.0.60200-66~22.04_amd64.deb",
+                sha256 = "af3bea7cda7c1af147c3baae1cb3a8846ff571fe713c3a83d0924810bee734fe",
+            ),
+            struct(
+                url = "https://repo.radeon.com/rocm/apt/6.2/pool/main/h/hipblaslt-dev6.2.0/hipblaslt-dev6.2.0_0.8.0.60200-66~22.04_amd64.deb",
+                sha256 = "d9d2c80228ebfe74ebb98fc74fda57be498ab84ca40358355c616dfd38efded2",
             ),
             struct(
                 url = "https://repo.radeon.com/rocm/apt/6.2/pool/main/h/hipblas-dev6.2.0/hipblas-dev6.2.0_2.2.0.60200-66~22.04_amd64.deb",

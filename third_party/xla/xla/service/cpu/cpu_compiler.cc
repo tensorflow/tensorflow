@@ -750,8 +750,11 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // BF16/F8 lowering for most ops.
   CpuFloatSupport bf16_support(BF16, call_library_for_dot);
 #ifdef XLA_ONEDNN
+  bool use_onednn_graph =
+      module->config().debug_options().xla_cpu_use_onednn() &&
+      IsOneDnnCompatible(is_aot_compile);
   OneDnnFloatSupport onednn_bf16_support(BF16);
-  if (use_onednn_custom_call) {
+  if (use_onednn_custom_call || use_onednn_graph) {
     pipeline.AddPass<FloatNormalization>(&onednn_bf16_support);
   } else {
     pipeline.AddPass<FloatNormalization>(&bf16_support);

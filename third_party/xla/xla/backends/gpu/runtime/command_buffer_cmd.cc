@@ -2001,7 +2001,7 @@ CommandBufferCmd::BufferUseVector CustomCallCmd::buffers() const {
 CollectiveCmd::CollectiveCmd(
     CommandBufferCmdType cmd_type, CollectiveConfig config,
     std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : CommandBufferCmd(cmd_type),
+    : CommandBufferCmd(cmd_type, se::StreamPriority::Highest),
       config_(std::move(config)),
       async_events_(std::move(async_events)) {}
 
