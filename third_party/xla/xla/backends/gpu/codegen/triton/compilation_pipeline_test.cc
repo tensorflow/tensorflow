@@ -39,7 +39,8 @@ TEST(CompilationPipelineTest, UnswitchLoopsAfterLICM) {
   mlir::PassManager pm(&ctx);
 
   CreateTritonXlaPipeline(&pm, stream_executor::CudaComputeCapability(),
-                          /*rewrite_int4=*/false, /*allow_tma=*/true);
+                          /*rewrite_int4=*/false, /*allow_tma=*/true,
+                          /*num_stages=*/1);
 
   std::vector<std::string> pass_names;
   for (const mlir::Pass& pass : pm.getPasses()) {

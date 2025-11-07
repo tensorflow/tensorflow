@@ -1876,8 +1876,7 @@ TEST_F(GemmFusionAutotunerEnableTma,
                             ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
 }
 
-TEST_F(GemmFusionAutotunerEnableTma,
-       TmaConfigsGeneratedAndRunCorrectlyForDotsOfBroadcasts) {
+TEST_F(GemmFusionAutotunerEnableTma, TmaRunCorrectlyForDotsOfBroadcasts) {
   if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
@@ -1900,15 +1899,6 @@ TEST_F(GemmFusionAutotunerEnableTma,
           se::CudaComputeCapability(se::CudaComputeCapability::kHopper, 0),
           GetToolkitVersion(), GetDebugOptionsForTest(),
           &symbolic_expr_context_));
-
-  auto is_disallowed_tma_config = [](const TritonGemmConfig& c) {
-    return c.num_stages > 2 && c.is_tma_allowed;
-  };
-  auto is_allowed_tma_config = [](const TritonGemmConfig& c) {
-    return c.num_stages <= 2 && c.is_tma_allowed;
-  };
-  EXPECT_FALSE(absl::c_any_of(hopper_configs, is_disallowed_tma_config));
-  EXPECT_TRUE(absl::c_any_of(hopper_configs, is_allowed_tma_config));
 
   EXPECT_TRUE(RunAndCompare(std::move(module),
                             ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
