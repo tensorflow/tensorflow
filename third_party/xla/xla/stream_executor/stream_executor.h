@@ -257,6 +257,9 @@ class StreamExecutor {
   virtual absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription() const = 0;
 
+  // Return the platform dependent stream priority value for the given priority.
+  virtual int GetGpuStreamPriority(StreamPriority priority) { return 0; }
+
   // Gets-or-creates a BlasSupport datatype that can be used to execute BLAS
   // routines on the current platform.
   //

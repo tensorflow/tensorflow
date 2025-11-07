@@ -133,6 +133,8 @@ class RocmExecutor : public GpuExecutor {
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
       MemoryType type) override;
 
+  int GetGpuStreamPriority(StreamPriority priority) override;
+
  private:
   // Initializes Blas interfaces
   absl::Status InitBlas();

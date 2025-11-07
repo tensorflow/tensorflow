@@ -1076,6 +1076,20 @@ RocmExecutor::CreateCommandBuffer(CommandBuffer::Mode mode) {
   return RocmCommandBuffer::Create(mode, this);
 }
 
+int RocmExecutor::GetGpuStreamPriority(StreamPriority priority) {
+  if (priority == StreamPriority::Default) {
+    return 0;
+  }
+  std::unique_ptr<ActivateContext> activation = Activate();
+  int lowest, highest;
+  auto status = wrap::hipDeviceGetStreamPriorityRange(&lowest, &highest);
+  if (status != hipSuccess) {
+    LOG(ERROR) << "Failed to get stream priority range: " << ToString(status);
+    return 0;
+  }
+  return priority == StreamPriority::Highest ? highest : lowest;
+}
+
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   TF_ASSIGN_OR_RETURN(hipDevice_t device, GetDevice(device_ordinal));

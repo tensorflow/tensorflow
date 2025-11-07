@@ -72,21 +72,6 @@ absl::Status RecordGpuEvent(StreamExecutor* executor, CUevent event,
                         "Error recording CUDA event");
 }
 
-int GetGpuStreamPriority(stream_executor::StreamPriority stream_priority) {
-  if (stream_priority == stream_executor::StreamPriority::Default) {
-    return 0;
-  }
-  int lowest, highest;
-  auto status = cuda::ToStatus(cuCtxGetStreamPriorityRange(&lowest, &highest));
-  if (!status.ok()) {
-    LOG(ERROR)
-        << "Could not query stream priority range. Returning default priority.";
-    return 0;
-  }
-  return stream_priority == stream_executor::StreamPriority::Highest ? highest
-                                                                     : lowest;
-}
-
 absl::StatusOr<CUstream> CreateStream(StreamExecutor* executor, int priority) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   CUstream stream;
@@ -191,7 +176,7 @@ absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
       return std::get<int>(priority.value());
     }
     std::unique_ptr<ActivateContext> activation = executor->Activate();
-    return GetGpuStreamPriority(
+    return executor->GetGpuStreamPriority(
         std::get<StreamPriority>(priority.value_or(StreamPriority::Default)));
   }();
   TF_ASSIGN_OR_RETURN(auto stream_handle,
