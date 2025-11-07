@@ -1779,7 +1779,8 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
       info.cluster_uuid = fabric_info->cluster_uuid;
       info.clique_id = fabric_info->clique_id;
     } else {
-      LOG(ERROR) << fabric_info.status();
+      LOG(WARNING) << "GPU interconnect information not available: "
+                   << fabric_info.status();
     }
     desc.set_device_interconnect_info(info);
   }
