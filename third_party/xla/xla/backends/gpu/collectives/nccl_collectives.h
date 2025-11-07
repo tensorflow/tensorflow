@@ -56,7 +56,8 @@ class NcclCollectives : public GpuCollectives {
   }
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
       absl::Span<const Communicator* const> comms, int32_t color,
-      absl::Span<const RankId> keys, const Collectives::Config& config) final;
+      absl::Span<const RankId> keys, const Collectives::Config& config,
+      absl::Span<const DeviceRank> ranks) final;
 
   absl::StatusOr<void*> Allocate(uint64_t bytes) final;
 

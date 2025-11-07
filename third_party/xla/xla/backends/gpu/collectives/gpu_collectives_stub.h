@@ -58,7 +58,7 @@ class GpuCollectivesStub : public GpuCollectives {
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
       absl::Span<const Communicator* const>, int32_t, absl::Span<const RankId>,
-      const Collectives::Config&) final {
+      const Collectives::Config&, absl::Span<const DeviceRank> ranks) final {
     return UnimplementedError();
   }
 
