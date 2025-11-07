@@ -337,11 +337,6 @@ absl::Status MakeNestedFusionFromGemmFusion(
   return absl::OkStatus();
 }
 
-size_t GetDotCount(HloComputation* computation) {
-  return absl::c_count_if(computation->instructions(),
-                          HloPredicateIsOp<HloOpcode::kDot>);
-}
-
 using HloInstructionSetVector =
     llvm::SetVector<HloInstruction*, std::vector<HloInstruction*>,
                     HloInstructionSet>;
@@ -1340,9 +1335,7 @@ absl::StatusOr<bool> NestGemmFusion::RunImpl(
     VLOG(1) << "Generic Triton emitter for gemms is disabled, exiting";
     return false;
   }
-
-  TF_ASSIGN_OR_RETURN(bool result, RunOnModule(module, execution_threads));
-  return result;
+  return RunOnModule(module, execution_threads);
 }
 
 namespace detail {
