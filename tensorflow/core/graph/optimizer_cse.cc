@@ -93,9 +93,9 @@ static size_t kIllegalNodeHash = 0;
 
 class Hasher {
  public:
-  uint64 hash() { return h_ == kIllegalNodeHash ? kIllegalNodeHash + 1 : h_; }
+  uint64_t hash() { return h_ == kIllegalNodeHash ? kIllegalNodeHash + 1 : h_; }
 
-  void MixString(const string& s) { h_ = Hash64(s.data(), s.size(), h_); }
+  void MixString(const std::string& s) { h_ = Hash64(s.data(), s.size(), h_); }
 
   void MixInteger(size_t z) { h_ = Hash64Combine(h_, z); }
 
@@ -122,7 +122,7 @@ class Hasher {
     // This kBufSize makes sizeof(HashingOutputStream) == 256.  It's not chosen
     // for any particular reason except it's a nice even number of cache lines.
     static constexpr size_t kBufSize = 228;
-    static constexpr uint64 kDefaultSeed = 2570847921467975139ULL;
+    static constexpr uint64_t kDefaultSeed = 2570847921467975139ULL;
     bool Next(void** data, int* size) override {
       if (i_ == kBufSize) {
         // Mix the chunk in.
@@ -174,7 +174,7 @@ class Hasher {
 
     bool AllowsAliasing() const override { return true; }
 
-    uint64 hash() {
+    uint64_t hash() {
       if (i_ != 0) {
         Mix(buf_, i_);
         i_ = 0;
@@ -190,10 +190,10 @@ class Hasher {
     char buf_[kBufSize];
     int i_ = 0;
     int64_t byte_count_ = 0;
-    uint64 h_ = kDefaultSeed;
+    uint64_t h_ = kDefaultSeed;
   };
 
-  uint64 h_ = HashingOutputStream::kDefaultSeed;
+  uint64_t h_ = HashingOutputStream::kDefaultSeed;
 };
 
 size_t OptimizerCSE::NodeHash(const Node* n) {

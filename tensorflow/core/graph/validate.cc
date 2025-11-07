@@ -100,7 +100,7 @@ absl::Status ValidateGraphHasNoCycle(const Graph& graph) {
   }
 
   if (processed < graph.num_nodes()) {
-    std::vector<string> nodes_in_cycle;
+    std::vector<std::string> nodes_in_cycle;
     for (int i = 0; i < pending_count.size() && nodes_in_cycle.size() < 3;
          ++i) {
       if (pending_count[i] != 0) {

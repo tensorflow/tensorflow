@@ -47,7 +47,7 @@ class TestStackTrace : public AbstractStackTrace {
 
   StackFrame LastUserFrame() const override { return frames_.back(); }
 
-  string ToString(const TracePrintingOptions& opts) const override {
+  std::string ToString(const TracePrintingOptions& opts) const override {
     auto frame = LastUserFrame();
     return absl::StrCat(frame.file_name, ":", frame.line_number, ":",
                         frame.function_name);
