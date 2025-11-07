@@ -38,7 +38,7 @@ package_group(
     ],
 )
 
-# Filegroup used to collect source files for dependency checking.
+#Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
     data = glob([
@@ -2816,7 +2816,28 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "nvptx_alias_info_test",
+    srcs = ["nvptx_alias_info_test.cc"],
+    deps = [
+        ":gpu_device_info_for_tests",
+        ":nvptx_alias_info",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:test_helpers",
+        "//xla/service:copy_insertion",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

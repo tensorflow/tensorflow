@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -51,7 +52,8 @@ std::optional<bool> NVPTXAliasInfo::MayAlias(
         GemmBackendConfig config =
             std::move(user->backend_config<GpuBackendConfig>())
                 ->gemm_backend_config();
-        return (config.beta() != 0.) && user->operand(2) == operand;
+        return (config.beta() != 0.) && operand == user->operand(2) &&
+               absl::c_count(user->operands(), operand) == 1;
       }
       // The operand of cholesky can be shared with the first output.
       if (user->custom_call_target() == kCusolverCholeskyCallTarget) {
