@@ -114,7 +114,8 @@ class BuffersDebugChecksumThunkTest : public ::testing::Test {
 };
 
 TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
-  static constexpr size_t kLogSize = BufferDebugLog::RequiredSizeForEntries(10);
+  static constexpr size_t kLogSize =
+      BufferDebugLog::RequiredSizeForEntries(10, sizeof(BufferDebugLogEntry));
   static constexpr size_t kInputSize = 1024;
   static constexpr size_t kInputCount = 2;
   static constexpr size_t kTotalDeviceMemoryBytes =
@@ -137,7 +138,7 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
   se::DeviceMemoryBase inputs1_mem = allocations.GetDeviceAddress(inputs[1]);
   // Initialize the log in device memory
   TF_ASSERT_OK_AND_ASSIGN(BufferDebugLog device_log,
-                          BufferDebugLog::CreateOnDevice(
+                          BufferDebugLog::CreateOnDevice<BufferDebugLogEntry>(
                               *stream_, se::DeviceMemory<uint8_t>(log_mem)));
   // Fill inputs with some data
   std::vector<uint32_t> zeros(1024, 0);
@@ -164,8 +165,9 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
   TF_ASSERT_OK(thunk.Initialize(init_params));
   TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}, resource_requests));
   TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugLogEntry> entries,
-                          device_log.ReadFromDevice(*stream_));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<BufferDebugLogEntry> entries,
+      device_log.ReadFromDevice<BufferDebugLogEntry>(*stream_));
 
   // BuffersDebugChecksumThunk launches a kernel for each input buffer, they may
   // complete in any order.

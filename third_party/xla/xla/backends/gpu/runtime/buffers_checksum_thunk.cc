@@ -103,7 +103,7 @@ absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
     TF_RETURN_IF_ERROR(kernel_->Launch(
         thread_dim, se::BlockDim(1, 1, 1), params.stream, log_entry_id,
         device_buffer, device_buffer.size(), buffer_debug_log.GetDeviceHeader(),
-        buffer_debug_log.GetDeviceEntries()));
+        buffer_debug_log.GetDeviceEntries<BufferDebugLogEntry>()));
   }
 
   return absl::OkStatus();

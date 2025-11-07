@@ -98,7 +98,8 @@ class BuffersDebugFloatCheckThunkTest : public ::testing::Test {
 };
 
 TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
-  static constexpr size_t kLogSize = BufferDebugLog::RequiredSizeForEntries(10);
+  static constexpr size_t kLogSize =
+      BufferDebugLog::RequiredSizeForEntries(10, sizeof(BufferDebugLogEntry));
   static constexpr size_t kInputElems = 1024;
   static constexpr size_t kInputSizeInBytes = kInputElems * sizeof(float);
   static constexpr size_t kTotalDeviceMemoryBytes =
@@ -128,7 +129,7 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
   se::DeviceMemoryBase inputs1_mem = allocations.GetDeviceAddress(inputs[1]);
   // Initialize the log in device memory
   TF_ASSERT_OK_AND_ASSIGN(BufferDebugLog device_log,
-                          BufferDebugLog::CreateOnDevice(
+                          BufferDebugLog::CreateOnDevice<BufferDebugLogEntry>(
                               *stream_, se::DeviceMemory<uint8_t>(log_mem)));
   // Fill inputs with some data
   {
@@ -162,8 +163,9 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
   TF_ASSERT_OK(thunk.Initialize(init_params));
   TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}, resource_requests));
   TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugLogEntry> entries,
-                          device_log.ReadFromDevice(*stream_));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<BufferDebugLogEntry> entries,
+      device_log.ReadFromDevice<BufferDebugLogEntry>(*stream_));
 
   // BuffersDebugFloatCheckThunk launches a kernel for each input buffer, they
   // may complete in any order.

@@ -956,6 +956,7 @@ cc_library(
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:stream",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",

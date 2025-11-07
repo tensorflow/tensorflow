@@ -36,13 +36,12 @@ using ::xla::gpu::BufferDebugLogEntry;
 using ::xla::gpu::BufferDebugLogHeader;
 
 absl::StatusOr<BufferDebugLog> BufferDebugLog::CreateOnDevice(
-    Stream& stream, DeviceMemory<uint8_t> log_buffer) {
+    Stream& stream, DeviceMemory<uint8_t> log_buffer, size_t entry_size) {
   if (log_buffer.is_null()) {
     return absl::InvalidArgumentError("Log buffer must be non-null");
   }
 
-  static constexpr size_t kMinBufferSize =
-      sizeof(BufferDebugLogHeader) + sizeof(BufferDebugLogEntry);
+  size_t kMinBufferSize = sizeof(BufferDebugLogHeader) + entry_size;
   if (log_buffer.size() < kMinBufferSize) {
     return absl::InvalidArgumentError(
         absl::StrFormat("Log buffer size %u is too small to hold any log "
@@ -70,8 +69,8 @@ absl::StatusOr<BufferDebugLogHeader> BufferDebugLog::ReadHeaderFromDevice(
   return header;
 }
 
-absl::StatusOr<std::vector<BufferDebugLogEntry>> BufferDebugLog::ReadFromDevice(
-    Stream& stream) const {
+absl::StatusOr<size_t> BufferDebugLog::ReadFromDevice(
+    Stream& stream, size_t entry_size, void* entries_data) const {
   std::vector<uint8_t> buffer(memory_.size());
   TF_RETURN_IF_ERROR(stream.Memcpy(buffer.data(), memory_, memory_.size()));
   TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
@@ -79,15 +78,14 @@ absl::StatusOr<std::vector<BufferDebugLogEntry>> BufferDebugLog::ReadFromDevice(
   BufferDebugLogHeader header;
   memcpy(&header, buffer.data(), sizeof(header));
 
-  const uint32_t max_entries = (memory_.size() - sizeof(BufferDebugLogHeader)) /
-                               sizeof(BufferDebugLogEntry);
+  const uint32_t max_entries =
+      (memory_.size() - sizeof(BufferDebugLogHeader)) / entry_size;
   const size_t initialized_entries =
       std::min(max_entries, std::min(header.capacity, header.write_idx));
-  std::vector<BufferDebugLogEntry> entries(initialized_entries);
-  memcpy(entries.data(), buffer.data() + sizeof(header),
-         initialized_entries * sizeof(BufferDebugLogEntry));
+  memcpy(entries_data, buffer.data() + sizeof(header),
+         initialized_entries * entry_size);
 
-  return entries;
+  return initialized_entries;
 }
 
 }  // namespace stream_executor::gpu

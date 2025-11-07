@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 
@@ -37,9 +38,9 @@ class BufferDebugLog {
  public:
   // Returns the number of bytes required to store a log with `entries`
   // entries.
-  static constexpr size_t RequiredSizeForEntries(size_t entries) {
-    return sizeof(xla::gpu::BufferDebugLogHeader) +
-           sizeof(xla::gpu::BufferDebugLogEntry) * entries;
+  static constexpr size_t RequiredSizeForEntries(size_t entries,
+                                                 size_t entry_size) {
+    return sizeof(xla::gpu::BufferDebugLogHeader) + entry_size * entries;
   }
 
   // Initializes an empty `BufferDebugLog` using a `log_buffer` allocated in
@@ -52,8 +53,11 @@ class BufferDebugLog {
   //
   // Fails with `absl::StatusCode::kInvalidArgument` if `log_buffer` is too
   // small to hold any entries.
+  template <typename Entry>
   static absl::StatusOr<BufferDebugLog> CreateOnDevice(
-      Stream& stream, DeviceMemory<uint8_t> log_buffer);
+      Stream& stream, DeviceMemory<uint8_t> log_buffer) {
+    return CreateOnDevice(stream, log_buffer, sizeof(Entry));
+  }
 
   // Creates a `BufferDebugLog` from an already initialized device memory
   // buffer.
@@ -78,8 +82,14 @@ class BufferDebugLog {
   //
   // `stream` must be associated with the same device as the one used to create
   // the log.
-  absl::StatusOr<std::vector<xla::gpu::BufferDebugLogEntry>> ReadFromDevice(
-      Stream& stream) const;
+  template <typename Entry>
+  absl::StatusOr<std::vector<Entry>> ReadFromDevice(Stream& stream) const {
+    std::vector<Entry> entries(memory_.size() / sizeof(Entry), Entry{});
+    TF_ASSIGN_OR_RETURN(size_t initialized_entries,
+                        ReadFromDevice(stream, sizeof(Entry), entries.data()));
+    entries.resize(initialized_entries);
+    return entries;
+  }
 
   // Returns a view of the `BufferDebugLogHeader`.
   //
@@ -94,14 +104,19 @@ class BufferDebugLog {
   //
   // The returned `DeviceMemory` gets invalidated when the `BufferDebugLog` is
   // destroyed.
-  DeviceMemory<xla::gpu::BufferDebugLogEntry> GetDeviceEntries() const {
-    return DeviceMemory<xla::gpu::BufferDebugLogEntry>(memory_.GetByteSlice(
+  template <typename Entry>
+  DeviceMemory<Entry> GetDeviceEntries() const {
+    return DeviceMemory<Entry>(memory_.GetByteSlice(
         sizeof(xla::gpu::BufferDebugLogHeader),
         memory_.size() - sizeof(xla::gpu::BufferDebugLogHeader)));
   }
 
  private:
   explicit BufferDebugLog(DeviceMemory<uint8_t> memory) : memory_(memory) {}
+  absl::StatusOr<size_t> ReadFromDevice(Stream& stream, size_t entry_size,
+                                        void* entries_data) const;
+  static absl::StatusOr<BufferDebugLog> CreateOnDevice(
+      Stream& stream, DeviceMemory<uint8_t> log_buffer, size_t entry_size);
 
   DeviceMemory<uint8_t> memory_;
 };

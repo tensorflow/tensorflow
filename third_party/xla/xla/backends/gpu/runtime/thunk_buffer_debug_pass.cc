@@ -221,8 +221,9 @@ absl::Status DumpBufferDebugLog(
   se::gpu::BufferDebugLog buffer_debug_log =
       se::gpu::BufferDebugLog::FromDeviceMemoryUnchecked(
           log_buffer.device_memory());
-  TF_ASSIGN_OR_RETURN(std::vector<BufferDebugLogEntry> log_entries,
-                      buffer_debug_log.ReadFromDevice(*stream));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<BufferDebugLogEntry> log_entries,
+      buffer_debug_log.ReadFromDevice<BufferDebugLogEntry>(*stream));
   BufferDebugLogProto buffer_debug_log_proto =
       metadata_store->EntriesToProto(log_entries);
 
@@ -351,8 +352,8 @@ ThunkFilter CreateThunkFilter(const DebugOptions& debug_options) {
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     kDebugLogInitHandler,
     [](se::Stream* absl_nonnull stream, xla::ffi::Buffer<U8> log_buffer) {
-      return se::gpu::BufferDebugLog::CreateOnDevice(*stream,
-                                                     log_buffer.device_memory())
+      return se::gpu::BufferDebugLog::CreateOnDevice<BufferDebugLogEntry>(
+                 *stream, log_buffer.device_memory())
           .status();
     },
     xla::ffi::Ffi::Bind().Ctx<xla::ffi::Stream>().Arg<xla::ffi::Buffer<U8>>());
