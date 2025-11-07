@@ -108,6 +108,7 @@ using ::testing::IsEmpty;
 using ::testing::IsSupersetOf;
 using ::testing::Matches;
 using ::testing::Not;
+using ::testing::SizeIs;
 using ::testing::StartsWith;
 using ::testing::TempDir;
 using ::tsl::gtl::ValueOrDie;
@@ -950,6 +951,117 @@ ENTRY main {
                      fallback_convert_to_f16));
     EXPECT_TRUE(filecheck_matched);
   }
+}
+
+class AotCompilationTest : public GpuCompilerTest,
+                           public ::testing::WithParamInterface<bool> {
+ protected:
+  void SetUp() override {
+    stream_exec_ = backend().default_stream_executor();
+    compiler_ = backend().compiler();
+    aot_options_ =
+        std::make_unique<AotCompilationOptions>(compiler_->PlatformId());
+    aot_options_->set_executor(stream_exec_);
+  }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = GpuCompilerTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_aot_compiled_thunks(GetParam());
+    return debug_options;
+  }
+
+  se::StreamExecutor* stream_exec_;
+  Compiler* compiler_;
+  std::unique_ptr<AotCompilationOptions> aot_options_;
+};
+
+INSTANTIATE_TEST_SUITE_P(NewAotFlow, AotCompilationTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "NewAotFlowEnabled"
+                                             : "NewAotFlowDisabled";
+                         });
+
+TEST_P(AotCompilationTest, CompileAndLoadAotResult) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> add_1_hlo,
+      ParseAndReturnVerifiedModule(R"hlo(
+    add1 {
+      p = s32[] parameter(0)
+      c = s32[] constant(1)
+      ROOT a = s32[] add(p, c)
+    }
+
+    ENTRY e {
+      p = s32[] parameter(0)
+      ROOT r = s32[] fusion(p), kind=kLoop, calls=add1
+    })hlo",
+                                   GetModuleConfigForTest()));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      compiler_->CompileAheadOfTime(std::move(add_1_hlo), *aot_options_));
+  ASSERT_THAT(aot_results, SizeIs(1));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
+                          std::move(aot_results[0])->SerializeAsString());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<AotCompilationResult> aot_result,
+      compiler_->LoadAotCompilationResult(serialized_aot_result));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      std::move(*aot_result).LoadExecutable(compiler_, stream_exec_));
+  std::unique_ptr<OpaqueExecutable> wrapped_executable =
+      test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
+
+  const xla::Literal literal_input = xla::LiteralUtil::CreateR0<int32_t>(1);
+  const xla::Literal literal_expected_result =
+      xla::LiteralUtil::CreateR0<int32_t>(2);
+  TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                          test_runner_as_hlo_runner().ExecuteWithExecutable(
+                              wrapped_executable.get(), {&literal_input}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(result, literal_expected_result));
+}
+
+TEST_P(AotCompilationTest, ExportAndImportAotResult) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> add_1_hlo,
+      ParseAndReturnVerifiedModule(R"hlo(
+    add1 {
+      p = s32[] parameter(0)
+      c = s32[] constant(1)
+      ROOT a = s32[] add(p, c)
+    }
+
+    ENTRY e {
+      p = s32[] parameter(0)
+      ROOT r = s32[] fusion(p), kind=kLoop, calls=add1
+    })hlo",
+                                   GetModuleConfigForTest()));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler_->RunBackend(std::move(add_1_hlo), stream_exec_,
+                            {/*device_allocator=*/nullptr,
+                             /*thread_pool=*/nullptr,
+                             /*layout_canonicalization_callback=*/{},
+                             /*is_autotuning_compilation=*/false}));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<AotCompilationResult> aot_result,
+                          compiler_->Export(executable.get()));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> new_executable,
+      std::move(*aot_result).LoadExecutable(compiler_, stream_exec_));
+  std::unique_ptr<OpaqueExecutable> wrapped_executable =
+      test_runner_as_hlo_runner().WrapExecutable(std::move(new_executable));
+
+  const xla::Literal literal_input = xla::LiteralUtil::CreateR0<int32_t>(1);
+  const xla::Literal literal_expected_result =
+      xla::LiteralUtil::CreateR0<int32_t>(2);
+  TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                          test_runner_as_hlo_runner().ExecuteWithExecutable(
+                              wrapped_executable.get(), {&literal_input}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(result, literal_expected_result));
 }
 
 class KernelCacheTest : public HloTestBase {
