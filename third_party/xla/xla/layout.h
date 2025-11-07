@@ -173,7 +173,7 @@ class Layout {
  public:
   Layout();
   Layout(const Layout& other);
-  Layout(Layout&& other);
+  Layout(Layout&& other) noexcept;
   ~Layout();
 
   Layout(absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
@@ -192,7 +192,7 @@ class Layout {
                   int64_t dynamic_shape_metadata_prefix_bytes = 0);
 
   Layout& operator=(const Layout& other);
-  Layout& operator=(Layout&& other);
+  Layout& operator=(Layout&& other) noexcept;
 
   // Creates a Layout from a LayoutProto.
   static absl::StatusOr<Layout> FromProto(const LayoutProto& proto);
