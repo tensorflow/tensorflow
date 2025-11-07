@@ -34,9 +34,9 @@ class ZoneProvider {
   /// Returns an empty string in the case where the zone does not match the
   /// expected format
   /// Safe for concurrent use by multiple threads.
-  virtual absl::Status GetZone(string* zone) = 0;
+  virtual absl::Status GetZone(std::string* zone) = 0;
 
-  static absl::Status GetZone(ZoneProvider* provider, string* zone) {
+  static absl::Status GetZone(ZoneProvider* provider, std::string* zone) {
     if (!provider) {
       return errors::Internal("Zone provider is required.");
     }

@@ -49,7 +49,7 @@ void _HostConstantOp::Compute(OpKernelContext* ctx) {
 REGISTER_KERNEL_BUILDER(Name("Const")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("output")
-                            .TypeConstraint<int32>("dtype"),
+                            .TypeConstraint<int32_t>("dtype"),
                         _HostConstantOp);
 
 // HostConst: forced to generate output on the host.

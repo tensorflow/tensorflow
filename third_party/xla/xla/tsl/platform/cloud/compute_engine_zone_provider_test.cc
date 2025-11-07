@@ -40,7 +40,7 @@ TEST_F(ComputeEngineZoneProviderTest, GetZone) {
 
   ComputeEngineZoneProvider provider(metadata_client);
 
-  string zone;
+  std::string zone;
 
   TF_EXPECT_OK(provider.GetZone(&zone));
   EXPECT_EQ("us-west1-b", zone);
@@ -61,7 +61,7 @@ TEST_F(ComputeEngineZoneProviderTest, InvalidZoneString) {
 
   ComputeEngineZoneProvider provider(metadata_client);
 
-  string zone;
+  std::string zone;
 
   TF_EXPECT_OK(provider.GetZone(&zone));
   EXPECT_EQ("", zone);
