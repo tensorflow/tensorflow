@@ -934,7 +934,15 @@ void GroupXplaneEvents(tensorflow::profiler::XPlane* plane,
   if (step_line) {
     bool device_loop = (step_line->events_size() > module_line->events_size());
     if (device_loop) {
-      group_line = nullptr;
+      int32_t group_id = 0;
+      for (XEvent& event : *step_line->mutable_events()) {
+        XEventBuilder step_builder(step_line, &plane_builder, &event);
+        XEventVisitor step_visitor(&plane_visitor, step_line, &event);
+        if (!step_visitor.GetStat(StatType::kGroupId).has_value()) {
+          step_builder.AddStatValue(*group_id_stat_metadata, group_id++);
+        }
+      }
+      group_line = step_line;
     } else {  // host loop
       if (group_line) {
         // Determine whether the module line has been grouped.
