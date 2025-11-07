@@ -67,7 +67,7 @@ class UnflattenCallGraph : public HloModulePass {
   // Hashes computations to produce a fingerprint and hash value.
   // Uses canonical HLO text without IDs for stable, content-based hashing.
   absl::StatusOr<std::vector<ComputationHashResult>> HashComputations(
-      const std::vector<HloComputation*>& called_computations);
+      const absl::flat_hash_set<HloComputation*>& called_computations);
 
   // Verifies that computations with the same hash are identical to prevent
   // incorrect merging due to hash collisions, using progressively more

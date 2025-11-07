@@ -49,7 +49,7 @@ namespace {
 // Struct to hold all call instructions and called computations in a module.
 struct HloCalls {
   std::vector<HloInstruction*> call_sites;
-  std::vector<HloComputation*> targets;
+  absl::flat_hash_set<HloComputation*> targets;
 };
 
 // Iterates through all instructions in the module's computations
@@ -64,7 +64,7 @@ HloCalls CollectHloCalls(
     for (const CallSite& callsite : node.callsites()) {
       if (callsite.instruction()->opcode() == HloOpcode::kCall) {
         calls.call_sites.push_back(callsite.instruction());
-        calls.targets.push_back(callsite.instruction()->to_apply());
+        calls.targets.insert(callsite.instruction()->to_apply());
       }
     }
   }
@@ -74,7 +74,7 @@ HloCalls CollectHloCalls(
 
 absl::StatusOr<std::vector<UnflattenCallGraph::ComputationHashResult>>
 UnflattenCallGraph::HashComputations(
-    const std::vector<HloComputation*>& called_computations) {
+    const absl::flat_hash_set<HloComputation*>& called_computations) {
   auto hash_computation =
       [&](HloComputation* computation) -> ComputationHashResult {
     // Secret key used for hashing. Since we're not worried about attackers,
