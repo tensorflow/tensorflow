@@ -134,7 +134,13 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
         self-adjoint to be positive-definite.  See:
         https://en.wikipedia.org/wiki/Positive-definite_matrix#Extension_for_non-symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
+        Should not be `False` for that only square Toeplitz operators
+        currently supported.
       name: A name for this `LinearOperator`.
+
+    Raises:
+      ValueError:  If `is_square` is `False`.
+      ValueError:  If `is_positive_definite` is `True` and `is_non_singular` is `False`.
     """
     parameters = dict(
         col=col,
