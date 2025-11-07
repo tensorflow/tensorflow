@@ -98,6 +98,16 @@ class GpuComputeCapability {
       compute_capability_;
 };
 
+// Information about NVLink/UALink.
+struct DeviceInterconnectInfo {
+  int active_links = 0;
+
+  // Uuid of the cluster to which this GPU belongs.
+  std::string cluster_uuid;
+  // ID of the fabric clique to which this GPU belongs.
+  std::string clique_id;
+};
+
 // Data that describes the execution target of the StreamExecutor, in terms of
 // important logical parameters. These include dimensionality limits and
 // physical parameters of interest, such as number of cores present on the
@@ -106,6 +116,8 @@ class GpuComputeCapability {
 // Thread-safe: immutable post-initialization.
 class DeviceDescription {
  public:
+  DeviceDescription() = default;
+
   // Returns the platform being run on; this value is primarily intended for
   // printing, and comes out something like "OpenCL 1.2" or "Compute Capability
   // 3.5".
@@ -290,11 +302,14 @@ class DeviceDescription {
     return 32;
   }
 
+  const DeviceInterconnectInfo& device_interconnect_info() const {
+    return interconnect_info_;
+  }
+
   GpuDeviceInfoProto ToGpuProto() const;
 
   std::string ToString() const;
 
-  DeviceDescription() = default;
   static absl::StatusOr<DeviceDescription> FromProto(
       const GpuDeviceInfoProto& proto);
 
@@ -383,6 +398,10 @@ class DeviceDescription {
   void set_fpus_per_core(int value) { fpus_per_core_ = value; }
   void set_ecc_enabled(bool value) { ecc_enabled_ = value; }
 
+  void set_device_interconnect_info(DeviceInterconnectInfo info) {
+    interconnect_info_ = std::move(info);
+  }
+
  private:
   // For description of the following members, see the corresponding accessor
   // above.
@@ -435,6 +454,8 @@ class DeviceDescription {
   SemanticVersion runtime_version_{0, 0, 0};
   SemanticVersion compile_time_toolkit_version_{0, 0, 0};
   SemanticVersion dnn_version_{0, 0, 0};
+
+  DeviceInterconnectInfo interconnect_info_;
 };
 
 // Returns whether the given thread_dim is acceptable given the limits described

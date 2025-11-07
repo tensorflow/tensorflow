@@ -72,6 +72,15 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
 
   EXPECT_THAT(*result->gpu_compute_capability().cuda_compute_capability(),
               ::testing::Field("major", &CudaComputeCapability::major, Ge(1)));
+
+  DeviceInterconnectInfo info = result->device_interconnect_info();
+  if (result->cuda_compute_capability().IsAtLeastBlackwell() &&
+      info.active_links) {
+    EXPECT_GE(info.active_links, 18);
+
+    EXPECT_THAT(info.clique_id, Not(IsEmpty()));
+    EXPECT_THAT(info.cluster_uuid, Not(IsEmpty()));
+  }
 }
 
 TEST(CudaExecutorTest, GetCudaKernel) {
