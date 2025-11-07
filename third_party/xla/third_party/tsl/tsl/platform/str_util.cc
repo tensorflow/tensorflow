@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tsl/platform/str_util.h"
 
-#include <cctype>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <system_error>  // NOLINT
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
@@ -50,28 +51,16 @@ size_t RemoveWhitespaceContext(absl::string_view* text) {
 }
 
 bool ConsumeLeadingDigits(absl::string_view* s, uint64_t* val) {
-  const char* p = s->data();
-  const char* limit = p + s->size();
-  uint64_t v = 0;
-  while (p < limit) {
-    const char c = *p;
-    if (c < '0' || c > '9') break;
-    uint64_t new_v = (v * 10) + (c - '0');
-    if (new_v / 8 < v) {
-      // Overflow occurred
-      return false;
-    }
-    v = new_v;
-    p++;
-  }
-  if (p > s->data()) {
-    // Consume some digits
-    s->remove_prefix(p - s->data());
-    *val = v;
-    return true;
-  } else {
+  uint64_t v;
+  auto [p, ec] =
+      std::from_chars(s->data(), s->data() + s->size(), v, /*base=*/10);
+  if (ec != std::errc{}) {
     return false;
   }
+  // Consume some digits
+  s->remove_prefix(p - s->data());
+  *val = v;
+  return true;
 }
 
 bool ConsumeNonWhitespace(absl::string_view* s, absl::string_view* val) {
@@ -120,14 +109,6 @@ string StringReplace(absl::string_view s, absl::string_view oldsub,
     }
   }
   return res;
-}
-
-size_t Strnlen(const char* str, const size_t string_max_len) {
-  size_t len = 0;
-  while (len < string_max_len && str[len] != '\0') {
-    ++len;
-  }
-  return len;
 }
 
 string ArgDefCase(absl::string_view s) {

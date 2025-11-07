@@ -51,7 +51,6 @@ using tsl::str_util::StringReplace;
 using tsl::str_util::StripPrefix;
 using tsl::str_util::StripSuffix;
 using tsl::str_util::StripTrailingWhitespace;
-using tsl::str_util::Strnlen;
 using tsl::str_util::TitlecaseString;
 using tsl::str_util::Uppercase;
 // NOLINTEND(misc-unused-using-decls)

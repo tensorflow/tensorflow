@@ -33,6 +33,7 @@ tf_cc_fuzz_test(
     deps = [
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings",
     ],
 )
 

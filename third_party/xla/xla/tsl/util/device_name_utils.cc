@@ -16,29 +16,30 @@ limitations under the License.
 #include "xla/tsl/util/device_name_utils.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <string>
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/str_util.h"
 
 namespace tsl {
 
-static bool IsAlpha(char c) {
-  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-}
-
 static bool IsAlphaNumOrUnderscore(char c) {
-  return IsAlpha(c) || (c >= '0' && c <= '9') || c == '_';
+  return absl::ascii_isalnum(c) || c == '_';
 }
 
 // Returns true iff "in" is a valid job name.
 static bool IsJobName(absl::string_view in) {
-  return !in.empty() && IsAlpha(in.front()) &&
+  return !in.empty() && absl::ascii_isalpha(in.front()) &&
          std::all_of(in.begin(), in.end(), IsAlphaNumOrUnderscore);
 }
 
 static bool ConsumePrefix(absl::string_view* in, string* out,
                           absl::string_view prefix_terminators) {
-  if (in->empty() || !IsAlpha(in->front())) {
+  if (in->empty() || !absl::ascii_isalpha(in->front())) {
     return false;
   }
   const auto end_it =
@@ -66,7 +67,7 @@ static bool ConsumeDeviceType(absl::string_view* in, string* device_type) {
 // Returns true and fills in "*val" iff "*in" starts with a decimal
 // number.
 static bool ConsumeNumber(absl::string_view* in, int* val) {
-  uint64 tmp;
+  uint64_t tmp;
   if (str_util::ConsumeLeadingDigits(in, &tmp)) {
     *val = tmp;
     return true;
@@ -75,16 +76,16 @@ static bool ConsumeNumber(absl::string_view* in, int* val) {
 }
 
 // Returns a fully qualified device name given the parameters.
-static string DeviceName(const string& job, int replica, int task,
-                         const string& device_prefix, const string& device_type,
-                         int id) {
+static std::string DeviceName(absl::string_view job, int replica, int task,
+                              absl::string_view device_prefix,
+                              absl::string_view device_type, int id) {
   CHECK(IsJobName(job)) << job;
   CHECK_LE(0, replica);
   CHECK_LE(0, task);
   CHECK(!device_type.empty());
   CHECK_LE(0, id);
-  return strings::StrCat("/job:", job, "/replica:", replica, "/task:", task,
-                         device_prefix, device_type, ":", id);
+  return absl::StrCat("/job:", job, "/replica:", replica, "/task:", task,
+                      device_prefix, device_type, ":", id);
 }
 
 /* static */

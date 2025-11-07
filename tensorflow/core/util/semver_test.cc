@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstddef>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -27,10 +28,7 @@ namespace {
 bool IsDotOrIdentifierChar(char c) {
   if (c == '.') return true;
   if (c == '-') return true;
-  if (c >= 'A' && c <= 'Z') return true;
-  if (c >= 'a' && c <= 'z') return true;
-  if (c >= '0' && c <= '9') return true;
-  return false;
+  return absl::ascii_isalnum(c);
 }
 
 bool ConsumeDotSeparatedIdentifiers(absl::string_view* s,
