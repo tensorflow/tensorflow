@@ -106,7 +106,6 @@ build_test(
     tags = [
         "noasan",
         "nomsan",
-        "notap",  # TODO(b/415812396): Re-enable once the test is fixed.
         "notsan",
         "nozapfhahn",
     ],
