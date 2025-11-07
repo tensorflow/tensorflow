@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -189,18 +190,26 @@ class CompilePhaseHloRunnerPjRt : public HloRunnerPjRt {
 };
 
 // This class works just like a HloRunnerPjRt, but it only runs execution
-// (reading the executable from disk) and does not compile the executable.  If
-// `compile_if_not_found` is true, this class will attempt to compile the
+// (reading the executable from disk) and does not compile the executable.
+//
+// If `compile_if_not_found` is true, this class will attempt to compile the
 // executable if the serialized version from the compile phase could not be
 // found. This effectively makes this class equivalent to HloRunnerPjRt.
+//
+// If `fail_duplicate_loads` is true, calls to CreateExecutable will fail if the
+// executable was previously loaded using the same runner. Most tests do not
+// need to load an executable more than once and setting this can help catch
+// instances where e.g. fingerprints are colliding.
 class ExecutePhaseHloRunnerPjRt : public HloRunnerPjRt {
  public:
   ExecutePhaseHloRunnerPjRt(std::unique_ptr<PjRtClient> pjrt_client,
                             absl::string_view artifact_dir,
-                            bool compile_if_not_found = true)
+                            bool compile_if_not_found = true,
+                            bool fail_duplicate_loads = true)
       : HloRunnerPjRt(std::move(pjrt_client)),
         artifact_dir_(artifact_dir),
-        compile_if_not_found_(compile_if_not_found) {}
+        compile_if_not_found_(compile_if_not_found),
+        fail_duplicate_loads_(fail_duplicate_loads) {}
 
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
@@ -208,6 +217,9 @@ class ExecutePhaseHloRunnerPjRt : public HloRunnerPjRt {
  private:
   std::string artifact_dir_;
   bool compile_if_not_found_;
+  bool fail_duplicate_loads_;
+
+  absl::flat_hash_set<std::string> loaded_executable_paths_;
 };
 
 }  // namespace xla
