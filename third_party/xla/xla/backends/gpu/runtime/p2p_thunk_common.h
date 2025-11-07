@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -101,6 +102,9 @@ P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
 // Send or Recv instruction, by inspecting the frontend attributes of the
 // instruction.
 AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr);
+
+absl::StatusOr<const int64_t> GetCollectiveCurrentId(
+    Thunk::CollectiveExecuteParams* collective_params, const P2PConfig& config);
 
 }  // namespace gpu
 }  // namespace xla

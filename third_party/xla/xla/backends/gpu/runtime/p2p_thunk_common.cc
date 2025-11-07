@@ -26,12 +26,15 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -187,6 +190,23 @@ AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr) {
     return AsyncStreamKind::ASYNC_STREAM_KIND_P2P1;
   }
   return AsyncStreamKind::ASYNC_STREAM_KIND_P2P0;
+}
+
+// Retrieves the current collective ID (replica or partition ID) for the
+// executing device.
+absl::StatusOr<const int64_t> GetCollectiveCurrentId(
+    Thunk::CollectiveExecuteParams* collective_params,
+    const P2PConfig& config) {
+  GlobalDeviceId global_device_id = collective_params->global_device_id;
+  TF_ASSIGN_OR_RETURN(
+      const DeviceAssignment::LogicalID current_logical_id,
+      collective_params->device_assn->LogicalIdForDevice(global_device_id));
+  const int64_t current_id =
+      config.config.group_mode ==
+              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
+          ? current_logical_id.replica_id
+          : current_logical_id.computation_id;
+  return current_id;
 }
 
 }  // namespace gpu

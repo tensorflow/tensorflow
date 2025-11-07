@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/rendezvous.h"
@@ -61,21 +60,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
-
-absl::StatusOr<const int64_t> GetCurrentId(
-    Thunk::CollectiveExecuteParams* collective_params,
-    const P2PConfig& config) {
-  GlobalDeviceId global_device_id = collective_params->global_device_id;
-  TF_ASSIGN_OR_RETURN(
-      const DeviceAssignment::LogicalID current_logical_id,
-      collective_params->device_assn->LogicalIdForDevice(global_device_id));
-  const int64_t current_id =
-      config.config.group_mode ==
-              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
-          ? current_logical_id.replica_id
-          : current_logical_id.computation_id;
-  return current_id;
-}
 
 bool IsLocalPeerTransfer(const P2PConfig::SourceTargetMapEntry& source_target,
                          const int64_t current_id, const int64_t device_count) {
@@ -188,8 +172,9 @@ absl::Status CollectivePermuteStartThunk::Initialize(
   VLOG(5) << "Local device count: " << device_count_;
 
   if (p2p_memcpy_enabled_) {
-    TF_ASSIGN_OR_RETURN(const int64_t current_id,
-                        GetCurrentId(params.collective_params, config_));
+    TF_ASSIGN_OR_RETURN(
+        const int64_t current_id,
+        GetCollectiveCurrentId(params.collective_params, config_));
     {
       absl::MutexLock lock(barrier_mutex_);
       if (receiver_barrier_events_.find(current_id) ==
@@ -254,8 +239,9 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
       ConvertToDeviceBuffers(params,
                              std::vector<CollectiveThunk::Buffer>(buffers_),
                              config_.config.operand_element_type));
-  TF_ASSIGN_OR_RETURN(const int64_t current_id,
-                      GetCurrentId(params.collective_params, config_));
+  TF_ASSIGN_OR_RETURN(
+      const int64_t current_id,
+      GetCollectiveCurrentId(params.collective_params, config_));
   std::string device_string = GetDeviceString(*params.collective_params);
 
   const P2PConfig::SourceTargetMapEntry source_target =
