@@ -27,11 +27,11 @@ namespace {
 // The returned array is only valid for the lifetime of the input vector.
 // We're using const casting because we need to pass in an argv-style array of
 // char* pointers for the API, even though we know they won't be altered.
-std::vector<char *> CharPointerVectorFromStrings(
-    const std::vector<string> &strings) {
+std::vector<char*> CharPointerVectorFromStrings(
+    const std::vector<std::string>& strings) {
   std::vector<char *> result;
   result.reserve(strings.size());
-  for (const string &string : strings) {
+  for (const std::string& string : strings) {
     result.push_back(const_cast<char *>(string.c_str()));
   }
   return result;
@@ -47,23 +47,24 @@ TEST(CommandLineFlagsTest, BasicUsage) {
   bool some_switch_set_via_hook = true;
   bool some_switch_set_capitalized = false;
   bool some_switch_set_by_number = false;
-  string some_name_set_directly = "something_a";
-  string some_name_set_via_hook = "something_b";
+  std::string some_name_set_directly = "something_a";
+  std::string some_name_set_via_hook = "something_b";
   float some_float_set_directly = -23.23f;
   float some_float_set_via_hook = -25.23f;
-  std::vector<string> argv_strings = {"program_name",
-                                      "--some_int32_set_directly=20",
-                                      "--some_int32_set_via_hook=50",
-                                      "--some_int64_set_directly=214748364700",
-                                      "--some_int64_set_via_hook=214748364710",
-                                      "--some_switch_set_directly",
-                                      "--some_switch_set_via_hook=false",
-                                      "--some_switch_set_capitalized=True",
-                                      "--some_switch_set_by_number=1",
-                                      "--some_name_set_directly=somethingelse",
-                                      "--some_name_set_via_hook=anythingelse",
-                                      "--some_float_set_directly=42.0",
-                                      "--some_float_set_via_hook=43.0"};
+  std::vector<std::string> argv_strings = {
+      "program_name",
+      "--some_int32_set_directly=20",
+      "--some_int32_set_via_hook=50",
+      "--some_int64_set_directly=214748364700",
+      "--some_int64_set_via_hook=214748364710",
+      "--some_switch_set_directly",
+      "--some_switch_set_via_hook=false",
+      "--some_switch_set_capitalized=True",
+      "--some_switch_set_by_number=1",
+      "--some_name_set_directly=somethingelse",
+      "--some_name_set_via_hook=anythingelse",
+      "--some_float_set_directly=42.0",
+      "--some_float_set_via_hook=43.0"};
   int argc = argv_strings.size();
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
   bool parsed_ok = Flags::Parse(
@@ -104,7 +105,7 @@ TEST(CommandLineFlagsTest, BasicUsage) {
                "some name set directly"),
           Flag(
               "some_name_set_via_hook",
-              [&](string value) {
+              [&](std::string value) {
                 some_name_set_via_hook = std::move(value);
                 return true;
               },
@@ -139,7 +140,8 @@ TEST(CommandLineFlagsTest, BasicUsage) {
 TEST(CommandLineFlagsTest, BadIntValue) {
   int some_int = 10;
   int argc = 2;
-  std::vector<string> argv_strings = {"program_name", "--some_int=notanumber"};
+  std::vector<std::string> argv_strings = {"program_name",
+                                           "--some_int=notanumber"};
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
   bool parsed_ok = Flags::Parse(&argc, argv_array.data(),
                                 {Flag("some_int", &some_int, "some int")});
@@ -152,7 +154,8 @@ TEST(CommandLineFlagsTest, BadIntValue) {
 TEST(CommandLineFlagsTest, BadBoolValue) {
   bool some_switch = false;
   int argc = 2;
-  std::vector<string> argv_strings = {"program_name", "--some_switch=notabool"};
+  std::vector<std::string> argv_strings = {"program_name",
+                                           "--some_switch=notabool"};
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
   bool parsed_ok =
       Flags::Parse(&argc, argv_array.data(),
@@ -166,8 +169,8 @@ TEST(CommandLineFlagsTest, BadBoolValue) {
 TEST(CommandLineFlagsTest, BadFloatValue) {
   float some_float = -23.23f;
   int argc = 2;
-  std::vector<string> argv_strings = {"program_name",
-                                      "--some_float=notanumber"};
+  std::vector<std::string> argv_strings = {"program_name",
+                                           "--some_float=notanumber"};
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
   bool parsed_ok =
       Flags::Parse(&argc, argv_array.data(),
@@ -180,7 +183,7 @@ TEST(CommandLineFlagsTest, BadFloatValue) {
 
 TEST(CommandLineFlagsTest, FailedInt32Hook) {
   int argc = 2;
-  std::vector<string> argv_strings = {"program_name", "--some_int32=200"};
+  std::vector<std::string> argv_strings = {"program_name", "--some_int32=200"};
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
   bool parsed_ok =
       Flags::Parse(&argc, argv_array.data(),
@@ -194,7 +197,7 @@ TEST(CommandLineFlagsTest, FailedInt32Hook) {
 
 TEST(CommandLineFlagsTest, FailedInt64Hook) {
   int argc = 2;
-  std::vector<string> argv_strings = {"program_name", "--some_int64=200"};
+  std::vector<std::string> argv_strings = {"program_name", "--some_int64=200"};
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
   bool parsed_ok =
       Flags::Parse(&argc, argv_array.data(),
@@ -208,7 +211,8 @@ TEST(CommandLineFlagsTest, FailedInt64Hook) {
 
 TEST(CommandLineFlagsTest, FailedFloatHook) {
   int argc = 2;
-  std::vector<string> argv_strings = {"program_name", "--some_float=200.0"};
+  std::vector<std::string> argv_strings = {"program_name",
+                                           "--some_float=200.0"};
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
   bool parsed_ok =
       Flags::Parse(&argc, argv_array.data(),
@@ -221,7 +225,8 @@ TEST(CommandLineFlagsTest, FailedFloatHook) {
 
 TEST(CommandLineFlagsTest, FailedBoolHook) {
   int argc = 2;
-  std::vector<string> argv_strings = {"program_name", "--some_switch=true"};
+  std::vector<std::string> argv_strings = {"program_name",
+                                           "--some_switch=true"};
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
   bool parsed_ok =
       Flags::Parse(&argc, argv_array.data(),
@@ -234,11 +239,13 @@ TEST(CommandLineFlagsTest, FailedBoolHook) {
 
 TEST(CommandLineFlagsTest, FailedStringHook) {
   int argc = 2;
-  std::vector<string> argv_strings = {"program_name", "--some_name=true"};
+  std::vector<std::string> argv_strings = {"program_name", "--some_name=true"};
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
-  bool parsed_ok = Flags::Parse(
-      &argc, argv_array.data(),
-      {Flag("some_name", [](string value) { return false; }, "", "some name")});
+  bool parsed_ok =
+      Flags::Parse(&argc, argv_array.data(),
+                   {Flag(
+                       "some_name", [](std::string value) { return false; }, "",
+                       "some name")});
 
   EXPECT_EQ(false, parsed_ok);
   EXPECT_EQ(argc, 1);
@@ -246,17 +253,18 @@ TEST(CommandLineFlagsTest, FailedStringHook) {
 
 TEST(CommandLineFlagsTest, RepeatedStringHook) {
   int argc = 3;
-  std::vector<string> argv_strings = {"program_name", "--some_name=this",
-                                      "--some_name=that"};
+  std::vector<std::string> argv_strings = {"program_name", "--some_name=this",
+                                           "--some_name=that"};
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
   int call_count = 0;
   bool parsed_ok = Flags::Parse(&argc, argv_array.data(),
-                                {Flag("some_name",
-                                      [&call_count](string value) {
-                                        call_count++;
-                                        return true;
-                                      },
-                                      "", "some name")});
+                                {Flag(
+                                    "some_name",
+                                    [&call_count](std::string value) {
+                                      call_count++;
+                                      return true;
+                                    },
+                                    "", "some name")});
 
   EXPECT_EQ(true, parsed_ok);
   EXPECT_EQ(argc, 1);
@@ -265,7 +273,8 @@ TEST(CommandLineFlagsTest, RepeatedStringHook) {
 
 // Return whether str==pat, but allowing any whitespace in pat
 // to match zero or more whitespace characters in str.
-static bool MatchWithAnyWhitespace(const string &str, const string &pat) {
+static bool MatchWithAnyWhitespace(const std::string& str,
+                                   const std::string& pat) {
   bool matching = true;
   int pat_i = 0;
   for (int str_i = 0; str_i != str.size() && matching; str_i++) {
@@ -288,15 +297,15 @@ TEST(CommandLineFlagsTest, UsageString) {
   int some_int = 10;
   int64_t some_int64 = 21474836470;  // max int32 is 2147483647
   bool some_switch = false;
-  string some_name = "something";
+  std::string some_name = "something";
   // Don't test float in this case, because precision is hard to predict and
   // match against, and we don't want a franky test.
-  const string tool_name = "some_tool_name";
-  string usage = Flags::Usage(tool_name + "<flags>",
-                              {Flag("some_int", &some_int, "some int"),
-                               Flag("some_int64", &some_int64, "some int64"),
-                               Flag("some_switch", &some_switch, "some switch"),
-                               Flag("some_name", &some_name, "some name")});
+  const std::string tool_name = "some_tool_name";
+  std::string usage = Flags::Usage(
+      tool_name + "<flags>", {Flag("some_int", &some_int, "some int"),
+                              Flag("some_int64", &some_int64, "some int64"),
+                              Flag("some_switch", &some_switch, "some switch"),
+                              Flag("some_name", &some_name, "some name")});
   // Match the usage message, being sloppy about whitespace.
   const char *expected_usage =
       " usage: some_tool_name <flags>\n"
@@ -314,10 +323,10 @@ TEST(CommandLineFlagsTest, UsageString) {
 
 namespace {
 template <typename T, typename ExpectationFun>
-void PrefixTestTempl(ExpectationFun expectation_fun, const T &value0,
-                     const T &value1, string str0, string str1) {
+void PrefixTestTempl(ExpectationFun expectation_fun, const T& value0,
+                     const T& value1, std::string str0, std::string str1) {
   int argc = 3;
-  std::vector<string> argv_strings = {
+  std::vector<std::string> argv_strings = {
       "program_name",
       "--hello" + str0,
       "--hello_world" + str1,
@@ -350,7 +359,7 @@ TEST(CommandLineFlagsTest, OneArgumentIsAPrefixOfAnother) {
   PrefixTestTempl<bool>(expect_eq, false, true, "=false", "");
   PrefixTestTempl<bool>(expect_eq, true, false, "=true", "=false");
   PrefixTestTempl<bool>(expect_eq, true, false, "", "=false");
-  PrefixTestTempl<string>(expect_eq, "a", "b", "=a", "=b");
+  PrefixTestTempl<std::string>(expect_eq, "a", "b", "=a", "=b");
   PrefixTestTempl<float>(expect_near, 0.1f, 0.2f, "=0.1", "=0.2");
 }
 
