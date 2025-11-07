@@ -225,11 +225,15 @@ class NcclCommunicator::NcclRegisteredBufferHandle
 
 absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
     absl::AnyInvocable<absl::StatusOr<ncclComm_t>()> make_comm, bool is_async,
-    tsl::Env& env) {
-  // TODO(mwhittaker): There is currently no way to abort these operations.
-  auto f = [&make_comm]() -> absl::StatusOr<ncclComm_t> {
+    std::atomic_bool* cancel, tsl::Env& env) {
+  auto f = [cancel, &make_comm]() -> absl::StatusOr<ncclComm_t> {
     TF_ASSIGN_OR_RETURN(ncclComm_t comm, make_comm());
-    TF_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, std::atomic_bool{}));
+    if (cancel) {
+      TF_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, *cancel));
+    } else {
+      std::atomic_bool never_cancelled;
+      TF_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, never_cancelled));
+    }
     return comm;
   };
 

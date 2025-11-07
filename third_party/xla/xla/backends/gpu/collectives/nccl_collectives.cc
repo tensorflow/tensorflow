@@ -144,10 +144,10 @@ static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
-                                     const std::optional<CliqueIds>& clique_ids,
-                                     absl::Span<const DeviceRank> ranks,
-                                     const Collectives::Config& config) {
+NcclCollectives::CreateCommunicatorsWithCancel(
+    const CliqueKey& clique_key, const std::optional<CliqueIds>& clique_ids,
+    absl::Span<const DeviceRank> ranks, const Collectives::Config& config,
+    std::atomic_bool* cancel) {
   // Validate clique ids. With the NCCL backend, we rely on the host to exchange
   // unique clique ids.
   if (!clique_ids.has_value() || clique_ids->data().empty()) {
@@ -201,7 +201,7 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
       pool.Schedule([&, i]() {
         absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
             NcclCommunicator::Create(std::bind(make_comm, i),
-                                     gpu_config.async_execution);
+                                     gpu_config.async_execution, cancel);
         if (!comm.ok()) {
           absl::call_once(once, [&] { status = comm.status(); });
           return;
@@ -215,11 +215,10 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
-                                    int32_t color,
-                                    absl::Span<const RankId> keys,
-                                    const Collectives::Config& config,
-                                    absl::Span<const DeviceRank> ranks) {
+NcclCollectives::SplitCommunicatorsWithCancel(
+    absl::Span<const Communicator* const> comms, int32_t color,
+    absl::Span<const RankId> keys, const Collectives::Config& config,
+    absl::Span<const DeviceRank> ranks, std::atomic_bool* cancel) {
   auto rank_formatter = [](std::string* str, RankId rank) {
     absl::StrAppend(str, rank.value());
   };
@@ -263,7 +262,7 @@ NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
       pool.Schedule([&, i]() {
         absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
             NcclCommunicator::Create(std::bind(make_comm, i),
-                                     gpu_config.async_execution);
+                                     gpu_config.async_execution, cancel);
         if (!comm.ok()) {
           absl::call_once(once, [&] { status = comm.status(); });
           return;

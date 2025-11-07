@@ -69,7 +69,8 @@ class NcclCommunicator : public GpuCommunicator {
   // synchronously on the calling thread.
   static absl::StatusOr<std::unique_ptr<NcclCommunicator>> Create(
       absl::AnyInvocable<absl::StatusOr<ncclComm_t>()> make_comm,
-      bool is_async = false, tsl::Env& env = *tsl::Env::Default());
+      bool is_async = false, std::atomic_bool* cancel = nullptr,
+      tsl::Env& env = *tsl::Env::Default());
 
   ~NcclCommunicator() override;
 
