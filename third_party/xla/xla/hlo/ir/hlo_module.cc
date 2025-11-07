@@ -37,10 +37,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
-#include "absl/strings/match.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -1651,35 +1648,38 @@ HloModule::OriginalValueRecoveryTable::FromProto(
   return original_value_recovery_table;
 }
 
-namespace {
-std::string GetOriginalValuePlaceholderInstructionName(
-    absl::string_view original_value_instruction_name) {
-  std::string base_name = std::string(original_value_instruction_name);
-  int64_t placeholder_index = 0;
-  if (absl::StrContains(original_value_instruction_name,
-                        kOriginalValuePlaceholderDelimiter)) {
-    // split by the delimiter and update the base and index
-    std::vector<std::string> parts = absl::StrSplit(
-        original_value_instruction_name, kOriginalValuePlaceholderDelimiter);
-    CHECK_EQ(parts.size(), 2)
-        << "Original value instruction name does not have the expected format: "
-        << original_value_instruction_name;
-    base_name = parts[0];
-    CHECK(absl::SimpleAtoi(parts[1], &placeholder_index))
-        << "Invalid placeholder index in original value name: "
-        << original_value_instruction_name;
-    ++placeholder_index;
+void HloModule::OriginalValueRecoveryTable::AddRecoveryComputation(
+    const OriginalArray& old_original_array,
+    const OriginalArray& new_original_array,
+    const std::function<std::optional<std::unique_ptr<HloModule>>(
+        const ShapeIndex& index, const OriginalArray& old_original_array,
+        const xla::Shape& old_shape, const xla::Shape& new_shape)>&
+        build_recovery_computation,
+    const ShapeIndex& index, const Shape& old_shape, const Shape& new_shape) {
+  if (table_.contains(old_original_array)) {
+    // If the replaced array is already tracked by the recovery table, we can
+    // ignore it since it is already handled by another path.
+    return;
   }
-  return absl::StrCat(base_name, kOriginalValuePlaceholderDelimiter,
-                      placeholder_index);
+  std::optional<std::unique_ptr<HloModule>> recovery_computation(nullptr);
+  if (build_recovery_computation) {
+    // Skips if build_recovery_computation returns a nullopt, which
+    // indicates the original array is not recoverable.
+    if (!(recovery_computation = build_recovery_computation(
+              index, old_original_array, old_shape, new_shape))) {
+      return;
+    }
+  }
+  table_.emplace(
+      old_original_array,
+      std::make_pair(new_original_array, std::move(*recovery_computation)));
 }
-}  // namespace
 
 void HloModule::OriginalValueRecoveryTable::AddRecoveryComputation(
     const HloInstruction* old_inst, HloInstruction* new_inst,
-    std::function<std::optional<std::unique_ptr<HloModule>>(
+    const std::function<std::optional<std::unique_ptr<HloModule>>(
         const ShapeIndex& index, const OriginalArray& old_original_array,
-        const xla::Shape& old_array_shape, const xla::Shape& new_array_shape)>&&
+        const xla::Shape& old_shape, const xla::Shape& new_shape)>&
         build_recovery_computation) {
   CHECK(ShapeUtil::EqualStructure(old_inst->shape(), new_inst->shape()));
   std::shared_ptr<OriginalValue> old_original_value =
@@ -1688,47 +1688,22 @@ void HloModule::OriginalValueRecoveryTable::AddRecoveryComputation(
     return;
   }
   if (new_inst->original_value() == nullptr) {
-    new_inst->set_original_value(std::make_shared<OriginalValue>(
-        TupleTree<std::optional<OriginalArray>>(new_inst->shape())));
+    new_inst->set_original_value(
+        std::make_shared<OriginalValue>(new_inst->shape()));
   }
   for (const auto& [shape_index, old_original_array] :
        old_original_value->original_arrays()) {
-    if (!old_original_array || table_.contains(*old_original_array)) {
-      // If the replaced array is already tracked by the recovery table, we can
-      // ignore it since it is already handled by another path.
-      continue;
-    }
-    // If build_recovery_computation is not provided, we can just propagate the
-    // replaced original array.
-    std::optional<std::unique_ptr<HloModule>> recovery_computation(nullptr);
-    if (build_recovery_computation) {
-      recovery_computation = build_recovery_computation(
-          shape_index, *old_original_array,
-          ShapeUtil::GetSubshape(old_inst->shape(), shape_index),
-          ShapeUtil::GetSubshape(new_inst->shape(), shape_index));
-    }
-    if (!recovery_computation) {
-      continue;
-    }
     std::optional<OriginalArray>* new_original_array =
         new_inst->original_value()->mutable_original_array(shape_index);
-    if (recovery_computation->get() == nullptr &&
-        !new_original_array->has_value()) {
-      // If the recovery computation is the identity computation and the
-      // replacing original array is not set, we can just propagate the replaced
-      // original array without setting any recovery computation.
-      new_original_array->emplace(*old_original_array);
-      continue;
-    }
     if (!*new_original_array) {
-      new_original_array->emplace(
-          OriginalArray{GetOriginalValuePlaceholderInstructionName(
-                            old_original_array->instruction_name),
-                        old_original_array->shape_index});
+      new_original_array->emplace(OriginalArray{
+          GetPlaceholderOriginalArrayName(old_original_array->instruction_name),
+          old_original_array->shape_index});
     }
-    table_.emplace(
-        *old_original_array,
-        std::make_pair(**new_original_array, std::move(*recovery_computation)));
+    AddRecoveryComputation(
+        *old_original_array, **new_original_array, build_recovery_computation,
+        shape_index, ShapeUtil::GetSubshape(old_inst->shape(), shape_index),
+        ShapeUtil::GetSubshape(new_inst->shape(), shape_index));
   }
 }
 
@@ -1736,14 +1711,13 @@ void HloModule::OriginalValueRecoveryTable::BuildAndAddRecoveryComputation(
     const HloInstruction* old_inst, HloInstruction* new_inst,
     std::function<std::optional<HloInstruction*>(
         xla::HloComputation::Builder& builder, const ShapeIndex& index,
-        const OriginalArray& old_original_array,
-        const xla::Shape& old_array_shape, const xla::Shape& new_array_shape)>&&
-        build_recovery_computation) {
+        const OriginalArray& old_original_array, const xla::Shape& old_shape,
+        const xla::Shape& new_shape)>&& build_recovery_computation) {
   AddRecoveryComputation(
       old_inst, new_inst,
       [build_recovery_computation](
           const ShapeIndex& index, const OriginalArray& old_original_array,
-          const xla::Shape& old_array_shape, const xla::Shape& new_array_shape)
+          const xla::Shape& old_shape, const xla::Shape& new_shape)
           -> std::optional<std::unique_ptr<HloModule>> {
         xla::HloComputation::Builder builder("recovery_computation");
         xla::HloModuleConfig config;
@@ -1751,7 +1725,7 @@ void HloModule::OriginalValueRecoveryTable::BuildAndAddRecoveryComputation(
             std::make_unique<xla::HloModule>("recovery_module", config);
         std::optional<HloInstruction*> root_instruction =
             build_recovery_computation(builder, index, old_original_array,
-                                       old_array_shape, new_array_shape);
+                                       old_shape, new_shape);
         if (!root_instruction) {
           return std::nullopt;
         }
