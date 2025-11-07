@@ -200,9 +200,11 @@ common:cuda --@rules_ml_toolchain//common:enable_cuda
 common:cuda --config=cuda_version
 # This flag is needed to include CUDA libraries.
 common:cuda --@local_config_cuda//cuda:include_cuda_libs=true
+common:cuda --@cuda_driver//:include_cuda_umd_libs=true
 
 # This configuration is used for building the wheels.
 common:cuda_wheel --@local_config_cuda//cuda:include_cuda_libs=false
+common:cuda_wheel --@cuda_driver//:include_cuda_umd_libs=false
 
 # CUDA: This config refers to building CUDA op kernels with clang.
 common:cuda_clang --config=cuda
@@ -541,9 +543,6 @@ common:rbe_linux_cuda --config=rbe_linux_cpu
 common:rbe_linux_cuda --repo_env=TF_SYSROOT=
 # For Remote build execution -- GPU configuration
 common:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
-# Enable forward compatibility for CUDA builds because RBE docker image doesn't
-# have latest CUDA drivers installed.
-common:rbe_linux_cuda --@cuda_driver//:enable_forward_compatibility=true
 
 common:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 common:rbe_linux_cuda_nvcc --config=cuda_nvcc
