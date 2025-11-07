@@ -343,6 +343,17 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
 
   NestGemmFusion nest_gemm_fusion(gpu_device_info, symbolic_expr_context);
   TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
+  bool is_legacy_gemm_disabled = absl::c_contains(
+      debug_opts.xla_gpu_unsupported_generic_triton_emitter_features(),
+      DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM);
+  bool is_triton_gemm_fusion =
+      IsGpuFusionKind(*new_module->entry_computation()->root_instruction(),
+                      kTritonGemmFusionKind);
+  if (is_legacy_gemm_disabled && is_triton_gemm_fusion) {
+    return absl::InternalError(
+        absl::StrCat("Unexpected ", kTritonGemmFusionKind,
+                     " fusion: ", new_module->ToString()));
+  }
   return new_module;
 }
 
