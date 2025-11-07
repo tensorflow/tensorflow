@@ -23,9 +23,9 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
-MemoryDump ReadDumpFile(const string& fname) {
+MemoryDump ReadDumpFile(const std::string& fname) {
   absl::Status status;
-  uint64 file_size = 0;
+  uint64_t file_size = 0;
   status = Env::Default()->GetFileSize(fname, &file_size);
   if (!status.ok()) {
     LOG(ERROR) << "Failed to get size of " << fname;
@@ -66,7 +66,7 @@ MemoryDump FilterByChunkType(MemoryDump md, const char chunk_type) {
   return filtered;
 }
 
-void PrintChunk(const MemChunk& mc, const uint64 ac_offset, bool freed_at,
+void PrintChunk(const MemChunk& mc, const uint64_t ac_offset, bool freed_at,
                 const int64_t total_bytes, int64_t* cumulative_bytes) {
   // A size class corresponding approximately to log base 100.
   int size_class = floor(0.5 * log10(static_cast<double>(mc.size())));
@@ -120,7 +120,7 @@ void PrintSortedChunks(
   chunks.reserve(md.chunk_size());
   int64_t total_bytes = 0;
   int64_t cumulative_bytes = 0;
-  uint64 max_action_count = 0;
+  uint64_t max_action_count = 0;
   for (auto& it : md.chunk()) {
     chunks.push_back(&it);
     total_bytes += it.size();
@@ -129,7 +129,7 @@ void PrintSortedChunks(
     }
   }
   sort(chunks.begin(), chunks.end(), compare);
-  uint64 last_end = 0;
+  uint64_t last_end = 0;
   for (int i = 0; i < chunks.size(); ++i) {
     const MemChunk* c = chunks[i];
     if (by_addr && i > 0 && last_end != c->address()) {
@@ -174,12 +174,12 @@ void PrintChunksBySize(const MemoryDump& md, bool by_age, bool freed_at) {
       by_age, freed_at, false /*by_addr*/);
 }
 
-void PrintChunksByOpName(const MemoryDump& md, const string& op_name,
+void PrintChunksByOpName(const MemoryDump& md, const std::string& op_name,
                          bool by_age, bool freed_at) {
   printf("------------Chunks matching \"%s\":----------------------\n",
          op_name.c_str());
   MemoryDump filtered;
-  uint64 total_bytes = 0;
+  uint64_t total_bytes = 0;
   filtered.set_allocator_name(md.allocator_name());
   for (const auto& it : md.bin_summary()) {
     *filtered.add_bin_summary() = it;
@@ -203,7 +203,7 @@ void PrintChunksByOpName(const MemoryDump& md, const string& op_name,
 void PrintSizeHistory(const MemoryDump& md, bool by_age) {
   printf("------------Allocated Bytes by Action Count--------\n");
   printf("num snapshots: %d\n", md.snap_shot_size());
-  uint64 max_action_count = 0;
+  uint64_t max_action_count = 0;
   if (by_age) {
     for (auto& it : md.snap_shot()) {
       if (it.action_count() > max_action_count) {

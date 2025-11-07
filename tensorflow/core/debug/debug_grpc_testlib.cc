@@ -44,11 +44,11 @@ namespace test {
     } else if (event.has_summary()) {
       const Summary::Value& val = event.summary().value(0);
 
-      std::vector<string> name_items =
+      std::vector<std::string> name_items =
           tensorflow::str_util::Split(val.node_name(), ':');
 
-      const string node_name = name_items[0];
-      const string debug_op = name_items[2];
+      const std::string node_name = name_items[0];
+      const std::string debug_op = name_items[2];
 
       const TensorProto& tensor_proto = val.tensor();
       Tensor tensor(tensor_proto.dtype());
@@ -156,7 +156,7 @@ void TestEventListenerImpl::StopServer() {
   }
 }
 
-bool PollTillFirstRequestSucceeds(const string& server_url,
+bool PollTillFirstRequestSucceeds(const std::string& server_url,
                                   const size_t max_attempts) {
   const int kSleepDurationMicros = 100 * 1000;
   size_t n_attempts = 0;
@@ -168,7 +168,7 @@ bool PollTillFirstRequestSucceeds(const string& server_url,
   prep_tensor.flat<float>()(0) = 42.0f;
 
   while (n_attempts++ < max_attempts) {
-    const uint64 wall_time = Env::Default()->NowMicros();
+    const uint64_t wall_time = Env::Default()->NowMicros();
     absl::Status publish_s = DebugIO::PublishDebugTensor(
         DebugNodeKey("/job:localhost/replica:0/task:0/cpu:0", "prep_node", 0,
                      "DebugIdentity"),

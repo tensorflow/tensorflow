@@ -107,7 +107,7 @@ TEST_F(DebugIOUtilsTest, DebugNodeKeysIsHashable) {
 TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
   Initialize();
 
-  const string test_dir =
+  const std::string test_dir =
       absl::StrCat(testing::TmpDir(), "/DumpFloatTensorToFileSunnyDay");
   if (!env_->FileExists(test_dir).ok()) {
     ASSERT_TRUE(env_->RecursivelyCreateDir(test_dir).ok());
@@ -115,11 +115,11 @@ TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
 
   // Append levels of nonexisting directories, to test that the function can
   // create directories.
-  const uint64 wall_time = env_->NowMicros();
+  const uint64_t wall_time = env_->NowMicros();
   const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
                                    "foo/bar/qux/tensor_a", 0, "DebugIdentity");
 
-  string dump_file_path;
+  std::string dump_file_path;
   TF_ASSERT_OK(DebugFileIO::DumpTensorToDir(
       kDebugNodeKey, *tensor_a_, wall_time, test_dir, &dump_file_path));
 
@@ -154,16 +154,16 @@ TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
 TEST_F(DebugIOUtilsTest, DumpStringTensorToFileSunnyDay) {
   Initialize();
 
-  const string test_dir =
+  const std::string test_dir =
       absl::StrCat(testing::TmpDir(), "/DumpStringTensorToFileSunnyDay");
   if (!env_->FileExists(test_dir).ok()) {
     ASSERT_TRUE(env_->RecursivelyCreateDir(test_dir).ok());
   }
   const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
                                    "quux/grault/tensor_b", 1, "DebugIdentity");
-  const uint64 wall_time = env_->NowMicros();
+  const uint64_t wall_time = env_->NowMicros();
 
-  string dump_file_name;
+  std::string dump_file_name;
   absl::Status s = DebugFileIO::DumpTensorToDir(
       kDebugNodeKey, *tensor_b_, wall_time, test_dir, &dump_file_name);
   ASSERT_TRUE(s.ok());
@@ -209,17 +209,17 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
   Initialize();
 
   // First, create the file at the path.
-  const string test_dir =
+  const std::string test_dir =
       absl::StrCat(testing::TmpDir(), "/DumpTensorToFileCannotCreateDirectory");
   if (!env_->FileExists(test_dir).ok()) {
     ASSERT_TRUE(env_->RecursivelyCreateDir(test_dir).ok());
   }
-  const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
+  const std::string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
   const DebugNodeKey kDebugNodeKey(kDeviceName, "baz/tensor_a", 0,
                                    "DebugIdentity");
-  const string txt_file_dir =
+  const std::string txt_file_dir =
       io::JoinPath(test_dir, DebugNodeKey::DeviceNameToDevicePath(kDeviceName));
-  const string txt_file_name = io::JoinPath(txt_file_dir, "baz");
+  const std::string txt_file_name = io::JoinPath(txt_file_dir, "baz");
   if (!env_->FileExists(txt_file_dir).ok()) {
     ASSERT_TRUE(env_->RecursivelyCreateDir(txt_file_dir).ok());
   }
@@ -238,9 +238,9 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
   // Second, try to dump the tensor to a path that requires "baz" to be a
   // directory, which should lead to an error.
 
-  const uint64 wall_time = env_->NowMicros();
+  const uint64_t wall_time = env_->NowMicros();
 
-  string dump_file_name;
+  std::string dump_file_name;
   absl::Status s = DebugFileIO::DumpTensorToDir(
       kDebugNodeKey, *tensor_a_, wall_time, test_dir, &dump_file_name);
   ASSERT_FALSE(s.ok());
@@ -261,13 +261,13 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
   const int kNumDumpRoots = 3;
   const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
                                    "foo/bar/qux/tensor_a", 0, "DebugIdentity");
-  const uint64 wall_time = env_->NowMicros();
+  const uint64_t wall_time = env_->NowMicros();
 
-  std::vector<string> dump_roots;
-  std::vector<string> dump_file_paths;
-  std::vector<string> urls;
+  std::vector<std::string> dump_roots;
+  std::vector<std::string> dump_file_paths;
+  std::vector<std::string> urls;
   for (int i = 0; i < kNumDumpRoots; ++i) {
-    string dump_root =
+    std::string dump_root =
         absl::StrCat(testing::TmpDir(), "/PublicTensorToMultipleFileUrls_", i);
 
     dump_roots.push_back(dump_root);
@@ -331,10 +331,10 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMemoryCallback) {
 
   const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
                                    "foo/bar/qux/tensor_a", 0, "DebugIdentity");
-  const uint64 wall_time = env_->NowMicros();
+  const uint64_t wall_time = env_->NowMicros();
 
   bool called = false;
-  std::vector<string> urls = {"memcbk://test_callback"};
+  std::vector<std::string> urls = {"memcbk://test_callback"};
   ;
 
   auto* callback_registry = DebugCallbackRegistry::singleton();
@@ -367,8 +367,8 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
 
   thread::ThreadPool* tp =
       new thread::ThreadPool(Env::Default(), "test", kConcurrentPubs);
-  const uint64 wall_time = env_->NowMicros();
-  const string dump_root_base =
+  const uint64_t wall_time = env_->NowMicros();
+  const std::string dump_root_base =
       absl::StrCat(testing::TmpDir(),
                    "/PublishTensorConcurrentlyToPartiallyOverlappingPaths");
   if (!env_->FileExists(dump_root_base).ok()) {
@@ -376,8 +376,8 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
   }
 
   mutex mu;
-  std::vector<string> dump_roots TF_GUARDED_BY(mu);
-  std::vector<string> dump_file_paths TF_GUARDED_BY(mu);
+  std::vector<std::string> dump_roots TF_GUARDED_BY(mu);
+  std::vector<std::string> dump_file_paths TF_GUARDED_BY(mu);
 
   int dump_count TF_GUARDED_BY(mu) = 0;
   int done_count TF_GUARDED_BY(mu) = 0;
@@ -387,8 +387,8 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
              &dump_file_paths, &wall_time, &kDebugNodeKey, &kConcurrentPubs,
              &all_done]() {
     // "gumpy" is the shared directory part of the path.
-    string dump_root;
-    string debug_url;
+    std::string dump_root;
+    std::string debug_url;
     {
       mutex_lock l(mu);
       dump_root =
@@ -401,7 +401,7 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
       debug_url = absl::StrCat("file://", dump_root);
     }
 
-    std::vector<string> urls;
+    std::vector<std::string> urls;
     urls.push_back(debug_url);
 
     absl::Status s =

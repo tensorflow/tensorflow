@@ -49,7 +49,7 @@ SessionOptions Devices(int num_cpus, int num_gpus) {
   return result;
 }
 
-void CreateGraphDef(GraphDef* graph_def, string node_names[3]) {
+void CreateGraphDef(GraphDef* graph_def, std::string node_names[3]) {
   Graph graph(OpRegistry::Global());
 
   Tensor a_tensor(DT_FLOAT, TensorShape({1, 2}));
@@ -77,7 +77,7 @@ void IsSingleFloatValue(const Tensor& val, float expected_val) {
   ASSERT_EQ(val.flat<float>()(0), expected_val);
 }
 
-SessionOptions Options(const string& target, int placement_period) {
+SessionOptions Options(const std::string& target, int placement_period) {
   SessionOptions options;
   // NOTE(mrry): GrpcSession requires a grpc:// scheme prefix in the target
   // string.
@@ -115,18 +115,19 @@ class GrpcSessionDebugTest : public ::testing::Test {
     }
   }
 
-  const string GetDebugURL() { return debug_url_; }
+  const std::string GetDebugURL() { return debug_url_; }
 
-  void LoadTensorDumps(const string& subdir, std::vector<Tensor>* tensors) {
-    const string dirpath = io::JoinPath(dump_dir_, subdir);
+  void LoadTensorDumps(const std::string& subdir,
+                       std::vector<Tensor>* tensors) {
+    const std::string dirpath = io::JoinPath(dump_dir_, subdir);
     if (!(Env::Default()->IsDirectory(dirpath).ok())) {
       return;
     }
 
-    std::vector<string> filenames;
+    std::vector<std::string> filenames;
     TF_ASSERT_OK(Env::Default()->GetChildren(dirpath, &filenames));
 
-    for (const string& filename : filenames) {
+    for (const std::string& filename : filenames) {
       Event event;
       TF_ASSERT_OK(ReadEventFromFile(io::JoinPath(dirpath, filename), &event));
       if (event.summary().value().size() == 1) {
@@ -144,13 +145,13 @@ class GrpcSessionDebugTest : public ::testing::Test {
     debug_url_ = absl::StrCat("file://", dump_dir_);
   }
 
-  string dump_dir_;
-  string debug_url_;
+  std::string dump_dir_;
+  std::string debug_url_;
 };
 
 TEST_F(GrpcSessionDebugTest, FileDebugURL) {
   GraphDef graph;
-  string node_names[3];
+  std::string node_names[3];
   CreateGraphDef(&graph, node_names);
 
   std::unique_ptr<test::TestCluster> cluster;
@@ -216,7 +217,8 @@ TEST_F(GrpcSessionDebugTest, FileDebugURL) {
   TF_CHECK_OK(session->Close());
 }
 
-void SetDevice(GraphDef* graph, const string& name, const string& dev) {
+void SetDevice(GraphDef* graph, const std::string& name,
+               const std::string& dev) {
   for (size_t i = 0; i < graph->node_size(); ++i) {
     if (graph->node(i).name() == name) {
       graph->mutable_node(i)->set_device(dev);
