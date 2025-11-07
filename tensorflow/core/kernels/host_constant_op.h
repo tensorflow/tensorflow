@@ -31,7 +31,7 @@ class _HostConstantOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
   bool IsExpensive() override { return false; }
   const Tensor* const_tensor() const override { return &tensor_; };
-  ~_HostConstantOp() override {}
+  ~_HostConstantOp() override = default;
 
  private:
   Tensor tensor_;
