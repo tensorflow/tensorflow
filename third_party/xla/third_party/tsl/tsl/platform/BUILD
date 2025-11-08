@@ -1086,10 +1086,9 @@ tsl_cc_test(
     srcs = ["path_test.cc"],
     deps = [
         ":path",
-        ":stringpiece",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:env_impl",
         "@local_xla//xla/tsl/platform:test",
     ],
 )
