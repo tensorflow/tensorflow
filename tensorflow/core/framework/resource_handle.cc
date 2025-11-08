@@ -185,7 +185,8 @@ bool DecodeResourceHandleList(std::unique_ptr<port::StringListDecoder> d,
 
   ResourceHandleProto proto;
   for (int i = 0; i < n; ++i) {
-    if (!proto.ParseFromArray(d->Data(sizes[i]), sizes[i])) {
+    if (!proto.ParseFromString(
+            absl::string_view(d->Data(sizes[i]), sizes[i]))) {
       return false;
     }
     if (!ps[i].FromProto(proto).ok()) {
