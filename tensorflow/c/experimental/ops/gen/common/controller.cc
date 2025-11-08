@@ -43,7 +43,7 @@ Controller::Controller(PathConfig path_config, Env* env)
 }
 Controller::~Controller() { delete api_def_map_; }
 
-const void Controller::WriteFile(const string& file_path,
+const void Controller::WriteFile(const std::string& file_path,
                                  const SourceCode& code) const {
   TF_CHECK_OK(WriteStringToFile(env_, file_path, code.Render())) << file_path;
 }
@@ -60,8 +60,9 @@ void Controller::InitializeOpApi() {
   api_def_map_ = new ApiDefMap(op_list_);
   for (const auto& op : op_list_.op()) {
     for (const auto& dir : path_config_.api_dirs) {
-      const string file_name = absl::Substitute("api_def_$0.pbtxt", op.name());
-      const string file_path = io::JoinPath(dir, file_name);
+      const std::string file_name =
+          absl::Substitute("api_def_$0.pbtxt", op.name());
+      const std::string file_path = io::JoinPath(dir, file_name);
       if (env_->FileExists(file_path).ok()) {
         TF_CHECK_OK(api_def_map_->LoadFile(env_, file_path)) << file_path;
       } else {
