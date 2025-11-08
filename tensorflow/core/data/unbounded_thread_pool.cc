@@ -59,7 +59,7 @@ class UnboundedThreadPool::LogicalThreadFactory : public ThreadFactory {
  public:
   explicit LogicalThreadFactory(UnboundedThreadPool* pool) : pool_(pool) {}
 
-  std::unique_ptr<Thread> StartThread(const string& name,
+  std::unique_ptr<Thread> StartThread(const std::string& name,
                                       std::function<void()> fn) override {
     auto done = std::make_shared<absl::Notification>();
     pool_->ScheduleOnWorkQueue(std::move(fn), done);
