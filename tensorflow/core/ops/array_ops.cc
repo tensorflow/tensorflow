@@ -43,7 +43,7 @@ using shape_inference::UnchangedShape;
 namespace {
 
 absl::Status GetAxisForPackAndUnpack(InferenceContext* c,
-                                     int32_t rank_after_pack, int32* axis) {
+                                     int32_t rank_after_pack, int32_t* axis) {
   TF_RETURN_IF_ERROR(c->GetAttr("axis", axis));
   if (*axis < -1 * rank_after_pack || *axis >= rank_after_pack) {
     return errors::InvalidArgument("Invalid axis: ", *axis, "; must be in [",
@@ -116,7 +116,7 @@ absl::Status PadShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithValue(n_dim, num_dims, &n_dim));
 
   if (paddings_t->dtype() == DT_INT32) {
-    return PadKnown<int32>(c, input, paddings_t, num_dims);
+    return PadKnown<int32_t>(c, input, paddings_t, num_dims);
   } else {
     return PadKnown<int64_t>(c, input, paddings_t, num_dims);
   }
@@ -165,7 +165,7 @@ absl::Status TransposeShapeFn(InferenceContext* c) {
   if (perm != nullptr) {
     std::vector<int64_t> data;
     if (perm->dtype() == DT_INT32) {
-      data = AsInt64<int32>(perm, rank);
+      data = AsInt64<int32_t>(perm, rank);
     } else {
       data = AsInt64<int64_t>(perm, rank);
     }
@@ -660,7 +660,8 @@ REGISTER_OP("SplitV")
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
         std::vector<int64_t> data;
         if (size_splits->dtype() == DT_INT32) {
-          data = AsInt64<int32>(size_splits, size_splits->shape().dim_size(0));
+          data =
+              AsInt64<int32_t>(size_splits, size_splits->shape().dim_size(0));
         } else {
           data =
               AsInt64<int64_t>(size_splits, size_splits->shape().dim_size(0));
@@ -1033,7 +1034,8 @@ REGISTER_OP("ReverseV2")
         int32_t rank = c->Rank(input);
         std::vector<int64_t> axis_value;
         if (axis_tensor->dtype() == DT_INT32) {
-          axis_value = AsInt64<int32>(axis_tensor, axis_tensor->NumElements());
+          axis_value =
+              AsInt64<int32_t>(axis_tensor, axis_tensor->NumElements());
         } else {
           axis_value =
               AsInt64<int64_t>(axis_tensor, axis_tensor->NumElements());
@@ -1131,7 +1133,7 @@ REGISTER_OP("Fill")
       const Tensor* t = c->input_tensor(0);
       if (t != nullptr) {
         for (int i = 0; i < t->NumElements(); ++i) {
-          if ((index_type == DT_INT32 && t->vec<int32>()(i) < 0) ||
+          if ((index_type == DT_INT32 && t->vec<int32_t>()(i) < 0) ||
               (index_type == DT_INT64 && t->vec<int64_t>()(i) < 0)) {
             return errors::InvalidArgument("Fill dimensions must be >= 0");
           }
@@ -1249,7 +1251,7 @@ REGISTER_OP("GatherV2")
       // Note, axis can be negative.
       int64_t axis = 0;
       if (axis_t->dtype() == DT_INT32) {
-        axis = axis_t->scalar<int32>()();
+        axis = axis_t->scalar<int32_t>()();
       } else {
         axis = axis_t->scalar<int64_t>()();
       }
@@ -1482,7 +1484,7 @@ absl::Status UniqueIdxShapeFn(InferenceContext* c) {
   } else if (n == 1) {
     int64_t axis;
     if (axis_t->dtype() == DT_INT32) {
-      axis = static_cast<int64_t>(axis_t->flat<int32>()(0));
+      axis = static_cast<int64_t>(axis_t->flat<int32_t>()(0));
     } else {
       axis = axis_t->flat<int64_t>()(0);
     }
@@ -1753,7 +1755,7 @@ REGISTER_OP("StridedSlice")
 
       PartialTensorShape processing_shape, final_shape;
       bool is_identity, is_simple_slice, slice_dim0;
-      absl::InlinedVector<int64, 4UL> begin, end, strides;
+      absl::InlinedVector<int64_t, 4UL> begin, end, strides;
       TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
           begin_value, end_value, *strides_value, input_shape, begin_mask,
           end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
@@ -2026,7 +2028,7 @@ REGISTER_OP("MirrorPadGrad")
       }
 
       if (paddings_t->dtype() == DT_INT32) {
-        return MirrorPadKnown<int32>(c, input, paddings_t, input_rank);
+        return MirrorPadKnown<int32_t>(c, input, paddings_t, input_rank);
       } else {
         return MirrorPadKnown<int64_t>(c, input, paddings_t, input_rank);
       }
@@ -2107,7 +2109,7 @@ REGISTER_OP("ExpandDims")
 
       int64_t dim;
       if (dim_t->dtype() == DT_INT32) {
-        dim = static_cast<int64_t>(dim_t->flat<int32>()(0));
+        dim = static_cast<int64_t>(dim_t->flat<int32_t>()(0));
       } else {
         dim = dim_t->flat<int64_t>()(0);
       }
@@ -2151,7 +2153,7 @@ REGISTER_OP("Squeeze")
       const int32_t input_rank = c->Rank(input);
 
       // Validate and wrap squeeze dimensions.
-      std::vector<int32> squeeze_dims;
+      std::vector<int32_t> squeeze_dims;
       TF_RETURN_IF_ERROR(c->GetAttr("squeeze_dims", &squeeze_dims));
       for (int i = 0; i < squeeze_dims.size(); ++i) {
         if (squeeze_dims[i] < -input_rank || squeeze_dims[i] >= input_rank) {
@@ -2238,7 +2240,7 @@ std::vector<int64_t> GetFlatInt64(const Tensor& t) {
 // Converts int32 or int64 Tensor to flat std::vector<int64_t>.
 std::vector<int64_t> GetFlatInt64(const Tensor& t) {
   if (t.dtype() == DT_INT32) {
-    return GetFlatInt64<int32>(t);
+    return GetFlatInt64<int32_t>(t);
   } else {
     return GetFlatInt64<int64_t>(t);
   }
@@ -2489,7 +2491,7 @@ REGISTER_OP("SpaceToDepth")
     .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
     // TODO(pauldonnelly): Implement GPU kernels for NCHW_VECT_C.
     .SetShapeFn([](InferenceContext* c) {
-      string data_format_str;
+      std::string data_format_str;
       TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
       TensorFormat data_format;
       FormatFromString(data_format_str, &data_format);
@@ -2543,7 +2545,7 @@ REGISTER_OP("DepthToSpace")
     .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
     // TODO(pauldonnelly): Implement GPU kernels for NCHW and NCHW_VECT_C.
     .SetShapeFn([](InferenceContext* c) {
-      string data_format_str;
+      std::string data_format_str;
       TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
       TensorFormat data_format;
       FormatFromString(data_format_str, &data_format);
@@ -2602,7 +2604,7 @@ REGISTER_OP("ExtractImagePatches")
       ShapeHandle input_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
 
-      std::vector<int32> ksizes;
+      std::vector<int32_t> ksizes;
       TF_RETURN_IF_ERROR(c->GetAttr("ksizes", &ksizes));
       if (ksizes.size() != 4) {
         return errors::InvalidArgument(
@@ -2611,7 +2613,7 @@ REGISTER_OP("ExtractImagePatches")
             ksizes.size());
       }
 
-      std::vector<int32> strides;
+      std::vector<int32_t> strides;
       TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
       if (strides.size() != 4) {
         return errors::InvalidArgument(
@@ -2620,7 +2622,7 @@ REGISTER_OP("ExtractImagePatches")
             strides.size());
       }
 
-      std::vector<int32> rates;
+      std::vector<int32_t> rates;
       TF_RETURN_IF_ERROR(c->GetAttr("rates", &rates));
       if (rates.size() != 4) {
         return errors::InvalidArgument(
@@ -2692,7 +2694,7 @@ REGISTER_OP("ExtractVolumePatches")
       ShapeHandle input_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &input_shape));
 
-      std::vector<int32> ksizes;
+      std::vector<int32_t> ksizes;
       TF_RETURN_IF_ERROR(c->GetAttr("ksizes", &ksizes));
       if (ksizes.size() != 5) {
         return errors::InvalidArgument(
@@ -2701,7 +2703,7 @@ REGISTER_OP("ExtractVolumePatches")
             ksizes.size());
       }
 
-      std::vector<int32> strides;
+      std::vector<int32_t> strides;
       TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
       if (strides.size() != 5) {
         return errors::InvalidArgument(
@@ -2863,7 +2865,7 @@ REGISTER_OP("QuantizeAndDequantizeV2")
                                        axis);
       } else if (axis != -1) {
         ShapeHandle input;
-        if (axis >= kint32max) {
+        if (axis >= std::numeric_limits<int32_t>::max()) {
           return errors::InvalidArgument(
               "Axis cannot be >= kint32max value, got ", axis);
         }
@@ -2902,7 +2904,7 @@ REGISTER_OP("QuantizeAndDequantizeV4")
                                        axis);
       } else if (axis != -1) {
         ShapeHandle input;
-        if (axis >= kint32max) {
+        if (axis >= std::numeric_limits<int32_t>::max()) {
           return errors::InvalidArgument(
               "Axis cannot be >= kint32max value, got ", axis);
         }
@@ -2937,7 +2939,7 @@ REGISTER_OP("QuantizeAndDequantizeV4Grad")
                                        axis);
       } else if (axis != -1) {
         ShapeHandle input;
-        if (axis >= kint32max) {
+        if (axis >= std::numeric_limits<int32_t>::max()) {
           return errors::InvalidArgument(
               "Axis cannot be >= kint32max value, got ", axis);
         }
@@ -2977,7 +2979,7 @@ REGISTER_OP("QuantizeAndDequantizeV3")
                                        axis);
       } else if (axis != -1) {
         ShapeHandle input;
-        if (axis >= kint32max) {
+        if (axis >= std::numeric_limits<int32_t>::max()) {
           return errors::InvalidArgument(
               "Axis cannot be >= kint32max value, got ", axis);
         }
@@ -3042,7 +3044,7 @@ REGISTER_OP("Dequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), minmax_rank, &minmax));
       if (axis != -1) {
         ShapeHandle input;
-        if (axis >= kint32max) {
+        if (axis >= std::numeric_limits<int32_t>::max()) {
           // Check int32 max bound for a corner case to prevent integer flow
           // when input actually has kint32max rank and above bound check is not
           // triggered.
@@ -3379,11 +3381,11 @@ REGISTER_OP("Fingerprint")
           return errors::InvalidArgument("`method` must be rank 0: ",
                                          method->shape());
         }
-        const string& method_string = method->scalar<tstring>()();
+        const std::string& method_string = method->scalar<tstring>()();
         if (method_string != "farmhash64") {
           return errors::InvalidArgument("Unsupported method: ", method_string);
         }
-        fingerprint_size = c->MakeDim(sizeof(uint64));
+        fingerprint_size = c->MakeDim(sizeof(uint64_t));
       }
 
       DimensionHandle batch = c->Dim(c->input(0), 0);
