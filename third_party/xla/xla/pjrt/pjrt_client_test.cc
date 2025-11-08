@@ -48,13 +48,13 @@ class TestClientFactory {
  public:
   void Register(
       std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CHECK(!factory_);
     factory_ = std::move(factory);
   }
 
   std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> Get() const {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return factory_;
   }
 

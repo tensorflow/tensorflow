@@ -391,14 +391,14 @@ class CopyToDeviceStream {
   // Returns the amount of data the stream currently has either transferred or
   // has buffered to transfer.
   int64_t current_bytes() const ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return current_bytes_;
   }
 
   // Returns true if the stream is complete; all expected bytes have been
   // transferred or are buffered to transfer.
   bool IsComplete() const ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return IsCompleteLocked();
   }
 
