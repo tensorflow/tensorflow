@@ -377,7 +377,13 @@ oneapi_test_tag_filter = (
 Build(
     type_=BuildType.XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=("sycl", "sycl_hermetic", "icpx_clang"),
+    configs=(
+        "nonccl",
+        "rbe_linux_cpu",
+        "sycl",
+        "sycl_hermetic",
+        "icpx_clang",
+    ),
     target_patterns=_XLA_ONEAPI_TARGET_PATTERNS,
     build_tag_filters=oneapi_build_tag_filter,
     test_tag_filters=oneapi_test_tag_filter,
