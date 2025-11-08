@@ -1508,9 +1508,8 @@ TEST_F(CollectiveOpsTestE2E, HostMemoryOffloadingWithDonation) {
 // E2E tests comparing the results of sharded and unsharded execution.
 class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsTestE2E {
  public:
-  void CollectiveOpsCompareShardedUnsharded(
-      const std::string& hlo_text, const int64_t num_partitions = 2,
-      bool enable_enzyme_comms_opt = false) {
+  void CollectiveOpsCompareShardedUnsharded(const std::string& hlo_text,
+                                            const int64_t num_partitions = 2) {
     const int64_t num_replicas = 1;
     if (hlo_runner_->device_count() < num_replicas * num_partitions) {
       GTEST_SKIP() << "Test requires at least " << num_replicas * num_partitions
@@ -1522,9 +1521,8 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsTestE2E {
                             ExecuteUnsharded(hlo_text));
     ASSERT_EQ(ref_results.size(), 1);
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<Literal> results,
-        ExecuteSharded(hlo_text, num_partitions, enable_enzyme_comms_opt));
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                            ExecuteSharded(hlo_text, num_partitions));
     ASSERT_EQ(results.size(), num_partitions);
 
     ErrorSpec error_spec{1e-4, 1e-4};
@@ -1570,16 +1568,12 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsTestE2E {
 
   // Execute the sharded case.
   absl::StatusOr<std::vector<Literal>> ExecuteSharded(
-      const std::string& hlo_text, int64_t num_partitions,
-      bool enable_enzyme_comms_opt = false) {
+      const std::string& hlo_text, int64_t num_partitions) {
     HloModuleConfig config = GetModuleConfigForTest();
     DebugOptions opts = GetDebugOptionsForTest();
     opts.set_xla_gpu_enable_triton_gemm(false);
     config.set_debug_options(opts);
     config.set_num_partitions(num_partitions);
-    if (enable_enzyme_comms_opt) {
-      config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(true);
-    }
     TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                         ParseAndReturnVerifiedModule(hlo_text, config));
     const int64_t num_params = module->entry_computation()->num_parameters();
@@ -1738,11 +1732,7 @@ TEST_F(CollectiveOpsTestE2EShardedUnsharded,
       %c3 = s32[] constant(3)
       ROOT %dynamic-update-slice = s32[16] dynamic-update-slice(%input, %update, %c3), sharding={devices=[4]<=[4]}
     })";
-  CollectiveOpsCompareShardedUnsharded(hlo_text, /*num_partitions=*/4,
-                                       /*enable_enzyme_comms_opt=*/true);
-  // This test should pass regardless if enzyme comms opt is enabled or not.
-  CollectiveOpsCompareShardedUnsharded(hlo_text, /*num_partitions=*/4,
-                                       /*enable_enzyme_comms_opt=*/false);
+  CollectiveOpsCompareShardedUnsharded(hlo_text, /*num_partitions=*/4);
 }
 
 TEST_F(CollectiveOpsTestE2EShardedUnsharded, DotBatchAndNonContracting) {
