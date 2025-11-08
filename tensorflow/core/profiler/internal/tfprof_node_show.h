@@ -45,7 +45,7 @@ class ShowNode {
   explicit ShowNode(const TFGraphNode* node);
   virtual ~ShowNode() = default;
 
-  const string& name() const { return node->name(); }
+  const std::string& name() const { return node->name(); }
   GraphNodeProto* mutable_proto();
   const GraphNodeProto& proto() const;
 
@@ -59,7 +59,7 @@ class ShowNode {
 
   const TFGraphNode* node;
   bool account;
-  string formatted_str;
+  std::string formatted_str;
 
  protected:
   GraphNodeProto proto_;
@@ -89,9 +89,9 @@ class ShowMultiNode {
   explicit ShowMultiNode(TFMultiGraphNode* node);
   virtual ~ShowMultiNode() = default;
 
-  bool ReInit(int64_t step, const std::vector<string>& type_regexes);
+  bool ReInit(int64_t step, const std::vector<std::string>& type_regexes);
 
-  const string& name() const { return node->name(); }
+  const std::string& name() const { return node->name(); }
   MultiGraphNodeProto* mutable_proto();
   const MultiGraphNodeProto& proto() const;
 
@@ -104,7 +104,7 @@ class ShowMultiNode {
   TFMultiGraphNode* node;
   bool account;
   bool show;
-  string formatted_str;
+  std::string formatted_str;
 
  protected:
   MultiGraphNodeProto proto_;
@@ -113,12 +113,12 @@ class ShowMultiNode {
 class CodeNode : public ShowMultiNode {
  public:
   CodeNode(TFMultiGraphNode* node, const CallStack::Trace* trace,
-           const string& suffix)
+           const std::string& suffix)
       : ShowMultiNode(node), trace_(trace), suffix_(suffix) {}
   ~CodeNode() override = default;
 
-  CodeNode* AddChildren(const string& name, const CallStack::Trace* trace,
-                        const string suffix) {
+  CodeNode* AddChildren(const std::string& name, const CallStack::Trace* trace,
+                        const std::string suffix) {
     auto it = children_.find(name);
     if (it != children_.end()) {
       return it->second.get();
@@ -133,19 +133,19 @@ class CodeNode : public ShowMultiNode {
   }
 
   bool has_trace() const { return trace_ != nullptr; }
-  int32 lineno() const { return trace_->lineno(); }
-  string file() const { return trace_->file(); }
-  string function() const { return trace_->function() + suffix_; }
-  int32 func_start_line() const { return trace_->func_start_line(); }
+  int32_t lineno() const { return trace_->lineno(); }
+  std::string file() const { return trace_->file(); }
+  std::string function() const { return trace_->function() + suffix_; }
+  int32_t func_start_line() const { return trace_->func_start_line(); }
 
   std::vector<CodeNode*> children;
   std::vector<CodeNode*> show_children;
 
  private:
   const CallStack::Trace* trace_;
-  string suffix_;
+  std::string suffix_;
   std::vector<std::unique_ptr<TFMultiGraphNode>> graph_children_;
-  std::map<string, std::unique_ptr<CodeNode>> children_;
+  std::map<std::string, std::unique_ptr<CodeNode>> children_;
 };
 
 class OpNode : public ShowMultiNode {
