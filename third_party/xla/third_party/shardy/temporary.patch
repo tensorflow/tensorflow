@@ -1,15 +1,1627 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 509398d..a6f7fe5 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1 +1,89 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
++diff -ruN --strip-trailing-cr a/llvm/lib/Target/BPF/BPFAsmPrinter.cpp b/llvm/lib/Target/BPF/BPFAsmPrinter.cpp
++--- a/llvm/lib/Target/BPF/BPFAsmPrinter.cpp
+++++ b/llvm/lib/Target/BPF/BPFAsmPrinter.cpp
++@@ -176,10 +176,6 @@
++         if (const GlobalValue *GV = Op.getGlobal())
++           if (GV->getName() == BPF_TRAP)
++             SawTrapCall = true;
++-      } else if (Op.isSymbol()) {
++-        if (const MCSymbol *Sym = Op.getMCSymbol())
++-          if (Sym->getName() == BPF_TRAP)
++-            SawTrapCall = true;
++       }
++     }
++   }
++diff -ruN --strip-trailing-cr a/llvm/test/Analysis/CostModel/AArch64/sincos.ll b/llvm/test/Analysis/CostModel/AArch64/sincos.ll
++--- a/llvm/test/Analysis/CostModel/AArch64/sincos.ll
+++++ b/llvm/test/Analysis/CostModel/AArch64/sincos.ll
++@@ -38,14 +38,14 @@
++ ;
++ ; SINCOS_STRET-LABEL: 'sincos'
++ ; SINCOS_STRET:  Cost Model: Found an estimated cost of 1 for instruction: %f16 = call { half, half } @llvm.sincos.f16(half poison)
++-; SINCOS_STRET:  Cost Model: Found an estimated cost of 2 for instruction: %f32 = call { float, float } @llvm.sincos.f32(float poison)
++-; SINCOS_STRET:  Cost Model: Found an estimated cost of 2 for instruction: %f64 = call { double, double } @llvm.sincos.f64(double poison)
+++; SINCOS_STRET:  Cost Model: Found an estimated cost of 10 for instruction: %f32 = call { float, float } @llvm.sincos.f32(float poison)
+++; SINCOS_STRET:  Cost Model: Found an estimated cost of 10 for instruction: %f64 = call { double, double } @llvm.sincos.f64(double poison)
++ ; SINCOS_STRET:  Cost Model: Found an estimated cost of 10 for instruction: %f128 = call { fp128, fp128 } @llvm.sincos.f128(fp128 poison)
++ ; SINCOS_STRET:  Cost Model: Found an estimated cost of 36 for instruction: %v8f16 = call { <8 x half>, <8 x half> } @llvm.sincos.v8f16(<8 x half> poison)
++-; SINCOS_STRET:  Cost Model: Found an estimated cost of 20 for instruction: %v4f32 = call { <4 x float>, <4 x float> } @llvm.sincos.v4f32(<4 x float> poison)
++-; SINCOS_STRET:  Cost Model: Found an estimated cost of 8 for instruction: %v2f64 = call { <2 x double>, <2 x double> } @llvm.sincos.v2f64(<2 x double> poison)
+++; SINCOS_STRET:  Cost Model: Found an estimated cost of 52 for instruction: %v4f32 = call { <4 x float>, <4 x float> } @llvm.sincos.v4f32(<4 x float> poison)
+++; SINCOS_STRET:  Cost Model: Found an estimated cost of 24 for instruction: %v2f64 = call { <2 x double>, <2 x double> } @llvm.sincos.v2f64(<2 x double> poison)
++ ; SINCOS_STRET:  Cost Model: Found an estimated cost of 10 for instruction: %v1f128 = call { <1 x fp128>, <1 x fp128> } @llvm.sincos.v1f128(<1 x fp128> poison)
++-; SINCOS_STRET:  Cost Model: Found an estimated cost of 40 for instruction: %v8f32 = call { <8 x float>, <8 x float> } @llvm.sincos.v8f32(<8 x float> poison)
+++; SINCOS_STRET:  Cost Model: Found an estimated cost of 104 for instruction: %v8f32 = call { <8 x float>, <8 x float> } @llvm.sincos.v8f32(<8 x float> poison)
++ ; SINCOS_STRET:  Cost Model: Invalid cost for instruction: %nxv8f16 = call { <vscale x 8 x half>, <vscale x 8 x half> } @llvm.sincos.nxv8f16(<vscale x 8 x half> poison)
++ ; SINCOS_STRET:  Cost Model: Invalid cost for instruction: %nxv4f32 = call { <vscale x 4 x float>, <vscale x 4 x float> } @llvm.sincos.nxv4f32(<vscale x 4 x float> poison)
++ ; SINCOS_STRET:  Cost Model: Invalid cost for instruction: %nxv2f64 = call { <vscale x 2 x double>, <vscale x 2 x double> } @llvm.sincos.nxv2f64(<vscale x 2 x double> poison)
++diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp b/mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp
++--- a/mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp
+++++ b/mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp
++@@ -2568,11 +2568,6 @@
++     auto trailingReassocs = ArrayRef<int64_t>(reassoc).drop_front();
++     auto stride = SaturatedInteger::wrap(resultStrides[resultStrideIndex--]);
++     for (int64_t idx : llvm::reverse(trailingReassocs)) {
++-      // Dimensions of size 1 should be skipped, because their strides are
++-      // meaningless and could have any arbitrary value.
++-      if (srcShape[idx - 1] == 1)
++-        continue;
++-
++       stride = stride * SaturatedInteger::wrap(srcShape[idx]);
++ 
++       // Both source and result stride must have the same static value. In that
++@@ -2587,6 +2582,11 @@
++       if (strict && (stride.saturated || srcStride.saturated))
++         return failure();
++ 
+++      // Dimensions of size 1 should be skipped, because their strides are
+++      // meaningless and could have any arbitrary value.
+++      if (srcShape[idx - 1] == 1)
+++        continue;
+++
++       if (!stride.saturated && !srcStride.saturated && stride != srcStride)
++         return failure();
++     }
++diff -ruN --strip-trailing-cr a/mlir/test/Dialect/MemRef/ops.mlir b/mlir/test/Dialect/MemRef/ops.mlir
++--- a/mlir/test/Dialect/MemRef/ops.mlir
+++++ b/mlir/test/Dialect/MemRef/ops.mlir
++@@ -440,8 +440,7 @@
++          %arg4: index,
++          %arg5: index,
++          %arg6: index,
++-         %arg7: memref<4x?x4xf32>,
++-         %arg8: memref<1x1x18x?xsi8, strided<[?, ?, ?, 1], offset: ?>>) {
+++         %arg7: memref<4x?x4xf32>) {
++ //       CHECK:   memref.collapse_shape {{.*}} {{\[}}[0, 1], [2]]
++ //  CHECK-SAME:     memref<?x?x?xf32> into memref<?x?xf32>
++   %0 = memref.collapse_shape %arg0 [[0, 1], [2]] :
++@@ -490,10 +489,6 @@
++ //       CHECK:   memref.expand_shape {{.*}} {{\[}}[0, 1], [2], [3, 4]]
++   %4 = memref.expand_shape %arg7 [[0, 1], [2], [3, 4]] output_shape [2, 2, %arg4, 2, 2]
++         : memref<4x?x4xf32> into memref<2x2x?x2x2xf32>
++-
++-//       CHECK:   memref.collapse_shape {{.*}} {{\[}}[0, 1], [2], [3]]
++-//  CHECK-SAME:     memref<1x1x18x?xsi8, strided<[?, ?, ?, 1], offset: ?>> into memref<1x18x?xsi8, strided<[?, ?, 1], offset: ?>>
++-  %5 = memref.collapse_shape %arg8 [[0, 1], [2], [3]] : memref<1x1x18x?xsi8, strided<[?, ?, ?, 1], offset: ?>> into memref<1x18x?xsi8, strided<[?, ?, 1], offset: ?>>
++   return
++ }
++ 
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 0859165..32e6a7a 100644
+index 32e6a7a..abdee76 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "22079e3f3698d5c367c7b67f63de8c838791ae76"
--    LLVM_SHA256 = "d5616e9c0f4b761f13da5535a0d9ec94acf4ae5226bbec3e47ac2929ea60cac2"
-+    LLVM_COMMIT = "42a8ff877d47131ecb1280a1cc7e5e3c3bca6952"
-+    LLVM_SHA256 = "f768c5c3b987f68318b8ab3dd4530e54988dfe7d6bfb9b7c9c96acf503367d50"
+-    LLVM_COMMIT = "42a8ff877d47131ecb1280a1cc7e5e3c3bca6952"
+-    LLVM_SHA256 = "f768c5c3b987f68318b8ab3dd4530e54988dfe7d6bfb9b7c9c96acf503367d50"
++    LLVM_COMMIT = "2bc22ea02edda5926f3e53f141def9bf212ac1db"
++    LLVM_SHA256 = "4a034eda852b3c2d448d38e8661cbac45ae2233a29defeb55913fa5205cd29f7"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index 0778daf..a42cbd7 100755
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -1,70 +1,130 @@
+-diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+---- stablehlo/BUILD.bazel
+-+++ stablehlo/BUILD.bazel
+-@@ -1105,6 +1105,24 @@
+-     tblgen = "@llvm-project//mlir:mlir-tblgen",
+-     td_file = "stablehlo/transforms/Passes.td",
+-     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
+-+)
+-+
+-+cc_library(
+-+    name = "stablehlo_broadcast_lowering",
+-+    srcs = [
+-+        "stablehlo/transforms/StablehloBroadcastLowering.cpp",
+-+    ],
+-+    hdrs = [
+-+        "stablehlo/transforms/StablehloBroadcastLowering.h",
+-+    ],
+-+    strip_include_prefix = ".",
+-+    deps = [
+-+        ":stablehlo_ops",
+-+        "@llvm-project//llvm:Support",
+-+        "@llvm-project//mlir:IR",
+-+        "@llvm-project//mlir:ShapeDialect",
+-+        "@llvm-project//mlir:Support",
+-+    ],
+- )
+- 
+- cc_library(
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir b/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
++--- stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+++++ stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
++@@ -768,7 +768,7 @@
++ // CHECK-PRIMITIVE: %[[MAP:.+]] = linalg.map
++ // CHECK-PRIMITIVE-SAME: ins(%[[ARG0]], %[[ARG1]]
++ // CHECK-PRIMITIVE-SAME: outs(%[[INIT]] : tensor<?xi1>)
++-// CHECK-PRIMITIVE-NEXT: (%[[A:.+]]: complex<f32>, %[[B:.+]]: complex<f32>) {
+++// CHECK-PRIMITIVE-NEXT: (%[[A:.+]]: complex<f32>, %[[B:.+]]: complex<f32>, %{{.+}}: i1) {
++ // CHECK-PRIMITIVE: %[[RE1:.+]] = complex.re %[[A]] : complex<f32>
++ // CHECK-PRIMITIVE: %[[RE2:.+]] = complex.re %[[B]] : complex<f32>
++ // CHECK-PRIMITIVE: %[[CMP:.+]] = arith.cmpf oeq, %[[RE1]], %[[RE2]] : f32
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir b/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
++--- stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
+++++ stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
++@@ -714,7 +714,7 @@
++ // CHECK-PRIMITIVE: linalg.map
++ // CHECK-PRIMITIVE-SAME: ins(
++ // CHECK-PRIMITIVE-SAME: outs(
++-// CHECK-PRIMITIVE-NEXT: (%[[LHS_IN:[a-zA-Z0-9]*]]: bf16, %[[RHS_IN:.*]]: bf16) {
+++// CHECK-PRIMITIVE-NEXT: (%[[LHS_IN:[a-zA-Z0-9]*]]: bf16, %[[RHS_IN:.*]]: bf16, %[[RESULT_OUT:.*]]: i1) {
++ // CHECK-PRIMITIVE-NEXT:   %[[LHS_INT:.*]] = arith.bitcast %[[LHS_IN]] : bf16 to i16
++ // CHECK-PRIMITIVE-NEXT:   %[[LHS_CMP:.*]] = arith.cmpi slt, %[[LHS_INT]], %[[C0]] : i16
++ // CHECK-PRIMITIVE-NEXT:   %[[LHS_SUB:.*]] = arith.subi %[[C32767]], %[[LHS_INT]] : i16
++@@ -937,7 +937,7 @@
++ // CHECK-PRIMITIVE-SAME:   ins(%[[LHS]], %[[RHS]] : tensor<2x?xf32>, tensor<2x?xf32>)
++ // CHECK-PRIMITIVE-SAME:   outs(%[[DST]] : tensor<2x?xf32>)
++ // CHECK-PRIMITIVE-SAME:   {someattr}
++-// CHECK-PRIMITIVE:      (%[[LHS_:.*]]: f32, %[[RHS_:.*]]: f32) {
+++// CHECK-PRIMITIVE:      (%[[LHS_:.*]]: f32, %[[RHS_:.*]]: f32, %[[RESULT_OUT:.*]]: f32) {
++ // CHECK-PRIMITIVE:        %[[RES:.*]] = arith.select %[[PRED_ELEM]], %[[LHS_]], %[[RHS_]] : f32
++ // CHECK-PRIMITIVE:        linalg.yield %[[RES]]
++ 
++@@ -978,7 +978,7 @@
++ // CHECK-PRIMITIVE-SAME:   ins(%[[LHS]], %[[RHS]] : tensor<2x?xf32>, tensor<2x?xf32>)
++ // CHECK-PRIMITIVE-SAME:   outs(%[[DST]] : tensor<2x?xf32>)
++ // CHECK-PRIMITIVE-SAME:   {someattr}
++-// CHECK-PRIMITIVE:      (%[[LHS_:.*]]: f32, %[[RHS_:.*]]: f32) {
+++// CHECK-PRIMITIVE:      (%[[LHS_:.*]]: f32, %[[RHS_:.*]]: f32, %[[RESULT_OUT:.*]]: f32) {
++ // CHECK-PRIMITIVE:        linalg.yield %[[LHS_]]
++ 
++ // -----
++@@ -1416,7 +1416,7 @@
++ 
++ // CHECK-PRIMITIVE: %[[INIT:.*]] = tensor.empty
++ // CHECK-PRIMITIVE: %[[RESULT:.*]] = linalg.map ins(%[[LB]], %[[X]], %[[UB]] : tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) outs(%[[INIT]] : tensor<4xf32>)
++-// CHECK-PRIMITIVE: (%[[SCALAR_LB:.*]]: f32, %[[SCALAR_X:.*]]: f32, %[[SCALAR_UB:.*]]: f32)
+++// CHECK-PRIMITIVE: (%[[SCALAR_LB:.*]]: f32, %[[SCALAR_X:.*]]: f32, %[[SCALAR_UB:.*]]: f32, %[[RESULT_OUT:.*]]: f32)
++ // CHECK-PRIMITIVE:   %[[MAX:.*]] = arith.maximumf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
++ // CHECK-PRIMITIVE:   %[[MIN:.*]] = arith.minimumf %[[MAX]], %[[SCALAR_UB]] : f32
++ // CHECK-PRIMITIVE:   linalg.yield %[[MIN]]
++@@ -1478,7 +1478,7 @@
++ // CHECK-PRIMITIVE-DAG: %[[SCALAR_LB:.*]] = tensor.extract %[[LB]]
++ // CHECK-PRIMITIVE-DAG: %[[SCALAR_UB:.*]] = tensor.extract %[[UB]]
++ // CHECK-PRIMITIVE: %[[RESULT:.*]] = linalg.map ins(%[[X]] : tensor<?xf32>) outs(%[[INIT]] : tensor<?xf32>)
++-// CHECK-PRIMITIVE: (%[[SCALAR_X:.*]]: f32)
+++// CHECK-PRIMITIVE: (%[[SCALAR_X:.*]]: f32, %[[RESULT_OUT:.*]]: f32)
++ // CHECK-PRIMITIVE:   %[[MAX:.*]] = arith.maximumf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
++ // CHECK-PRIMITIVE:   %[[MIN:.*]] = arith.minimumf %[[MAX]], %[[SCALAR_UB]] : f32
++ // CHECK-PRIMITIVE:   linalg.yield %[[MIN]]
++@@ -1554,7 +1554,7 @@
++   // CHECK:   linalg.yield %[[V_NOT]] : i32
++   // CHECK-PRIMITIVE: %[[CST_N1:.+]] = arith.constant -1 : i32
++   // CHECK-PRIMITIVE: linalg.map
++-  // CHECK-PRIMITIVE:   (%[[IN:.+]]: i32)
+++  // CHECK-PRIMITIVE:   (%[[IN:.+]]: i32, %[[RESULT_OUT:.+]]: i32)
++   // CHECK-PRIMITIVE:   %[[V_NOT:.+]] = arith.xori %[[IN]], %[[CST_N1]] : i32
++   // CHECK-PRIMITIVE:   linalg.yield %[[V_NOT]] : i32
++   %0 = "stablehlo.not"(%arg) : (tensor<2x2xi32>) -> tensor<2x2xi32>
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
++--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
++@@ -1748,6 +1748,12 @@
++ 
++     rewriter.applySignatureConversion(&region.front(), signatureConverter,
++                                       getTypeConverter());
+++    auto& blocks = linalgOp.getMapper().getBlocks();
+++    if (blocks.empty()) {
+++      return rewriter.notifyMatchFailure(op, "expected at least one block");
+++    }
+++    blocks.front().addArgument(resultType.getElementType(), loc);
+++
++     auto result = rewriter.createOrFold<tensor::CastOp>(loc, resultType,
++                                                         linalgOp.getResults());
++     rewriter.replaceOp(op, result);
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
++--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
+++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToArith.cpp
++@@ -33,6 +33,7 @@
++ 
++ template <typename OpTy>
++ struct ScalarHloToFuncPatterns final : OpConversionPattern<OpTy> {
+++  // NOLINTNEXTLINE(clang-diagnostic-shadow-field)
++   ScalarHloToFuncPatterns(TypeConverter& typeConverter, MLIRContext* context,
++                           PatternBenefit benefit = 1)
++       : OpConversionPattern<OpTy>(typeConverter, context, benefit) {}
++@@ -51,6 +52,7 @@
++ template <typename OpTy>
++ struct ScalarHloToArithmeticPattern final : OpConversionPattern<OpTy> {
++   ScalarHloToArithmeticPattern(
+++      // NOLINTNEXTLINE(clang-diagnostic-shadow-field)
++       TypeConverter& typeConverter, MLIRContext* context,
++       llvm::function_ref<bool(Operation*)> filterFn = nullptr,
++       PatternBenefit benefit = 1)
++diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
++--- stablehlo/stablehlo/dialect/Base.td
+++++ stablehlo/stablehlo/dialect/Base.td
++@@ -152,7 +152,7 @@
++     AnyTypeOf<[HLO_PerAxisQuantizedSignedInt, HLO_PerAxisQuantizedUnsignedInt], "per-axis integer quantized">;
++ 
++ // Token type.
++-def HLO_Token : Type<CPred<"::llvm::isa<::mlir::stablehlo::TokenType>($_self)">, "token">;
+++def HLO_Token : Type<CPred<"::llvm::isa<TokenType>($_self)">, "token">;
++ 
++ // Any integer tensor types
++ def HLO_IntTensor : RankedTensorOf<[HLO_Int]>;
+ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+ --- stablehlo/stablehlo/dialect/StablehloOps.cpp
+ +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+-@@ -3275,12 +3275,12 @@
+- // Entry point for Attribute printing, TableGen generated code will handle the
+- // dispatch to the individual classes.
+- void StablehloDialect::printAttribute(Attribute attr,
+--                                      DialectAsmPrinter& os) const {
+-+                                      DialectAsmPrinter& printer) const {
+-   if (auto type_extensions = dyn_cast<TypeExtensionsAttr>(attr)) {
+--    hlo::printTypeExtensions(cast<hlo::BoundedAttrInterface>(attr), os);
+-+    hlo::printTypeExtensions(cast<hlo::BoundedAttrInterface>(attr), printer);
+-     return;
+-   }
+--  LogicalResult result = generatedAttributePrinter(attr, os);
+-+  LogicalResult result = generatedAttributePrinter(attr, printer);
+-   (void)result;
+-   assert(succeeded(result));
+- }
+-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
+---- stablehlo/stablehlo/dialect/StablehloOps.h
+-+++ stablehlo/stablehlo/dialect/StablehloOps.h
+-@@ -93,13 +93,14 @@
+-   Type parseType(DialectAsmParser& parser) const override;
+- 
+-   // Prints a type registered to this dialect.
+--  void printType(Type type, DialectAsmPrinter& os) const override;
+-+  void printType(Type type, DialectAsmPrinter& printer) const override;
+- 
+-   // Parses an attribute registered to this dialect.
+-   Attribute parseAttribute(DialectAsmParser& parser, Type type) const override;
+- 
+-   // Prints an attribute registered to this dialect.
+--  void printAttribute(Attribute attr, DialectAsmPrinter& os) const override;
+-+  void printAttribute(Attribute attr,
+-+                      DialectAsmPrinter& printer) const override;
+- 
+-   // Get the set dialect version.
+-   std::optional<StablehloDialectVersion> getVersion() const;
++@@ -3164,6 +3164,7 @@
++ using mlir::hlo::printVariadicOperandWithAttribute;
++ using mlir::hlo::printVariadicSameOperandsAndResultType;
++ 
+++using mlir::stablehlo::TokenType;
++ #define GET_OP_CLASSES
++ #include "stablehlo/dialect/StablehloOps.cpp.inc"
++ 
+ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
+ --- stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
+ +++ stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
+@@ -89,6 +149,71 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp b/
+  #include "llvm/Support/raw_ostream.h"
+  #include "mlir/Dialect/Func/IR/FuncOps.h"
+  #include "mlir/IR/BuiltinOps.h"
++diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
++--- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
+++++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
++@@ -29,9 +29,35 @@
++ #include "stablehlo/dialect/TypeInference.h"
++ #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
++ #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+++#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/Attributes.h"
++ 
++ namespace mlir {
++ namespace stablehlo {
+++
+++///////////////
+++// Dialect Helpers
+++///////////////
+++
+++MlirOp AttachFrontendAttribute(MlirBuilder& builder, MlirOp op, StringRef name,
+++                               Attribute value) {
+++  constexpr char kFrontendAttrName[] = "mhlo.frontend_attributes";
+++  Operation* mlirOp = unwrap(op).getDefiningOp();
+++  SmallVector<NamedAttribute> attrs;
+++  DictionaryAttr frontendAttr =
+++      mlirOp->getAttrOfType<DictionaryAttr>(kFrontendAttrName);
+++  if (frontendAttr) {
+++    for (NamedAttribute attr : frontendAttr.getValue()) {
+++      // Populate all non-conflicting names.
+++      if (attr.getName() != name) {
+++        attrs.push_back(attr);
+++      }
+++    }
+++  }
+++  attrs.emplace_back(name, value);
+++  mlirOp->setAttr(kFrontendAttrName,
+++                  DictionaryAttr::get(&builder.getContext(), attrs));
+++  return op;
+++}
++ 
++ /////////////////
++ // MANUAL APIs
++diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h
++--- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h
+++++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h
++@@ -27,9 +27,22 @@
++ #include "stablehlo/dialect/StablehloOps.h"
++ #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
++ #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+++#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/Attributes.h"
++ 
++ namespace mlir {
++ namespace stablehlo {
+++
+++///////////////
+++// Dialect Helpers
+++///////////////
+++
+++// Appends or overwrites an entry in the `mhlo.frontend_attributes` attribute
+++//
+++// of the given op.
+++// Ex:
+++//   stablehlo.abs %0 { mhlo.frontend_attributes = { "foo" = 123 } }
+++MlirOp AttachFrontendAttribute(MlirBuilder& builder, MlirOp op, StringRef name,
+++                               Attribute value);
++ 
++ /////////////////
++ // MANUAL APIs
+ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
+ --- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
+ +++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
+@@ -101,818 +226,267 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.c
+  #include "mlir/IR/BuiltinAttributes.h"
+  #include "mlir/IR/BuiltinOps.h"
+  #include "mlir/IR/DialectRegistry.h"
+-diff --ruN a/stablehlo/stablehlo/tests/BUILD.bazel b/stablehlo/stablehlo/tests/BUILD.bazel
+---- stablehlo/stablehlo/tests/BUILD.bazel
+-+++ stablehlo/stablehlo/tests/BUILD.bazel
+-@@ -102,6 +102,8 @@
+-     deps = [
+-         ":test_utils_inc_gen",
+-         "//:stablehlo_assembly_format",
+-+        "//:stablehlo_broadcast_lowering",
+-+        "//:stablehlo_ops",
+-         "@llvm-project//llvm:Support",
+-         "@llvm-project//mlir:FuncDialect",
+-         "@llvm-project//mlir:IR",
+-diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
+---- stablehlo/stablehlo/tests/TestUtils.cpp
+-+++ stablehlo/stablehlo/tests/TestUtils.cpp
+-@@ -19,6 +19,7 @@
+- #include <utility>
+- 
+- #include "llvm/ADT/STLExtras.h"
+-+#include "llvm/ADT/SmallVector.h"
+- #include "llvm/Support/Casting.h"
+- #include "mlir/Dialect/Func/IR/FuncOps.h"
+- #include "mlir/Dialect/Shape/IR/Shape.h"
+-@@ -35,11 +36,35 @@
+- #include "mlir/Support/LLVM.h"
+- #include "mlir/Support/LogicalResult.h"
+- #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+-+#include "stablehlo/dialect/StablehloOps.h"
+-+#include "stablehlo/transforms/StablehloBroadcastLowering.h"
+-+#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/TypeRange.h"
+- 
+- namespace mlir {
+- namespace hlo {
+- 
+- namespace {
+-+
+-+struct BroadcastValuesPattern : public RewritePattern {
+-+  explicit BroadcastValuesPattern(MLIRContext* context)
+-+      : RewritePattern("hlo_test_broadcast.numpy_broadcast", 1, context) {}
+-+  LogicalResult matchAndRewrite(Operation* op,
+-+                                PatternRewriter& rewriter) const override {
+-+    // Process all operands
+-+    SmallVector<Value> operands = llvm::to_vector(op->getOperands());
+-+    auto broadcastedOperands =
+-+        stablehlo::numpyBroadcastIfNeeded(rewriter, operands);
+-+    if (failed(broadcastedOperands)) return failure();
+-+
+-+    // Replace with custom call to avoid pattern reapplication
+-+    auto customCall = stablehlo::CustomCallOp::create(
+-+        rewriter, op->getLoc(), op->getResultTypes(), *broadcastedOperands);
+-+    customCall.setCallTargetName("numpy_broadcasted");
+-+    customCall.setHasSideEffect(true);
+-+    rewriter.replaceOp(op, customCall);
+-+    return success();
+-+  }
+-+};
++@@ -1592,5 +1592,57 @@
++   EXPECT_EQ(expected, debugString(*module));
++ }
+  
+- struct InferReturnTypesPattern : public RewritePattern {
+-   explicit InferReturnTypesPattern(MLIRContext *context)
+-@@ -137,36 +162,55 @@
+-   }
+- };
+- 
+-+#define GEN_PASS_DEF_HLOTESTBROADCASTPASS
+- #define GEN_PASS_DEF_HLOTESTINFERPASS
+- #define GEN_PASS_DEF_HLOTESTSPECULATABILITYPASS
+- #include "stablehlo/tests/TestUtils.h.inc"
+- 
+-+struct HloTestBroadcastPass
+-+    : public impl::HloTestBroadcastPassBase<HloTestBroadcastPass> {
+-+  LogicalResult initialize(MLIRContext* context) override {
+-+    RewritePatternSet patterns(context);
+-+    patterns.add<BroadcastValuesPattern>(context);
+-+    patterns_ = std::move(patterns);
+-+    return success();
+++TEST(MlirBuilderTest, FrontendAttributesAppend) {
+++  std::string expected = R"mlir(module {
+++  func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+++    %0 = stablehlo.exponential %arg0 {mhlo.frontend_attributes = {bar = "hello", foo = 123 : i32}} : tensor<2xf32>
+++    return %0 : tensor<2xf32>
+ +  }
+-+
+-+  void runOnOperation() override {
+-+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns_))))
+-+      return signalPassFailure();
+++})mlir";
+++
+++  StablehloModuleBuilder mb;
+++  {
+++    Location funcLoc = fileLineColLoc(mb->getContext(), "main.mlir", 1, 1);
+++    func::FunctionBuilder fb(mb.get(), "main", funcLoc);
+++    auto type = makeTensorType(fb.getContext(), {2}, ElementType::F32);
+++    auto arg0 = func::Argument(fb, type);
+++    auto exp = Exp(arg0);
+++    stablehlo::AttachFrontendAttribute(
+++        fb, exp, "foo", fb.getOpBuilder().getI32IntegerAttr(123));
+++    stablehlo::AttachFrontendAttribute(
+++        fb, exp, "bar", fb.getOpBuilder().getStringAttr("hello"));
+++    func::Return(fb, {exp});
+ +  }
+ +
+-+ private:
+-+  FrozenRewritePatternSet patterns_;
+-+};
+-+
+- struct HloTestInferPass : public impl::HloTestInferPassBase<HloTestInferPass> {
+-   LogicalResult initialize(MLIRContext *context) override {
+--    RewritePatternSet patterns_(context);
+--    patterns_.add<InferReturnTypesPattern>(context);
+--    patterns_.add<ReifyReturnTypeShapesPattern>(context);
+--    patterns = std::move(patterns_);
+-+    RewritePatternSet patterns(context);
+-+    patterns.add<InferReturnTypesPattern>(context);
+-+    patterns.add<ReifyReturnTypeShapesPattern>(context);
+-+    patterns_ = std::move(patterns);
+-     return success();
+-   }
+- 
+-   void runOnOperation() override {
+--    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns))))
+-+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns_))))
+-       return signalPassFailure();
+-   }
+- 
+-  private:
+--  FrozenRewritePatternSet patterns;
+-+  FrozenRewritePatternSet patterns_;
+- };
+- 
+- struct HloTestSpeculatabilityPass
+-     : public impl::HloTestSpeculatabilityPassBase<HloTestSpeculatabilityPass> {
+-   LogicalResult initialize(MLIRContext *context) override {
+--    RewritePatternSet patterns_(context);
+--    patterns_.add<IsSpeculatablePattern>(context);
+--    patterns_.add<IsNotSpeculatablePattern>(context);
+--    patterns_.add<IsRecursivelySpeculatablePattern>(context);
+--    patterns = std::move(patterns_);
+-+    RewritePatternSet patterns(context);
+-+    patterns.add<IsSpeculatablePattern>(context);
+-+    patterns.add<IsNotSpeculatablePattern>(context);
+-+    patterns.add<IsRecursivelySpeculatablePattern>(context);
+-+    patterns_ = std::move(patterns);
+-     return success();
+-   }
+- 
+-@@ -175,11 +219,11 @@
+-     config.setMaxIterations(1)
+-         .setUseTopDownTraversal(true)
+-         .setRegionSimplificationLevel(GreedySimplifyRegionLevel::Disabled);
+--    (void)applyPatternsGreedily(getOperation(), std::move(patterns));
+-+    (void)applyPatternsGreedily(getOperation(), std::move(patterns_));
+-   }
+- 
+-  private:
+--  FrozenRewritePatternSet patterns;
+-+  FrozenRewritePatternSet patterns_;
+- };
+- 
+- #define GEN_PASS_REGISTRATION
+-diff --ruN a/stablehlo/stablehlo/tests/TestUtils.td b/stablehlo/stablehlo/tests/TestUtils.td
+---- stablehlo/stablehlo/tests/TestUtils.td
+-+++ stablehlo/stablehlo/tests/TestUtils.td
+-@@ -16,6 +16,11 @@
+- 
+- include "mlir/Pass/PassBase.td"
+- 
+-+def HloTestBroadcastPass : Pass<"hlo-test-broadcast", "func::FuncOp"> {
+-+  let summary = "Uses test ops to invoke BroadcastUtils methods.";
+-+  let dependentDialects = ["stablehlo::StablehloDialect"];
+-+}
+-+
+- def HloTestInferPass : Pass<"hlo-test-infer", "func::FuncOp"> {
+-   let summary = "Uses test ops to invoke InferShapedTypeOpInterface methods.";
+-   let dependentDialects = ["shape::ShapeDialect"];
+-diff --ruN a/stablehlo/stablehlo/tests/ops_broadcasting.mlir b/stablehlo/stablehlo/tests/ops_broadcasting.mlir
+---- stablehlo/stablehlo/tests/ops_broadcasting.mlir
+-+++ stablehlo/stablehlo/tests/ops_broadcasting.mlir
+-@@ -0,0 +1,249 @@
+-+// RUN: stablehlo-opt %s --hlo-test-broadcast --split-input-file --allow-unregistered-dialect | FileCheck %s
+-+
+-+/////////
+-+// Scalar broadcast tests.
+-+
+-+// [] x [1] => [1]
+-+// CHECK-LABEL: func @scalar_broadcast_scalar_x_1
+-+func.func @scalar_broadcast_scalar_x_1(%arg0: tensor<f64>, %arg1: tensor<1xf64>) -> !stablehlo.token {
+-+  // CHECK: %[[LHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f64>) -> tensor<1xf64>
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%[[LHS_BCAST]], %arg1)
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<f64>, tensor<1xf64>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// -----
+-+
+-+// [1] x [] => [1]
+-+// CHECK-LABEL: func @scalar_broadcast_1_x_scalar
+-+func.func @scalar_broadcast_1_x_scalar(%arg0: tensor<1xf64>, %arg1: tensor<f64>) -> !stablehlo.token {
+-+  // CHECK: %[[RHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg1, dims = [] : (tensor<f64>) -> tensor<1xf64>
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%arg0, %[[RHS_BCAST]])
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<1xf64>, tensor<f64>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// -----
+-+
+-+// [] x [10] => [10]
+-+// CHECK-LABEL: func @scalar_broadcast_scalar_x_10
+-+func.func @scalar_broadcast_scalar_x_10(%arg0: tensor<f64>, %arg1: tensor<10xf64>) -> !stablehlo.token {
+-+  // CHECK: %[[LHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f64>) -> tensor<10xf64>
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%[[LHS_BCAST]], %arg1)
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<f64>, tensor<10xf64>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+++  OwningOpRef<ModuleOp> module = mb->build();
+++  EXPECT_EQ(expected, debugString(*module));
+ +}
+ +
+-+// -----
+-+
+-+// [<=10] x [] => [<=10]
+-+// CHECK-LABEL: func @scalar_broadcast_b10_x_scalar
+-+func.func @scalar_broadcast_b10_x_scalar(%arg0: tensor<?xf64, #stablehlo.bounds<10>>, %arg1: tensor<f64>) -> !stablehlo.token {
+-+  // CHECK: %[[RHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg1, dims = [] : (tensor<f64>) -> tensor<10xf64>
+-+  // CHECK: %[[DIM_SIZE:.+]] = stablehlo.get_dimension_size %arg0, dim = 0
+-+  // CHECK: %[[RHS_BCAST_DYN:.+]] = stablehlo.set_dimension_size %[[RHS_BCAST]], %[[DIM_SIZE]], dim = 0
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%arg0, %[[RHS_BCAST_DYN]])
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<?xf64, #stablehlo.bounds<10>>, tensor<f64>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// -----
+-+
+-+// [] x [<=10] => [<=10]
+-+// CHECK-LABEL: func @scalar_broadcast_scalar_x_b10
+-+func.func @scalar_broadcast_scalar_x_b10(%arg0: tensor<f64>, %arg1: tensor<?xf64, #stablehlo.bounds<10>>) -> !stablehlo.token {
+-+  // CHECK: %[[LHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f64>) -> tensor<10xf64>
+-+  // CHECK: %[[DIM_SIZE:.+]] = stablehlo.get_dimension_size %arg1, dim = 0
+-+  // CHECK: %[[LHS_BCAST_DYN:.+]] = stablehlo.set_dimension_size %[[LHS_BCAST]], %[[DIM_SIZE]], dim = 0
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%[[LHS_BCAST_DYN]], %arg1)
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<f64>, tensor<?xf64, #stablehlo.bounds<10>>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// -----
+-+
+-+// [] x [1, <=10, 1] => [1, <=10, 1]
+-+// CHECK-LABEL: func @scalar_broadcast_scalar_x_1_b10_1
+-+func.func @scalar_broadcast_scalar_x_1_b10_1(%arg0: tensor<f64>, %arg1: tensor<1x?x1xf64, #stablehlo.bounds<?, 10, ?>>) -> !stablehlo.token {
+-+  // CHECK: %[[LHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f64>) -> tensor<1x10x1xf64>
+-+  // CHECK: %[[DIM_SIZE:.+]] = stablehlo.get_dimension_size %arg1, dim = 1
+-+  // CHECK: %[[LHS_BCAST_DYN:.+]] = stablehlo.set_dimension_size %[[LHS_BCAST]], %[[DIM_SIZE]], dim = 1
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%[[LHS_BCAST_DYN]], %arg1)
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<f64>, tensor<1x?x1xf64, #stablehlo.bounds<?, 10, ?>>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// [10, 1, <=5] x [] => [10, 1, <=5]
+-+// CHECK-LABEL: func @scalar_broadcast_10_1_b5_x_scalar
+-+func.func @scalar_broadcast_10_1_b5_x_scalar(%arg0: tensor<10x1x?xf64, #stablehlo.bounds<?, ?, 5>>, %arg1: tensor<f64>) -> !stablehlo.token {
+-+  // CHECK: %[[RHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg1, dims = [] : (tensor<f64>) -> tensor<10x1x5xf64>
+-+  // CHECK: %[[DIM_SIZE:.+]] = stablehlo.get_dimension_size %arg0, dim = 2
+-+  // CHECK: %[[RHS_BCAST_DYN:.+]] = stablehlo.set_dimension_size %[[RHS_BCAST]], %[[DIM_SIZE]], dim = 2
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%arg0, %[[RHS_BCAST_DYN]])
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<10x1x?xf64, #stablehlo.bounds<?, ?, 5>>, tensor<f64>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+//////
+-+// 1-D SCALAR TESTS
+-+
+-+// [1] x [1] => [1]
+-+// [1] x [10] => [1]
+-+// [<=10] x [1] => [<=10]
+-+// [1] x [<=10] => [<=10]
+-+// [1] x [1, <=10, 1] => [1, <=10, 1]
+-+
+-+
+-+// [1] x [1] => [1]
+-+// CHECK-LABEL: func @single_dim_scalar_1_x_1
+-+func.func @single_dim_scalar_1_x_1(%arg0: tensor<1xf64>, %arg1: tensor<1xf64>) -> !stablehlo.token {
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%arg0, %arg1)
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<1xf64>, tensor<1xf64>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// -----
+-+
+-+// [1] x [10] => [10]
+-+// CHECK-LABEL: func @single_dim_scalar_1_x_10
+-+func.func @single_dim_scalar_1_x_10(%arg0: tensor<1xf64>, %arg1: tensor<10xf64>) -> !stablehlo.token {
+-+  // CHECK: %[[LHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg0, dims = [0] : (tensor<1xf64>) -> tensor<10xf64>
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%[[LHS_BCAST]], %arg1)
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<1xf64>, tensor<10xf64>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// -----
+-+
+-+// [<=10] x [1] => [<=10]
+-+// CHECK-LABEL: func @single_dim_scalar_b10_x_1
+-+func.func @single_dim_scalar_b10_x_1(%arg0: tensor<?xf64, #stablehlo.bounds<10>>, %arg1: tensor<1xf64>) -> !stablehlo.token {
+-+  // CHECK: %[[RHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg1, dims = [0] : (tensor<1xf64>) -> tensor<10xf64>
+-+  // CHECK: %[[DIM_SIZE:.+]] = stablehlo.get_dimension_size %arg0, dim = 0
+-+  // CHECK: %[[RHS_BCAST_DYN:.+]] = stablehlo.set_dimension_size %[[RHS_BCAST]], %[[DIM_SIZE]], dim = 0
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%arg0, %[[RHS_BCAST_DYN]])
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<?xf64, #stablehlo.bounds<10>>, tensor<1xf64>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// -----
+-+
+-+// [1] x [<=10] => [<=10]
+-+// CHECK-LABEL: func @single_dim_scalar_1_x_b10
+-+func.func @single_dim_scalar_1_x_b10(%arg0: tensor<1xf64>, %arg1: tensor<?xf64, #stablehlo.bounds<10>>) -> !stablehlo.token {
+-+  // CHECK: %[[LHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg0, dims = [0] : (tensor<1xf64>) -> tensor<10xf64>
+-+  // CHECK: %[[DIM_SIZE:.+]] = stablehlo.get_dimension_size %arg1, dim = 0
+-+  // CHECK: %[[LHS_BCAST_DYN:.+]] = stablehlo.set_dimension_size %[[LHS_BCAST]], %[[DIM_SIZE]], dim = 0
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%[[LHS_BCAST_DYN]], %arg1)
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<1xf64>, tensor<?xf64, #stablehlo.bounds<10>>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// [<=10] x [<=10] => [<=10] // PT layer must ensure these are identical!
+-+// CHECK-LABEL: func @single_dim_scalar_b10_x_b10
+-+func.func @single_dim_scalar_b10_x_b10(%arg0: tensor<?xf64, #stablehlo.bounds<10>>, %arg1: tensor<?xf64, #stablehlo.bounds<10>>) -> !stablehlo.token {
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%arg0, %arg1)
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<?xf64, #stablehlo.bounds<10>>, tensor<?xf64, #stablehlo.bounds<10>>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// -----
+-+
+-+// [1] x [1, <=10, 1] => [1, <=10, 1]
+-+// CHECK-LABEL: func @single_dim_scalar_1_x_1_b10_1
+-+func.func @single_dim_scalar_1_x_1_b10_1(%arg0: tensor<1xf64>, %arg1: tensor<1x?x1xf64, #stablehlo.bounds<?, 10, ?>>) -> !stablehlo.token {
+-+  // CHECK: %[[LHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg0, dims = [2] : (tensor<1xf64>) -> tensor<1x10x1xf64>
+-+  // CHECK: %[[DIM_SIZE:.+]] = stablehlo.get_dimension_size %arg1, dim = 1
+-+  // CHECK: %[[LHS_BCAST_DYN:.+]] = stablehlo.set_dimension_size %[[LHS_BCAST]], %[[DIM_SIZE]], dim = 1
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%[[LHS_BCAST_DYN]], %arg1)
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<1xf64>, tensor<1x?x1xf64, #stablehlo.bounds<?, 10, ?>>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// -----
+-+
+-+// [10, 1, <=5] x [1] => [10, 1, <=5]
+-+// CHECK-LABEL: func @single_dim_scalar_10_1_b5_x_1
+-+func.func @single_dim_scalar_10_1_b5_x_1(%arg0: tensor<10x1x?xf64, #stablehlo.bounds<?, ?, 5>>, %arg1: tensor<1xf64>) -> !stablehlo.token {
+-+  // CHECK: %[[RHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg1, dims = [2] : (tensor<1xf64>) -> tensor<10x1x5xf64>
+-+  // CHECK: %[[DIM_SIZE:.+]] = stablehlo.get_dimension_size %arg0, dim = 2
+-+  // CHECK: %[[RHS_BCAST_DYN:.+]] = stablehlo.set_dimension_size %[[RHS_BCAST]], %[[DIM_SIZE]], dim = 2
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%arg0, %[[RHS_BCAST_DYN]])
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<10x1x?xf64, #stablehlo.bounds<?, ?, 5>>, tensor<1xf64>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+
+-+//////
+-+// N-D Tests
+-+
+-+// [1, 2] x [1, 2] => [1, 2]
+-+// CHECK-LABEL: func @tensor_no_broadcast_match
+-+func.func @tensor_no_broadcast_match(%arg0: tensor<1x2xf64>, %arg1: tensor<1x2xf64>) -> !stablehlo.token {
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%arg0, %arg1)
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<1x2xf64>, tensor<1x2xf64>) ->  !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// [10, 1] x [1, 1] => [10, 1]
+-+// CHECK-LABEL: func @tensor_broadcast_10_1_x_1_1
+-+func.func @tensor_broadcast_10_1_x_1_1(%arg0: tensor<10x1xf64>, %arg1: tensor<1x1xf64>) -> !stablehlo.token {
+-+  // CHECK: %[[RHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg1, dims = [0, 1] : (tensor<1x1xf64>) -> tensor<10x1xf64>
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%arg0, %[[RHS_BCAST]])
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<10x1xf64>, tensor<1x1xf64>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// -----
+-+
+-+// [<=10, 1] x [1, 10] => [<=10, 10]
+-+// CHECK-LABEL: func @tensor_broadcast_b10_1_x_1_10
+-+func.func @tensor_broadcast_b10_1_x_1_10(%arg0: tensor<?x1xf64, #stablehlo.bounds<10, ?>>, %arg1: tensor<1x10xf64>) -> !stablehlo.token {
+-+  // CHECK: %[[LHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg0, dims = [0, 1] : (tensor<?x1xf64, #stablehlo.bounds<10, ?>>) -> tensor<?x10xf64, #stablehlo.bounds<10, ?>>
+-+  // CHECK: %[[RHS_BCAST_STATIC:.+]] = stablehlo.broadcast_in_dim %arg1, dims = [0, 1] : (tensor<1x10xf64>) -> tensor<10x10xf64>
+-+  // CHECK: %[[DIM_SIZE:.+]] = stablehlo.get_dimension_size %arg0, dim = 0
+-+  // CHECK: %[[RHS_BCAST_DYN:.+]] = stablehlo.set_dimension_size %[[RHS_BCAST_STATIC]], %[[DIM_SIZE]], dim = 0
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%[[LHS_BCAST]], %[[RHS_BCAST_DYN]])
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (tensor<?x1xf64, #stablehlo.bounds<10, ?>>, tensor<1x10xf64>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// -----
+-+
+-+// [<=10, 1] x [1, <=10] => [<=10, <=10]
+-+// CHECK-LABEL: func @tensor_broadcast_b10_1_x_1_b10
+-+func.func @tensor_broadcast_b10_1_x_1_b10(
+-+  %arg0: tensor<?x1xf64, #stablehlo.bounds<10, ?>>,
+-+  %arg1: tensor<1x?xf64, #stablehlo.bounds<?, 10>>
+-+) -> !stablehlo.token {
+-+  // CHECK: %[[LHS_BCAST_STATIC:.+]] = stablehlo.broadcast_in_dim %arg0, dims = [0, 1] : (tensor<?x1xf64, #stablehlo.bounds<10, ?>>) -> tensor<?x10xf64, #stablehlo.bounds<10, ?>>
+-+  // CHECK: %[[ARG1_DIM1_SIZE:.+]] = stablehlo.get_dimension_size %arg1, dim = 1
+-+  // CHECK: %[[LHS_BCAST_DYN:.+]] = stablehlo.set_dimension_size %[[LHS_BCAST_STATIC]], %[[ARG1_DIM1_SIZE]], dim = 1
+-+  // CHECK: %[[RHS_BCAST_STATIC:.+]] = stablehlo.broadcast_in_dim %arg1, dims = [0, 1] : (tensor<1x?xf64, #stablehlo.bounds<?, 10>>) -> tensor<10x?xf64, #stablehlo.bounds<?, 10>>
+-+  // CHECK: %[[ARG0_DIM0_SIZE:.+]] = stablehlo.get_dimension_size %arg0, dim = 0
+-+  // CHECK: %[[RHS_BCAST_DYN:.+]] = stablehlo.set_dimension_size %[[RHS_BCAST_STATIC]], %[[ARG0_DIM0_SIZE]], dim = 0
+-+  // CHECK-NEXT: stablehlo.custom_call @numpy_broadcasted(%[[LHS_BCAST_DYN]], %[[RHS_BCAST_DYN]])
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1) : (
+-+    tensor<?x1xf64, #stablehlo.bounds<10, ?>>,
+-+    tensor<1x?xf64, #stablehlo.bounds<?, 10>>
+-+  ) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+-+}
+-+
+-+// -----
+-+
+-+//////
+-+// N-ary broadcast tests.
+-+
+++TEST(MlirBuilderTest, FrontendAttributesOverwrite) {
+++  std::string expected = R"mlir(module {
+++  func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+++    %0 = stablehlo.exponential %arg0 {mhlo.frontend_attributes = {foo = 456 : i32}} : tensor<2xf32>
+++    return %0 : tensor<2xf32>
+++  }
+++})mlir";
+++
+++  StablehloModuleBuilder mb;
+++  {
+++    Location funcLoc = fileLineColLoc(mb->getContext(), "main.mlir", 1, 1);
+++    func::FunctionBuilder fb(mb.get(), "main", funcLoc);
+++    auto type = makeTensorType(fb.getContext(), {2}, ElementType::F32);
+++    auto arg0 = func::Argument(fb, type);
+++    auto exp = Exp(arg0);
+++    stablehlo::AttachFrontendAttribute(
+++        fb, exp, "foo", fb.getOpBuilder().getI32IntegerAttr(123));
+++    stablehlo::AttachFrontendAttribute(
+++        fb, exp, "foo", fb.getOpBuilder().getI32IntegerAttr(456));
+++    func::Return(fb, {exp});
+++  }
+ +
+-+// [<=10, 1] x [1, <=10] x [1] => [<=10, <=10]
+-+// CHECK-LABEL: func @nary_broadcast_b10_1_x_1_b10_x_1
+-+func.func @nary_broadcast_b10_1_x_1_b10_x_1(
+-+  %arg0: tensor<?x1xf64, #stablehlo.bounds<10, ?>>,
+-+  %arg1: tensor<1x?xf64, #stablehlo.bounds<?, 10>>,
+-+  %arg2: tensor<1xf64>
+-+) -> !stablehlo.token {
+-+  %0 = "hlo_test_broadcast.numpy_broadcast"(%arg0, %arg1, %arg2) : (tensor<?x1xf64, #stablehlo.bounds<10, ?>>, tensor<1x?xf64, #stablehlo.bounds<?, 10>>, tensor<1xf64>) -> !stablehlo.token
+-+  return %0 : !stablehlo.token
+++  OwningOpRef<ModuleOp> module = mb->build();
+++  EXPECT_EQ(expected, debugString(*module));
+ +}
+ +
++ }  // namespace stablehlo
++ }  // namespace mlir
++diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stablehlo/reference/InterpreterOps.cpp
++--- stablehlo/stablehlo/reference/InterpreterOps.cpp
+++++ stablehlo/stablehlo/reference/InterpreterOps.cpp
++@@ -46,6 +46,7 @@
++ #include "stablehlo/reference/ProcessGrid.h"
++ #include "stablehlo/reference/Value.h"
++ 
+++using mlir::stablehlo::TokenType;
++ #define GET_OP_CLASSES
++ #include "stablehlo/reference/InterpreterOps.cpp.inc"
++ 
+ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+ --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+ +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+-@@ -576,16 +576,19 @@
+- // ReshapeOp
+- 
+- // CHECK-LABEL: func @reshape_fold
+--func.func @reshape_fold() -> (tensor<1xi32>, tensor<2x2xi32>) {
+--  %c0 = stablehlo.constant dense<2> : tensor<i32>
+-+func.func @reshape_fold() -> (tensor<1xf32>, tensor<2x2xi32>, tensor<3x2xcomplex<f32>>) {
+-+  %c0 = stablehlo.constant dense<2.0> : tensor<f32>
+-   %c1 = stablehlo.constant dense<[1, 2, 3, 4]> : tensor<4xi32>
+--  %0 = stablehlo.reshape %c0 : (tensor<i32>) -> tensor<1xi32>
+-+  %c2 = stablehlo.constant dense<(1.0,2.0)> : tensor<2x3xcomplex<f32>>
+-+  %0 = stablehlo.reshape %c0 : (tensor<f32>) -> tensor<1xf32>
+-   %1 = stablehlo.reshape %c1 : (tensor<4xi32>) -> tensor<2x2xi32>
++@@ -22,21 +22,24 @@
++ // CHECK-LABEL: func.func @broadcast_in_dim_fold_splat
++ // CHECK-SAME:   ([[ARG0:%.+]]: tensor<3x3xi32>)
++ func.func @broadcast_in_dim_fold_splat(%arg0: tensor<3x3xi32>)
++-  -> (tensor<6xi32>, tensor<3xf32>, tensor<3x3xi32>) {
+++  -> (tensor<6xi32>, tensor<3xf32>, tensor<5xcomplex<f32>>, tensor<3x3xi32>) {
++   %c0 = stablehlo.constant dense<5> : tensor<i32>
++   %c1 = stablehlo.constant dense<3.0> : tensor<f32>
++-  %c2 = stablehlo.constant dense<1> : tensor<1x3xi32>
+++  %c2 = stablehlo.constant dense<(1.0,2.0)> : tensor<complex<f32>>
+++  %c3 = stablehlo.constant dense<1> : tensor<1x3xi32>
++ 
++   %0 = stablehlo.broadcast_in_dim %c0, dims = [] : (tensor<i32>) -> tensor<6xi32>
++   %1 = stablehlo.broadcast_in_dim %c1, dims = [] : (tensor<f32>) -> tensor<3xf32>
++-  %2 = stablehlo.broadcast_in_dim %c2, dims = [1, 0] : (tensor<1x3xi32>) -> tensor<3x3xi32>
+++  %2 = stablehlo.broadcast_in_dim %c2, dims = [] : (tensor<complex<f32>>) -> tensor<5xcomplex<f32>>
+++  %3 = stablehlo.broadcast_in_dim %c3, dims = [1, 0] : (tensor<1x3xi32>) -> tensor<3x3xi32>
++ 
++   // CHECK-DAG:  [[R0:%.+]] = stablehlo.constant dense<5> : tensor<6xi32>
++   // CHECK-DAG:  [[R1:%.+]] = stablehlo.constant dense<3.000000e+00> : tensor<3xf32>
++-  // CHECK-DAG:  [[R2:%.+]] = stablehlo.constant dense<1> : tensor<3x3xi32>
+ -
+--  // CHECK-DAG:  [[CST1:%.+]] = stablehlo.constant dense<2> : tensor<1xi32>
+--  // CHECK-DAG:  [[CST2:%.+]] = stablehlo.constant dense<{{\[\[1, 2\], \[3, 4\]\]}}> : tensor<2x2xi32>
+--  // CHECK-NEXT: return [[CST1]], [[CST2]]
+--  return %0, %1 : tensor<1xi32>, tensor<2x2xi32>
+-+  %2 = stablehlo.reshape %c2 : (tensor<2x3xcomplex<f32>>) -> tensor<3x2xcomplex<f32>>
++-  // CHECK-NEXT: return [[R0]], [[R1]], [[R2]]
++-  return %0, %1, %2 : tensor<6xi32>, tensor<3xf32>, tensor<3x3xi32>
+++  // CHECK-DAG:  [[R2:%.+]] = stablehlo.constant dense<(1.0{{.*}},2.0{{.*}})> : tensor<5xcomplex<f32>>
+++  // CHECK-DAG:  [[R3:%.+]] = stablehlo.constant dense<1> : tensor<3x3xi32>
+ +
+-+  // CHECK-DAG:  [[RESULT0:%.+]] = stablehlo.constant dense<2.0{{.*}}> : tensor<1xf32>
+-+  // CHECK-DAG:  [[RESULT1:%.+]] = stablehlo.constant dense<{{\[\[1, 2\], \[3, 4\]\]}}> : tensor<2x2xi32>
+-+  // CHECK-DAG:  [[RESULT2:%.+]] = stablehlo.constant dense<(1.0{{.*}},2.0{{.*}})> : tensor<3x2xcomplex<f32>>
+-+  // CHECK-NEXT: return [[RESULT0]], [[RESULT1]], [[RESULT2]]
+-+  return %0, %1, %2 : tensor<1xf32>, tensor<2x2xi32>, tensor<3x2xcomplex<f32>>
+++  // CHECK-NEXT: return [[R0]], [[R1]], [[R2]], [[R3]]
+++  return %0, %1, %2, %3 : tensor<6xi32>, tensor<3xf32>, tensor<5xcomplex<f32>>, tensor<3x3xi32>
+  }
+  
+  // -----
+-diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp b/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp
+---- stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp
+-+++ stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp
+-@@ -0,0 +1,293 @@
+-+/* Copyright 2025 The StableHLO Authors.
+-+
+-+Licensed under the Apache License, Version 2.0 (the "License");
+-+you may not use this file except in compliance with the License.
+-+You may obtain a copy of the License at
+-+
+-+    http://www.apache.org/licenses/LICENSE-2.0
+-+
+-+Unless required by applicable law or agreed to in writing, software
+-+distributed under the License is distributed on an "AS IS" BASIS,
+-+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-+See the License for the specific language governing permissions and
+-+limitations under the License.
+-+==============================================================================*/
+-+
+-+#include "stablehlo/transforms/StablehloBroadcastLowering.h"
+-+
+-+#include <algorithm>
+-+#include <cassert>
+-+#include <cstddef>
+-+#include <cstdint>
+-+#include <string>
+-+#include <utility>
+-+
+-+#include "llvm/ADT/STLExtras.h"
+-+#include "llvm/Support/Debug.h"
+-+#include "llvm/Support/raw_ostream.h"
+-+#include "mlir/IR/Builders.h"
+-+#include "mlir/IR/BuiltinTypeInterfaces.h"
+-+#include "mlir/IR/BuiltinTypes.h"
+-+#include "mlir/IR/Diagnostics.h"
+-+#include "mlir/IR/Location.h"
+-+#include "mlir/IR/Types.h"
+-+#include "mlir/IR/Value.h"
+-+#include "mlir/Support/LLVM.h"
+-+#include "stablehlo/dialect/StablehloOps.h"
+-+#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/Sequence.h"
+-+#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/SmallVector.h"
+-+
+-+#define DEBUG_TYPE "stablehlo-broadcast-lowering"
+-+
+-+namespace mlir {
+-+namespace stablehlo {
+-+
+-+/////
+-+// Bounded dynamism broadcasting
+-+
+-+namespace {
+-+
+-+DimensionInfo getDimensionInfo(Value op, mlir::RankedTensorType tensorType,
+-+                               TypeExtensionsAttr encoding,
+-+                               int64_t dim) {
+-+  if (!encoding || !mlir::ShapedType::isDynamic(tensorType.getDimSize(dim)))
+-+    return DimensionInfo{tensorType.getDimSize(dim)};
+-+
+-+  return DimensionInfo{
+-+      encoding.getBounds()[dim],
+-+      op,
+-+      dim,
+-+  };
+-+}
+-+
+-+FailureOr<Dimensions> getDimensions(Value op) {
+-+  // Get tensor type
+-+  mlir::RankedTensorType tensor_type = dyn_cast<RankedTensorType>(op.getType());
+-+  if (!tensor_type)
+-+    return emitError(op.getLoc(), "expected ranked tensor type");
+-+
+-+  auto encoding =
+-+      mlir::dyn_cast_if_present<mlir::stablehlo::TypeExtensionsAttr>(
+-+          tensor_type.getEncoding());
+-+
+-+  Dimensions dimensions;
+-+  dimensions.reserve(tensor_type.getRank());
+-+  for (size_t idx = 0; idx < tensor_type.getRank(); ++idx) {
+-+    auto dimInfo = getDimensionInfo(op, tensor_type, encoding, idx);
+-+    dimensions.push_back(dimInfo);
+-+  }
+-+  return dimensions;
+-+}
+-+
+-+FailureOr<Dimensions> getNumpyBroadcastShapeWithBounds(
+-+    const Dimensions& a, const Dimensions& b) {
+-+  LLVM_DEBUG(llvm::dbgs() << "[getNumpyBroadcastShapeWithBounds] inputs: "
+-+                          << toString(a) << " * " << toString(b));
+-+  size_t max_rank = std::max(a.size(), b.size());
+-+  Dimensions result(max_rank);
+-+
+-+  // Iterate from right to left (NumPy-style broadcasting)
+-+  for (int i = 1; i <= max_rank; ++i) {
+-+    size_t a_idx = a.size() - i;
+-+    size_t b_idx = b.size() - i;
+-+    size_t res_idx = max_rank - i;
+-+
+-+    // Get DimensionInfo for the current index, padding with size 1 if out of
+-+    // bounds.
+-+    DimensionInfo dim_a =
+-+        (a_idx >= 0 && a_idx < a.size()) ? a[a_idx] : DimensionInfo{1};
+-+    DimensionInfo dim_b =
+-+        (b_idx >= 0 && b_idx < b.size()) ? b[b_idx] : DimensionInfo{1};
+-+
+-+    // Short circuit on size 1 dimensions.
+-+    if (dim_a.size == 1) {
+-+      result[res_idx] = dim_b;
+-+      continue;
+-+    }
+-+    if (dim_b.size == 1) {
+-+      result[res_idx] = dim_a;
+-+      continue;
+-+    }
+-+
+-+    // If both LHS and RHS are not 1, dim size must match.
+-+    if (dim_a.size != dim_b.size) {
+-+      return emitError(a[a_idx].boundOp.value().getLoc(),
+-+                       "incompatible shapes for broadcasting ")
+-+             << dim_a.size << " and " << dim_b.size;
+-+    }
+-+
+-+    // If bounded both must be bounded
+-+    if (dim_a.boundOp.has_value() != dim_b.boundOp.has_value()) {
+-+      return emitError(a[a_idx].boundOp.value().getLoc(),
+-+                       "cannot mix bounded and static dimensions in broadcast");
+-+    }
+-+
+-+    // LHS and RHS match, populate with one of the dimensions.
+-+    result[res_idx] = dim_a;
+-+  }
+-+
+-+  LLVM_DEBUG(llvm::dbgs() << "[getNumpyBroadcastShapeWithBounds] result: "
+-+                          << toString(result));
+-+  return result;
+-+}
+-+
+-+mlir::RankedTensorType getRankedTensorType(const Dimensions& dims,
+-+                                           mlir::Type element_type) {
+-+  mlir::SmallVector<int64_t> shape;
+-+  mlir::SmallVector<int64_t> bounds;
+-+  shape.reserve(dims.size());
+-+  for (const DimensionInfo& dim : dims) {
+-+    if (dim.boundOp.has_value()) {
+-+      shape.push_back(mlir::ShapedType::kDynamic);
+-+      bounds.push_back(dim.size);
+-+    } else {
+-+      shape.push_back(dim.size);
+-+      bounds.push_back(mlir::ShapedType::kDynamic);
+-+    }
+-+  }
+-+  mlir::stablehlo::TypeExtensionsAttr encoding;
+-+  if (!llvm::all_of(
+-+          bounds, [](int64_t b) { return b == mlir::ShapedType::kDynamic; })) {
+-+    encoding = mlir::stablehlo::TypeExtensionsAttr::get(
+-+        element_type.getContext(), bounds);
+-+  }
+-+  return mlir::RankedTensorType::get(shape, element_type, encoding);
+-+}
+-+
+-+}  // namespace
+-+
+-+
+-+FailureOr<Dimensions> getNumpyBroadcastShape(ArrayRef<Value> ops) {
+-+  if (ops.empty()) return failure();
+-+
+-+  Value first = ops[0];
+-+  auto bcastShapeOrFail = getDimensions(first);
+-+  if (failed(bcastShapeOrFail)) return failure();
+-+  Dimensions bcastShape = std::move(*bcastShapeOrFail);
+-+
+-+  for (int i = 1; i < ops.size(); ++i) {
+-+    Value currOp = ops[i];
+-+    auto dims = getDimensions(currOp);
+-+    if (failed(dims)) return failure();
+-+    auto currBcastShapeOrFail =
+-+        getNumpyBroadcastShapeWithBounds(bcastShape, *dims);
+-+    if (failed(currBcastShapeOrFail)) return failure();
+-+    bcastShape = std::move(*currBcastShapeOrFail);
+-+  }
+-+  return std::move(bcastShape);
+-+}
+-+
+-+std::string toString(const Dimensions& dims) {
+-+  std::string result;
+-+  llvm::raw_string_ostream os(result);
+-+  os << "tensor<";
+-+  llvm::interleave(
+-+      dims, os,
+-+      [&](const DimensionInfo& dim) {
+-+        os << (dim.boundOp.has_value() ? "b" : "") << dim.size;
+-+      },
+-+      "x");
+-+  os << ">";
+-+  return result;
++diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
++--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
++@@ -134,6 +134,35 @@
++   return %0, %5 : tensor<1x3x6xi32>, tensor<3x6x1xi32>
++ }
++ 
+++// CHECK-LABEL: func.func @broadcast_in_dim_prefer_nested_reshape
+++// CHECK-SAME:   ([[ARG0:%[^ ]+]]: tensor<3x4xi32>)
+++func.func @broadcast_in_dim_prefer_nested_reshape(%arg0: tensor<3x4xi32>) -> (tensor<2x3x4x3xi32>, tensor<2x3x4x3xi32>) {
+++  // When `broadcast_in_dim(broadcast_in_dim(x))` could be optimized into either
+++  // `broadcast_in_dim(reshape(x))` or `broadcast_in_dim(x)`, we want to select
+++  // the former pattern.
+++  //
+++  // (We accomplish this by blocking the merge-composition pattern if the inner
+++  // op can be replaced with a `reshape`. Simply adding benefit to the
+++  // replace-with-reshape pattern isn't sufficient here because the outermost
+++  // op, which only matches the merge-composition pattern, is traversed first.)
+++
+++  // CHECK-DAG: [[INNER_RESHAPE:%[^ ]+]] = stablehlo.reshape [[ARG0]] : (tensor<3x4xi32>) -> tensor<3x1x4xi32>
+++  // CHECK-DAG: [[BROADCAST_OF_RESHAPE:%[^ ]+]] = stablehlo.broadcast_in_dim [[INNER_RESHAPE]], dims = [1, 0, 2] : (tensor<3x1x4xi32>) -> tensor<2x3x4x3xi32>
+++  %0 = stablehlo.broadcast_in_dim %arg0, dims = [0, 2] : (tensor<3x4xi32>) -> tensor<3x1x4xi32>
+++  %1 = stablehlo.broadcast_in_dim %0, dims = [1, 0, 2] : (tensor<3x1x4xi32>) -> tensor<2x3x4x3xi32>
+++
+++  // When the inner op doesn't qualify for replacement with a `reshape` op,
+++  // however (particularly when it meets some conditions but not others), ensure
+++  // that we allow the merge-composition pattern to match.
+++
+++  // CHECK-DAG: [[MERGED_BROADCAST:%[^ ]+]] = stablehlo.broadcast_in_dim [[ARG0]], dims = [3, 2] : (tensor<3x4xi32>) -> tensor<2x3x4x3xi32>
+++  %2 = stablehlo.broadcast_in_dim %arg0, dims = [2, 1] : (tensor<3x4xi32>) -> tensor<1x4x3xi32>
+++  %3 = stablehlo.broadcast_in_dim %2, dims = [0, 2, 3] : (tensor<1x4x3xi32>) -> tensor<2x3x4x3xi32>
+++
+++  // CHECK-DAG: return [[BROADCAST_OF_RESHAPE]], [[MERGED_BROADCAST]]
+++  return %1, %3 : tensor<2x3x4x3xi32>, tensor<2x3x4x3xi32>
+ +}
+ +
+-+FailureOr<SmallVector<Value>> numpyBroadcastIfNeeded(OpBuilder& builder,
+-+                                                     ArrayRef<Value> operands) {
+-+  // Figure out the broadcast shape
+-+  auto bcastShapeOrFail = getNumpyBroadcastShape(operands);
+-+  if (failed(bcastShapeOrFail)) return failure();
+-+  Dimensions bcastShape = std::move(*bcastShapeOrFail);
+-+
+-+  // Apply to all operands
+-+  SmallVector<Value> broadcastedOperands;
+-+  for (auto operand : operands) {
+-+    auto bcastOperand = numpyBroadcastIfNeeded(builder, operand, bcastShape);
+-+    if (failed(bcastOperand)) return failure();
+-+    broadcastedOperands.push_back(*bcastOperand);
+-+  }
+-+  return std::move(broadcastedOperands);
++ // CHECK-LABEL: func.func @broadcast_in_dim_not_identity_broadcasts
++ func.func @broadcast_in_dim_not_identity_broadcasts(%arg0: tensor<1x2xf32>) -> tensor<2x2xf32> {
++   // CHECK: stablehlo.broadcast_in_dim
++@@ -208,6 +237,18 @@
++   // CHECK-NEXT: return [[C1]], [[C0]], [[C1]], [[C0]], [[R0]], [[R1]], [[R2]], [[R3]]
++   return %0, %1, %2, %3, %4, %5, %6, %7 :
++          tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>
+ +}
+ +
+-+FailureOr<Value> numpyBroadcastIfNeeded(OpBuilder& builder, Value input,
+-+                                        const Dimensions& shape) {
+-+  LLVM_DEBUG(llvm::dbgs() << "[BroadcastIfNeeded] input: " << input
+-+                          << " shape: " << toString(shape));
+-+  auto loc = input.getLoc();
+-+  mlir::RankedTensorType input_type =
+-+      dyn_cast<RankedTensorType>(input.getType());
+-+  if (!input_type) return emitError(input.getLoc(), "expected tensor type");
+-+  mlir::RankedTensorType output_type =
+-+      getRankedTensorType(shape, input_type.getElementType());
+-+
+-+  // Short circuit if no broadcasting is needed.
+-+  if (input_type == output_type) return input;
+-+
+-+  int64_t input_rank = input_type.getRank();
+-+  int64_t output_rank = output_type.getRank();
+-+  if (input_rank > output_rank)
+-+    return emitError(loc, "input rank must be <= output rank, got ")
+-+           << input_rank << " vs " << output_rank;
+-+
+-+  size_t rank_diff = output_rank - input_rank;
+-+  SmallVector<int64_t> bcast_dims;
+-+  bcast_dims.reserve(input_rank);
+-+
+-+  auto inputShapeOrFail = getDimensions(input);
+-+  if (failed(inputShapeOrFail)) return failure();
+-+  Dimensions inputShape = std::move(*inputShapeOrFail);
+-+
+-+  // Construct broadcast dimensions.
+-+  auto broadcastDimensions = llvm::to_vector(
+-+      llvm::seq<int64_t>(output_rank - input_rank, output_rank));
+-+
+-+  // Construct the result type of the broadcast
+-+  //  - If input is static and target shape is static, use static shape.
+-+  //  - If input has bounded dim, target shape must be bounded, use bounded dim.
+-+  //  - If input is not bounded, but target shape is bounded, broadcast to
+-+  //    the padded shape then call SetDimensionSize to make dynamic.
+-+  auto bcastShape = shape;
+-+  for (size_t i = 0; i < input_rank; ++i) {
+-+    int64_t input_dim_size = inputShape[i].size;
+-+    int64_t result_idx = i + rank_diff;
+-+    int64_t result_dim_size = shape[result_idx].size;
+-+    if (input_dim_size != 1 && input_dim_size != result_dim_size)
+-+      return emitError(loc, "Cannot broadcast input: ")
+-+             << input_type << " to target shape " << toString(shape);
+-+
+-+    if (!inputShape[i].boundOp.has_value() &&
+-+        shape[result_idx].boundOp.has_value()) {
+-+      // Use padded shape in broadcast.
+-+      bcastShape[result_idx] = DimensionInfo{shape[result_idx].size};
+-+    }
+-+    bcast_dims.push_back(result_idx);
+-+  }
+-+
+-+  // Broadcast to padded size for remaining dimensions.
+-+  for (size_t i = input_rank; i < shape.size(); ++i) {
+-+    bcastShape[i] = DimensionInfo{shape[i].size};
+-+  }
+-+
+-+  // Insert broadcast ops
+-+  mlir::RankedTensorType bcast_type =
+-+      getRankedTensorType(bcastShape, input_type.getElementType());
+-+  Value bcast_op = stablehlo::BroadcastInDimOp::create(
+-+      builder, loc, bcast_type, input, broadcastDimensions);
+-+  if (bcast_op.getType() == output_type) return bcast_op;
+-+
+-+  // Mark the padded broadcast as dynamic where the result is bounded.
+-+  // Inserts `GetDimSize(boundOp)->SetDimSize(inputBcast)` for any bounded
+-+  // dimensions that required broadcasting.
+-+  for (size_t i = 0; i < shape.size(); ++i) {
+-+    if (!bcastShape[i].boundOp.has_value() && shape[i].boundOp.has_value()) {
+-+      Value boundOp = shape[i].boundOp.value();
+-+      auto dim_size = stablehlo::GetDimensionSizeOp::create(
+-+          builder, loc, boundOp, shape[i].boundOpDim);
+-+      bcast_op = stablehlo::SetDimensionSizeOp::create(builder, loc, bcast_op,
+-+                                                       dim_size, i);
+-+    }
+-+  }
+-+  return bcast_op;
+++// CHECK-LABEL: func.func @compare_op_bool_simplify
+++// CHECK-SAME:   ([[ARG0:%.+]]: tensor<i1>)
+++func.func @compare_op_bool_simplify(%arg0: tensor<i1>) -> (tensor<i1>, tensor<i1>) {
+++  %false = stablehlo.constant dense<false> : tensor<i1>
+++  %true = stablehlo.constant dense<true> : tensor<i1>
+++  // CHECK-NOT: stablehlo.compare
+++  %0 = stablehlo.compare NE, %arg0, %false, UNSIGNED : (tensor<i1>, tensor<i1>) -> tensor<i1>
+++  %1 = stablehlo.compare EQ, %arg0, %true, UNSIGNED : (tensor<i1>, tensor<i1>) -> tensor<i1>
+++  // CHECK: return [[ARG0]], [[ARG0]]
+++  func.return %0, %1 : tensor<i1>, tensor<i1>
++ }
++ 
++ // -----
++@@ -1021,6 +1062,18 @@
++   // CHECK-NOT: stablehlo.pad
++   %1 = stablehlo.pad %arg0, %0, low = [0, 0], high = [0, 0], interior = [0, 0] : (tensor<256x1024xbf16>, tensor<bf16>) -> tensor<256x1024xbf16>
++   return %1 : tensor<256x1024xbf16>
+ +}
+ +
+-+}  // namespace stablehlo
+-+}  // namespace mlir
+-diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h b/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h
+---- stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h
+-+++ stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h
+-@@ -0,0 +1,68 @@
+-+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+-+   Copyright 2022 The StableHLO Authors.
+-+
+-+Licensed under the Apache License, Version 2.0 (the "License");
+-+you may not use this file except in compliance with the License.
+-+You may obtain a copy of the License at
+-+
+-+    http://www.apache.org/licenses/LICENSE-2.0
+-+
+-+Unless required by applicable law or agreed to in writing, software
+-+distributed under the License is distributed on an "AS IS" BASIS,
+-+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-+See the License for the specific language governing permissions and
+-+limitations under the License.
+-+==============================================================================*/
+-+
+-+
+-+#ifndef STABLEHLO_TRANSFORMS_OPBROADCASTUTILS_H_
+-+#define STABLEHLO_TRANSFORMS_OPBROADCASTUTILS_H_
+-+
+-+#include <cstdint>
+-+#include <optional>
+-+#include <string>
+-+
+-+#include "mlir/IR/Builders.h"
+-+#include "mlir/IR/Value.h"
+-+#include "mlir/Support/LLVM.h"
+-+
+-+namespace mlir {
+-+namespace stablehlo {
+-+
+-+///////
+-+// Numpy broadcasting with support for bounded dynamism.
+-+
+-+// Struct that represents a dim size of a tensor and possible dynamic value to
+-+// match. If dimension is not dynamic, bound_op is set to std::nullopt. If
+-+// dimension is bounded, the resulting dimension should be padded to `size` then
+-+// marked dynamic using:
+-+//   runtime_size = get_dimension_size(bound_op, dim=bound_op_dim)
+-+//   T = set_dimension_size(T, dim=bound_op_dim, runtime_size)
+++// We don't want to delete `pad` ops that move a tensor's values around without
+++// affecting its dimensions.
+ +//
+-+struct DimensionInfo {
+-+  int64_t size;
+-+  std::optional<Value> boundOp = std::nullopt;
+-+  int64_t boundOpDim = -1;
+-+};
+-+
+-+using Dimensions = SmallVector<DimensionInfo>;
+-+std::string toString(const Dimensions& dims);
+-+
+-+// Returns the common shape these ops would broadcast to, or an error if the
+-+// ops are not broadcastable.
+-+FailureOr<Dimensions> getNumpyBroadcastShape(ArrayRef<Value> ops);
+-+
+-+// Apply numpy broadcasting to the given operands, returning an error if any
+-+// operands are not broadcastable.
+-+FailureOr<SmallVector<Value>> numpyBroadcastIfNeeded(OpBuilder& builder,
+-+                                                     ArrayRef<Value> operands);
+-+
+-+// Apply numpy broadcasting to the given operand, returning an error if the
+-+// operand is not broadcastable.
+-+FailureOr<Value> numpyBroadcastIfNeeded(OpBuilder& builder, Value input,
+-+                                        const Dimensions& shape);
+-+
+-+}  // namespace stablehlo
+-+}  // namespace mlir
+++// CHECK-LABEL: @pad_rotate_tensor_no_dim_change
+++func.func @pad_rotate_tensor_no_dim_change(%arg0: tensor<50x50xf32>) -> tensor<50x50xf32> {
+++  // CHECK: %[[RES:.+]] = stablehlo.pad
+++  // CHECK: return %[[RES]]
+++  %cst = stablehlo.constant dense<0.0> : tensor<f32>
+++  %0 = stablehlo.pad %arg0, %cst, low = [0, -1], high = [0, 1], interior = [0, 0] : (tensor<50x50xf32>, tensor<f32>) -> tensor<50x50xf32>
+++  return %0 : tensor<50x50xf32>
++ }
++ 
++ // -----
++@@ -1810,6 +1863,15 @@
++   return %0 : tensor<2x4x1x5xf32>
++ }
++ 
+++// CHECK-LABEL: @transpose_of_transpose
+++func.func @transpose_of_transpose(%arg0 : tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
+++  %0 = stablehlo.transpose %arg0, dims = [3,2,1,0] : (tensor<1x2x3x4xf32>) -> tensor<4x3x2x1xf32>
+++  %1 = stablehlo.transpose %0, dims = [3,2,1,0] : (tensor<4x3x2x1xf32>) -> tensor<1x2x3x4xf32>
+++  // CHECK-NOT: stablehlo.transpose
+++  // CHECK: return %arg0
+++  return %1 : tensor<1x2x3x4xf32>
+++}
+ +
+-+#endif  // STABLEHLO_TRANSFORMS_OPBROADCASTUTILS_H_
++ // -----
++ 
++ ////////
++diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
++--- stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+++++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
++@@ -752,7 +752,7 @@
++     %2 = call @refine_call_callee(%arg0_different_i32, %1) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
++     return %2 : tensor<?xf32>
++   }
++-  // expected-error@+1{{'func.func' op refined with invompatible refinement keys}}
+++  // expected-error@+1{{'func.func' op refined with incompatible refinement keys}}
++   func.func @refine_call_callee(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
++     return %arg1 : tensor<?xf32>
++   }
++@@ -770,7 +770,7 @@
++     %2 = call @refine_call_callee(%arg0_different, %1) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
++     return %2 : tensor<?xf32>
++   }
++-  // expected-error@+1{{'func.func' op refined with invompatible refinement keys}}
+++  // expected-error@+1{{'func.func' op refined with incompatible refinement keys}}
++   func.func @refine_call_callee(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
++     return %arg1 : tensor<?xf32>
++   }
++@@ -789,7 +789,7 @@
++     %4 = call @refine_call_callee(%arg0_new, %3) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
++     return %4 : tensor<?xf32>
++   }
++-  // expected-error@+1{{'func.func' op refined with invompatible refinement keys}}
+++  // expected-error@+1{{'func.func' op refined with incompatible refinement keys}}
++   func.func @refine_call_callee(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
++     return %arg1 : tensor<?xf32>
++   }
++diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++--- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+++++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++@@ -461,7 +461,7 @@
++   LogicalResult emitDifferentRefinementContextError(func::FuncOp func,
++                                                     RefinementKey key,
++                                                     RefinementKey prevKey) {
++-    return func.emitOpError() << "refined with invompatible refinement keys:"
+++    return func.emitOpError() << "refined with incompatible refinement keys:"
++                               << "\n  curr=" << key.toString()
++                               << "\n  prev=" << prevKey.toString();
++   }
+ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+ --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+ +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+-@@ -1108,7 +1108,8 @@
++@@ -530,10 +530,15 @@
++   using FoldOpRewritePattern<OpType>::matchAndRewrite;
++   using FoldOpRewritePattern<OpType>::options;
++ 
+++  // TODO: Generalize all relevant folder patterns to support complex data
+++  // types, then hard-code `allowComplex` to `true`.
++   LogicalResult validateShapeFoldDtype(PatternRewriter& rewriter, OpType op,
++-                                       ShapedType resultType) const {
+++                                       ShapedType resultType,
+++                                       bool allowComplex = false) const {
++     if (resultType.getElementType().isInteger()) return success();
++-    if (options.optimizeFloat && isa<FloatType>(resultType.getElementType()))
+++    if (options.optimizeFloat &&
+++        (allowComplex ? isa<FloatType, ComplexType>(resultType.getElementType())
+++                      : isa<FloatType>(resultType.getElementType())))
++       return success();
++     return rewriter.notifyMatchFailure(op, "skipping fold of shape op dtype");
++   }
++@@ -605,7 +610,8 @@
+                                  PatternRewriter& rewriter) const override {
+      auto resultType = op.getType();
+      if (failed(validateStaticShapeResult(rewriter, op, resultType)) ||
+@@ -921,5 +495,178 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
+ +                                      /*allowComplex=*/true)))
+        return failure();
+  
+-     DenseElementsAttr attr;
++     SplatElementsAttr cstAttr;
++@@ -825,7 +831,8 @@
++     RankedTensorType resultType = op.getType();
++ 
++     if (failed(validateStaticShapeResult(rewriter, op, resultType)) ||
++-        failed(validateShapeFoldDtype(rewriter, op, resultType)))
+++        failed(validateShapeFoldDtype(rewriter, op, resultType)) ||
+++        failed(validateElementCountForFold(rewriter, op, resultType)))
++       return failure();
++ 
++     auto operandElemType = getElementTypeOrSelf(operand.getType());
++@@ -1104,7 +1111,7 @@
++         failed(validateShapeFoldDtype(rewriter, op, resultType)))
++       return failure();
++ 
++-    DenseIntOrFPElementsAttr attr;
+++    DenseElementsAttr attr;
++     if (!matchPattern(op.getOperand(), m_Constant(&attr)))
++       return rewriter.notifyMatchFailure(op, "expected constant operand");
++     rewriter.replaceOpWithNewOp<ConstantOp>(op, attr.reshape(resultType));
++diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
++--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
++@@ -1309,10 +1309,20 @@
++ // TransposeOp
++ /////////////////////////////////
++ 
+++DenseI64ArrayAttr getMergedTransposePermutation(OpBuilder& b,
+++                                                ArrayRef<int64_t> childPerm,
+++                                                ArrayRef<int64_t> parentPerm) {
+++  SmallVector<int64_t> mergedPerm;
+++  mergedPerm.reserve(parentPerm.size());
+++  for (int64_t parentIdx : parentPerm) {
+++    mergedPerm.push_back(childPerm[parentIdx]);
+++  }
+++  return b.getDenseI64ArrayAttr(mergedPerm);
+++}
+++
++ // Pattern: transpose(X, [no_mem_layout_change...]) -> reshape(X)
++ struct TransposeIsReshape final : SimplifyOpRewritePattern<TransposeOp> {
++   using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
++-
++   LogicalResult matchAndRewrite(TransposeOp op,
++                                 PatternRewriter& rewriter) const override {
++     auto input = op.getOperand();
++diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
++--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
++@@ -43,6 +43,14 @@
++     CPred<"llvm::cast<ShapedType>($0.getType()).getNumElements() == llvm::cast<ShapedType>($1.getType()).getNumElements()">,
++     "same number of elements">;
++ 
+++def BroadcastNotReducibleToReshape : Constraint<
+++    CPred<"llvm::isa<stablehlo::BroadcastInDimOp>($0.getDefiningOp()) && "
+++          "!("
+++            "llvm::is_sorted($0.getDefiningOp<stablehlo::BroadcastInDimOp>().getBroadcastDimensions()) && "
+++            "llvm::cast<ShapedType>($0.getType()).getNumElements() == llvm::cast<ShapedType>($1.getType()).getNumElements()"
+++          ")">,
+++    "is a broadcast_in_dim op that cannot be simplified to a reshape op">;
+++
++ def OperandsEqual : Constraint<CPred<"$0 == $1">, "operands are equal">;
++ 
++ def RankEqual : Constraint<
++@@ -61,6 +69,10 @@
++ def AnyZero : AttrConstraint<
++     CPred<"::mlir::matchPattern($_self, m_AnyAttrOf(m_Zero(), m_AnyZeroFloat()))">,
++     "is int or float zero">;
+++
+++def ZeroArrayI64 : AttrConstraint<
+++    CPred<"::llvm::all_of(::llvm::cast<DenseI64ArrayAttr>($_self).asArrayRef(), [](int64_t val) { return val == 0; })">,
+++    "is an array of zeros">;
++ 
++ def DenseIntElementsAttr : AttrConstraint<
++     CPred<"llvm::isa<DenseIntElementsAttr>($_self)">,
++@@ -120,6 +132,8 @@
++ 
++ def MergeBroadcastDims : NativeCodeCall<"getMergedBroadcastDimensions($_builder, $0, $1)">;
++ 
+++def MergePermutations : NativeCodeCall<"getMergedTransposePermutation($_builder, $0, $1)">;
+++
++ def StableHLO_ConvertOpWithShape : NativeCodeCall<
++     "$_builder.create<stablehlo::ConvertOp>($_loc, $0.getType(), $1)">;
++ 
++@@ -178,18 +192,23 @@
++ 
++ // Pattern: broadcast_in_dim(broadcast_in_dim(X, [dimsA...]), [dimsB...])
++ //       -> broadcast_in_dim(X, merge(dimsA, dimsB))
+++//          [if the nested broadcast can't be simplified to a reshape]
++ def BroadcastInDimOp_MergeComposition
++-  : Pat<(StableHLO_BroadcastInDimOp
++-            (StableHLO_BroadcastInDimOp $operand, $dims_parent), $dims),
+++  : Pat<(StableHLO_BroadcastInDimOp:$outer_op
+++            (StableHLO_BroadcastInDimOp:$inner_op $operand, $inner_dims),
+++            $outer_dims),
++         (StableHLO_BroadcastInDimOp
++-            $operand, (MergeBroadcastDims $dims, $dims_parent))>;
+++            $operand, (MergeBroadcastDims $outer_dims, $inner_dims)),
+++        [(BroadcastNotReducibleToReshape $inner_op, $operand)]>;
++ 
++ // Pattern: broadcast_in_dim(X, [sorted...]) -> reshape(X, [sorted...])
++ //          [if same numel]
++ def BroadcastInDimOp_ReplaceWithReshape
++   : Pat<(StableHLO_BroadcastInDimOp:$op $operand, SortedDims:$dims),
++         (StableHLO_ReshapeOpWithShape $op, $operand),
++-        [(NumberOfElementsEqual $op, $operand)]>;
+++        [(NumberOfElementsEqual $op, $operand)],
+++        [],
+++        (addBenefit 1)>;
++ 
++ // Pattern: broadcast_in_dim(X, [dims...]) -> transpose(X, [dims...])
++ //          [if same numel & rank]
++@@ -197,6 +216,36 @@
++   : Pat<(StableHLO_BroadcastInDimOp:$op $operand, $dims),
++         (StableHLO_TransposeOp $operand, (InvertBroadcastDims $dims)),
++         [(NumberOfElementsEqual $op, $operand), (RankEqual $op, $operand)]>;
+++
+++////////
+++// CompareOp
+++
+++// The canonical form has the constant operand as the RHS.
+++class StableHLO_ComparisonDirectionValue<string enumStr> :
+++  ConstantAttr<StableHLO_ComparisonDirectionAttr, "::mlir::stablehlo::ComparisonDirection::" # enumStr>;
+++
+++// Pattern: compare(NE, X, False) : i1 -> X
+++def CompareOp_NeBooleanFalse
+++  : Pat<(StableHLO_CompareOp
+++            $lhs,
+++            (StableHLO_ConstantOp:$cst IntZero:$value),
+++            StableHLO_ComparisonDirectionValue<"NE">,
+++            $type),
+++        (replaceWithValue $lhs),
+++        [(HLO_PredTensor $cst)]>;
+++
+++// Pattern: compare(EQ, X, True) : i1 -> X
+++def CompareOp_EqBooleanTrue
+++  : Pat<(StableHLO_CompareOp
+++            $lhs,
+++            (StableHLO_ConstantOp:$cst IntOne:$value),
+++            StableHLO_ComparisonDirectionValue<"EQ">,
+++            $type),
+++        (replaceWithValue $lhs),
+++        [(HLO_PredTensor $cst)]>;
+++
+++// TODO: compare(EQ, X, False) : i1 -> not(X)
+++// TODO: compare(NE, X, True) : i1 -> not(X)
++ 
++ ////////
++ // ConvertOp
++@@ -424,9 +473,9 @@
++   : Pat<(StableHLO_PadOp:$pad
++             $operand,
++             $padding_value,
++-            $edge_padding_low,
++-            $edge_padding_high,
++-            $interior_padding),
+++            ZeroArrayI64:$edge_padding_low,
+++            ZeroArrayI64:$edge_padding_high,
+++            ZeroArrayI64:$interior_padding),
++         (replaceWithValue $operand),
++         [(TypesEqual $pad, $operand)]>;
++ 
++@@ -539,6 +588,12 @@
++   : Pat<(StableHLO_TransposeOp $lhs, IotaDims:$dims),
++         (replaceWithValue $lhs)>;
++ 
+++// Pattern: transpose(transpose(X)) -> transpose(X)
+++def TransposeOp_TransposeOfTranspose
+++  : Pat<(StableHLO_TransposeOp
+++          (StableHLO_TransposeOp $child, $child_dims), $dims),
+++        (StableHLO_TransposeOp $child, (MergePermutations $child_dims, $dims))>;
+++
++ ////////
++ // GetTupleElementOp
++ 
+ 
+diff --git a/third_party/stablehlo/workspace.bzl b/third_party/stablehlo/workspace.bzl
+index 1c05593..db43355 100644
+--- a/third_party/stablehlo/workspace.bzl
++++ b/third_party/stablehlo/workspace.bzl
+@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
+ 
+ def repo():
+     #
+-    STABLEHLO_COMMIT = "3f27c53c20b9021ccab8b5f673e2c72e5b9cd6aa"
+-    STABLEHLO_SHA256 = "915e05e79d9764c048557a929c64e090ab58a5c7334da2c2650cd6378aa4d166"
++    STABLEHLO_COMMIT = "baaf7475f8925cb0c5f9580408b3c0385f888487"
++    STABLEHLO_SHA256 = "c4b96f94d9d4aaa8b2dc88104579aab662aa33d59b79e77a9b75c8e0af3d9461"
+     #
+ 
+     tf_http_archive(
