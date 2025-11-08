@@ -8,13 +8,16 @@ You may obtain a copy of the License at
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
 
 package tensorflow
+
+// Note: This Go binding has been extended to support GPUOptions serialization
+// into TensorFlow's ConfigProto. See gpu_options.go for struct definition.
 
 // #include <stdlib.h>
 // #include "tensorflow/c/c_api.h"
@@ -27,6 +30,9 @@ import (
 	"sort"
 	"sync"
 	"unsafe"
+
+	"github.com/golang/protobuf/proto"
+	pb "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf" // adjust path to your generated proto package
 )
 
 // Session drives a TensorFlow graph computation.
@@ -286,6 +292,12 @@ func (s *Session) Close() error {
 	return status.Err()
 }
 
+// Config is a Go-side representation for session-level configuration.
+// It currently includes GPUOptions (defined in gpu_options.go).
+type Config struct {
+	GPUOptions *GPUOptions
+}
+
 // SessionOptions contains configuration information for a session.
 type SessionOptions struct {
 	// Target indicates the TensorFlow runtime to connect to.
@@ -313,10 +325,26 @@ type SessionOptions struct {
 	// lifetime, session calls may fail immediately.
 	Target string
 
-	// Config is a binary-serialized representation of the
-	// tensorflow.ConfigProto protocol message
-	// (https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto).
-	Config []byte
+	// Config is the Go representation of what will become a serialized
+	// tensorflow.ConfigProto. If nil, no special config will be set.
+	Config *Config
+}
+
+// makeConfigProtoBytes converts the Go SessionOptions.Config into protobuf
+// bytes (a serialized ConfigProto) which can be passed to TF_SetConfig.
+func (o *SessionOptions) makeConfigProtoBytes() ([]byte, error) {
+	if o == nil || o.Config == nil {
+		return nil, nil
+	}
+	cfg := &pb.ConfigProto{}
+	if o.Config.GPUOptions != nil {
+		cfg.GpuOptions = &pb.GPUOptions{
+			AllowGrowth:                 o.Config.GPUOptions.AllowGrowth,
+			PerProcessGpuMemoryFraction: o.Config.GPUOptions.PerProcessGPUMemoryFraction,
+			VisibleDeviceList:           o.Config.GPUOptions.VisibleDeviceList,
+		}
+	}
+	return proto.Marshal(cfg)
 }
 
 // c converts the SessionOptions to the C API's TF_SessionOptions. Callers must
@@ -331,22 +359,31 @@ func (o *SessionOptions) c() (ret *C.TF_SessionOptions, done func(), err error) 
 	C.free(unsafe.Pointer(t))
 
 	var cConfig unsafe.Pointer
-	if sz := len(o.Config); sz > 0 {
+	// If user provided a Config (Go struct), serialize it to protobuf bytes.
+	if cfgBytes, err := o.makeConfigProtoBytes(); err != nil {
+		// Failed to marshal the Go-config to protobuf bytes.
+		C.TF_DeleteSessionOptions(opt)
+		return nil, func() {}, fmt.Errorf("failed to marshal SessionOptions.Config: %v", err)
+	} else if len(cfgBytes) > 0 {
 		status := newStatus()
 		// Copying into C-memory is the simplest thing to do in terms
 		// of memory safety and cgo rules ("C code may not keep a copy
 		// of a Go pointer after the call returns" from
 		// https://golang.org/cmd/cgo/#hdr-Passing_pointers).
-		cConfig = C.CBytes(o.Config)
-		C.TF_SetConfig(opt, cConfig, C.size_t(sz), status.c)
+		cConfig = C.CBytes(cfgBytes)
+		C.TF_SetConfig(opt, cConfig, C.size_t(len(cfgBytes)), status.c)
 		if err := status.Err(); err != nil {
 			C.TF_DeleteSessionOptions(opt)
+			C.free(cConfig)
 			return nil, func() {}, fmt.Errorf("invalid SessionOptions.Config: %v", err)
 		}
 	}
+
 	return opt, func() {
 		C.TF_DeleteSessionOptions(opt)
-		C.free(cConfig)
+		if cConfig != nil {
+			C.free(cConfig)
+		}
 	}, nil
 }
 
