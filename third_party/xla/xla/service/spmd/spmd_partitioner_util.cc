@@ -3163,6 +3163,31 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
         DynamicUpdateSliceMethod::kAllPartitionedSliceDimsHaveConstantIndices;
   }
 
+  // Extra check for out-of-bounds indexing
+
+  // TODO: b/457448098 - fix out-of-range indexing test case for
+  // collective_ops_e2e_test.cc
+  const HloInstruction* update_tensor = hlo->operand(1);
+  bool is_dus_in_range = true;
+  if (analysis.method ==
+      DynamicUpdateSliceMethod::kAllPartitionedSliceDimsHaveConstantIndices) {
+    for (int64_t dim = 0; dim < hlo->shape().dimensions().size(); ++dim) {
+      const HloInstruction* dus_index = hlo->operand(dim + 2);
+      CHECK(dus_index->IsConstant());
+
+      int64_t start_index = dus_index->literal().GetIntegralAsS64({}).value();
+      int64_t end_index = start_index + update_tensor->shape().dimensions(dim);
+      int64_t padding_high = hlo->shape().dimensions(dim) - end_index;
+      if (start_index < 0 || padding_high < 0) {
+        is_dus_in_range = false;
+        break;
+      }
+    }
+  }
+  if (!is_dus_in_range) {
+    analysis.method = DynamicUpdateSliceMethod::kDefault;
+  }
+
   return analysis;
 }
 

@@ -361,6 +361,10 @@ message DebugOptions {
   // supported on XLA:GPU and XLA:CPU.
   optional bool xla_dump_hlo_unoptimized_snapshots = 405;
 
+  // Enable communication optimization patterns specified in Enzyme. More
+  // details in http://shortn/_jXJ2VFoyMN.
+  optional bool xla_enable_enzyme_comms_opt = 429;
+
   // Denylist for cuDNN convolutions.
   optional string xla_gpu_algorithm_denylist_path = 128;
 
