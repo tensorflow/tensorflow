@@ -1,1 +1,89 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/BPF/BPFAsmPrinter.cpp b/llvm/lib/Target/BPF/BPFAsmPrinter.cpp
+--- a/llvm/lib/Target/BPF/BPFAsmPrinter.cpp
++++ b/llvm/lib/Target/BPF/BPFAsmPrinter.cpp
+@@ -176,10 +176,6 @@
+         if (const GlobalValue *GV = Op.getGlobal())
+           if (GV->getName() == BPF_TRAP)
+             SawTrapCall = true;
+-      } else if (Op.isSymbol()) {
+-        if (const MCSymbol *Sym = Op.getMCSymbol())
+-          if (Sym->getName() == BPF_TRAP)
+-            SawTrapCall = true;
+       }
+     }
+   }
+diff -ruN --strip-trailing-cr a/llvm/test/Analysis/CostModel/AArch64/sincos.ll b/llvm/test/Analysis/CostModel/AArch64/sincos.ll
+--- a/llvm/test/Analysis/CostModel/AArch64/sincos.ll
++++ b/llvm/test/Analysis/CostModel/AArch64/sincos.ll
+@@ -38,14 +38,14 @@
+ ;
+ ; SINCOS_STRET-LABEL: 'sincos'
+ ; SINCOS_STRET:  Cost Model: Found an estimated cost of 1 for instruction: %f16 = call { half, half } @llvm.sincos.f16(half poison)
+-; SINCOS_STRET:  Cost Model: Found an estimated cost of 2 for instruction: %f32 = call { float, float } @llvm.sincos.f32(float poison)
+-; SINCOS_STRET:  Cost Model: Found an estimated cost of 2 for instruction: %f64 = call { double, double } @llvm.sincos.f64(double poison)
++; SINCOS_STRET:  Cost Model: Found an estimated cost of 10 for instruction: %f32 = call { float, float } @llvm.sincos.f32(float poison)
++; SINCOS_STRET:  Cost Model: Found an estimated cost of 10 for instruction: %f64 = call { double, double } @llvm.sincos.f64(double poison)
+ ; SINCOS_STRET:  Cost Model: Found an estimated cost of 10 for instruction: %f128 = call { fp128, fp128 } @llvm.sincos.f128(fp128 poison)
+ ; SINCOS_STRET:  Cost Model: Found an estimated cost of 36 for instruction: %v8f16 = call { <8 x half>, <8 x half> } @llvm.sincos.v8f16(<8 x half> poison)
+-; SINCOS_STRET:  Cost Model: Found an estimated cost of 20 for instruction: %v4f32 = call { <4 x float>, <4 x float> } @llvm.sincos.v4f32(<4 x float> poison)
+-; SINCOS_STRET:  Cost Model: Found an estimated cost of 8 for instruction: %v2f64 = call { <2 x double>, <2 x double> } @llvm.sincos.v2f64(<2 x double> poison)
++; SINCOS_STRET:  Cost Model: Found an estimated cost of 52 for instruction: %v4f32 = call { <4 x float>, <4 x float> } @llvm.sincos.v4f32(<4 x float> poison)
++; SINCOS_STRET:  Cost Model: Found an estimated cost of 24 for instruction: %v2f64 = call { <2 x double>, <2 x double> } @llvm.sincos.v2f64(<2 x double> poison)
+ ; SINCOS_STRET:  Cost Model: Found an estimated cost of 10 for instruction: %v1f128 = call { <1 x fp128>, <1 x fp128> } @llvm.sincos.v1f128(<1 x fp128> poison)
+-; SINCOS_STRET:  Cost Model: Found an estimated cost of 40 for instruction: %v8f32 = call { <8 x float>, <8 x float> } @llvm.sincos.v8f32(<8 x float> poison)
++; SINCOS_STRET:  Cost Model: Found an estimated cost of 104 for instruction: %v8f32 = call { <8 x float>, <8 x float> } @llvm.sincos.v8f32(<8 x float> poison)
+ ; SINCOS_STRET:  Cost Model: Invalid cost for instruction: %nxv8f16 = call { <vscale x 8 x half>, <vscale x 8 x half> } @llvm.sincos.nxv8f16(<vscale x 8 x half> poison)
+ ; SINCOS_STRET:  Cost Model: Invalid cost for instruction: %nxv4f32 = call { <vscale x 4 x float>, <vscale x 4 x float> } @llvm.sincos.nxv4f32(<vscale x 4 x float> poison)
+ ; SINCOS_STRET:  Cost Model: Invalid cost for instruction: %nxv2f64 = call { <vscale x 2 x double>, <vscale x 2 x double> } @llvm.sincos.nxv2f64(<vscale x 2 x double> poison)
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp b/mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp
+--- a/mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp
++++ b/mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp
+@@ -2568,11 +2568,6 @@
+     auto trailingReassocs = ArrayRef<int64_t>(reassoc).drop_front();
+     auto stride = SaturatedInteger::wrap(resultStrides[resultStrideIndex--]);
+     for (int64_t idx : llvm::reverse(trailingReassocs)) {
+-      // Dimensions of size 1 should be skipped, because their strides are
+-      // meaningless and could have any arbitrary value.
+-      if (srcShape[idx - 1] == 1)
+-        continue;
+-
+       stride = stride * SaturatedInteger::wrap(srcShape[idx]);
+ 
+       // Both source and result stride must have the same static value. In that
+@@ -2587,6 +2582,11 @@
+       if (strict && (stride.saturated || srcStride.saturated))
+         return failure();
+ 
++      // Dimensions of size 1 should be skipped, because their strides are
++      // meaningless and could have any arbitrary value.
++      if (srcShape[idx - 1] == 1)
++        continue;
++
+       if (!stride.saturated && !srcStride.saturated && stride != srcStride)
+         return failure();
+     }
+diff -ruN --strip-trailing-cr a/mlir/test/Dialect/MemRef/ops.mlir b/mlir/test/Dialect/MemRef/ops.mlir
+--- a/mlir/test/Dialect/MemRef/ops.mlir
++++ b/mlir/test/Dialect/MemRef/ops.mlir
+@@ -440,8 +440,7 @@
+          %arg4: index,
+          %arg5: index,
+          %arg6: index,
+-         %arg7: memref<4x?x4xf32>,
+-         %arg8: memref<1x1x18x?xsi8, strided<[?, ?, ?, 1], offset: ?>>) {
++         %arg7: memref<4x?x4xf32>) {
+ //       CHECK:   memref.collapse_shape {{.*}} {{\[}}[0, 1], [2]]
+ //  CHECK-SAME:     memref<?x?x?xf32> into memref<?x?xf32>
+   %0 = memref.collapse_shape %arg0 [[0, 1], [2]] :
+@@ -490,10 +489,6 @@
+ //       CHECK:   memref.expand_shape {{.*}} {{\[}}[0, 1], [2], [3, 4]]
+   %4 = memref.expand_shape %arg7 [[0, 1], [2], [3, 4]] output_shape [2, 2, %arg4, 2, 2]
+         : memref<4x?x4xf32> into memref<2x2x?x2x2xf32>
+-
+-//       CHECK:   memref.collapse_shape {{.*}} {{\[}}[0, 1], [2], [3]]
+-//  CHECK-SAME:     memref<1x1x18x?xsi8, strided<[?, ?, ?, 1], offset: ?>> into memref<1x18x?xsi8, strided<[?, ?, 1], offset: ?>>
+-  %5 = memref.collapse_shape %arg8 [[0, 1], [2], [3]] : memref<1x1x18x?xsi8, strided<[?, ?, ?, 1], offset: ?>> into memref<1x18x?xsi8, strided<[?, ?, 1], offset: ?>>
+   return
+ }
+ 
