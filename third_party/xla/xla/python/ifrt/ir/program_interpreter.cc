@@ -227,7 +227,8 @@ absl::StatusOr<ExecuteResult> ProgramInterpreter::Execute(
   for (const auto [idx, arg] : llvm::enumerate(main_func.getArguments())) {
     // Add to the environment the arrays that are used.
     bool is_donated = main_func.getArgAttr(
-                          idx, xla::ifrt::kIfrtDonatedArgAttrName) != nullptr;
+                          idx, xla::ifrt::kIfrtDonatedArgAttrName) != nullptr &&
+                      !options.non_donatable_input_indices.contains(idx);
     if (!arg.use_empty()) {
       env.AssociateArray(arg, ArrayState{/*array=*/arrays[idx],
                                          /*can_be_donated=*/is_donated});
@@ -300,10 +301,6 @@ absl::Status ProgramInterpreter::ExecuteOp(
   execute_options.fill_status = env.fill_status;
   llvm::DenseSet<mlir::Value> array_values_to_gc_from_env;
   for (const auto [idx, input] : llvm::enumerate(call_loaded_op.getInputs())) {
-    bool is_donated = donated_arg_idxs.contains(idx);
-    if (is_donated || liveness_.isDeadAfter(input, call_loaded_op)) {
-      array_values_to_gc_from_env.insert(input);
-    }
     auto array_it = env.value_to_array.find(input);
     TF_RET_CHECK(array_it != env.value_to_array.end())
         << "Input array #" << idx << " not found. "
@@ -316,13 +313,19 @@ absl::Status ProgramInterpreter::ExecuteOp(
           PrettyPrint(call_loaded_op)));
     }
     inputs.push_back(array_it->second.array);
+
+    bool is_donated = donated_arg_idxs.contains(idx);
+    if (is_donated && !array_it->second.can_be_donated) {
+      VLOG(2) << "Atom program donates input #" << idx
+              << ", but it has not been donated to the IFRT IR program. "
+                 "Input will not be donated. \n"
+              << PrettyPrint(call_loaded_op);
+      is_donated = false;
+    }
+    if (is_donated || liveness_.isDeadAfter(input, call_loaded_op)) {
+      array_values_to_gc_from_env.insert(input);
+    }
     if (!is_donated) {
-      execute_options.non_donatable_input_indices.insert(idx);
-    } else if (!array_it->second.can_be_donated) {
-      LOG(WARNING) << "Atom program donates input #" << idx
-                   << ", but it has not been donated to the IFRT IR program. "
-                      "Input will not be donated. \n"
-                   << PrettyPrint(call_loaded_op);
       execute_options.non_donatable_input_indices.insert(idx);
     }
   }
@@ -413,17 +416,11 @@ absl::Status ProgramInterpreter::ExecuteOp(xla::ifrt::RemapArraysOp remap_op,
   input_specs.reserve(remap_op.getInputs().size());
   // Get the input specs of the remap plan and the input arrays.
   llvm::DenseSet<mlir::Value> array_values_to_gc_from_env;
+  std::optional<bool> is_donated;
   for (const auto [idx, input] : llvm::enumerate(remap_op.getInputs())) {
-    if (remap_op.getDonated() || liveness_.isDeadAfter(input, remap_op)) {
-      array_values_to_gc_from_env.insert(input);
-    }
     auto array_it = env.value_to_array.find(input);
     TF_RET_CHECK(array_it != env.value_to_array.end())
         << "Input array #" << idx << " not found. " << PrettyPrint(remap_op);
-    if (remap_op.getDonated() && !array_it->second.can_be_donated) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Input array #", idx, " cannot be donated. ", PrettyPrint(remap_op)));
-    }
     if (array_it->second.array->IsDeleted()) {
       // We explicitly check here for deletion in order to provide a more
       // informative error message.
@@ -436,7 +433,31 @@ absl::Status ProgramInterpreter::ExecuteOp(xla::ifrt::RemapArraysOp remap_op,
         /*dtype=*/array_it->second.array->dtype(),
         /*shape=*/array_it->second.array->shape(),
         /*sharding=*/array_it->second.array->shared_ptr_sharding()});
+
+    // The default buffer donation semantic is finalized at compilation time.
+    // Users can override the donation semantic at runtime. In the meantime, the
+    // IFRT client RemapArrays API requires all input arrays have the same
+    // donation semantic.
+    if (!is_donated.has_value()) {
+      is_donated = remap_op.getDonated() && array_it->second.can_be_donated;
+    }
+    if (*is_donated && !array_it->second.can_be_donated) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Donation semantic must be consistent across all input arrays of "
+          "RemapArraysOp. Input array #",
+          idx,
+          " cannot be donated, but previous input arrays can be donated. It's "
+          "likely due to a MPMD program argument is marked as non-donatable. ",
+          PrettyPrint(remap_op)));
+    }
+    if (*is_donated || liveness_.isDeadAfter(input, remap_op)) {
+      array_values_to_gc_from_env.insert(input);
+    }
   }
+  TF_RET_CHECK(is_donated.has_value())
+      << "Unable to determine the donation semantic of the remap op. The remap "
+         "op has no inputs. "
+      << PrettyPrint(remap_op);
 
   // Get the output specs of the remap plan.
   std::vector<xla::ifrt::ArraySpec> output_specs;
@@ -455,8 +476,8 @@ absl::Status ProgramInterpreter::ExecuteOp(xla::ifrt::RemapArraysOp remap_op,
 
   // Apply the remap arrays operation.
   xla::ifrt::ArrayCopySemantics copy_semantics =
-      remap_op.getDonated() ? xla::ifrt::ArrayCopySemantics::kDonateInput
-                            : xla::ifrt::ArrayCopySemantics::kReuseInput;
+      *is_donated ? xla::ifrt::ArrayCopySemantics::kDonateInput
+                  : xla::ifrt::ArrayCopySemantics::kReuseInput;
   TF_ASSIGN_OR_RETURN(
       auto out_arrays,
       client_->RemapArrays({
@@ -500,20 +521,12 @@ absl::Status ProgramInterpreter::ExecuteOp(
   std::vector<ArrayRef> inputs;
   inputs.reserve(copy_arrays_op.getInputs().size());
   llvm::DenseSet<mlir::Value> array_values_to_gc_from_env;
+  std::optional<bool> is_donated;
   for (const auto [idx, input] : llvm::enumerate(copy_arrays_op.getInputs())) {
-    if (copy_arrays_op.getDonated() ||
-        liveness_.isDeadAfter(input, copy_arrays_op)) {
-      array_values_to_gc_from_env.insert(input);
-    }
     auto array_it = env.value_to_array.find(input);
     TF_RET_CHECK(array_it != env.value_to_array.end())
         << "Input array #" << idx << " not found. "
         << PrettyPrint(copy_arrays_op);
-    if (copy_arrays_op.getDonated() && !array_it->second.can_be_donated) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Input array #", idx, " cannot be donated. ",
-                       PrettyPrint(copy_arrays_op)));
-    }
     if (array_it->second.array->IsDeleted()) {
       // We explicitly check here for deletion in order to provide a more
       // informative error message.
@@ -522,7 +535,32 @@ absl::Status ProgramInterpreter::ExecuteOp(
           PrettyPrint(copy_arrays_op)));
     }
     inputs.push_back(array_it->second.array);
+
+    // The default buffer donation semantic is finalized at compilation time.
+    // Users can override the donation semantic at runtime. In the meantime, the
+    // IFRT client CopyArrays API requires all input arrays have the same
+    // donation semantic.
+    if (!is_donated.has_value()) {
+      is_donated =
+          copy_arrays_op.getDonated() && array_it->second.can_be_donated;
+    }
+    if (*is_donated && !array_it->second.can_be_donated) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Donation semantic must be consistent across all input arrays of "
+          "CopyArraysOp. Input array #",
+          idx,
+          " cannot be donated, but previous input arrays can be donated. It's "
+          "likely due to a MPMD program argument is marked as non-donatable. ",
+          PrettyPrint(copy_arrays_op)));
+    }
+    if (*is_donated || liveness_.isDeadAfter(input, copy_arrays_op)) {
+      array_values_to_gc_from_env.insert(input);
+    }
   }
+  TF_RET_CHECK(is_donated.has_value())
+      << "Unable to determine the donation semantic of the copy arrays op. The "
+         "copy arrays op has no inputs. "
+      << PrettyPrint(copy_arrays_op);
 
   const auto out_array_type = llvm::cast<xla::ifrt::IfrtArrayType>(
       copy_arrays_op.getOutputs().front().getType());
@@ -530,7 +568,7 @@ absl::Status ProgramInterpreter::ExecuteOp(
       << "Output array #0 is not of type `IfrtArrayType`. "
       << PrettyPrint(copy_arrays_op);
   auto new_sharding = array_type_to_sharding_.at(out_array_type);
-  auto array_copy_semantics = copy_arrays_op.getDonated()
+  auto array_copy_semantics = *is_donated
                                   ? xla::ifrt::ArrayCopySemantics::kDonateInput
                                   : xla::ifrt::ArrayCopySemantics::kAlwaysCopy;
   // It is safe to get the devices and memory kind from the first output

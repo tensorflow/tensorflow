@@ -36,12 +36,12 @@ limitations under the License.
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/ir/tests/executable_impl_test_base.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -49,7 +49,6 @@ namespace xla {
 namespace ifrt {
 namespace {
 
-using ::tsl::testing::IsOk;
 using ::xla::ifrt::test_util::AssertPerShardData;
 
 class IfrtIrExecutableImplTest
@@ -614,6 +613,170 @@ module {
                                      ArrayCopySemantics::kAlwaysCopy)
                   .Await(),
               testing::Not(absl_testing::IsOk()));
+}
+
+TEST_F(IfrtIrExecutableImplTest, CallLoadedExecutableOpDonationOverride) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array {ifrt.donated}) -> !array
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
+        {io_aliases=[array<i32: 0, 0>]} : (!array) -> !array
+    return %0 : !array
+  }
+
+  func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
+    %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1 : tensor<2x2xi32>
+  }
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                          LoadFromSource(source));
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()->CompileAndLoad(
+          std::make_unique<IfrtIRProgram>(*mlir_module),
+          std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices))));
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                  DType(DType::kS32),
+                                  ShardingParam({2, 1}, {{0}, {2}}), devices));
+
+  ExecuteOptions options;
+  options.fill_status = true;
+  options.non_donatable_input_indices.insert(0);
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
+                           /*devices=*/std::nullopt));
+  TF_ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(
+      AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
+                              Shape({1, 2}), {{1, 2}, {3, 4}}, devices));
+  // Not using `CopyToHostBuffer` because some implementations don't support it.
+  ASSERT_FALSE(input->IsDeleted());
+  EXPECT_THAT(input->DisassembleIntoSingleDeviceArrays(
+                  ArrayCopySemantics::kAlwaysCopy,
+                  SingleDeviceShardSemantics::kAddressableShards),
+              absl_testing::IsOk());
+}
+
+TEST_F(IfrtIrExecutableImplTest, CopyArraysOpDonationOverride) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array {ifrt.donated}) -> !array
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.CopyArrays(%arg0) : (!array) -> !array
+    return %0 : !array
+  }
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                          LoadFromSource(source));
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()->CompileAndLoad(
+          std::make_unique<IfrtIRProgram>(*mlir_module),
+          std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices))));
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                  DType(DType::kS32),
+                                  ShardingParam({2, 1}, {{0}, {2}}), devices));
+
+  ExecuteOptions options;
+  options.fill_status = true;
+  options.non_donatable_input_indices.insert(0);
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
+                           /*devices=*/std::nullopt));
+  TF_ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(
+      AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
+                              Shape({1, 2}), {{0, 1}, {2, 3}}, devices));
+  // Not using `CopyToHostBuffer` because some implementations don't support it.
+  ASSERT_FALSE(input->IsDeleted());
+  EXPECT_THAT(input->DisassembleIntoSingleDeviceArrays(
+                  ArrayCopySemantics::kAlwaysCopy,
+                  SingleDeviceShardSemantics::kAddressableShards),
+              absl_testing::IsOk());
+}
+
+TEST_F(IfrtIrExecutableImplTest, RemapArraysOpDonationOverride) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+!array0 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
+module {
+  func.func @main(%arg0: !array {ifrt.donated}) -> (!array0, !array1)
+      attributes {ifrt.function} {
+    %0, %1 = ifrt.RemapArrays(%arg0)
+      mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
+                #ifrt.array_mapping<0, 1, [#ifrt.mapping<[1:2:1] to [0:1:1]>]>]
+      : (!array) -> (!array0, !array1)
+    return %0, %1 : !array0, !array1
+  }
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                          LoadFromSource(source));
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()->CompileAndLoad(
+          std::make_unique<IfrtIRProgram>(*mlir_module),
+          std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices))));
+
+  std::vector<int> data_shard0 = {0, 1};
+  std::vector<int> data_shard1 = {2, 3};
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef input, CreateArray({data_shard0.data(), data_shard1.data()},
+                                  Shape({2, 2}), DType(DType::kS32),
+                                  ShardingParam({2, 1}, {{0}, {2}}), devices));
+
+  ExecuteOptions options;
+  options.fill_status = true;
+  options.non_donatable_input_indices.insert(0);
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      loaded_exec->Execute(absl::MakeSpan(&input, 1), options, devices));
+  TF_ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                          client_->MakeDeviceList({devices->devices()[0]}));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], DType(DType::kS32), Shape({1, 2}), {{0, 1}},
+      std::move(device_list0)));
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                          client_->MakeDeviceList({devices->devices()[1]}));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[1], DType(DType::kS32), Shape({1, 2}), {{2, 3}},
+      std::move(device_list1)));
+  // Not using `CopyToHostBuffer` because some implementations don't support it.
+  ASSERT_FALSE(input->IsDeleted());
+  EXPECT_THAT(input->DisassembleIntoSingleDeviceArrays(
+                  ArrayCopySemantics::kAlwaysCopy,
+                  SingleDeviceShardSemantics::kAddressableShards),
+              absl_testing::IsOk());
 }
 
 TEST_F(IfrtIrExecutableImplTest, DonateOutputOfCall) {
