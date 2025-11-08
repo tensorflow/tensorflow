@@ -512,7 +512,52 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_broadcasting.mlir b/stablehlo/stableh
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
-@@ -576,16 +576,19 @@
+@@ -473,6 +473,44 @@
+   return %0, %1, %2, %3 : tensor<6xi32>, tensor<3xi32>, tensor<3x3xi32>, tensor<2x5xi32>
+ }
+ 
++// CHECK-LABEL: func.func @fold_concatenate_splat_leading
++func.func @fold_concatenate_splat_leading(%arg0: tensor<1xi32>) -> tensor<3xi32> {
++  // CHECK: [[CST0:%.+]] = stablehlo.constant dense<0> : tensor<2xi32>
++  // CHECK-NEXT: stablehlo.concatenate [[CST0]], %arg0, dim = 0
++  %cst0 = stablehlo.constant dense<0> : tensor<1xi32>
++  %0 = stablehlo.concatenate %cst0, %cst0, %arg0, dim = 0 : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
++  return %0 : tensor<3xi32>
++}
++
++// CHECK-LABEL: func.func @fold_concatenate_splat_trailing
++func.func @fold_concatenate_splat_trailing(%arg0: tensor<2xi32>) -> tensor<6xi32> {
++  // CHECK: [[CST0:%.+]] = stablehlo.constant dense<0> : tensor<4xi32>
++  // CHECK-NEXT: stablehlo.concatenate %arg0, [[CST0]], dim = 0
++  %cst0 = stablehlo.constant dense<0> : tensor<2xi32>
++  %0 = stablehlo.concatenate %arg0, %cst0, %cst0, dim = 0 : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<6xi32>
++  return %0 : tensor<6xi32>
++}
++
++// CHECK-LABEL: func.func @fold_concatenate_splat_middle
++func.func @fold_concatenate_splat_middle(%arg0: tensor<1xi32>) -> tensor<4xi32> {
++  // CHECK: [[CST0:%.+]] = stablehlo.constant dense<0> : tensor<2xi32>
++  // CHECK-NEXT: stablehlo.concatenate %arg0, [[CST0]], %arg0, dim = 0
++  %cst0 = stablehlo.constant dense<0> : tensor<1xi32>
++  %0 = stablehlo.concatenate %arg0, %cst0, %cst0, %arg0, dim = 0 : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
++  return %0 : tensor<4xi32>
++}
++
++// CHECK-LABEL: func.func @fold_concatenate_splat_multiple
++func.func @fold_concatenate_splat_multiple(%arg0: tensor<1xi32>) -> tensor<5xi32> {
++  // CHECK-DAG: [[CST0:%.+]] = stablehlo.constant dense<0> : tensor<2xi32>
++  // CHECK-DAG: [[CST1:%.+]] = stablehlo.constant dense<1> : tensor<2xi32>
++  // CHECK-NEXT: stablehlo.concatenate [[CST0]], [[CST1]], %arg0, dim = 0
++  %cst0 = stablehlo.constant dense<0> : tensor<1xi32>
++  %cst1 = stablehlo.constant dense<1> : tensor<1xi32>
++  %0 = stablehlo.concatenate %cst0, %cst0, %cst1, %cst1, %arg0, dim = 0 : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<5xi32>
++  return %0 : tensor<5xi32>
++}
++
+ // -----
+ 
+ ////////
+@@ -576,16 +614,19 @@
  // ReshapeOp
  
  // CHECK-LABEL: func @reshape_fold
@@ -537,6 +582,42 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.ml
 +  // CHECK-DAG:  [[RESULT2:%.+]] = stablehlo.constant dense<(1.0{{.*}},2.0{{.*}})> : tensor<3x2xcomplex<f32>>
 +  // CHECK-NEXT: return [[RESULT0]], [[RESULT1]], [[RESULT2]]
 +  return %0, %1, %2 : tensor<1xf32>, tensor<2x2xi32>, tensor<3x2xcomplex<f32>>
+ }
+ 
+ // -----
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_target_independent_optimization.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_target_independent_optimization.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_target_independent_optimization.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_target_independent_optimization.mlir
+@@ -9,6 +9,32 @@
+   // CHECK: stablehlo.add %arg0, %cst : tensor<f32>
+   %1 = stablehlo.add %0, %arg0 : tensor<f32>
+   return %1 : tensor<f32>
++}
++
++// -----
++
++func.func @concatenate_fold_splat_flatten_integ(%arg0: tensor<8xf32>) -> tensor<64xf32> {
++  // CHECK-DAG: [[CST0:%.+]] = stablehlo.constant dense<0.000000e+00> : tensor<8xf32>
++  // CHECK-DAG: [[CST1:%.+]] = stablehlo.constant dense<1.000000e+00> : tensor<8xf32>
++  // CHECK-DAG: [[CST2:%.+]] = stablehlo.constant dense<2.000000e+00> : tensor<8xf32>
++  // CHECK-DAG: [[CST3:%.+]] = stablehlo.constant dense<3.000000e+00> : tensor<8xf32>
++  // CHECK: stablehlo.concatenate [[CST0]], [[CST1]], [[CST2]], [[CST3]], %arg0, %arg0, %arg0, %arg0,
++  %cst0 = stablehlo.constant dense<0.0> : tensor<f32>
++  %cst1 = stablehlo.constant dense<1.0> : tensor<f32>
++  %cst2 = stablehlo.constant dense<2.0> : tensor<f32>
++  %cst3 = stablehlo.constant dense<3.0> : tensor<f32>
++  %0 = stablehlo.reshape %cst0 : (tensor<f32>) -> tensor<1xf32>
++  %1 = stablehlo.reshape %cst1 : (tensor<f32>) -> tensor<1xf32>
++  %2 = stablehlo.reshape %cst2 : (tensor<f32>) -> tensor<1xf32>
++  %3 = stablehlo.reshape %cst3 : (tensor<f32>) -> tensor<1xf32>
++  %4 = stablehlo.concatenate %0, %0, %0, %0, %0, %0, %0, %0, dim = 0 : (tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>) -> tensor<8xf32>
++  %5 = stablehlo.concatenate %1, %1, %1, %1, %1, %1, %1, %1, dim = 0 : (tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>) -> tensor<8xf32>
++  %6 = stablehlo.concatenate %2, %2, %2, %2, %2, %2, %2, %2, dim = 0 : (tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>) -> tensor<8xf32>
++  %7 = stablehlo.concatenate %3, %3, %3, %3, %3, %3, %3, %3, dim = 0 : (tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>) -> tensor<8xf32>
++  %8 = stablehlo.concatenate %4, %5, %6, %7, dim = 0 : (tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> tensor<32xf32>
++  %9 = stablehlo.concatenate %arg0, %arg0, %arg0, %arg0, dim = 0 : (tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> tensor<32xf32>
++  %10 = stablehlo.concatenate %8, %9, dim = 0 : (tensor<32xf32>, tensor<32xf32>) -> tensor<64xf32>
++  return %10 : tensor<64xf32>
  }
  
  // -----
@@ -912,7 +993,69 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h b/stabl
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
-@@ -1108,7 +1108,8 @@
+@@ -822,6 +822,61 @@
+   int64_t foldOpElementLimit;
+ };
+ 
++// Pattern: concat(splat_a, splat_a, X) -> concat(splat_a_resize, X)
++struct FoldConcatenateAdjacentSplatsOpPattern final
++    : ShapeOpRewritePattern<mlir::stablehlo::ConcatenateOp> {
++  using ShapeOpRewritePattern::ShapeOpRewritePattern;
++
++  LogicalResult matchAndRewrite(ConcatenateOp op,
++                                PatternRewriter& rewriter) const override {
++    SmallVector<Value> newOperands;
++    SplatElementsAttr currSplat;
++    for (size_t i = 0; i < op.getNumOperands(); ++i) {
++      Value operand = op.getOperand(i);
++      // Match a splat and look ahead for adjacent identical splats.
++      if (matchPattern(operand, m_Constant(&currSplat)) && currSplat) {
++        size_t j = i+1;
++        SplatElementsAttr lookaheadSplat;
++        int64_t nOccurrences = 1;
++        for (; j < op.getNumOperands(); ++j) {
++          if (matchPattern(op.getOperand(j), m_Constant(&lookaheadSplat)) &&
++              lookaheadSplat && lookaheadSplat == currSplat) {
++            ++nOccurrences;
++            continue;
++          }
++          break;
++        }
++
++        // Special case for a single occurrence, no new constants
++        if (nOccurrences == 1) {
++          newOperands.push_back(operand);
++          continue;
++        }
++
++        // Resize the splat and append it to the new operands.
++        SmallVector<int64_t> newShape =
++            llvm::to_vector(currSplat.getType().getShape());
++        newShape[op.getDimension()] *= nOccurrences;
++        newOperands.push_back(ConstantOp::create(
++            rewriter, op.getLoc(),
++            currSplat.resizeSplat(currSplat.getType().clone(newShape))));
++
++        // Set `i` to j-1 so that next iteration processes the next operand.
++        i = j - 1;
++        continue;
++      }
++      // Not splat, append the operand.
++      newOperands.push_back(operand);
++    }
++    if (newOperands.size() == op.getNumOperands()) {
++      return rewriter.notifyMatchFailure(op, "No splats to fold");
++    }
++    rewriter.replaceOpWithNewOp<ConcatenateOp>(op, op.getType(), newOperands,
++                                               op.getDimension());
++    return success();
++  }
++};
++
+ struct FoldConvertOpPattern : public ShapeOpRewritePattern<ConvertOp> {
+   using ShapeOpRewritePattern::ShapeOpRewritePattern;
+ 
+@@ -1108,7 +1163,8 @@
                                  PatternRewriter& rewriter) const override {
      auto resultType = op.getType();
      if (failed(validateStaticShapeResult(rewriter, op, resultType)) ||
@@ -922,4 +1065,13 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
        return failure();
  
      DenseElementsAttr attr;
+@@ -1923,6 +1979,8 @@
+   patterns->add<FoldClampOpPattern>(context, options, benefit);
+   patterns->add<FoldCompareOpPattern>(context, options, benefit);
+   patterns->add<FoldConcatenateOpPattern>(context, options, benefit);
++  patterns->add<FoldConcatenateAdjacentSplatsOpPattern>(context, options,
++                                                        benefit);
+   patterns->add<FoldConvertOpPattern>(context, options, benefit);
+   patterns->add<FoldDivOpPattern>(context, options, benefit);
+   patterns->add<FoldDynamicSliceOpPattern>(context, options, benefit);
 
