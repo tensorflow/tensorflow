@@ -281,13 +281,13 @@ typename DisjointSet<Handle>::Rep* DisjointSet<Handle>::Find(Handle value) {
 // TODO(dyoon): Move many helper functions in this file (including those within
 // SymbolicShapeRefiner class) to shared utils.
 bool IsEnqueue(const NodeDef& n) {
-  return (n.op().find("Enqueue") != string::npos &&
-          n.op().find("EnqueueMany") == string::npos);
+  return (n.op().find("Enqueue") != std::string::npos &&
+          n.op().find("EnqueueMany") == std::string::npos);
 }
 
 bool IsDequeue(const NodeDef& n) {
-  return (n.op().find("Dequeue") != string::npos &&
-          n.op().find("DequeueMany") == string::npos);
+  return (n.op().find("Dequeue") != std::string::npos &&
+          n.op().find("DequeueMany") == std::string::npos);
 }
 
 bool HasAnyUnknownDimensions(const TensorShapeProto& proto) {
@@ -305,9 +305,11 @@ bool HasAnyUnknownDimensions(const TensorShapeProto& proto) {
 // This really should be done in an external debugging tool
 void VerboseLogUnknownDimensionSources(
     const GraphDef& graph,
-    const absl::flat_hash_map<string, std::vector<OpInfo::TensorProperties>>&
+    const absl::flat_hash_map<std::string,
+                              std::vector<OpInfo::TensorProperties>>&
         input_properties_map,
-    const absl::flat_hash_map<string, std::vector<OpInfo::TensorProperties>>&
+    const absl::flat_hash_map<std::string,
+                              std::vector<OpInfo::TensorProperties>>&
         output_properties_map) {
   if (!VLOG_IS_ON(2)) {
     return;
@@ -318,7 +320,7 @@ void VerboseLogUnknownDimensionSources(
   // Find all nodes in the graph for which we
   // do not have any unknown dimensions in their inputs, but
   // we have some unknown dimensions in their outputs.
-  std::map<string, int> op_to_count;
+  std::map<std::string, int> op_to_count;
   for (const NodeDef& node : graph.node()) {
     const auto& input_properties = input_properties_map.at(node.name());
     const auto& output_properties = output_properties_map.at(node.name());
@@ -337,13 +339,13 @@ void VerboseLogUnknownDimensionSources(
 
     for (const auto& output_prop : output_properties) {
       if (HasAnyUnknownDimensions(output_prop.shape())) {
-        string inputs = "input_shapes=[";
+        std::string inputs = "input_shapes=[";
         for (const auto& input_prop : input_properties) {
           inputs += PartialTensorShape::DebugString(input_prop.shape());
         }
         inputs += "]";
 
-        string outputs = "output_shapes=[";
+        std::string outputs = "output_shapes=[";
         for (const auto& output_prop : output_properties) {
           outputs += PartialTensorShape::DebugString(output_prop.shape());
         }
@@ -475,7 +477,7 @@ bool IsNumericType(const DataType dtype) {
 
 // Returns the number of elements in the input (const) tensor.
 // -1 if the tensor has no shape or unknown rank.
-uint64 NumElementsFromTensorProto(const TensorProto& tensor_proto) {
+uint64_t NumElementsFromTensorProto(const TensorProto& tensor_proto) {
   if (!tensor_proto.has_tensor_shape()) {
     return -1;
   }
@@ -567,10 +569,9 @@ class TopoQueue {
   std::set<NodeAndId, OrderByIdAscending> queue_;
 };
 
-
-bool IsAllowListedOpTypeForEvaluateNode(const string& op_type) {
-  static const gtl::FlatSet<string>* const kOpTpeAllowlist =
-      CHECK_NOTNULL((new gtl::FlatSet<string>{
+bool IsAllowListedOpTypeForEvaluateNode(const std::string& op_type) {
+  static const gtl::FlatSet<std::string>* const kOpTpeAllowlist =
+      CHECK_NOTNULL((new gtl::FlatSet<std::string>{
           // Unary arithmetic ops
           "Floor",
           "Round",
@@ -647,7 +648,8 @@ class SymbolicShapeRefiner {
  public:
   explicit SymbolicShapeRefiner(
       const GraphView& graph,
-      const absl::flat_hash_map<string, absl::flat_hash_set<int>>& fed_ports,
+      const absl::flat_hash_map<std::string, absl::flat_hash_set<int>>&
+          fed_ports,
       const bool aggressive_shape_inference)
       : graph_(graph),
         function_library_(OpRegistry::Global(), graph.graph()->library()),
@@ -899,8 +901,8 @@ class SymbolicShapeRefiner {
     auto* ctx = GetNodeContext(function_node);
     auto* ic = ctx->inference_context.get();
     for (int i = grappler_function_item.inputs().size() - 1; i >= 0; --i) {
-      const string& input = function_node->input(i);
-      const string node_name = NodeName(input);
+      const std::string& input = function_node->input(i);
+      const std::string node_name = NodeName(input);
       const NodeDef* input_node = graph_.GetNode(node_name);
       if (IsConstant(*input_node)) {
         TF_CHECK_OK(
@@ -1337,7 +1339,7 @@ class SymbolicShapeRefiner {
     for (int i = grappler_function_item.inputs().size(),
              end = function_node->input_size();
          i < end; ++i) {
-      const string& input = function_node->input(i);
+      const std::string& input = function_node->input(i);
       if (!IsControlInput(input)) {
         return errors::FailedPrecondition(
             "Found regular input (", input,
@@ -1562,7 +1564,7 @@ class SymbolicShapeRefiner {
         }
         auto* tensor = &input_tensor_vector->at(i);
         if (data_type == DT_INT32) {
-          auto flat = tensor->flat<int32>();
+          auto flat = tensor->flat<int32_t>();
           for (int j = 0; j < rank; j++) {
             int32_t dim = ic->Value(ic->Dim(shape_handle, j));
             flat(j) = dim;
@@ -1736,7 +1738,7 @@ class SymbolicShapeRefiner {
           int64_t sz = ic->Value(size);
           bool valid = false;
           if (node.attr().at("out_type").type() == DT_INT32) {
-            if (sz < std::numeric_limits<int32>::max()) {
+            if (sz < std::numeric_limits<int32_t>::max()) {
               const_tensors_to_propagate_.push_back(
                   MakeIntegerScalarTensorProto(DT_INT32, sz));
               valid = true;
@@ -1789,7 +1791,7 @@ class SymbolicShapeRefiner {
               valid = false;
               break;
             }
-            int64_t size = t->dtype() == DT_INT32 ? t->scalar<int32>()()
+            int64_t size = t->dtype() == DT_INT32 ? t->scalar<int32_t>()()
                                                   : t->scalar<int64_t>()();
             dims.push_back(size < 0 ? ic->MakeDim(kUnknownDimFromConst)
                                     : ic->MakeDim(size));
@@ -1829,10 +1831,10 @@ class SymbolicShapeRefiner {
         valid &= slice_size != nullptr && slice_size->NumElements() == 1;
         if (valid) {
           int64_t start = slice_offset->dtype() == DT_INT32
-                              ? slice_offset->flat<int32>()(0)
+                              ? slice_offset->flat<int32_t>()(0)
                               : slice_offset->flat<int64_t>()(0);
           int64_t size = (slice_size->dtype() == DT_INT32
-                              ? slice_size->flat<int32>()(0)
+                              ? slice_size->flat<int32_t>()(0)
                               : slice_size->flat<int64_t>()(0));
           ShapeHandle result;
           if (size == -1) {
@@ -1881,17 +1883,17 @@ class SymbolicShapeRefiner {
           int64_t begin = 0;
           if (begin_mask == 0) {
             begin = slice_begin->dtype() == DT_INT32
-                        ? slice_begin->flat<int32>()(0)
+                        ? slice_begin->flat<int32_t>()(0)
                         : slice_begin->flat<int64_t>()(0);
           }
           int64_t end = std::numeric_limits<int64_t>::max();
           if (end_mask == 0) {
             end = (slice_end->dtype() == DT_INT32
-                       ? slice_end->flat<int32>()(0)
+                       ? slice_end->flat<int32_t>()(0)
                        : slice_end->flat<int64_t>()(0));
           }
           int64_t stride = slice_stride->dtype() == DT_INT32
-                               ? slice_stride->flat<int32>()(0)
+                               ? slice_stride->flat<int32_t>()(0)
                                : slice_stride->flat<int64_t>()(0);
           ShapeHandle result;
           TF_RETURN_IF_ERROR(ic->Subshape(input, begin, end, stride, &result));
@@ -2012,7 +2014,7 @@ class SymbolicShapeRefiner {
       bool has_values_smaller_than_minus_1 = false;
       std::vector<DimensionHandle> dims;
       for (int i = 0; i < tensor.NumElements(); i++) {
-        int64_t value = tensor.dtype() == DT_INT32 ? tensor.flat<int32>()(i)
+        int64_t value = tensor.dtype() == DT_INT32 ? tensor.flat<int32_t>()(i)
                                                    : tensor.flat<int64_t>()(i);
         has_values_smaller_than_minus_1 |= (value < -1);
         // Mark this as UnknownDim from Const.
@@ -2026,7 +2028,7 @@ class SymbolicShapeRefiner {
       }
     } else if (IsIntegerScalar(tensor)) {
       // Scalar constant.
-      int64_t value = tensor.dtype() == DT_INT32 ? tensor.flat<int32>()(0)
+      int64_t value = tensor.dtype() == DT_INT32 ? tensor.flat<int32_t>()(0)
                                                  : tensor.flat<int64_t>()(0);
       if (value == -1) {
         // Scalar value -1 represents an unknown shape. If we would try to
@@ -2050,10 +2052,10 @@ class SymbolicShapeRefiner {
   absl::flat_hash_map<DimId, DimensionHandle> unknown_dims_;
   // Store function instantiations only for valid function. If function
   // instantiation failed it will have an `absl::nullopt`.
-  absl::flat_hash_map<string, absl::optional<GrapplerFunctionItem>>
+  absl::flat_hash_map<std::string, absl::optional<GrapplerFunctionItem>>
       fun_to_grappler_function_item_;
   FunctionLibraryDefinition function_library_;
-  const absl::flat_hash_map<string, absl::flat_hash_set<int>>& fed_ports_;
+  const absl::flat_hash_map<std::string, absl::flat_hash_set<int>>& fed_ports_;
   // Store TensorProtos for tensor value propagation. Note that we use deque,
   // not vector, as we use pointers to the TensorProtos in this container.
   // Vector may resize and copy the objects into a new buffer, then the existing
@@ -2521,7 +2523,7 @@ absl::Status GraphProperties::InferStatically(
     bool include_input_tensor_values, bool include_output_tensor_values) {
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item_.graph.library());
-  absl::flat_hash_map<string, absl::flat_hash_set<int>> fed_ports;
+  absl::flat_hash_map<std::string, absl::flat_hash_set<int>> fed_ports;
   if (!assume_valid_feeds) {
     for (const auto& feed : item_.feed) {
       SafeTensorId tensor_id = ParseTensorName(feed.first);
@@ -2794,8 +2796,8 @@ absl::Status GraphProperties::InferFromCostGraph(
   if (cost_graph.node_size() == 0) {
     LOG(WARNING) << "cost_graph is empty: nothing can be inferred!";
   }
-  std::unordered_map<string, const CostGraphDef::Node*> name_to_cost;
-  std::unordered_map<string, const NodeDef*> name_to_node;  // Empty
+  std::unordered_map<std::string, const CostGraphDef::Node*> name_to_cost;
+  std::unordered_map<std::string, const NodeDef*> name_to_node;  // Empty
   for (auto& node : cost_graph.node()) {
     name_to_cost[node.name()] = &node;
 
@@ -2826,16 +2828,16 @@ absl::Status GraphProperties::InferFromCostGraph(
   return absl::OkStatus();
 }
 
-bool GraphProperties::HasInputProperties(const string& node_name) const {
+bool GraphProperties::HasInputProperties(const std::string& node_name) const {
   return input_properties_.find(node_name) != input_properties_.end();
 }
 
-bool GraphProperties::HasOutputProperties(const string& node_name) const {
+bool GraphProperties::HasOutputProperties(const std::string& node_name) const {
   return output_properties_.find(node_name) != output_properties_.end();
 }
 
 const std::vector<OpInfo::TensorProperties>&
-GraphProperties::GetInputProperties(const string& node_name) const {
+GraphProperties::GetInputProperties(const std::string& node_name) const {
   auto it = input_properties_.find(node_name);
   if (it != input_properties_.end()) {
     return it->second;
@@ -2844,7 +2846,7 @@ GraphProperties::GetInputProperties(const string& node_name) const {
 }
 
 const std::vector<OpInfo::TensorProperties>&
-GraphProperties::GetOutputProperties(const string& node_name) const {
+GraphProperties::GetOutputProperties(const std::string& node_name) const {
   auto it = output_properties_.find(node_name);
   if (it != output_properties_.end()) {
     return it->second;
@@ -2852,10 +2854,10 @@ GraphProperties::GetOutputProperties(const string& node_name) const {
   return missing_properties_;
 }
 
-void GraphProperties::ClearInputProperties(const string& node_name) {
+void GraphProperties::ClearInputProperties(const std::string& node_name) {
   input_properties_.erase(node_name);
 }
-void GraphProperties::ClearOutputProperties(const string& node_name) {
+void GraphProperties::ClearOutputProperties(const std::string& node_name) {
   output_properties_.erase(node_name);
 }
 
