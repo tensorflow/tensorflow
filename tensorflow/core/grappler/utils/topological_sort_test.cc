@@ -179,7 +179,7 @@ TEST_F(TopologicalSortTest, ExtraDependencies) {
   TF_EXPECT_OK(ComputeTopologicalOrder(graph, extra_dependencies, &topo_order));
 
   const std::vector<string> valid_order_1 = {"4", "5", "2", "0", "3", "1"};
-  const std::vector<string> valid_order_2 = {"4", "5", "0", "2", "3", "1"};
+  const std::vector<std::string> valid_order_2 = {"4", "5", "0", "2", "3", "1"};
 
   ASSERT_EQ(topo_order.size(), valid_order_1.size());
 

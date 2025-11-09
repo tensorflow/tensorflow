@@ -58,7 +58,7 @@ TEST(TraversalTest, OutputsDfsNoLoop) {
   DfsTraversal(graph_view, start_nodes, TraversalDirection::kFollowOutputs,
                MkCallbacks(&pre_order, &post_order, &back_edges));
 
-  const std::vector<string> expected_pre = {"4", "1", "0", "5", "2", "3"};
+  const std::vector<std::string> expected_pre = {"4", "1", "0", "5", "2", "3"};
   const std::vector<string> expected_post = {"1", "0", "4", "3", "2", "5"};
 
   EXPECT_EQ(pre_order, expected_pre);

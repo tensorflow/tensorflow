@@ -602,7 +602,7 @@ inline bool AddOrUpdateAttribute(NodeViewDiff<GraphViewT>* diff,
                                  absl::string_view attr_name,
                                  const AttrValue& attr_value) {
   diff->attrs_to_add.empty() ? 0 : diff->attrs_to_remove.erase(attr_name);
-  gtl::InsertOrUpdate(&diff->attrs_to_add, string(attr_name), attr_value);
+  gtl::InsertOrUpdate(&diff->attrs_to_add, std::string(attr_name), attr_value);
   return true;
 }
 
