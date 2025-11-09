@@ -1,9 +1,9 @@
 <div align="center">
-  <img src="https://www.tensorflow.org/images/tf_logo_horizontal.png">
+  <img src="https://www.tensorflow.org/images/tf_logo_horizontal.png" alt="TensorFlow logo" width="450">
 </div>
 
 [![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
-[![PyPI](https://badge.fury.io/py/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
+[![PyPI version](https://img.shields.io/pypi/v/tensorflow.svg)](https://pypi.org/project/tensorflow/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4724125.svg)](https://doi.org/10.5281/zenodo.4724125)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/1486/badge)](https://bestpractices.coreinfrastructure.org/projects/1486)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow/badge)](https://securityscorecards.dev/viewer/?uri=github.com/tensorflow/tensorflow)
@@ -79,10 +79,10 @@ $ python
 
 ```python
 >>> import tensorflow as tf
->>> tf.add(1, 2).numpy()
+>>> tf.add(1, 2).numpy()  # Basic tensor addition in eager execution
 3
->>> hello = tf.constant('Hello, TensorFlow!')
->>> hello.numpy()
+>>> hello = tf.constant('Hello, TensorFlow!') 
+>>> hello.numpy()         # Convert Tensor to bytes
 b'Hello, TensorFlow!'
 ```
 
