@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstdint>
 #include <optional>
 #include <ostream>
