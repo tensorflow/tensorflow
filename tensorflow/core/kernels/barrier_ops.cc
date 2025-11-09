@@ -16,9 +16,19 @@ limitations under the License.
 
 #include <limits.h>
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <limits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -26,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/priority_queue.h"
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/lib/core/errors.h"
