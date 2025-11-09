@@ -104,8 +104,9 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
       cost = num_eqs * (div_cost * (num_rhss + 1) +
                         (add_cost + mult_cost) * (2 * num_rhss + 1));
     }
-    return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64_t>(cost);
+    return cost >= static_cast<double>(std::numeric_limits<int64_t>::max())
+               ? std::numeric_limits<int64_t>::max()
+               : static_cast<int64_t>(cost);
   }
 
   bool EnableInputForwarding() const final { return false; }

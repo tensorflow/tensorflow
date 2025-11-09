@@ -1111,6 +1111,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log:check",
     ],
 )
 

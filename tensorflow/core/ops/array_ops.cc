@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <limits>
 #include <ostream>
 #include <vector>
 

@@ -206,9 +206,9 @@ TEST(safe_strto64, Int64s) {
   EXPECT_EQ(true, absl::SimpleAtoi("9223372036854775807", &result));
   EXPECT_EQ(9223372036854775807, result);
   EXPECT_EQ(true, absl::SimpleAtoi("-9223372036854775808", &result));
-  // kint64min == -9223372036854775808
+  // std::numeric_limits<int64_t>::min() == -9223372036854775808
   // Use -9223372036854775808 directly results in out of range error
-  EXPECT_EQ(kint64min, result);
+  EXPECT_EQ(std::numeric_limits<int64_t>::min(), result);
 
   // Invalid argument
   EXPECT_EQ(false, absl::SimpleAtoi(" 132as ", &result));

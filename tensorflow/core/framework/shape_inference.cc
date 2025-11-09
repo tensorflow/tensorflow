@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 
 #include "tensorflow/core/framework/bounds_check.h"
