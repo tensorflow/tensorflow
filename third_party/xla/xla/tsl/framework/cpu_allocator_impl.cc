@@ -75,7 +75,7 @@ class CPUAllocator : public Allocator {
 
   ~CPUAllocator() override = default;
 
-  string Name() override { return "cpu"; }
+  std::string Name() override { return "cpu"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     if (num_bytes > static_cast<size_t>(LargeAllocationWarningBytes()) &&
@@ -147,7 +147,7 @@ class CPUAllocator : public Allocator {
                              {"peak_bytes_in_use", stats_.peak_bytes_in_use},
                              {"requested_bytes", req_bytes},
                              {"allocation_bytes", alloc_bytes},
-                             {"addr", reinterpret_cast<uint64>(chunk_ptr)},
+                             {"addr", reinterpret_cast<uint64_t>(chunk_ptr)},
                              {"tf_op", annotation.pending_op_name},
                              {"id", annotation.pending_step_id},
                              {"region_type", annotation.pending_region_type},

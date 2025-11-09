@@ -106,7 +106,7 @@ class TfToPlatformDeviceIdMap {
   }
 
   // Map from physical device id to platform device id.
-  using IdMapType = std::unordered_map<int32, int32>;
+  using IdMapType = std::unordered_map<int32_t, int32_t>;
   // Map from DeviceType to IdMapType.
   // We use std::string instead of DeviceType because the key should
   // be default-initializable.

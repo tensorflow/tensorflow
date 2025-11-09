@@ -38,14 +38,14 @@ class ScopedTimeTracker {
   }
   ~ScopedTimeTracker() {
     if (start_us_) {
-      uint64 end_us = env_->NowMicros();
+      uint64_t end_us = env_->NowMicros();
       metrics::UpdateBfcAllocatorDelayTime(end_us - *start_us_);
     }
   }
 
  private:
   Env* env_;
-  std::optional<uint64> start_us_;
+  std::optional<uint64_t> start_us_;
 };
 }  // namespace
 
