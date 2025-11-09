@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 
+#include <cassert>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/ScopeExit.h"
