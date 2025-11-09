@@ -27,6 +27,12 @@ load(
     "cc_library",
 )
 
+config_setting(
+    name = "libtpu_on_gce",
+    values = {"copt": "-DLIBTPU_ON_GCE"},
+    visibility = ["//visibility:public"],
+)
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
