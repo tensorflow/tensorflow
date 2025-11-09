@@ -29,7 +29,6 @@ limitations under the License.
 #include <tuple>
 #include <unordered_set>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
