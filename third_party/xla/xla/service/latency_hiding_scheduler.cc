@@ -2183,9 +2183,26 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
     VLOG(2) << "Scheduled annotated node (" << num_scheduled << "/"
             << annotation_size << "): " << node->GetInstr().name();
   }
-  // Check that we scheduled all the nodes in the annotation.
-  TF_RET_CHECK(num_scheduled == annotation_size - non_ready_instr)
-      << "Couldn't schedule all annotated nodes in one go.";
+  // If for some reason we could not schedule all the instructions in the
+  // annotation in one go, we clear the annotation for the remaining
+  // instruction. Currently this should only happen for async-start
+  // instructions.
+  if (num_scheduled < annotation_size - non_ready_instr) {
+    for (auto* inst :
+         annotation_tracker_->GetInstructions(computation, annotation)) {
+      HloGraphNode& node = sched_state->sched_graph.GetNode(inst);
+      if (!node.IsScheduled()) {
+        TF_RET_CHECK(
+            scheduling_context_->GetAsyncTracker()->IsSupportedAsyncStart(
+                node.GetInstr()));
+        VLOG(2) << "Could not schedule all annotated nodes with annotation ID "
+                << annotation << " in one go; clearing annotation for "
+                << node.GetInstr().name();
+        node.ClearAnnotation();
+        sched_state->nodes_holding_annotations.insert(&node);
+      }
+    }
+  }
   return absl::OkStatus();
 }
 
