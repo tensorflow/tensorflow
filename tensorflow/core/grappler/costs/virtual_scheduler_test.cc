@@ -57,8 +57,8 @@ class ReadyNodeManagerTest : public ::testing::Test {
     NodeSetUp("Node6", kConv2D, kCPU0, 1000, &node6_);
   }
 
-  void NodeSetUp(const string& name, const string& op_name,
-                 const string& device_name, const uint64 time_ready,
+  void NodeSetUp(const std::string& name, const std::string& op_name,
+                 const std::string& device_name, const uint64_t time_ready,
                  NodeDef* node) {
     node->set_name(name);
     node->set_op(op_name);
@@ -404,7 +404,7 @@ TEST_F(ReadyNodeManagerTest, GetAndRemoveMultiplePriorityReadyManager) {
   TF_EXPECT_OK(manager.Init(&node_states_));
 
   // Sets up node priorities.
-  std::unordered_map<string, int> node_priority = {
+  std::unordered_map<std::string, int> node_priority = {
       {"Node1", 1}, {"Node2", 2}, {"Node3", 2}, {"Node4", 4}, {"Node5", 5}};
   TF_EXPECT_OK(manager.SetPriority(node_priority));
 
@@ -672,7 +672,7 @@ class VirtualSchedulerTest : public ::testing::Test {
  protected:
   VirtualSchedulerTest() {
     // Initializes cluster_ and scheduler_.
-    std::unordered_map<string, DeviceProperties> devices;
+    std::unordered_map<std::string, DeviceProperties> devices;
 
     // Set some dummy CPU properties
     DeviceProperties cpu_device = GetDummyCPUDevice();
@@ -813,7 +813,8 @@ class VirtualSchedulerTest : public ::testing::Test {
   // NoOp that takes 7 NoOps as control dependency.
   void CreateGrapplerItemWithControlDependency() {
     Scope s = Scope::NewRootScope().WithDevice(kCPU0);
-    std::vector<string> input_noop_names = {"x", "y", "z", "w", "u", "v", "t"};
+    std::vector<std::string> input_noop_names = {"x", "y", "z", "w",
+                                                 "u", "v", "t"};
     std::vector<Operation> input_tensors;
     for (const auto& input : input_noop_names) {
       auto x = ops::NoOp(s.WithOpName(input));
@@ -922,7 +923,7 @@ class VirtualSchedulerTest : public ::testing::Test {
   }
 
   void CreateGrapplerItemWithSendRecv() {
-    const string gdef_ascii = R"EOF(
+    const std::string gdef_ascii = R"EOF(
 node {
   name: "Const"
   op: "Const"
@@ -1094,7 +1095,7 @@ versions {
   }
 
   void CreateGrapplerItemWithRecvWithoutSend() {
-    const string gdef_ascii = R"EOF(
+    const std::string gdef_ascii = R"EOF(
 node {
   name: "Recv"
   op: "_Recv"
@@ -1165,7 +1166,7 @@ versions {
       with open('/tmp/graph.pbtxt', 'w') as f:
       f.write(str(tf.get_default_graph().as_graph_def()))
     */
-    const string gdef_ascii = R"EOF(
+    const std::string gdef_ascii = R"EOF(
 node {
   name: "Const"
   op: "Const"
@@ -1561,7 +1562,7 @@ versions {
       with open('/tmp/graph.pbtxt', 'w') as f:
       f.write(str(tf.get_default_graph().as_graph_def()))
     */
-    const string gdef_ascii = R"EOF(
+    const std::string gdef_ascii = R"EOF(
 node {
   name: "Const"
   op: "Const"
@@ -2107,7 +2108,7 @@ versions {
   // A simple condition graph.
   void CreateGrapplerItemWithCondition() {
     // Handcrafted test graph: a/Less -> Switch -> First/Second -> Merge.
-    const string gdef_ascii = R"EOF(
+    const std::string gdef_ascii = R"EOF(
 node {
   name: "a"
   op: "Const"
@@ -2281,9 +2282,9 @@ versions {
 
   // Call this after init scheduler_. Scheduler stops after executing
   // target_node.
-  std::unordered_map<string, OpContext> RunScheduler(
-      const string& target_node) {
-    std::unordered_map<string, OpContext> ops_executed;
+  std::unordered_map<std::string, OpContext> RunScheduler(
+      const std::string& target_node) {
+    std::unordered_map<std::string, OpContext> ops_executed;
     bool more_nodes = true;
     do {
       OpContext op_context = scheduler_->GetCurrNode();
@@ -2322,9 +2323,9 @@ versions {
   }
 
   // Helper method that checks the name of nodes.
-  void ValidateNodeDefs(const std::vector<string>& expected,
+  void ValidateNodeDefs(const std::vector<std::string>& expected,
                         const std::vector<const NodeDef*>& node_defs) {
-    std::vector<string> node_names;
+    std::vector<std::string> node_names;
     std::transform(node_defs.begin(), node_defs.end(),
                    std::back_inserter(node_names),
                    [](const NodeDef* node) { return node->name(); });
@@ -2354,20 +2355,21 @@ versions {
 
   // Helper method that checks name - port pairs.
   void ValidateMemoryUsageSnapshot(
-      const std::vector<string>& expected_names, const int port_num_expected,
+      const std::vector<std::string>& expected_names,
+      const int port_num_expected,
       const std::unordered_set<std::pair<const NodeDef*, int>,
                                DeviceState::NodePairHash>& mem_usage_snapshot) {
-    std::set<std::pair<string, int>> nodes_at_peak_mem_usage;
+    std::set<std::pair<std::string, int>> nodes_at_peak_mem_usage;
     std::transform(
         mem_usage_snapshot.begin(), mem_usage_snapshot.end(),
         std::inserter(nodes_at_peak_mem_usage, nodes_at_peak_mem_usage.begin()),
         [](const std::pair<const NodeDef*, int>& node_port) {
           return std::make_pair(node_port.first->name(), node_port.second);
         });
-    std::set<std::pair<string, int>> expected;
+    std::set<std::pair<std::string, int>> expected;
     std::transform(expected_names.begin(), expected_names.end(),
                    std::inserter(expected, expected.begin()),
-                   [port_num_expected](const string& name) {
+                   [port_num_expected](const std::string& name) {
                      return std::make_pair(name, port_num_expected);
                    });
     ExpectSetEq(expected, nodes_at_peak_mem_usage);
@@ -2375,8 +2377,8 @@ versions {
 
   // Helper method for checking nodes dependency.
   void ValidateDependencyChain(
-      const std::unordered_map<string, int64_t>& start_times,
-      const std::vector<string>& nodes_in_dependency_order) {
+      const std::unordered_map<std::string, int64_t>& start_times,
+      const std::vector<std::string>& nodes_in_dependency_order) {
     int64_t prev_node_time = -1;
     for (const auto& node : nodes_in_dependency_order) {
       int64_t curr_node_time = start_times.at(node);
@@ -2394,7 +2396,7 @@ versions {
   // grappler_item_ will be initialized differently for each test case.
   std::unique_ptr<GrapplerItem> grappler_item_;
   // Node name -> its preceding nodes map for testing scheduling order.
-  std::unordered_map<string, std::vector<string>> dependency_;
+  std::unordered_map<std::string, std::vector<std::string>> dependency_;
 
   // Shared params for Conv2D related graphs:
   const int batch_size_ = 4;
@@ -2443,7 +2445,7 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   EXPECT_EQ(1, stepstats.dev_stats().size());
 
   // Create a map of op name -> start and end times (micros).
-  std::map<string, std::pair<int64_t, int64_t>> start_end_times;
+  std::map<std::string, std::pair<int64_t, int64_t>> start_end_times;
   for (const auto& device_step_stats : stepstats.dev_stats()) {
     for (const auto& stats : device_step_stats.node_stats()) {
       int64_t start = stats.all_start_micros();
@@ -2531,7 +2533,7 @@ TEST_F(VirtualSchedulerTest, MemoryUsage) {
   // out node adds 4 tensors, each with 10x10x10x10, so the peak memory usage
   // is 4 x the input tensor size while executing the out node.
   int64_t one_input_node_size = 4 * 10 * 10 * 10 * 10;
-  const std::vector<string> expected_names = {"x", "y", "z", "w", "add"};
+  const std::vector<std::string> expected_names = {"x", "y", "z", "w", "add"};
   EXPECT_EQ(expected_names.size() * one_input_node_size,
             cpu_state.max_memory_usage);
   ValidateMemoryUsageSnapshot(expected_names, 0 /* port_num_expected */,
@@ -2583,8 +2585,8 @@ TEST_F(VirtualSchedulerTest, MemoryUsageForStreamingOps) {
   const auto& cpu_state_1 = device_states->at(kCPU1);
   // All tensors are of the same size, 10 x 10 x 10 x 10.
   int64_t one_input_node_size = 4 * 10 * 10 * 10 * 10;
-  const std::vector<string> cpu_0_expected_tensors = {"x", "y"};
-  const std::vector<string> cpu_1_expected_tensors = {"x", "y", "add"};
+  const std::vector<std::string> cpu_0_expected_tensors = {"x", "y"};
+  const std::vector<std::string> cpu_1_expected_tensors = {"x", "y", "add"};
   EXPECT_EQ(cpu_0_expected_tensors.size() * one_input_node_size,
             cpu_state_0.max_memory_usage);
   EXPECT_EQ(cpu_1_expected_tensors.size() * one_input_node_size,
@@ -2613,7 +2615,7 @@ TEST_F(VirtualSchedulerTest, MemoryUsageWithExecutionCount) {
   const auto& cpu_state_0 = device_states->at(kCPU0);
   // All tensors are of the same size, 10 x 10 x 10 x 10.
   int64_t one_input_node_size = 4 * 10 * 10 * 10 * 10;
-  const std::vector<string> expected_names = {"x", "y", "z", "w", "add"};
+  const std::vector<std::string> expected_names = {"x", "y", "z", "w", "add"};
   // Max memory usage does not rely on the number of executions.
   EXPECT_EQ(expected_names.size() * one_input_node_size,
             cpu_state_0.max_memory_usage);
@@ -2651,8 +2653,8 @@ TEST_F(VirtualSchedulerTest, ControlDependency) {
   // The graph has a NoOp that takes control dependency from 7 NoOps. The peak
   // memory usage is when executing the final NoOp.
   int64_t one_input_node_size = 4;  // control dependency
-  const std::vector<string> expected_names = {"x", "y", "z", "w",
-                                              "u", "v", "t"};
+  const std::vector<std::string> expected_names = {"x", "y", "z", "w",
+                                                   "u", "v", "t"};
   EXPECT_EQ(expected_names.size() * one_input_node_size,
             cpu_state.max_memory_usage);
   ValidateMemoryUsageSnapshot(expected_names, -1 /* port_num_expected */,
@@ -2690,14 +2692,14 @@ TEST_F(VirtualSchedulerTest, ComplexDependency) {
   EXPECT_EQ(expected_size, cpu_state.memory_usage);
 
   // Nodes currently in memory: bn's port -1, 0, and 2, and x's port 0.
-  std::set<std::pair<string, int>> nodes_in_memory;
+  std::set<std::pair<std::string, int>> nodes_in_memory;
   std::transform(
       cpu_state.nodes_in_memory.begin(), cpu_state.nodes_in_memory.end(),
       std::inserter(nodes_in_memory, nodes_in_memory.begin()),
       [](const std::pair<const NodeDef*, int>& node_port) {
         return std::make_pair(node_port.first->name(), node_port.second);
       });
-  std::set<std::pair<string, int>> expected = {
+  std::set<std::pair<std::string, int>> expected = {
       std::make_pair("bn", -1),
       std::make_pair("bn", 0),
       std::make_pair("bn", 2),
@@ -2788,7 +2790,7 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
   int64_t exit_start_micro;
   int64_t exit_1_start_micro;
 
-  std::unordered_map<string, int64_t> start_times;
+  std::unordered_map<std::string, int64_t> start_times;
   for (const auto& device_step_stats : metadata.step_stats().dev_stats()) {
     for (const auto& stats : device_step_stats.node_stats()) {
       start_times[stats.node_name()] = stats.all_start_micros();
@@ -3005,7 +3007,7 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
   auto ops_executed = RunScheduler("");
 
   // Helper lambda to extract port num from _Send and _Recv op name.
-  auto get_port_num = [](const string& name) -> int {
+  auto get_port_num = [](const std::string& name) -> int {
     if (absl::StrContains(name, "bn_0")) {
       return 0;
     } else if (absl::StrContains(name, "bn_1")) {
@@ -3019,9 +3021,9 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
   };
 
   // Reorganize ops_executed for further testing.
-  std::unordered_map<string, int> op_count;
-  std::unordered_map<int, string> recv_op_names;
-  std::unordered_map<int, string> send_op_names;
+  std::unordered_map<std::string, int> op_count;
+  std::unordered_map<int, std::string> recv_op_names;
+  std::unordered_map<int, std::string> send_op_names;
   for (const auto& x : ops_executed) {
     const auto& name = x.first;
     const auto& node_info = x.second;
@@ -3043,7 +3045,8 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
   EXPECT_EQ(op_count.at(kSend), 3);
 
   // Helper lambda for extracting output Tensor size.
-  auto get_output_size = [this, ops_executed](const string& name) -> int64 {
+  auto get_output_size = [this,
+                          ops_executed](const std::string& name) -> int64_t {
     const auto& output_properties_ = ops_executed.at(name).op_info.outputs();
     std::vector<OpInfo::TensorProperties> output_properties;
     for (const auto& output_property : output_properties_) {
@@ -3083,7 +3086,7 @@ TEST_F(VirtualSchedulerTest, GraphWithSendRecvDifferentDevice) {
   // Change Recv node's device so that Send and Recv are placed on different
   // devices.
   auto& graph = grappler_item_->graph;
-  const string recv_device = kCPU1;
+  const std::string recv_device = kCPU1;
   for (int i = 0; i < graph.node_size(); i++) {
     auto* node = graph.mutable_node(i);
     if (node->name() == "Recv") {
