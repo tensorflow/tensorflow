@@ -26,3 +26,4 @@ $ docker exec -it tf bash
 EOF
 
 docker ps
+docker rm -f tf-${TFCI_PYTHON_VERSION}
