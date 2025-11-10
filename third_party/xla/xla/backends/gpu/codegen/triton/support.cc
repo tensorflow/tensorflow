@@ -447,62 +447,20 @@ CodegenDecision AreDotAlgorithmInputAndOutputConversionsSupported(
 
 CodegenDecision IsTritonSupportedDot(
     const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
+  // Check that dot matches the pattern expected by the emitter: is in a nested
+  // GEMM fusion and its operands are fusions.
   if (!IsInTritonNestedGemmFusion(dot)) {
     return CodegenDecision::Forbid(
         "Dot operation is only supported in nested GEMM fusions.");
   }
-  PrimitiveType result_type = dot.shape().element_type();
-  const Shape& lhs_shape = dot.operand(0)->shape();
-  const Shape& rhs_shape = dot.operand(1)->shape();
-  PrimitiveType lhs_type = lhs_shape.element_type();
-  PrimitiveType rhs_type = rhs_shape.element_type();
 
   if (dot.operand(0)->opcode() != HloOpcode::kFusion ||
       dot.operand(1)->opcode() != HloOpcode::kFusion) {
     return CodegenDecision::Forbid(
         "Only operands that are fusions are supported.");
   }
-
-  // TODO(b/393299275): add support tests for mixed types.
-  if (lhs_type != rhs_type) {
-    return CodegenDecision::Forbid(
-        "Dot operation only supports same types for lhs and rhs.");
-  }
-
-  if (result_type == PrimitiveType::S4) {
-    return CodegenDecision::Forbid("S4 is not supported.");
-  }
-
-  absl::Status status = CheckSupportedCheckDotDimensions(dot);
-  if (!status.ok()) {
-    return CodegenDecision::Forbid(status.message());
-  }
-
-  const PrecisionConfig& precision_config = dot.precision_config();
-  const PrecisionConfig::Algorithm algorithm = precision_config.algorithm();
-
-  if (!IsSupportedDotAlgorithm(algorithm)) {
-    return CodegenDecision::Forbid(
-        absl::StrCat("Unsupported dot algorithm: ",
-                     PrecisionConfig::Algorithm_Name(algorithm)));
-  }
-
-  if (algorithm == PrecisionConfig::ALG_UNSET) {
-    if (CodegenDecision decision =
-            AreTypesSupportedByAlgUnsetDot(lhs_type, result_type, gpu_version);
-        !decision) {
-      return decision;
-    }
-  }
-
-  if (CodegenDecision conversion_decision =
-          AreDotAlgorithmInputAndOutputConversionsSupported(
-              algorithm, lhs_type, rhs_type, result_type, gpu_version);
-      !conversion_decision) {
-    return conversion_decision;
-  }
-
-  return CodegenDecision::Allow();
+  // Check if Triton can handle the dot shape and types.
+  return IsTritonSupportedDotParameters(dot, gpu_version);
 }
 
 // Verifies that the nested fusion instruction conforms to the assumptions of
@@ -750,6 +708,59 @@ CodegenDecision IsTritonSupportedInstruction(
                           " ",
                           (decision.CanFuse() ? "yes" : decision.Explain()));
   return decision;
+}
+
+CodegenDecision IsTritonSupportedDotParameters(
+    const HloDotInstruction& dot,
+    const se::GpuComputeCapability& gpu_compute_capability) {
+  PrimitiveType result_type = dot.shape().element_type();
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& rhs_shape = dot.operand(1)->shape();
+  PrimitiveType lhs_type = lhs_shape.element_type();
+  PrimitiveType rhs_type = rhs_shape.element_type();
+
+  // TODO(b/393299275): add support tests for mixed types.
+  // Specifically f8 types are compatible.
+  if (lhs_type != rhs_type) {
+    return CodegenDecision::Forbid(
+        "Dot operation only supports same types for lhs and rhs.");
+  }
+
+  if (result_type == PrimitiveType::S4) {
+    return CodegenDecision::Forbid("S4 is not supported.");
+  }
+
+  absl::Status status = CheckSupportedCheckDotDimensions(dot);
+  if (!status.ok()) {
+    return CodegenDecision::Forbid(status.message());
+  }
+
+  const PrecisionConfig& precision_config = dot.precision_config();
+  const PrecisionConfig::Algorithm algorithm = precision_config.algorithm();
+
+  if (!IsSupportedDotAlgorithm(algorithm)) {
+    return CodegenDecision::Forbid(
+        absl::StrCat("Unsupported dot algorithm: ",
+                     PrecisionConfig::Algorithm_Name(algorithm)));
+  }
+
+  if (algorithm == PrecisionConfig::ALG_UNSET) {
+    if (CodegenDecision decision = AreTypesSupportedByAlgUnsetDot(
+            lhs_type, result_type, gpu_compute_capability);
+        !decision) {
+      return decision;
+    }
+  }
+
+  if (CodegenDecision conversion_decision =
+          AreDotAlgorithmInputAndOutputConversionsSupported(
+              algorithm, lhs_type, rhs_type, result_type,
+              gpu_compute_capability);
+      !conversion_decision) {
+    return conversion_decision;
+  }
+
+  return CodegenDecision::Allow();
 }
 
 CodegenDecision IsTritonSupportedComputation(

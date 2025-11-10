@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -40,7 +39,6 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
-#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
@@ -65,7 +63,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tools/hlo_decomposer.h"
 #include "xla/tools/hlo_extractor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -1223,20 +1220,6 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
         fusion, instr, symbolic_expr_context_, device_description_));
 
     MarkAsChanged();
-    bool scaled_dot_enabled =
-        fusion->GetModule()
-            ->config()
-            .debug_options()
-            .xla_gpu_experimental_scaled_dot_with_triton();
-    if (CodegenDecision can_codegen_computation = IsTritonSupportedComputation(
-            *fusion->called_computation(),
-            device_description_.gpu_compute_capability());
-        !scaled_dot_enabled && !can_codegen_computation) {
-      return absl::InternalError(absl::StrCat(
-          "Computation of fusion ", fusion->ToString(),
-          " is not supported by Triton: ", can_codegen_computation.Explain()));
-    }
-
     return AcceptResultingFusion(fusion);
   }
 
@@ -1257,39 +1240,6 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
                                                        HloOpcode::kScaledDot);
       if (instr == nullptr) {
         VLOG(2) << "Skipping fusion as it has no dot instruction";
-        return absl::OkStatus();
-      }
-    }
-    {
-      // Symbolic tile analysis and nesting do not support all HLOs yet and
-      // might leave the module in an invalid state. To avoid that we first dry
-      // run the rewrite on an extracted module.
-      // TODO(b/393299275): remove dry-run once we can handle all HLOs.
-      std::unique_ptr<HloModule> extracted_module =
-          ExtractInstructionIntoNewModule(*fusion);
-      extracted_module->mutable_config().set_debug_options(
-          fusion->GetModule()->config().debug_options());
-      HloComputation* entry = extracted_module->entry_computation();
-      HloFusionInstruction* extracted_fusion =
-          Cast<HloFusionInstruction>(entry->root_instruction());
-      if (extracted_fusion == nullptr) {
-        return absl::InternalError(absl::StrCat(
-            "Failed to create a cloned module for fusion ", fusion->name()));
-      }
-      std::unique_ptr<CallGraph> cloned_call_graph =
-          CallGraph::Build(extracted_module.get(), {});
-      absl::Status status =
-          RewriteFusion(extracted_fusion, cloned_call_graph.get());
-      if (!status.ok()) {
-        VLOG(2) << "Failed to rewrite the fusion " << fusion->ToString()
-                << " in a cloned module: " << status;
-        if (IsFeatureEnabled(
-                fusion->GetModule(),
-                DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM)) {
-          // As legacy emitter is disabled we are doomed to fail now, returning
-          // the dry run result failure as it is a better diagnostic.
-          return status;
-        }
         return absl::OkStatus();
       }
     }

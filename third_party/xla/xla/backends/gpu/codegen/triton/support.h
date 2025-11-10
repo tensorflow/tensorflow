@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
@@ -49,6 +50,14 @@ absl::Status EnsureTritonSupportsComputeCapability(
 // instead.
 CodegenDecision IsTritonSupportedInstruction(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
+
+// Checks if the algorithm and type of the dot parameters are supported by
+// Triton - but maybe not by the emitter as it add more constraints on type of
+// operands and the context of the dot. Use IsTritonSupportedInstruction for
+// the emitter support check.
+CodegenDecision IsTritonSupportedDotParameters(
+    const HloDotInstruction& dot,
+    const se::GpuComputeCapability& gpu_compute_capability);
 
 // Returns `CodegenDecision`'s equivalent of `true` if all the instructions in
 // the parameter computation are supported by the Triton emitters for the given

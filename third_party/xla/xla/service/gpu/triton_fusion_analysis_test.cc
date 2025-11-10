@@ -28,7 +28,9 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/transforms/gemm_fusion.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/status_matchers.h"
@@ -698,10 +700,12 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
   ROOT bc = bf16[2,2,100] broadcast(dot), dimensions={0,1}
 })"));
-  EXPECT_TRUE(GemmFusion(se::GpuComputeCapability{se::CudaComputeCapability{
-                             se::CudaComputeCapability::kAmpere, 0}})
-                  .Run(module.get())
-                  .value());
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      GemmFusion(se::GpuComputeCapability{se::CudaComputeCapability{
+                     se::CudaComputeCapability::kAmpere, 0}})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kBroadcast);
 }

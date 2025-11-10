@@ -98,8 +98,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
-#include "xla/backends/gpu/codegen/triton/support.h"
-#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
@@ -168,7 +166,6 @@ namespace xgt = ::xla::gpu::triton;
 using ::llvm::SmallVector;
 using ::mlir::AffineMap;
 using ::mlir::ArrayRef;
-using ::mlir::ShapedType;
 using ::mlir::Type;
 using ::mlir::Value;
 using ::mlir::ValueRange;
@@ -1835,48 +1832,11 @@ mlir::MemRefType GetMemRefType(const Shape& shape, mlir::Type element_type) {
   return mlir::MemRefType::get(shape.dimensions(), storage_type, layout);
 }
 
-absl::Status IsTritonSupportedFusion(const HloFusionInstruction& fusion,
-                                     const se::DeviceDescription& device_info) {
-  const HloComputation* computation = fusion.fused_instructions_computation();
-  for (const HloInstruction* hlo : computation->instructions()) {
-    // Skip generating nested fusions, they are emitted by their consumer.
-    if (hlo->parent()->IsFusionComputation() &&
-        hlo->opcode() == HloOpcode::kFusion) {
-      if (hlo->GetModule()
-              ->config()
-              .debug_options()
-              .xla_gpu_experimental_scaled_dot_with_triton()) {
-        continue;
-      }
-      CodegenDecision decision = IsTritonSupportedInstruction(
-          *hlo, device_info.gpu_compute_capability());
-      if (!decision.CanFuse()) {
-        return absl::FailedPreconditionError(
-            absl::StrCat("Fusion ", hlo->ToString(),
-                         " is not supported: ", decision.Explain()));
-      }
-      VLOG(1) << "Skipping nested fusion: " << hlo->ToString();
-      continue;
-    }
-
-    if (hlo->opcode() == HloOpcode::kPad) {
-      if (!IsTritonSupportedInstruction(*hlo,
-                                        device_info.gpu_compute_capability())) {
-        return absl::FailedPreconditionError(
-            absl::StrCat("Pad is not supported: ", hlo->ToString()));
-      }
-    }
-  }
-  return absl::OkStatus();
-}
-
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     SymbolicExprContext& symbolic_expr_context) {
-  TF_RETURN_IF_ERROR(IsTritonSupportedFusion(*fusion, device_info));
-
   // TODO: b/451959933 - Use reference or check pointer.
   mlir::MLIRContext& mlir_context = *symbolic_expr_context.GetMLIRContext();
   TF_ASSIGN_OR_RETURN(auto triton_module,
