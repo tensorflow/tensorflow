@@ -3969,31 +3969,30 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
     }
   }
 
+  // Refer to go/dus-spmd for more details.
   DynamicUpdateSliceAnalysis analysis = AnalyzeDynamicUpdateSlice(hlo);
 
-  // Method 1. Replicate the slice dimensions for all involved tensors.
-  if (analysis.method == DynamicUpdateSliceMethod::kDefault) {
-    return HandleDUSDefault(hlo, input_tensor, update_tensor, new_indices,
-                            analysis.slice_dims);
-  }
-
-  // Method 2. Keep the sharding for input and output since the update is fully
-  // contained in a single partition.
+  // Keep the sharding for input and output since the update is fully contained
+  // in a single partition.
   if (analysis.method == DynamicUpdateSliceMethod::kUpdateOnASinglePartition) {
     return HandleDUSSinglePartitionUpdate(hlo, input_tensor, update_tensor,
                                           new_indices, analysis.slice_dims,
                                           analysis.partitioned_slice_dims);
   }
 
-  // Method 3: All partitioned slice dimensions have compile-time constant
-  // indices.
+  // All partitioned slice dimensions have compile-time constant indices. It is
+  // currently enabled for enzyme only.
   if (analysis.method == DynamicUpdateSliceMethod::
                              kAllPartitionedSliceDimsHaveConstantIndices &&
       module_->config().debug_options().xla_enable_enzyme_comms_opt()) {
     return HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
         hlo, input_tensor, update_tensor);
   }
-  return absl::OkStatus();
+
+  // The default method is to replicate the slice dimensions for all involved
+  // tensors.
+  return HandleDUSDefault(hlo, input_tensor, update_tensor, new_indices,
+                          analysis.slice_dims);
 }
 
 absl::Status SpmdPartitioningVisitor::HandleGetTupleElement(
