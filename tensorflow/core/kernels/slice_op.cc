@@ -41,7 +41,7 @@ void IntTensorToInt64Vec(const Tensor& tensor,
   out->resize(tensor.NumElements());
   int64_t* out_ptr = out->data();
   if (tensor.dtype() == DT_INT32) {
-    const int32* tensor_ptr = tensor.flat<int32>().data();
+    const int32_t* tensor_ptr = tensor.flat<int32_t>().data();
     for (int64_t i = 0; i < tensor.NumElements(); ++i) {
       out_ptr[i] = tensor_ptr[i];
     }
@@ -121,8 +121,8 @@ void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
 template <typename T>
 static void SharedSliceCommonCases(OpKernelContext* context,
                                    const Tensor& input,
-                                   absl::InlinedVector<int64, 4>* begin,
-                                   absl::InlinedVector<int64, 4>* size,
+                                   absl::InlinedVector<int64_t, 4>* begin,
+                                   absl::InlinedVector<int64_t, 4>* size,
                                    Tensor** result, bool* done) {
   bool is_identity = true;
   bool slice_dim0 = true;
@@ -328,11 +328,11 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Slice")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("input")
                             .HostMemory("begin")
                             .HostMemory("size")
                             .HostMemory("output"),
-                        SliceOp<CPUDevice, int32>);
+                        SliceOp<CPUDevice, int32_t>);
 
 }  // namespace tensorflow

@@ -278,8 +278,8 @@ void SetSizeOp<T>::Compute(OpKernelContext* ctx) {
                  TensorShapeUtils::MakeShape(output_shape, &output_shape_ts));
   Tensor* out_t;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape_ts, &out_t));
-  auto out = out_t->flat<int32>();
-  out.device(ctx->eigen_cpu_device()) = out.constant(static_cast<int32>(0.0));
+  auto out = out_t->flat<int32_t>();
+  out.device(ctx->eigen_cpu_device()) = out.constant(static_cast<int32_t>(0.0));
 
   // Group by all but last dimension, create a set of group values, and add set
   // size to output.
@@ -302,12 +302,12 @@ void SetSizeOp<T>::Compute(OpKernelContext* ctx) {
   REGISTER_KERNEL_BUILDER(                                       \
       Name("SetSize").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SetSizeOp<T>);
-_SET_SIZE_REGISTER_KERNEL_BUILDER(int8);
-_SET_SIZE_REGISTER_KERNEL_BUILDER(int16);
-_SET_SIZE_REGISTER_KERNEL_BUILDER(int32);
+_SET_SIZE_REGISTER_KERNEL_BUILDER(int8_t);
+_SET_SIZE_REGISTER_KERNEL_BUILDER(int16_t);
+_SET_SIZE_REGISTER_KERNEL_BUILDER(int32_t);
 _SET_SIZE_REGISTER_KERNEL_BUILDER(int64_t);
-_SET_SIZE_REGISTER_KERNEL_BUILDER(uint8);
-_SET_SIZE_REGISTER_KERNEL_BUILDER(uint16);
+_SET_SIZE_REGISTER_KERNEL_BUILDER(uint8_t);
+_SET_SIZE_REGISTER_KERNEL_BUILDER(uint16_t);
 _SET_SIZE_REGISTER_KERNEL_BUILDER(tstring);
 #undef _SET_SIZE_REGISTER_KERNEL_BUILDER
 
@@ -320,7 +320,7 @@ enum InputTypes {
 enum SetOperation { A_MINUS_B = 0, B_MINUS_A = 1, INTERSECTION = 2, UNION = 3 };
 
 SetOperation SetOperationFromContext(OpKernelConstruction* ctx) {
-  string set_operation_str;
+  std::string set_operation_str;
   if (!ctx->GetAttr("set_operation", &set_operation_str).ok()) {
     ctx->CtxFailure(errors::InvalidArgument("Missing set_operation."));
   } else {
@@ -749,12 +749,12 @@ class DenseToDenseSetOperationOp : public SetOperationOp<T> {
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<T>("T"),           \
                           DenseToDenseSetOperationOp<T>);
-_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int8);
-_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int16);
-_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32);
+_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int8_t);
+_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int16_t);
+_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32_t);
 _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64_t);
-_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8);
-_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16);
+_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8_t);
+_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16_t);
 _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(tstring);
 #undef _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER
 
@@ -770,12 +770,12 @@ class DenseToSparseSetOperationOp : public SetOperationOp<T> {
                               .Device(DEVICE_CPU)                 \
                               .TypeConstraint<T>("T"),            \
                           DenseToSparseSetOperationOp<T>);
-_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int8);
-_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int16);
-_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32);
+_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int8_t);
+_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int16_t);
+_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32_t);
 _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64_t);
-_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8);
-_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16);
+_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8_t);
+_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16_t);
 _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(tstring);
 #undef _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER
 
@@ -791,12 +791,12 @@ class SparseToSparseSetOperationOp : public SetOperationOp<T> {
                               .Device(DEVICE_CPU)                  \
                               .TypeConstraint<T>("T"),             \
                           SparseToSparseSetOperationOp<T>);
-_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int8);
-_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int16);
-_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32);
+_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int8_t);
+_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int16_t);
+_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32_t);
 _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64_t);
-_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8);
-_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16);
+_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8_t);
+_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16_t);
 _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(tstring);
 #undef _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER
 
