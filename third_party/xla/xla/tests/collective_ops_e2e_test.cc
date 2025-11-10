@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -4586,9 +4585,9 @@ TEST_F(CollectiveOpsTestE2E, OptimizedSubByteAllGatherOnDim1OutputIsCorrect) {
                           hlo_runner_->HloModuleFromWrapped(executable.get()));
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Fusion(
-                        m::Bitcast(m::AllGatherDone().WithShape(S8, {2, 4})))));
-  EXPECT_THAT(root->fused_expression_root(),
+  EXPECT_THAT(root, GmockMatch(m::Bitcast(m::Fusion(m::Bitcast(
+                        m::AllGatherDone().WithShape(S8, {8, 1}))))));
+  EXPECT_THAT(root->operand(0)->fused_expression_root(),
               GmockMatch(m::Transpose(m::Parameter())));
 
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> result,
@@ -4604,6 +4603,45 @@ TEST_F(CollectiveOpsTestE2E, OptimizedSubByteAllGatherOnDim1OutputIsCorrect) {
   for (int i = 0; i < kNumReplicas; ++i) {
     EXPECT_TRUE(LiteralTestUtil::Equal(expected_result, result[i]))
         << "Results differ at replica " << i;
+  }
+}
+
+TEST_F(CollectiveOpsTestE2E, AllGatherOnChangedDimensionIsCorrect) {
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "The test requires at least " << kNumReplicas << " devices";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto unoptimized_module,
+                          ParseAndReturnVerifiedModule(R"(
+  HloModule m, replica_count=2
+  e {
+    a = u32[2,2,3] constant({{{0,1,2},{3,4,5}},{{6,7,8},{9,10,11}}})
+    g = u32[2,4,3] all-gather(a), dimensions={1}
+  })"));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, hlo_runner_->CreateExecutable(
+                                               std::move(unoptimized_module),
+                                               /*run_hlo_passes=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* module,
+                          hlo_runner_->HloModuleFromWrapped(executable.get()));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  EXPECT_THAT(root, GmockMatch(m::Bitcast(m::Fusion(
+                        m::AllGatherDone(m::AllGatherStart(m::Constant()))))));
+  EXPECT_THAT(root->operand(0)->fused_expression_root(),
+              GmockMatch(m::Transpose(m::Bitcast(m::Parameter()))));
+  EXPECT_EQ(
+      Cast<HloAllGatherInstruction>(root->operand(0)->operand(0)->operand(0))
+          ->all_gather_dimension(),
+      0);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  Literal expected = LiteralUtil::CreateR3<uint32_t>(
+      {{{0, 1, 2}, {3, 4, 5}, {0, 1, 2}, {3, 4, 5}},
+       {{6, 7, 8}, {9, 10, 11}, {6, 7, 8}, {9, 10, 11}}});
+  for (const Literal& result : results) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
   }
 }
 

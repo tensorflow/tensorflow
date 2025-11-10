@@ -3202,6 +3202,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ] + if_cuda_is_configured([
         "//xla/stream_executor/cuda:buffer_debug_float_check_kernel_cuda",
     ]),
@@ -3210,6 +3211,11 @@ cc_library(
 xla_test(
     name = "buffers_float_check_thunk_test",
     srcs = ["buffers_float_check_thunk_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+        ],
+    },
     backends = ["gpu"],
     tags = [
         "cuda-only",
@@ -3234,6 +3240,7 @@ xla_test(
         "//xla/stream_executor/gpu:buffer_debug_log",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

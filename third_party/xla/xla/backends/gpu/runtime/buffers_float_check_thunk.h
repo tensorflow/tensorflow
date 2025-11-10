@@ -65,13 +65,20 @@ class BuffersDebugFloatCheckThunk : public Thunk {
   }
 
  private:
-  // Loaded in Initialize.
-  std::optional<
-      stream_executor::gpu::BufferDebugFloatCheckF32Kernel::KernelType>
-      kernel_f32_;
-  std::optional<
-      stream_executor::gpu::BufferDebugFloatCheckBf16Kernel::KernelType>
-      kernel_bf16_;
+  struct Kernels {
+    stream_executor::gpu::BufferDebugFloatCheckF32Kernel::KernelType f32;
+    stream_executor::gpu::BufferDebugFloatCheckBf16Kernel::KernelType bf16;
+  };
+  absl::Mutex kernels_mutex_;
+  // Each loaded kernel is associated with a specific device (represented by its
+  // StreamExecutor).
+  //
+  // ExecuteOnStream implementation requires pointer stability of values, hence
+  // unique_ptr.
+  absl::flat_hash_map<stream_executor::StreamExecutor*,
+                      std::unique_ptr<Kernels>>
+      kernels_ ABSL_GUARDED_BY(kernels_mutex_);
+
   BufferAllocation::Slice log_slice_;
   ThunkId checked_thunk_id_;
   absl::flat_hash_map<size_t, BufferAllocation::Slice> checked_thunk_buffers_;
