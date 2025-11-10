@@ -1162,6 +1162,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
     VLOG(2) << "[" << device_ordinal() << "] Resolve CUDA kernel "
             << kernel_name << " from symbol pointer: " << symbol;
     cudaFunction_t func;
+    std::unique_ptr<ActivateContext> scoped_activation = Activate();
     TF_RETURN_IF_ERROR(cuda::ToStatus(
         cudaGetFuncBySymbol(&func, symbol),
         absl::StrFormat("[%d] Failed call to cudaGetFuncBySymbol",

@@ -20,10 +20,12 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -189,6 +191,77 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
                           /*is_input=*/true,
                           BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS,
                       })));
+}
+
+TEST_F(BuffersDebugFloatCheckThunkTest,
+       ExecutesCorrectKernelsForDifferentDevices) {
+  // Loaded kernels are associated with a specific device represented by its
+  // StreamExecutor. The same Thunk will be Initialized once for each device,
+  // which will load the kernel onto that device. During ExecuteOnStream, the
+  // correct kernel needs to be launched.
+  if (platform_->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "need at least 2 devices for this test";
+  }
+
+  static constexpr size_t kLogSizeBytes = 1024;
+  static constexpr size_t kInputSizeBytes = 1024;
+
+  struct TestDevice {
+    se::StreamExecutor* executor;
+    std::unique_ptr<se::Stream> stream;
+    std::unique_ptr<se::StreamExecutorMemoryAllocator> allocator;
+    BufferAllocations allocations;
+  };
+  auto setup_device = [this](int device_ordinal) -> absl::StatusOr<TestDevice> {
+    TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                        platform_->ExecutorForDevice(device_ordinal));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+                        executor->CreateStream());
+    auto allocator =
+        std::make_unique<se::StreamExecutorMemoryAllocator>(executor);
+    BufferAllocations allocations(
+        {executor->AllocateArray<uint8_t>(kLogSizeBytes + kInputSizeBytes)},
+        executor->device_ordinal(), allocator.get());
+
+    return TestDevice{std::move(executor), std::move(stream),
+                      std::move(allocator), std::move(allocations)};
+  };
+  TF_ASSERT_OK_AND_ASSIGN(TestDevice device0, setup_device(0));
+  TF_ASSERT_OK_AND_ASSIGN(TestDevice device1, setup_device(1));
+  BufferAllocation allocation(0, kLogSizeBytes + kInputSizeBytes, 0);
+  BufferAllocation::Slice log_slice(&allocation, 0, kLogSizeBytes);
+  BufferAllocation::Slice f32_slice(&allocation, kLogSizeBytes, kInputSizeBytes,
+                                    PrimitiveType::F32);
+  BufferAllocation::Slice bf16_slice(&allocation, kLogSizeBytes,
+                                     kInputSizeBytes, PrimitiveType::BF16);
+  BuffersDebugFloatCheckThunk thunk(
+      Thunk::ThunkInfo(), log_slice,
+      /*checked_thunk_id=*/ThunkId(123),
+      {{/*buffer_idx=*/0, f32_slice}, {/*buffer_idx=*/1, bf16_slice}},
+      /*runs_before_checked_thunk=*/true,
+      std::make_shared<BufferDebugLogEntryMetadataStore>());
+
+  // Initialize the Thunk on both devices and run the kernel. An attempt to run
+  // a kernel on the wrong device will fail with CUDA_ERROR_INVALID_HANDLE. The
+  // error may be reported from the next operation on the stream, so assert on
+  // BlockHostUntilDone as well.
+  TF_ASSERT_OK(
+      thunk.Initialize(Thunk::InitializeParams{/*executor=*/device0.executor}));
+  TF_ASSERT_OK(thunk.ExecuteOnStream(Thunk::ExecuteParams::Create(
+      ServiceExecutableRunOptions(), device0.allocations, device0.stream.get(),
+      /*command_buffer_trace_stream=*/device0.stream.get(),
+      /*collective_params=*/nullptr,
+      /*collective_cliques=*/nullptr)));
+  TF_ASSERT_OK(device0.stream->BlockHostUntilDone());
+
+  TF_ASSERT_OK(
+      thunk.Initialize(Thunk::InitializeParams{/*executor=*/device1.executor}));
+  TF_ASSERT_OK(thunk.ExecuteOnStream(Thunk::ExecuteParams::Create(
+      ServiceExecutableRunOptions(), device1.allocations, device1.stream.get(),
+      /*command_buffer_trace_stream=*/device1.stream.get(),
+      /*collective_params=*/nullptr,
+      /*collective_cliques=*/nullptr)));
+  TF_ASSERT_OK(device1.stream->BlockHostUntilDone());
 }
 
 }  // namespace
