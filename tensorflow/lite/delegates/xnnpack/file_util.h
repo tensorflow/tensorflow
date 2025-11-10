@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_FILE_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_FILE_UTIL_H_
 
+#if !defined(_WIN32)
 #include <sys/types.h>
+#endif
 
 #include <cstddef>
 #include <utility>
