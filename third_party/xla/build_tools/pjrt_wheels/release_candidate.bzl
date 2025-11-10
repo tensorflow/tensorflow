@@ -7,7 +7,7 @@ def _rc_number_impl(rctx):
     if rc_number:
         rctx.file(
             "rc_number.bzl",
-            content = 'XLA_RC_NUMBER = "rc{}"'.format(rc_number),
+            content = 'XLA_RC_NUMBER = "{}"'.format(rc_number),
         )
     else:
         rctx.file(
