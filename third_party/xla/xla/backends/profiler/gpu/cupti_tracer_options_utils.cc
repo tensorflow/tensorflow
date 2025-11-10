@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -72,6 +73,14 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
   TF_RETURN_IF_ERROR(SetValue<bool>(
       profile_options, "gpu_dump_graph_node_mapping", input_keys,
       [&](bool value) { collector_options.dump_graph_nope_mapping = value; }));
+
+  TF_RETURN_IF_ERROR(SetValue<int64_t>(
+      profile_options, "gpu_num_chips_to_profile_per_task", input_keys,
+      [&](int64_t value) {
+        if (value >= 0 && value <= std::numeric_limits<uint32_t>::max()) {
+          collector_options.num_gpus = static_cast<uint32_t>(value);
+        }
+      }));
 
   TF_RETURN_IF_ERROR(SetValue<bool>(
       profile_options, "gpu_enable_nvtx_tracking", input_keys,
