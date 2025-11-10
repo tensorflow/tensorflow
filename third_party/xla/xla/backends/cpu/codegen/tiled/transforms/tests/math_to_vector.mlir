@@ -1,4 +1,4 @@
-// RUN: emitters_opt %s --xtile-cpu-elemental-tensor-to-vector -split-input-file | FileCheck %s
+// RUN: fusion_compiler_opt %s --xtile-cpu-elemental-tensor-to-vector -split-input-file | FileCheck %s
 
 func.func @absf(%input : tensor<1024xf32>) -> tensor<1024xf32> {
   // CHECK: math.absf %{{.*}} : vector<1024xf32>

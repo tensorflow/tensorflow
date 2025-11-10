@@ -1,4 +1,4 @@
-// RUN: emitters_opt %s --xtile-cpu-xtile-to-vector -cse -split-input-file | FileCheck %s
+// RUN: fusion_compiler_opt %s --xtile-cpu-xtile-to-vector -cse -split-input-file | FileCheck %s
 
 // CHECK-LABEL: @simple_insert_extract
 // CHECK-SAME: (%[[INPUT:.*]]: memref<1024xf32>, %[[OUTPUT:.*]]: memref<1024xf32>, %[[TILE_ID:.*]]: index)

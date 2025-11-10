@@ -1,4 +1,4 @@
-// RUN: emitters_opt %s \
+// RUN: fusion_compiler_opt %s \
 // RUN: -xtile-cpu-rewrite-dynamic-vector-extract -canonicalize \
 // RUN: -split-input-file | FileCheck %s
 

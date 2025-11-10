@@ -63,6 +63,13 @@ class FusionCompiler {
   // compiling an XLA:CPU fusion.
   static std::unique_ptr<mlir::MLIRContext> CreateContext();
 
+  // Create a dialect registry for the compiler with the required dialects for
+  // compiling an XLA:CPU fusion. If `register_pass_pipelines` is true, this
+  // will also register the pass pipelines for the compiler, typically to be
+  // used in tests.
+  static mlir::DialectRegistry CreateDialectRegistry(
+      bool register_pass_pipelines = false);
+
  private:
   Options options_;
   CompilationHooks hooks_;

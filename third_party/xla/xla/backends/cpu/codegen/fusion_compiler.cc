@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/FMF.h"
@@ -77,12 +78,15 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Pass/PassOptions.h"
+#include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/WalkResult.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
@@ -110,6 +114,30 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme_encode.h"
 
 namespace xla::cpu {
+
+static void RegisterPassPipeline(
+    absl::string_view name, absl::string_view description,
+    absl::FunctionRef<void(mlir::OpPassManager&)> pipeline_builder) {
+  using ErrorHandlerFn =
+      llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)>;
+
+  mlir::PassRegistryFunction register_pass_callback =
+      [pipeline_builder](mlir::OpPassManager& pm, llvm::StringRef options,
+                         ErrorHandlerFn error_handler) {
+        if (!options.empty()) {
+          return mlir::failure();
+        }
+        pipeline_builder(pm);
+        return mlir::success();
+      };
+
+  auto option_handler =
+      [](llvm::function_ref<void(const mlir::detail::PassOptions&)>
+             options_handler) { options_handler(mlir::detail::PassOptions()); };
+
+  mlir::registerPassPipeline(name, description, register_pass_callback,
+                             option_handler);
+}
 
 class ModuleCallbackPass
     : public mlir::PassWrapper<ModuleCallbackPass,
@@ -435,15 +463,23 @@ std::unique_ptr<mlir::MLIRContext> FusionCompiler::CreateContext() {
   auto context = std::make_unique<mlir::MLIRContext>(
       mlir::MLIRContext::Threading::DISABLED);
 
-  context->loadDialect<mlir::DLTIDialect, mlir::affine::AffineDialect,
-                       mlir::arith::ArithDialect, mlir::cf::ControlFlowDialect,
-                       mlir::func::FuncDialect, mlir::math::MathDialect,
-                       xla::cpu::XlaCpuDialect, mlir::mhlo::MhloDialect,
-                       mlir::scf::SCFDialect, mlir::LLVM::LLVMDialect,
-                       mlir::tensor::TensorDialect, mlir::vector::VectorDialect,
-                       xla::XlaDialect, xla::xtile::XTileDialect>();
+  context->appendDialectRegistry(CreateDialectRegistry());
+  context->loadAllAvailableDialects();
 
+  return context;
+}
+
+mlir::DialectRegistry FusionCompiler::CreateDialectRegistry(
+    bool register_pass_pipelines) {
   mlir::DialectRegistry registry;
+
+  registry.insert<
+      mlir::DLTIDialect, mlir::affine::AffineDialect, mlir::arith::ArithDialect,
+      mlir::cf::ControlFlowDialect, mlir::func::FuncDialect,
+      mlir::math::MathDialect, xla::cpu::XlaCpuDialect, mlir::mhlo::MhloDialect,
+      mlir::scf::SCFDialect, mlir::LLVM::LLVMDialect,
+      mlir::tensor::TensorDialect, mlir::vector::VectorDialect, xla::XlaDialect,
+      xla::xtile::XTileDialect, mlir::stablehlo::StablehloDialect>();
 
   mlir::LLVM::registerInlinerInterface(registry);
   mlir::func::registerInlinerExtension(registry);
@@ -464,9 +500,15 @@ std::unique_ptr<mlir::MLIRContext> FusionCompiler::CreateContext() {
   mlir::ub::registerConvertUBToLLVMInterface(registry);
   mlir::vector::registerConvertVectorToLLVMInterface(registry);
 
-  context->appendDialectRegistry(registry);
+  if (register_pass_pipelines) {
+    RegisterPassPipeline(
+        "xla-test-optimize",
+        "Test pipeline of passes up to inlining. Intended to simplify IR in "
+        "tests.",
+        &xla::emitters::RegisterOptimizationPasses);
+  }
 
-  return context;
+  return registry;
 }
 
 }  // namespace xla::cpu

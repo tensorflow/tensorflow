@@ -1,4 +1,4 @@
-// RUN: emitters_opt %s -xtile-cpu-tensor-ops-to-vector -split-input-file | FileCheck %s
+// RUN: fusion_compiler_opt %s -xtile-cpu-tensor-ops-to-vector -split-input-file | FileCheck %s
 
 func.func @from_elements(%input : f32) -> tensor<f32> {
   // CHECK: vector.from_elements %{{.*}} : vector<f32>
