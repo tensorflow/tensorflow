@@ -2996,8 +2996,18 @@ xla_test(
 
 cc_library(
     name = "thunk_buffer_debug_pass",
-    srcs = ["thunk_buffer_debug_pass.cc"],
-    hdrs = ["thunk_buffer_debug_pass.h"],
+    srcs = [
+        "thunk_buffer_debug_checksum.cc",
+        "thunk_buffer_debug_filter.cc",
+        "thunk_buffer_debug_float_check.cc",
+        "thunk_buffer_debug_pass.cc",
+    ],
+    hdrs = [
+        "thunk_buffer_debug_checksum.h",
+        "thunk_buffer_debug_filter.h",
+        "thunk_buffer_debug_float_check.h",
+        "thunk_buffer_debug_pass.h",
+    ],
     deps = [
         ":buffer_debug_log_entry_metadata_store",
         ":buffer_debug_log_structs",
