@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/buffers_float_check_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -207,7 +209,7 @@ std::unique_ptr<Thunk> WrapWithFloatCheckThunk(
 // `metadata_store` is used to retrieve the metadata for the log entries.
 // The filename is derived from the HLO module name and the log dump path
 // configured in `debug_options`.
-absl::Status DumpBufferDebugLog(
+absl::Status DumpBufferDebugChecksumLog(
     std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
     se::Stream* stream, const HloComputation* absl_nonnull hlo_computation,
     xla::ffi::Buffer<U8> log_buffer) {
@@ -350,13 +352,126 @@ ThunkFilter CreateThunkFilter(const DebugOptions& debug_options) {
 }
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    kDebugLogInitHandler,
+    kBufferDebugChecksumLogInitHandler,
     [](se::Stream* absl_nonnull stream, xla::ffi::Buffer<U8> log_buffer) {
       return se::gpu::BufferDebugLog::CreateOnDevice<BufferDebugLogEntry>(
                  *stream, log_buffer.device_memory())
           .status();
     },
     xla::ffi::Ffi::Bind().Ctx<xla::ffi::Stream>().Arg<xla::ffi::Buffer<U8>>());
+
+absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateDebugInitThunk(
+    BufferAllocation::Slice log_slice,
+    const HloModule* absl_nonnull hlo_module) {
+  ShapedSlice shaped_log_slice{
+      /*slice=*/log_slice,
+      /*shape=*/Shape(PrimitiveType::U8, /*dimensions=*/{log_slice.size()}),
+  };
+
+  XLA_FFI_Handler_Bundle buffer_debug_init_bundle{};
+  buffer_debug_init_bundle.execute = kBufferDebugChecksumLogInitHandler;
+  return CustomCallThunk::Create(
+      Thunk::ThunkInfo(), "xla_gpu_buffer_debug_log_init",
+      buffer_debug_init_bundle, /*operands=*/{shaped_log_slice},
+      /*results=*/{}, /*attributes=*/{}, hlo_module->entry_computation());
+}
+
+absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateBufferDebugDumpThunk(
+    std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
+    BufferAllocation::Slice log_slice,
+    const HloModule* absl_nonnull hlo_module) {
+  ShapedSlice shaped_log_slice{
+      /*slice=*/log_slice,
+      /*shape=*/Shape(PrimitiveType::U8, /*dimensions=*/{log_slice.size()}),
+  };
+
+  CustomCallThunk::OwnedHandlerBundle dump_bundle{};
+  dump_bundle.execute =
+      xla::ffi::Ffi::Bind()
+          .Ctx<xla::ffi::Stream>()
+          .Ctx<xla::ffi::CalledComputation>()
+          .Arg<xla::ffi::Buffer<U8>>()
+          .To(absl::bind_front(DumpBufferDebugChecksumLog, metadata_store));
+  return CustomCallThunk::Create(
+      Thunk::ThunkInfo(), "xla_gpu_buffer_debug_log_dump",
+      std::move(dump_bundle),
+      /*operands=*/{shaped_log_slice},
+      /*results=*/{}, /*attributes=*/{}, hlo_module->entry_computation());
+}
+
+absl::Status RunChecksumPassInternal(SequentialThunk* root_thunk,
+                                     const DebugOptions& debug_options,
+                                     const HloModule* absl_nonnull hlo_module,
+                                     ThunkPassBufferAllocator& allocator) {
+  std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store =
+      std::make_shared<BufferDebugLogEntryMetadataStore>();
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
+                      allocator.NewEmptyAllocation(kLogSizeBytes));
+  BufferAllocation::Slice log_slice(log_alloc, 0, log_alloc->size());
+
+  TF_ASSIGN_OR_RETURN(auto buffer_debug_init_thunk,
+                      CreateDebugInitThunk(log_slice, hlo_module));
+
+  TF_ASSIGN_OR_RETURN(
+      auto buffer_debug_dump_thunk,
+      CreateBufferDebugDumpThunk(metadata_store, log_slice, hlo_module));
+
+  ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
+  root_thunk->TransformAllNestedThunks([&](std::unique_ptr<Thunk> thunk) {
+    if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
+      return thunk;
+    }
+    VLOG(1) << "Wrapping with checksum thunk";
+    return WrapWithChecksumThunk(std::move(thunk), log_slice,
+                                 /*predecessor_thunk=*/*buffer_debug_init_thunk,
+                                 /*successor_thunk=*/*buffer_debug_dump_thunk,
+                                 metadata_store);
+  });
+
+  ThunkSequence& thunks = root_thunk->thunks();
+  thunks.reserve(thunks.size() + 2);
+  thunks.insert(thunks.begin(), std::move(buffer_debug_init_thunk));
+  thunks.push_back(std::move(buffer_debug_dump_thunk));
+  return absl::OkStatus();
+}
+
+absl::Status RunFloatCheckPassInternal(SequentialThunk* root_thunk,
+                                       const DebugOptions& debug_options,
+                                       const HloModule* absl_nonnull hlo_module,
+                                       ThunkPassBufferAllocator& allocator) {
+  std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store =
+      std::make_shared<BufferDebugLogEntryMetadataStore>();
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
+                      allocator.NewEmptyAllocation(kLogSizeBytes));
+  BufferAllocation::Slice log_slice(log_alloc, 0, log_alloc->size());
+
+  TF_ASSIGN_OR_RETURN(auto buffer_debug_init_thunk,
+                      CreateDebugInitThunk(log_slice, hlo_module));
+
+  TF_ASSIGN_OR_RETURN(
+      auto buffer_debug_dump_thunk,
+      CreateBufferDebugDumpThunk(metadata_store, log_slice, hlo_module));
+
+  ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
+  root_thunk->TransformAllNestedThunks([&](std::unique_ptr<Thunk> thunk) {
+    if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
+      return thunk;
+    }
+    VLOG(1) << "Wrapping with float check thunk";
+    return WrapWithFloatCheckThunk(
+        std::move(thunk), log_slice,
+        /*predecessor_thunk=*/*buffer_debug_init_thunk,
+        /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store);
+  });
+
+  ThunkSequence& thunks = root_thunk->thunks();
+  thunks.reserve(thunks.size() + 2);
+  thunks.insert(thunks.begin(), std::move(buffer_debug_init_thunk));
+  thunks.push_back(std::move(buffer_debug_dump_thunk));
+  return absl::OkStatus();
+}
 
 }  // namespace
 
@@ -373,67 +488,16 @@ absl::StatusOr<bool> ThunkBufferDebugPass::Run(
     return false;
   }
 
-  std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store =
-      std::make_shared<BufferDebugLogEntryMetadataStore>();
-
-  TF_ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
-                      allocator.NewEmptyAllocation(kLogSizeBytes));
-  BufferAllocation::Slice log_slice(log_alloc, 0, log_alloc->size());
-  ShapedSlice shaped_log_slice{
-      /*slice=*/log_slice,
-      /*shape=*/Shape(PrimitiveType::U8, /*dimensions=*/{log_alloc->size()}),
-  };
-
-  XLA_FFI_Handler_Bundle buffer_debug_init_bundle{};
-  buffer_debug_init_bundle.execute = kDebugLogInitHandler;
-  TF_ASSIGN_OR_RETURN(
-      auto buffer_debug_init_thunk,
-      CustomCallThunk::Create(
-          Thunk::ThunkInfo(), "xla_gpu_buffer_debug_log_init",
-          buffer_debug_init_bundle, /*operands=*/{shaped_log_slice},
-          /*results=*/{}, /*attributes=*/{}, hlo_module->entry_computation()));
-
-  CustomCallThunk::OwnedHandlerBundle dump_bundle{};
-  dump_bundle.execute =
-      xla::ffi::Ffi::Bind()
-          .Ctx<xla::ffi::Stream>()
-          .Ctx<xla::ffi::CalledComputation>()
-          .Arg<xla::ffi::Buffer<U8>>()
-          .To(absl::bind_front(DumpBufferDebugLog, metadata_store));
-  TF_ASSIGN_OR_RETURN(auto buffer_debug_dump_thunk,
-                      CustomCallThunk::Create(Thunk::ThunkInfo(),
-                                              "xla_gpu_buffer_debug_log_dump",
-                                              std::move(dump_bundle),
-                                              /*operands=*/{shaped_log_slice},
-                                              /*results=*/{}, /*attributes=*/{},
-                                              hlo_module->entry_computation()));
-
-  ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
-  root_thunk->TransformAllNestedThunks([&](std::unique_ptr<Thunk> thunk) {
-    if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
-      return thunk;
-    }
-    switch (mode_) {
-      case Mode::kChecksum:
-        VLOG(1) << "Wrapping with checksum thunk";
-        return WrapWithChecksumThunk(
-            std::move(thunk), log_slice,
-            /*predecessor_thunk=*/*buffer_debug_init_thunk,
-            /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store);
-      case Mode::kFloatChecker:
-        VLOG(1) << "Wrapping with float check thunk";
-        return WrapWithFloatCheckThunk(
-            std::move(thunk), log_slice,
-            /*predecessor_thunk=*/*buffer_debug_init_thunk,
-            /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store);
-    }
-    return thunk;
-  });
-
-  ThunkSequence& thunks = root_thunk->thunks();
-  thunks.reserve(thunks.size() + 2);
-  thunks.insert(thunks.begin(), std::move(buffer_debug_init_thunk));
-  thunks.push_back(std::move(buffer_debug_dump_thunk));
+  switch (mode_) {
+    case Mode::kChecksum:
+      TF_RETURN_IF_ERROR(RunChecksumPassInternal(root_thunk, debug_options,
+                                                 hlo_module, allocator));
+      break;
+    case Mode::kFloatChecker:
+      TF_RETURN_IF_ERROR(RunFloatCheckPassInternal(root_thunk, debug_options,
+                                                   hlo_module, allocator));
+      break;
+  }
 
   return true;
 }
