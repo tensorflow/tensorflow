@@ -30,16 +30,17 @@ namespace {
 // starting node to search. By iteratively following the path from child to
 // parent, we can find the root node for the colocation group that node_name
 // belongs to.
-string GetColocationGroupRoot(std::unordered_map<string, string>* map,
-                              const string& node_name) {
+std::string GetColocationGroupRoot(
+    std::unordered_map<std::string, std::string>* map,
+    const std::string& node_name) {
   if (map->find(node_name) == map->end()) {
     // If node_name is not in the map, we create a new root node which points
     // to itself.
     map->insert({node_name, node_name});
     return node_name;
   }
-  std::list<string> nodes_to_root;
-  string cur = node_name;
+  std::list<std::string> nodes_to_root;
+  std::string cur = node_name;
   while ((*map)[cur] != cur) {
     // Backtracing the map until we reach the root node.
     nodes_to_root.push_back(cur);
@@ -50,7 +51,7 @@ string GetColocationGroupRoot(std::unordered_map<string, string>* map,
   // so the further lookups can be faster.
   if (!nodes_to_root.empty()) {
     nodes_to_root.pop_back();
-    for (const string& node : nodes_to_root) {
+    for (const std::string& node : nodes_to_root) {
       (*map)[node] = cur;
     }
   }
@@ -59,8 +60,8 @@ string GetColocationGroupRoot(std::unordered_map<string, string>* map,
 
 // Merge two colocation groups into one.
 // left and right is the root node of two colocation groups respectively.
-void MergeColocationGroup(std::unordered_map<string, string>* map,
-                          const string& left, const string& right) {
+void MergeColocationGroup(std::unordered_map<std::string, std::string>* map,
+                          const std::string& left, const std::string& right) {
   // Do nothing if left or right node is not in the map.
   if (map->find(left) == map->end() || map->find(right) == map->end()) {
     return;
@@ -85,7 +86,7 @@ void ReassignColocation(GraphDef* graph) {
   constexpr char kColocPrefix[] = "loc:@";
 
   // A hashmap that maps from a node name to its parent node name.
-  std::unordered_map<string, string> coloc_groups;
+  std::unordered_map<std::string, std::string> coloc_groups;
   NodeMap node_map(graph);
   for (const auto& node : graph->node()) {
     auto iter = node.attr().find(kClassAttr);
@@ -94,7 +95,7 @@ void ReassignColocation(GraphDef* graph) {
         size_t pos = str.find(kColocPrefix);
         if (pos == 0) {
           // After we find a colocation, update the colocation groups.
-          string colocate_node = str.substr(pos + strlen(kColocPrefix));
+          std::string colocate_node = str.substr(pos + strlen(kColocPrefix));
           MergeColocationGroup(
               &coloc_groups, GetColocationGroupRoot(&coloc_groups, node.name()),
               GetColocationGroupRoot(&coloc_groups, colocate_node));
