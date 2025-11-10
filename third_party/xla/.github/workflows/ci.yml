@@ -44,7 +44,7 @@ jobs:
         job_info: [
           {
             pool: "linux-x86-n2-16",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-transient/ml-public-testing-container/ml-build:infrastructure-public-image-a9244380692c",
             name: "XLA Linux x86 CPU",
             repo: "openxla/xla",
           },
@@ -62,7 +62,7 @@ jobs:
           },
           {
             pool: "linux-x86-g2-16-l4-1gpu",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-transient/ml-public-testing-container/ml-build:infrastructure-public-image-a9244380692c",
             name: "XLA Linux x86 GPU L4",
             repo: "openxla/xla",
           },
@@ -86,13 +86,13 @@ jobs:
           },
           {
             pool: "linux-x86-n2-16",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-transient/ml-public-testing-container/ml-build:infrastructure-public-image-a9244380692c",
             name: "TensorFlow Linux x86 CPU",
             repo: "tensorflow/tensorflow",
           },
           {
             pool: "linux-x86-g2-16-l4-1gpu",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-transient/ml-public-testing-container/ml-build:infrastructure-public-image-a9244380692c",
             name: "TensorFlow Linux x86 GPU L4",
             repo: "tensorflow/tensorflow",
           },

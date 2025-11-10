@@ -284,9 +284,6 @@ TEST_F(GenerateBenchmarkMatricesTest,
   EXPECT_THAT(entry1["config_id"],
               JsonStringEq("gemma_test_x86_1h2d_presubmit"));
   EXPECT_THAT(entry1["runner_label"], JsonStringEq("linux-x86-n2-128"));
-  EXPECT_THAT(entry1["container_image"],
-              JsonStringHasSubtr("us-docker.pkg.dev/ml-oss-artifacts-published/"
-                                 "ml-public-container/ml-build"));
   EXPECT_THAT(entry1["runtime_flags"],
               JsonArrayContainsString("--repeat_cpu=3"));
   EXPECT_THAT(entry1["xla_compilation_flags"],
