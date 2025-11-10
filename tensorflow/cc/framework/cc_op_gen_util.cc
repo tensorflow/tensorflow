@@ -107,10 +107,10 @@ string ToGuard(absl::string_view path) {
   string guard;
   guard.reserve(path.size() + 1);  // + 1 -> trailing _
   for (const char c : path) {
-    if (c >= 'A' && c <= 'Z') {
+    if (absl::ascii_isupper(c)) {
       guard += c;
-    } else if (c >= 'a' && c <= 'z') {
-      guard += c + 'A' - 'a';
+    } else if (absl::ascii_islower(c)) {
+      guard += absl::ascii_toupper(c);
     } else {
       guard += '_';
     }
