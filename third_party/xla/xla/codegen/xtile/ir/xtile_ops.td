@@ -212,27 +212,6 @@ def InsertTileOp : XTile_Op<"insert", [TiledBufferInterface]> {
   let hasVerifier = 1;
 }
 
-// TODO(willfroom): Revisit if/where these are needed after the migration of the
-// triton emitter to support 0D tensors is complete.
-def ToScalarOp : XTile_Op<"to_scalar", [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Converts a 0D tensor to a scalar";
-  let arguments = (ins 0DTensorOf<[AnyType]>:$input);
-  let results = (outs AnyType:$output);
-
-  let assemblyFormat = "$input `:` type($input) attr-dict";
-
-  let hasFolder = 1;
-}
-
-def ToTensorOp : XTile_Op<"to_tensor", [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Converts a scalar to a 0D tensor";
-  let arguments = (ins AnyType:$input);
-  let results = (outs 0DTensorOf<[AnyType]>:$output);
-
-  let assemblyFormat = "$input `:` type($input) attr-dict";
-
-  let hasFolder = 1;
-}
 
 #endif // XLA_CODEGEN_XTILE_IR_XTILE_OPS
 

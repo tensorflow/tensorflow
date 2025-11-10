@@ -62,7 +62,6 @@ cc_library(
         "//xla/codegen/xtile/ir:xtile",
         "//xla/service/gpu:target_util",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:collective_kernel_metadata",
         "//xla/stream_executor/gpu:tma_metadata",
         "@com_google_absl//absl/algorithm:container",

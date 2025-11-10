@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -105,7 +106,8 @@ struct TritonXLAConvert0DTensorToScalarPass
           if (inputs.size() != 1) {
             return nullptr;
           }
-          return ::xla::xtile::ToTensorOp::create(builder, loc, inputs.front());
+          return mlir::tensor::FromElementsOp::create(builder, loc, result_type,
+                                                      inputs.front());
         });
 
     type_converter.addTargetMaterialization(
@@ -114,7 +116,7 @@ struct TritonXLAConvert0DTensorToScalarPass
           if (inputs.size() != 1) {
             return nullptr;
           }
-          return ::xla::xtile::ToScalarOp::create(builder, loc, inputs.front());
+          return mlir::tensor::ExtractOp::create(builder, loc, inputs.front());
         });
 
     mlir::ConversionTarget target(getContext());

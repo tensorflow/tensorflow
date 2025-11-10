@@ -47,7 +47,7 @@ class LowerBitcast : public mlir::OpRewritePattern<tensor::BitcastOp> {
       tensor::BitcastOp op, mlir::PatternRewriter& rewriter) const override {
     mlir::Value source = op.getSource();
     if (op.getSource().getType().getRank() == 0) {
-      source = ::xla::xtile::ToScalarOp::create(rewriter, op.getLoc(), source);
+      source = mlir::tensor::ExtractOp::create(rewriter, op.getLoc(), source);
     }
 
     mlir::TensorType tensor_result_type = op.getResult().getType();
@@ -60,7 +60,8 @@ class LowerBitcast : public mlir::OpRewritePattern<tensor::BitcastOp> {
 
     mlir::Value result = bitcast.getResult();
     if (is_0d_result) {
-      result = ::xla::xtile::ToTensorOp::create(rewriter, op.getLoc(), result);
+      result = mlir::tensor::FromElementsOp::create(rewriter, op.getLoc(),
+                                                    tensor_result_type, result);
     }
 
     rewriter.replaceOp(op, result);

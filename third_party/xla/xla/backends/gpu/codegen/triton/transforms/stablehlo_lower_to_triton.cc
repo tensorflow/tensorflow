@@ -21,7 +21,9 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -116,8 +118,8 @@ class LowerBroadcastInDim
     if (input_shape.empty()) {
       auto broadcast_dim_input = op.getOperand();
 
-      auto extracted = ::xla::xtile::ToScalarOp::create(rewriter, op.getLoc(),
-                                                        broadcast_dim_input);
+      auto extracted = mlir::tensor::ExtractOp::create(rewriter, op.getLoc(),
+                                                       broadcast_dim_input);
 
       rewriter.replaceOpWithNewOp<ttir::SplatOp>(op, op.getResult().getType(),
                                                  extracted);
@@ -191,8 +193,8 @@ class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
     for (auto [old_arg, new_arg] :
          llvm::zip(old_block.getArguments(),
                    triton_reduce_region_block.getArguments())) {
-      auto to_tensor_op =
-          ::xla::xtile::ToTensorOp::create(rewriter, op.getLoc(), new_arg);
+      auto to_tensor_op = mlir::tensor::FromElementsOp::create(
+          rewriter, op.getLoc(), old_arg.getType(), new_arg);
       mapping.map(old_arg, to_tensor_op);
     }
 
@@ -202,7 +204,7 @@ class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
 
     SmallVector<Value> return_operands;
     for (Value operand : old_block.getTerminator()->getOperands()) {
-      return_operands.push_back(::xla::xtile::ToScalarOp::create(
+      return_operands.push_back(mlir::tensor::ExtractOp::create(
           rewriter, op->getLoc(), mapping.lookup(operand)));
     }
     ttir::ReduceReturnOp::create(rewriter, op.getLoc(), return_operands);
@@ -216,8 +218,8 @@ class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
       if (mlir::isa<mlir::ShapedType>(triton_result.getType())) {
         new_results.push_back(triton_result);
       } else {
-        new_results.push_back(::xla::xtile::ToTensorOp::create(
-            rewriter, op.getLoc(), triton_result));
+        new_results.push_back(mlir::tensor::FromElementsOp::create(
+            rewriter, op.getLoc(), op.getType(0), triton_result));
       }
     }
 
@@ -260,8 +262,8 @@ class LowerReshape : public mlir::OpRewritePattern<stablehlo::ReshapeOp> {
     }
 
     if (input_is_0d) {
-      auto to_scalar = ::xla::xtile::ToScalarOp::create(rewriter, op->getLoc(),
-                                                        op.getOperand());
+      auto to_scalar = mlir::tensor::ExtractOp::create(rewriter, op->getLoc(),
+                                                       op.getOperand());
       rewriter.replaceOpWithNewOp<ttir::SplatOp>(op, op.getType(), to_scalar);
       return mlir::success();
     }
@@ -318,8 +320,8 @@ class LowerReshape : public mlir::OpRewritePattern<stablehlo::ReshapeOp> {
     ttir::ReduceReturnOp::create(rewriter, result.getLoc(), {result});
 
     rewriter.setInsertionPointAfter(reduction);
-    rewriter.replaceOpWithNewOp<::xla::xtile::ToTensorOp>(
-        op, reduction.getResult());
+    rewriter.replaceOpWithNewOp<mlir::tensor::FromElementsOp>(
+        op, op.getType(), reduction.getResult());
 
     return mlir::success();
   }

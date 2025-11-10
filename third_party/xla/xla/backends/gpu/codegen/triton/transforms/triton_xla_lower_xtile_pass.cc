@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -220,13 +221,13 @@ class XTileExtractToTriton
     mlir::Value memref_to_ptr =
         CreateMemrefToPtr(rewriter, extract_op.getSource());
 
-    if (extract_op.getType().getRank() == 0) {
+    if (result_type.getRank() == 0) {
       mlir::Value scalar_value = rewriter.create<ttir::LoadOp>(
           extract_op->getLoc(), memref_to_ptr, ttir::CacheModifier::NONE,
           ttir::EvictionPolicy::NORMAL, /*isVolatile=*/false);
 
-      rewriter.replaceOpWithNewOp<::xla::xtile::ToTensorOp>(extract_op,
-                                                            scalar_value);
+      rewriter.replaceOpWithNewOp<mlir::tensor::FromElementsOp>(
+          extract_op, result_type, scalar_value);
       return mlir::success();
     }
 
@@ -263,7 +264,7 @@ class XTileInsertToTriton
         CreateMemrefToPtr(rewriter, insert_op.getDestination());
 
     if (insert_op.getSource().getType().getRank() == 0) {
-      mlir::Value scalar_value = ::xla::xtile::ToScalarOp::create(
+      mlir::Value scalar_value = mlir::tensor::ExtractOp::create(
           rewriter, insert_op.getLoc(), insert_op.getSource());
 
       rewriter.replaceOpWithNewOp<ttir::StoreOp>(

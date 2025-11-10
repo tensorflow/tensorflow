@@ -185,16 +185,6 @@ namespace {
 
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
 
-// Create a tensor from the passed value.
-// If the passed value is a scalar, it is wrapped in a ToTensorOp to create a
-// 0D-Tensor else it is returned as is.
-TensorValue MakeTensor(EmitterLocOpBuilder& b, mlir::Value value) {
-  if (auto tensor = mlir::dyn_cast<TensorValue>(value)) {
-    return tensor;
-  }
-  return mlir::cast<TensorValue>(b.createOrFold<xtile::ToTensorOp>(value));
-}
-
 Value MakeIndex(EmitterLocOpBuilder& b, int64_t value) {
   return b.create<arith::ConstantIndexOp>(value);
 }
@@ -330,7 +320,12 @@ TensorValue BroadcastInDims(EmitterLocOpBuilder b, TensorValue value,
 
 TensorValue Splat(EmitterLocOpBuilder b, Value value,
                   ArrayRef<int64_t> output_shape) {
-  return BroadcastInDims(b, MakeTensor(b, value), output_shape, /*dims=*/{});
+  auto tensor_value = mlir::dyn_cast<TensorValue>(value);
+  if (!tensor_value) {
+    tensor_value = b.create<mlir::tensor::FromElementsOp>(
+        mlir::RankedTensorType::get({}, value.getType()), value);
+  }
+  return BroadcastInDims(b, tensor_value, output_shape, /*dims=*/{});
 }
 
 TensorValue Iota(EmitterLocOpBuilder b, int32_t limit) {
@@ -561,7 +556,7 @@ SmallVector<Value> GetRuntimeValues(
       mlir::OpBuilder builder(value.getContext());
       builder.setInsertionPointAfterValue(value);
       runtime_values.push_back(
-          xtile::ToScalarOp::create(builder, value.getLoc(), value));
+          mlir::tensor::ExtractOp::create(builder, value.getLoc(), value));
     }
   }
   return runtime_values;
@@ -662,9 +657,9 @@ absl::StatusOr<TensorValue> EmitTiledBitcast(
   if (ShapeUtil::Equal(trt->transpose1_shape, trt->reshape_shape)) {
     normalized_reshape = normalized_input;
   } else {
-    TF_ASSIGN_OR_RETURN(normalized_reshape,
-                        EmitTiledReshape(b, reshape_tile_sizes,
-                                         MakeTensor(b, normalized_input)));
+    TF_ASSIGN_OR_RETURN(
+        normalized_reshape,
+        EmitTiledReshape(b, reshape_tile_sizes, normalized_input));
   }
 
   // The final transpose simply uses the tile sizes computed for the original
@@ -919,7 +914,7 @@ absl::StatusOr<TensorValue> EmitDot(
   // and the dot's output type does not match its expectations.
   TF_ASSIGN_OR_RETURN(Type accumulator_type,
                       triton::GetDotAccumulatorType(b, dot));
-  Value accumulator =
+  TensorValue accumulator =
       CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes_no_unit_dims);
 
   TF_ASSIGN_OR_RETURN(int64_t loop_iteration_count,
@@ -1012,12 +1007,13 @@ absl::StatusOr<TensorValue> EmitDot(
     result = Cast(b, result, dot_output_type);
   }
 
+  auto tensor_result = mlir::cast<TensorValue>(result);
+
   if (padded_tile_sizes.size() != padded_tile_sizes_no_unit_dims.size()) {
-    TF_ASSIGN_OR_RETURN(
-        result, EmitTiledReshape(b, padded_tile_sizes, MakeTensor(b, result)));
+    return EmitTiledReshape(b, padded_tile_sizes, tensor_result);
   }
 
-  return MakeTensor(b, result);
+  return tensor_result;
 }
 
 absl::StatusOr<TensorValue> EmitScaledDot(
@@ -1054,7 +1050,7 @@ absl::StatusOr<TensorValue> EmitScaledDot(
   }
 
   Type accumulator_type = b.getF32Type();
-  Value accumulator =
+  TensorValue accumulator =
       CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes_no_unit_dims);
 
   TF_ASSIGN_OR_RETURN(int64_t loop_iteration_count,
@@ -1165,12 +1161,13 @@ absl::StatusOr<TensorValue> EmitScaledDot(
     result = Cast(b, result, dot_output_type);
   }
 
+  auto tensor_result = mlir::cast<TensorValue>(result);
+
   if (padded_tile_sizes.size() != padded_tile_sizes_no_unit_dims.size()) {
-    TF_ASSIGN_OR_RETURN(
-        result, EmitTiledReshape(b, padded_tile_sizes, MakeTensor(b, result)));
+    return EmitTiledReshape(b, padded_tile_sizes, tensor_result);
   }
 
-  return MakeTensor(b, result);
+  return tensor_result;
 }
 
 absl::StatusOr<TensorValue> EmitConcatenate(

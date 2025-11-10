@@ -510,8 +510,8 @@ CHECK:  xtile.insert %[[ABS]]
 CHECK-COUNT-1:  xtile.extract
 CHECK:  %[[ABS:.*]] = math.absf
 CHECK:  %[[REDUCE:.*]] = "tt.reduce"(%[[ABS:.*]]) <{axis = 0 : i32}>
-CHECK: %[[SCALAR_TENSOR:.*]] = xtile.to_tensor %[[REDUCE]] : f32
-CHECK: xtile.insert %[[SCALAR_TENSOR]] into %arg1
+CHECK: %[[REDUCE_TENSOR:.*]] = tensor.from_elements %[[REDUCE]] : tensor<f32>
+CHECK: xtile.insert %[[REDUCE_TENSOR]] into %arg1
 CHECK:  xtile.insert %[[ABS]] {{.*}} : tensor<512xf32>
 )",
       GetFusionInstruction(*xtile_module_and_hlo_module.second,
@@ -2039,8 +2039,8 @@ ENTRY main {
 // CHECK: %[[TILE_OFFSET_I32:.*]] = arith.index_cast %[[TILE_OFFSET]]
 // CHECK: %[[C17:.*]] = arith.constant 17 : i32
 // CHECK: %[[THRESHOLD:.*]] = arith.subi %[[C17]], %[[TILE_OFFSET_I32]]
-// CHECK: %[[TO_TENSOR_THRESHOLD:.*]] = xtile.to_tensor %[[THRESHOLD]]
-// CHECK: %[[THRESHOLD_SPLAT:.*]] = stablehlo.broadcast_in_dim %[[TO_TENSOR_THRESHOLD]], dims = []
+// CHECK: %[[THRESHOLD_TENSOR:.*]] = tensor.from_elements %[[THRESHOLD]]
+// CHECK: %[[THRESHOLD_SPLAT:.*]] = stablehlo.broadcast_in_dim %[[THRESHOLD_TENSOR]], dims = []
 // CHECK: %[[MASK:.*]] = arith.cmpi slt, %[[IOTA]], %[[THRESHOLD_SPLAT]]
 // CHECK: %[[PAD_SPLAT:.*]] = stablehlo.broadcast_in_dim %[[PAD_VALUE]], dims = []
 // CHECK: %[[SELECT:.*]] = arith.select %[[MASK]], %[[EXTRACT]], %[[PAD_SPLAT]]
