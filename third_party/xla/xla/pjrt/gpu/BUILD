@@ -199,6 +199,11 @@ xla_test(
             "broken",
             "no_oss",
         ],
+        "h100": [
+            # TODO(b/452317320): Re-enable once fixed.
+            "broken",
+            "no_oss",
+        ],
         "nvgpu_any": [
             "broken",
             "no_oss",
