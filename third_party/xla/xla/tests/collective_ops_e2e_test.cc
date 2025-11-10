@@ -1500,8 +1500,8 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsTestE2E {
                            const HloSharding& sharding) {
     if (!sharding.IsReplicated()) {
       for (int k = 0; k < sharding.tile_assignment().num_dimensions(); ++k) {
-        if (sharding.tile_assignment().dim(k) > 1) {
-          dims_per_shard[k] /= sharding.tile_assignment().dim(k);
+        if (sharding.sharded_size(k) > 1) {
+          dims_per_shard[k] /= sharding.sharded_size(k);
           sharded_dims.push_back(k);
         }
       }

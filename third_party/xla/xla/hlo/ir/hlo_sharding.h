@@ -508,6 +508,14 @@ class HloSharding {
   // REQUIRES: !IsReplicated() && !IsTuple()
   const TileAssignment& tile_assignment() const { return tile_assignment_; }
 
+  // Returns the size of sharding on the given dimension.
+  int64_t sharded_size(int64_t dim_index) const {
+    return tile_assignment().dim(dim_index);
+  }
+
+  // Returns the total number of devices used by sharding.
+  int64_t num_devices() const { return tile_assignment().num_elements(); }
+
   // Gets the subgroup types array.
   // REQUIRES: !IsTuple()
   const std::vector<OpSharding::Type>& subgroup_types() const {

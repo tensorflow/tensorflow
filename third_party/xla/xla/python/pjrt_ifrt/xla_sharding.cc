@@ -208,7 +208,7 @@ HloSharding::Disassemble(
 
     is_even_sharding = true;
     for (int i = 0; i < tiled_data_rank; ++i) {
-      if (shape.dims()[i] % xla_hlo_sharding_.tile_assignment().dim(i) != 0) {
+      if (shape.dims()[i] % xla_hlo_sharding_.sharded_size(i) != 0) {
         is_even_sharding = false;
         break;
       }
@@ -320,12 +320,12 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
                                   single_device_shard_semantics);
     }
   }
-  if (xla_hlo_sharding_.tile_assignment().num_elements() != num_devices) {
+  if (xla_hlo_sharding_.num_devices() != num_devices) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "sharding's tile_assignment_devices and device count does not "
         "match: %d vs. %d; shape=%s, sharding=%s",
-        xla_hlo_sharding_.tile_assignment().num_elements(), num_devices,
-        shape.DebugString(), DebugString()));
+        xla_hlo_sharding_.num_devices(), num_devices, shape.DebugString(),
+        DebugString()));
   }
 
   const int64_t tiled_data_rank = xla_hlo_sharding_.TiledDataRank();
