@@ -68,7 +68,7 @@ using sdca::Regularizations;
 
 struct ComputeOptions {
   explicit ComputeOptions(OpKernelConstruction* const context) {
-    string loss_type;
+    std::string loss_type;
     OP_REQUIRES_OK(context, context->GetAttr("loss_type", &loss_type));
     if (loss_type == "logistic_loss") {
       loss_updater.reset(new LogisticLossUpdater);
@@ -327,7 +327,7 @@ class SdcaFprint : public OpKernel {
       // safely be used as sentinel values (e.g. dense hash table empty key).
       out_values(i, 0) = TF_PREDICT_TRUE(fprint.low64 >= 2)
                              ? fprint.low64
-                             : fprint.low64 + ~static_cast<uint64>(1);
+                             : fprint.low64 + ~static_cast<uint64_t>(1);
       out_values(i, 1) = fprint.high64;
     }
   }

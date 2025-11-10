@@ -73,7 +73,7 @@ absl::Status ValidateSparseSegmentReduction(OpKernelContext* context,
     }
     int64_t output_rows =
         internal::SubtleMustCopy(num_segments_t.dtype() == DT_INT32
-                                     ? num_segments_t.scalar<int32>()()
+                                     ? num_segments_t.scalar<int32_t>()()
                                      : num_segments_t.scalar<int64_t>()());
     if (output_rows < 0) {
       return errors::InvalidArgument("segment ids must be >= 0");

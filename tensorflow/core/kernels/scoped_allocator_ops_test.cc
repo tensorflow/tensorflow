@@ -40,7 +40,8 @@ class ScopedAllocatorOpTest : public OpsTestBase {
  protected:
   void MakeOp(const TensorShape& shape,
               const absl::Span<const TensorShape> shapes, DataType dtype,
-              const string& name, int32_t id, int32_t expected_call_count) {
+              const std::string& name, int32_t id,
+              int32_t expected_call_count) {
     TF_EXPECT_OK(NodeDefBuilder("scoped_allocator_op", "_ScopedAllocator")
                      .Attr("T", dtype)
                      .Attr("shape", shape)
@@ -85,7 +86,7 @@ void PrepOp(DataType dtype, int32_t id,
             const std::vector<TensorShape>& fields_shapes,
             std::vector<ScopedAllocator::Field>* fields,
             Tensor** backing_tensor, Allocator* allocator,
-            ScopedAllocatorMgr* sam, const string& op_name,
+            ScopedAllocatorMgr* sam, const std::string& op_name,
             std::vector<Tensor>* tensors,
             absl::InlinedVector<TensorValue, 4>* inputs,
             const DataTypeVector& input_types) {
@@ -126,7 +127,7 @@ void PrepOp(DataType dtype, int32_t id,
 class ScopedAllocatorConcatOpTest : public OpsTestBase {
  protected:
   void BuildNodeDef(const TensorShape& shape, DataType dtype,
-                    const string& name, int32_t id, int32_t num_tensors) {
+                    const std::string& name, int32_t id, int32_t num_tensors) {
     TF_EXPECT_OK(
         NodeDefBuilder("scoped_allocator_concat_op", "_ScopedAllocatorConcat")
             .Attr("shape", shape)
@@ -142,8 +143,8 @@ class ScopedAllocatorConcatOpTest : public OpsTestBase {
   }
 
   void BuildNodeDefWithReshape(const TensorShape& shape, DataType dtype,
-                               bool reshape, const string& name, int32_t id,
-                               int32_t num_tensors) {
+                               bool reshape, const std::string& name,
+                               int32_t id, int32_t num_tensors) {
     TF_EXPECT_OK(
         NodeDefBuilder("scoped_allocator_concat_op", "_ScopedAllocatorConcat")
             .Attr("shape", shape)
@@ -160,7 +161,7 @@ class ScopedAllocatorConcatOpTest : public OpsTestBase {
   }
 
   void MakeOp(const TensorShape& shape, DataType dtype, bool reshape,
-              const string& name, int32_t id, int32_t num_tensors) {
+              const std::string& name, int32_t id, int32_t num_tensors) {
     BuildNodeDefWithReshape(shape, dtype, reshape, name, id, num_tensors);
     TF_EXPECT_OK(InitOp());
   }
@@ -260,7 +261,7 @@ TEST_F(ScopedAllocatorConcatOpTest, FailBounds) {
 class ScopedAllocatorSplitOpTest : public OpsTestBase {
  protected:
   void BuildNodeDef(const TensorShape& in_shape, DataType dtype,
-                    const string& name, int32_t id, int32_t num_tensors,
+                    const std::string& name, int32_t id, int32_t num_tensors,
                     const std::vector<TensorShape>& out_shapes) {
     TF_EXPECT_OK(
         NodeDefBuilder("scoped_allocator_split_op", "_ScopedAllocatorSplit")
@@ -275,8 +276,8 @@ class ScopedAllocatorSplitOpTest : public OpsTestBase {
             .Finalize(node_def()));
   }
 
-  void MakeOp(const TensorShape& in_shape, DataType dtype, const string& name,
-              int32_t id, int32_t num_tensors,
+  void MakeOp(const TensorShape& in_shape, DataType dtype,
+              const std::string& name, int32_t id, int32_t num_tensors,
               const std::vector<TensorShape>& out_shapes) {
     BuildNodeDef(in_shape, dtype, name, id, num_tensors, out_shapes);
     TF_EXPECT_OK(InitOp());

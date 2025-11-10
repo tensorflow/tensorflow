@@ -105,7 +105,7 @@ void SaveTensors(
             });
 
   for (const size_t i : sorted_name_idx) {
-    const string& name = tensor_names_flat(i);
+    const std::string& name = tensor_names_flat(i);
     const Tensor& input = context->input(i + kFixedInputs);
     TensorShape shape(input.shape());
     TensorSlice slice(input.dims());
@@ -160,7 +160,7 @@ void RestoreTensor(OpKernelContext* context,
             "Input 0 (file_pattern) must be a string scalar; got a tensor of ",
             size, " elements"));
   }
-  const string& file_pattern = file_pattern_t.flat<tstring>()(0);
+  const std::string& file_pattern = file_pattern_t.flat<tstring>()(0);
 
   const Tensor& tensor_name_t = context->input(1);
   {
@@ -170,7 +170,7 @@ void RestoreTensor(OpKernelContext* context,
                     "Input 1 (file_pattern) must be a have at least ",
                     restore_index + 1, " elements"));
   }
-  const string& tensor_name = tensor_name_t.flat<tstring>()(restore_index);
+  const std::string& tensor_name = tensor_name_t.flat<tstring>()(restore_index);
 
   // If we cannot find a cached reader we will allocate our own.
   std::unique_ptr<checkpoint::TensorSliceReader> allocated_reader;
@@ -256,9 +256,9 @@ const int64_t kLargeShapeThreshold = 16 << 20;  // 16M
 // restored from a thread pool: this requires creating a separate BundleReader
 // for each restore.
 struct RestoreOp {
-  RestoreOp(OpKernelContext* context, int idx, const string& tensor_name,
-            const string& shape_and_slice, const string& reader_prefix,
-            DataType dtype)
+  RestoreOp(OpKernelContext* context, int idx, const std::string& tensor_name,
+            const std::string& shape_and_slice,
+            const std::string& reader_prefix, DataType dtype)
       : context(context),
         idx(idx),
         tensor_name(tensor_name),
@@ -352,9 +352,9 @@ struct RestoreOp {
 
   OpKernelContext* context;
   int idx;
-  string tensor_name;
-  string shape_and_slice;
-  string reader_prefix;
+  std::string tensor_name;
+  std::string shape_and_slice;
+  std::string reader_prefix;
   DataType dtype;
 
   absl::Status status;
@@ -366,7 +366,7 @@ absl::Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
                               const Tensor& tensor_names,
                               const Tensor& shape_and_slices,
                               absl::Span<const DataType> dtypes) {
-  const string& prefix_string = prefix.scalar<tstring>()();
+  const std::string& prefix_string = prefix.scalar<tstring>()();
 
   const auto& tensor_names_flat = tensor_names.flat<tstring>();
   const auto& shape_and_slices_flat = shape_and_slices.flat<tstring>();
@@ -386,14 +386,14 @@ absl::Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
   TF_RETURN_IF_ERROR(default_reader.SortForSequentialAccess<RestoreOp>(
       restore_ops, [](const RestoreOp& op) { return op.tensor_name; }));
 
-  std::vector<string> mismatched_errors;
+  std::vector<std::string> mismatched_errors;
   for (const RestoreOp& restore_op : restore_ops) {
     TensorShape restored_full_shape;
     DataType original_dtype;
     TF_RETURN_IF_ERROR(default_reader.LookupDtypeAndShape(
         restore_op.tensor_name, &original_dtype, &restored_full_shape));
     if (restore_op.dtype != original_dtype) {
-      string error_msg = strings::StrCat(
+      std::string error_msg = strings::StrCat(
           "tensor_name = ", restore_op.tensor_name, "; expected dtype ",
           DataTypeString(restore_op.dtype), " does not equal original dtype ",
           DataTypeString(original_dtype));
@@ -401,7 +401,7 @@ absl::Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
     }
   }
   if (!mismatched_errors.empty()) {
-    const string error_msg = absl::StrJoin(mismatched_errors, "\n");
+    const std::string error_msg = absl::StrJoin(mismatched_errors, "\n");
     return errors::InvalidArgument(error_msg);
   }
 

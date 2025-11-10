@@ -54,7 +54,7 @@ class ShapeOp : public OpKernel {
       int64_t dim_size = shape.dim_size(i);
       if (out->dtype() == DT_INT32) {
         OP_REQUIRES(
-            ctx, FastBoundsCheck(dim_size, std::numeric_limits<int32>::max()),
+            ctx, FastBoundsCheck(dim_size, std::numeric_limits<int32_t>::max()),
             errors::InvalidArgument("Shape output type is 32-bit ", " but dim ",
                                     i, " is ", dim_size));
       }
@@ -83,7 +83,8 @@ class ShapeNOp : public OpKernel {
         int64_t dim_size = shape.dim_size(j);
         if (out->dtype() == DT_INT32) {
           OP_REQUIRES(
-              ctx, FastBoundsCheck(dim_size, std::numeric_limits<int32>::max()),
+              ctx,
+              FastBoundsCheck(dim_size, std::numeric_limits<int32_t>::max()),
               errors::InvalidArgument("ShapeN output type is 32-bit but shape ",
                                       i, " dim ", j, " is ", dim_size));
         }
@@ -105,7 +106,7 @@ class RankOp : public OpKernel {
     const int rank = shape.dims();
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
-    out->scalar<int32>()() = rank;
+    out->scalar<int32_t>()() = rank;
   }
 
   bool IsExpensive() override { return false; }
@@ -124,7 +125,7 @@ class SizeOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
     if (out->dtype() == DT_INT32) {
       OP_REQUIRES(
-          ctx, FastBoundsCheck(size, std::numeric_limits<int32>::max()),
+          ctx, FastBoundsCheck(size, std::numeric_limits<int32_t>::max()),
           errors::InvalidArgument("Number of elements was larger than "
                                   "representable by 32-bit output type"));
     }
@@ -193,7 +194,7 @@ class ExpandDimsOp : public OpKernel {
 class SqueezeOp : public OpKernel {
  public:
   explicit SqueezeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    std::vector<int32> squeeze_dims;
+    std::vector<int32_t> squeeze_dims;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("squeeze_dims", &squeeze_dims));
     squeeze_dims_.insert(squeeze_dims.begin(), squeeze_dims.end());
   }
@@ -206,7 +207,7 @@ class SqueezeOp : public OpKernel {
     const int existing_dims_size = static_cast<int>(existing_dims.size());
     std::vector<int64_t> new_shape;
 
-    std::unordered_set<int32> wrapped_squeeze_dims;
+    std::unordered_set<int32_t> wrapped_squeeze_dims;
     wrapped_squeeze_dims.reserve(squeeze_dims_.size());
     // Validate squeeze dims against the input.
     for (int32_t dim : squeeze_dims_) {
@@ -261,7 +262,7 @@ class SqueezeOp : public OpKernel {
   bool IsExpensive() override { return false; }
 
  private:
-  std::unordered_set<int32> squeeze_dims_;
+  std::unordered_set<int32_t> squeeze_dims_;
 };
 
 }  // namespace tensorflow
