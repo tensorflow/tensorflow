@@ -141,10 +141,16 @@ TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
         calls=fused_computation.1
     })";
 
-  // Check that a call to llvm.nvvm.barrier0 is generated.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
+  // Disable autotuning because this test is checking for that the native
+  // emitter generates a kernel correctly. Autotuning may change it to generate
+  // a triton kernel instead, which uses a different barrier.
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_autotune_level(0);
+  // Check that a call to llvm.nvvm.barrier0 is generated.
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
 ; CHECK: call void BARRIER()
