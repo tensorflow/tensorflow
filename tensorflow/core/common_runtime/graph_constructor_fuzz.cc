@@ -63,10 +63,10 @@ void FuzzGraphEndToEndSimpleFixedInput(const GraphDef& graph_def) {
   p1.scalar<float>()() = 1.0;
   Tensor p2(DT_FLOAT, TensorShape({1}));
   p2.scalar<float>()() = 2.0;
-  std::vector<std::pair<string, Tensor>> inputs = {{"Placeholder", p1},
-                                                   {"Placeholder_1", p2}};
-  std::vector<string> output_names = {"O_FUZZ"};
-  std::vector<string> target_names;
+  std::vector<std::pair<std::string, Tensor>> inputs = {{"Placeholder", p1},
+                                                        {"Placeholder_1", p2}};
+  std::vector<std::string> output_names = {"O_FUZZ"};
+  std::vector<std::string> target_names;
   std::vector<Tensor> outputs;
   status = sess->Run(inputs, output_names, target_names, &outputs);
 }
@@ -93,22 +93,22 @@ void FuzzGraphEndToEndAllStatic(const GraphDef& graph_def) {
     return;
   }
 
-  std::vector<std::pair<string, Tensor>> inputs = {};
-  std::vector<string> output_names = {};
-  std::vector<string> target_names = {};
+  std::vector<std::pair<std::string, Tensor>> inputs = {};
+  std::vector<std::string> output_names = {};
+  std::vector<std::string> target_names = {};
   std::vector<Tensor> outputs = {};
   status = sess->Run(inputs, output_names, target_names, &outputs);
 }
 FUZZ_TEST(GraphDefFuzz, FuzzGraphEndToEndAllStatic);
 
-Node* FindNode(const string& name, Graph* graph) {
+Node* FindNode(const std::string& name, Graph* graph) {
   for (Node* n : graph->nodes()) {
     if (n->name() == name) return n;
   }
   return nullptr;
 }
 
-bool HasNode(const string& name, Graph* graph) {
+bool HasNode(const std::string& name, Graph* graph) {
   return FindNode(name, graph) != nullptr;
 }
 
@@ -399,10 +399,10 @@ void FuzzGraphEndToEndFDP(std::vector<uint8_t> data) {
     input_tensors.push_back(input_tensor);
   }
 
-  std::vector<std::pair<string, Tensor>> inputs = {{"N0", input_tensors[0]},
-                                                   {"N1", input_tensors[1]}};
-  std::vector<string> output_names = {last_node};
-  std::vector<string> target_names;
+  std::vector<std::pair<std::string, Tensor>> inputs = {
+      {"N0", input_tensors[0]}, {"N1", input_tensors[1]}};
+  std::vector<std::string> output_names = {last_node};
+  std::vector<std::string> target_names;
   std::vector<Tensor> outputs;
   s = sess->Run(inputs, output_names, target_names, &outputs);
   if (!s.ok()) {

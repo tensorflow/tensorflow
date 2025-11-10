@@ -137,14 +137,14 @@ class GraphConstructor {
     bool expect_device_spec;
     bool propagate_device_spec;
 
-    string prefix;
+    std::string prefix;
     bool uniquify_names;
     bool uniquify_prefix;
     std::map<TensorId, TensorId> input_map;
     bool skip_mapped_nodes;
-    std::vector<string> control_dependencies;
+    std::vector<std::string> control_dependencies;
     std::vector<TensorId> return_tensors;
-    std::vector<string> return_nodes;
+    std::vector<std::string> return_nodes;
 
     // TODO(ashankar): This bool exists to separate out functionality required
     // to make ImportGraphDef a close equivalent of Python's import_graph_def
@@ -166,7 +166,7 @@ class GraphConstructor {
     // value to the Node when they are missing from the NodeDef.
     bool add_default_attributes = true;
 
-    string default_device;
+    std::string default_device;
   };
 
   typedef absl::Span<const NodeDef* const> NodeDefSlice;
@@ -288,7 +288,7 @@ class GraphConstructor {
 
   // Returns a unique version of `original_name`, or `original_name` if it's
   // already unique in the graph.
-  string FindUniqueName(absl::string_view original_name);
+  std::string FindUniqueName(absl::string_view original_name);
 
   // Decrement pending count for users of `processed` and add the ones that now
   // have all of their pending inputs satisfied to `ready_`.
@@ -321,7 +321,7 @@ class GraphConstructor {
   const VersionDef original_versions_;
 
   // A copy of opts_.prefix, possibly uniquified.
-  string prefix_;
+  std::string prefix_;
 
   StackTracesMap traces_;
 
@@ -364,7 +364,7 @@ class GraphConstructor {
 
   // Imported node names that have been uniquified. The key is the original
   // name, the value is the new unique name.
-  gtl::FlatMap<string, string> uniquified_names_;
+  gtl::FlatMap<std::string, std::string> uniquified_names_;
 
   // Index of NodeDefs in node_defs_ with all inputs already converted. We use a
   // (sorted) set so nodes are created in the order defined in the GraphDef.
@@ -381,10 +381,10 @@ class GraphConstructor {
   // Used in the conversion from node_defs_ to g_ to represent the ith input
   // of a node.
   struct InputInfo {
-    explicit InputInfo(const string& node_name, Node* n, int i)
+    explicit InputInfo(const std::string& node_name, Node* n, int i)
         : name(node_name), node(n), index(i) {}
     // Use string instead of StringPiece so we don't have to manage lifetime
-    string name;
+    std::string name;
     Node* node;
     int index;
 
@@ -402,10 +402,10 @@ class GraphConstructor {
   // Used in the conversion from node_defs_ to g_ to represent an edge from
   // the node named 'name' to node 'n'.
   struct EdgeInfo {
-    explicit EdgeInfo(const string& name, int i1, Node* n, int i2)
+    explicit EdgeInfo(const std::string& name, int i1, Node* n, int i2)
         : src_name(name), src_index(i1), dst_node(n), dst_index(i2) {}
     // Use string instead of StringPiece so we don't have to manage lifetime
-    string src_name;
+    std::string src_name;
     int src_index;
     Node* dst_node;
     int dst_index;
@@ -594,7 +594,7 @@ bool NodeNameInValues(const std::map<TensorId, TensorId>& input_map,
   return false;
 }
 
-bool NodeNameInValues(const std::vector<string>& control_dependencies,
+bool NodeNameInValues(const std::vector<std::string>& control_dependencies,
                       const absl::string_view& node_name) {
   return std::find(control_dependencies.begin(), control_dependencies.end(),
                    node_name) != control_dependencies.end();
@@ -632,7 +632,7 @@ absl::Status GraphConstructor::EnsureNoNameCollisions() {
   }
   if (prefix_.empty() && opts_.importing && !opts_.uniquify_names) {
     for (size_t i = 0; i < node_def_count(); ++i) {
-      const string& name = get_node_def(i).name();
+      const std::string& name = get_node_def(i).name();
       if (NameExistsInGraph(name)) {
         return errors::InvalidArgument("Node name '", name,
                                        "' already exists in the Graph");
@@ -646,7 +646,7 @@ absl::Status GraphConstructor::EnsureNoNameCollisions() {
                                      "' would lead to invalid node names");
     }
     if (NameExistsInGraph(prefix_no_slash) && opts_.uniquify_prefix) {
-      prefix_ = strings::StrCat(FindUniqueName(prefix_no_slash), "/");
+      prefix_ = absl::StrCat(FindUniqueName(prefix_no_slash), "/");
     }
   }
   return absl::OkStatus();
@@ -668,7 +668,7 @@ absl::Status GraphConstructor::ValidateInputMapAndControlDependencies() {
                                      "control edge and non-control edge");
     }
   }
-  for (const string& node : opts_.control_dependencies) {
+  for (const std::string& node : opts_.control_dependencies) {
     if (existing_nodes_.count(node) == 0) {
       return errors::InvalidArgument(
           "node '", node,
@@ -727,7 +727,7 @@ absl::Status GraphConstructor::InitFromEdges() {
   const int num_nodes = node_def_count();
   pending_count_.reserve(num_nodes);
   outputs_.resize(num_nodes);
-  gtl::FlatSet<string> next_iteration_nodes;
+  gtl::FlatSet<std::string> next_iteration_nodes;
   for (int n = 0; n < node_def_count(); ++n) {
     const NodeDef& node_def = get_node_def(n);
     if (IsNextIteration(node_def)) {
@@ -752,7 +752,7 @@ absl::Status GraphConstructor::InitFromEdges() {
           num_control_edges++;
         } else {
           TensorId id(ParseTensorName(input_name));
-          if (next_iteration_nodes.find(string(id.first)) !=
+          if (next_iteration_nodes.find(std::string(id.first)) !=
               next_iteration_nodes.end()) {
             has_loop_back_edge = true;
           }
@@ -796,7 +796,7 @@ absl::Status GraphConstructor::ValidateColocationConstraints(
     return absl::OkStatus();
   const auto iter = node_def.attr().find(kColocationAttrName);
   if (iter == node_def.attr().end()) return absl::OkStatus();
-  for (const string& c : iter->second.list().s()) {
+  for (const std::string& c : iter->second.list().s()) {
     absl::string_view s(c);
     if (absl::ConsumePrefix(&s, kColocationGroupPrefix) &&
         gdef_nodes_.find(s) == gdef_nodes_.end()) {
@@ -957,11 +957,11 @@ void GraphConstructor::AddControlDependencies(
 
   // node_def either has no inputs or all remapped inputs, add the control
   // dependencies
-  for (const string& control_dep : opts_.control_dependencies) {
-    string input = TensorId(control_dep, Graph::kControlSlot).ToString();
+  for (const std::string& control_dep : opts_.control_dependencies) {
+    std::string input = TensorId(control_dep, Graph::kControlSlot).ToString();
     bool found = false;
     for (int i = node_def->input_size() - 1; i >= 0; --i) {
-      const string& node_input = node_def->input(i);
+      const std::string& node_input = node_def->input(i);
       if (node_input[0] != '^') {
         // Control inputs are at the end. Break when we reach the non-control
         // inputs.
@@ -984,7 +984,7 @@ void GraphConstructor::AddControlDependencies(
 void GraphConstructor::AddPrefixToNodeDef(
     const std::vector<bool>& input_already_exists, NodeDef* node_def) {
   if (prefix_.empty()) return;
-  node_def->set_name(strings::StrCat(prefix_, node_def->name()));
+  node_def->set_name(absl::StrCat(prefix_, node_def->name()));
   // Update names of input nodes
   for (int i = 0; i < node_def->input_size(); ++i) {
     // Skip remapped inputs (which already exist in g_ and are not being
@@ -992,9 +992,9 @@ void GraphConstructor::AddPrefixToNodeDef(
     if (input_already_exists[i]) continue;
     absl::string_view input(node_def->input(i));
     if (absl::ConsumePrefix(&input, "^")) {
-      node_def->set_input(i, strings::StrCat("^", prefix_, input));
+      node_def->set_input(i, absl::StrCat("^", prefix_, input));
     } else {
-      node_def->set_input(i, strings::StrCat(prefix_, input));
+      node_def->set_input(i, absl::StrCat(prefix_, input));
     }
   }
   // Update names of colocation groups
@@ -1004,7 +1004,7 @@ void GraphConstructor::AddPrefixToNodeDef(
     for (int i = 0; i < list->s_size(); ++i) {
       absl::string_view v(list->s(i));
       if (absl::ConsumePrefix(&v, kColocationGroupPrefix)) {
-        list->set_s(i, strings::StrCat(kColocationGroupPrefix, prefix_, v));
+        list->set_s(i, absl::StrCat(kColocationGroupPrefix, prefix_, v));
       }
     }
   }
@@ -1013,7 +1013,7 @@ void GraphConstructor::AddPrefixToNodeDef(
 void GraphConstructor::UniquifyNames(
     const std::vector<bool>& input_already_exists, NodeDef* node_def) {
   if (NameExistsInGraph(node_def->name())) {
-    string old_name = node_def->name();
+    std::string old_name = node_def->name();
     node_def->set_name(FindUniqueName(node_def->name()));
     uniquified_names_[old_name] = node_def->name();
     // Note that we don't have to update gdef_nodes_ or gdef_prefixes_ with
@@ -1028,7 +1028,7 @@ void GraphConstructor::UniquifyNames(
     // We require that UniquifyNames() is called on all NodeDefs in topological
     // order. This guarantees that node_def's inputs will already be uniquified
     // if necessary.
-    auto iter = uniquified_names_.find(string(id.first));
+    auto iter = uniquified_names_.find(std::string(id.first));
     if (iter == uniquified_names_.end()) continue;
     id.first = iter->second;
     node_def->set_input(i, id.ToString());
@@ -1039,18 +1039,18 @@ void GraphConstructor::UpdateUniquifiedColocationNames() {
   for (const auto& pair : gdef_nodes_) {
     Node* node = pair.second.node;
     if (node == nullptr) continue;
-    std::vector<string> coloc_values;
+    std::vector<std::string> coloc_values;
     if (!TryGetNodeAttr(node->attrs(), kColocationAttrName, &coloc_values))
       continue;
     bool updated = false;
     for (size_t i = 0; i < coloc_values.size(); ++i) {
       absl::string_view val(coloc_values[i]);
       if (absl::ConsumePrefix(&val, kColocationGroupPrefix)) {
-        auto name_pair = uniquified_names_.find(string(val));
+        auto name_pair = uniquified_names_.find(std::string(val));
         if (name_pair == uniquified_names_.end()) continue;
         updated = true;
         coloc_values[i] =
-            strings::StrCat(kColocationGroupPrefix, name_pair->second);
+            absl::StrCat(kColocationGroupPrefix, name_pair->second);
       }
     }
     if (updated) {
@@ -1071,13 +1071,13 @@ bool GraphConstructor::NameExistsInGraphDef(absl::string_view name) {
   return false;
 }
 
-string GraphConstructor::FindUniqueName(absl::string_view original_name) {
-  string name(original_name);
+std::string GraphConstructor::FindUniqueName(absl::string_view original_name) {
+  std::string name(original_name);
   int count = 0;
   // Check that any generated names don't collide with imported NodeDefs (as
   // well as nodes in g_).
   while (NameExistsInGraph(name) || (count > 0 && NameExistsInGraphDef(name))) {
-    name = strings::StrCat(original_name, "_", ++count);
+    name = absl::StrCat(original_name, "_", ++count);
   }
   return name;
 }
@@ -1280,7 +1280,7 @@ absl::Status GraphConstructor::Convert() {
         return errors::InvalidArgument(out.str());
       }
 
-      inputs.emplace_back(string(tensor_id.node()), src_node, src_index);
+      inputs.emplace_back(std::string(tensor_id.node()), src_node, src_index);
     }
 
     if (has_data_back_edge && !IsMerge(node_def)) {

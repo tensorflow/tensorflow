@@ -36,13 +36,13 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-AttrValue FuncAttr(const string& name) {
+AttrValue FuncAttr(const std::string& name) {
   AttrValue attr;
   attr.mutable_func()->set_name(name);
   return attr;
 }
 
-AttrValue FuncAttr(const string& name, const DataType type) {
+AttrValue FuncAttr(const std::string& name, const DataType type) {
   AttrValue attr;
   attr.mutable_func()->set_name(name);
   (*attr.mutable_func()->mutable_attr())["T"].set_type(type);

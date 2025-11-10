@@ -41,13 +41,16 @@ class InlinedFunctionBodyPlacer {
  public:
   virtual ~InlinedFunctionBodyPlacer() = default;
 
-  virtual absl::optional<string> InputNodeDevice(int input_index) const = 0;
-  virtual absl::optional<string> OutputNodeDevice(int output_index) const = 0;
+  virtual absl::optional<std::string> InputNodeDevice(
+      int input_index) const = 0;
+  virtual absl::optional<std::string> OutputNodeDevice(
+      int output_index) const = 0;
   // Returns true if the added input/output identity nodes should be colocated
   // with the corresponding input/output from the function body.
   virtual bool ColocateInputOutputIdentities() const = 0;
-  virtual absl::optional<string> ControlNodeDevice() const = 0;
-  virtual absl::optional<string> BodyNodeDevice(const NodeDef& ndef) const = 0;
+  virtual absl::optional<std::string> ControlNodeDevice() const = 0;
+  virtual absl::optional<std::string> BodyNodeDevice(
+      const NodeDef& ndef) const = 0;
 
   // LINT.IfChange
   // Place input nodes on the same device as the corresponding caller input
@@ -72,7 +75,7 @@ class InlinedFunctionBodyPlacer {
       const Graph&, const Node&)>;
 
   struct Config {
-    string name;
+    std::string name;
     Factory get;
   };
 
@@ -147,7 +150,7 @@ struct InlineFunctionBodyOptions {
   bool uniquify_frame_names = true;
 
   // A human-readable debug string for this options.
-  string DebugString() const;
+  std::string DebugString() const;
 };
 
 // Returns 'OkStatus()' iff the function '*fbody' can be inlined at 'node'
