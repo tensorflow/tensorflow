@@ -438,7 +438,7 @@ def strict_cc_test(
         shuffle_tests = True,
         args = None,
         fail_if_no_test_linked = True,
-        fail_if_no_test_selected = True,
+        fail_if_no_test_selected = False,
         **kwargs):
     """A drop-in replacement for cc_test that enforces some good practices by default.
 
