@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -761,20 +762,50 @@ static absl::Status AbortCliquesWithIncarnations(
     }
   }
 
-  // Delete constructed collectives.
+  // Abort collectives.
   absl::Status result;
+  absl::Mutex result_mu;
+  {
+    // We need to abort all communicators concurrently. If we abort serially, an
+    // abort of one communicator may get blocked by a pending collective on a
+    // different communicator.
+    std::vector<std::unique_ptr<tsl::Thread>> threads;
+    for (auto& [key, lockable_clique] : map) {
+      if (!CliqueKeyContainsIncarnation(key, incarnation_set)) {
+        VLOG(1) << "Not aborting GPU clique " << key.ToString()
+                << " because it does not include a stale incarnation";
+        continue;
+      }
+
+      auto abort = [&result, &result_mu, key = key,
+                    lockable_clique = &lockable_clique]() {
+        VLOG(1) << "Aborting GPU clique " << key.ToString();
+        if (absl::Status s = lockable_clique->Abort(); !s.ok()) {
+          LOG(ERROR) << "Error aborting GPU clique " << key.ToString() << ": "
+                     << s;
+          absl::MutexLock lock(result_mu);
+          result = std::move(s);
+        } else {
+          VLOG(1) << "Aborted GPU clique " << key.ToString();
+        }
+      };
+
+      VLOG(1) << "Launching thread to abort GPU clique " << key.ToString();
+      threads.push_back(absl::WrapUnique(tsl::Env::Default()->StartThread(
+          tsl::ThreadOptions(), "abort", abort)));
+    }
+  }  // threads' destructor will block until all threads finish.
+
+  // Garbage collect aborted collectives.
   for (auto it = map.begin(); it != map.end();) {
     auto copy = it++;
     auto& [key, lockable_clique] = *copy;
     if (!CliqueKeyContainsIncarnation(key, incarnation_set)) {
-      VLOG(1) << "Not aborting GPU clique " << key.ToString();
+      VLOG(1) << "Not removing GPU clique " << key.ToString()
+              << " because it does not include a stale incarnation";
       continue;
     }
-    VLOG(1) << "Aborting GPU clique " << key.ToString();
-    if (absl::Status s = lockable_clique.Abort(); !s.ok()) {
-      LOG(ERROR) << "Error aborting GPU clique " << key.ToString() << ": " << s;
-      result = std::move(s);
-    }
+    VLOG(1) << "Removing GPU clique " << key.ToString();
     map.erase(copy);
   }
   return result;
