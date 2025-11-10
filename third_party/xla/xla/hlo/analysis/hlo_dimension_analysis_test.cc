@@ -35,10 +35,10 @@ class HloDimensionAnalysisTest : public HloHardwareIndependentTestBase {
   bool IsWeight(const HloDimensionAnalysis& hlo_dimension_analysis,
                 HloModule* module, absl::string_view instruction_name) {
     HloInstruction* instruction = FindInstruction(module, instruction_name);
-    std::optional<ShapeTree<WeightInfo>> weight_info =
-        hlo_dimension_analysis.GetWeightInfo(instruction);
-    return weight_info.has_value() &&
-           (*weight_info).element({}) == WeightInfo::kWeight;
+    std::optional<ShapeTree<DimensionInfo>> dim_info =
+        hlo_dimension_analysis.GetDimensionInfo(instruction);
+    return dim_info.has_value() &&
+           (*dim_info).element({}) == DimensionInfo::kWeight;
   }
 };
 

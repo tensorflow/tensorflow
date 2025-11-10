@@ -40,25 +40,25 @@ limitations under the License.
 
 namespace xla {
 
-enum WeightInfo : uint8_t {
+enum DimensionInfo : uint8_t {
   kWeight,
   kTuple,
   kUnknown,
 };
 
-inline std::string WeightInfoToString(WeightInfo weight_info) {
-  switch (weight_info) {
-    case WeightInfo::kWeight:
+inline std::string DimensionInfoToString(DimensionInfo dim_info) {
+  switch (dim_info) {
+    case DimensionInfo::kWeight:
       return "weight";
-    case WeightInfo::kTuple:
+    case DimensionInfo::kTuple:
       return "tuple";
-    case WeightInfo::kUnknown:
+    case DimensionInfo::kUnknown:
       return "unknown";
   }
 }
 
-using WeightInfoMap =
-    absl::node_hash_map<const HloInstruction*, ShapeTree<WeightInfo>>;
+using DimensionInfoMap =
+    absl::node_hash_map<const HloInstruction*, ShapeTree<DimensionInfo>>;
 
 // This analysis pass determines which HLO instructions produce/are weights.
 // Parameters to the entry computation are considered weights, and this property
@@ -66,26 +66,26 @@ using WeightInfoMap =
 // etc).
 class HloDimensionAnalysis {
  public:
-  friend class HloWeightPropagation;
+  friend class HloDimensionInfoPropagation;
   static absl::StatusOr<std::unique_ptr<HloDimensionAnalysis>> Run(
       const HloModule& module,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
-  // Whether the instruction has been annotated with weight info.
-  bool HasWeightInfo(const HloInstruction* instruction) const {
+  // Whether the instruction has been annotated with dimension info.
+  bool HasDimensionInfo(const HloInstruction* instruction) const {
     return info_map_.contains(instruction);
   }
 
   // Whether any leaf in the instruction shape is a weight.
   bool IsInstructionWeight(const HloInstruction* instruction) const;
 
-  // Returns map of HLO instructions to their weight info.
+  // Returns map of HLO instructions to their dimension info.
   // If an instruction is not found in the map, it means that we have not
-  // determined it is a weight.
-  const WeightInfoMap& GetWeightInfoMap() const { return info_map_; }
+  // determined its dimension info.
+  const DimensionInfoMap& GetDimensionInfoMap() const { return info_map_; }
 
-  // Returns the weight info for the given instruction.
-  std::optional<ShapeTree<WeightInfo>> GetWeightInfo(
+  // Returns the dimension info for the given instruction.
+  std::optional<ShapeTree<DimensionInfo>> GetDimensionInfo(
       const HloInstruction* instruction) const;
 
  protected:
@@ -99,53 +99,58 @@ class HloDimensionAnalysis {
   // weights.
   absl::Status SetInstructionAsWeight(HloInstruction* instruction);
 
-  // Sets the weight info for the given target instruction.
-  absl::Status SetWeightInfo(const HloInstruction* target,
-                             ShapeTree<WeightInfo> weight_annotation);
+  // Sets the dimension info for the given target instruction.
+  absl::Status SetDimensionInfo(const HloInstruction* target,
+                                ShapeTree<DimensionInfo> annotation);
 
   // Annotates the entry computation parameters as weights.
   absl::Status AnnotateEntryComputationParameters(const HloModule& module);
 
-  // Runs the weight analysis on the given computation.
+  // Runs the analysis on the given computation to determine the DimensionInfo
+  // for each instruction.
   absl::Status RunOnComputation(const HloComputation& computation);
 
-  // Runs the weight analysis on the given computation, with the given operands
-  // as the computation parameters. Propagates the weight info from the
+  // Runs the analysis on the given computation, with the given operands as the
+  // computation parameters. Propagates the dimension info from the callsite
   // operands to the computation parameters.
   absl::Status RunOnComputation(
       const HloComputation& computation,
       absl::Span<const HloInstruction* const> operands);
 
-  WeightInfoMap info_map_;
+  DimensionInfoMap info_map_;
   const HloModule& module_;
   const absl::flat_hash_set<absl::string_view>& execution_threads_;
 };
 
-class HloWeightPropagation : public DfsHloVisitorWithDefault {
+class HloDimensionInfoPropagation : public DfsHloVisitorWithDefault {
  public:
-  explicit HloWeightPropagation(HloDimensionAnalysis* dimension_analysis)
+  explicit HloDimensionInfoPropagation(HloDimensionAnalysis* dimension_analysis)
       : analysis_(dimension_analysis) {}
   absl::Status Run(const HloComputation& computation);
   absl::Status DefaultAction(HloInstruction* instruction) override;
-  absl::Status HandleTuple(HloInstruction* tuple) override;
-  absl::Status HandleGetTupleElement(
-      HloInstruction* get_tuple_element) override;
+  // go/keep-sorted start
+  absl::Status HandleAllGather(HloInstruction* all_gather) override;
+  absl::Status HandleBitcast(HloInstruction* bitcast) override;
+  absl::Status HandleBitcastConvert(HloInstruction* bitcast_convert) override;
   absl::Status HandleCall(HloInstruction* call) override;
-  absl::Status HandleWhile(HloInstruction* xla_while) override;
-  absl::Status HandleSimpleOp(HloInstruction* op);
+  absl::Status HandleConvert(HloInstruction* convert) override;
+  absl::Status HandleCopy(HloInstruction* copy) override;
   absl::Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
   absl::Status HandleDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice) override;
-  absl::Status HandleSlice(HloInstruction* slice) override;
-  absl::Status HandleConvert(HloInstruction* convert) override;
-  absl::Status HandleReshape(HloInstruction* reshape) override;
-  absl::Status HandleBitcast(HloInstruction* bitcast) override;
-  absl::Status HandleTranspose(HloInstruction* transpose) override;
-  absl::Status HandleCopy(HloInstruction* copy) override;
-  absl::Status HandleBitcastConvert(HloInstruction* bitcast_convert) override;
+  absl::Status HandleGetTupleElement(
+      HloInstruction* get_tuple_element) override;
   absl::Status HandleOptimizationBarrier(
       HloInstruction* optimization_barrier) override;
-  absl::Status HandleAllGather(HloInstruction* all_gather) override;
+  absl::Status HandleReshape(HloInstruction* reshape) override;
+  absl::Status HandleSlice(HloInstruction* slice) override;
+  absl::Status HandleTranspose(HloInstruction* transpose) override;
+  absl::Status HandleTuple(HloInstruction* tuple) override;
+  absl::Status HandleWhile(HloInstruction* xla_while) override;
+  // go/keep-sorted end
+
+ private:
+  absl::Status HandleSimpleOp(HloInstruction* op);
 
  protected:
   HloDimensionAnalysis* analysis_;

@@ -48,12 +48,12 @@ bool HloDimensionAnalysis::IsInstructionWeight(
     return false;
   }
   return absl::c_any_of(it->second.leaves(),
-                        [](const std::pair<ShapeIndex, WeightInfo>& leaf) {
-                          return leaf.second == WeightInfo::kWeight;
+                        [](const std::pair<ShapeIndex, DimensionInfo>& leaf) {
+                          return leaf.second == DimensionInfo::kWeight;
                         });
 }
 
-std::optional<ShapeTree<WeightInfo>> HloDimensionAnalysis::GetWeightInfo(
+std::optional<ShapeTree<DimensionInfo>> HloDimensionAnalysis::GetDimensionInfo(
     const HloInstruction* instruction) const {
   auto it = info_map_.find(instruction);
   if (it == info_map_.end()) {
@@ -66,31 +66,31 @@ absl::Status HloDimensionAnalysis::SetInstructionAsWeight(
     HloInstruction* instruction) {
   auto [it, success] = info_map_.emplace(
       std::piecewise_construct, std::forward_as_tuple(instruction),
-      std::forward_as_tuple(instruction->shape(), WeightInfo::kUnknown));
+      std::forward_as_tuple(instruction->shape(), DimensionInfo::kUnknown));
 
   if (!success) {
     return absl::InternalError(absl::StrCat(
         "Instruction ", instruction->ToString(), " already has weight info."));
   }
 
-  ShapeTree<WeightInfo>& weight_tree = it->second;
-  weight_tree.ForEachMutableElement(
-      [&](const ShapeIndex& index, WeightInfo* weight_info) {
-        if (weight_tree.IsLeaf(index)) {
-          *weight_info = WeightInfo::kWeight;
+  ShapeTree<DimensionInfo>& dim_info_tree = it->second;
+  dim_info_tree.ForEachMutableElement(
+      [&](const ShapeIndex& index, DimensionInfo* operation_info) {
+        if (dim_info_tree.IsLeaf(index)) {
+          *operation_info = DimensionInfo::kWeight;
           return;
         }
-        *weight_info = WeightInfo::kTuple;
+        *operation_info = DimensionInfo::kTuple;
       });
   return absl::OkStatus();
 }
 
-absl::Status HloDimensionAnalysis::SetWeightInfo(
-    const HloInstruction* target, ShapeTree<WeightInfo> weight_annotation) {
-  auto [it, success] = info_map_.emplace(target, std::move(weight_annotation));
+absl::Status HloDimensionAnalysis::SetDimensionInfo(
+    const HloInstruction* target, ShapeTree<DimensionInfo> annotation) {
+  auto [it, success] = info_map_.emplace(target, std::move(annotation));
   if (!success) {
     return absl::InternalError(absl::StrCat("Instruction ", target->ToString(),
-                                            " already has weight info."));
+                                            " already has dimensioin info."));
   }
   return absl::OkStatus();
 }
@@ -109,20 +109,18 @@ absl::Status HloDimensionAnalysis::AnnotateEntryComputationParameters(
 absl::StatusOr<std::unique_ptr<HloDimensionAnalysis>> HloDimensionAnalysis::Run(
     const HloModule& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  std::unique_ptr<HloDimensionAnalysis> weight_analysis =
+  std::unique_ptr<HloDimensionAnalysis> analysis =
       absl::WrapUnique(new HloDimensionAnalysis(module, execution_threads));
-  TF_RETURN_IF_ERROR(
-      weight_analysis->AnnotateEntryComputationParameters(module));
-  TF_RETURN_IF_ERROR(
-      weight_analysis->RunOnComputation(*module.entry_computation()));
-  return weight_analysis;
+  TF_RETURN_IF_ERROR(analysis->AnnotateEntryComputationParameters(module));
+  TF_RETURN_IF_ERROR(analysis->RunOnComputation(*module.entry_computation()));
+  return analysis;
 }
 
 absl::Status HloDimensionAnalysis::RunOnComputation(
     const HloComputation& computation) {
   if (HloInstruction::IsThreadIncluded(computation.execution_thread(),
                                        execution_threads_)) {
-    HloWeightPropagation propagation(this);
+    HloDimensionInfoPropagation propagation(this);
     return propagation.Run(computation);
   }
   return absl::OkStatus();
@@ -133,17 +131,18 @@ absl::Status HloDimensionAnalysis::RunOnComputation(
     absl::Span<const HloInstruction* const> operands) {
   CHECK_EQ(computation.num_parameters(), operands.size());
   for (int i = 0; i < computation.num_parameters(); ++i) {
-    auto weight_info_iter = info_map_.find(operands[i]);
-    if (weight_info_iter == info_map_.end()) {
+    auto operation_info_iter = info_map_.find(operands[i]);
+    if (operation_info_iter == info_map_.end()) {
       continue;
     }
-    TF_RETURN_IF_ERROR(SetWeightInfo(computation.parameter_instructions()[i],
-                                     weight_info_iter->second));
+    TF_RETURN_IF_ERROR(SetDimensionInfo(computation.parameter_instructions()[i],
+                                        operation_info_iter->second));
   }
   return RunOnComputation(computation);
 }
 
-absl::Status HloWeightPropagation::Run(const HloComputation& computation) {
+absl::Status HloDimensionInfoPropagation::Run(
+    const HloComputation& computation) {
   TF_RETURN_IF_ERROR(computation.root_instruction()->Accept(this));
   for (HloInstruction* instruction : computation.instructions()) {
     if (instruction->user_count() == 0) {
@@ -153,63 +152,67 @@ absl::Status HloWeightPropagation::Run(const HloComputation& computation) {
   return absl::OkStatus();
 }
 
-absl::Status HloWeightPropagation::DefaultAction(HloInstruction* instruction) {
+absl::Status HloDimensionInfoPropagation::DefaultAction(
+    HloInstruction* instruction) {
   return absl::OkStatus();
 }
 
 #define RETURN_IF_ALREADY_PROPAGATED(instruction) \
-  if (analysis_->HasWeightInfo(instruction)) {    \
+  if (analysis_->HasDimensionInfo(instruction)) { \
     return absl::OkStatus();                      \
   }
 
-absl::Status HloWeightPropagation::HandleTuple(HloInstruction* tuple) {
+absl::Status HloDimensionInfoPropagation::HandleTuple(HloInstruction* tuple) {
   RETURN_IF_ALREADY_PROPAGATED(tuple);
-  bool has_weight_info = false;
-  ShapeTree<WeightInfo> weight_tree(tuple->shape(), WeightInfo::kUnknown);
+  bool has_operation_info = false;
+  ShapeTree<DimensionInfo> dim_info_tree(tuple->shape(),
+                                         DimensionInfo::kUnknown);
   for (int64_t idx = 0; idx < tuple->operand_count(); ++idx) {
     const HloInstruction* operand = tuple->operand(idx);
     if (analysis_->IsInstructionWeight(operand)) {
-      weight_tree.CopySubtreeFrom(*analysis_->GetWeightInfo(operand), {},
-                                  {idx});
-      has_weight_info = true;
+      dim_info_tree.CopySubtreeFrom(*analysis_->GetDimensionInfo(operand), {},
+                                    {idx});
+      has_operation_info = true;
     }
   }
 
-  if (has_weight_info) {
-    TF_RETURN_IF_ERROR(analysis_->SetWeightInfo(tuple, std::move(weight_tree)));
+  if (has_operation_info) {
+    TF_RETURN_IF_ERROR(
+        analysis_->SetDimensionInfo(tuple, std::move(dim_info_tree)));
   }
 
   return absl::OkStatus();
 }
 
-absl::Status HloWeightPropagation::HandleGetTupleElement(
+absl::Status HloDimensionInfoPropagation::HandleGetTupleElement(
     HloInstruction* get_tuple_element) {
   RETURN_IF_ALREADY_PROPAGATED(get_tuple_element);
   const HloInstruction* operand = get_tuple_element->operand(0);
   if (analysis_->IsInstructionWeight(operand)) {
-    ShapeTree<WeightInfo> weight_tree(get_tuple_element->shape(),
-                                      WeightInfo::kUnknown);
-    weight_tree.CopySubtreeFrom(*analysis_->GetWeightInfo(operand),
-                                {get_tuple_element->tuple_index()}, {});
-    TF_RETURN_IF_ERROR(
-        analysis_->SetWeightInfo(get_tuple_element, std::move(weight_tree)));
+    ShapeTree<DimensionInfo> dim_info_tree(get_tuple_element->shape(),
+                                           DimensionInfo::kUnknown);
+    dim_info_tree.CopySubtreeFrom(*analysis_->GetDimensionInfo(operand),
+                                  {get_tuple_element->tuple_index()}, {});
+    TF_RETURN_IF_ERROR(analysis_->SetDimensionInfo(get_tuple_element,
+                                                   std::move(dim_info_tree)));
   }
   return absl::OkStatus();
 }
 
-absl::Status HloWeightPropagation::HandleCall(HloInstruction* call) {
+absl::Status HloDimensionInfoPropagation::HandleCall(HloInstruction* call) {
   RETURN_IF_ALREADY_PROPAGATED(call);
   HloComputation* computation = call->called_computations()[0];
   TF_RETURN_IF_ERROR(
       analysis_->RunOnComputation(*computation, call->operands()));
   if (analysis_->IsInstructionWeight(computation->root_instruction())) {
-    TF_RETURN_IF_ERROR(analysis_->SetWeightInfo(
-        call, *analysis_->GetWeightInfo(computation->root_instruction())));
+    TF_RETURN_IF_ERROR(analysis_->SetDimensionInfo(
+        call, *analysis_->GetDimensionInfo(computation->root_instruction())));
   }
   return absl::OkStatus();
 }
 
-absl::Status HloWeightPropagation::HandleWhile(HloInstruction* xla_while) {
+absl::Status HloDimensionInfoPropagation::HandleWhile(
+    HloInstruction* xla_while) {
   RETURN_IF_ALREADY_PROPAGATED(xla_while);
   TF_RETURN_IF_ERROR(analysis_->RunOnComputation(*xla_while->while_condition(),
                                                  xla_while->operands()));
@@ -217,15 +220,16 @@ absl::Status HloWeightPropagation::HandleWhile(HloInstruction* xla_while) {
   TF_RETURN_IF_ERROR(
       analysis_->RunOnComputation(*computation, xla_while->operands()));
   if (analysis_->IsInstructionWeight(computation->root_instruction())) {
-    TF_RETURN_IF_ERROR(analysis_->SetWeightInfo(
-        xla_while, *analysis_->GetWeightInfo(computation->root_instruction())));
+    TF_RETURN_IF_ERROR(analysis_->SetDimensionInfo(
+        xla_while,
+        *analysis_->GetDimensionInfo(computation->root_instruction())));
   }
   return absl::OkStatus();
 }
 
 // Called for operations that operate on a single operand and do not change
 // the weight "nature" of their operand.
-absl::Status HloWeightPropagation::HandleSimpleOp(HloInstruction* op) {
+absl::Status HloDimensionInfoPropagation::HandleSimpleOp(HloInstruction* op) {
   RETURN_IF_ALREADY_PROPAGATED(op);
   const HloInstruction* operand = op->operand(0);
   if (analysis_->IsInstructionWeight(operand)) {
@@ -234,12 +238,12 @@ absl::Status HloWeightPropagation::HandleSimpleOp(HloInstruction* op) {
   return absl::OkStatus();
 }
 
-absl::Status HloWeightPropagation::HandleDynamicSlice(
+absl::Status HloDimensionInfoPropagation::HandleDynamicSlice(
     HloInstruction* dynamic_slice) {
   return HandleSimpleOp(dynamic_slice);
 }
 
-absl::Status HloWeightPropagation::HandleDynamicUpdateSlice(
+absl::Status HloDimensionInfoPropagation::HandleDynamicUpdateSlice(
     HloInstruction* dynamic_update_slice) {
   RETURN_IF_ALREADY_PROPAGATED(dynamic_update_slice);
   // If either the operand or the update is a weight, we consider the output to
@@ -253,36 +257,40 @@ absl::Status HloWeightPropagation::HandleDynamicUpdateSlice(
   return absl::OkStatus();
 }
 
-absl::Status HloWeightPropagation::HandleSlice(HloInstruction* slice) {
+absl::Status HloDimensionInfoPropagation::HandleSlice(HloInstruction* slice) {
   return HandleSimpleOp(slice);
 }
 
-absl::Status HloWeightPropagation::HandleConvert(HloInstruction* convert) {
+absl::Status HloDimensionInfoPropagation::HandleConvert(
+    HloInstruction* convert) {
   return HandleSimpleOp(convert);
 }
 
-absl::Status HloWeightPropagation::HandleReshape(HloInstruction* reshape) {
+absl::Status HloDimensionInfoPropagation::HandleReshape(
+    HloInstruction* reshape) {
   return HandleSimpleOp(reshape);
 }
 
-absl::Status HloWeightPropagation::HandleBitcast(HloInstruction* bitcast) {
+absl::Status HloDimensionInfoPropagation::HandleBitcast(
+    HloInstruction* bitcast) {
   return HandleSimpleOp(bitcast);
 }
 
-absl::Status HloWeightPropagation::HandleTranspose(HloInstruction* transpose) {
+absl::Status HloDimensionInfoPropagation::HandleTranspose(
+    HloInstruction* transpose) {
   return HandleSimpleOp(transpose);
 }
 
-absl::Status HloWeightPropagation::HandleCopy(HloInstruction* copy) {
+absl::Status HloDimensionInfoPropagation::HandleCopy(HloInstruction* copy) {
   return HandleSimpleOp(copy);
 }
 
-absl::Status HloWeightPropagation::HandleBitcastConvert(
+absl::Status HloDimensionInfoPropagation::HandleBitcastConvert(
     HloInstruction* bitcast_convert) {
   return HandleSimpleOp(bitcast_convert);
 }
 
-absl::Status HloWeightPropagation::HandleOptimizationBarrier(
+absl::Status HloDimensionInfoPropagation::HandleOptimizationBarrier(
     HloInstruction* optimization_barrier) {
   RETURN_IF_ALREADY_PROPAGATED(optimization_barrier);
   CHECK_EQ(optimization_barrier->operand_count(), 1)
@@ -290,14 +298,15 @@ absl::Status HloWeightPropagation::HandleOptimizationBarrier(
   const HloInstruction* optimization_barrier_operand =
       optimization_barrier->operand(0);
   if (analysis_->IsInstructionWeight(optimization_barrier_operand)) {
-    TF_RETURN_IF_ERROR(analysis_->SetWeightInfo(
+    TF_RETURN_IF_ERROR(analysis_->SetDimensionInfo(
         optimization_barrier,
-        *analysis_->GetWeightInfo(optimization_barrier_operand)));
+        *analysis_->GetDimensionInfo(optimization_barrier_operand)));
   }
   return absl::OkStatus();
 }
 
-absl::Status HloWeightPropagation::HandleAllGather(HloInstruction* all_gather) {
+absl::Status HloDimensionInfoPropagation::HandleAllGather(
+    HloInstruction* all_gather) {
   return HandleSimpleOp(all_gather);
 }
 
