@@ -941,6 +941,10 @@ SymbolicExpr SymbolicExprContext::Parse(absl::string_view expr_str) {
   return Parser(expr_str, this).Parse();
 }
 
+bool SymbolicExprContext::operator==(const SymbolicExprContext& other) const {
+  return mlir_context_ == other.mlir_context_;
+}
+
 void SymbolicExpr::Walk(
     const std::function<void(SymbolicExpr)>& callback) const {
   if (!*this) {

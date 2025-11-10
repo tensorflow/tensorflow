@@ -352,6 +352,29 @@ TEST_F(SymbolicMapTest, CompressSymbols) {
                "Attempting to compress a used symbol: 2");
 }
 
+TEST_F(SymbolicMapTest, EqualityWithDifferentContexts) {
+  mlir::MLIRContext mlir_context2;
+  SymbolicExprContext ctx2(&mlir_context2);
+  // ctx2 and ctx3 will have the same MLIRContext, and thus the same
+  // StorageUniquer, so they should be considered equal.
+  SymbolicExprContext ctx3(&mlir_context2);
+
+  SymbolicExpr d0_ctx1 = CreateDimExpr(&ctx, 0);
+  SymbolicExpr d0_ctx2 = CreateDimExpr(&ctx2, 0);
+  SymbolicExpr d0_ctx3 = CreateDimExpr(&ctx3, 0);
+
+  SymbolicMap map1 = SymbolicMap::Get(&ctx, 1, 0, {d0_ctx1});
+  SymbolicMap map2 = SymbolicMap::Get(&ctx2, 1, 0, {d0_ctx2});
+  SymbolicMap map3 = SymbolicMap::Get(&ctx3, 1, 0, {d0_ctx3});
+
+  // Maps with different contexts should not be equal.
+  EXPECT_TRUE(map1 != map2);
+
+  // Maps with the same UniquerStorage and expressions should be equal even if
+  // they have different SymbolicExprContexts.
+  EXPECT_TRUE(map2 == map3);
+}
+
 TEST_F(SymbolicMapTest, Hashing) {
   absl::flat_hash_set<SymbolicMap> set;
 

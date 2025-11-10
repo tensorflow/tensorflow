@@ -352,5 +352,18 @@ TEST_F(SymbolicExprTest, Hashing) {
   EXPECT_EQ(set.size(), 6);
 }
 
+TEST_F(SymbolicExprTest, SymbolicExprContextEq) {
+  mlir::MLIRContext mlir_context2;
+  SymbolicExprContext ctx2(&mlir_context2);
+
+  // Different MLIRContexts should result in different SymbolicExprContexts.
+  EXPECT_NE(ctx, ctx2);
+
+  // Same MLIRContext should result in same StorageUniquer and thus equal
+  // SymbolicExprContexts.
+  SymbolicExprContext ctx3(&mlir_context);
+  EXPECT_EQ(ctx, ctx3);
+}
+
 }  // namespace
 }  // namespace xla

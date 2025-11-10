@@ -162,6 +162,11 @@ class SymbolicExprContext {
   SymbolicExpr CreateBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
                               SymbolicExpr rhs);
 
+  bool operator==(const SymbolicExprContext& other) const;
+  bool operator!=(const SymbolicExprContext& other) const {
+    return !(*this == other);
+  }
+
   mlir::MLIRContext* GetMLIRContext() const { return mlir_context_; }
 
  private:

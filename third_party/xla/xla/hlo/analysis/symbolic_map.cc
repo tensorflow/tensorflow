@@ -212,8 +212,11 @@ SymbolicMap SymbolicMap::Replace(SymbolicExpr expr,
 }
 
 bool SymbolicMap::operator==(const SymbolicMap& other) const {
-  return ctx_ == other.ctx_ && num_dimensions_ == other.num_dimensions_ &&
-         num_symbols_ == other.num_symbols_ && exprs_ == other.exprs_;
+  const bool same_context =
+      (ctx_ == other.ctx_) ||
+      (ctx_ != nullptr && other.ctx_ != nullptr && *ctx_ == *other.ctx_);
+  return (same_context && num_dimensions_ == other.num_dimensions_ &&
+          num_symbols_ == other.num_symbols_ && exprs_ == other.exprs_);
 }
 
 llvm::SmallBitVector GetUnusedDimensionsBitVector(const SymbolicMap& map) {
