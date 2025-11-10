@@ -777,8 +777,8 @@ class StatelessParameterizedTruncatedNormal : public OpKernel {
                                 shape_tensor.shape().DebugString()));
     TensorShape output_shape;
     if (shape_tensor.dtype() == DataType::DT_INT32) {
-      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int32>(),
-                                                      &output_shape));
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
+                              shape_tensor.vec<int32_t>(), &output_shape));
     } else {
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
                               shape_tensor.vec<int64_t>(), &output_shape));

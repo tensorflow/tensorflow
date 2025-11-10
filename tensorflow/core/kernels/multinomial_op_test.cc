@@ -29,7 +29,7 @@ static Graph* Multinomial(int batch_size, int num_classes, int num_samples) {
   Tensor logits_t(DT_FLOAT, TensorShape({batch_size, num_classes}));
   Tensor num_samples_t(DT_INT32, TensorShape());
   logits_t.flat<float>().setRandom();
-  num_samples_t.scalar<int32>().setConstant(num_samples);
+  num_samples_t.scalar<int32_t>().setConstant(num_samples);
 
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("multinomial"), "Multinomial")

@@ -46,8 +46,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 Pool3dParameters::Pool3dParameters(OpKernelContext* context,
-                                   const std::vector<int32>& ksize,
-                                   const std::vector<int32>& stride,
+                                   const std::vector<int32_t>& ksize,
+                                   const std::vector<int32_t>& stride,
                                    Padding padding, TensorFormat data_format,
                                    const TensorShape& tensor_in_shape) {
   // For maxpooling, tensor_in should have 4 dimensions.
@@ -97,9 +97,9 @@ absl::Status Pool3dParameters::forward_output_shape(TensorShape* shape) {
 template <typename T>
 struct LaunchPoolingOp<CPUDevice, T, AVG> {
   static void launch(OpKernelContext* context, const Tensor& tensor_in,
-                     const std::array<int64, 3>& window,
-                     const std::array<int64, 3>& stride,
-                     const std::array<int64, 3>& padding,
+                     const std::array<int64_t, 3>& window,
+                     const std::array<int64_t, 3>& stride,
+                     const std::array<int64_t, 3>& padding,
                      TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
     output->tensor<T, 5>().device(context->eigen_device<CPUDevice>()) =
@@ -112,9 +112,9 @@ struct LaunchPoolingOp<CPUDevice, T, AVG> {
 template <typename T>
 struct LaunchPoolingOp<CPUDevice, T, MAX> {
   static void launch(OpKernelContext* context, const Tensor& tensor_in,
-                     const std::array<int64, 3>& window,
-                     const std::array<int64, 3>& stride,
-                     const std::array<int64, 3>& padding,
+                     const std::array<int64_t, 3>& window,
+                     const std::array<int64_t, 3>& stride,
+                     const std::array<int64_t, 3>& padding,
                      TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
     output->tensor<T, 5>().device(context->eigen_device<CPUDevice>()) =
@@ -128,7 +128,7 @@ template <typename Device, typename T, PoolingType Type>
 class Pooling3DOp : public UnaryOp<T> {
  public:
   explicit Pooling3DOp(OpKernelConstruction* context) : UnaryOp<T>(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -204,8 +204,8 @@ class Pooling3DOp : public UnaryOp<T> {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };
@@ -214,10 +214,10 @@ template <typename T>
 struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
   static void launch(OpKernelContext* context, const Tensor& tensor_in,
                      const Tensor& tensor_out, const Tensor& out_backprop,
-                     const std::array<int64, 3>& window,
-                     const std::array<int64, 3>& stride,
-                     const std::array<int64, 3>& out,
-                     const std::array<int64, 3>& padding,
+                     const std::array<int64_t, 3>& window,
+                     const std::array<int64_t, 3>& stride,
+                     const std::array<int64_t, 3>& out,
+                     const std::array<int64_t, 3>& padding,
                      TensorFormat data_format, Tensor* output) {
     output->flat<T>().setZero();
     for (int64_t p = 0; p < out_backprop.dim_size(3); ++p) {
@@ -307,7 +307,7 @@ class MaxPooling3dGradOp : public OpKernel {
  public:
   explicit MaxPooling3dGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -391,8 +391,8 @@ class MaxPooling3dGradOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };
@@ -402,10 +402,10 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
   static void launch(OpKernelContext* context,
                      const TensorShape& tensor_in_shape,
                      const Tensor& out_backprop,
-                     const std::array<int64, 3>& window,
-                     const std::array<int64, 3>& stride,
-                     const std::array<int64, 3>& output_shape,
-                     const std::array<int64, 3>& padding,
+                     const std::array<int64_t, 3>& window,
+                     const std::array<int64_t, 3>& stride,
+                     const std::array<int64_t, 3>& output_shape,
+                     const std::array<int64_t, 3>& padding,
                      TensorFormat data_format, Tensor* output) {
     OP_REQUIRES(
         context, tensor_in_shape.dim_size(0) == out_backprop.dim_size(0),
@@ -487,7 +487,7 @@ class AvgPooling3dGradOp : public OpKernel {
  public:
   explicit AvgPooling3dGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -536,7 +536,7 @@ class AvgPooling3dGradOp : public OpKernel {
                 errors::InvalidArgument("out_backprop must be 5-dimensional"));
 
     TensorShape output_shape;
-    auto shape_vec = tensor_in_shape.vec<int32>();
+    auto shape_vec = tensor_in_shape.vec<int32_t>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
       OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
@@ -568,8 +568,8 @@ class AvgPooling3dGradOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };
@@ -693,7 +693,7 @@ class MaxPooling3dGradGradOp : public OpKernel {
  public:
   explicit MaxPooling3dGradGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -779,8 +779,8 @@ class MaxPooling3dGradGradOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };
