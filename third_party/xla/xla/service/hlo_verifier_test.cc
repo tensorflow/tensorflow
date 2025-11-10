@@ -3265,7 +3265,30 @@ ENTRY main {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              HasSubstr("device 2 > num_devices (2) in tile assignment"));
+              HasSubstr("device 2 >= num_devices (2) in tile assignment"));
+}
+
+TEST_F(HloVerifierTest, NegativeDeviceID) {
+  const char* const hlo = R"(
+HloModule Module
+
+ENTRY main {
+  p = f32[4,2] parameter(0), sharding={maximal device=-1}
+  ROOT r = f32[4,2] copy(p)
+}
+)";
+
+  HloModuleConfig config;
+  config.set_num_partitions(2);
+  config.set_use_spmd_partitioning(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo, config));
+  ASSERT_TRUE(module->config().use_spmd_partitioning());
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("device -1 is negative in tile assignment"));
 }
 
 TEST_F(HloVerifierTest, InconsistentWhileSharding) {

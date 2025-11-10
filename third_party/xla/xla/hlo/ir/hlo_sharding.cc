@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -305,7 +304,9 @@ HloSharding HloSharding::Subgroup(
                   kOrderedTypes[6] == 5);
     for (OpSharding::Type type : kOrderedTypes) {
       auto& dims = type_to_dims[type];
-      if (dims.empty()) continue;
+      if (dims.empty()) {
+        continue;
+      }
       int64_t dim_size = 1;
       for (int64_t dim : dims) {
         perm.push_back(dim);
@@ -725,9 +726,8 @@ absl::StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
       index_to_sharding.second = *it++;
     }
     return result;
-  } else {
-    return ShapeTree<HloSharding>(shape, *this);
   }
+  return ShapeTree<HloSharding>(shape, *this);
 }
 
 absl::StatusOr<HloSharding> HloSharding::GetTupleSharding(
@@ -776,7 +776,7 @@ int64_t HloSharding::GetUniqueDevice() const {
 absl::Status HloSharding::ValidateTuple(
     const Shape& shape, std::optional<int64_t> num_devices) const {
   if (!shape.IsTuple()) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Sharding is tuple-shaped but validation shape is not.");
   }
   TF_RETURN_IF_ERROR(CheckLeafCount(shape));
@@ -817,69 +817,84 @@ absl::Status HloSharding::Validate(const Shape& shape,
   return status;
 }
 
+namespace {
+absl::Status DeviceInRange(int64_t device, std::optional<int64_t> num_devices) {
+  if (device < 0) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("device %d is negative in tile assignment", device));
+  }
+  if (num_devices.has_value() && device >= *num_devices) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("device %d >= num_devices (%d) in tile assignment",
+                        device, *num_devices));
+  }
+  return absl::OkStatus();
+}
+}  // namespace
+
 absl::Status HloSharding::ValidateNonTuple(
     const Shape& shape, std::optional<int64_t> num_devices) const {
   if (shape.IsTuple()) {
     return absl::InvalidArgumentError(
         "Validation shape is a tuple but sharding is not.");
   }
-  if (replicated_) {
+  if (replicated_ || manual_ || unreduced_ || unknown_) {
     return absl::OkStatus();
   }
 
-  // All tile assignments must be less than the number of available devices and
-  // unique.
-  bool all_devices_seen;
-  if (!tile_assignment_.iota_) {
-    absl::flat_hash_set<int64_t> seen_devices;
-    absl::Status status = tile_assignment_.array().EachStatus(
-        [&num_devices, &seen_devices](absl::Span<const int64_t> indices,
-                                      int32_t device) {
-          if (num_devices.has_value() && device >= *num_devices) {
-            return absl::InvalidArgumentError(
-                absl::StrCat("device ", device, " > num_devices (",
-                             *num_devices, ") in tile assignment"));
-          } else if (seen_devices.contains(device)) {
-            return absl::InvalidArgumentError(absl::StrCat(
-                "device ", device, " is not unique in tile assignment"));
-          }
-          seen_devices.insert(device);
-          return absl::OkStatus();
-        });
-    TF_RETURN_IF_ERROR(status);
-    all_devices_seen =
-        !num_devices.has_value() || seen_devices.size() == *num_devices;
-  } else {
-    all_devices_seen = !num_devices.has_value() ||
-                       tile_assignment_.iota_->num_elements() == *num_devices;
-  }
-
-  if (IsTileMaximal() || IsManual() || IsUnreduced() || IsUnknown()) {
-    return absl::OkStatus();
-  }
-
-  // The tile assignment tensor must have the same rank as the tiled data rank.
-  if (shape.dimensions().size() != TiledDataRank()) {
-    return tsl::errors::InvalidArgument(
-        "Number of tile assignment dimensions (excluding subgroups) is "
-        "different than the input rank. "
-        "sharding=",
-        ToString(), ", input_shape=", ShapeUtil::HumanString(shape));
-  }
-
-  // All devices should be seen in the tile assignment.
-  if (!all_devices_seen) {
-    return tsl::errors::InvalidArgument("tile_assignment should have ",
-                                        *num_devices, " devices");
+  if (maximal_) {
+    CHECK(!tile_assignment_.iota_);
+    if (tile_assignment_.array().num_elements() != 1) {
+      return absl::InvalidArgumentError(
+          "Tile maximal sharding must have a single device assignment.");
+    }
+    return DeviceInRange(tile_assignment_.first(), num_devices);
   }
 
   // The correct constructor has to be used to create tile maximal shardings.
   if (tile_assignment_.num_elements() == 1) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Tile assignment only contains a single device. If a replicated "
         "sharding was intended, use HloSharding::Replicated(). If a device "
         "placement was intended, use HloSharding::AssignDevice()");
   }
+
+  // The tile assignment tensor must have the same rank as the tiled data rank.
+  if (shape.dimensions().size() != TiledDataRank()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Number of tile assignment dimensions (excluding subgroups) is "
+        "different than the input rank. sharding=",
+        ToString(), ", input_shape=", ShapeUtil::HumanString(shape)));
+  }
+
+  if (tile_assignment_.iota_) {
+    if (num_devices.has_value() &&
+        tile_assignment_.iota_->num_elements() != *num_devices) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "tile_assignment should have %d devices but has %d", *num_devices,
+          tile_assignment_.iota_->num_elements()));
+    }
+    return absl::OkStatus();
+  }
+
+  absl::flat_hash_set<int64_t> seen_devices;
+  absl::Status status = tile_assignment_.array().EachStatus(
+      [&num_devices, &seen_devices](absl::Span<const int64_t> indices,
+                                    int64_t device) {
+        TF_RETURN_IF_ERROR(DeviceInRange(device, num_devices));
+        if (!seen_devices.insert(device).second) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "device ", device, " is not unique in tile assignment"));
+        }
+        return absl::OkStatus();
+      });
+  TF_RETURN_IF_ERROR(status);
+  if (num_devices.has_value() && seen_devices.size() != *num_devices) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("tile_assignment should have %d devices but has %d",
+                        *num_devices, seen_devices.size()));
+  }
+
   return absl::OkStatus();
 }
 
@@ -1165,9 +1180,8 @@ HloSharding HloSharding::GetSubSharding(const Shape& shape,
         absl::MakeConstSpan(
             &*begin_it,
             &*(begin_it + ShapeUtil::GetLeafCountTuple(*sub_shape))));
-  } else {
-    return tuple_elements_[sharding_index];
   }
+  return tuple_elements_[sharding_index];
 }
 
 std::optional<HloSharding> HloSharding::ExtractSingleSharding() const {
