@@ -2,110 +2,149 @@
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
 
-def bitcode_library(
-        name,
-        srcs = [],
-        hdrs = [],
-        file_specific_flags = {}):
-    """Builds a bitcode library
+BitcodeLibraryInfo = provider(fields = ["bc_file"])
 
-    Args:
-        name: Unique name of the build rule.
-        srcs: List of source files (*.cl, *.ll).
-        hdrs: List of header files (*.h).
-        file_specific_flags: Per-file dict of flags to be passed to clang.
-    """
-    # Takes the CL sources and compiles them into bitcode files.
-    # Merges those bitcode files together with any given .ll files into a single bitcode file.
-    # Strips unnecessary metadata and forces linkonce local visibility for symbols.
-    # Adapted from:
-    #   https://github.com/ROCm/llvm-project/blob/22ee53fa53edc3a5f25feb08dc840f5b0fc362da/amd/device-libs/cmake/OCL.cmake#L73
+def _bitcode_library_impl(ctx):
+    """Implements a bitcode library rule."""
+    srcs = ctx.files.srcs
+    hdrs = ctx.files.hdrs
 
-    clang_tool = "@llvm-project//clang:clang"
-    llvm_link_tool = "@llvm-project//llvm:llvm-link"
-    opt_tool = "@llvm-project//llvm:opt"
-    prepare_builtins_tool = ":prepare_builtins"
-    clang_includes = "@llvm-project//clang:builtin_headers_gen"
+    bc_outputs = []
 
-    # Just for calculating the include path.
-    clang_header = "@llvm-project//clang:staging/include/opencl-c.h"
+    include_dirs = dict([(paths.dirname(h.path), None) for h in ctx.files.hdrs]).keys()
 
-    include_paths = dict([(paths.dirname(h), None) for h in hdrs]).keys()
-
-    #TODO(rocm): Maybe compute this in cmd not to pass dirs as srcs
-    includes = " ".join(["-I$(location {})".format(inc) for inc in include_paths])
-    flags = ("-fcolor-diagnostics -Werror -Wno-error=atomic-alignment -x cl -Xclang " +
-             "-cl-std=CL2.0 --target=amdgcn-amd-amdhsa -fvisibility=hidden -fomit-frame-pointer " +
-             "-Xclang -finclude-default-header -Xclang -fexperimental-strict-floating-point " +
-             "-Xclang -fdenormal-fp-math=dynamic -Xclang -Qn " +
-             "-nogpulib -cl-no-stdinc -Xclang -mcode-object-version=none")
-
-    link_inputs = []
-
+    # Compile .cl files to .bc
     for src in srcs:
-        filename = paths.basename(src)
-        (basename, _, ext) = filename.partition(".")
+        if src.path.endswith(".cl"):
+            out = ctx.actions.declare_file(src.basename + ".bc")
+            bc_outputs.append(out)
 
-        if (ext == "ll"):
-            link_inputs.append(src)
-            continue
+            extra_flags = ctx.attr.file_specific_flags.get(src.basename, "")
+            include_flags = ["-I{}".format(dir) for dir in include_dirs]
+            include_flags += ["-I{}".format(ctx.files._clang_header[0].dirname)]
+            include_flags += ["-I{}".format(ctx.files._clang_includes[0].dirname)]
+            args = [
+                "-x",
+                "cl",
+                "--target=amdgcn-amd-amdhsa",
+                "-emit-llvm",
+                "-fcolor-diagnostics",
+                "-Werror",
+                "-Wno-error=atomic-alignment",
+                "-Xclang",
+                "-cl-std=CL2.0",
+                "-fvisibility=hidden",
+                "-fomit-frame-pointer",
+                "-Xclang",
+                "-finclude-default-header",
+                "-Xclang",
+                "-fexperimental-strict-floating-point",
+                "-Xclang",
+                "-fdenormal-fp-math=dynamic",
+                "-Xclang",
+                "-Qn",
+                "-nogpulib",
+                "-cl-no-stdinc",
+                "-Xclang",
+                "-mcode-object-version=none",
+                "-c",
+            ] + include_flags + [src.path, "-o", out.path] + extra_flags.split(" ")
 
-        out = basename + ".bc"
-        link_inputs.append(out)
-        extra_flags = " ".join(file_specific_flags.get(filename, []))
-        native.genrule(
-            name = "compile_" + basename,
-            srcs = [src] + hdrs + include_paths + [clang_includes, clang_header],
-            outs = [out],
-            cmd = "$(location {}) -I$$(dirname $(location {}))  {} {} {} -emit-llvm -c $(location {}) -o $@".format(
-                clang_tool,
-                clang_header,
-                includes,
-                flags,
-                extra_flags,
-                src,
-            ),
-            tools = [clang_tool],
-            message = "Compiling {} ...".format(filename),
-        )
+            ctx.actions.run(
+                executable = ctx.executable._clang,
+                inputs = [src] + hdrs + ctx.files._clang_includes + ctx.files._clang_header,
+                outputs = [out],
+                arguments = args,
+                progress_message = "Compiling {} → bitcode".format(src.basename),
+                mnemonic = "RocmBitCodeCompile",
+            )
 
-    link_message = "Linking {}.bc ...".format(name)
+        elif src.path.endswith(".ll"):
+            # Directly include .ll files in linking
+            bc_outputs.append(src)
 
-    prelink_out = name + ".link0.lib.bc"
-    native.genrule(
-        name = "prelink_" + name,
-        srcs = link_inputs,
-        outs = [prelink_out],
-        cmd = "$(location {}) $(SRCS) -o $@".format(llvm_link_tool),
-        tools = [llvm_link_tool],
-        message = link_message,
+    # Link all .bc files into one prelinked .bc
+    prelink_out = ctx.actions.declare_file(ctx.label.name + ".link0.lib.bc")
+    ctx.actions.run(
+        executable = ctx.executable._llvm_link,
+        inputs = bc_outputs,
+        outputs = [prelink_out],
+        arguments = [f.path for f in bc_outputs] + ["-o", prelink_out.path],
+        progress_message = "Linking {} bitcode files".format(ctx.label.name),
+        mnemonic = "RocmBitCodeLink",
     )
 
-    internalize_out = name + ".lib.bc"
-    native.genrule(
-        name = "internalize_" + name,
-        srcs = [prelink_out],
-        outs = [internalize_out],
-        cmd = "$(location {}) -internalize -only-needed $< -o $@".format(llvm_link_tool),
-        tools = [llvm_link_tool],
-        message = link_message,
+    # Internalize symbols (llvm-link + -internalize)
+    internalize_out = ctx.actions.declare_file(ctx.label.name + ".lib.bc")
+    ctx.actions.run(
+        executable = ctx.executable._llvm_link,
+        inputs = [prelink_out],
+        outputs = [internalize_out],
+        arguments = ["-internalize", "-only-needed", prelink_out.path, "-o", internalize_out.path],
+        progress_message = "Internalizing symbols for {}".format(ctx.label.name),
+        mnemonic = "RocmBitCodeInternalizingSymbols",
     )
 
-    strip_out = name + ".strip.bc"
-    native.genrule(
-        name = "strip_" + name,
-        srcs = [internalize_out],
-        outs = [strip_out],
-        cmd = "$(location {}) -passes=strip -o $@ $<".format(opt_tool),
-        tools = [opt_tool],
-        message = link_message,
+    # Strip unnecessary metadata
+    strip_out = ctx.actions.declare_file(ctx.label.name + ".strip.bc")
+    ctx.actions.run(
+        executable = ctx.executable._opt,
+        inputs = [internalize_out],
+        outputs = [strip_out],
+        arguments = ["-passes=strip", "-o", strip_out.path, internalize_out.path],
+        progress_message = "Stripping {}".format(ctx.label.name),
+        mnemonic = "RocmBitCodeStripping",
     )
 
-    native.genrule(
-        name = name,
-        srcs = [strip_out],
-        outs = [name + ".bc"],
-        cmd = "$(location {}) -o $@ $<".format(prepare_builtins_tool),
-        tools = [prepare_builtins_tool],
-        message = link_message,
+    # Final preparation of bitcode (custom prepare_builtins tool)
+    final_bc = ctx.actions.declare_file(ctx.label.name + ".bc")
+    ctx.actions.run(
+        executable = ctx.executable._prepare_builtins,
+        inputs = [strip_out],
+        outputs = [final_bc],
+        arguments = [strip_out.path, "-o", final_bc.path],
+        progress_message = "Preparing final bitcode for {}".format(ctx.label.name),
+        mnemonic = "RocmBitCodeFinalize",
     )
+
+    return [
+        DefaultInfo(files = depset([final_bc])),
+        BitcodeLibraryInfo(bc_file = final_bc),
+    ]
+
+bitcode_library = rule(
+    implementation = _bitcode_library_impl,
+    attrs = {
+        "srcs": attr.label_list(allow_files = [".cl", ".ll"]),
+        "hdrs": attr.label_list(allow_files = [".h"]),
+        "file_specific_flags": attr.string_dict(),
+        "_clang": attr.label(
+            default = Label("@llvm-project//clang:clang"),
+            executable = True,
+            cfg = "exec",
+        ),
+        "_llvm_link": attr.label(
+            default = Label("@llvm-project//llvm:llvm-link"),
+            executable = True,
+            cfg = "exec",
+        ),
+        "_opt": attr.label(
+            default = Label("@llvm-project//llvm:opt"),
+            executable = True,
+            cfg = "exec",
+        ),
+        "_prepare_builtins": attr.label(
+            default = Label(":prepare_builtins"),
+            executable = True,
+            cfg = "exec",
+        ),
+        "_clang_includes": attr.label(
+            default = Label("@llvm-project//clang:builtin_headers_gen"),
+            allow_files = True,
+        ),
+        "_clang_header": attr.label(
+            default = Label("@llvm-project//clang:staging/include/opencl-c.h"),
+            allow_files = True,
+        ),
+    },
+)
