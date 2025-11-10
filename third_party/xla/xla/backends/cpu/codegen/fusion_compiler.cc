@@ -310,7 +310,6 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
   emitters::RegisterOptimizationPasses(pm);
 
   pm.addPass(CreateShloToVectorPass());
-  pm.addPass(CreateXTileToVectorPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(CreateLowerXTileEntryPass());
   pm.addNestedPass<mlir::func::FuncOp>(
