@@ -992,7 +992,8 @@ TfLiteStatus Subgraph::AllocateTensors(InliningStrategy auto_inline) {
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
 
   if (options_ && options_->GetShloCompositeInlining() &&
-      auto_inline == InliningStrategy::kAutoInline) {
+      auto_inline == InliningStrategy::kAutoInline &&
+      !IsDelegationSkippable() && !IsFullyDelegated()) {
     TF_LITE_ENSURE_STATUS(InlineCompositeNodes());
   }
 
