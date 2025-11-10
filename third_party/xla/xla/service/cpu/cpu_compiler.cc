@@ -1225,6 +1225,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
                                   jit_target_machine.get(),
                                   /*compile_options=*/options));
+
+  TF_ASSIGN_OR_RETURN(HloSchedule schedule, CreateHloSchedule(*module));
+  TF_RETURN_IF_ERROR(module->set_schedule(schedule));
   return std::move(module);
 }
 
@@ -1724,9 +1727,12 @@ CpuCompiler::CompileCpuExecutable(
   const bool embed_ir_in_executable =
       debug_options.xla_embed_ir_in_executable();
 
-  TF_ASSIGN_OR_RETURN(HloSchedule schedule, CreateHloSchedule(*module));
-  TF_RETURN_IF_ERROR(module->set_schedule(schedule));
-
+  // We can technically get a non scheduled HLO if the user wants to comile
+  // without running HLO passes.
+  if (!module->has_schedule()) {
+    TF_ASSIGN_OR_RETURN(HloSchedule schedule, CreateHloSchedule(*module));
+    TF_RETURN_IF_ERROR(module->set_schedule(schedule));
+  }
   TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> assignment,
                       CreateBufferAssignment(*module));
   DumpHloModuleIfEnabled(*module, *assignment,
