@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <numeric>
@@ -1457,6 +1458,36 @@ class DummyStackTrace : public AbstractStackTrace {
 };
 
 namespace {
+const xla::HloInstructionProto* FindInstructionById(
+    const xla::HloComputationProto& computation, int64_t id) {
+  auto iter =
+      absl::c_find_if(computation.instructions(),
+                      [id](const xla::HloInstructionProto& instruction) {
+                        return instruction.id() == id;
+                      });
+  if (iter == computation.instructions().end()) {
+    return nullptr;
+  }
+  return &(*iter);
+}
+
+bool ShouldAddPrecisionToInstruction(
+    const xla::HloInstructionProto& instruction,
+    const xla::HloComputationProto& computation) {
+  static constexpr std::array<absl::string_view, 2> kOpsPossiblyUsingTF32 = {
+      "dot", "convolution"};
+  if (!absl::c_linear_search(kOpsPossiblyUsingTF32, instruction.opcode())) {
+    return false;
+  }
+  if (instruction.shape().element_type() == xla::F32) {
+    return true;
+  }
+  return absl::c_any_of(instruction.operand_ids(), [&](int64_t operand_id) {
+    const xla::HloInstructionProto* operand =
+        FindInstructionById(computation, operand_id);
+    return operand && operand->shape().element_type() == xla::F32;
+  });
+}
 
 // Add precisions configs to the HLO module to avoid TensorFloat32 computations
 // in XLA.
@@ -1464,13 +1495,7 @@ namespace {
 // Some operations, such as Einsum are converted through MlirXlaOpKernel, which
 // doesn't set the precisions, so we set them all here.
 //
-// TODO(tdanyluk): We may want to restrict this logic to only set the operand
-// precision for F32 operands. (Historically, it was set without regard to
-// operand type in other parts of TF2XLA.)
 void IncreasePrecisionsToAvoidTF32(xla::HloModuleProto& module) {
-  static constexpr std::array<absl::string_view, 2> kOpsPossiblyUsingTF32 = {
-      "dot", "convolution"};
-
   xla::PrecisionConfig precision_config;
   precision_config.add_operand_precision(xla::PrecisionConfig::HIGHEST);
   precision_config.add_operand_precision(xla::PrecisionConfig::HIGHEST);
@@ -1478,8 +1503,7 @@ void IncreasePrecisionsToAvoidTF32(xla::HloModuleProto& module) {
   for (xla::HloComputationProto& computation : *module.mutable_computations()) {
     for (xla::HloInstructionProto& instruction :
          *computation.mutable_instructions()) {
-      if (absl::c_find(kOpsPossiblyUsingTF32, instruction.opcode()) !=
-          kOpsPossiblyUsingTF32.end()) {
+      if (ShouldAddPrecisionToInstruction(instruction, computation)) {
         *instruction.mutable_precision_config() = precision_config;
       }
     }
