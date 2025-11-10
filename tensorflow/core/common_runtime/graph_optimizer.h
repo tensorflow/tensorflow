@@ -36,8 +36,8 @@ class GraphOptimizer {
     // pass may replace a node with a different node of the same name that has a
     // different number of outputs, or outputs with different known shapes.
     // TODO(b/65453533) introduce a unique way to name nodes in a graph.
-    std::unordered_map<string, std::vector<PartialTensorShape>>* shape_map =
-        nullptr;
+    std::unordered_map<std::string, std::vector<PartialTensorShape>>*
+        shape_map = nullptr;
 
     // If not null then only nodes for which cse_consider_fn returns true will
     // be considered for CSE.

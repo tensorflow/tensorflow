@@ -42,7 +42,7 @@ class Graph;
 class ImmutableExecutorState {
  public:
   struct FrameInfo {
-    explicit FrameInfo(string name)
+    explicit FrameInfo(std::string name)
         : name(std::move(name)),
           input_count(0),
           total_inputs(0),
@@ -51,7 +51,7 @@ class ImmutableExecutorState {
           parallel_iterations(-1) {}
 
     // The name of the frame.
-    string name;
+    std::string name;
 
     // The total number of inputs to a frame.
     int input_count;
@@ -71,7 +71,7 @@ class ImmutableExecutorState {
     std::unique_ptr<std::vector<const NodeItem*>> nodes;
 
     // The number of iterations of this frame that can execute concurrently.
-    int32 parallel_iterations;
+    int32_t parallel_iterations;
   };
 
   explicit ImmutableExecutorState(const LocalExecutorParams& p)
@@ -109,24 +109,24 @@ class ImmutableExecutorState {
   //
   // REQUIRES: `!requires_control_flow_support && len(dest) ==
   // graph_view().num_nodes()`.
-  void copy_pending_counts(std::atomic<int32>* dest) const {
+  void copy_pending_counts(std::atomic<int32_t>* dest) const {
     DCHECK(!requires_control_flow_);
     memcpy(dest, atomic_pending_counts_.get(),
-           graph_view().num_nodes() * sizeof(std::atomic<int32>));
+           graph_view().num_nodes() * sizeof(std::atomic<int32_t>));
     std::atomic_thread_fence(std::memory_order_release);
   }
 
  private:
   struct ControlFlowInfo {
-    gtl::FlatSet<string> unique_frame_names;
-    std::vector<string> frame_names;
+    gtl::FlatSet<std::string> unique_frame_names;
+    std::vector<std::string> frame_names;
   };
 
   static absl::Status BuildControlFlowInfo(const Graph* graph,
                                            ControlFlowInfo* cf_info);
   void InitializePending(const Graph* graph, const ControlFlowInfo& cf_info);
 
-  FrameInfo* EnsureFrameInfo(const string& fname);
+  FrameInfo* EnsureFrameInfo(const std::string& fname);
 
   // Owned.
   LocalExecutorParams params_;
@@ -150,7 +150,7 @@ class ImmutableExecutorState {
 
   // If `requires_control_flow_` is false, this points to an array of initial
   // pending counts for the nodes in the graph, indexed by node ID.
-  std::unique_ptr<std::atomic<int32>[]> atomic_pending_counts_;
+  std::unique_ptr<std::atomic<int32_t>[]> atomic_pending_counts_;
 
   // Shallow copies of the constant tensors used in the graph.
   std::vector<Tensor> const_tensors_;

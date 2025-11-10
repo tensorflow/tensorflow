@@ -96,14 +96,14 @@ class Int32FulltypeTest : public ::testing::Test {
   // Returns the node in "graph" with the given name.
   //
   // REQUIRES: "graph" was produced by the most recent call to BuildGraph.
-  Node* GetNodeByName(const Graph& graph, const string& name) {
+  Node* GetNodeByName(const Graph& graph, const std::string& name) {
     const auto search = nodes_by_name_.find(name);
     CHECK(search != nodes_by_name_.end()) << "Unknown node name: " << name;
     return graph.FindNodeId(search->second);
   }
 
  protected:
-  std::unordered_map<string, int> nodes_by_name_;
+  std::unordered_map<std::string, int> nodes_by_name_;
 
  private:
   void RebuildNodeNameMap(const Graph& graph) {

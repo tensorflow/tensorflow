@@ -36,7 +36,7 @@ absl::Status ValidateMemoryTypes(const DeviceType& device_type, const Graph* g);
 // be OK). Otherwise, returns an error and '*g' may be in an
 // invalidate state and the caller should discard it.
 absl::Status EnsureMemoryTypes(const DeviceType& device_type,
-                               const string& device_name, Graph* g);
+                               const std::string& device_name, Graph* g);
 
 // Get the memory type for 'index'th output of node 'n' in graph 'g', when
 // running on 'device_type'.
