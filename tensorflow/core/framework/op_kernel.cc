@@ -213,10 +213,10 @@ absl::Status OpKernel::OutputRange(absl::string_view output_name, int* start,
   }
 }
 
-string OpKernel::ShapeTraceString(const OpKernelContext& ctx) const {
+std::string OpKernel::ShapeTraceString(const OpKernelContext& ctx) const {
   int num_inputs = ctx.num_inputs();
   if (num_inputs == 0) return "";
-  std::vector<string> tensor_shapes;
+  std::vector<std::string> tensor_shapes;
   tensor_shapes.reserve(num_inputs);
   for (int i = 0; i < num_inputs; i++) {
     if (!ctx.has_input(i)) {
@@ -235,11 +235,12 @@ string OpKernel::ShapeTraceString(const OpKernelContext& ctx) const {
   return absl::StrCat("(", absl::StrJoin(tensor_shapes, ";"), ")");
 }
 
-string OpKernel::TraceString(const OpKernelContext& ctx, bool verbose) const {
-  string trace_string =
+std::string OpKernel::TraceString(const OpKernelContext& ctx,
+                                  bool verbose) const {
+  std::string trace_string =
       tsl::profiler::TraceMeOp(name_view(), type_string_view());
   if (verbose) {
-    string shape = ShapeTraceString(ctx);
+    std::string shape = ShapeTraceString(ctx);
     if (!shape.empty()) {
       trace_string = tsl::profiler::TraceMeEncode(std::move(trace_string),
                                                   {{"shape", shape}});
@@ -709,7 +710,7 @@ absl::Status OpKernelContext::output_list(absl::string_view name,
 
 void OpKernelContext::maybe_initialize_scope_id_set() {
   if (allocated_scope_ids_ == nullptr) {
-    allocated_scope_ids_ = std::make_unique<std::unordered_set<int32>>();
+    allocated_scope_ids_ = std::make_unique<std::unordered_set<int32_t>>();
   }
 }
 
@@ -988,7 +989,7 @@ void OpKernelContext::maybe_track_allocations_for_set_output(
     const auto it = std::find_if(
         tracking_state_->temp_tensor_buffer_and_size.begin(),
         tracking_state_->temp_tensor_buffer_and_size.end(),
-        [&tensor](const std::pair<const void*, int64>& e) {
+        [&tensor](const std::pair<const void*, int64_t>& e) {
           return e.first == static_cast<const void*>(tensor.data());
         });
     if (it != tracking_state_->temp_tensor_buffer_and_size.end()) {
@@ -1141,11 +1142,11 @@ void OpKernelContext::set_record_memory_consumption(bool v) {
   }
 }
 
-const string& OpKernelContext::executor_type() const {
+const std::string& OpKernelContext::executor_type() const {
   if (params_->executor_type) {
     return *params_->executor_type;
   } else {
-    static const string& kEmptyString = *new string("");
+    static const std::string& kEmptyString = *new std::string("");
     return kEmptyString;
   }
 }
@@ -1158,7 +1159,7 @@ struct KernelRegistration {
       : def(d), kernel_class_name(c), factory(std::move(f)) {}
 
   const KernelDef def;
-  const string kernel_class_name;
+  const std::string kernel_class_name;
   std::unique_ptr<kernel_factory::OpKernelFactory> factory;
 };
 
@@ -1167,7 +1168,7 @@ struct KernelRegistration {
 // KernelDef.
 struct KernelRegistry {
   mutex mu;
-  std::unordered_multimap<string, KernelRegistration> registry
+  std::unordered_multimap<std::string, KernelRegistration> registry
       TF_GUARDED_BY(mu);
 };
 
@@ -1183,11 +1184,11 @@ static const char kKernelLibPattern[] = "libtfkernel*.so";
 
 // Returns Status::OK if the dynamic library at the given path is safe to
 // load with some level of confidence.
-static absl::Status IsProbablySafeToLoad(const string& path) {
+static absl::Status IsProbablySafeToLoad(const std::string& path) {
   // A map of platform string to required CPU feature.
   using port::CPUFeature;
   static const auto* feature_map =
-      new std::map<string, std::pair<CPUFeature, string>>{
+      new std::map<std::string, std::pair<CPUFeature, std::string>>{
           {"__AVX512VL__=1", FEATURE(CPUFeature::AVX512VL)},
       };
 
@@ -1209,7 +1210,7 @@ static absl::Status IsProbablySafeToLoad(const string& path) {
     }
   }
   if (!missing_features.empty()) {
-    string errmsg = "Missing CPU features: ";
+    std::string errmsg = "Missing CPU features: ";
     errmsg.append(absl::StrJoin(missing_features, ", "));
     return errors::FailedPrecondition(errmsg);
   }
@@ -1227,14 +1228,14 @@ void LoadDynamicKernelsInternal() {
     override_abi_check = strcmp(_abi_check_env_var, "1") == 0;
   }
 
-  string bazel_kernel_dir =
+  std::string bazel_kernel_dir =
       io::JoinPath(env->GetRunfilesDir(), "tensorflow", "core", "kernels");
-  std::vector<string> files;
+  std::vector<std::string> files;
   absl::Status s_kernel_dir = env->GetChildren(bazel_kernel_dir, &files);
   if (s_kernel_dir.ok()) {
-    string dll_spec = io::JoinPath(bazel_kernel_dir, kKernelLibPattern);
+    std::string dll_spec = io::JoinPath(bazel_kernel_dir, kKernelLibPattern);
     for (const auto& file : files) {
-      string fullpath = io::JoinPath(bazel_kernel_dir, file);
+      std::string fullpath = io::JoinPath(bazel_kernel_dir, file);
       if (env->MatchPath(fullpath, dll_spec)) {
         absl::Status s = IsProbablySafeToLoad(fullpath);
         if (!s.ok() && override_abi_check) {
@@ -1263,8 +1264,8 @@ void LoadDynamicKernels() {
   absl::call_once(dll_loader_flag, LoadDynamicKernelsInternal);
 }
 
-static string Key(absl::string_view op_type, const DeviceType& device_type,
-                  absl::string_view label) {
+static std::string Key(absl::string_view op_type, const DeviceType& device_type,
+                       absl::string_view label) {
   return strings::StrCat(op_type, ":", DeviceTypeString(device_type), ":",
                          label);
 }
@@ -1274,12 +1275,12 @@ static string Key(absl::string_view op_type, const DeviceType& device_type,
 // to JIT kernels during the static registration, to allow them to be found
 // during lookup as normal kernels.
 void SetupOrDisableJit(KernelRegistry* registry) {
-  std::unordered_multimap<string, KernelRegistration> jit_kernels;
+  std::unordered_multimap<std::string, KernelRegistration> jit_kernels;
   bool remove_jit_kernels = absl::StrContains(
       absl::NullSafeStringView(getenv(kDisableJitKernelsEnvVar)), "1");
 
   mutex_lock l(registry->mu);
-  std::unordered_multimap<string, KernelRegistration>& all_kernels =
+  std::unordered_multimap<std::string, KernelRegistration>& all_kernels =
       registry->registry;
   auto it = all_kernels.begin();
   while (it != all_kernels.end()) {
@@ -1344,7 +1345,7 @@ namespace kernel_factory {
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
                                      absl::string_view kernel_class_name,
                                      std::unique_ptr<OpKernelFactory> factory) {
-  const string key =
+  const std::string key =
       Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
           kernel_def->label());
 
@@ -1374,9 +1375,9 @@ OpKernel* OpKernelRegistrar::PtrOpKernelFactory::Create(
 namespace {
 
 // Label defaults to empty if not found in NodeDef.
-const string& GetKernelLabelAttr(const AttrSlice& node_attrs) {
-  static const string& kKernelAttr = *new string("_kernel");
-  static const string& kEmptyString = *new string("");
+const std::string& GetKernelLabelAttr(const AttrSlice& node_attrs) {
+  static const std::string& kKernelAttr = *new std::string("_kernel");
+  static const std::string& kEmptyString = *new std::string("");
 
   // NOTE: We inline the implementation of `GetNodeAttrString()` here in order
   // to use the `AttrSlice::FindByString()` overload, which does a more
@@ -1399,9 +1400,9 @@ absl::Status FindKernelRegistration(
   *reg = nullptr;
   *was_attr_mismatch = false;
 
-  const string& label = GetKernelLabelAttr(node_attrs);
+  const std::string& label = GetKernelLabelAttr(node_attrs);
 
-  const string key = Key(node_op, device_type, label);
+  const std::string key = Key(node_op, device_type, label);
   auto typed_registry = GlobalKernelRegistryTyped();
   tf_shared_lock lock(typed_registry->mu);
   auto regs = typed_registry->registry.equal_range(key);
@@ -1434,7 +1435,7 @@ absl::Status FindKernelRegistration(
   // default kernel.
   if (*reg == nullptr &&
       !IsSymbolicExecutionDevice(device_type.type_string())) {
-    const string default_key = Key(node_op, DEVICE_DEFAULT, label);
+    const std::string default_key = Key(node_op, DEVICE_DEFAULT, label);
     auto regs = typed_registry->registry.equal_range(default_key);
     for (auto iter = regs.first; iter != regs.second; ++iter) {
       // If there is a kernel registered for the op and device_type,
@@ -1496,7 +1497,8 @@ absl::Status FindKernelDef(
     bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
     absl::string_view node_op, absl::string_view node_device,
-    AttrSlice node_attrs, const KernelDef** def, string* kernel_class_name) {
+    AttrSlice node_attrs, const KernelDef** def,
+    std::string* kernel_class_name) {
   const KernelRegistration* reg = nullptr;
   bool was_attr_mismatch;
   TF_RETURN_IF_ERROR(FindKernelRegistration(
@@ -1535,7 +1537,7 @@ absl::Status FindKernelDef(
 
 absl::Status FindKernelDef(const DeviceType& device_type,
                            const NodeDef& node_def, const KernelDef** def,
-                           string* kernel_class_name) {
+                           std::string* kernel_class_name) {
   return FindKernelDef(
       device_type, node_def.name(), node_def.has_experimental_debug_info(),
       node_def.experimental_debug_info(), node_def.op(), node_def.device(),
@@ -1600,8 +1602,8 @@ absl::Status SupportedDeviceTypesForNode(
 
     std::stable_sort(prioritized_device_types->begin(),
                      prioritized_device_types->end(),
-                     [](const std::pair<DeviceType, int32>& a,
-                        const std::pair<DeviceType, int32>& b) {
+                     [](const std::pair<DeviceType, int32_t>& a,
+                        const std::pair<DeviceType, int32_t>& b) {
                        return a.second > b.second;
                      });
   } else {
@@ -1644,10 +1646,10 @@ KernelList GetRegisteredKernelsForOp(absl::string_view op_name) {
   return GetFilteredRegisteredKernels(op_pred);
 }
 
-string KernelsRegisteredForOp(absl::string_view op_name) {
+std::string KernelsRegisteredForOp(absl::string_view op_name) {
   KernelList kernel_list = GetRegisteredKernelsForOp(op_name);
   if (kernel_list.kernel_size() == 0) return "  <no registered kernels>\n";
-  string ret;
+  std::string ret;
   for (const auto& kernel_def : kernel_list.kernel()) {
     absl::StrAppend(&ret, "  device='", kernel_def.device_type(), "'");
     if (!kernel_def.label().empty()) {

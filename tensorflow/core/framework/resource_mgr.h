@@ -86,14 +86,14 @@ class ScopedStepContainer {
   // cleanup: callback to delete a container of this name.
   // prefix: optional string prefix to disambiguate step containers.
   ScopedStepContainer(const int64_t step_id,
-                      std::function<void(const string&)> cleanup)
+                      std::function<void(const std::string&)> cleanup)
       : step_id_(step_id),
         container_(absl::StrCat("__per_step_", step_id)),
         cleanup_(cleanup),
         dirty_(false) {}
 
   ScopedStepContainer(const int64_t step_id,
-                      std::function<void(const string&)> cleanup,
+                      std::function<void(const std::string&)> cleanup,
                       const std::string& prefix)
       : step_id_(step_id),
         container_(absl::StrCat("__", prefix, "_per_step_", step_id)),
@@ -141,7 +141,7 @@ class ScopedStepContainer {
  private:
   const int64_t step_id_;
   const std::string container_;
-  const std::function<void(const string&)> cleanup_;
+  const std::function<void(const std::string&)> cleanup_;
   mutex mu_;
   mutable std::atomic<bool> dirty_ TF_GUARDED_BY(mu_);
 };
@@ -200,7 +200,7 @@ class ResourceMgr {
   // then this function does not modify resources[i].
   template <typename T, bool use_dynamic_cast = false>
   absl::Status LookupMany(
-      absl::Span<std::pair<const string*, const string*> const>
+      absl::Span<std::pair<const std::string*, const std::string*> const>
           containers_and_names,
       std::vector<core::RefCountPtr<T>>* resources) const;
 
@@ -245,7 +245,7 @@ class ResourceMgr {
   std::string DebugString() const;
 
  private:
-  typedef std::pair<uint64, absl::string_view> Key;
+  typedef std::pair<uint64_t, absl::string_view> Key;
   struct KeyHash {
     std::size_t operator()(const Key& k) const {
       return Hash64(k.second.data(), k.second.size(), k.first);
@@ -262,7 +262,7 @@ class ResourceMgr {
     std::unique_ptr<std::string> name;
 
     ResourceAndName();
-    explicit ResourceAndName(const string& name);
+    explicit ResourceAndName(const std::string& name);
     ResourceAndName(ResourceAndName&& other) noexcept;
     ~ResourceAndName();
 
@@ -281,7 +281,7 @@ class ResourceMgr {
 
   const std::string default_container_;
   mutable mutex mu_;
-  absl::flat_hash_map<string, Container*> containers_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<std::string, Container*> containers_ TF_GUARDED_BY(mu_);
   bool finalized_ TF_GUARDED_BY(mu_) = false;
 
   template <typename T, bool use_dynamic_cast = false>
@@ -289,7 +289,7 @@ class ResourceMgr {
                               const std::string& name, T** resource) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
   absl::Status LookupInternal(const std::string& container,
-                              uint64 type_hash_code, const std::string& name,
+                              uint64_t type_hash_code, const std::string& name,
                               ResourceBase** resource) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
@@ -300,13 +300,13 @@ class ResourceMgr {
   absl::Status DoLookup(const std::string& container, TypeIndex type,
                         const std::string& name, ResourceBase** resource) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
-  absl::Status DoLookup(const std::string& container, uint64 type_hash_code,
+  absl::Status DoLookup(const std::string& container, uint64_t type_hash_code,
                         const std::string& type_name,
                         const std::string& resource_name,
                         ResourceBase** resource) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
-  absl::Status DoDelete(const std::string& container, uint64 type_hash_code,
+  absl::Status DoDelete(const std::string& container, uint64_t type_hash_code,
                         const std::string& resource_name,
                         const std::string& type_name);
   absl::Status DoDelete(const std::string& container, TypeIndex type,
@@ -315,23 +315,24 @@ class ResourceMgr {
   // Pops the ResourceAndName entry. The entry is moved from the list to
   // the output argument `resource_and_name`.
   absl::Status PopResourceAndName(const std::string& container,
-                                  uint64 type_hash_code,
+                                  uint64_t type_hash_code,
                                   const std::string& resource_name,
                                   const std::string& type_name,
                                   ResourceAndName& resource_and_name);
   // Inserts the type name for 'hash_code' into the hash_code to type name map.
-  absl::Status InsertDebugTypeName(uint64 hash_code,
+  absl::Status InsertDebugTypeName(uint64_t hash_code,
                                    const std::string& type_name)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Returns the type name for the 'hash_code'.
   // Returns "<unknown>" if a resource with such a type was never inserted into
   // the container.
-  const char* DebugTypeName(uint64 hash_code) const
+  const char* DebugTypeName(uint64_t hash_code) const
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Map from type hash_code to type name.
-  std::unordered_map<uint64, string> debug_type_names_ TF_GUARDED_BY(mu_);
+  std::unordered_map<uint64_t, std::string> debug_type_names_
+      TF_GUARDED_BY(mu_);
 
   ResourceMgr(const ResourceMgr&) = delete;
   void operator=(const ResourceMgr&) = delete;
@@ -560,8 +561,8 @@ class ResourceHandlesOp : public OpKernel {
   bool IsExpensive() override { return false; }
 
  private:
-  std::vector<string> containers_;
-  std::vector<string> names_;
+  std::vector<std::string> containers_;
+  std::vector<std::string> names_;
   mutex mutex_;
   std::vector<Tensor> resources_;
   std::atomic<bool> initialized_{false};
@@ -682,7 +683,7 @@ absl::Status ResourceMgr::Lookup(const std::string& container,
 
 template <typename T, bool use_dynamic_cast>
 absl::Status ResourceMgr::LookupMany(
-    absl::Span<std::pair<const string*, const string*> const>
+    absl::Span<std::pair<const std::string*, const std::string*> const>
         containers_and_names,
     std::vector<core::RefCountPtr<T>>* resources) const {
   CheckDeriveFromResourceBase<T>();
@@ -854,8 +855,8 @@ template <typename T>
 absl::Status LookupResources(OpKernelContext* ctx,
                              absl::Span<ResourceHandle const* const> p,
                              std::vector<core::RefCountPtr<T>>* values) {
-  std::vector<std::pair<const string*, const string*>> containers_and_names(
-      p.size());
+  std::vector<std::pair<const std::string*, const std::string*>>
+      containers_and_names(p.size());
   for (size_t i = 0; i < p.size(); ++i) {
     TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, *p[i]));
     containers_and_names[i] = {&p[i]->container(), &p[i]->name()};

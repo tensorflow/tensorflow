@@ -27,13 +27,13 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-OpDef FromText(const string& text) {
+OpDef FromText(const std::string& text) {
   OpDef op_def;
   EXPECT_TRUE(protobuf::TextFormat::MergeFromString(text, &op_def));
   return op_def;
 }
 
-OpDef::AttrDef ADef(const string& text) {
+OpDef::AttrDef ADef(const std::string& text) {
   OpDef::AttrDef attr_def;
   EXPECT_TRUE(protobuf::TextFormat::MergeFromString(text, &attr_def));
   return attr_def;
@@ -41,7 +41,7 @@ OpDef::AttrDef ADef(const string& text) {
 
 class ValidateOpDefTest : public ::testing::Test {
  protected:
-  absl::Status TestProto(const string& text) {
+  absl::Status TestProto(const std::string& text) {
     return ValidateOpDef(FromText(text));
   }
 
@@ -58,7 +58,7 @@ class ValidateOpDefTest : public ::testing::Test {
 };
 
 namespace {
-void ExpectFailure(const absl::Status& status, const string& message) {
+void ExpectFailure(const absl::Status& status, const std::string& message) {
   EXPECT_FALSE(status.ok()) << "Did not see error with: " << message;
   if (!status.ok()) {
     LOG(INFO) << "message: " << status;
@@ -516,9 +516,9 @@ void ExpectDifferent(const OpDef& o1, const OpDef& o2) {
 }
 
 TEST(OpDefEqualityTest, EqualAndHash) {
-  string a1 = "attr { name: 'a' type: 'string' } ";
-  string a2 = "attr { name: 'b' type: 'string' } ";
-  string a3 = "attr { name: 'c' type: 'int32' } ";
+  std::string a1 = "attr { name: 'a' type: 'string' } ";
+  std::string a2 = "attr { name: 'b' type: 'string' } ";
+  std::string a3 = "attr { name: 'c' type: 'int32' } ";
   OpDef o1 = FromText(absl::StrCat("name: 'MatMul' ", a1));
   OpDef o2 = FromText(absl::StrCat("name: 'MatMul' ", a2));
   OpDef o3 = FromText(absl::StrCat("name: 'MatMul' ", a1, a2));

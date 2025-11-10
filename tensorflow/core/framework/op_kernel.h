@@ -1315,7 +1315,7 @@ class OpKernelContext {
 
   // Keep track of calls to ScopedAllocator.
   // TODO(ayushd): change to absl::flat_hash_set.
-  std::unique_ptr<std::unordered_set<int32>> allocated_scope_ids_;
+  std::unique_ptr<std::unordered_set<int32_t>> allocated_scope_ids_;
 
   // The following data members are only used when allocation tracking is
   // enabled, memory consumption is being recorded, or tensor access is being

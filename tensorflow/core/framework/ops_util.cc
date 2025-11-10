@@ -64,8 +64,8 @@ absl::Status GetBroadcastSize(const int index, const int in_size,
   return absl::OkStatus();
 }
 
-string SanitizeThreadSuffix(string suffix) {
-  string clean;
+std::string SanitizeThreadSuffix(std::string suffix) {
+  std::string clean;
   for (int i = 0; i < suffix.size(); ++i) {
     const char ch = suffix[i];
     if (absl::ascii_isalnum(ch) || ch == '_' || ch == '-') {

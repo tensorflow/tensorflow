@@ -45,24 +45,28 @@ using ::tsl::testing::StatusIs;
 
 class Resource : public ResourceBase {
  public:
-  explicit Resource(const string& label) : label_(label) {}
+  explicit Resource(const std::string& label) : label_(label) {}
   ~Resource() override {}
 
-  string DebugString() const override { return absl::StrCat("R/", label_); }
+  std::string DebugString() const override {
+    return absl::StrCat("R/", label_);
+  }
 
  private:
-  string label_;
+  std::string label_;
 };
 
 class Other : public ResourceBase {
  public:
-  explicit Other(const string& label) : label_(label) {}
+  explicit Other(const std::string& label) : label_(label) {}
   ~Other() override {}
 
-  string DebugString() const override { return absl::StrCat("O/", label_); }
+  std::string DebugString() const override {
+    return absl::StrCat("O/", label_);
+  }
 
  private:
-  string label_;
+  std::string label_;
 };
 
 class Finalizable : public ResourceBase {
@@ -79,38 +83,38 @@ class Finalizable : public ResourceBase {
 };
 
 template <typename T>
-string Find(const ResourceMgr& rm, const string& container,
-            const string& name) {
+std::string Find(const ResourceMgr& rm, const std::string& container,
+                 const std::string& name) {
   T* r;
   TF_CHECK_OK(rm.Lookup(container, name, &r));
-  const string ret = r->DebugString();
+  const std::string ret = r->DebugString();
   r->Unref();
   return ret;
 }
 
 template <typename T>
-string LookupOrCreate(ResourceMgr* rm, const string& container,
-                      const string& name, const string& label) {
+std::string LookupOrCreate(ResourceMgr* rm, const std::string& container,
+                           const std::string& name, const std::string& label) {
   T* r;
   TF_CHECK_OK(rm->LookupOrCreate<T>(container, name, &r, [&label](T** ret) {
     *ret = new T(label);
     return absl::OkStatus();
   }));
-  const string ret = r->DebugString();
+  const std::string ret = r->DebugString();
   r->Unref();
   return ret;
 }
 
 static void HasError(const absl::Status& s, const error::Code code,
-                     const string& substr) {
+                     const std::string& substr) {
   EXPECT_EQ(s.code(), code);
   EXPECT_TRUE(absl::StrContains(s.message(), substr))
       << s << ", expected substring " << substr;
 }
 
 template <typename T>
-absl::Status FindErr(const ResourceMgr& rm, const string& container,
-                     const string& name) {
+absl::Status FindErr(const ResourceMgr& rm, const std::string& container,
+                     const std::string& name) {
   T* r;
   absl::Status s = rm.Lookup(container, name, &r);
   CHECK(!s.ok());
@@ -323,9 +327,9 @@ TEST(ResourceMgrTest, CreateUnownedFailAfterFinalize) {
   finalizable->Unref();
 }
 
-absl::Status ComputePolicy(const string& attr_container,
-                           const string& attr_shared_name,
-                           bool use_node_name_as_default, string* result) {
+absl::Status ComputePolicy(const std::string& attr_container,
+                           const std::string& attr_shared_name,
+                           bool use_node_name_as_default, std::string* result) {
   ContainerInfo cinfo;
   ResourceMgr rmgr;
   NodeDef ndef;
@@ -341,9 +345,10 @@ absl::Status ComputePolicy(const string& attr_container,
   return absl::OkStatus();
 }
 
-string Policy(const string& attr_container, const string& attr_shared_name,
-              bool use_node_name_as_default) {
-  string ret;
+std::string Policy(const std::string& attr_container,
+                   const std::string& attr_shared_name,
+                   bool use_node_name_as_default) {
+  std::string ret;
   TF_CHECK_OK(ComputePolicy(attr_container, attr_shared_name,
                             use_node_name_as_default, &ret));
   return ret;
@@ -365,10 +370,10 @@ TEST(ContainerInfo, Basic) {
   EXPECT_EQ(Policy(".cat", "bar", true), "[.cat,bar,public]");
 }
 
-absl::Status WrongPolicy(const string& attr_container,
-                         const string& attr_shared_name,
+absl::Status WrongPolicy(const std::string& attr_container,
+                         const std::string& attr_shared_name,
                          bool use_node_name_as_default) {
-  string dbg;
+  std::string dbg;
   auto s = ComputePolicy(attr_container, attr_shared_name,
                          use_node_name_as_default, &dbg);
   CHECK(!s.ok());
@@ -396,7 +401,7 @@ TEST(ContainerInfo, Error) {
 // handles.
 class StubDevice : public DeviceBase {
  public:
-  explicit StubDevice(const string& name) : DeviceBase(nullptr) {
+  explicit StubDevice(const std::string& name) : DeviceBase(nullptr) {
     attr_.set_name(name);
   }
 
@@ -405,7 +410,7 @@ class StubDevice : public DeviceBase {
   }
 
   const DeviceAttributes& attributes() const override { return attr_; }
-  const string& name() const override { return attr_.name(); }
+  const std::string& name() const override { return attr_.name(); }
 
  private:
   DeviceAttributes attr_;
@@ -414,7 +419,7 @@ class StubDevice : public DeviceBase {
 // Empty stub resource for testing resource handles.
 class StubResource : public ResourceBase {
  public:
-  string DebugString() const override { return ""; }
+  std::string DebugString() const override { return ""; }
   int value_{0};
 };
 
@@ -560,7 +565,7 @@ TEST(ResourceHandleTest, DifferentDevice) {
 // Other stub resource to test type-checking of resource handles.
 class OtherStubResource : public ResourceBase {
  public:
-  string DebugString() const override { return ""; }
+  std::string DebugString() const override { return ""; }
 };
 
 TEST(ResourceHandleTest, DifferentType) {

@@ -93,7 +93,7 @@ class TestOp3Cpu : public tensorflow::OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(
-    Name("Test3").Device(DEVICE_CPU).TypeConstraint<int8>("T"), TestOp3Cpu);
+    Name("Test3").Device(DEVICE_CPU).TypeConstraint<int8_t>("T"), TestOp3Cpu);
 
 namespace {
 
@@ -179,8 +179,9 @@ class OpKernelTest : public ::testing::Test {
   OpKernelTest() : device_(Env::Default()) {}
 
  protected:
-  NodeDef CreateNodeDef(const string& op_type, const DataTypeVector& inputs,
-                        const string& device = "") {
+  NodeDef CreateNodeDef(const std::string& op_type,
+                        const DataTypeVector& inputs,
+                        const std::string& device = "") {
     NodeDefBuilder builder(op_type + "-op", op_type);
     for (DataType dt : inputs) {
       builder.Input(FakeInput(dt));
@@ -191,7 +192,7 @@ class OpKernelTest : public ::testing::Test {
     return node_def;
   }
 
-  void ExpectEqual(const string& what, const DataTypeVector& expected,
+  void ExpectEqual(const std::string& what, const DataTypeVector& expected,
                    const DataTypeVector& observed) {
     EXPECT_EQ(expected.size(), observed.size()) << what;
     const size_t size = std::min(expected.size(), observed.size());
@@ -202,7 +203,7 @@ class OpKernelTest : public ::testing::Test {
     }
   }
 
-  void ExpectSuccess(const string& op_type, DeviceType device_type,
+  void ExpectSuccess(const std::string& op_type, DeviceType device_type,
                      const DataTypeVector& inputs,
                      const DataTypeVector& outputs) {
     absl::Status status;
@@ -217,7 +218,7 @@ class OpKernelTest : public ::testing::Test {
     }
   }
 
-  void ExpectFailure(const string& ascii_node_def, DeviceType device_type,
+  void ExpectFailure(const std::string& ascii_node_def, DeviceType device_type,
                      error::Code code) {
     NodeDef node_def;
     protobuf::TextFormat::ParseFromString(ascii_node_def, &node_def);
@@ -266,8 +267,9 @@ TEST_F(OpKernelTest, CpuTypeRegistered) {
 }
 
 TEST_F(OpKernelTest, KernelNotRegistered) {
-  const string& local_device = "/job:localhost/replica:0/task:0/device:CPU:0";
-  const string& remote_device = "/job:worker/replica:0/task:0/device";
+  const std::string& local_device =
+      "/job:localhost/replica:0/task:0/device:CPU:0";
+  const std::string& remote_device = "/job:worker/replica:0/task:0/device";
   {
     // Try a node def of an op which does not have kernel. And the requested
     // device in NodeDef is on a different address space than the local device.
@@ -810,7 +812,7 @@ TEST_F(OpKernelBuilderTest, OpOutputList) {
 class GetAttrKernel : public ::tensorflow::OpKernel {
  public:
   explicit GetAttrKernel(OpKernelConstruction* context) : OpKernel(context) {
-    string attr_name;
+    std::string attr_name;
     OP_REQUIRES_OK(context, context->GetAttr("attr_name", &attr_name));
 
     status.emplace_back("s", context->GetAttr(attr_name, &s));
@@ -836,11 +838,11 @@ class GetAttrKernel : public ::tensorflow::OpKernel {
   }
   void Compute(::tensorflow::OpKernelContext* context) override {}
 
-  void ExpectOk(std::initializer_list<string> keys) {
+  void ExpectOk(std::initializer_list<std::string> keys) {
     for (const auto& key_status : status) {
       // Only the status for keys in "keys" should be ok().
       bool in_keys = false;
-      for (const string& key : keys) {
+      for (const std::string& key : keys) {
         if (key_status.first == key) {
           in_keys = true;
         }
@@ -850,12 +852,12 @@ class GetAttrKernel : public ::tensorflow::OpKernel {
     }
   }
 
-  string s;
-  std::vector<string> s_list;
+  std::string s;
+  std::vector<std::string> s_list;
   int64_t i;
   std::vector<int64_t> i_list;
-  int32 i32;
-  std::vector<int32> i32_list;
+  int32_t i32;
+  std::vector<int32_t> i32_list;
   float f;
   std::vector<float> f_list;
   bool b;
@@ -867,7 +869,7 @@ class GetAttrKernel : public ::tensorflow::OpKernel {
   std::vector<TensorShapeProto> shape_proto_list;
   TensorShape shape;
   std::vector<TensorShape> shape_list;
-  std::vector<std::pair<string, absl::Status>> status;
+  std::vector<std::pair<std::string, absl::Status>> status;
 };
 
 class GetAttrTest : public OpKernelBuilderTest {};
@@ -884,7 +886,7 @@ TEST_F(GetAttrTest, StringList) {
                     {"attr_name|string|'a'", "a|list(string)|['foo', 'bar']"});
   auto* get_attr_kernel = static_cast<GetAttrKernel*>(op_kernel.get());
   get_attr_kernel->ExpectOk({"s_list"});
-  EXPECT_EQ(std::vector<string>({"foo", "bar"}), get_attr_kernel->s_list);
+  EXPECT_EQ(std::vector<std::string>({"foo", "bar"}), get_attr_kernel->s_list);
 
   op_kernel = ExpectSuccess("GetAttrStringList", DEVICE_CPU,
                             {"attr_name|string|'b'", "a|list(string)|['baz']"});
@@ -914,7 +916,7 @@ TEST_F(GetAttrTest, Int) {
   get_attr_kernel = static_cast<GetAttrKernel*>(op_kernel.get());
   get_attr_kernel->ExpectOk({"i_list", "i32_list"});
   EXPECT_EQ(std::vector<int64_t>({-1, 2, -4}), get_attr_kernel->i_list);
-  EXPECT_EQ(std::vector<int32>({-1, 2, -4}), get_attr_kernel->i32_list);
+  EXPECT_EQ(std::vector<int32_t>({-1, 2, -4}), get_attr_kernel->i32_list);
 
   // 8589934592 == 2^33, too big to fit in an int32
   op_kernel = ExpectSuccess("GetAttrInt", DEVICE_CPU,
