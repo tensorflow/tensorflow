@@ -336,7 +336,6 @@ def _tf_library(
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
             "@local_xla//xla/service/cpu:runtime_conv2d",
-            "@local_xla//xla/service/cpu:runtime_custom_call_status",
             "@local_xla//xla/service/cpu:runtime_key_value_sort",
             "@local_xla//xla/service/cpu:runtime_matmul",
             "@local_xla//xla/service/cpu:runtime_topk",

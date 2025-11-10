@@ -52,7 +52,6 @@ filegroup(
     name = "runtime_srcs",
     srcs = [
         # Single-threaded support.
-        "runtime_custom_call_status.cc",
         "runtime_key_value_sort.cc",
         "runtime_single_threaded_conv2d.cc",
         "runtime_single_threaded_conv3d.cc",
@@ -85,7 +84,6 @@ filegroup(
     name = "runtime_hdrs",
     srcs = [
         # Single-threaded support.
-        "runtime_custom_call_status.h",
         "runtime_key_value_sort.h",
         "runtime_single_threaded_conv2d.h",
         "runtime_single_threaded_conv3d.h",
@@ -1076,18 +1074,6 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",  # build_cleaner: keep
         "@eigen_archive//:eigen3",
-    ],
-)
-
-cc_library(
-    name = "runtime_custom_call_status",
-    srcs = ["runtime_custom_call_status.cc"],
-    hdrs = ["runtime_custom_call_status.h"],
-    copts = runtime_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla/service:custom_call_status_internal",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
