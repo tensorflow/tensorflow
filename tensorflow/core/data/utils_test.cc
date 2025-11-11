@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/utils.h"
 
-#include <vector>
-
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/tf_data_file_logger_options.h"
 
