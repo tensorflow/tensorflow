@@ -629,7 +629,7 @@ test:release_macos_x86 --config=release_macos_base
 # Use --config=tf_public_cache to try and use the TensorFlow public build cache
 # to build TensorFlow. Look at ci/official/envs to find which types of jobs
 # push to the cache.  For macOS, use --config=tf_public_macos_cache
-common:tf_public_cache --remote_cache="https://storage.googleapis.com/tensorflow-devinfra-bazel-cache/january2024" --remote_upload_local_results=false
+common:tf_public_cache --remote_cache="https://storage.googleapis.com/tensorflow-devinfra-bazel-cache/2025-11-11" --remote_upload_local_results=false
 # Cache pushes are limited to TF's CI system.
 common:tf_public_cache_push --config=tf_public_cache --remote_upload_local_results=true --google_default_credentials
 # Public cache for macOS builds
