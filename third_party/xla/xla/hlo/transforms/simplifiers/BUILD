@@ -1812,6 +1812,7 @@ cc_library(
     srcs = ["unflatten_call_graph.cc"],
     hdrs = ["unflatten_call_graph.h"],
     deps = [
+        "//xla:printer",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -1824,6 +1825,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -1831,6 +1833,7 @@ cc_library(
         "@highwayhash",
         "@highwayhash//:arch_specific",
         "@highwayhash//:hh_types",
+        "@local_tsl//tsl/platform:fingerprint",
     ],
 )
 
