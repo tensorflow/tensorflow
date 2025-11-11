@@ -120,16 +120,6 @@ message TriangularSolveThunkProto {
   int64 b_batch_stride = 10;
 }
 
-message CholeskyThunkProto {
-  xla.CholeskyOptions options = 1;
-  xla.buffer_assignment.BufferAllocationSliceProto a_buffer = 2;
-  xla.buffer_assignment.BufferAllocationSliceProto workspace_buffer = 3;
-  xla.buffer_assignment.BufferAllocationSliceProto info_buffer = 4;
-  xla.PrimitiveType type = 5;
-  int64 batch_size = 6;
-  int64 n = 7;
-}
-
 message ReplicaIdThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
 }
@@ -301,8 +291,7 @@ message ThunkProto {
     ConvolutionThunkProto convolution_thunk = 25;
     ConvolutionReorderThunkProto convolution_reorder_thunk = 26;
     FftThunkProto fft_thunk = 27;
-    CholeskyThunkProto cholesky_thunk = 28;
-    Memset32BitValueThunkProto memset32bit_value_thunk = 29;
+    Memset32BitValueThunkProto memset32bit_value_thunk = 28;
     CustomCallThunkProto custom_call_thunk = 30;
     CubSortThunkProto cub_sort_thunk = 31;
   }

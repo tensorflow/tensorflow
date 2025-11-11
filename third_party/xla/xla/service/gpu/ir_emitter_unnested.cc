@@ -75,7 +75,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
-#include "xla/backends/gpu/runtime/cholesky_thunk.h"
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
@@ -1084,70 +1083,6 @@ absl::Status IrEmitterUnnested::EmitCubDeviceRadixSort(
               operand_shape.dimensions(operand_shape.dimensions().size() - 1),
           ir_emitter_context_->platform_name()));
   AddThunkToThunkSequence(std::move(thunk));
-  return absl::OkStatus();
-}
-
-absl::Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(CholeskyOptions options,
-                      instr->backend_config<CholeskyOptions>());
-  const Shape& shape = instr->operand(0)->shape();
-  int ndim = shape.dimensions().size();
-  CHECK_GE(ndim, 2);
-  int64_t n = shape.dimensions(ndim - 1);
-
-  const absl::Span<const int64_t>& dims = shape.dimensions();
-  int64_t batch_size =
-      std::accumulate(dims.begin(), dims.end() - 2, int64_t{1},
-                      [](int64_t a, int64_t b) { return a * b; });
-
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice operand_buffer,
-                      GetAllocationSliceForHlo(instr->operand(0), {}));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a_buffer,
-                      GetAllocationSliceForHlo(instr, {0}));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice workspace_buffer,
-                      GetAllocationSliceForHlo(instr, {1}));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice info_buffer,
-                      GetAllocationSliceForHlo(instr, {2}));
-
-  ThunkSequence thunks;
-
-  if (operand_buffer != a_buffer) {
-    thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(
-            instr, ir_emitter_context_->GetNextThunkId()),
-        /*source_buffer=*/operand_buffer,
-        /*destination_buffer=*/a_buffer,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      se::Platform * platform,
-      PlatformUtil::GetPlatform(ir_emitter_context_->platform_name()));
-
-  TF_ASSIGN_OR_RETURN(
-      std::function<
-          absl::StatusOr<std::unique_ptr<stream_executor::GpuSolverContext>>()>
-          solver_creator,
-      stream_executor::PlatformObjectRegistry::GetGlobalRegistry()
-          .FindObject<stream_executor::GpuSolverContextFactory>(
-              platform->id()));
-
-  thunks.push_back(std::make_unique<CholeskyThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(
-          instr, ir_emitter_context_->GetNextThunkId()),
-      options, a_buffer, workspace_buffer, info_buffer, shape.element_type(),
-      batch_size, n, std::move(solver_creator)));
-
-  // Elide the sequential thunk if there's no copy.
-  if (thunks.size() == 1) {
-    AddThunkToThunkSequence(std::move(thunks[0]));
-  } else {
-    AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(
-            instr, ir_emitter_context_->GetNextThunkId()),
-        std::move(thunks)));
-  }
-
   return absl::OkStatus();
 }
 
@@ -3289,9 +3224,6 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       }
       if (IsCustomCallToDnnConvolution(*instr)) {
         return EmitConvolutionThunk(custom_call);
-      }
-      if (IsCustomCallToCusolver(*instr)) {
-        return EmitCholeskyThunk(instr);
       }
       if (IsTriangularSolve(*instr)) {
         return EmitTriangularSolveCustomCall(instr);

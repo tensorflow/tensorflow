@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
-#include "xla/backends/gpu/runtime/cholesky_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
@@ -211,10 +210,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return OutfeedThunk::FromProto(std::move(thunk_info),
                                      thunk_proto.outfeed_thunk(),
                                      buffer_allocations);
-    case ThunkProto::kCholeskyThunk:
-      return CholeskyThunk::FromProto(std::move(thunk_info),
-                                      thunk_proto.cholesky_thunk(),
-                                      buffer_allocations, platform_name);
 
     default:
       std::optional<absl::string_view> unsupported_thunk_type =

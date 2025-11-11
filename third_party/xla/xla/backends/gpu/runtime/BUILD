@@ -311,57 +311,6 @@ xla_test(
 )
 
 cc_library(
-    name = "cholesky_thunk",
-    srcs = ["cholesky_thunk.cc"],
-    hdrs = ["cholesky_thunk.h"],
-    deps = [
-        ":make_batch_pointers",
-        ":thunk",
-        ":thunk_proto_cc",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/service:buffer_assignment",
-        "//xla/service:platform_util",
-        "//xla/stream_executor:blas",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:gpu_solver_context",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor/platform:platform_object_registry",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_test(
-    name = "cholesky_thunk_test",
-    srcs = ["cholesky_thunk_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":cholesky_thunk",
-        ":thunk",
-        ":thunk_proto_cc",
-        "//xla:xla_data_proto_cc",
-        "//xla/service:buffer_assignment",
-        "//xla/stream_executor:gpu_solver_context",
-        "//xla/stream_executor/platform:platform_object_registry",
-        "//xla/tests:hlo_test_base",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/util/proto:proto_matchers",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "command_buffer_thunk",
     srcs = ["command_buffer_thunk.cc"],
     hdrs = ["command_buffer_thunk.h"],
@@ -2577,7 +2526,6 @@ cc_library(
     srcs = ["thunk_proto_deserialization.cc"],
     hdrs = ["thunk_proto_deserialization.h"],
     deps = [
-        ":cholesky_thunk",
         ":conditional_thunk",
         ":convolution_reorder_thunk",
         ":convolution_thunk",

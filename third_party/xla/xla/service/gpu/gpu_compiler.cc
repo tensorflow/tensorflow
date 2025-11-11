@@ -83,6 +83,7 @@ limitations under the License.
 #include "xla/hlo/transforms/collectives/collectives_schedule_linearizer.h"
 #include "xla/hlo/transforms/convert_memory_placement_to_internal_annotations.h"
 #include "xla/hlo/transforms/expanders/bitcast_dtypes_expander.h"
+#include "xla/hlo/transforms/expanders/cholesky_expander.h"
 #include "xla/hlo/transforms/expanders/comparison_expander.h"
 #include "xla/hlo/transforms/expanders/convolution_4d_expander.h"
 #include "xla/hlo/transforms/expanders/convolution_pred_expander.h"
@@ -621,6 +622,9 @@ absl::Status RunOptimizationPasses(
 
   // Rewrite select-and-scatter as a scatter and a reduce-window.
   pipeline.AddPass<SelectAndScatterExpander>();
+
+  // Rewrite Cholesky.
+  pipeline.AddPass<CholeskyExpander>();
 
   if (RequireDeterminism(hlo_module->config())) {
     // Scatter can be indeterministic if indices are not unique or a non

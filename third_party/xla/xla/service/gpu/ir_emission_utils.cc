@@ -133,14 +133,6 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
       return false;
   }
 }
-const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
-
-bool IsCustomCallToCusolver(const HloInstruction& hlo) {
-  if (hlo.opcode() != HloOpcode::kCustomCall) {
-    return false;
-  }
-  return hlo.custom_call_target() == kCusolverCholeskyCallTarget;
-}
 
 bool IsCustomCallToTopK(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&

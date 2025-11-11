@@ -321,34 +321,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cuda_solver_context",
-    srcs = ["cuda_solver_context.cc"],
-    hdrs = ["cuda_solver_context.h"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = [
-        ":cuda_platform_id",
-        "//xla:comparison_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/stream_executor:blas",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:gpu_solver_context",
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor/platform:platform_object_registry",
-        "//xla/tsl/cuda:cusolver",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "cuda_blas_utils",
     srcs = ["cuda_blas_utils.cc"],
     hdrs = ["cuda_blas_utils.h"],
@@ -1311,7 +1283,6 @@ cc_library(
         ":buffer_debug_xor_checksum_kernel_cuda",
         ":cublas_plugin",
         ":cuda_platform",
-        ":cuda_solver_context",
         ":cudnn_plugin",
         ":cufft_plugin",
         ":make_batch_pointers_kernel_cuda",
@@ -1319,7 +1290,6 @@ cc_library(
         ":redzone_allocator_kernel_cuda",
         ":repeat_buffer_kernel_cuda",
         ":topk_kernel_cuda",
-        "//xla/tsl/cuda:cusolver",
         "//xla/tsl/cuda:cusparse",
         "//xla/tsl/cuda:tensorrt_rpath",
     ] + [":cub_sort_kernel_cuda_" + suffix for suffix in get_cub_sort_kernel_types()],

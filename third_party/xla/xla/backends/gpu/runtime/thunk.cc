@@ -259,7 +259,6 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kAllToAllStart);
     CASE(kBuffersDebugChecksum);
     CASE(kBuffersDebugFloatCheck);
-    CASE(kCholesky);
     CASE(kCollectiveBroadcast);
     CASE(kCollectiveBroadcastDone);
     CASE(kCollectiveBroadcastStart);
