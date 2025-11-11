@@ -341,7 +341,6 @@ filegroup(
     srcs = glob([
         "testdata/bert2/**",
         "testdata/bert1/**",
-        "testdata/half_plus_two_pbtxt/**",
     ]),
 )
 
