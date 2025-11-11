@@ -27,9 +27,15 @@ TFCI_ARTIFACT_STAGING_GCS_URI="gs://tensorflow-ci-staging/staging/nightly/$(git 
 # 2. The internal version numbers get changed
 TFCI_NIGHTLY_UPDATE_VERSION_ENABLE=1
 
-# 3. Push results to public build cache (unique cache for MacOS)
-if [[ $(uname -s) == "Darwin" ]]; then
-  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_macos_cache_push"
-else
-  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_cache_push"
-fi
+# 3. Push results to appropriate public build cache
+case "$(uname -s)" in
+  "Darwin")
+    TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_macos_cache_push"
+    ;;
+  "Linux")
+    TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_cache_push"
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_windows_cache_push"
+    ;;
+esac
