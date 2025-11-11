@@ -32,8 +32,7 @@ namespace stream_executor::gpu {
 // A wrapper over a device memory buffer used to store debug info about contents
 // of buffers (e.g. checksums).
 //
-// It holds a BufferDebugLogHeader and a variable number of BufferDebugLogEntry
-// structs.
+// It holds a BufferDebugLogHeader and a variable number of Entry structs.
 class BufferDebugLog {
  public:
   // Returns the number of bytes required to store a log with `entries`
@@ -100,7 +99,7 @@ class BufferDebugLog {
         memory_.GetByteSlice(0, sizeof(xla::gpu::BufferDebugLogHeader)));
   }
 
-  // Returns a view of the `BufferDebugLogEntry` array.
+  // Returns a view of the `Entry` array.
   //
   // The returned `DeviceMemory` gets invalidated when the `BufferDebugLog` is
   // destroyed.

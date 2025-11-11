@@ -121,8 +121,16 @@ class FloatCheckKernelTest : public ::testing::Test {
 
 TEST_F(FloatCheckKernelTest, ChecksFloatsForF32) {
   se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
-  std::vector<float> input = {1.0f, std::numeric_limits<float>::quiet_NaN(),
-                              2.0f, std::numeric_limits<float>::quiet_NaN()};
+  std::vector<float> input = {
+      1.0f,
+      std::numeric_limits<float>::quiet_NaN(),
+      2.0f,
+      std::numeric_limits<float>::quiet_NaN(),
+      0.0f,
+      std::numeric_limits<float>::infinity(),
+      std::numeric_limits<float>::infinity(),
+      std::numeric_limits<float>::infinity(),
+  };
   TF_ASSERT_OK_AND_ASSIGN(
       se::gpu::BufferDebugLog device_log,
       se::gpu::BufferDebugLog::CreateOnDevice<BufferDebugFloatCheckEntry>(
@@ -136,6 +144,8 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForF32) {
       device_log.ReadFromDevice<BufferDebugFloatCheckEntry>(*stream_));
   ASSERT_GE(host_log.size(), 1);
   EXPECT_EQ(host_log[0].nan_count, 2);
+  EXPECT_EQ(host_log[0].inf_count, 3);
+  EXPECT_EQ(host_log[0].zero_count, 1);
 }
 
 TEST_F(FloatCheckKernelTest, ChecksFloatsForBf16) {
@@ -144,7 +154,12 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForBf16) {
       xla::bfloat16(1.0f),
       xla::bfloat16(std::numeric_limits<float>::quiet_NaN()),
       xla::bfloat16(2.0f),
-      xla::bfloat16(std::numeric_limits<float>::quiet_NaN())};
+      xla::bfloat16(std::numeric_limits<float>::quiet_NaN()),
+      xla::bfloat16(0.0f),
+      xla::bfloat16(std::numeric_limits<float>::infinity()),
+      xla::bfloat16(std::numeric_limits<float>::infinity()),
+      xla::bfloat16(std::numeric_limits<float>::infinity()),
+  };
   TF_ASSERT_OK_AND_ASSIGN(
       se::gpu::BufferDebugLog device_log,
       se::gpu::BufferDebugLog::CreateOnDevice<BufferDebugFloatCheckEntry>(
@@ -158,6 +173,8 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForBf16) {
       device_log.ReadFromDevice<BufferDebugFloatCheckEntry>(*stream_));
   ASSERT_GE(host_log.size(), 1);
   EXPECT_EQ(host_log[0].nan_count, 2);
+  EXPECT_EQ(host_log[0].inf_count, 3);
+  EXPECT_EQ(host_log[0].zero_count, 1);
 }
 
 TEST_F(FloatCheckKernelTest, ChecksFloatsInParallel) {
@@ -166,6 +183,9 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsInParallel) {
   input[100] = std::numeric_limits<float>::quiet_NaN();
   input[200] = std::numeric_limits<float>::quiet_NaN();
   input[300] = std::numeric_limits<float>::quiet_NaN();
+  input[400] = 0.0f;
+  input[600] = std::numeric_limits<float>::infinity();
+  input[700] = std::numeric_limits<float>::infinity();
 
   TF_ASSERT_OK_AND_ASSIGN(
       se::gpu::BufferDebugLog device_log,
@@ -182,7 +202,11 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsInParallel) {
       device_log.ReadFromDevice<BufferDebugFloatCheckEntry>(*stream_));
   ASSERT_GE(host_log.size(), 2);
   EXPECT_EQ(host_log[0].nan_count, 3);
+  EXPECT_EQ(host_log[0].inf_count, 2);
+  EXPECT_EQ(host_log[0].zero_count, 1);
   EXPECT_EQ(host_log[1].nan_count, 3);
+  EXPECT_EQ(host_log[1].inf_count, 2);
+  EXPECT_EQ(host_log[1].zero_count, 1);
 }
 
 }  // namespace

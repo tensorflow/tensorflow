@@ -58,17 +58,22 @@ struct BufferDebugFloatCheckEntry {
   // An ID that uniquely identifies a log entry within a HLO module execution.
   BufferDebugLogEntryId entry_id;
   uint32_t nan_count;
+  uint32_t inf_count;
+  uint32_t zero_count;
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink,
                             const BufferDebugFloatCheckEntry& entry) {
-    absl::Format(&sink, "{entry_id: %v, nan_count: %u}", entry.entry_id.value(),
-                 entry.nan_count);
+    absl::Format(&sink,
+                 "{entry_id: %v, nan_count: %u, inf_count: %u, zero_count: %u}",
+                 entry.entry_id.value(), entry.nan_count, entry.inf_count,
+                 entry.zero_count);
   }
 
   bool operator==(const BufferDebugFloatCheckEntry& other) const {
-    return std::tie(entry_id, nan_count) ==
-           std::tie(other.entry_id, other.nan_count);
+    return std::tie(entry_id, nan_count, inf_count, zero_count) ==
+           std::tie(other.entry_id, other.nan_count, other.inf_count,
+                    other.zero_count);
   }
 
   bool operator!=(const BufferDebugFloatCheckEntry& other) const {
@@ -78,7 +83,7 @@ struct BufferDebugFloatCheckEntry {
 
 // The struct layout must match on both host and device.
 static_assert(_Alignof(BufferDebugFloatCheckEntry) == _Alignof(uint32_t));
-static_assert(sizeof(BufferDebugFloatCheckEntry) == sizeof(uint32_t) * 2);
+static_assert(sizeof(BufferDebugFloatCheckEntry) == sizeof(uint32_t) * 4);
 static_assert(offsetof(BufferDebugFloatCheckEntry, entry_id) == 0);
 static_assert(offsetof(BufferDebugFloatCheckEntry, nan_count) ==
               sizeof(uint32_t));

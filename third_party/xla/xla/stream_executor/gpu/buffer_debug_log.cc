@@ -32,7 +32,6 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-using ::xla::gpu::BufferDebugLogEntry;
 using ::xla::gpu::BufferDebugLogHeader;
 
 absl::StatusOr<BufferDebugLog> BufferDebugLog::CreateOnDevice(
@@ -50,8 +49,7 @@ absl::StatusOr<BufferDebugLog> BufferDebugLog::CreateOnDevice(
   }
 
   const uint32_t max_entries =
-      (log_buffer.size() - sizeof(BufferDebugLogHeader)) /
-      sizeof(BufferDebugLogEntry);
+      (log_buffer.size() - sizeof(BufferDebugLogHeader)) / entry_size;
   const BufferDebugLogHeader empty_header{
       /*write_idx=*/0,
       /*capacity=*/max_entries,

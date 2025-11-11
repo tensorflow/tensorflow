@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -54,6 +55,12 @@ __device__ void WarpReduceSum(unsigned int tid, volatile uint32_t* data) {
 
 __device__ inline bool IsNan(float v) { return isnan(v); }
 __device__ inline bool IsNan(__nv_bfloat16 v) { return __isnan(v); }
+__device__ inline bool IsInf(float v) { return isinf(v); }
+__device__ inline bool IsInf(__nv_bfloat16 v) { return __isinf(v); }
+__device__ inline bool IsZero(float v) { return v == 0.0f; }
+__device__ inline bool IsZero(__nv_bfloat16 v) {
+  return v == __nv_bfloat16(0.0f);
+}
 
 // Calculates count of NaNs of all elements of `input` and puts result in
 // `output`.
@@ -65,16 +72,27 @@ __device__ inline bool IsNan(__nv_bfloat16 v) { return __isnan(v); }
 // `BLOCK_SIZE` must be a power of 2 no larger than 1024.
 template <typename T, unsigned int BLOCK_SIZE>
 __device__ void ReduceSum(const T* input, uint64_t input_size,
-                          uint32_t* output) {
-  __shared__ uint32_t scratch[BLOCK_SIZE];
+                          uint32_t* nan_counter, uint32_t* inf_counter,
+                          uint32_t* zero_counter) {
+  __shared__ uint32_t nan_count[BLOCK_SIZE];
+  __shared__ uint32_t inf_count[BLOCK_SIZE];
+  __shared__ uint32_t zero_count[BLOCK_SIZE];
 
   assert(BlockIdx() == 0);
   const unsigned int tid = ThreadIdx();
 
-  scratch[tid] = 0;
+  nan_count[tid] = 0;
+  inf_count[tid] = 0;
+  zero_count[tid] = 0;
   for (unsigned int i = tid; i < input_size; i += BLOCK_SIZE) {
     if (IsNan(input[i])) {
-      scratch[tid]++;
+      nan_count[tid]++;
+    }
+    if (IsInf(input[i])) {
+      inf_count[tid]++;
+    }
+    if (IsZero(input[i])) {
+      zero_count[tid]++;
     }
   }
 
@@ -82,30 +100,46 @@ __device__ void ReduceSum(const T* input, uint64_t input_size,
 
   if (BLOCK_SIZE >= 1024) {
     if (tid < 512) {
-      scratch[tid] += scratch[tid + 512];
+      nan_count[tid] += nan_count[tid + 512];
+      inf_count[tid] += inf_count[tid + 512];
+      zero_count[tid] += zero_count[tid + 512];
     }
     __syncthreads();
   }
   if (BLOCK_SIZE >= 512) {
     if (tid < 256) {
-      scratch[tid] += scratch[tid + 256];
+      nan_count[tid] += nan_count[tid + 256];
+      inf_count[tid] += inf_count[tid + 256];
+      zero_count[tid] += zero_count[tid + 256];
     }
     __syncthreads();
   }
   if (BLOCK_SIZE >= 256) {
     if (tid < 128) {
-      scratch[tid] += scratch[tid + 128];
+      nan_count[tid] += nan_count[tid + 128];
+      inf_count[tid] += inf_count[tid + 128];
+      zero_count[tid] += zero_count[tid + 128];
     }
     __syncthreads();
   }
   if (BLOCK_SIZE >= 128) {
     if (tid < 64) {
-      scratch[tid] += scratch[tid + 64];
+      nan_count[tid] += nan_count[tid + 64];
+      inf_count[tid] += inf_count[tid + 64];
+      zero_count[tid] += zero_count[tid + 64];
     }
     __syncthreads();
   }
-  if (tid < 32) WarpReduceSum<BLOCK_SIZE>(tid, scratch);
-  if (tid == 0) *output = scratch[0];
+  if (tid < 32) {
+    WarpReduceSum<BLOCK_SIZE>(tid, nan_count);
+    WarpReduceSum<BLOCK_SIZE>(tid, inf_count);
+    WarpReduceSum<BLOCK_SIZE>(tid, zero_count);
+  }
+  if (tid == 0) {
+    *nan_counter = nan_count[0];
+    *inf_counter = inf_count[0];
+    *zero_counter = zero_count[0];
+  }
 }
 
 // Attempts to append the NaN count of the `input` buffer to the
@@ -131,6 +165,8 @@ __global__ void AppendFloatCheck(
   const uint32_t block_size = blockDim.x * blockDim.y * blockDim.z;
   const uint64_t input_size = input_size_in_bytes / sizeof(T);
   uint32_t nan_count = 0;
+  uint32_t inf_count = 0;
+  uint32_t zero_count = 0;
 
   assert(gridDim.x == 1 && gridDim.y == 1 && gridDim.z == 1);
   if (BlockIdx() != 0) {
@@ -142,37 +178,38 @@ __global__ void AppendFloatCheck(
   // > per block limit).
   switch (block_size) {
     case 1024:
-      ReduceSum<T, 1024>(input, input_size, &nan_count);
+      ReduceSum<T, 1024>(input, input_size, &nan_count, &inf_count,
+                         &zero_count);
       break;
     case 512:
-      ReduceSum<T, 512>(input, input_size, &nan_count);
+      ReduceSum<T, 512>(input, input_size, &nan_count, &inf_count, &zero_count);
       break;
     case 256:
-      ReduceSum<T, 256>(input, input_size, &nan_count);
+      ReduceSum<T, 256>(input, input_size, &nan_count, &inf_count, &zero_count);
       break;
     case 128:
-      ReduceSum<T, 128>(input, input_size, &nan_count);
+      ReduceSum<T, 128>(input, input_size, &nan_count, &inf_count, &zero_count);
       break;
     case 64:
-      ReduceSum<T, 64>(input, input_size, &nan_count);
+      ReduceSum<T, 64>(input, input_size, &nan_count, &inf_count, &zero_count);
       break;
     case 32:
-      ReduceSum<T, 32>(input, input_size, &nan_count);
+      ReduceSum<T, 32>(input, input_size, &nan_count, &inf_count, &zero_count);
       break;
     case 16:
-      ReduceSum<T, 16>(input, input_size, &nan_count);
+      ReduceSum<T, 16>(input, input_size, &nan_count, &inf_count, &zero_count);
       break;
     case 8:
-      ReduceSum<T, 8>(input, input_size, &nan_count);
+      ReduceSum<T, 8>(input, input_size, &nan_count, &inf_count, &zero_count);
       break;
     case 4:
-      ReduceSum<T, 4>(input, input_size, &nan_count);
+      ReduceSum<T, 4>(input, input_size, &nan_count, &inf_count, &zero_count);
       break;
     case 2:
-      ReduceSum<T, 2>(input, input_size, &nan_count);
+      ReduceSum<T, 2>(input, input_size, &nan_count, &inf_count, &zero_count);
       break;
     case 1:
-      ReduceSum<T, 1>(input, input_size, &nan_count);
+      ReduceSum<T, 1>(input, input_size, &nan_count, &inf_count, &zero_count);
       break;
     default:
       // Unsupported block size.
@@ -186,8 +223,8 @@ __global__ void AppendFloatCheck(
 #if __CUDA_ARCH__ >= 600
     const uint32_t write_idx = nan_count_log_write_idx.fetch_add(1);
     if (nan_count_log_write_idx.load() < log_header->capacity) {
-      float_check_entries[write_idx] =
-          xla::gpu::BufferDebugFloatCheckEntry{entry_id, nan_count};
+      float_check_entries[write_idx] = xla::gpu::BufferDebugFloatCheckEntry{
+          entry_id, nan_count, inf_count, zero_count};
     }
 #else
     // Our toolchains generate a fetch_add PTX instructions with system scope,
