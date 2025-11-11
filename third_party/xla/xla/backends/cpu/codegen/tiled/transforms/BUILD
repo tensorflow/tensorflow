@@ -50,6 +50,7 @@ cc_library(
     srcs = [
         "elemental_tensor_to_vector.cc",
         "lower_xtile_entry.cc",
+        "memref_copy_to_loops.cc",
         "rewrite_dynamic_vector_extract.cc",
         "shlo_to_vector.cc",
         "tensor_ops_to_vector.cc",
@@ -78,6 +79,7 @@ cc_library(
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MathOpsIncGen",
         "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:MemRefUtils",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFUtils",

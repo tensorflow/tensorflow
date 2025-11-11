@@ -14,7 +14,6 @@ py_strict_test(
     ],
     deps = [
         "//third_party/py/numpy",
-        "//xla:xla_data_proto_py",
         "//xla/backends/cpu/testlib",
         "//xla/codegen/testlib",
         "@absl_py//absl/testing:absltest",
