@@ -200,6 +200,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/async_wrapper.h"
 #include "xla/service/gpu/transforms/collectives/all_gather_combiner.h"
 #include "xla/service/gpu/transforms/collectives/all_gather_dynamic_slice_simplifier.h"
+#include "xla/service/gpu/transforms/collectives/all_gather_major_dimension_rewriter.h"
 #include "xla/service/gpu/transforms/collectives/all_gather_optimizer.h"
 #include "xla/service/gpu/transforms/collectives/all_reduce_blueconnect.h"
 #include "xla/service/gpu/transforms/collectives/all_reduce_combiner.h"
@@ -828,6 +829,7 @@ absl::Status RunCollectiveOptimizationPasses(
     collectives_pipeline.AddPass<AllReduceDecomposer>();
   }
   collectives_pipeline.AddPass<AllGatherOptimizer>();
+  collectives_pipeline.AddPass<AllGatherMajorDimensionRewriter>();
   collectives_pipeline.AddPass<AllGatherDynamicSliceSimplifier>();
   collectives_pipeline.AddPass<AllGatherPadDsSimplifier>();
   collectives_pipeline.AddPass<AllGatherDynamicSlicePermutedOffsetSimplifier>();
