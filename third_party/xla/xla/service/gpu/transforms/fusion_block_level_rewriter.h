@@ -28,6 +28,16 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Redirect already-constructed fusion to the Triton emitter if it will likely
+// be faster.
+//
+// For example, a fusion with kind kLoop will be transformed to a fusion with
+// kind kCustom (and underlying kTritonFusionKind) if it can be tiled
+// correctly, and if all the instructions it contains are supported by XLA's
+// Triton emitter. Tile sizes are assigned automatically.
+//
+// Pass is enabled by flag
+// `xla_gpu_experimental_enable_fusion_block_level_rewriter`.
 class FusionBlockLevelRewriter : public HloModulePass {
  public:
   explicit FusionBlockLevelRewriter(
