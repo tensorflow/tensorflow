@@ -359,6 +359,41 @@ ENTRY %main_outer (p0: u32[]) -> u32[] {
   }
 }
 
+TEST_F(CallInlinerTest, PropagateFrontendAttributes) {
+  const absl::string_view hlo_string = R"(
+    HloModule inliner_fe_attr_prop
+
+    %add_one (p: f32[]) -> f32[] {
+      %p = f32[] parameter(0)
+      %one = f32[] constant(1)
+      ROOT %add = f32[] add(%p, %one)
+    }
+
+    ENTRY %main () -> f32[] {
+      %c = f32[] constant(10)
+      ROOT %call = f32[] call(%c), to_apply=%add_one, frontend_attributes={mosaic_fusion_group="1"}
+    })";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  CallInliner call_inliner;
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_TRUE(mutated);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Add());
+  ASSERT_TRUE(root->has_frontend_attributes());
+  EXPECT_EQ(root->frontend_attributes().map().at("mosaic_fusion_group"), "1");
+
+  const HloInstruction* c = root->operand(0);
+  EXPECT_THAT(c, op::Constant());
+  EXPECT_FALSE(c->frontend_attributes().map().contains("mosaic_fusion_group"));
+
+  const HloInstruction* one = root->operand(1);
+  EXPECT_THAT(one, op::Constant());
+  ASSERT_TRUE(one->has_frontend_attributes());
+  EXPECT_EQ(one->frontend_attributes().map().at("mosaic_fusion_group"), "1");
+}
+
 TEST_F(CallInlinerTest, InlineCompositeCall) {
   const absl::string_view hlo_string = R"(
   HloModule composite
