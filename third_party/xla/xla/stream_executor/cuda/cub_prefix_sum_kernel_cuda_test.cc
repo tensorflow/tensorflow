@@ -106,8 +106,10 @@ class CubPrefixSumKernelCudaTest
 
     TF_RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
                                        input.size() * sizeof(input[0])));
+    // For large number of items, limit the number of threads per block to 512
+    // to avoid running out of shared memory.
     size_t num_threads_per_block =
-        std::min(size_t{1024}, absl::bit_ceil(num_items));
+        std::min(size_t{512}, absl::bit_ceil(num_items));
     // Call kernel
     TF_RETURN_IF_ERROR(
         kernel.Launch(stream_executor::ThreadDim(num_threads_per_block, 1, 1),
@@ -221,7 +223,7 @@ INSTANTIATE_TEST_SUITE_P(
                                             xla::S64, xla::U8, xla::U16,
                                             xla::U32, xla::U64}),
                        ::testing::ValuesIn({1, 2, 3, 128, 511, 512}),
-                       ::testing::ValuesIn({1, 2, 3, 128, 511, 512}),
+                       ::testing::ValuesIn({1, 2, 3, 128, 511, 513}),
                        ::testing::ValuesIn({false, true})),
     ParametersToString);
 

@@ -31,8 +31,8 @@ namespace {
 template <unsigned int BLOCK_SIZE, typename ElementT>
 __device__ void RowPrefixSum(const ElementT* data_in, ElementT* data_out,
                              size_t num_items) {
-  // `BLOCK_SIZE` must be a power of 2 no larger than 1024.
-  static_assert(BLOCK_SIZE <= 1024 && (BLOCK_SIZE & (BLOCK_SIZE - 1)) == 0);
+  // `BLOCK_SIZE` must be a power of 2 no larger than 512.
+  static_assert(BLOCK_SIZE <= 512 && (BLOCK_SIZE & (BLOCK_SIZE - 1)) == 0);
   using BlockScan = cub::BlockScan<ElementT, BLOCK_SIZE>;
   __shared__ typename BlockScan::TempStorage temp_storage;
   ElementT total = 0;
@@ -63,12 +63,9 @@ __global__ void PrefixSum(const void* data_in, void* data_out,
   int64_t row_offset = block_idx * num_items;
   // https://developer.nvidia.com/blog/cuda-refresher-cuda-programming-model/:
   // CUDA architecture limits the numbers of threads per block (1024 threads
-  // per block limit).
+  // per block limit). We need to limit it to 512 to avoid running out of shared
+  // memory with 8 byte data types.
   switch (blockDim.x * blockDim.y * blockDim.z) {
-    case 1024:
-      RowPrefixSum<1024>(data_in_typed + row_offset,
-                         data_out_typed + row_offset, num_items);
-      break;
     case 512:
       RowPrefixSum<512>(data_in_typed + row_offset, data_out_typed + row_offset,
                         num_items);
