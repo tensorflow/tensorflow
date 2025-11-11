@@ -314,6 +314,8 @@ cc_library(
     ],
     deps = [
         "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:strcat",
     ],
     alwayslink = True,
