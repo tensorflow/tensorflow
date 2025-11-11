@@ -103,7 +103,7 @@ class FakeHttpRequest : public CurlHttpRequest {
       *captured_post_body_ = string(buffer, size);
     } else {
       actual_request_ +=
-          strings::StrCat("Post body: ", absl::string_view(buffer, size), "\n");
+          absl::StrCat("Post body: ", absl::string_view(buffer, size), "\n");
     }
   }
   void SetPutEmptyBody() override { actual_request_ += "Put: yes\n"; }

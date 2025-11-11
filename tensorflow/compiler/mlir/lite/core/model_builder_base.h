@@ -49,10 +49,11 @@ limitations under the License.
 namespace tflite {
 
 std::unique_ptr<Allocation> GetAllocationFromFile(
-    const char* filename, ErrorReporter* error_reporter);
+    const char* filename, ErrorReporter* error_reporter,
+    bool allow_modifications = false);
 
 std::unique_ptr<Allocation> GetAllocationFromFile(
-    int fd, ErrorReporter* error_reporter);
+    int fd, ErrorReporter* error_reporter, bool allow_modifications = false);
 
 namespace impl {
 
@@ -520,7 +521,7 @@ class FlatBufferModelBase {
   // failures.
   void ValidateModelBuffers(ErrorReporter* error_reporter) {
     auto buffers = model_->buffers();
-    if (buffers && buffers->size() > 0) {
+    if (buffers && !buffers->empty()) {
       auto first_buffer = buffers->Get(0);
       if (first_buffer && first_buffer->size() != 0) {
         // Note the 0th entry of this array must be an empty buffer (sentinel).

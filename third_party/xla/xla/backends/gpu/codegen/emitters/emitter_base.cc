@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,7 +23,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -41,6 +39,7 @@ limitations under the License.
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
@@ -67,7 +66,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/DialectRegistry.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -80,6 +78,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
+#include "stablehlo/transforms/Passes.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
@@ -94,13 +93,13 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace_instrumentation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -111,10 +110,10 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
@@ -127,6 +126,7 @@ namespace gpu {
 namespace {
 
 using llvm::SmallVector;
+using mlir::MLIRContext;
 using mlir::Value;
 using mlir::ValueRange;
 using mlir::func::FuncOp;
@@ -269,6 +269,7 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
                                      ir_emitter_context.buffer_assignment(),
                                      GetDefaultBufferAlignment(), &fusion));
   auto launch_dims = launch_dimensions();
+  mlir::MLIRContext& mlir_context = *ir_emitter_context.mlir_context();
   auto [status_or_entry, cached] =
       ir_emitter_context.kernel_cache().GetWithStatus(
           fusion.fused_instructions_computation(), args.args(),
@@ -278,10 +279,12 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
                 ir_emitter_context.name_uniquer()->GetUniqueName(
                     llvm_ir::SanitizeFunctionName(std::string(fusion.name())));
             if (ir_emitter_context.emit_kernels()) {
+              mlir_context.appendDialectRegistry(GetDialectRegistry());
+              mlir_context.loadAllAvailableDialects();
               TF_ASSIGN_OR_RETURN(
                   auto module,
                   CreateLLVMModule(
-                      *ir_emitter_context.mlir_context(),
+                      mlir_context,
                       ir_emitter_context.llvm_module()->getContext(),
                       ir_emitter_context.gpu_device_info(), fusion, kernel_name,
                       &ir_emitter_context.buffer_assignment()));
@@ -319,8 +322,11 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
 
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(&fusion), entry->kernel_name,
-      args, launch_dims, entry->cluster_dim, entry->shmem_bytes));
+      Thunk::ThunkInfo::WithProfileAnnotation(
+          &fusion, ir_emitter_context.GetNextThunkId()),
+      entry->kernel_name, args, launch_dims, entry->cluster_dim,
+      entry->shmem_bytes,
+      /*tma_metadata=*/se::gpu::TmaMetadata()));
   return result;
 }
 
@@ -329,8 +335,6 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  mlir_context.appendDialectRegistry(GetDialectRegistry());
-  mlir_context.loadAllAvailableDialects();
   TF_ASSIGN_OR_RETURN(
       auto module, CreateMLIRModule(mlir_context, fusion, entry_function_name,
                                     buffer_assignment));
@@ -351,10 +355,10 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    MLIRContext& mlir_context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  mlir::OpBuilder builder(&context);
+  mlir::OpBuilder builder(&mlir_context);
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
 
@@ -362,9 +366,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
                       emitters::EmitKernelApi(
                           *module, fusion, buffer_assignment,
                           GetDefaultBufferAlignment(), entry_function_name));
-  SetBackendKind(&context, entry_func, BackendKind::kGpu);
+  SetBackendKind(&mlir_context, entry_func, BackendKind::kGpu);
 
-  TF_RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion));
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
+  TF_RETURN_IF_ERROR(
+      EmitMlir(module.get(), entry_func, fusion, symbolic_expr_context));
   return module;
 }
 
@@ -372,7 +378,7 @@ emitters::EpilogueSpecification EmitterBase::GetEpilogueForOutputIndexing(
     const HloFusionAnalysis& analysis,
     const std::vector<const HloInstruction*>& heroes,
     const std::vector<const HloInstruction*>& roots,
-    mlir::MLIRContext* mlir_context) const {
+    SymbolicExprContext* symbolic_expr_context) const {
   emitters::EpilogueSpecification result;
 
   absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
@@ -388,8 +394,8 @@ emitters::EpilogueSpecification EmitterBase::GetEpilogueForOutputIndexing(
 
   result.root_indexing.reserve(roots.size());
   for (auto* root : roots) {
-    auto indexing =
-        ComputeThreadIdToOutputIndexing(root_to_index[root], mlir_context);
+    auto indexing = ComputeThreadIdToOutputIndexing(root_to_index[root],
+                                                    symbolic_expr_context);
     if (result.index_ranges.empty()) {
       result.index_ranges.reserve(indexing->GetDimensionCount() +
                                   indexing->GetSymbolCount());
@@ -402,7 +408,8 @@ emitters::EpilogueSpecification EmitterBase::GetEpilogueForOutputIndexing(
     }
     auto* hero = root_to_hero[root];
     auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(
-        {*hero, &analysis.fusion()}, {*root, &analysis.fusion()}, mlir_context);
+        {*hero, &analysis.fusion()}, {*root, &analysis.fusion()},
+        symbolic_expr_context);
     result.root_indexing.push_back(
         ComposeIndexingMaps(*indexing, epilogue_indexing));
   }
@@ -429,12 +436,15 @@ mlir::DialectRegistry EmitterBase::GetDialectRegistry() {
   return registry;
 }
 
-absl::Status EmitterBase::EmitMlir(mlir::ModuleOp module, FuncOp entry_function,
-                                   const HloFusionInstruction& fusion) const {
+absl::Status EmitterBase::EmitMlir(
+    mlir::ModuleOp module, FuncOp entry_function,
+    const HloFusionInstruction& fusion,
+    SymbolicExprContext& symbolic_expr_context) const {
   std::vector<emitters::EpilogueSpecification> epilogues =
-      GetEpilogues(fusion, module->getContext());
+      GetEpilogues(fusion, &symbolic_expr_context);
   emitters::PartitionedComputations computations(
-      fusion.fused_instructions_computation(), module->getContext(), epilogues);
+      fusion.fused_instructions_computation(), &symbolic_expr_context,
+      epilogues);
 
   TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
                                              module, computations));
@@ -457,7 +467,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
   pm.addNestedPass<FuncOp>(CreatePeelLoopsPass());
   pm.addNestedPass<FuncOp>(emitters::CreateLowerXlaLoopsToScfPass());
-  pm.addPass(mlir::mhlo::createConvertToSignlessPass());
+  pm.addPass(mlir::stablehlo::createStablehloConvertToSignlessPass());
   pm.addPass(emitters::CreatePropagateSliceIndicesPass());
   pm.addPass(emitters::CreateFlattenTensorsPass());
   // We need LICM before unswitching loops, because our loop unswitcher only
@@ -497,20 +507,14 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
 
   // This pass has to run before `ExpandFloatOpsPass`.
-  if (auto* cc = std::get_if<se::CudaComputeCapability>(
-          &device.gpu_compute_capability())) {
+  if (auto* cc = device.gpu_compute_capability().cuda_compute_capability()) {
     se::SemanticVersion ptx_version =
         nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
             device.runtime_version());
-
-    // FP8 conversion intrinsics are available on sm89 since ptx 8.1
-    // Older ptx versions only support FP8 conversion for sm90
-    if ((ptx_version >= se::SemanticVersion(8, 1, 0) && cc->IsAtLeast(8, 9)) ||
-        (ptx_version >= se::SemanticVersion(7, 8, 0) && cc->IsAtLeast(9, 0))) {
-      pm.addPass(CreateConvertFloatNvidiaPass());
-    }
-  } else if (auto* cc = std::get_if<se::RocmComputeCapability>(
-                 &device.gpu_compute_capability())) {
+    pm.addPass(CreateConvertFloatNvidiaPass(
+        cc->major, cc->minor, ptx_version.major(), ptx_version.minor()));
+  } else if (auto* cc =
+                 device.gpu_compute_capability().rocm_compute_capability()) {
     if (cc->has_fp8_support()) {
       pm.addPass(CreateConvertFloatAMDPass(*cc));
     }

@@ -163,8 +163,8 @@ compare {
 // CHECK:         %[[VAL_130:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_103]]
 // CHECK:         %[[VAL_131:.*]] = addrspacecast ptr addrspace(3) %[[VAL_130]] to ptr
 // CHECK-GCN:     %[[VAL_11_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_11]] to ptr
-// CHECK-GCN:     call void @[[REGION:compare_.*]](ptr %[[VAL_129]], ptr %[[VAL_131]], ptr %[[VAL_11_2]])
-// CHECK-PTX:     call void @[[REGION:compare_.*]](ptr %[[VAL_129]], ptr %[[VAL_131]], ptr %[[VAL_11]])
+// CHECK-GCN:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_129]], ptr %[[VAL_131]], ptr %[[VAL_11_2]])
+// CHECK-PTX:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_129]], ptr %[[VAL_131]], ptr %[[VAL_11]])
 // CHECK-PTX:     %[[VAL_132:.*]] = load i8, ptr %[[VAL_11]], align 1
 // CHECK-GCN:     %[[VAL_132:.*]] = load i8, ptr addrspace(5) %[[VAL_11]], align 1
 // CHECK:         %[[VAL_133:.*]] = icmp ne i8 %[[VAL_132]], 0
@@ -185,8 +185,8 @@ compare {
 // CHECK:         %[[VAL_141:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_110]]
 // CHECK:         %[[VAL_142:.*]] = addrspacecast ptr addrspace(3) %[[VAL_141]] to ptr
 // CHECK-GCN:     %[[VAL_10_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_10]] to ptr
-// CHECK-GCN:     call void @[[REGION:compare_.*]](ptr %[[VAL_140]], ptr %[[VAL_142]], ptr %[[VAL_10_2]])
-// CHECK-PTX:     call void @[[REGION:compare_.*]](ptr %[[VAL_140]], ptr %[[VAL_142]], ptr %[[VAL_10]])
+// CHECK-GCN:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_140]], ptr %[[VAL_142]], ptr %[[VAL_10_2]])
+// CHECK-PTX:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_140]], ptr %[[VAL_142]], ptr %[[VAL_10]])
 // CHECK-PTX:     %[[VAL_143:.*]] = load i8, ptr %[[VAL_10]], align 1
 // CHECK-GCN:     %[[VAL_143:.*]] = load i8, ptr addrspace(5) %[[VAL_10]], align 1
 // CHECK:         %[[VAL_144:.*]] = icmp ne i8 %[[VAL_143]], 0
@@ -207,8 +207,8 @@ compare {
 // CHECK:         %[[VAL_152:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_118]]
 // CHECK:         %[[VAL_153:.*]] = addrspacecast ptr addrspace(3) %[[VAL_152]] to ptr
 // CHECK-GCN:     %[[VAL_9_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_9]] to ptr
-// CHECK-GCN:     call void @[[REGION:compare_.*]](ptr %[[VAL_151]], ptr %[[VAL_153]], ptr %[[VAL_9_2]])
-// CHECK-PTX:     call void @[[REGION:compare_.*]](ptr %[[VAL_151]], ptr %[[VAL_153]], ptr %[[VAL_9]])
+// CHECK-GCN:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_151]], ptr %[[VAL_153]], ptr %[[VAL_9_2]])
+// CHECK-PTX:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_151]], ptr %[[VAL_153]], ptr %[[VAL_9]])
 // CHECK-PTX:     %[[VAL_154:.*]] = load i8, ptr %[[VAL_9]], align 1
 // CHECK-GCN:     %[[VAL_154:.*]] = load i8, ptr addrspace(5) %[[VAL_9]], align 1
 // CHECK:         %[[VAL_155:.*]] = icmp ne i8 %[[VAL_154]], 0
@@ -229,8 +229,8 @@ compare {
 // CHECK:         %[[VAL_163:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_124]]
 // CHECK:         %[[VAL_164:.*]] = addrspacecast ptr addrspace(3) %[[VAL_163]] to ptr
 // CHECK-GCN:     %[[VAL_8_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_8]] to ptr
-// CHECK-GCN:     call void @[[REGION:compare_.*]](ptr %[[VAL_162]], ptr %[[VAL_164]], ptr %[[VAL_8_2]])
-// CHECK-PTX:     call void @[[REGION:compare_.*]](ptr %[[VAL_162]], ptr %[[VAL_164]], ptr %[[VAL_8]])
+// CHECK-GCN:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_162]], ptr %[[VAL_164]], ptr %[[VAL_8_2]])
+// CHECK-PTX:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_162]], ptr %[[VAL_164]], ptr %[[VAL_8]])
 // CHECK-PTX:     %[[VAL_165:.*]] = load i8, ptr %[[VAL_8]], align 1
 // CHECK-GCN:     %[[VAL_165:.*]] = load i8, ptr addrspace(5) %[[VAL_8]], align 1
 // CHECK:         %[[VAL_166:.*]] = icmp ne i8 %[[VAL_165]], 0
@@ -283,8 +283,8 @@ compare {
 // CHECK:         %[[VAL_205:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_175]]
 // CHECK:         %[[VAL_206:.*]] = addrspacecast ptr addrspace(3) %[[VAL_205]] to ptr
 // CHECK-GCN:     %[[VAL_7_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_7]] to ptr
-// CHECK-GCN:     call void @[[REGION:compare_.*]](ptr %[[VAL_204]], ptr %[[VAL_206]], ptr %[[VAL_7_2]])
-// CHECK-PTX:     call void @[[REGION:compare_.*]](ptr %[[VAL_204]], ptr %[[VAL_206]], ptr %[[VAL_7]])
+// CHECK-GCN:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_204]], ptr %[[VAL_206]], ptr %[[VAL_7_2]])
+// CHECK-PTX:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_204]], ptr %[[VAL_206]], ptr %[[VAL_7]])
 // CHECK-PTX:     %[[VAL_207:.*]] = load i8, ptr %[[VAL_7]], align 1
 // CHECK-GCN:     %[[VAL_207:.*]] = load i8, ptr addrspace(5) %[[VAL_7]], align 1
 // CHECK:         %[[VAL_208:.*]] = icmp ne i8 %[[VAL_207]], 0
@@ -305,8 +305,8 @@ compare {
 // CHECK:         %[[VAL_216:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_183]]
 // CHECK:         %[[VAL_217:.*]] = addrspacecast ptr addrspace(3) %[[VAL_216]] to ptr
 // CHECK-GCN:     %[[VAL_6_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_6]] to ptr
-// CHECK-GCN:     call void @[[REGION:compare_.*]](ptr %[[VAL_215]], ptr %[[VAL_217]], ptr %[[VAL_6_2]])
-// CHECK-PTX:     call void @[[REGION:compare_.*]](ptr %[[VAL_215]], ptr %[[VAL_217]], ptr %[[VAL_6]])
+// CHECK-GCN:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_215]], ptr %[[VAL_217]], ptr %[[VAL_6_2]])
+// CHECK-PTX:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_215]], ptr %[[VAL_217]], ptr %[[VAL_6]])
 // CHECK-PTX:     %[[VAL_218:.*]] = load i8, ptr %[[VAL_6]], align 1
 // CHECK-GCN:     %[[VAL_218:.*]] = load i8, ptr addrspace(5) %[[VAL_6]], align 1
 // CHECK:         %[[VAL_219:.*]] = icmp ne i8 %[[VAL_218]], 0
@@ -327,8 +327,8 @@ compare {
 // CHECK:         %[[VAL_227:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_192]]
 // CHECK:         %[[VAL_228:.*]] = addrspacecast ptr addrspace(3) %[[VAL_227]] to ptr
 // CHECK-GCN:     %[[VAL_5_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_5]] to ptr
-// CHECK-GCN:     call void @[[REGION:compare_.*]](ptr %[[VAL_226]], ptr %[[VAL_228]], ptr %[[VAL_5_2]])
-// CHECK-PTX:     call void @[[REGION:compare_.*]](ptr %[[VAL_226]], ptr %[[VAL_228]], ptr %[[VAL_5]])
+// CHECK-GCN:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_226]], ptr %[[VAL_228]], ptr %[[VAL_5_2]])
+// CHECK-PTX:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_226]], ptr %[[VAL_228]], ptr %[[VAL_5]])
 // CHECK-PTX:     %[[VAL_229:.*]] = load i8, ptr %[[VAL_5]], align 1
 // CHECK-GCN:     %[[VAL_229:.*]] = load i8, ptr addrspace(5) %[[VAL_5]], align 1
 // CHECK:         %[[VAL_230:.*]] = icmp ne i8 %[[VAL_229]], 0
@@ -349,8 +349,8 @@ compare {
 // CHECK:         %[[VAL_238:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_199]]
 // CHECK:         %[[VAL_239:.*]] = addrspacecast ptr addrspace(3) %[[VAL_238]] to ptr
 // CHECK-GCN:     %[[VAL_4_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_4]] to ptr
-// CHECK-GCN:     call void @[[REGION:compare_.*]](ptr %[[VAL_237]], ptr %[[VAL_239]], ptr %[[VAL_4_2]])
-// CHECK-PTX:     call void @[[REGION:compare_.*]](ptr %[[VAL_237]], ptr %[[VAL_239]], ptr %[[VAL_4]])
+// CHECK-GCN:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_237]], ptr %[[VAL_239]], ptr %[[VAL_4_2]])
+// CHECK-PTX:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_237]], ptr %[[VAL_239]], ptr %[[VAL_4]])
 // CHECK-PTX:     %[[VAL_240:.*]] = load i8, ptr %[[VAL_4]], align 1
 // CHECK-GCN:     %[[VAL_240:.*]] = load i8, ptr addrspace(5) %[[VAL_4]], align 1
 // CHECK:         %[[VAL_241:.*]] = icmp ne i8 %[[VAL_240]], 0
@@ -399,8 +399,8 @@ compare {
 // CHECK:         %[[VAL_275:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_249]]
 // CHECK:         %[[VAL_276:.*]] = addrspacecast ptr addrspace(3) %[[VAL_275]] to ptr
 // CHECK-GCN:     %[[VAL_3_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_3]] to ptr
-// CHECK-GCN:     call void @[[REGION:compare_.*]](ptr %[[VAL_274]], ptr %[[VAL_276]], ptr %[[VAL_3_2]])
-// CHECK-PTX:     call void @[[REGION:compare_.*]](ptr %[[VAL_274]], ptr %[[VAL_276]], ptr %[[VAL_3]])
+// CHECK-GCN:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_274]], ptr %[[VAL_276]], ptr %[[VAL_3_2]])
+// CHECK-PTX:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_274]], ptr %[[VAL_276]], ptr %[[VAL_3]])
 // CHECK-PTX:     %[[VAL_277:.*]] = load i8, ptr %[[VAL_3]], align 1
 // CHECK-GCN:     %[[VAL_277:.*]] = load i8, ptr addrspace(5) %[[VAL_3]], align 1
 // CHECK:         %[[VAL_278:.*]] = icmp ne i8 %[[VAL_277]], 0
@@ -421,8 +421,8 @@ compare {
 // CHECK:         %[[VAL_286:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_256]]
 // CHECK:         %[[VAL_287:.*]] = addrspacecast ptr addrspace(3) %[[VAL_286]] to ptr
 // CHECK-GCN:     %[[VAL_2_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_2]] to ptr
-// CHECK-GCN:     call void @[[REGION:compare_.*]](ptr %[[VAL_285]], ptr %[[VAL_287]], ptr %[[VAL_2_2]])
-// CHECK-PTX:     call void @[[REGION:compare_.*]](ptr %[[VAL_285]], ptr %[[VAL_287]], ptr %[[VAL_2]])
+// CHECK-GCN:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_285]], ptr %[[VAL_287]], ptr %[[VAL_2_2]])
+// CHECK-PTX:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_285]], ptr %[[VAL_287]], ptr %[[VAL_2]])
 // CHECK-PTX:     %[[VAL_288:.*]] = load i8, ptr %[[VAL_2]], align 1
 // CHECK-GCN:     %[[VAL_288:.*]] = load i8, ptr addrspace(5) %[[VAL_2]], align 1
 // CHECK:         %[[VAL_289:.*]] = icmp ne i8 %[[VAL_288]], 0
@@ -443,8 +443,8 @@ compare {
 // CHECK:         %[[VAL_297:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_263]]
 // CHECK:         %[[VAL_298:.*]] = addrspacecast ptr addrspace(3) %[[VAL_297]] to ptr
 // CHECK-GCN:     %[[VAL_1_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_1]] to ptr
-// CHECK-GCN:     call void @[[REGION:compare_.*]](ptr %[[VAL_296]], ptr %[[VAL_298]], ptr %[[VAL_1_2]])
-// CHECK-PTX:     call void @[[REGION:compare_.*]](ptr %[[VAL_296]], ptr %[[VAL_298]], ptr %[[VAL_1]])
+// CHECK-GCN:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_296]], ptr %[[VAL_298]], ptr %[[VAL_1_2]])
+// CHECK-PTX:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_296]], ptr %[[VAL_298]], ptr %[[VAL_1]])
 // CHECK-PTX:     %[[VAL_299:.*]] = load i8, ptr %[[VAL_1]], align 1
 // CHECK-GCN:     %[[VAL_299:.*]] = load i8, ptr addrspace(5) %[[VAL_1]], align 1
 // CHECK:         %[[VAL_300:.*]] = icmp ne i8 %[[VAL_299]], 0
@@ -465,8 +465,8 @@ compare {
 // CHECK:         %[[VAL_308:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_269]]
 // CHECK:         %[[VAL_309:.*]] = addrspacecast ptr addrspace(3) %[[VAL_308]] to ptr
 // CHECK-GCN:     %[[VAL_0_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_0]] to ptr
-// CHECK-GCN:     call void @[[REGION:compare_.*]](ptr %[[VAL_307]], ptr %[[VAL_309]], ptr %[[VAL_0_2]])
-// CHECK-PTX:     call void @[[REGION:compare_.*]](ptr %[[VAL_307]], ptr %[[VAL_309]], ptr %[[VAL_0]])
+// CHECK-GCN:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_307]], ptr %[[VAL_309]], ptr %[[VAL_0_2]])
+// CHECK-PTX:     call void @[[REGION:compare_[0-9]+]](ptr %[[VAL_307]], ptr %[[VAL_309]], ptr %[[VAL_0]])
 // CHECK-PTX:     %[[VAL_310:.*]] = load i8, ptr %[[VAL_0]], align 1
 // CHECK-GCN:     %[[VAL_310:.*]] = load i8, ptr addrspace(5) %[[VAL_0]], align 1
 // CHECK:         %[[VAL_311:.*]] = icmp ne i8 %[[VAL_310]], 0
@@ -756,8 +756,8 @@ compare {
 // CHECK:         %[[VAL_529:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_498]]
 // CHECK:         %[[VAL_530:.*]] = addrspacecast ptr addrspace(3) %[[VAL_529]] to ptr
 // CHECK-GCN:     %[[VAL_353_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_353]] to ptr
-// CHECK-PTX:     call void @[[REGION2:compare_.*]](ptr %[[VAL_524]], ptr %[[VAL_526]], ptr %[[VAL_528]], ptr %[[VAL_530]], ptr %[[VAL_353]])
-// CHECK-GCN:     call void @[[REGION2:compare_.*]](ptr %[[VAL_524]], ptr %[[VAL_526]], ptr %[[VAL_528]], ptr %[[VAL_530]], ptr %[[VAL_353_2]])
+// CHECK-PTX:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_524]], ptr %[[VAL_526]], ptr %[[VAL_528]], ptr %[[VAL_530]], ptr %[[VAL_353]])
+// CHECK-GCN:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_524]], ptr %[[VAL_526]], ptr %[[VAL_528]], ptr %[[VAL_530]], ptr %[[VAL_353_2]])
 // CHECK-PTX:     %[[VAL_531:.*]] = load i8, ptr %[[VAL_353]], align 1
 // CHECK-GCN:     %[[VAL_531:.*]] = load i8, ptr addrspace(5) %[[VAL_353]], align 1
 // CHECK:         %[[VAL_532:.*]] = icmp ne i8 %[[VAL_531]], 0
@@ -788,8 +788,8 @@ compare {
 // CHECK:         %[[VAL_548:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_505]]
 // CHECK:         %[[VAL_549:.*]] = addrspacecast ptr addrspace(3) %[[VAL_548]] to ptr
 // CHECK-GCN:     %[[VAL_352_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_352]] to ptr
-// CHECK-PTX:     call void @[[REGION2:compare_.*]](ptr %[[VAL_543]], ptr %[[VAL_545]], ptr %[[VAL_547]], ptr %[[VAL_549]], ptr %[[VAL_352]])
-// CHECK-GCN:     call void @[[REGION2:compare_.*]](ptr %[[VAL_543]], ptr %[[VAL_545]], ptr %[[VAL_547]], ptr %[[VAL_549]], ptr %[[VAL_352_2]])
+// CHECK-PTX:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_543]], ptr %[[VAL_545]], ptr %[[VAL_547]], ptr %[[VAL_549]], ptr %[[VAL_352]])
+// CHECK-GCN:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_543]], ptr %[[VAL_545]], ptr %[[VAL_547]], ptr %[[VAL_549]], ptr %[[VAL_352_2]])
 // CHECK-PTX:     %[[VAL_550:.*]] = load i8, ptr %[[VAL_352]], align 1
 // CHECK-GCN:     %[[VAL_550:.*]] = load i8, ptr addrspace(5) %[[VAL_352]], align 1
 // CHECK:         %[[VAL_551:.*]] = icmp ne i8 %[[VAL_550]], 0
@@ -820,8 +820,8 @@ compare {
 // CHECK:         %[[VAL_567:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_513]]
 // CHECK:         %[[VAL_568:.*]] = addrspacecast ptr addrspace(3) %[[VAL_567]] to ptr
 // CHECK-GCN:     %[[VAL_351_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_351]] to ptr
-// CHECK-PTX:     call void @[[REGION2:compare_.*]](ptr %[[VAL_562]], ptr %[[VAL_564]], ptr %[[VAL_566]], ptr %[[VAL_568]], ptr %[[VAL_351]])
-// CHECK-GCN:     call void @[[REGION2:compare_.*]](ptr %[[VAL_562]], ptr %[[VAL_564]], ptr %[[VAL_566]], ptr %[[VAL_568]], ptr %[[VAL_351_2]])
+// CHECK-PTX:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_562]], ptr %[[VAL_564]], ptr %[[VAL_566]], ptr %[[VAL_568]], ptr %[[VAL_351]])
+// CHECK-GCN:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_562]], ptr %[[VAL_564]], ptr %[[VAL_566]], ptr %[[VAL_568]], ptr %[[VAL_351_2]])
 // CHECK-PTX:     %[[VAL_569:.*]] = load i8, ptr %[[VAL_351]], align 1
 // CHECK-GCN:     %[[VAL_569:.*]] = load i8, ptr addrspace(5) %[[VAL_351]], align 1
 // CHECK:         %[[VAL_570:.*]] = icmp ne i8 %[[VAL_569]], 0
@@ -852,8 +852,8 @@ compare {
 // CHECK:         %[[VAL_586:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_519]]
 // CHECK:         %[[VAL_587:.*]] = addrspacecast ptr addrspace(3) %[[VAL_586]] to ptr
 // CHECK-GCN:     %[[VAL_350_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_350]] to ptr
-// CHECK-PTX:     call void @[[REGION2:compare_.*]](ptr %[[VAL_581]], ptr %[[VAL_583]], ptr %[[VAL_585]], ptr %[[VAL_587]], ptr %[[VAL_350]])
-// CHECK-GCN:     call void @[[REGION2:compare_.*]](ptr %[[VAL_581]], ptr %[[VAL_583]], ptr %[[VAL_585]], ptr %[[VAL_587]], ptr %[[VAL_350_2]])
+// CHECK-PTX:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_581]], ptr %[[VAL_583]], ptr %[[VAL_585]], ptr %[[VAL_587]], ptr %[[VAL_350]])
+// CHECK-GCN:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_581]], ptr %[[VAL_583]], ptr %[[VAL_585]], ptr %[[VAL_587]], ptr %[[VAL_350_2]])
 // CHECK-PTX:     %[[VAL_588:.*]] = load i8, ptr %[[VAL_350]], align 1
 // CHECK-GCN:     %[[VAL_588:.*]] = load i8, ptr addrspace(5) %[[VAL_350]], align 1
 // CHECK:         %[[VAL_589:.*]] = icmp ne i8 %[[VAL_588]], 0
@@ -916,8 +916,8 @@ compare {
 // CHECK:         %[[VAL_636:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_602]]
 // CHECK:         %[[VAL_637:.*]] = addrspacecast ptr addrspace(3) %[[VAL_636]] to ptr
 // CHECK-GCN:     %[[VAL_349_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_349]] to ptr
-// CHECK-PTX:     call void @[[REGION2:compare_.*]](ptr %[[VAL_631]], ptr %[[VAL_633]], ptr %[[VAL_635]], ptr %[[VAL_637]], ptr %[[VAL_349]])
-// CHECK-GCN:     call void @[[REGION2:compare_.*]](ptr %[[VAL_631]], ptr %[[VAL_633]], ptr %[[VAL_635]], ptr %[[VAL_637]], ptr %[[VAL_349_2]])
+// CHECK-PTX:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_631]], ptr %[[VAL_633]], ptr %[[VAL_635]], ptr %[[VAL_637]], ptr %[[VAL_349]])
+// CHECK-GCN:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_631]], ptr %[[VAL_633]], ptr %[[VAL_635]], ptr %[[VAL_637]], ptr %[[VAL_349_2]])
 // CHECK-PTX:     %[[VAL_638:.*]] = load i8, ptr %[[VAL_349]], align 1
 // CHECK-GCN:     %[[VAL_638:.*]] = load i8, ptr addrspace(5) %[[VAL_349]], align 1
 // CHECK:         %[[VAL_639:.*]] = icmp ne i8 %[[VAL_638]], 0
@@ -948,8 +948,8 @@ compare {
 // CHECK:         %[[VAL_655:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_610]]
 // CHECK:         %[[VAL_656:.*]] = addrspacecast ptr addrspace(3) %[[VAL_655]] to ptr
 // CHECK-GCN:     %[[VAL_348_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_348]] to ptr
-// CHECK-PTX:     call void @[[REGION2:compare_.*]](ptr %[[VAL_650]], ptr %[[VAL_652]], ptr %[[VAL_654]], ptr %[[VAL_656]], ptr %[[VAL_348]])
-// CHECK-GCN:     call void @[[REGION2:compare_.*]](ptr %[[VAL_650]], ptr %[[VAL_652]], ptr %[[VAL_654]], ptr %[[VAL_656]], ptr %[[VAL_348_2]])
+// CHECK-PTX:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_650]], ptr %[[VAL_652]], ptr %[[VAL_654]], ptr %[[VAL_656]], ptr %[[VAL_348]])
+// CHECK-GCN:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_650]], ptr %[[VAL_652]], ptr %[[VAL_654]], ptr %[[VAL_656]], ptr %[[VAL_348_2]])
 // CHECK-PTX:     %[[VAL_657:.*]] = load i8, ptr %[[VAL_348]], align 1
 // CHECK-GCN:     %[[VAL_657:.*]] = load i8, ptr addrspace(5) %[[VAL_348]], align 1
 // CHECK:         %[[VAL_658:.*]] = icmp ne i8 %[[VAL_657]], 0
@@ -980,8 +980,8 @@ compare {
 // CHECK:         %[[VAL_674:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_619]]
 // CHECK:         %[[VAL_675:.*]] = addrspacecast ptr addrspace(3) %[[VAL_674]] to ptr
 // CHECK-GCN:     %[[VAL_347_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_347]] to ptr
-// CHECK-PTX:     call void @[[REGION2:compare_.*]](ptr %[[VAL_669]], ptr %[[VAL_671]], ptr %[[VAL_673]], ptr %[[VAL_675]], ptr %[[VAL_347]])
-// CHECK-GCN:     call void @[[REGION2:compare_.*]](ptr %[[VAL_669]], ptr %[[VAL_671]], ptr %[[VAL_673]], ptr %[[VAL_675]], ptr %[[VAL_347_2]])
+// CHECK-PTX:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_669]], ptr %[[VAL_671]], ptr %[[VAL_673]], ptr %[[VAL_675]], ptr %[[VAL_347]])
+// CHECK-GCN:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_669]], ptr %[[VAL_671]], ptr %[[VAL_673]], ptr %[[VAL_675]], ptr %[[VAL_347_2]])
 // CHECK-PTX:     %[[VAL_676:.*]] = load i8, ptr %[[VAL_347]], align 1
 // CHECK-GCN:     %[[VAL_676:.*]] = load i8, ptr addrspace(5) %[[VAL_347]], align 1
 // CHECK:         %[[VAL_677:.*]] = icmp ne i8 %[[VAL_676]], 0
@@ -1012,8 +1012,8 @@ compare {
 // CHECK:         %[[VAL_693:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_626]]
 // CHECK:         %[[VAL_694:.*]] = addrspacecast ptr addrspace(3) %[[VAL_693]] to ptr
 // CHECK-GCN:     %[[VAL_346_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_346]] to ptr
-// CHECK-PTX:     call void @[[REGION2:compare_.*]](ptr %[[VAL_688]], ptr %[[VAL_690]], ptr %[[VAL_692]], ptr %[[VAL_694]], ptr %[[VAL_346]])
-// CHECK-GCN:     call void @[[REGION2:compare_.*]](ptr %[[VAL_688]], ptr %[[VAL_690]], ptr %[[VAL_692]], ptr %[[VAL_694]], ptr %[[VAL_346_2]])
+// CHECK-PTX:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_688]], ptr %[[VAL_690]], ptr %[[VAL_692]], ptr %[[VAL_694]], ptr %[[VAL_346]])
+// CHECK-GCN:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_688]], ptr %[[VAL_690]], ptr %[[VAL_692]], ptr %[[VAL_694]], ptr %[[VAL_346_2]])
 // CHECK-PTX:     %[[VAL_695:.*]] = load i8, ptr %[[VAL_346]], align 1
 // CHECK-GCN:     %[[VAL_695:.*]] = load i8, ptr addrspace(5) %[[VAL_346]], align 1
 // CHECK:         %[[VAL_696:.*]] = icmp ne i8 %[[VAL_695]], 0
@@ -1072,8 +1072,8 @@ compare {
 // CHECK:         %[[VAL_738:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_708]]
 // CHECK:         %[[VAL_739:.*]] = addrspacecast ptr addrspace(3) %[[VAL_738]] to ptr
 // CHECK-GCN:     %[[VAL_345_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_345]] to ptr
-// CHECK-PTX:     call void @[[REGION2:compare_.*]](ptr %[[VAL_733]], ptr %[[VAL_735]], ptr %[[VAL_737]], ptr %[[VAL_739]], ptr %[[VAL_345]])
-// CHECK-GCN:     call void @[[REGION2:compare_.*]](ptr %[[VAL_733]], ptr %[[VAL_735]], ptr %[[VAL_737]], ptr %[[VAL_739]], ptr %[[VAL_345_2]])
+// CHECK-PTX:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_733]], ptr %[[VAL_735]], ptr %[[VAL_737]], ptr %[[VAL_739]], ptr %[[VAL_345]])
+// CHECK-GCN:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_733]], ptr %[[VAL_735]], ptr %[[VAL_737]], ptr %[[VAL_739]], ptr %[[VAL_345_2]])
 // CHECK-PTX:     %[[VAL_740:.*]] = load i8, ptr %[[VAL_345]], align 1
 // CHECK-GCN:     %[[VAL_740:.*]] = load i8, ptr addrspace(5) %[[VAL_345]], align 1
 // CHECK:         %[[VAL_741:.*]] = icmp ne i8 %[[VAL_740]], 0
@@ -1104,8 +1104,8 @@ compare {
 // CHECK:         %[[VAL_757:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_715]]
 // CHECK:         %[[VAL_758:.*]] = addrspacecast ptr addrspace(3) %[[VAL_757]] to ptr
 // CHECK-GCN:     %[[VAL_344_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_344]] to ptr
-// CHECK-PTX:     call void @[[REGION2:compare_.*]](ptr %[[VAL_752]], ptr %[[VAL_754]], ptr %[[VAL_756]], ptr %[[VAL_758]], ptr %[[VAL_344]])
-// CHECK-GCN:     call void @[[REGION2:compare_.*]](ptr %[[VAL_752]], ptr %[[VAL_754]], ptr %[[VAL_756]], ptr %[[VAL_758]], ptr %[[VAL_344_2]])
+// CHECK-PTX:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_752]], ptr %[[VAL_754]], ptr %[[VAL_756]], ptr %[[VAL_758]], ptr %[[VAL_344]])
+// CHECK-GCN:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_752]], ptr %[[VAL_754]], ptr %[[VAL_756]], ptr %[[VAL_758]], ptr %[[VAL_344_2]])
 // CHECK-PTX:     %[[VAL_759:.*]] = load i8, ptr %[[VAL_344]], align 1
 // CHECK-GCN:     %[[VAL_759:.*]] = load i8, ptr addrspace(5) %[[VAL_344]], align 1
 // CHECK:         %[[VAL_760:.*]] = icmp ne i8 %[[VAL_759]], 0
@@ -1136,8 +1136,8 @@ compare {
 // CHECK:         %[[VAL_776:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_722]]
 // CHECK:         %[[VAL_777:.*]] = addrspacecast ptr addrspace(3) %[[VAL_776]] to ptr
 // CHECK-GCN:     %[[VAL_343_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_343]] to ptr
-// CHECK-PTX:     call void @[[REGION2:compare_.*]](ptr %[[VAL_771]], ptr %[[VAL_773]], ptr %[[VAL_775]], ptr %[[VAL_777]], ptr %[[VAL_343]])
-// CHECK-GCN:     call void @[[REGION2:compare_.*]](ptr %[[VAL_771]], ptr %[[VAL_773]], ptr %[[VAL_775]], ptr %[[VAL_777]], ptr %[[VAL_343_2]])
+// CHECK-PTX:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_771]], ptr %[[VAL_773]], ptr %[[VAL_775]], ptr %[[VAL_777]], ptr %[[VAL_343]])
+// CHECK-GCN:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_771]], ptr %[[VAL_773]], ptr %[[VAL_775]], ptr %[[VAL_777]], ptr %[[VAL_343_2]])
 // CHECK-PTX:     %[[VAL_778:.*]] = load i8, ptr %[[VAL_343]], align 1
 // CHECK-GCN:     %[[VAL_778:.*]] = load i8, ptr addrspace(5) %[[VAL_343]], align 1
 // CHECK:         %[[VAL_779:.*]] = icmp ne i8 %[[VAL_778]], 0
@@ -1168,8 +1168,8 @@ compare {
 // CHECK:         %[[VAL_795:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_728]]
 // CHECK:         %[[VAL_796:.*]] = addrspacecast ptr addrspace(3) %[[VAL_795]] to ptr
 // CHECK-GCN:     %[[VAL_342_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_342]] to ptr
-// CHECK-PTX:     call void @[[REGION2:compare_.*]](ptr %[[VAL_790]], ptr %[[VAL_792]], ptr %[[VAL_794]], ptr %[[VAL_796]], ptr %[[VAL_342]])
-// CHECK-GCN:     call void @[[REGION2:compare_.*]](ptr %[[VAL_790]], ptr %[[VAL_792]], ptr %[[VAL_794]], ptr %[[VAL_796]], ptr %[[VAL_342_2]])
+// CHECK-PTX:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_790]], ptr %[[VAL_792]], ptr %[[VAL_794]], ptr %[[VAL_796]], ptr %[[VAL_342]])
+// CHECK-GCN:     call void @[[REGION2:compare_[0-9]+]](ptr %[[VAL_790]], ptr %[[VAL_792]], ptr %[[VAL_794]], ptr %[[VAL_796]], ptr %[[VAL_342_2]])
 // CHECK-PTX:     %[[VAL_797:.*]] = load i8, ptr %[[VAL_342]], align 1
 // CHECK-GCN:     %[[VAL_797:.*]] = load i8, ptr addrspace(5) %[[VAL_342]], align 1
 // CHECK:         %[[VAL_798:.*]] = icmp ne i8 %[[VAL_797]], 0

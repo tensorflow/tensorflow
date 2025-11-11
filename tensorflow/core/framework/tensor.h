@@ -217,11 +217,11 @@ class Tensor {
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(int32_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint32 scalar_value)
+  explicit Tensor(uint32_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint16 scalar_value)
+  explicit Tensor(uint16_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint8 scalar_value)
+  explicit Tensor(uint8_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(int16_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
@@ -235,7 +235,7 @@ class Tensor {
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(int64_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint64 scalar_value)
+  explicit Tensor(uint64_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(bool scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
@@ -677,11 +677,24 @@ class Tensor {
 
   // Returns true if the refcount on buf_ and any possible underlying root
   // buffer is one.
-  bool RefCountIsOne() const;
+  bool RefCountIsOne() const {
+    // Notice that buf_ either points to a regular TensorBuffer or a SubBuffer.
+    // For the latter case, we have to make sure that the refcount is
+    // one both for the SubBuffer _and_ the underlying TensorBuffer.
+    return buf_ != nullptr && buf_->RefCountIsOne() &&
+           buf_->root_buffer()->RefCountIsOne() && buf_->OwnsMemory();
+  }
 
   // Experimental. Returns the refcount on buf_ if it points to a regular
   // TensorBuffer. If buf_ points to a SubBuffer, returns -1.
-  int RefCount() const;
+  int RefCount() const {
+    if (buf_->root_buffer() != buf_) {
+      LOG(ERROR)
+          << "Tensor RefCount not reliable if buf_ points to a SubBuffer.";
+      return -1;
+    }
+    return buf_->RefCount();
+  }
 
   // Returns the type of the underlying memory.
   AllocatorMemoryType GetMemoryType() const { return buf_->GetMemoryType(); }

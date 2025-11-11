@@ -58,6 +58,8 @@ exports_files(
         "threadpool.cc",
         "threadpool.h",
         "env.h",
+        "numa_hwloc.cc",
+        "numa_noop.cc",
     ],
     visibility = internal_visibility([
         "//tensorflow/core/platform:__subpackages__",
@@ -488,6 +490,7 @@ cc_library(
     ],
     deps = [
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/log:vlog_is_on",
@@ -531,6 +534,7 @@ cc_library(
     name = "macros",
     hdrs = ["macros.h"],
     compatible_with = get_compatible_with_portable(),
+    deps = ["@com_google_absl//absl/base:core_headers"],
 )
 
 cc_library(
@@ -691,23 +695,14 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "threadpool_async_executor",
-    hdrs = ["threadpool_async_executor.h"],
-    deps = [
-        ":env",
-        "//xla/tsl/concurrency:async_value",
-    ],
-)
-
 tsl_cc_test(
-    name = "threadpool_async_executor_test",
-    srcs = ["threadpool_async_executor_test.cc"],
+    name = "threadpool_test",
+    srcs = ["threadpool_test.cc"],
     deps = [
         ":env",
         ":env_impl",
         ":test",
-        ":threadpool_async_executor",
+        "//xla/tsl/concurrency:executor",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
     ],
@@ -737,6 +732,7 @@ cc_library(
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:bfloat16",
         "@local_tsl//tsl/platform:ml_dtypes",
@@ -800,6 +796,7 @@ cc_library(
     hdrs = ["prefetch.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:prefetch",
     ],
 )
@@ -821,14 +818,17 @@ cc_library(
 cc_library(
     name = "resource_loader",
     testonly = 1,
-    srcs = ["resource_loader.cc"],
+    srcs = if_oss(
+        ["//xla/tsl/platform/default:resource_loader.cc"],
+        google_value = ["//xla/tsl/platform/google:resource_loader.cc"],
+    ),
     textual_hdrs = ["resource_loader.h"],
     deps = [
         ":logging",
         ":test",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:path",
-    ],
+    ] + if_oss(["@bazel_tools//tools/cpp/runfiles"]),
 )
 
 cc_library(
@@ -867,4 +867,10 @@ cc_library(
     name = "recordphase",
     textual_hdrs = ["recordphase.h"],
     deps = tf_platform_deps("recordphase") + ["@com_google_absl//absl/strings:string_view"],
+)
+
+cc_library(
+    name = "debug_me_context",
+    hdrs = ["debug_me_context.h"],
+    deps = ["@com_google_absl//absl/container:flat_hash_map"],
 )

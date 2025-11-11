@@ -39,7 +39,7 @@ class AutotuneBufferSizes : public TFDataOptimizerBase {
   AutotuneBufferSizes() = default;
   ~AutotuneBufferSizes() override = default;
 
-  string name() const override { return "autotune_buffer_sizes"; };
+  std::string name() const override { return "autotune_buffer_sizes"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -47,7 +47,7 @@ class AutotuneBufferSizes : public TFDataOptimizerBase {
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     if (!config) return absl::OkStatus();
 
-    const string& autotune = config->parameter_map().at(kAutotune).s();
+    const std::string& autotune = config->parameter_map().at(kAutotune).s();
     if (autotune == "true") {
       autotune_ = true;
     } else if (autotune == "false") {

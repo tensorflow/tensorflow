@@ -1,5 +1,6 @@
 # NVSHMEM
 
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
 
@@ -67,12 +68,19 @@ expand_template(
     template = "src/include/non_abi/nvshmem_version.h.in",
 )
 
+copy_file(
+    name = "nvshmem_transfer_device_cuh",
+    src = "src/include/non_abi/device/pt-to-pt/transfer_device.cuh.in",
+    out = "src/include/non_abi/device/pt-to-pt/transfer_device.cuh",
+)
+
 cc_library(
     name = "nvshmem_lib",
     hdrs = glob([
         "src/include/**",
     ]) + [
         ":nvshmem_build_options_h",
+        ":nvshmem_transfer_device_cuh",
         ":nvshmem_version_h",
     ],
     include_prefix = "third_party/nvshmem",

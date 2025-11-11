@@ -25,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -45,15 +46,17 @@ limitations under the License.
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::NotNull;
+using ::testing::SizeIs;
 using ::tsl::proto_testing::EqualsProto;
-using ::tsl::testing::IsOk;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 using Kind = Thunk::Kind;
 
 // A dummy `Thunk` that does nothing.
@@ -313,8 +316,7 @@ TEST(WhileThunkTest, ToProto) {
 }
 
 TEST(WhileThunkTest, FromProto) {
-  ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
           profile_annotation: "profile_annotation"
@@ -356,8 +358,7 @@ TEST(WhileThunkTest, FromProto) {
           }
           trip_count: 10
         }
-      )pb",
-      &proto));
+      )pb");
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
@@ -377,6 +378,33 @@ TEST(WhileThunkTest, FromProto) {
   ASSERT_NE(thunk, nullptr);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+TEST(WhileThunkTest, TransformAllNestedThunks) {
+  BufferAllocation::Slice slice;
+  auto condition_thunk_sequence =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence());
+  auto body_thunk_sequence =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence());
+  auto while_thunk = std::make_unique<WhileThunk>(
+      Thunk::ThunkInfo(), /*loop=*/nullptr,
+      /*condition_result_buffer_index=*/slice,
+      /*condition_thunk_sequence=*/std::move(condition_thunk_sequence),
+      /*body_thunk_sequence_=*/std::move(body_thunk_sequence),
+      /*trip_count=*/3);
+
+  while_thunk->TransformAllNestedThunks([](auto) {
+    return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());
+  });
+
+  EXPECT_THAT(while_thunk->condition_thunk_sequence(), NotNull());
+  EXPECT_THAT(while_thunk->condition_thunk_sequence()->thunks(), SizeIs(1));
+  EXPECT_THAT(while_thunk->condition_thunk_sequence()->thunks()[0]->kind(),
+              Kind::kCustomCall);
+  EXPECT_THAT(while_thunk->body_thunk_sequence(), NotNull());
+  EXPECT_THAT(while_thunk->body_thunk_sequence()->thunks(), SizeIs(1));
+  EXPECT_THAT(while_thunk->body_thunk_sequence()->thunks()[0]->kind(),
+              Kind::kCustomCall);
 }
 
 }  // namespace

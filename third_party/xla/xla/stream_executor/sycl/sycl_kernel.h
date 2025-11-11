@@ -13,13 +13,20 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_SYCL_SYCL_KERNEL_H_
 #define XLA_STREAM_EXECUTOR_SYCL_SYCL_KERNEL_H_
 
-#include <sycl/sycl.hpp>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <sycl/sycl.hpp>  // NOLINT
 
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_metadata.h"
+#include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
-namespace stream_executor::gpu {
+namespace stream_executor::sycl {
 
 class SyclKernel : public Kernel {
  public:
@@ -55,6 +62,6 @@ class SyclKernel : public Kernel {
   unsigned arity_ = 0;  // number of formal parameters the kernel takes
 };
 
-}  // namespace stream_executor::gpu
+}  // namespace stream_executor::sycl
 
 #endif  // XLA_STREAM_EXECUTOR_SYCL_SYCL_KERNEL_H_

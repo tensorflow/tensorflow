@@ -36,12 +36,12 @@ struct NodeProperties {
 
   NodeProperties(const OpDef* _op_def, NodeDef&& _node_def,
                  DataTypeVector inputs, DataTypeVector outputs)
-      : output_types(std::move(outputs)),
-        input_types(std::move(inputs)),
-        output_types_slice(output_types),
-        input_types_slice(input_types),
+      : op_def(_op_def),
         node_def(std::move(_node_def)),
-        op_def(_op_def) {}
+        input_types(std::move(inputs)),
+        input_types_slice(input_types),
+        output_types(std::move(outputs)),
+        output_types_slice(output_types) {}
 
   // Resets the 'props' shared pointer to point to a new NodeProperties created
   // from the given NodeDef. 'op_registry' is used to look up the OpDef
@@ -51,12 +51,12 @@ struct NodeProperties {
       NodeDef node_def, const OpRegistryInterface* op_registry,
       std::shared_ptr<const NodeProperties>* props);
 
-  DataTypeVector output_types;
-  DataTypeVector input_types;
-  DataTypeSlice output_types_slice;
-  DataTypeSlice input_types_slice;
-  NodeDef node_def;
   const OpDef* op_def;  // not owned.
+  NodeDef node_def;
+  DataTypeVector input_types;
+  DataTypeSlice input_types_slice;
+  DataTypeVector output_types;
+  DataTypeSlice output_types_slice;
 };
 
 }  // namespace tensorflow

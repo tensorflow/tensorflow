@@ -17,8 +17,11 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_MEMSET_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 
@@ -39,6 +42,12 @@ class MemzeroThunk : public Thunk {
 
   const BufferAllocation::Slice& destination() const { return dest_; }
 
+  static absl::StatusOr<std::unique_ptr<MemzeroThunk>> FromProto(
+      ThunkInfo thunk_info, const MemzeroThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
  private:
   const BufferAllocation::Slice dest_;
 };
@@ -57,6 +66,12 @@ class Memset32BitValueThunk : public Thunk {
 
   const BufferAllocation::Slice& destination() const { return dest_; }
   uint32_t value() const { return value_; }
+
+  static absl::StatusOr<std::unique_ptr<Memset32BitValueThunk>> FromProto(
+      ThunkInfo thunk_info, const Memset32BitValueThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   const uint32_t value_;

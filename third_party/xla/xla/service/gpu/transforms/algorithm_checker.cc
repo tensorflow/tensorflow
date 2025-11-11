@@ -28,9 +28,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -79,15 +78,9 @@ class AlgorithmCheckerVisitor : public ConstDfsHloVisitorWithDefault {
     PrimitiveType rhs_storage_type = hlo->operand(1)->shape().element_type();
     PrimitiveType output_storage_type = hlo->shape().element_type();
 
-    if (lhs_storage_type != rhs_storage_type) {
-      return absl::UnimplementedError(absl::StrFormat(
-          "Dot operands must have the same type when using an algorithm: %s",
-          hlo->ToString()));
-    }
-
     return algorithm_util::IsSupportedDotAlgorithmOnGpu(
                config.algorithm(), gpu_compute_capability_, lhs_storage_type,
-               output_storage_type)
+               rhs_storage_type, output_storage_type)
                ? absl::OkStatus()
                : absl::UnimplementedError(absl::StrFormat(
                      "Unsupported algorithm on the current device(s): %s",
@@ -104,7 +97,7 @@ class AlgorithmCheckerVisitor : public ConstDfsHloVisitorWithDefault {
 
 }  // namespace
 
-absl::StatusOr<bool> AlgorithmChecker::Run(
+absl::StatusOr<bool> AlgorithmChecker::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_RETURN_IF_ERROR(AlgorithmCheckerVisitor(gpu_compute_capability_)

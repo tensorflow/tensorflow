@@ -22,12 +22,14 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu_solver_context.h"
-#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -42,6 +44,11 @@ namespace gpu {
 // Thread-compatible.
 class CholeskyThunk : public Thunk {
  public:
+  static absl::StatusOr<std::unique_ptr<CholeskyThunk>> FromProto(
+      ThunkInfo thunk_info, const CholeskyThunkProto& proto,
+      absl::Span<const BufferAllocation> allocations,
+      const stream_executor::Platform& platform);
+
   CholeskyThunk(
       ThunkInfo thunk_info, const CholeskyOptions& options,
       BufferAllocation::Slice a_buffer,
@@ -55,6 +62,7 @@ class CholeskyThunk : public Thunk {
   CholeskyThunk(const CholeskyThunk&) = delete;
   CholeskyThunk& operator=(const CholeskyThunk&) = delete;
 
+  absl::StatusOr<ThunkProto> ToProto() const override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:

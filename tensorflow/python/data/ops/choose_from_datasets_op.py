@@ -45,8 +45,7 @@ def _choose_from_datasets(  # pylint: disable=unused-private-name
   # Replicates the `choice_dataset` component so that each split makes choices
   # independently. This avoids the need for prohibitively expensive
   # cross-split coordination.
-  # pylint: disable=protected-access
-  choice_dataset = dataset_ops._apply_rewrite(
+  choice_dataset = dataset_ops.apply_rewrite(
       choice_dataset, "replicate_on_split"
   )
   return directed_interleave_op._directed_interleave(  # pylint: disable=protected-access

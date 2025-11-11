@@ -16,13 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_ARGUMENT_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_ARGUMENT_H_
 
-#include "absl/types/optional.h"
+#include <cstdint>
+#include <optional>
+#include <set>
+#include <string>
+#include <variant>
+#include <vector>
+
+#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
-#include "xla/hlo/builder/xla_builder.h"
-#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {
 
@@ -70,7 +78,7 @@ struct XlaArgument {
   // * an initialized TensorArray or Stack resource: the shape of an entry in
   //   the TensorArray/Stack. Note this is the size of a single entry, not the
   //   XLA data structure that represents the complete stack/array.
-  absl::variant<TensorShape, xla::Shape> shape;
+  std::variant<std::monostate, TensorShape, xla::Shape> shape;
 
   // The value of the argument, if it is a compile-time constant. Must be a
   // host-memory tensor.
@@ -83,10 +91,10 @@ struct XlaArgument {
   std::optional<Tensor> value_dynamism;
 
   // The name of this argument, used for debugging.
-  string name;
+  std::string name;
 
   // The name of TensorFlow _Arg node, used for debugging.
-  string node_name;
+  std::string node_name;
 
   // For a kResource, what kind of resource is it?
   XlaResource::Kind resource_kind = XlaResource::kInvalid;
@@ -104,7 +112,7 @@ struct XlaArgument {
   // TensorArray resource parameters are passed as (array, gradient array 0,
   // ..., gradient array k), where the gradient arrays are in the same order
   // as `tensor_array_gradients`.
-  std::set<string> tensor_array_gradients;
+  std::set<std::string> tensor_array_gradients;
 
   // Whether this argument will receive the same data across all replicas.
   bool is_same_data_across_replicas = false;
@@ -112,14 +120,14 @@ struct XlaArgument {
   bool operator==(const XlaArgument& other) const;
 
   // Returns a human-readable summary of the argument.
-  string HumanString() const;
+  std::string HumanString() const;
 
   // Returns the dimension sizes for either TensorShape or xla::Shape.
   std::vector<int64_t> DimensionSizes() const;
   absl::InlinedVector<int64_t, 4> DimensionSizesAsInlinedVector() const;
 
   // Returns the human-readable string for either TensorShape or xla::Shape.
-  string ShapeHumanString() const;
+  std::string ShapeHumanString() const;
 
   // Whether to broadcast this parameter to all replicas before use.
   // When true, xla_compiler should input/output alias this arg to prevent

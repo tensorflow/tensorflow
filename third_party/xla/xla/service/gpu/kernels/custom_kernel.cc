@@ -67,10 +67,16 @@ size_t CustomKernel::shared_memory_bytes() const {
 }
 
 std::string CustomKernel::ToString() const {
+  std::string cluster_dims_str =
+      cluster_dims_.has_value()
+          ? absl::StrFormat("cluster: [%d, %d, %d]", cluster_dims_->x,
+                            cluster_dims_->y, cluster_dims_->z)
+          : "";
   return absl::StrFormat(
-      "%s grid: [%d, %d, %d] threads: [%d, %d, %d] shared_memory: %d bytes",
+      "%s grid: [%d, %d, %d] threads: [%d, %d, %d] %s "
+      "shared_memory: %d bytes",
       name_, block_dims_.x, block_dims_.y, block_dims_.z, thread_dims_.x,
-      thread_dims_.y, thread_dims_.z, shared_memory_bytes_);
+      thread_dims_.y, thread_dims_.z, cluster_dims_str, shared_memory_bytes_);
 }
 
 }  // namespace xla::gpu

@@ -139,7 +139,7 @@ class XlaOpRegistry {
   // Describes how to compile operators assigned to a device.
   struct DeviceRegistration {
     // The name of the an XLA compilation device to use to compile code.
-    string compilation_device_name;
+    std::string compilation_device_name;
 
     // When should we autocluster operators assigned to this device?
     AutoclusteringPolicy autoclustering_policy;
@@ -190,25 +190,25 @@ class XlaOpRegistry {
   // `backend_op_filter` should return true if the op should be registered on
   // the device; it may optionally modify the KernelDef.
   typedef bool (*BackendOpFilter)(KernelDef* kdef);
-  static void RegisterBackend(const string& compilation_device_name,
+  static void RegisterBackend(const std::string& compilation_device_name,
                               absl::Span<const DataType> supported_types,
                               BackendOpFilter op_filter);
 
   // Returns the names of the registered backends.
-  static std::vector<string> BackendNames();
+  static std::vector<std::string> BackendNames();
 
   // Returns true iff a backend with the given name is registered.
-  static bool IsBackendRegistered(const string& name);
+  static bool IsBackendRegistered(const std::string& name);
 
   // Registers `device_name` for XLA compilation, using information from
   // `registration`.
   // Does nothing if a registration for `device_name` already exists.
-  static void RegisterCompilationDevice(const string& device_name,
+  static void RegisterCompilationDevice(const std::string& device_name,
                                         const DeviceRegistration& registration);
 
   // Returns whether the device name is for the JIT device used exclusively for
   // TF2XLA conversion.
-  static bool IsCompilationDevice(const string& device_name);
+  static bool IsCompilationDevice(const std::string& device_name);
 
   // Returns the JIT device name associated with 'device_name', setting
   // 'jit_device_name', 'requires_jit', and 'enabled_jit_by_default', if they
@@ -216,7 +216,7 @@ class XlaOpRegistry {
   // JIT device is registered.
   // '*enable_jit_by_default' is set to true if we should try to JIT using this
   // device when the JIT is enabled via the Session OptimizerOptions.
-  static bool GetCompilationDevice(const string& device_name,
+  static bool GetCompilationDevice(const std::string& device_name,
                                    const DeviceRegistration** registration);
 
   // Registers all JIT kernels on JIT devices, if not already registered.
@@ -227,11 +227,11 @@ class XlaOpRegistry {
   // 'compilation_device_name'.  Does not include kernels registered as
   // CompilationOnly, iff include_compilation_only_kernels=false.
   static std::vector<const KernelDef*> DeviceKernels(
-      const string& compilation_device_name,
+      const std::string& compilation_device_name,
       bool include_compilation_only_kernels);
 
   // Returns all operations for which there are XLA kernels on any device.
-  static std::vector<string> GetAllRegisteredOps();
+  static std::vector<std::string> GetAllRegisteredOps();
 
   // Returns (via `result`) the indices of inputs to `node_def` that must be
   // compile-time constants. Returns an empty vector if the op is not
@@ -265,11 +265,11 @@ class XlaOpRegistry {
   // Return names of arguments for a given op which are supposed to be
   // constants.
   static const std::unordered_set<std::string>*
-  CompileTimeConstantInputArgNames(const string& op);
+  CompileTimeConstantInputArgNames(const std::string& op);
 
   // Returns true if `op` is a "metadata" op, one that only looks at the shapes
   // of its operands and not their values.
-  static bool IsMetadataOp(const string& op);
+  static bool IsMetadataOp(const std::string& op);
 
  private:
   friend class XlaBackendRegistrar;
@@ -298,15 +298,15 @@ class XlaOpRegistry {
   };
 
   // Map from compilation device names to a description of the backend.
-  std::unordered_map<string, Backend> backends_ TF_GUARDED_BY(mutex_);
+  std::unordered_map<std::string, Backend> backends_ TF_GUARDED_BY(mutex_);
 
   // Map from Tensorflow device names to the corresponding JIT device metadata.
-  std::unordered_map<string, DeviceRegistration> compilation_devices_
+  std::unordered_map<std::string, DeviceRegistration> compilation_devices_
       TF_GUARDED_BY(mutex_);
 
   // A description of a Tensorflow operator that can be compiled to XLA.
   struct OpRegistration {
-    string name;
+    std::string name;
 
     // Should this operator be registered only on compilation devices, without a
     // dummy kernel registered on the corresponding XLA device?
@@ -325,15 +325,15 @@ class XlaOpRegistry {
     bool allow_string_type = false;
 
     // Mapping from attribute name to a list of supported types.
-    std::unordered_map<string, std::set<DataType>> type_constraints;
+    std::unordered_map<std::string, std::set<DataType>> type_constraints;
 
     // An optional allowlist of devices. If there is no allowlist, all devices
     // are permitted.
     bool has_device_allowlist = false;
-    std::unordered_set<string> device_allowlist;
+    std::unordered_set<std::string> device_allowlist;
 
     // Names of arguments that must be compile-time constants.
-    std::unordered_set<string> compile_time_constant_inputs;
+    std::unordered_set<std::string> compile_time_constant_inputs;
 
     // True if this is a "metadata" op, one that only looks at the shapes of its
     // operands and not their values.
@@ -360,8 +360,8 @@ class XlaOpRegistry {
   // Map from operator name to OpRegistrations, populated by REGISTER_XLA_OP.
   // Registrations present under the same key must satisfy IsCompatible above,
   // and this is checked during registration.
-  std::unordered_map<string, std::vector<std::unique_ptr<OpRegistration>>> ops_
-      TF_GUARDED_BY(mutex_);
+  std::unordered_map<std::string, std::vector<std::unique_ptr<OpRegistration>>>
+      ops_ TF_GUARDED_BY(mutex_);
 
   // Have we already registered the JIT kernels on the JIT devices?
   bool jit_kernels_registered_ = false;

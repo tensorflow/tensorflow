@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/while_loop_all_reduce_code_motion.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <stack>
@@ -23,7 +24,13 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
@@ -100,17 +107,18 @@ bool IsValueReplicatedWithinEachAllReduceGroup(
           << " all_reduce_group_mode: "
           << CollectiveOpGroupModeToString(all_reduce_group_mode);
   switch (all_reduce_group_mode) {
-    case CollectiveOpGroupMode::kCrossReplica: {
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA: {
       return cross_replica_replication_analysis == nullptr ||
              cross_replica_replication_analysis->HloInstructionIsReplicatedAt(
                  &instruction, index, replica_groups);
     }
-    case CollectiveOpGroupMode::kCrossPartition: {
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION: {
       return cross_partition_replication_analysis == nullptr ||
              cross_partition_replication_analysis->HloInstructionIsReplicatedAt(
                  &instruction, index, replica_groups);
     }
-    case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
+    case CollectiveOpGroupMode::
+        COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION: {
       return (cross_replica_replication_analysis == nullptr ||
               cross_replica_replication_analysis->HloInstructionIsReplicatedAt(
                   &instruction, index, replica_groups)) &&
@@ -118,7 +126,7 @@ bool IsValueReplicatedWithinEachAllReduceGroup(
               cross_partition_replication_analysis
                   ->HloInstructionIsReplicatedAt(&instruction, index));
     }
-    case CollectiveOpGroupMode::kFlattenedID: {
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID: {
       if (num_replicas == 1) {
         return cross_partition_replication_analysis == nullptr ||
                cross_partition_replication_analysis
@@ -136,6 +144,10 @@ bool IsValueReplicatedWithinEachAllReduceGroup(
              (cross_partition_replication_analysis == nullptr ||
               cross_partition_replication_analysis
                   ->HloInstructionIsReplicatedAt(&instruction, index));
+    }
+    default: {
+      LOG(FATAL) << "Unsupported all-reduce group mode: "
+                 << CollectiveOpGroupModeToString(all_reduce_group_mode);
     }
   }
 }
@@ -1220,7 +1232,7 @@ absl::StatusOr<HloInstruction*> AddSinkedAllReducesAndReplaceWhile(
 
 }  // namespace
 
-absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(
+absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool is_changed = false;

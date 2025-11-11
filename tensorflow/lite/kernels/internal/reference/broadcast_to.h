@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_BROADCAST_TO_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_BROADCAST_TO_H_
 
+#include <cstddef>
+
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -83,7 +85,8 @@ inline void BroadcastTo(const RuntimeShape& unextended_input_shape,
   // If non-broadcasting, just copy data from input to output tensor.
   if (last_broadcast_dim == -1) {
     memcpy(output_data, input_data,
-           unextended_input_shape.FlatSize() * TfLiteTypeGetSize(data_type));
+           static_cast<size_t>(unextended_input_shape.FlatSize()) *
+               static_cast<size_t>(TfLiteTypeGetSize(data_type)));
     return;
   }
 

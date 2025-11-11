@@ -2984,6 +2984,12 @@ absl::StatusOr<bool> HloRematerialization::RematerializeComputation(
   for (auto* item = instruction_list.first(); item != nullptr;
        item = instruction_list.next(item)) {
     HloInstruction* instruction = item->instruction;
+    if (instruction->parent() == nullptr) {
+      // TODO(b/446297799): Stop it before it reaches this point.
+      VLOG(2) << "Instruction " << instruction->name()
+              << " is not in a computation. Ignoring";
+      continue;
+    }
     sequence.push_back(instruction);
   }
   rematerialized_computations_.insert(computation);
@@ -3010,7 +3016,7 @@ HloRematerialization::GetRematAlgorithmFunction(
   }
 }
 
-absl::StatusOr<bool> HloRematerialization::Run(
+absl::StatusOr<bool> HloRematerialization::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (options_.remat_mode_config.host_offload) {

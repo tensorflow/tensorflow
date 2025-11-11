@@ -15,17 +15,22 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_CPU_ONEDNN_LAYER_NORM_H_
 #define XLA_SERVICE_CPU_ONEDNN_LAYER_NORM_H_
-#if defined(INTEL_MKL)
+
+#include "dnnl.hpp"
+#include "xla/service/cpu/onednn_config.pb.h"
+#include "xla/service/cpu/onednn_memory_util.h"
 
 namespace xla {
 namespace cpu {
 
-extern "C" {
-extern void __xla_cpu_runtime_OneDnnLayerNorm(void* result, void** args);
-}  // extern "C"
+void ExecuteOneDnnLayerNorm(absl::Span<MemrefInfoHandler> arguments,
+                            absl::Span<MemrefInfoHandler> results,
+                            OneDnnNormConfig ln_config,
+                            const dnnl::engine& cpu_engine,
+                            dnnl::stream& onednn_stream,
+                            OneDnnResources& resources);
 
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL
 #endif  // XLA_SERVICE_CPU_ONEDNN_LAYER_NORM_H_

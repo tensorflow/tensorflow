@@ -121,8 +121,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
         "@nanobind",
+        "@rules_python//python/cc:current_py_cc_headers",  # buildcleaner: keep
     ],
 )
 
@@ -335,6 +335,7 @@ cc_library(
     hdrs = ["safe_static_init.h"],
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/synchronization",
         "@nanobind",
@@ -364,6 +365,10 @@ nanobind_pywrap_extension(
     name = "_profiler",
     srcs = ["profiler.cc"],
     pytype_srcs = ["_profiler.pyi"],
+    visibility = internal_visibility([
+        ":jax",
+        "//third_party/py/torch_tpu:__subpackages__",
+    ]),
     deps = [
         ":aggregate_profile",
         ":profiler_utils",
@@ -400,6 +405,10 @@ nanobind_pywrap_extension(
         "-fno-strict-aliasing",
     ],
     pytype_srcs = ["_profile_data.pyi"],
+    visibility = internal_visibility([
+        ":jax",
+        "//third_party/py/torch_tpu:__subpackages__",
+    ]),
     deps = [
         "//xla/python/profiler:profile_data_lib",
         "@local_tsl//tsl/platform:protobuf",
@@ -497,8 +506,8 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         "@com_google_absl//absl/strings:str_format",
-        "@local_config_python//:python_headers",
         "@nanobind",
+        "@rules_python//python/cc:current_py_cc_headers",
     ],
 )
 
@@ -517,7 +526,7 @@ cc_library(
         # copybara:uncomment_begin
         # "//third_party/py/numpy:multiarray",  # build_cleaner: keep
         # copybara:uncomment_end
-        "@local_config_python//:python_headers",
+        "@rules_python//python/cc:current_py_cc_headers",
         "//xla/tsl/python/lib/core:numpy",
     ],
 )

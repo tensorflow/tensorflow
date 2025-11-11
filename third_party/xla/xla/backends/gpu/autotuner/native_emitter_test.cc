@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
@@ -91,14 +91,17 @@ ENTRY %entry_computation (p0: f32[32,16], p1: f32[32,16]) -> (f32[32,16], f32[32
 class NativeEmitterBackendTest : public HloHardwareIndependentTestBase {
  protected:
   NativeEmitterBackendTest()
-      : backend_(PlatformUtil::GetDefaultPlatform()
-                     .value()
-                     ->ExecutorForDevice(0)
-                     .value(),
-                 &debug_options_, &compiler_) {}
+      : stream_executor_(PlatformUtil::GetDefaultPlatform()
+                             .value()
+                             ->ExecutorForDevice(0)
+                             .value()),
+        target_config_(stream_executor_),
+        backend_(&debug_options_, &compiler_, &target_config_) {}
 
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
+  se::StreamExecutor* stream_executor_;
+  Compiler::TargetConfig target_config_;
   NativeEmitterBackend backend_;
 };
 
@@ -195,14 +198,14 @@ class MockCompiler : public Compiler {
                const CompileOptions& options),
               (override));
   MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<Executable>>>, Compile,
-              (std::unique_ptr<HloModuleGroup> module_group,
-               std::vector<std::vector<se::StreamExecutor*>> stream_execs,
+              (std::unique_ptr<HloModule> hlo_module,
+               std::vector<se::StreamExecutor*> stream_execs,
                const CompileOptions& options),
               (override));
   MOCK_METHOD(
       absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>,
       CompileAheadOfTime,
-      (std::unique_ptr<HloModuleGroup> module_group,
+      (std::unique_ptr<HloModule> hlo_module,
        const AotCompilationOptions& options),
       (override));
   MOCK_METHOD(HloCostAnalysis::ShapeSizeFunction, ShapeSizeBytesFunction, (),
@@ -214,9 +217,8 @@ TEST_F(NativeEmitterBackendTest, CompileSetsIsAutotuningCompilationOption) {
                           ParseAndReturnVerifiedModule(kReductionFusionHlo));
   auto fusion = reduction_module->entry_computation()->root_instruction();
   MockCompiler mock_compiler;
-  NativeEmitterBackend backend(
-      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value(),
-      &debug_options_, &mock_compiler);
+  NativeEmitterBackend backend(&debug_options_, &mock_compiler,
+                               &target_config_);
   // Call GetDefaultConfig on the fusion instruction.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
                           backend.GetDefaultConfig(*(fusion)));

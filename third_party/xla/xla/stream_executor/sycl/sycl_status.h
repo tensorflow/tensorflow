@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 
-namespace stream_executor::gpu {
+namespace stream_executor::sycl {
 
 enum class SyclError {
   kSyclSuccess,
@@ -48,6 +48,6 @@ inline absl::Status ToStatus(SyclError result, absl::string_view detail = "") {
   return absl::InternalError(error_message);
 }
 
-}  // namespace stream_executor::gpu
+}  // namespace stream_executor::sycl
 
 #endif  // XLA_STREAM_EXECUTOR_SYCL_SYCL_STATUS_H_

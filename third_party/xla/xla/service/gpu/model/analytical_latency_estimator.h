@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -39,7 +41,7 @@ class AnalyticalLatencyEstimator : public LatencyEstimator {
       std::unique_ptr<LatencyEstimator> latency_estimator,
       const se::DeviceDescription& gpu_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_function,
-      HloComputation* computation);
+      HloComputation* computation, SymbolicExprContext* symbolic_expr_context);
 
   TimeCost GetLatencyBetween(const HloGraphNode& from,
                              const HloGraphNode& target) const override;

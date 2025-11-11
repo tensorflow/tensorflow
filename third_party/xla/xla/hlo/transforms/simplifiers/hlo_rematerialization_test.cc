@@ -1113,9 +1113,9 @@ class CompressingRematerializationTest : public RematerializationTestBase {
         ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape);
     int64_t size =
         ShapeUtil::ByteSizeOfPrimitiveType(descending_shape.element_type());
-    for (int64_t i = 0; i < descending_shape.dimensions_size(); ++i) {
+    for (int64_t i = 0; i < descending_shape.dimensions().size(); ++i) {
       int64_t dim = descending_shape.dimensions(i);
-      if (i == descending_shape.dimensions_size() - 1) {
+      if (i == descending_shape.dimensions().size() - 1) {
         dim = RoundUpTo<int64_t>(dim, 64);
       }
       size *= dim;
@@ -1126,7 +1126,7 @@ class CompressingRematerializationTest : public RematerializationTestBase {
   // Swap the layout of the two most-minor dimensions if the second-minor
   // dimension is bigger than the most-minor dimension.
   static absl::StatusOr<Shape> ChooseCompactLayoutForShape(const Shape& shape) {
-    if (shape.dimensions_size() != 2) {
+    if (shape.dimensions().size() != 2) {
       return shape;
     }
     Shape result = shape;
@@ -1653,8 +1653,8 @@ e {
           /*min_remat_size=*/0, /*compact_shape_function=*/nullptr),
       sizes);
   EXPECT_THAT(remat.Run(module.get(), {HloInstruction::kMainExecutionThread}),
-              IsOkAndHolds(true));
-  EXPECT_THAT(HloDCE().Run(module.get()), IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(HloDCE().Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(RecomputeAndCompressHloRematerializationTest,

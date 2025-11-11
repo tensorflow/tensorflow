@@ -14,7 +14,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -26,7 +26,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -57,7 +57,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:qual_names",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -72,7 +72,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:qual_names",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -84,7 +84,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -100,7 +100,7 @@ py_strict_test(
     deps = [
         ":activity",
         ":annos",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:naming",

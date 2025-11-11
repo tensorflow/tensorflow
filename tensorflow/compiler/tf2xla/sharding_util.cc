@@ -50,7 +50,8 @@ xla::OpMetadata CreateOpMetadata(const std::string& op_type,
 }
 
 void AssignOpMetadataToSharding(xla::OpSharding& sharding,
-                                const string& op_type, const string& op_name) {
+                                const std::string& op_type,
+                                const std::string& op_name) {
   auto metadata = CreateOpMetadata(op_type, op_name);
   if (sharding.type() == xla::OpSharding::TUPLE) {
     for (auto& sharding_element : *sharding.mutable_tuple_shardings()) {
@@ -69,7 +70,7 @@ absl::Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
 }  // namespace
 
 absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
-    const string& device_name, int num_cores_per_replica,
+    const std::string& device_name, int num_cores_per_replica,
     std::optional<xla::OpSharding> explicit_sharding,
     std::optional<xla::OpMetadata> metadata) {
   if (device_name.empty()) {
@@ -102,7 +103,7 @@ absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
 
 absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     const NodeDef& node_def, int num_cores_per_replica, bool add_metadata) {
-  const string& device_name = node_def.device();
+  const std::string& device_name = node_def.device();
   TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                       GetShardingFromNodeDef(node_def, add_metadata));
   return ParseShardingFromDevice(
@@ -114,7 +115,7 @@ absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
 
 absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     const Node& node, int num_cores_per_replica, bool add_metadata) {
-  string device_name = node.assigned_device_name();
+  std::string device_name = node.assigned_device_name();
   if (device_name.empty()) {
     device_name = node.requested_device();
   }
@@ -152,7 +153,7 @@ absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
 }
 
 void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst) {
-  string device_name = src.assigned_device_name();
+  std::string device_name = src.assigned_device_name();
   if (device_name.empty()) {
     device_name = src.requested_device();
   }
@@ -169,7 +170,7 @@ absl::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDefInternal(
   if (!HasNodeAttr(node_def, attribute)) {
     return std::optional<xla::OpSharding>();
   }
-  string value;
+  std::string value;
   xla::OpSharding sharding;
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, attribute, &value));
   if (tensorflow::DecodeShardingAttribute(value, sharding).failed()) {

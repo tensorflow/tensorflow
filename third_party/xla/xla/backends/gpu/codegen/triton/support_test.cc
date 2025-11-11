@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/support.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <iterator>
@@ -27,7 +28,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -40,10 +41,9 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -54,7 +54,6 @@ namespace gpu {
 namespace {
 
 using ::testing::Not;
-using ::tsl::testing::IsOk;
 
 // Returns true if the given `opcode` supports the given `type` with respect to
 // HLO semantics. This is completely independent of the what Triton supports or
@@ -92,7 +91,14 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kCholesky:
     case HloOpcode::kTriangularSolve:
       return pu::IsFloatingPointType(type) || pu::IsComplexType(type);
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAsinh:
+    case HloOpcode::kAtanh:
+    case HloOpcode::kSinh:
+    case HloOpcode::kAsin:
     case HloOpcode::kCbrt:
+    case HloOpcode::kCosh:
     case HloOpcode::kErf:
     case HloOpcode::kFloor:
     case HloOpcode::kCeil:
@@ -124,6 +130,10 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
       return type == F32 || type == F64;
     case HloOpcode::kDot:
       return type != PRED;
+    case HloOpcode::kScaledDot:
+      static constexpr std::array types = {F4E2M1FN, F8E4M3FN, F8E5M2, BF16};
+      return std::any_of(types.begin(), types.end(),
+                         [&](auto t) { return t == type; });
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormGrad:
@@ -255,13 +265,12 @@ class TritonSupportTest : public TritonSupportTestBase {
     BlockLevelParameters block_level_parameters =
         FromOutputTileSizes(std::move(output_tile_sizes));
     const se::DeviceDescription dev_info =
-        std::holds_alternative<se::CudaComputeCapability>(cc)
-            ? TestGpuDeviceInfo::RTXA6000DeviceInfo(cc)
-            : TestGpuDeviceInfo::AMDMI210DeviceInfo();
+        cc.IsCuda() ? TestGpuDeviceInfo::RTXA6000DeviceInfo(cc)
+                    : TestGpuDeviceInfo::AMDMI210DeviceInfo();
     auto run_triton_codegen = [&]() {
       return TritonWrapper("test_fn", &ti.TritonFusion(), cc, dev_info,
                            block_level_parameters, &llvm_module_,
-                           mlir_context_);
+                           symbolic_expr_context_);
     };
 
     if (IsTritonSupportedInstruction(ti.Instruction(), cc)) {
@@ -290,6 +299,20 @@ class TritonSupportTest : public TritonSupportTestBase {
         ::testing::Not(::testing::HasSubstr("Sanitizer:")));
   }
 };
+
+TEST_F(TritonSupportTest, IsTritonSupportedComputationSkipsRootTuple) {
+  const std::string kHlo = R"(
+  HloModule m
+  ENTRY main {
+    parameter_0 = f32[10] parameter(0)
+    abs = f32[10] abs(parameter_0)
+    negate = f32[10] negate(abs)
+    ROOT res = (f32[10], f32[10]) tuple(abs, negate)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_TRUE(IsTritonSupportedComputation(
+      *module->entry_computation(), se::CudaComputeCapability::Hopper()));
+}
 
 class TritonSupportTestWithTypeAndOpcodeAndDeviceParam
     : public TritonSupportTest,
@@ -438,11 +461,17 @@ constexpr std::array kTestedOpsUnaryElementwise = {
     // clang-format off
     // go/keep-sorted start
     HloOpcode::kAbs,
+    HloOpcode::kAcos,
+    HloOpcode::kAcosh,
+    HloOpcode::kAsin,
+    HloOpcode::kAsinh,
+    HloOpcode::kAtanh,
     HloOpcode::kCbrt,
     HloOpcode::kCeil,
     HloOpcode::kClz,
     HloOpcode::kCopy,
     HloOpcode::kCos,
+    HloOpcode::kCosh,
     HloOpcode::kErf,
     HloOpcode::kExp,
     HloOpcode::kExpm1,
@@ -463,6 +492,7 @@ constexpr std::array kTestedOpsUnaryElementwise = {
     HloOpcode::kRsqrt,
     HloOpcode::kSign,
     HloOpcode::kSin,
+    HloOpcode::kSinh,
     HloOpcode::kSqrt,
     HloOpcode::kTan,
     HloOpcode::kTanh
@@ -511,8 +541,7 @@ ENTRY triton_computation {
 
   bool crashes_on_failure = false;
   if (data_type_in != data_type_out && any_is(PrimitiveType::F8E4M3FN) &&
-      std::holds_alternative<se::CudaComputeCapability>(cc) &&
-      !std::get<se::CudaComputeCapability>(cc).IsAtLeastHopper()) {
+      cc.IsCuda() && !cc.cuda_compute_capability()->IsAtLeastHopper()) {
     crashes_on_failure |= any_is(F16) || any_is(BF16) || any_is(F32);
 
     // Crashes due to unsupported/unspecified rounding mode.
@@ -681,11 +710,11 @@ using ReduceTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
 static absl::string_view init_value(PrimitiveType dtype) {
   if (dtype == C64 || dtype == C128) {
     return "(0, 0)";
-  } else if (dtype == F8E8M0FNU) {
-    return "1e-40";
-  } else {
-    return "0";
   }
+  if (dtype == F8E8M0FNU) {
+    return "1e-40";
+  }
+  return "0";
 }
 
 TEST_P(ReduceTest, IsTritonSupportedReduction) {
@@ -1838,7 +1867,7 @@ TEST_P(DotTypesTest, Dot) {
 
   ExpectedFailMode fail_mode = ExpectedFailMode::kFail;
   if (input_type == F8E4M3FN || result_type == F8E4M3FN) {
-    if (auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&cc);
+    if (auto* cuda_cc = cc.cuda_compute_capability();
         cuda_cc && !cuda_cc->IsAtLeastHopper()) {
       // Hits llvm::report_fatal_error during Triton compilation.
       fail_mode = ExpectedFailMode::kFailOrCrash;
@@ -2316,6 +2345,39 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(AllDevicesToTest())),
     DotPrecisionAlgorithmTestName);
 
+class ScaledDotTest : public TritonSupportTest,
+                      public ::testing::WithParamInterface<PrimitiveType> {};
+
+TEST_P(ScaledDotTest, ScaledDotOperandTypes) {
+  const std::string kHloTestTemplate = R"(
+HloModule ScaledDotOperandTypes
+
+ENTRY triton_computation {
+  lhs = $0[16, 32] parameter(0)
+  lhs_scale = f8e8m0fnu[16, 1] parameter(1)
+  rhs = $0[32, 16] parameter(2)
+  rhs_scale = f8e8m0fnu[1, 16] parameter(3)
+  ROOT dot = f32[16, 16] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+      lhs_contracting_dims={1},
+      rhs_contracting_dims={0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, GetParam(),
+                                     HloOpcode::kScaledDot,
+                                     /*use_nested_gemm_fusions=*/true));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 16},
+                 se::CudaComputeCapability::Hopper());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ScaledDotTest, ScaledDotTest,
+    ::testing::ValuesIn(AllOpSupportedTypes(HloOpcode::kScaledDot)),
+    [](const ::testing::TestParamInfo<PrimitiveType>& info) {
+      return primitive_util::LowercasePrimitiveTypeName(info.param);
+    });
+
 class FusionKindsTest
     : public TritonSupportTest,
       public ::testing::WithParamInterface<
@@ -2519,7 +2581,6 @@ TEST_P(BitcastConvertTest, BitcastConvertDisguisedAsBitcast) {
 
   const int bit_width_in = primitive_util::BitWidth(data_type_in);
   const int bit_width_out = primitive_util::BitWidth(data_type_out);
-  ExpectedFailMode fail_mode = ExpectedFailMode::kFail;
   std::vector<int64_t> output_tile_sizes = {1, 32};
   std::string hlo_text;
   const std::string data_type_in_str =
@@ -2543,7 +2604,6 @@ ENTRY triton_computation {
   ROOT bc = $1[33, $2] bitcast(parameter)
 })",
         data_type_in_str, data_type_out_str, bit_width_in / bit_width_out);
-    fail_mode = ExpectedFailMode::kFailOrCrash;
   } else {  // bit_width_in < bit_width_out
     hlo_text = absl::Substitute(
         R"(
@@ -2553,14 +2613,13 @@ ENTRY triton_computation {
 })",
         data_type_in_str, bit_width_out / bit_width_in, data_type_out_str);
     output_tile_sizes = {1};
-    fail_mode = ExpectedFailMode::kFailOrCrash;
   }
 
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(hlo_text, data_type_in,
                                                          HloOpcode::kBitcast));
 
-  RunSupportTest(std::move(ti), output_tile_sizes, cc, fail_mode);
+  RunSupportTest(std::move(ti), output_tile_sizes, cc);
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -3407,14 +3466,22 @@ INSTANTIATE_TEST_SUITE_P(ConvolutionTestSuiteCcOnly, ConvolutionTestCcOnly,
                          ::testing::ValuesIn(AllDevicesToTest()),
                          TritonSupportTestDeviceToString);
 
+// This denotes opcodes that are explicitly not supported by the generic Triton
+// emitter, and have also not been tested at all in the support test. If you
+// are adding a new opcode that can't be easily added to other parametrized
+// tests (e.g. adding tests to unary elementwise ops should be simple enough
+// that adding them here is probably not necessary), add it here to ensure that
+// the support test invariants are preserved.
 constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
     HloOpcode::kDynamicReshape,
+    HloOpcode::kDynamicSlice,
     HloOpcode::kDynamicUpdateSlice,
     HloOpcode::kGather,
     HloOpcode::kRaggedDot,
     HloOpcode::kReduceWindow,
+    HloOpcode::kScaledDot,
     HloOpcode::kScatter,
     HloOpcode::kSelectAndScatter,
     HloOpcode::kSetDimensionSize,
@@ -3422,6 +3489,13 @@ constexpr std::array kUnsupportedOps = {
     // clang-format on
 };
 
+// This function returns the set of opcodes that have explicit corresponding
+// tests in this file. *DO NOT* add opcodes here unless you're also adding
+// sufficiently exhaustive tests for them.
+//
+// Also prefer to create `kTestedOps*` constants capturing each opcode group,
+// in order to help ascertain that opcodes are not mistakenly added here and
+// left untested.
 absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   absl::flat_hash_set<HloOpcode> ret;
   ret.insert(kTestedOpsBitcastReshape.begin(), kTestedOpsBitcastReshape.end());
@@ -3462,7 +3536,6 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kCustomCall);
   ret.emplace(HloOpcode::kDomain);
   ret.emplace(HloOpcode::kDot);
-  ret.emplace(HloOpcode::kDynamicSlice);  // TODO(b/417172838): add tests.
   ret.emplace(HloOpcode::kFft);
   ret.emplace(HloOpcode::kFusion);
   ret.emplace(HloOpcode::kGetDimensionSize);
@@ -3473,7 +3546,6 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kReverse);
   ret.emplace(HloOpcode::kRngBitGenerator);
   ret.emplace(HloOpcode::kRngGetAndUpdateState);
-  ret.emplace(HloOpcode::kScaledDot);
   ret.emplace(HloOpcode::kSort);
   ret.emplace(HloOpcode::kStochasticConvert);
   ret.emplace(HloOpcode::kTopK);

@@ -35,13 +35,13 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_pool.h"
@@ -2239,7 +2239,7 @@ class HloCustomCallInstruction : public HloCallableInstruction {
 
   void SetPerInstructionStorage(
       std::unique_ptr<PerInstructionStorage> per_instruction_storage) {
-    absl::MutexLock lock(&per_instruction_storage_mutex_);
+    absl::MutexLock lock(per_instruction_storage_mutex_);
     if (per_instruction_storage_ != nullptr) {
       LOG(WARNING) << "Not Overwriting existing per-instruction storage.";
       return;
@@ -2716,8 +2716,8 @@ class HloScaledDotInstruction : public HloInstruction {
   // 'rhs_scale' as the scale factors. Dimensions of the scale factors should
   // have the same order as the dimensions of the dot operation.
   explicit HloScaledDotInstruction(const Shape& shape, HloInstruction* lhs,
-                                   HloInstruction* lhs_scale,
                                    HloInstruction* rhs,
+                                   HloInstruction* lhs_scale,
                                    HloInstruction* rhs_scale,
                                    const DotDimensionNumbers& dimension_numbers,
                                    const PrecisionConfig& precision_config);

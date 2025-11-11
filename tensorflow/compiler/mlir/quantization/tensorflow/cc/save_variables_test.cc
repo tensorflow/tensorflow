@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -46,7 +47,6 @@ using ::tensorflow::test::ExpectEqual;
 using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::IsOk;
 
 // This fixture simply wraps the Env and MLIRContext.
 class SaveVariablesToCheckpointTest : public ::testing::Test {

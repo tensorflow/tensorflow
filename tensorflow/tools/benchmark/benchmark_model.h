@@ -33,29 +33,30 @@ namespace benchmark_model {
 
 // Used to help construct dummy inputs for the benchmarking.
 struct InputLayerInfo {
-  string name;
+  std::string name;
   DataType data_type;
   TensorShape shape;
   std::vector<float> initialization_values;
 };
 
 // Loads a model from disk into a new session.
-absl::Status InitializeSession(int num_threads, const string& graph,
+absl::Status InitializeSession(int num_threads, const std::string& graph,
                                std::unique_ptr<Session>* session,
                                std::unique_ptr<GraphDef>* graph_def);
 
 // Does a single run of the model that's been loaded into the given session.
 absl::Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
-                          const std::vector<string>& outputs,
-                          const std::vector<string>& targets, Session* session,
-                          StatSummarizer* stats, int64_t* inference_time_us);
+                          const std::vector<std::string>& outputs,
+                          const std::vector<std::string>& targets,
+                          Session* session, StatSummarizer* stats,
+                          int64_t* inference_time_us);
 
 // Runs the model multiple time, keeping track of timing information.
 absl::Status TimeMultipleRuns(double sleep_seconds, int num_runs,
                               double max_time_s,
                               const std::vector<InputLayerInfo>& inputs,
-                              const std::vector<string>& outputs,
-                              const std::vector<string>& targets,
+                              const std::vector<std::string>& outputs,
+                              const std::vector<std::string>& targets,
                               Session* session, StatSummarizer* stats,
                               int64_t* total_time_us, int64_t* actual_num_runs);
 

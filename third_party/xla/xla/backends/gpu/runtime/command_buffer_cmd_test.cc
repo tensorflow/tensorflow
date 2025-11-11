@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <utility>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -63,8 +66,8 @@ static se::StreamExecutor* GpuExecutor() {
 // Some of the tests rely on CUDA 12.9+ features.
 bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
   const auto& device_description = stream_executor->GetDeviceDescription();
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &device_description.gpu_compute_capability());
+  const auto* cuda_cc =
+      device_description.gpu_compute_capability().cuda_compute_capability();
   if (cuda_cc != nullptr) {
     // We need a recent driver to support the feature at runtime and we need a
     // recent version of the toolkit at compile time, so that we have access to
@@ -164,8 +167,8 @@ TEST(CommandBufferCmdTest, SerializeExecution) {
   auto slice1 = BufferAllocation::Slice(&alloc0, 50, 100);
 
   // Reads from overlapping slices do not require barriers by default.
-  auto use0 = BufferUse(slice0, BufferUse::kRead);
-  auto use1 = BufferUse(slice1, BufferUse::kRead);
+  auto use0 = BufferUse::Read(slice0);
+  auto use1 = BufferUse::Read(slice1);
 
   CommandBufferCmdSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
@@ -184,8 +187,8 @@ TEST(CommandBufferCmdTest, NoReadBarrier) {
   auto slice1 = BufferAllocation::Slice(&alloc0, 50, 100);
 
   // Reads from overlapping slices do not require barriers.
-  auto use0 = BufferUse(slice0, BufferUse::kRead);
-  auto use1 = BufferUse(slice1, BufferUse::kRead);
+  auto use0 = BufferUse::Read(slice0);
+  auto use1 = BufferUse::Read(slice1);
 
   CommandBufferCmdSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
@@ -204,8 +207,8 @@ TEST(CommandBufferCmdTest, NoWriteBarrier) {
   auto slice0 = BufferAllocation::Slice(&alloc0, 0, 100);
   auto slice1 = BufferAllocation::Slice(&alloc0, 200, 100);
 
-  auto use0 = BufferUse(slice0, BufferUse::kWrite);
-  auto use1 = BufferUse(slice1, BufferUse::kWrite);
+  auto use0 = BufferUse::Write(slice0);
+  auto use1 = BufferUse::Write(slice1);
 
   CommandBufferCmdSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
@@ -225,9 +228,9 @@ TEST(CommandBufferCmdTest, WriteConflictBarrier) {
 
   // Reads from overlapping slices can be done in parallel, and before a write
   // into overlapping slice we need to insert a barrier.
-  auto use0 = BufferUse(slice0, BufferUse::kRead);
-  auto use1 = BufferUse(slice0, BufferUse::kRead);
-  auto use2 = BufferUse(slice1, BufferUse::kWrite);
+  auto use0 = BufferUse::Read(slice0);
+  auto use1 = BufferUse::Read(slice0);
+  auto use2 = BufferUse::Write(slice1);
 
   CommandBufferCmdSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(BufferUseVector{use0});
@@ -322,7 +325,8 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   auto args = {slice_a, slice_a, slice_b};  // b = a + a
-  auto args_access = {BufferUse::kRead, MemoryAccess::kRead, BufferUse::kWrite};
+  auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                      MemoryAccess::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
@@ -393,7 +397,8 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   auto args = {slice_a, slice_a, slice_b};  // b = a + a
-  auto args_access = {BufferUse::kRead, MemoryAccess::kRead, BufferUse::kWrite};
+  auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                      MemoryAccess::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
@@ -513,8 +518,8 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
 
     CommandBufferCmd::BufferUseVector buffers = {
-        {BufferAllocation::Slice(&alloc0, 0, 1024), BufferUse::kRead},
-        {BufferAllocation::Slice(&alloc1, 0, 1024), BufferUse::kWrite}};
+        BufferUse::Read(BufferAllocation::Slice(&alloc0, 0, 1024)),
+        BufferUse::Write(BufferAllocation::Slice(&alloc1, 0, 1024))};
 
     TracedCommandBuffer traced_cmd_buffer(&traced_cmd, buffers,
                                           /*capacity=*/trace_cache_size);
@@ -635,8 +640,8 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
   CommandBufferCmdSequence seq_b;
   {
     auto args = {slice_a, slice_a, slice_b};
-    auto args_access = {BufferUse::kRead, MemoryAccess::kRead,
-                        BufferUse::kWrite};
+    auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
+                        MemoryAccess::kWrite};
     seq_b.Emplace<LaunchCmd>("AddI32", args, args_access,
                              LaunchDimensions(1, 4), /*shmem_bytes=*/0);
   }
@@ -683,13 +688,15 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
                              CommandBufferCmd::RecordCreate{},
                              command_buffer.get(), /*finalize=*/false));
 
-  auto a_sinks = exec_a.SinkCommands(record_params, command_buffer.get());
+  auto a_sinks = exec_a.SinkCommands(record_params, command_buffer.get(),
+                                     /*unroll_iteration=*/0);
   TF_ASSERT_OK(
       exec_b.Record(exec_params, record_params,
                     CommandBufferCmd::RecordCreate{absl::MakeSpan(a_sinks)},
                     command_buffer.get(), /*finalize=*/false));
 
-  auto b_sinks = exec_b.SinkCommands(record_params, command_buffer.get());
+  auto b_sinks = exec_b.SinkCommands(record_params, command_buffer.get(),
+                                     /*unroll_iteration=*/0);
   TF_ASSERT_OK(
       exec_c.Record(exec_params, record_params,
                     CommandBufferCmd::RecordCreate{absl::MakeSpan(b_sinks)},
@@ -851,8 +858,8 @@ static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
   BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
 
   CommandBufferCmd::BufferUseVector buffers = {
-      {BufferAllocation::Slice(&alloc0, 0, 1024), BufferUse::kRead},
-      {BufferAllocation::Slice(&alloc1, 0, 1024), BufferUse::kWrite}};
+      BufferUse::Read(BufferAllocation::Slice(&alloc0, 0, 1024)),
+      BufferUse::Write(BufferAllocation::Slice(&alloc1, 0, 1024))};
 
   se::DeviceMemoryBase mem0(reinterpret_cast<void*>(0x01234567));
   se::DeviceMemoryBase mem1(reinterpret_cast<void*>(0x12345670));

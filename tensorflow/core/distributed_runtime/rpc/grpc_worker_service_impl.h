@@ -54,9 +54,9 @@ class SerializationTraits<tensorflow::TensorResponse> {
       ::tensorflow::GrpcByteSource source(buffer);
       auto s = msg->ParseFrom(&source);
       if (!s.ok()) {
-        result = Status(StatusCode::INTERNAL,
-                        ::tensorflow::strings::StrCat(
-                            "TensorResponse parse error", s.message()));
+        result =
+            Status(StatusCode::INTERNAL,
+                   absl::StrCat("TensorResponse parse error", s.message()));
       }
     }
     buffer->Clear();

@@ -69,6 +69,7 @@ cc_library(
     hdrs = ["communicator.h"],
     deps = [
         ":rank_id",
+        "//xla:future",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/service:collective_ops_utils",

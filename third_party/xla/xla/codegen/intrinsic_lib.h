@@ -17,50 +17,18 @@ limitations under the License.
 #define XLA_CODEGEN_INTRINSIC_LIB_H_
 
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
-#include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
+#include "xla/codegen/intrinsic_function.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::codegen {
-
-// Interface representing a single vectorized math function approximation.
-// Each implementation may support multiple vector widths and primitive types,
-// defined by the SupportedVectorTypes() method. To emit LLVM IR for a
-// particular vector width and primitive type, call CreateDefinition() with the
-// desired vector_width and primitive_type.
-class IntrinsicFunction {
- public:
-  virtual ~IntrinsicFunction() = default;
-  // The name of the function being approximated.
-  virtual absl::string_view FunctionName() const = 0;
-
-  // Returns the vector types supported well by this approximation.
-  virtual std::vector<std::vector<intrinsics::Type>> SupportedVectorTypes(
-      absl::string_view features) const = 0;
-
-  // Returns the LLVM IR function definition for the approximation.
-  virtual llvm::Function* CreateDefinition(llvm::Module& module,
-                                           intrinsics::IntrinsicOptions options,
-                                           absl::string_view name) const = 0;
-
-  // The vectorized function name, e.g. "xla.ldexp.v8f64.v8i32".
-  virtual std::string GenerateVectorizedFunctionName(
-      absl::Span<const intrinsics::Type> types) const = 0;
-
-  // The LLVM mangled prefix for the vectorized function, e.g.
-  // "_ZGV_LLVM_N8" used in llvm::VecDesc.
-  virtual std::string GenerateMangledSimdPrefix(
-      absl::Span<const intrinsics::Type> types) const = 0;
-};
 
 // A library of intrinsic functions and math approximations.
 // The library hooks into LLVM compilation in two places:

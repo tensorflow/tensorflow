@@ -22,12 +22,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
@@ -41,7 +39,8 @@ class NvshmemCollectivePermuteStartThunk : public NvshmemCollectiveThunk {
       int64_t replica_count, int64_t partition_count,
       const std::vector<CollectiveThunk::Buffer>& buffers,
       bool p2p_memcpy_enabled = false,
-      AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
+      AsyncStreamKind stream_kind =
+          AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
 
   static const char* GetHloOpName() { return "collective-permute-start"; }
 

@@ -28,8 +28,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/MathExtras.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -49,13 +49,13 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
 
-using ::mlir::MLIRContext;
 namespace m = ::xla::match;
 
 // Pattern-matches slow loop fusions that can likely be handled better by
@@ -163,7 +163,8 @@ absl::StatusOr<bool> ShouldTryRewriteFusion(
 absl::StatusOr<bool> ProcessFusionInstruction(
     HloFusionInstruction* fusion_instruction,
     const se::DeviceDescription& device_info,
-    HloCostAnalysis::ShapeSizeFunction shape_size, MLIRContext* ctx) {
+    HloCostAnalysis::ShapeSizeFunction shape_size,
+    SymbolicExprContext* symbolic_expr_context) {
   TF_ASSIGN_OR_RETURN(bool should_try_rewrite,
                       ShouldTryRewriteFusion(fusion_instruction, device_info));
   if (!should_try_rewrite) {
@@ -194,7 +195,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
 
   HloFusionAnalysisCache fusion_analysis_cache(device_info);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
-      &device_info, &fusion_analysis_cache, shape_size, ctx);
+      &device_info, &fusion_analysis_cache, shape_size, symbolic_expr_context);
 
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       Cast<HloFusionInstruction>(fusion_instruction));
@@ -236,13 +237,12 @@ absl::StatusOr<bool> ProcessFusionInstruction(
 
 }  // anonymous namespace
 
-absl::StatusOr<bool> FusionBlockLevelRewriter::Run(
+absl::StatusOr<bool> FusionBlockLevelRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(
       device_info_.gpu_compute_capability()));
 
-  MLIRContext ctx;
   bool has_changed = false;
 
   for (HloComputation* computation :
@@ -252,9 +252,9 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::Run(
     }
     HloFusionInstruction* fusion_instruction =
         ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction());
-    TF_ASSIGN_OR_RETURN(
-        bool changed, ProcessFusionInstruction(fusion_instruction, device_info_,
-                                               shape_size_, &ctx));
+    TF_ASSIGN_OR_RETURN(bool changed, ProcessFusionInstruction(
+                                          fusion_instruction, device_info_,
+                                          shape_size_, symbolic_expr_context_));
 
     has_changed |= changed;
   }

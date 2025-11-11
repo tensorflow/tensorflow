@@ -30,30 +30,35 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/util.h"
 
 namespace xla {
 
 absl::StatusOr<MlirKernelSource> MlirKernelSource::ParseFromString(
-    absl::string_view ir, std::unique_ptr<mlir::MLIRContext> context) {
+    absl::string_view ir, std::unique_ptr<mlir::MLIRContext> mlir_context) {
+  auto symbolic_expr_context =
+      std::make_unique<SymbolicExprContext>(mlir_context.get());
   llvm::SourceMgr source_mgr;
 
   std::string error_string;
   llvm::raw_string_ostream error_stream(error_string);
-  mlir::SourceMgrDiagnosticHandler source_mgr_handler(source_mgr, context.get(),
-                                                      error_stream);
+  mlir::SourceMgrDiagnosticHandler source_mgr_handler(
+      source_mgr, mlir_context.get(), error_stream);
 
   source_mgr.AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(ir),
                                 llvm::SMLoc());
 
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(source_mgr, context.get());
+      mlir::parseSourceFile<mlir::ModuleOp>(source_mgr, mlir_context.get());
 
   if (!mlir_module) {
     return Internal("Failed to parse MLIR IR: %s", error_string);
   }
 
-  return MlirKernelSource(std::move(context), std::move(mlir_module));
+  return MlirKernelSource(std::move(mlir_context),
+                          std::move(symbolic_expr_context),
+                          std::move(mlir_module));
 }
 
 }  // namespace xla

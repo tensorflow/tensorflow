@@ -153,8 +153,8 @@ class FakeLibCurl : public LibCurl {
       posted_content_ = "";
       do {
         bytes_read = read_callback_(buffer, 1, sizeof(buffer), read_data_);
-        posted_content_ = strings::StrCat(
-            posted_content_, absl::string_view(buffer, bytes_read));
+        posted_content_ = absl::StrCat(posted_content_,
+                                       absl::string_view(buffer, bytes_read));
       } while (bytes_read > 0);
     }
     if (write_data_ || write_callback_) {

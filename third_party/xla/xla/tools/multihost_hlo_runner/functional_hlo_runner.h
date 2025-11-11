@@ -249,6 +249,12 @@ struct RunningOptions {
   ModuleOutputMode module_output_mode = ModuleOutputMode::kReturnOutputs;
   // Repeatedly execute the HLO for this many times.
   size_t num_repeats = 1;
+  // The last `num_repeats_with_profiler` repeats out of `num_repeats` will be
+  // profiled. Default is 1, i.e., the last repeat will be profiled.
+  size_t num_repeats_with_profiler = 1;
+  // If true, we recreate the profiler session between repeats when profiling
+  // more than one repeat.
+  bool recreate_profiler_session_between_repeats = false;
   size_t base_run_id = 0;
   // If true, we recreate the buffers between repeats to reset of effect of
   // buffer donation.
@@ -308,7 +314,8 @@ absl::Status LoadAndRunAndDump(
     const xla::FunctionalHloRunner::RunningOptions& running_options,
     absl::string_view hlo_file, InputFormat input_format,
     std::string dump_output_to = "", int task_id = 0, int num_nodes = 1,
-    std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr);
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr,
+    std::minstd_rand0* engine = nullptr);
 
 // Loads an HLO module from hlo_file according to input_format and run it.
 // The HLO module is run with the provided arguments if the arguments map is

@@ -463,4 +463,8 @@ absl::Status RocmCommandBuffer::CheckCanBeUpdated() {
   return absl::OkStatus();
 }
 
+std::string RocmCommandBuffer::ToString() const {
+  return "ROCM graph debug dot print is not supported.";
+}
+
 }  // namespace stream_executor::gpu

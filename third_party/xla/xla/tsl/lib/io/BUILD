@@ -22,6 +22,7 @@ package(
         "//tensorflow/core/profiler:__subpackages__",
         "//tensorflow/python/profiler/internal:__pkg__",
         "//third_party/xprof:__subpackages__",
+        "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
     ]),
     licenses = ["notice"],
 )

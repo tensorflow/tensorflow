@@ -8,7 +8,6 @@ load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
-load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -31,8 +30,8 @@ cc_library(
         ":gpu_collective_performance_model",
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model",
-        ":gpu_performance_model_base",
         "//xla:xla_proto_cc",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:hlo_cost_analysis",
@@ -41,6 +40,7 @@ cc_library(
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/time",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -59,6 +59,7 @@ cc_library(
         ":sol_gpu_cost_model",
         "//xla:util",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:collective_ops_utils",
@@ -85,11 +86,11 @@ xla_cc_test(
     srcs = ["sol_latency_estimator_test.cc"],
     deps = [
         ":collective_interpolator",
-        ":gpu_performance_model_base",
         ":sol_gpu_cost_model",
         ":sol_latency_estimator",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_query",
@@ -101,11 +102,13 @@ xla_cc_test(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -154,15 +157,10 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    tags =
-        if_google([
-            # TODO(b/414617899): Reenable once NVML works
-            "manual",
-            "notap",
-        ]),
     deps = [
         ":analytical_latency_estimator",
         "//xla:shape_util",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:latency_hiding_scheduler",
@@ -171,12 +169,14 @@ xla_test(
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:casts",
     ],
 )
@@ -219,7 +219,7 @@ cc_library(
     deps = [
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model",
-        ":gpu_performance_model_base",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:hlo_cost_analysis",
@@ -228,7 +228,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -236,9 +235,9 @@ xla_cc_test(
     name = "gpu_cost_model_stats_collection_test",
     srcs = ["gpu_cost_model_stats_collection_test.cc"],
     deps = [
-        ":fusion_analysis_cache",
         ":gpu_cost_model_stats_collection",
         ":gpu_hlo_cost_analysis",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:hlo_cost_analysis",
@@ -246,6 +245,7 @@ xla_cc_test(
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -312,6 +312,7 @@ cc_library(
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/codegen:fusions",
         "//xla/backends/gpu/codegen/triton:fusion",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service/gpu:backend_configs_cc",
@@ -334,6 +335,7 @@ xla_cc_test(
     deps = [
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model_base",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
@@ -345,6 +347,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -360,6 +363,7 @@ cc_library(
         ":gpu_performance_model_base",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -385,6 +389,7 @@ xla_cc_test(
         ":gpu_performance_model_base",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
@@ -400,8 +405,6 @@ xla_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -410,8 +413,8 @@ cc_library(
     srcs = ["gpu_dot_fusion_cost_model.cc"],
     hdrs = ["gpu_dot_fusion_cost_model.h"],
     deps = [
+        ":block_level_parameters",
         ":gpu_performance_model_base",
-        ":tiled_hlo_instruction_or_computation",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -435,8 +438,8 @@ xla_cc_test(
     name = "gpu_dot_fusion_cost_model_test",
     srcs = ["gpu_dot_fusion_cost_model_test.cc"],
     deps = [
+        ":block_level_parameters",
         ":gpu_dot_fusion_cost_model",
-        ":tiled_hlo_instruction_or_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
@@ -454,7 +457,6 @@ cc_library(
     name = "gpu_collective_performance_model",
     srcs = ["gpu_collective_performance_model.cc"],
     hdrs = ["gpu_collective_performance_model.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":coalescing_analysis",
         ":fusion_analysis_cache",
@@ -490,17 +492,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:status",
-    ] + if_cuda_is_configured(["@local_config_cuda//cuda:cuda_headers"]),
-)
-
-xla_cc_test(
-    name = "gpu_collective_performance_model_test",
-    srcs = ["gpu_collective_performance_model_test.cc"],
-    deps = [
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -509,18 +500,20 @@ cc_library(
     srcs = ["gpu_indexing_performance_model.cc"],
     hdrs = ["gpu_indexing_performance_model.h"],
     deps = [
+        ":block_level_parameters",
         ":coalescing_analysis",
         ":fusion_analysis_cache",
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model_base",
         ":hlo_op_profiles",
-        ":symbolic_tile_analysis",
-        ":tiled_hlo_instruction_or_computation",
         ":triton_emitter_constraints",
         "//xla:shape_util",
         "//xla:util",
         "//xla/backends/gpu/codegen/triton:fusion",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/codegen/tiling:tiled_hlo_computation",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:hlo_cost_analysis",
@@ -553,9 +546,10 @@ xla_cc_test(
         ":gpu_hlo_cost_analysis",
         ":gpu_indexing_performance_model",
         ":gpu_performance_model_base",
-        ":symbolic_tile_analysis",
-        ":tiled_hlo_instruction_or_computation",
         "//xla:shape_util",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/codegen/tiling:tiled_hlo_computation",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
@@ -574,278 +568,24 @@ xla_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
 cc_library(
-    name = "affine_map_evaluator",
-    srcs = ["affine_map_evaluator.cc"],
-    hdrs = ["affine_map_evaluator.h"],
-    deps = [
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-xla_cc_test(
-    name = "affine_map_evaluator_test",
-    srcs = ["affine_map_evaluator_test.cc"],
-    deps = [
-        ":affine_map_evaluator",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
-        "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:test",
-    ],
-)
-
-cc_library(
-    name = "constraint_expression",
-    srcs = ["constraint_expression.cc"],
-    hdrs = ["constraint_expression.h"],
-    deps = [
-        ":affine_map_evaluator",
-        "//xla/hlo/analysis:indexing_analysis",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-xla_cc_test(
-    name = "constraint_expression_test",
-    srcs = ["constraint_expression_test.cc"],
-    deps = [
-        ":constraint_expression",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:indexing_test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
-    name = "size_and_stride_expression",
-    srcs = ["size_and_stride_expression.cc"],
-    hdrs = ["size_and_stride_expression.h"],
-    deps = [
-        ":constraint_expression",
-        "//xla/hlo/analysis:indexing_analysis",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
-    name = "symbolic_tile",
-    srcs = ["symbolic_tile.cc"],
-    hdrs = ["symbolic_tile.h"],
-    deps = [
-        ":affine_map_evaluator",
-        ":constraint_expression",
-        ":size_and_stride_expression",
-        "//xla/hlo/analysis:indexing_analysis",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-xla_cc_test(
-    name = "symbolic_tile_test",
-    srcs = ["symbolic_tile_test.cc"],
-    deps = [
-        ":affine_map_evaluator",
-        ":symbolic_tile",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:indexing_test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
-    name = "symbolic_tiled_hlo_instruction",
-    srcs = ["symbolic_tiled_hlo_instruction.cc"],
-    hdrs = ["symbolic_tiled_hlo_instruction.h"],
-    deps = [
-        ":symbolic_tile",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-xla_cc_test(
-    name = "symbolic_tiled_hlo_instruction_test",
-    srcs = ["symbolic_tiled_hlo_instruction_test.cc"],
-    deps = [
-        ":symbolic_tile",
-        ":symbolic_tiled_hlo_instruction",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/utils:hlo_traversal",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
-    name = "tiled_hlo_instruction_or_computation",
-    srcs = [
-        "tiled_hlo_computation.cc",
-        "tiled_hlo_instruction.cc",
-    ],
+    name = "block_level_parameters",
     hdrs = [
-        "tiled_hlo_computation.h",
-        "tiled_hlo_instruction.h",
+        "block_level_parameters.h",
     ],
-    deps = [
-        "//xla:util",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:name_uniquer",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/tsl/lib/gtl:iterator_range",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:errors",
-    ],
+    deps = ["//xla/service/gpu:backend_configs_cc"],
 )
 
 xla_cc_test(
-    name = "tiled_hlo_instruction_test",
-    srcs = ["tiled_hlo_instruction_test.cc"],
+    name = "block_level_parameters_test",
+    srcs = ["block_level_parameters_test.cc"],
     deps = [
-        ":tiled_hlo_instruction_or_computation",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:indexing_test_utils",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tsl/platform:status_matchers",
-        "//xla/tsl/platform:statusor",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-xla_cc_test(
-    name = "tiled_hlo_computation_test",
-    srcs = ["tiled_hlo_computation_test.cc"],
-    deps = [
-        ":tiled_hlo_instruction_or_computation",
+        ":block_level_parameters",
         "//xla/service/gpu:backend_configs_cc",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "symbolic_tile_analysis",
-    srcs = ["symbolic_tile_analysis.cc"],
-    hdrs = ["symbolic_tile_analysis.h"],
-    deps = [
-        ":constraint_expression",
-        ":symbolic_tile",
-        ":symbolic_tiled_hlo_instruction",
-        ":tiled_hlo_instruction_or_computation",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_traversal",
-        "//xla/service:instruction_fusion",
-        "//xla/service:name_uniquer",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:ir_emission_utils",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/numeric:bits",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-xla_cc_test(
-    name = "symbolic_tile_analysis_test",
-    srcs = ["symbolic_tile_analysis_test.cc"],
-    deps = [
-        ":constraint_expression",
-        ":symbolic_tile_analysis",
-        ":symbolic_tiled_hlo_instruction",
-        ":tiled_hlo_instruction_or_computation",
-        "//xla:util",
-        "//xla/hlo/analysis:indexing_test_utils",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/hlo/utils:hlo_traversal",
-        "//xla/service:instruction_fusion",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_matchers",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -854,23 +594,25 @@ cc_library(
     srcs = ["triton_emitter_constraints.cc"],
     hdrs = ["triton_emitter_constraints.h"],
     deps = [
-        ":affine_map_evaluator",
-        ":constraint_expression",
-        ":symbolic_tile",
-        ":symbolic_tile_analysis",
-        ":symbolic_tiled_hlo_instruction",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/codegen/tiling:affine_map_evaluator",
+        "//xla/codegen/tiling:constraint_expression",
+        "//xla/codegen/tiling:symbolic_tile",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/codegen/tiling:symbolic_tiled_hlo_instruction",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:interval",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -881,8 +623,9 @@ xla_cc_test(
     name = "triton_emitter_constraints_test",
     srcs = ["triton_emitter_constraints_test.cc"],
     deps = [
-        ":symbolic_tile_analysis",
         ":triton_emitter_constraints",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
@@ -890,10 +633,10 @@ xla_cc_test(
         "//xla/service:instruction_fusion",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_description",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
     ],
@@ -904,14 +647,15 @@ cc_library(
     srcs = ["coalescing_analysis.cc"],
     hdrs = ["coalescing_analysis.h"],
     deps = [
-        ":affine_map_evaluator",
-        ":tiled_hlo_instruction_or_computation",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/codegen:fusions",
+        "//xla/codegen/tiling:affine_map_evaluator",
+        "//xla/codegen/tiling:tiled_hlo_instruction",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service/gpu:gpu_fusible",
@@ -930,12 +674,16 @@ xla_cc_test(
     srcs = ["coalescing_analysis_test.cc"],
     deps = [
         ":coalescing_analysis",
-        ":symbolic_tile_analysis",
-        ":tiled_hlo_instruction_or_computation",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/codegen:fusions",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/codegen/tiling:tiled_hlo_computation",
+        "//xla/codegen/tiling:tiled_hlo_instruction",
+        "//xla/codegen/tiling:tiled_hlo_schedule",
+        "//xla/codegen/tiling:tiling_specification",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_traversal",
@@ -943,12 +691,11 @@ xla_cc_test(
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -994,6 +741,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1027,10 +775,12 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda([
         # keep sorted
+        "//xla/backends/profiler/gpu:cupti_buffer_events",
         "//xla/backends/profiler/gpu:cupti_collector",
         "//xla/backends/profiler/gpu:cupti_tracer",
     ]),
@@ -1065,11 +815,9 @@ xla_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -1092,10 +840,10 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status_matchers",
     ],
 )
 
@@ -1107,6 +855,7 @@ cc_library(
         ":gpu_hlo_cost_analysis",
         ":sol_latency_estimator",
         "//xla/backends/gpu/codegen/triton:support",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",
@@ -1133,7 +882,10 @@ xla_cc_test(
     deps = [
         ":sol_gpu_cost_model_stats_collection",
         "//xla:shape_util",
+        "//xla/hlo/analysis:symbolic_expr",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:hlo_cost_analysis",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_description",
@@ -1142,6 +894,7 @@ xla_cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -1149,7 +902,6 @@ cc_library(
     name = "interpolator",
     hdrs = ["interpolator.h"],
     deps = [
-        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -1196,6 +948,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -1339,14 +1092,15 @@ cc_library(
     srcs = ["matmul_ptable_stats_collection.cc"],
     hdrs = ["matmul_ptable_stats_collection.h"],
     deps = [
+        ":block_level_parameters",
         ":gpu_dot_fusion_cost_model",
         ":hlo_op_profile_proto_cc",
         ":hlo_op_profiles",
         ":matmul_interpolator",
-        ":tiled_hlo_instruction_or_computation",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",

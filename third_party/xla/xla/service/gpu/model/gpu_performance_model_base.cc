@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -85,7 +86,7 @@ std::optional<EstimateRunTimeData> GpuPerformanceModelCache::Get(
 
 std::optional<absl::Duration> GpuPerformanceModelCache::Get(
     const HloInstruction& producer, const HloInstruction& consumer) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
 
   auto it = fusion_runtime_data_.find(&producer);
   if (it != fusion_runtime_data_.end()) {
@@ -115,7 +116,7 @@ void GpuPerformanceModelCache::Set(const HloInstruction& instruction,
 void GpuPerformanceModelCache::Set(const HloInstruction& producer,
                                    const HloInstruction& consumer,
                                    absl::Duration runtime) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   fusion_runtime_data_[&producer][&consumer] = runtime;
 }
 
@@ -142,9 +143,10 @@ void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
 
 /*static*/
 LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
-    const HloFusionAnalysis& fusion_analysis) {
-  auto emitter =
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{fusion_analysis});
+    const HloFusionAnalysis& fusion_analysis,
+    SymbolicExprContext* symbolic_expr_context) {
+  auto emitter = GetFusionEmitter(
+      PreBufferAssignmentFusionInfo{fusion_analysis}, symbolic_expr_context);
   if (const auto* kernel_emitter =
           dynamic_cast<const KernelFusionInterface*>(emitter.get())) {
     return kernel_emitter->launch_dimensions();
@@ -154,7 +156,7 @@ LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
   // launch dimensions only for SoftMax fusions.
   if (const auto* triton_emitter =
           dynamic_cast<const TritonFusion*>(emitter.get())) {
-    if (auto launch_config = triton_emitter->launch_config()) {
+    if (auto launch_config = triton_emitter->GetLaunchConfig()) {
       return launch_config->launch_dimensions;
     }
   }

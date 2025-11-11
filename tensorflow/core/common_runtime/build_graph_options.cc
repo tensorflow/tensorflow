@@ -22,18 +22,18 @@ namespace tensorflow {
 string BuildGraphOptions::DebugString() const {
   string rv = "Feed endpoints: ";
   for (auto& s : callable_options.feed()) {
-    strings::StrAppend(&rv, s, ", ");
+    absl::StrAppend(&rv, s, ", ");
   }
-  strings::StrAppend(&rv, "\nFetch endpoints: ");
+  absl::StrAppend(&rv, "\nFetch endpoints: ");
   for (auto& s : callable_options.fetch()) {
-    strings::StrAppend(&rv, s, ", ");
+    absl::StrAppend(&rv, s, ", ");
   }
-  strings::StrAppend(&rv, "\nTarget nodes: ");
+  absl::StrAppend(&rv, "\nTarget nodes: ");
   for (auto& s : callable_options.target()) {
-    strings::StrAppend(&rv, s, ", ");
+    absl::StrAppend(&rv, s, ", ");
   }
   if (collective_graph_key != kNoCollectiveGraphKey) {
-    strings::StrAppend(&rv, "\ncollective_graph_key: ", collective_graph_key);
+    absl::StrAppend(&rv, "\ncollective_graph_key: ", collective_graph_key);
   }
   string collective_order_str;
   switch (collective_order) {
@@ -47,7 +47,7 @@ string BuildGraphOptions::DebugString() const {
       collective_order_str = "attrs";
       break;
   }
-  strings::StrAppend(&rv, "\ncollective_order: ", collective_order_str);
+  absl::StrAppend(&rv, "\ncollective_order: ", collective_order_str);
   return rv;
 }
 

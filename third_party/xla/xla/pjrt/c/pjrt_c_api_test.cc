@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -88,7 +88,7 @@ class TestCApiFactory {
  public:
   void Register(std::function<const PJRT_Api*()> factory,
                 absl::string_view platform_name) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CHECK(!factory_);
     factory_ = std::move(factory);
     CHECK(platform_name_.empty()) << "Platform name already provided";
@@ -97,13 +97,13 @@ class TestCApiFactory {
   }
 
   std::function<const PJRT_Api*()> Get() const {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CHECK(factory_) << "Test didn't call RegisterPjRtCApiTestFactory()";
     return factory_;
   }
 
   std::string GetPlatformName() const {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CHECK(!platform_name_.empty())
         << "Test didn't call RegisterPjRtCApiTestFactory()";
     return platform_name_;
@@ -678,7 +678,7 @@ TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
   args.event = nullptr;
 
   PJRT_Error* error = api_->PJRT_Buffer_ToHostBuffer(&args);
-  xla::PjRtFuture<> transfer_to_host =
+  xla::Future<> transfer_to_host =
       ::pjrt::ConvertCEventToCppFuture(args.event, api_);
   TF_CHECK_OK(transfer_to_host.Await());
 
@@ -937,6 +937,13 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     }
     if (minor_version >= 75) {
       add_field("PJRT_TopologyDescription_Deserialize", kFnPtrSize);
+    }
+    if (minor_version >= 77) {
+      add_field("PJRT_Client_CreateAliasBuffer", kFnPtrSize);
+      add_field("PJRT_Client_FulfillAliasBuffer", kFnPtrSize);
+    }
+    if (minor_version >= 79) {
+      add_field("PJRT_LoadedExecutable_GetDeviceAssignment", kFnPtrSize);
     }
     return version_offsets_and_sizes;
   }
@@ -1320,6 +1327,15 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_TopologyDescription_Deserialize",
            {offsetof(PJRT_Api, PJRT_TopologyDescription_Deserialize),
             sizeof(PJRT_Api::PJRT_TopologyDescription_Deserialize)}},
+          {"PJRT_Client_CreateAliasBuffer",
+           {offsetof(PJRT_Api, PJRT_Client_CreateAliasBuffer),
+            sizeof(PJRT_Api::PJRT_Client_CreateAliasBuffer)}},
+          {"PJRT_Client_FulfillAliasBuffer",
+           {offsetof(PJRT_Api, PJRT_Client_FulfillAliasBuffer),
+            sizeof(PJRT_Api::PJRT_Client_FulfillAliasBuffer)}},
+          {"PJRT_LoadedExecutable_GetDeviceAssignment",
+           {offsetof(PJRT_Api, PJRT_LoadedExecutable_GetDeviceAssignment),
+            sizeof(PJRT_Api::PJRT_LoadedExecutable_GetDeviceAssignment)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

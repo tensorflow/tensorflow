@@ -38,12 +38,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/executable_metadata.pb.h"
 #include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -112,7 +114,14 @@ struct CompileOptions {
 
   std::optional<xla::Compiler::TargetConfig> target_config;
 
+  // Allow to modify the input MLIR / XLA program.
+  // This is used to run passes on the MLIR parameter without having to clone it
+  // first, thus saving memory. Additionally, it allows us to deallocate the
+  // MLIR later in the compile, when we don't use it anymore.
+  bool allow_in_place_mlir_modification = false;
+
   // Used to indicate the precision configuration.
+  // TODO(b/450278657): Not serialized into the proto. Should it be?
   PrecisionConfig::Precision matrix_unit_operand_precision =
       PrecisionConfig::DEFAULT;
 
@@ -139,12 +148,7 @@ struct CompileOptions {
 
 struct LoadOptions {
   // Origin of the subslice of the target topology to run computation on.
-  struct ComputationOrigin {
-    int x = 0;
-    int y = 0;
-    int z = 0;
-  };
-  std::optional<ComputationOrigin> computation_origin;
+  std::optional<xla::PjRtDeviceDimensions> computation_origin;
 
   // multi_slice_config to associate with the executable during load of a multi
   // slice operation.
@@ -214,11 +218,11 @@ struct ExecuteOptions {
   // If true, the client must pass a single PjRtBuffer which contains all of
   // the arguments as a single XLA tuple, otherwise each argument must be
   // passed in its own PjRtBuffer. May only be true if the executable was
-  // compiled with parameter_is_tupled_arguments==true.
+  // compiled with parameter_is_tupled_arguments==true. This field is
+  // deprecated.
   bool arguments_are_tupled = false;
-  // If true, the computation must return a tuple, which will be destructured
-  // into its elements.
-  bool untuple_result = false;
+  // TODO(b/430587318): Remove this deprecated field.
+  bool untuple_result = true;
   // If non-zero, identifies this execution as part of a potentially
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
   // multi-host programs are launched in different orders on different hosts,
@@ -279,6 +283,22 @@ struct ExecuteOptions {
   // may be executed in any order and concurrently.
   int64_t execution_stream_id = 0;
 
+  // The `call_location` field is used to pass down call site location
+  // information from higher-level frameworks like JAX and PyTorch to the PJRT
+  // plugin. This field stores the source location (e.g., file:line) of the
+  // Python code that triggered the execution of this compiled program. This
+  // differs from the source location metadata stored in `OpMetadata`, which
+  // refers to the origin of individual operations within the HLO module.
+  // The plugin can use `call_location` for debugging and error reporting,
+  // allowing users to pinpoint which program execution led to an issue.
+  // The `call_location` pointer is owned by the caller and must point to a
+  // null-terminated string. It is only valid for the duration of the C API
+  // call. The plugin must copy the string if it needs to be stored.
+  std::string call_location = "";
+
+  // The latest known incarnation ids for all alive tasks, keyed by task id.
+  absl::flat_hash_map<int, IncarnationId> incarnations;
+
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);
@@ -315,7 +335,7 @@ struct CompiledMemoryStats {
   static CompiledMemoryStats FromProto(const CompiledMemoryStatsProto& proto);
 
   void PopulateBufferStatsFromAllocations(
-      absl::Span<const BufferAllocation> allocs);
+      absl::Span<const BufferAllocation* const> allocs);
 };
 
 class PjRtExecutable {

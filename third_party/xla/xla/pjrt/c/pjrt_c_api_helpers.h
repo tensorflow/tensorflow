@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
@@ -160,10 +160,10 @@ PJRT_HostBufferSemantics ConvertToPjRtHostBufferSemantics(
 xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
     PJRT_HostBufferSemantics buffer_semantics);
 
-// Create and return a `PjRtFuture`  which will be set when `c_event` is ready.
-// This also deletes `c_event` when the `PjRtFuture` is set.
-xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
-                                           const PJRT_Api* c_api);
+// Create and return a `Future`  which will be set when `c_event` is ready.
+// This also deletes `c_event` when the `Future` is set.
+xla::Future<> ConvertCEventToCppFuture(PJRT_Event* c_event,
+                                       const PJRT_Api* c_api);
 
 // The data of returned variable-length PJRT_NamedValue list is backed by
 // `cpp_value_map`, so `cpp_value_map` must outlive the returned list. It will

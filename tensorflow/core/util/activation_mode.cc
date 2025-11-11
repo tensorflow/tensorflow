@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-absl::Status GetActivationModeFromString(const string& str_value,
+absl::Status GetActivationModeFromString(const std::string& str_value,
                                          ActivationMode* value) {
   if (str_value == "None") {
     *value = NONE;

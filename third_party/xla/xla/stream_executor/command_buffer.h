@@ -186,6 +186,18 @@ class CommandBuffer {
                                           const Command* command,
                                           const CommandBuffer& nested) = 0;
 
+  virtual absl::StatusOr<const Command*> CreateChildCommand(
+      ChildCommandType type, StreamExecutor* executor,
+      absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
+          record_fn,
+      absl::Span<const Command* const> dependencies) = 0;
+
+  // Updates a command that launches a nested command buffer.
+  virtual absl::Status UpdateChildCommand(
+      ChildCommandType type, const Command* command,
+      absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
+          record_fn) = 0;
+
   // Creates a device-to-device memory copy.
   virtual absl::StatusOr<const Command*> CreateMemcpyD2D(
       DeviceMemoryBase* dst, const DeviceMemoryBase& src, uint64_t size,
@@ -298,6 +310,8 @@ class CommandBuffer {
 
   // Returns command buffer state.
   virtual State state() const = 0;
+
+  virtual std::string ToString() const = 0;
 
   //--------------------------------------------------------------------------//
   // Command buffer tracing API

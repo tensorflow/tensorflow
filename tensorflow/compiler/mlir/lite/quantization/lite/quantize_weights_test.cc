@@ -93,7 +93,7 @@ std::vector<T> GetAsVector(const flatbuffers::Vector<T>* vec) {
 
 class QuantizeWeightsTest : public testing::Test {
  protected:
-  QuantizeWeightsTest() {}
+  QuantizeWeightsTest() = default;
 
   void LoadBasicModel() {
     input_model_ = ReadTestModel();

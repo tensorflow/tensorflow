@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -30,7 +31,16 @@ namespace gpu {
 
 struct GetCodegenBackends {
   using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
-      stream_executor::StreamExecutor*, const DebugOptions*, Compiler*)>;
+      stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
+      const Compiler::TargetConfig*,
+      SymbolicExprContext* symbolic_expr_context)>;
+};
+
+struct GetFissionBackends {
+  using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
+      stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
+      const Compiler::TargetConfig*,
+      SymbolicExprContext* symbolic_expr_context)>;
 };
 
 }  // namespace gpu

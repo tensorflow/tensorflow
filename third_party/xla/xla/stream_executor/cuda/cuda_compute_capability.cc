@@ -43,7 +43,7 @@ absl::StatusOr<CudaComputeCapability> CudaComputeCapability::FromString(
   }
 
   if (!split[1].empty() && (split[1].back() == 'f' || split[1].back() == 'F')) {
-    feature_extension = FeatureExtension::kForwardCompatibleFeatures;
+    feature_extension = FeatureExtension::kFamilyCompatibleFeatures;
     split[1].remove_suffix(1);
   }
 
@@ -63,7 +63,7 @@ static std::string FeatureExtensionToString(
       return "";
     case CudaComputeCapability::FeatureExtension::kAcceleratedFeatures:
       return "a";
-    case CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures:
+    case CudaComputeCapability::FeatureExtension::kFamilyCompatibleFeatures:
       return "f";
   }
 }
@@ -110,8 +110,8 @@ absl::StatusOr<CudaComputeCapability> CudaComputeCapability::FromProto(
     case CudaComputeCapabilityProto::ACCELERATED_FEATURES:
       cc.feature_extension = FeatureExtension::kAcceleratedFeatures;
       break;
-    case CudaComputeCapabilityProto::FORWARD_COMPATIBLE_FEATURES:
-      cc.feature_extension = FeatureExtension::kForwardCompatibleFeatures;
+    case CudaComputeCapabilityProto::FAMILY_COMPATIBLE_FEATURES:
+      cc.feature_extension = FeatureExtension::kFamilyCompatibleFeatures;
       break;
     default:
       return absl::InvalidArgumentError(absl::StrCat(
@@ -133,9 +133,9 @@ CudaComputeCapabilityProto CudaComputeCapability::ToProto() const {
       proto.set_feature_extension(
           CudaComputeCapabilityProto::ACCELERATED_FEATURES);
       break;
-    case FeatureExtension::kForwardCompatibleFeatures:
+    case FeatureExtension::kFamilyCompatibleFeatures:
       proto.set_feature_extension(
-          CudaComputeCapabilityProto::FORWARD_COMPATIBLE_FEATURES);
+          CudaComputeCapabilityProto::FAMILY_COMPATIBLE_FEATURES);
       break;
   }
   return proto;

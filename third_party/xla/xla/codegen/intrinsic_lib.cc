@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/codegen/intrinsic_lib.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -27,7 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
-#include "absl/strings/str_split.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
@@ -48,6 +47,7 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Linker/Linker.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/Casting.h"
@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/rsqrt.h"
 #include "xla/codegen/intrinsic/string_interner.h"
 #include "xla/codegen/intrinsic/tanh.h"
+#include "xla/codegen/intrinsic/type.h"
 #include "xla/codegen/intrinsic/vec_name_mangler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/xla_data.pb.h"
@@ -89,25 +90,6 @@ template <size_t N, typename F, typename Container>
 decltype(auto) apply_vector(F&& f, const Container& v) {
   return apply_vector(f, v, std::make_index_sequence<N>{});
 }
-
-std::vector<Type> ParseTypesFromFunctionName(absl::string_view function_name) {
-  // The `to` in a typed function name is used to specify the return type, so
-  // we ignore it when parsing the function name.
-  static constexpr absl::string_view kIgnoredParts[] = {"to"};
-  std::vector<Type> types;
-  auto parts = absl::StrSplit(function_name, '.');
-  size_t i = 0;
-  for (absl::string_view part : parts) {
-    // Skip the first two parts, which will be `xla.<func_name>`:
-    if (i++ < 2 || std::find(std::begin(kIgnoredParts), std::end(kIgnoredParts),
-                             part) != std::end(kIgnoredParts)) {
-      continue;
-    }
-    types.push_back(Type::FromName(part));
-  }
-  return types;
-}
-
 }  // namespace
 
 using intrinsics::IntrinsicOptions;
@@ -130,7 +112,9 @@ class IntrinsicAdapter : public IntrinsicFunction {
   llvm::Function* CreateDefinition(llvm::Module& module,
                                    IntrinsicOptions options,
                                    absl::string_view name) const override {
-    std::vector<Type> types = ParseTypesFromFunctionName(name);
+    absl::StatusOr<intrinsic::ParsedFunctionName> parsed =
+        intrinsic::ParseFunctionName(name);
+    CHECK_OK(parsed);
     return apply_vector<Intrinsic::kNumArgs>(
                [&](auto... args) {
                  if constexpr (std::is_invocable_v<
@@ -143,7 +127,7 @@ class IntrinsicAdapter : public IntrinsicFunction {
                    return Intrinsic::CreateDefinition(&module, args...);
                  }
                },
-               types)
+               parsed->types)
         .value();
   }
 
@@ -154,22 +138,8 @@ class IntrinsicAdapter : public IntrinsicFunction {
   }
   std::string GenerateMangledSimdPrefix(
       absl::Span<const Type> types) const override {
-    std::vector<intrinsic::VecParamCardinality> param_cardinalities;
-    auto front = types.front();
-    // Remove the return type if it's in the types list:
-    for (const auto& type :
-         types.first(types.size() - Intrinsic::kLastArgIsReturnType)) {
-      if (type.is_scalar()) {
-        param_cardinalities.push_back(intrinsic::VecParamCardinality::kScalar);
-      } else {
-        param_cardinalities.push_back(intrinsic::VecParamCardinality::kVector);
-      }
-      CHECK(type.vector_width() == front.vector_width())
-          << "All types must have the same vector width.";
-    }
-    return intrinsic::GetMangledNamePrefix(Intrinsic::kIsMasked,
-                                           front.vector_width().value_or(1),
-                                           param_cardinalities);
+    return intrinsic::GetMangledNamePrefix(
+        Intrinsic::kIsMasked, Intrinsic::kLastArgIsReturnType, types);
   }
 };
 
@@ -227,6 +197,19 @@ GetCalledApproximatableFunctions(
   return called_targets;
 }
 
+bool ElementTypesMatch(const std::vector<Type>& types1,
+                       const std::vector<Type>& types2) {
+  if (types1.size() != types2.size()) {
+    return false;
+  }
+  for (int i = 0; i < types1.size(); ++i) {
+    if (types1[i].element_type() != types2[i].element_type()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // anonymous namespace
 
 std::vector<llvm::VecDesc> IntrinsicFunctionLib::Vectorizations() {
@@ -238,8 +221,8 @@ std::vector<llvm::VecDesc> IntrinsicFunctionLib::Vectorizations() {
          math_func->SupportedVectorTypes(options_.features)) {
       for (const auto& vector_types :
            math_func->SupportedVectorTypes(options_.features)) {
-        if (target_types.front().element_type() !=
-            vector_types.front().element_type()) {
+        if (!ElementTypesMatch(target_types, vector_types) ||
+            target_types.front().is_vector()) {
           continue;
         }
         absl::string_view target_name = intrinsic::StringInterner::Get().Intern(

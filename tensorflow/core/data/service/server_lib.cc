@@ -71,7 +71,7 @@ absl::Status GrpcDataServerBase::Start() {
   std::shared_ptr<::grpc::ServerCredentials> credentials;
   TF_RETURN_IF_ERROR(
       CredentialsFactory::CreateServerCredentials(protocol_, &credentials));
-  builder.AddListeningPort(strings::StrCat("0.0.0.0:", requested_port_),
+  builder.AddListeningPort(absl::StrCat("0.0.0.0:", requested_port_),
                            credentials, &bound_port_);
   builder.SetMaxReceiveMessageSize(-1);
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/local_device_state.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -31,12 +32,14 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
+#include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
@@ -156,7 +159,7 @@ absl::Status LocalDeviceState::SynchronizeAllActivity() {
   // fixed, we could remove the BlockHostUntilDone call.
   status.Update(compute_stream_->BlockHostUntilDone());
   if (callback_stream_map_.has_value()) {
-    absl::MutexLock lock(&callback_stream_map_mu_);
+    absl::MutexLock lock(callback_stream_map_mu_);
     for (auto& callback_stream : callback_stream_map_.value()) {
       status.Update(callback_stream.second->BlockHostUntilDone());
     }
@@ -185,7 +188,7 @@ absl::Status LocalDeviceState::ThenExecuteCallback(
   tsl::profiler::TraceMe traceme("ThenExecuteCallback");
   if (callback_stream_map_.has_value()) {
     // Prevent concurrent updates to the callback stream map.
-    absl::MutexLock lock(&callback_stream_map_mu_);
+    absl::MutexLock lock(callback_stream_map_mu_);
     auto callback_stream = callback_stream_map_->find(stream);
     if (callback_stream == callback_stream_map_->end()) {
       TF_ASSIGN_OR_RETURN(auto new_stream, executor_->CreateStream());
@@ -204,7 +207,7 @@ absl::Status LocalDeviceState::ThenExecuteCallback(
 }
 
 se::Stream* LocalDeviceState::GetDeviceToHostStream() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   int i = next_device_to_host_stream_;
   next_device_to_host_stream_ =
       (next_device_to_host_stream_ + 1) % device_to_host_streams_.size();
@@ -212,7 +215,7 @@ se::Stream* LocalDeviceState::GetDeviceToHostStream() {
 }
 
 se::Stream* LocalDeviceState::GetDeviceToDeviceStream() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   int i = next_device_to_device_stream_;
   next_device_to_device_stream_ =
       (next_device_to_device_stream_ + 1) % device_to_device_streams_.size();
@@ -220,7 +223,7 @@ se::Stream* LocalDeviceState::GetDeviceToDeviceStream() {
 }
 
 se::Stream* LocalDeviceState::GetFixedSizePoolUsageStream() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   int i = next_fixed_size_pool_usage_stream_;
   next_fixed_size_pool_usage_stream_ =
       (next_fixed_size_pool_usage_stream_ + 1) %
@@ -229,7 +232,7 @@ se::Stream* LocalDeviceState::GetFixedSizePoolUsageStream() {
 }
 
 se::Stream* LocalDeviceState::GetExternalReadyEventStream() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   int i = next_external_ready_event_stream_;
   next_external_ready_event_stream_ = (next_external_ready_event_stream_ + 1) %
                                       external_ready_event_streams_.size();
@@ -253,7 +256,7 @@ absl::StatusOr<se::Stream*> LocalDeviceState::GetStreamFromExternalStream(
 }
 
 std::vector<se::Stream*> LocalDeviceState::GetDeviceToDeviceStreams() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   std::vector<se::Stream*> result;
   result.reserve(device_to_device_streams_.size());
   for (const auto& stream : device_to_device_streams_) {
@@ -264,7 +267,7 @@ std::vector<se::Stream*> LocalDeviceState::GetDeviceToDeviceStreams() {
 
 std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
   {
-    absl::MutexLock lock(&stream_pool_mu_);
+    absl::MutexLock lock(stream_pool_mu_);
     if (!usage_stream_pool_.empty()) {
       std::unique_ptr<se::Stream> stream = std::move(usage_stream_pool_.top());
       usage_stream_pool_.pop();
@@ -291,17 +294,74 @@ void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
   if (status.code() != tsl::error::ABORTED) {
     CHECK(stream->ok()) << status;
   }
-  absl::MutexLock lock(&stream_pool_mu_);
+  absl::MutexLock lock(stream_pool_mu_);
   usage_stream_pool_.push(std::move(stream));
 }
 
 int LocalDeviceState::GetNewPrngSeed() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   int x = 0;
   do {
     x = prng_seed_distribution_(prng_seed_generator_);
   } while (x == 0);
   return x;
+}
+
+absl::Status LocalDeviceState::AllocateAndRecordEvent(
+    BufferSequencingEventRef event, se::Stream* stream) {
+  auto status = [&]() {
+    TF_ASSIGN_OR_RETURN(EventPool::Handle device_event,
+                        event_pool().AllocateEvent(stream->parent()));
+    event_pool().ThenRecordEvent(stream, device_event);
+    event->SetSequencingEvent(std::move(device_event), stream);
+    return ThenExecuteCallback(stream, [event]() { event.SetStateConcrete(); });
+  }();
+  if (!status.ok()) {
+    event.SetError(status);
+  }
+  return status;
+}
+
+absl::StatusOr<BufferSequencingEventRef>
+LocalDeviceState::GetEventForComputeStreamSyncPoint(
+    size_t sync_point, tsl::thread::ThreadPool* thread_pool,
+    bool nullptr_if_past) {
+  mu_.lock();
+  size_t cur_sync_point = next_compute_stream_sync_point_.load();
+  if (sync_point < base_compute_event_sequence_id_ + compute_events_.size()) {
+    BufferSequencingEventRef event;
+    if (sync_point < base_compute_event_sequence_id_) {
+      if (!nullptr_if_past) {
+        DCHECK_GT(compute_events_.size(), 0);
+        event = compute_events_.front();
+      }
+    } else {
+      event = compute_events_[sync_point - base_compute_event_sequence_id_];
+    }
+    mu_.unlock();
+    return event;
+  }
+  next_compute_stream_sync_point_.store(cur_sync_point + 1);
+  auto event = BufferSequencingEvent::Create(thread_pool);
+  auto status = AllocateAndRecordEvent(event, compute_stream());
+  if (!status.ok()) {
+    mu_.unlock();
+    return status;
+  }
+  while (!(cur_sync_point - base_compute_event_sequence_id_ <
+           compute_events_.size())) {
+    // Pad for any failed event allocations.
+    compute_events_.push_back(event);
+  }
+  mu_.unlock();
+  event.AndThen([this, cur_sync_point]() {
+    absl::MutexLock l(mu_);
+    while (base_compute_event_sequence_id_ < cur_sync_point) {
+      compute_events_.pop_front();
+      ++base_compute_event_sequence_id_;
+    }
+  });
+  return event;
 }
 
 }  // namespace xla

@@ -36,7 +36,7 @@ class FpTrunc : public Intrinsic<FpTrunc> {
   static constexpr bool kLastArgIsReturnType = true;
   static constexpr int8_t kNumArgs = 2;  // Second arg is the return type.
   static std::vector<std::vector<Type>> SupportedVectorTypes() {
-    return {
+    std::vector<std::vector<Type>> supported_types = {
         {Type::S(xla::F32), Type::S(xla::BF16)},
         {Type::V(xla::F32, 2), Type::V(xla::BF16, 2)},
         {Type::V(xla::F32, 4), Type::V(xla::BF16, 4)},
@@ -49,11 +49,21 @@ class FpTrunc : public Intrinsic<FpTrunc> {
         {Type::V(F8E4M3FN, 2), Type::V(F16, 2)},
         {Type::V(F8E4M3FN, 4), Type::V(F16, 4)},
         {Type::V(F8E4M3FN, 8), Type::V(F16, 8)},
-        {Type::S(F16), Type::S(F8E4M3FN)},
-        {Type::V(F16, 2), Type::V(F8E4M3FN, 2)},
-        {Type::V(F16, 4), Type::V(F8E4M3FN, 4)},
-        {Type::V(F16, 8), Type::V(F8E4M3FN, 8)},
     };
+
+    // Handle all FxxToF8e conversions.
+    for (PrimitiveType fx_type : {F16, F32, F64}) {
+      for (PrimitiveType f8_type : {F8E4M3, F8E4M3FN, F8E4M3B11FNUZ, F8E3M4,
+                                    F8E4M3FNUZ, F8E5M2, F8E5M2FNUZ}) {
+        // Not yet supported: F8E8M0FNU
+        supported_types.push_back({Type::S(fx_type), Type::S(f8_type)});
+        for (int8_t vector_width : {2, 4, 8}) {
+          supported_types.push_back(
+              {Type::V(fx_type, vector_width), Type::V(f8_type, vector_width)});
+        }
+      }
+    }
+    return supported_types;
   }
 
   static absl::StatusOr<llvm::Function*> CreateDefinition(llvm::Module* module,

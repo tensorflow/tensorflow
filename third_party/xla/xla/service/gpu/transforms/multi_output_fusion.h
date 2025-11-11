@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_dfs_reachability.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -96,13 +97,16 @@ class MultiOutputFusion : public HloModulePass {
  public:
   explicit MultiOutputFusion(
       const se::DeviceDescription& device_info,
-      HloCostAnalysis::ShapeSizeFunction shape_size_function)
-      : device_info_(device_info), shape_size_function_(shape_size_function) {}
+      HloCostAnalysis::ShapeSizeFunction shape_size_function,
+      SymbolicExprContext* symbolic_expr_context)
+      : device_info_(device_info),
+        shape_size_function_(shape_size_function),
+        symbolic_expr_context_(symbolic_expr_context) {}
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -126,6 +130,7 @@ class MultiOutputFusion : public HloModulePass {
 
   se::DeviceDescription device_info_;
   HloCostAnalysis::ShapeSizeFunction shape_size_function_;
+  SymbolicExprContext* symbolic_expr_context_;
 };
 
 }  // namespace gpu

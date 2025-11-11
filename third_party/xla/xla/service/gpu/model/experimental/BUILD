@@ -28,10 +28,11 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/codegen/tiling:constraint_expression",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:interval",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
-        "//xla/service/gpu/model:constraint_expression",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -207,57 +208,5 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "symbolic_map",
-    srcs = ["symbolic_map.cc"],
-    hdrs = ["symbolic_map.h"],
-    deps = [
-        ":symbolic_expr",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-xla_cc_test(
-    name = "symbolic_map_test",
-    srcs = ["symbolic_map_test.cc"],
-    deps = [
-        ":symbolic_expr",
-        ":symbolic_map",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_library(
-    name = "symbolic_expr",
-    srcs = ["symbolic_expr.cc"],
-    hdrs = ["symbolic_expr.h"],
-    deps = [
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-xla_cc_test(
-    name = "symbolic_expr_test",
-    srcs = ["symbolic_expr_test.cc"],
-    deps = [
-        ":symbolic_expr",
-        "//xla/hlo/analysis:indexing_test_utils",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:Support",
     ],
 )

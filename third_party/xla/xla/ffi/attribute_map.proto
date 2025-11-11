@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package xla.ffi;
+
+option java_multiple_files = true;
+option java_outer_classname = "AttributeMap";
+
+message ScalarProto {
+  oneof value {
+    bool b = 1;
+    int32 i8 = 2;
+    int32 i16 = 3;
+    int32 i32 = 4;
+    int64 i64 = 5;
+    uint32 u8 = 6;
+    uint32 u16 = 7;
+    uint32 u32 = 8;
+    uint64 u64 = 9;
+    float f32 = 10;
+    double f64 = 11;
+  }
+}
+
+message ArrayProto {
+  message Int8ArrayProto {
+    repeated int32 values = 1;
+  }
+
+  message Int16ArrayProto {
+    repeated int32 values = 1;
+  }
+
+  message Int32ArrayProto {
+    repeated int32 values = 1;
+  }
+
+  message Int64ArrayProto {
+    repeated int64 values = 1;
+  }
+
+  message Uint8ArrayProto {
+    repeated uint32 values = 1;
+  }
+
+  message Uint16ArrayProto {
+    repeated uint32 values = 1;
+  }
+
+  message Uint32ArrayProto {
+    repeated uint32 values = 1;
+  }
+
+  message Uint64ArrayProto {
+    repeated uint64 values = 1;
+  }
+
+  message FloatArrayProto {
+    repeated float values = 1;
+  }
+
+  message DoubleArrayProto {
+    repeated double values = 1;
+  }
+
+  oneof value {
+    Int8ArrayProto i8 = 1;
+    Int16ArrayProto i16 = 2;
+    Int32ArrayProto i32 = 3;
+    Int64ArrayProto i64 = 4;
+    Uint8ArrayProto u8 = 5;
+    Uint16ArrayProto u16 = 6;
+    Uint32ArrayProto u32 = 7;
+    Uint64ArrayProto u64 = 8;
+    FloatArrayProto f32 = 9;
+    DoubleArrayProto f64 = 10;
+  }
+}
+
+message FlatAttributeProto {
+  oneof value {
+    ScalarProto scalar = 1;
+    ArrayProto array = 2;
+    string str = 3;
+  }
+}
+
+message FlatAttributesMapProto {
+  map<string, FlatAttributeProto> attrs = 1;
+}
+
+message AttributeProto {
+  oneof value {
+    ScalarProto scalar = 1;
+    ArrayProto array = 2;
+    string str = 3;
+    AttributesMapProto dict = 4;
+  }
+}
+
+message AttributesMapProto {
+  map<string, AttributeProto> attrs = 1;
+}

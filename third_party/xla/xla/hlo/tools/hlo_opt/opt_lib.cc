@@ -36,7 +36,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/hlo/analysis/indexed_array_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -143,7 +142,7 @@ static ProviderMap& GetProviderMap() {
 
 /*static*/ void OptProvider::RegisterForPlatform(
     std::string platform, std::unique_ptr<OptProvider> translate_provider) {
-  absl::MutexLock l(&provider_mu);
+  absl::MutexLock l(provider_mu);
   CHECK(!GetProviderMap().contains(platform));
   absl::StatusOr<std::string> canonical_name =
       xla::PlatformUtil::CanonicalPlatformName(platform);
@@ -153,7 +152,7 @@ static ProviderMap& GetProviderMap() {
 
 /*static*/ absl::StatusOr<OptProvider*> OptProvider::GetProviderForPlatform(
     std::string platform) {
-  absl::MutexLock l(&provider_mu);
+  absl::MutexLock l(provider_mu);
 
   TF_ASSIGN_OR_RETURN(std::string canonical_name,
                       xla::PlatformUtil::CanonicalPlatformName(platform));
@@ -295,7 +294,6 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<HostOffloadLegalize>();
   RegisterPass<HostOffloadingPrepare>(
       /*rewrite=*/HostOffloadingPrepare::Rewrite::kElideMoveToHost);
-  RegisterPass<IndexedArrayAnalysisPrinterPass>();
   RegisterPass<InfeedTokenPropagation>();
   RegisterPass<InstructionHoister>();
   RegisterPass<LiteralCanonicalizer>(

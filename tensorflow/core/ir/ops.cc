@@ -1155,7 +1155,7 @@ static LogicalResult VerifyPreservedAttrs(Operation* op,
       num_rets = 1;
     } else {
       num_rets = cast<RegionBranchTerminatorOpInterface>(terminator)
-                     .getMutableSuccessorOperands(region)
+                     .getMutableSuccessorOperands(RegionSuccessor(&region))
                      .size();
     }
     if (num_rets != attrs.getResAttrs().size()) {
@@ -1171,7 +1171,7 @@ static LogicalResult VerifyPreservedAttrs(Operation* op,
 // YieldOp
 
 MutableOperandRange YieldOp::getMutableSuccessorOperands(
-    RegionBranchPoint point) {
+    RegionSuccessor successor) {
   // Get the subrange of non-control operands.
   return getArgsMutable();
 }
@@ -1212,10 +1212,10 @@ template <typename IfLikeRegionOp>
 void GetIfLikeRegionOpSuccessorRegions(
     IfLikeRegionOp op, RegionBranchPoint point,
     SmallVectorImpl<RegionSuccessor>& regions) {
-  // Both regions branch back to the parent op.
   if (!point.isParent()) {
     // Ignore the control token.
     regions.emplace_back(
+        op.getOperation(),
         ResultRange(op->result_begin(), std::prev(op->result_end())));
   } else {
     // Unknown successor.
@@ -1296,6 +1296,7 @@ void GetCaseLikeRegionOpSuccessorRegions(
   if (!point.isParent()) {
     // Ignore the control token.
     regions.emplace_back(
+        op.getOperation(),
         ResultRange(op->result_begin(), std::prev(op->result_end())));
   } else {
     // Unknown successor. Add all of them.
@@ -1325,7 +1326,7 @@ void GetCaseLikeRegionOpEntrySuccessorRegions(
 // ConditionOp
 
 MutableOperandRange ConditionOp::getMutableSuccessorOperands(
-    RegionBranchPoint point) {
+    RegionSuccessor successor) {
   // Get the subrange of non-control operands that are forwarded to the
   // successor region.
   return getArgsMutable();
@@ -1380,12 +1381,18 @@ static void GetWhileLikeRegionOpSuccessorRegions(
     WhileLikeRegionOp op, RegionBranchPoint point ,
     SmallVectorImpl<RegionSuccessor>& regions) {
   // The parent op and the body region always branch to the condition region.
-  if (point.isParent() || point == op.getRegion(1)) {
+  if (point.isParent() ||
+      (point.getTerminatorPredecessorOrNull() &&
+       point.getTerminatorPredecessorOrNull()->getParentRegion() ==
+           &op.getRegion(1))) {
     regions.emplace_back(&op.getCondRegion(),
                          GetLoopRegionDataArgs(op.getCondRegion()));
     return;
   }
-  assert(point == op->getRegion(0) && "invalid region index");
+  assert((point.getTerminatorPredecessorOrNull() &&
+          point.getTerminatorPredecessorOrNull()->getParentRegion() ==
+              &op.getRegion(0)) &&
+         "invalid region index");
   // The condition regions branches to the loop body or back to the parent.
   // Try to narrow the condition value to a constant.
   auto condition =
@@ -1399,7 +1406,7 @@ static void GetWhileLikeRegionOpSuccessorRegions(
   }
   if (!cond || !*cond) {
     // Drop the control token.
-    regions.emplace_back(op.getResults().drop_back());
+    regions.emplace_back(op.getOperation(), op.getResults().drop_back());
   }
 }
 
@@ -1427,8 +1434,7 @@ LogicalResult ForRegionOp::verify() {
   return VerifyPreservedAttrs(*this, {getRegionAttrsAttr()});
 }
 
-OperandRange ForRegionOp::getEntrySuccessorOperands(
-    RegionBranchPoint point) {
+OperandRange ForRegionOp::getEntrySuccessorOperands(RegionSuccessor successor) {
   return getInit();
 }
 
@@ -1440,7 +1446,7 @@ void ForRegionOp::getSuccessorRegions(
                        GetLoopRegionDataArgs(getBodyRegion()).drop_front());
   if (point.isParent()) return;
   // The body might branch back to the parent. Drop the control token.
-  regions.emplace_back((*this)->getResults().drop_back());
+  regions.emplace_back(getOperation(), getResults().drop_back());
 }
 
 BlockArgument ForRegionOp::getDataValueOf(BlockArgument ctl) {

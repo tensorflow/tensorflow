@@ -22,6 +22,7 @@ exports_files(
         "schema_v3.fbs",
         "schema_v3a.fbs",
         "schema_v3b.fbs",
+        "schema_v3c.fbs",
     ],
 )
 
@@ -117,7 +118,7 @@ tf_cc_test(
     srcs = ["flatbuffer_compatibility_test.cc"],
     data = [
         "schema.fbs",
-        "schema_v3b.fbs",
+        "schema_v3c.fbs",
     ],
     tags = [
         "no_oss",

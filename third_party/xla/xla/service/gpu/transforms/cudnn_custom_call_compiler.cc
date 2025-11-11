@@ -47,11 +47,11 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
 #include "xla/stream_executor/cuda/cudnn_sdpa_score_mod.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -447,7 +447,8 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHAF8(
 
 absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBlockScaledDot(
     se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
-  TF_RET_CHECK(custom_call->operand_count() == 4);
+  const bool has_global_scale = custom_call->operand_count() == 5;
+  TF_RET_CHECK(custom_call->operand_count() == 4 || has_global_scale);
   TF_RET_CHECK(custom_call->shape().tuple_shapes().size() == 2);
 
   TF_ASSIGN_OR_RETURN(TensorDescriptor lhs_data,
@@ -486,24 +487,26 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBlockScaledDot(
   TF_ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
                       se::gpu::GetCudnnBlockScaledDotOperationGraph(
                           dnn_support, lhs_data, lhs_scale, rhs_data, rhs_scale,
-                          result_type, block_size));
+                          result_type, block_size, has_global_scale));
   return graph;
 }
 
 absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
-    se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
+    se::dnn::DnnSupport& dnn_support, HloCustomCallInstruction* custom_call) {
   if (IsFwdCustomCallTofMHA(*custom_call)) {
     return BuildGraphForCustomCallToForwardFMHA(dnn_support, custom_call);
-  } else if (IsFwdCustomCallTofMHAF8(*custom_call)) {
-    return BuildGraphForCustomCallToForwardFMHAF8(dnn_support, custom_call);
-  } else if (IsBwdCustomCallTofMHA(*custom_call)) {
-    return BuildGraphForCustomCallToBackwardFMHA(dnn_support, custom_call);
-  } else if (IsBwdCustomCallTofMHAF8(*custom_call)) {
-    return BuildGraphForCustomCallToBackwardFMHAF8(dnn_support, custom_call);
-  } else {
-    TF_RET_CHECK(IsCustomCallToBlockScaledDot(*custom_call));
-    return BuildGraphForCustomCallToBlockScaledDot(dnn_support, custom_call);
   }
+  if (IsFwdCustomCallTofMHAF8(*custom_call)) {
+    return BuildGraphForCustomCallToForwardFMHAF8(dnn_support, custom_call);
+  }
+  if (IsBwdCustomCallTofMHA(*custom_call)) {
+    return BuildGraphForCustomCallToBackwardFMHA(dnn_support, custom_call);
+  }
+  if (IsBwdCustomCallTofMHAF8(*custom_call)) {
+    return BuildGraphForCustomCallToBackwardFMHAF8(dnn_support, custom_call);
+  }
+  TF_RET_CHECK(IsCustomCallToBlockScaledDot(*custom_call));
+  return BuildGraphForCustomCallToBlockScaledDot(dnn_support, custom_call);
 }
 
 class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
@@ -569,9 +572,9 @@ class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> CuDnnCustomCallCompiler::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> CuDnnCustomCallCompiler::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("cuDNN custom call compiler", 8);
   return CuDnnCustomCallVisitor(dnn_support_, compilation_results_)
       .RunOnModule(module, execution_threads);

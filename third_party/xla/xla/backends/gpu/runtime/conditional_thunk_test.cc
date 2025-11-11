@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -32,13 +33,13 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
 namespace {
 
 using ::testing::Pointee;
 using ::testing::Property;
+using ::testing::SizeIs;
 using ::tsl::proto_testing::EqualsProto;
 using Kind = Thunk::Kind;
 
@@ -63,7 +64,7 @@ struct DummyThunk : public Thunk {
   }
 };
 
-ConditionalThunk CreateConditionalThunk(
+std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
     const Thunk::ThunkInfo& thunk_info,
     const BufferAllocation::Slice& branch_index_buffer_index,
     std::vector<ThunkSequence> branch_thunk_sequences,
@@ -74,8 +75,9 @@ ConditionalThunk CreateConditionalThunk(
         thunk_info, std::move(thunk_sequence)));
   }
 
-  return ConditionalThunk(thunk_info, branch_index_buffer_index,
-                          std::move(branch_thunks), kBranchIndexIsBool);
+  return std::make_unique<ConditionalThunk>(
+      thunk_info, branch_index_buffer_index, std::move(branch_thunks),
+      kBranchIndexIsBool);
 }
 
 TEST(ConditionalThunkTest, BufferUses) {
@@ -99,16 +101,16 @@ TEST(ConditionalThunkTest, BufferUses) {
   branch_thunk_sequences.push_back(std::move(true_seq));
 
   constexpr bool kBranchIndexIsBool = true;
-  ConditionalThunk thunk = CreateConditionalThunk(
+  std::unique_ptr<ConditionalThunk> thunk = CreateConditionalThunk(
       thunk_info, slice, std::move(branch_thunk_sequences), kBranchIndexIsBool);
 
-  EXPECT_EQ(thunk.branch_index_is_bool(), kBranchIndexIsBool);
-  EXPECT_EQ(thunk.branch_index_buffer(), slice);
+  EXPECT_EQ(thunk->branch_index_is_bool(), kBranchIndexIsBool);
+  EXPECT_EQ(thunk->branch_index_buffer(), slice);
 
   auto thunk_matcher = Pointee(Property(&Thunk::kind, Thunk::Kind::kGemm));
   auto branch_matcher = Pointee(Property(
       &SequentialThunk::thunks, ElementsAre(thunk_matcher, thunk_matcher)));
-  EXPECT_THAT(thunk.branch_thunks(),
+  EXPECT_THAT(thunk->branch_thunks(),
               ElementsAre(branch_matcher, branch_matcher));
 }
 
@@ -133,9 +135,9 @@ TEST(ConditionalThunkTest, ToProto) {
   branch_thunk_seq.push_back(std::move(true_seq));
 
   constexpr bool kBranchIndexIsBool = true;
-  ConditionalThunk thunk = CreateConditionalThunk(
+  std::unique_ptr<ConditionalThunk> thunk = CreateConditionalThunk(
       thunk_info, slice, std::move(branch_thunk_seq), kBranchIndexIsBool);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk->ToProto());
 
   std::string expected = R"pb(
     thunk_info {
@@ -238,6 +240,77 @@ TEST(ConditionalThunkTest, FromProto) {
   ASSERT_NE(thunk, nullptr);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+TEST(ConditionalThunkTest, ToString) {
+  Thunk::ThunkInfo thunk_info;
+
+  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/256);
+
+  auto create_branch_thunk_sequences = [&]() -> std::vector<ThunkSequence> {
+    ThunkSequence false_seq;
+    false_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+
+    ThunkSequence true_seq;
+    true_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+    true_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
+
+    std::vector<ThunkSequence> branch_thunk_sequences;
+    branch_thunk_sequences.push_back(std::move(false_seq));
+    branch_thunk_sequences.push_back(std::move(true_seq));
+    return branch_thunk_sequences;
+  };
+
+  ThunkSequence thunk_sequence;
+  thunk_sequence.push_back(
+      CreateConditionalThunk(thunk_info, slice, create_branch_thunk_sequences(),
+                             /*kBranchIndexIsBool=*/true));
+  auto sequential_thunk =
+      std::make_unique<SequentialThunk>(thunk_info, std::move(thunk_sequence));
+  EXPECT_EQ(sequential_thunk->ToString(/*indent=*/0),
+            "000: kConditional\t  \n"
+            "  false_branch:\n"
+            "    000: kGemm\t\n"
+            "  true_branch:\n"
+            "    000: kGemm\t\n"
+            "    000: kGemm\t\n\n");
+
+  std::unique_ptr<ConditionalThunk> thunk =
+      CreateConditionalThunk(thunk_info, slice, create_branch_thunk_sequences(),
+                             /*kBranchIndexIsBool=*/false);
+
+  EXPECT_EQ(thunk->ToString(/*indent=*/0),
+            "\n"
+            "branch_0:\n"
+            "  000: kGemm\t\n"
+            "branch_1:\n"
+            "  000: kGemm\t\n"
+            "  000: kGemm\t\n");
+}
+
+TEST(ConditionalThunkTest, TransformAllNestedThunks) {
+  BufferAllocation::Slice slice;
+  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
+  branch_thunks.push_back(
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence()));
+  branch_thunks.push_back(
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence()));
+  auto conditional_thunk = std::make_unique<ConditionalThunk>(
+      Thunk::ThunkInfo(), slice, std::move(branch_thunks),
+      /*branch_index_is_bool=*/false);
+
+  conditional_thunk->TransformAllNestedThunks([](auto) {
+    return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());
+  });
+
+  EXPECT_THAT(conditional_thunk->branch_thunks(), SizeIs(2));
+  EXPECT_THAT(conditional_thunk->branch_thunks()[0]->thunks(), SizeIs(1));
+  EXPECT_THAT(conditional_thunk->branch_thunks()[0]->thunks()[0]->kind(),
+              Kind::kCustomCall);
+  EXPECT_THAT(conditional_thunk->branch_thunks()[1]->thunks(), SizeIs(1));
+  EXPECT_THAT(conditional_thunk->branch_thunks()[1]->thunks()[0]->kind(),
+              Kind::kCustomCall);
 }
 
 }  // namespace

@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -1074,6 +1075,50 @@ ENTRY main {
   TestShapeHasMemorySpace(while_body_param->shape(), Layout::kHostMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, DsWithMoveToDeviceInWhileBody) {
+  const std::string& hlo_string = R"(
+HloModule my_module, entry_computation_layout={(f32[1024,2048]{1,0:T(8,128)S(5)})->f32[8,2048]{1,0:T(8,128)}}
+while_body {
+  param = (s32[], f32[8,2048]) parameter(0)
+  current_iteration_index.0 = s32[] get-tuple-element(param), index=0
+  gte.1 = f32[8,2048] get-tuple-element(param), index=1
+  offload_custom_call = f32[8,2048] custom-call(gte.1), custom_call_target="MoveToDevice"
+  double = f32[8,2048] add(offload_custom_call, offload_custom_call)
+  constant_1 = s32[] constant(1)
+  incremented_index.0 = s32[] add(current_iteration_index.0, constant_1)
+  ROOT tuple = (s32[], f32[8,2048]) tuple(incremented_index.0, double)
+}
+while_condition {
+  param = (s32[], f32[8,2048]) parameter(0)
+  current_iteration_index.0 = get-tuple-element(param), index=0
+  constant_2 = s32[] constant(2)
+  ROOT pred_result = pred[] compare(current_iteration_index.0, constant_2), direction=LT
+}
+ENTRY main {
+  data_param = f32[1024,2048] parameter(0)
+  constant = s32[] constant(0)
+  ds = f32[8,2048] slice(data_param), slice={[0:8], [0:2048]}
+  tuple = (s32[], f32[8,2048]) tuple(constant, ds)
+  while = (s32[], f32[8,2048]) while(tuple), condition=while_condition, body=while_body
+  ROOT gte = f32[8,2048] get-tuple-element(while), index=1
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  VLOG(1) << "module after: " << module->ToString();
+
+  EXPECT_TRUE(changed);
+  // ds should be rewritten into a dynamic-slice.
+  HloInstruction* ds = FindInstruction(module.get(), "dynamic-slice");
+  EXPECT_NE(ds, nullptr);
+  EXPECT_TRUE(ds->shape().layout().memory_space() ==
+              Layout::kDefaultMemorySpace);
+  EXPECT_FALSE(ds->has_frontend_attributes());
 }
 
 TEST_F(HostOffloaderTest, NoCopyWithOptBarrier) {
@@ -4506,6 +4551,54 @@ ENTRY main.39_spmd (param.2: f32[16,16,16]) -> (f32[16,16,16], f32[16,16,16]) {
   dynamic-update-slice.7 = f32[16,16,16]{2,1,0:T(8,128)} dynamic-update-slice(get-tuple-element.40, bitcast.1, get-tuple-element.39, constant.7, constant.7), backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"0","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"}],"is_index_aligned":[true,true,false]},"used_scoped_memory_configs":[]}
   get-tuple-element.44 = f32[16,16,16]{2,1,0:T(8,128)} get-tuple-element(while.1), index=1
   ROOT tuple.6 = (f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}) tuple(dynamic-update-slice.7, get-tuple-element.44)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+
+  // We expect there to be two AllocateBuffer instructions, one in host memory
+  // and one in default memory.
+  int host_memory_space_count = 0;
+  int default_memory_space_count = 0;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->IsCustomCall("AllocateBuffer")) {
+        if (instruction->shape().layout().memory_space() ==
+            Layout::kHostMemorySpace) {
+          host_memory_space_count++;
+        } else if (instruction->shape().layout().memory_space() ==
+                   Layout::kDefaultMemorySpace) {
+          default_memory_space_count++;
+        }
+      }
+    }
+  }
+  EXPECT_EQ(host_memory_space_count, 1);
+  EXPECT_EQ(default_memory_space_count, 1);
+}
+
+TEST_F(HostOffloaderTest, PreExistingAllocateBufferMultipleUsersDuplicated) {
+  const absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[1,10], s32[])->(f32[1,10], f32[2,10])}
+
+ENTRY main {
+  p0 = f32[1,10] parameter(0)
+  p1 = s32[] parameter(1)
+  c0 = s32[] constant(0)
+  alloc = f32[2,10] custom-call(), custom_call_target="AllocateBuffer"
+  mth = f32[1,10] custom-call(p0), custom_call_target="MoveToHost"
+  tuple = (f32[2,10], f32[2,10]) tuple(alloc, alloc)
+  gte0 = f32[2,10] get-tuple-element(tuple), index=0
+  dus = f32[2,10] dynamic-update-slice(gte0, mth, p1, c0)
+  ds = f32[1,10] dynamic-slice(dus, p1, c0), dynamic_slice_sizes={1,10}
+  mtd = f32[1,10] custom-call(ds), custom_call_target="MoveToDevice"
+  gte1 = f32[2,10] get-tuple-element(tuple), index=1
+  add = f32[2,10] add(gte1, gte1)
+  ROOT root_tuple = (f32[1,10], f32[2,10]) tuple(mtd, add)
 }
 )";
 

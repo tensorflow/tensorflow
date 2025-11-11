@@ -282,5 +282,6 @@ void SyncThreadsOp::getAsmResultNames(
 }  // namespace gpu
 }  // namespace xla
 
+using mlir::DenseI64ArrayAttr;
 #define GET_OP_CLASSES
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.cc.inc"

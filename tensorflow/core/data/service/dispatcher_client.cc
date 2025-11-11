@@ -379,9 +379,9 @@ absl::Status DataServiceDispatcherClient::DisableCompressionAtRuntime(
 }
 
 absl::Status DataServiceDispatcherClient::EnsureInitialized() {
-  return grpc_util::Retry([this] { return Initialize(); },
-                          "Initialize dispatcher client",
-                          /*deadline_micros=*/kint64max);
+  return grpc_util::Retry(
+      [this] { return Initialize(); }, "Initialize dispatcher client",
+      /*deadline_micros=*/std::numeric_limits<int64_t>::max());
 }
 
 }  // namespace data

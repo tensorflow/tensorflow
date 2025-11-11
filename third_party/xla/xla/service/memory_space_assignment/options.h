@@ -113,6 +113,17 @@ struct BufferColoring {
   int64_t memory_space;                     // How to color the buffer.
 };
 
+// A struct to hold the details of a custom call prefetch.
+struct CustomCallPrefetchDetails {
+  // Async custom call prefetch start instruction.
+  HloInstruction* prefetch_start;
+  // Async custom call prefetch done instruction.
+  HloInstruction* prefetch_done;
+  // Intermediate instructions associated with the prefetch like
+  // get-tuple-element etc.
+  std::vector<HloInstruction*> intermediate_instructions;
+};
+
 // The different options to be passed to the Run() API.
 struct Options {
   // The backend-specific integer value that describes the default memory.
@@ -406,15 +417,10 @@ struct Options {
   // allocate for post-module operations.
   uint64_t post_module_scoped_alternate_memory_size_in_bytes = 0;
 
-  // If true, MSA will allocate buffers for explicitly pinned buffers in
-  // alternate memory first, and then run the rest of the algorithm.
-  bool explicit_pinning_mode = false;
-
-  // If set, this is the maximum number of concurrent block prefetches allowed.
+  // This is the maximum number of concurrent block prefetches allowed.
   int64_t max_outstanding_block_prefetches = 0;
 
-  // If set, this is the size of scoped alternate memory that we require MSA to
-  // allocate for block prefetches.
+  // This is the size of alternate memory that available for block prefetches.
   uint64_t reserved_bytes_for_block_prefetches = 0;
 
   // List of hlo positions for block prefetches.
@@ -428,6 +434,14 @@ struct Options {
   AsyncInstructionBwAdjustmentFactorFn
       async_instruction_bw_adjustment_factor_fn =
           [](const HloInstruction*) { return std::nullopt; };
+
+  // One HloPosition can have multiple custom call prefetches associated with
+  // it. For every custom-call prefetched HloPosition, this map stores the
+  // details of all the custom-call prefetches associated with it. This is used
+  // to schedule the custom-call prefetches as part of the memory space
+  // assignment algorithm.
+  absl::flat_hash_map<HloPosition, std::vector<CustomCallPrefetchDetails>>
+      hlo_position_to_custom_call_prefetch_details;
 
   std::string ToString() const;
 };

@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/hlo_verifier.h"
@@ -30,18 +31,19 @@ class SolGpuCostModelStatsCollection : public HloModulePass {
  public:
   explicit SolGpuCostModelStatsCollection(
       const se::DeviceDescription& device_description,
-      ShapeSizeFn shape_size_in_bytes_fn, int pointer_size)
+      ShapeSizeFn shape_size_in_bytes_fn, int pointer_size,
+      SymbolicExprContext* symbolic_expr_context)
       : device_info_(device_description),
         shape_size_in_bytes_fn_(shape_size_in_bytes_fn),
-        pointer_size_(pointer_size) {}
+        pointer_size_(pointer_size),
+        symbolic_expr_context_(symbolic_expr_context) {}
 
   absl::string_view name() const override {
     return "sol-gpu-cost-model-stats-collection";
   }
 
-  using HloPassInterface::Run;
-
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -49,6 +51,7 @@ class SolGpuCostModelStatsCollection : public HloModulePass {
   se::DeviceDescription device_info_;
   ShapeSizeFn shape_size_in_bytes_fn_;
   int pointer_size_;
+  SymbolicExprContext* symbolic_expr_context_;
 };
 
 }  // namespace xla::gpu

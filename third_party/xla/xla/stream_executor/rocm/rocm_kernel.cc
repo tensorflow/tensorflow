@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
@@ -98,15 +99,9 @@ absl::Status RocmKernel::Launch(const ThreadDim& thread_dims,
 
     void** params = const_cast<void**>(packed.argument_addresses().data());
 
-    if (cluster_dims.has_value()) {
-      return stream->LaunchKernel(thread_dims, block_dims, cluster_dims,
-                                  function, name(), params,
-                                  packed.number_of_shared_bytes());
-    } else {
-      return stream->LaunchKernel(thread_dims, block_dims, std::nullopt,
-                                  function, name(), params,
-                                  packed.number_of_shared_bytes());
-    }
+    return stream->LaunchKernel(thread_dims, block_dims, cluster_dims, function,
+                                name(), params,
+                                packed.number_of_shared_bytes());
   };
 
   // If arguments are already packed we can just launch the kernel.

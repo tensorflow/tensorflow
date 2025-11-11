@@ -21,13 +21,14 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Analysis/SliceAnalysis.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace mlir::triton::xla {
@@ -150,38 +152,38 @@ Value SqueezeTensorValue(PatternRewriter& rewriter, Value value,
   return value;
 }
 
-// Folds squeeze_dims into extract.
-LogicalResult FoldSqueezeDimsOfExtract(ExtractOp op,
-                                       PatternRewriter& rewriter) {
+LogicalResult FoldSqueezeDimsOfExtractTile(::xla::xtile::ExtractTileOp op,
+                                           PatternRewriter& rewriter) {
   std::optional<uint32_t> axis = GetSqueezeDimsUserAxis(op);
   if (!axis) {
     return rewriter.notifyMatchFailure(op, "No squeeze_dims users.");
   }
 
-  Value new_op = rewriter.create<ExtractOp>(
-      op.getLoc(), SqueezeTensorType(op.getType(), *axis), op.getSrc(),
-      op.getMixedOffsets(), op.getStaticSizes(), op.getStaticStrides(),
-      op.getSrcShape(), op.getSrcLayout());
+  auto squeezed_type = SqueezeTensorType(op.getType(), *axis);
+
+  Value new_op = rewriter.create<::xla::xtile::ExtractTileOp>(
+      op.getLoc(), squeezed_type, op.getSource(), op.getOffsets(),
+      op.getFullTileShape(), op.getStrides());
   ReplaceOpWithExpandDimsOf(rewriter, op, new_op, *axis);
   rewriter.eraseOp(op);
   return success();
 }
 
-// Extracts unit dimensions from insert and prepends them as squeeze_dims.
-LogicalResult SqueezeInsert(InsertOp op, PatternRewriter& rewriter) {
-  if (op.getSrc().getType().getRank() == 0) {
+LogicalResult SqueezeInsertTile(::xla::xtile::InsertTileOp op,
+                                PatternRewriter& rewriter) {
+  if (op.getSource().getType().getRank() == 0) {
     return rewriter.notifyMatchFailure(op, "Expected non-scalar source.");
   }
 
-  auto squeeze_dims = GetDimsToSqueeze(op.getSrc().getType());
+  auto squeeze_dims = GetDimsToSqueeze(op.getSource().getType());
   if (squeeze_dims.empty()) {
     return rewriter.notifyMatchFailure(op, "No dimensions to squeeze.");
   }
 
-  Value src = SqueezeTensorValue(rewriter, op.getSrc(), squeeze_dims);
-  rewriter.replaceOpWithNewOp<InsertOp>(
-      op, src, op.getDst(), op.getMixedOffsets(), op.getStaticSizes(),
-      op.getStaticStrides(), op.getDstShape(), op.getDstLayout());
+  Value src = SqueezeTensorValue(rewriter, op.getSource(), squeeze_dims);
+  rewriter.replaceOpWithNewOp<::xla::xtile::InsertTileOp>(
+      op, src, op.getDestination(), op.getOffsets(), op.getFullTileShape(),
+      op.getStrides());
   return success();
 }
 
@@ -409,24 +411,25 @@ LogicalResult PushSqueezeDimsUpThroughExpandDims(SqueezeDimsOp op,
   return success();
 }
 
-// Pushes squeeze_dims up through tt.expand_dims, or folds them.
+// Pushes squeeze_dims up into tt.expand_dims.
+//
 // Example:
-//   %1 = scf.if %cond -> type1 {
+//   %0 = scf.if %cond -> type1 {
 //     scf.yield %then : type1
 //   } else {
 //     scf.yield %else : type1
 //   }
-//   %2 = squeeze_dims %1, axis=0
+//   %1 = squeeze_dims %0, axis=0
 // is rewritten to:
-//   %1 = scf.if %cond -> type2 {
-//     %then_ = squeeze_dims %then, axis=0
-//     scf.yield %2 : type2
+//   %0 = scf.if %cond -> type2 {
+//     %1 = squeeze_dims %then, axis=0
+//     scf.yield %1 : type2
 //   } else {
-//     %else_ = squeeze_dims %else, axis=0
-//     scf.yield %else_ : type2
+//     %2 = squeeze_dims %else, axis=0
+//     scf.yield %2 : type2
 //   }
-LogicalResult PushSqueezeDimsUpThroughIf(SqueezeDimsOp op,
-                                         PatternRewriter& rewriter) {
+LogicalResult PushSqueezeDimsUpIntoIf(SqueezeDimsOp op,
+                                      PatternRewriter& rewriter) {
   Value src = op.getSrc();
   auto if_op = src.getDefiningOp<scf::IfOp>();
   if (!if_op || !src.hasOneUse()) {
@@ -511,14 +514,14 @@ class TritonXLASqueezeDimsPass
  private:
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.add(FoldSqueezeDimsOfExtract);
-    patterns.add(SqueezeInsert);
+    patterns.add(FoldSqueezeDimsOfExtractTile);
+    patterns.add(SqueezeInsertTile);
     patterns.add(SqueezeReshapeOperand);
     patterns.add(ExpandReshapeResult);
     patterns.add<PushSqueezeDimsUpThroughElementwise>(&getContext());
     patterns.add(PushSqueezeDimsUpThroughBroadcast);
     patterns.add(PushSqueezeDimsUpThroughExpandDims);
-    patterns.add(PushSqueezeDimsUpThroughIf);
+    patterns.add(PushSqueezeDimsUpIntoIf);
     patterns.add(PushSqueezeDimsUpThroughJoin);
     patterns.add(PushSqueezeDimsUpThroughReduce);
     patterns.add(PushSqueezeDimsUpThroughTrans);

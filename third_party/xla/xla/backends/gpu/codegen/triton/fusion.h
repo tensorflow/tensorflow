@@ -20,15 +20,15 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
+#include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 
 namespace xla {
 namespace gpu {
@@ -50,7 +50,15 @@ class TritonFusion : public FusionInterface {
   // Returns the launch config for Triton fusions that have a block level fusion
   // config.
   // Not supported for MatMul fusions yet.
-  std::optional<LaunchConfig> launch_config() const;
+  //
+  // If `thread_dims_override` is provided, it is used instead of the thread
+  // dimensions calculated in the function.
+  // Ideally, we should pass the values extracted from the Triton module after
+  // compilation, but there are use-cases where we want to call the function
+  // without compiling, e.g. during cost modelling. In that case, the function
+  // calculates the values.
+  std::optional<LaunchConfig> GetLaunchConfig(
+      std::optional<se::ThreadDim> thread_dims_override = std::nullopt) const;
 
   // Generates a Triton kernel for the given fusion into the provided LLVM
   // module, and returns the `TritonWrapperResult` corresponding to the
@@ -58,7 +66,7 @@ class TritonFusion : public FusionInterface {
   absl::StatusOr<TritonWrapperResult> GenerateTritonKernelAndWrapper(
       const HloFusionInstruction& fusion, absl::string_view impl_fn_name,
       const se::DeviceDescription& device_info, llvm::Module* llvm_module,
-      mlir::MLIRContext* mlir_context) const;
+      SymbolicExprContext* symbolic_expr_context) const;
 
  private:
   const HloFusionAnalysis& analysis_;

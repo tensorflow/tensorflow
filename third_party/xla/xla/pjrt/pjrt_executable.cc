@@ -82,6 +82,7 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
       *output.add_argument_layouts() = layout.ToProto();
     }
   }
+  output.set_allow_in_place_mlir_modification(allow_in_place_mlir_modification);
   output.set_parameter_is_tupled_arguments(parameter_is_tupled_arguments);
   TF_ASSIGN_OR_RETURN(*output.mutable_executable_build_options(),
                       executable_build_options.ToProto());
@@ -123,6 +124,8 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
     }
     output.argument_layouts = std::move(output_argument_layouts);
   }
+  output.allow_in_place_mlir_modification =
+      proto.allow_in_place_mlir_modification();
   output.parameter_is_tupled_arguments = proto.parameter_is_tupled_arguments();
   TF_ASSIGN_OR_RETURN(
       ExecutableBuildOptions executable_build_options,
@@ -145,8 +148,8 @@ MultiSliceConfig::~MultiSliceConfig() = default;
 absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
   ExecuteOptionsProto proto;
 
-  proto.set_arguments_are_tupled(arguments_are_tupled);
-  proto.set_untuple_result(untuple_result);
+  proto.set_arguments_are_tupled(false);
+  proto.set_untuple_result(true);
   proto.set_launch_id(launch_id);
   if (context != nullptr) {
     return absl::UnimplementedError(
@@ -194,7 +197,6 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
     const ExecuteOptionsProto& proto) {
   ExecuteOptions options;
 
-  options.arguments_are_tupled = proto.arguments_are_tupled();
   options.untuple_result = proto.untuple_result();
   options.launch_id = proto.launch_id();
   options.strict_shape_checking = proto.strict_shape_checking();
@@ -267,7 +269,7 @@ CompiledMemoryStats CompiledMemoryStats::FromProto(
 // want, but does not distinguish between device and host memory, and does
 // not account for aliased memory.
 void CompiledMemoryStats::PopulateBufferStatsFromAllocations(
-    absl::Span<const BufferAllocation> allocs) {
+    absl::Span<const BufferAllocation* const> allocs) {
   argument_size_in_bytes = 0;
   output_size_in_bytes = 0;
   temp_size_in_bytes = 0;
@@ -277,7 +279,7 @@ void CompiledMemoryStats::PopulateBufferStatsFromAllocations(
   host_temp_size_in_bytes = 0;
   host_alias_size_in_bytes = 0;
 
-  for (auto& alloc : allocs) {
+  for (const BufferAllocation* alloc : allocs) {
     // All logical buffers assigned to a buffer allocation share a color.
     // With buffer assigner's default colorer the color happens to be the
     // memory space of the underlying HLO value. Callers may choose other
@@ -286,7 +288,7 @@ void CompiledMemoryStats::PopulateBufferStatsFromAllocations(
     // Until buffer allocations provide a stronger guarantee about colors,
     // we sanity-check that the default coloring behavior was used.
     int64_t alloc_memory_space = -1;
-    for (const auto& [value, _] : alloc.assigned_buffers()) {
+    for (const auto& [value, _] : alloc->assigned_buffers()) {
       const HloPosition& defining_position = value->defining_position();
       int64_t memory_space = Layout::kDefaultMemorySpace;
       if (defining_position.shape().has_layout()) {
@@ -301,14 +303,14 @@ void CompiledMemoryStats::PopulateBufferStatsFromAllocations(
     }
 
     bool is_host = alloc_memory_space == Layout::kHostMemorySpace;
-    int64_t size = alloc.size();
-    if (alloc.is_entry_computation_parameter()) {
+    int64_t size = alloc->size();
+    if (alloc->is_entry_computation_parameter()) {
       if (is_host) {
         host_argument_size_in_bytes += size;
       } else {
         argument_size_in_bytes += size;
       }
-      if (alloc.is_parameter_aliased_with_output()) {
+      if (alloc->is_parameter_aliased_with_output()) {
         if (is_host) {
           host_alias_size_in_bytes += size;
         } else {
@@ -316,14 +318,14 @@ void CompiledMemoryStats::PopulateBufferStatsFromAllocations(
         }
       }
     }
-    if (alloc.maybe_live_out()) {
+    if (alloc->maybe_live_out()) {
       if (is_host) {
         host_output_size_in_bytes += size;
       } else {
         output_size_in_bytes += size;
       }
     }
-    if (alloc.IsPreallocatedTempBuffer()) {
+    if (alloc->IsPreallocatedTempBuffer()) {
       if (is_host) {
         host_temp_size_in_bytes += size;
       } else {

@@ -283,8 +283,8 @@ string TryFindHostDevice(const gtl::FlatSet<string>& devices,
          {std::pair<string, string>("GPU", "CPU:0"),
           std::pair<string, string>("/device", "/device:CPU:0")}) {
       const string device_host =
-          strings::StrCat(device.substr(0, device.rfind(device_match.first)),
-                          device_match.second);
+          absl::StrCat(device.substr(0, device.rfind(device_match.first)),
+                       device_match.second);
       if (devices.find(device_host) != devices.end()) {
         return device_host;
       }

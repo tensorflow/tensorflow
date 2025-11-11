@@ -44,7 +44,7 @@ class DistributedTPURewriteHelpers {
   // system_spec_string to identify the TPU_SYSTEM on replica 0, task 0 of the
   // job that contains the TPU hardware.
   // TODO(b/110910013): Possibly remove the tpu system device.
-  static absl::Status GetSystemDevice(const string& system_spec_string,
+  static absl::Status GetSystemDevice(const std::string& system_spec_string,
                                       const DeviceSet& device_set,
                                       DeviceNameUtils::ParsedName* system_spec,
                                       Device** system_device);
@@ -91,10 +91,10 @@ class DistributedTPURewriteHelpers {
     int dst_input;
   };
   static absl::Status ForConfigurationNodeMatchingType(
-      const string& node_type, Graph* graph, const DeviceSet& device_set,
+      const std::string& node_type, Graph* graph, const DeviceSet& device_set,
       const std::function<
           absl::Status(const NodeDef& configuration_node_def,
-                       const string& configuration_device_name,
+                       const std::string& configuration_device_name,
                        const std::vector<Device*>& host_devices,
                        const std::vector<Node*>& input_dependencies,
                        const std::vector<OutputDependency>& output_dependencies,

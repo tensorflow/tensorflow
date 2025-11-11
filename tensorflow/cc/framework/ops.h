@@ -79,7 +79,7 @@ class Output {
   int32 index() const { return index_; }
   DataType type() const { return op_.output_type(index_); }
   std::string name() const {
-    return strings::StrCat(node()->name(), ":", index());
+    return absl::StrCat(node()->name(), ":", index());
   }
   bool operator==(const Output& other) const {
     return op_ == other.op_ && index_ == other.index_;

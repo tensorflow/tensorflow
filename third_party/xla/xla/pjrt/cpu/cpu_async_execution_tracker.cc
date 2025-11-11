@@ -59,7 +59,7 @@ void CpuScopedAsyncExecution::SetError(absl::Status error) {
 
 CpuScopedAsyncExecution CpuAsyncExecutionTracker::NewAsyncExecution(
     int32_t launch_id, tsl::AsyncValueRef<CpuEvent> execute_event) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   Key async_execution_key = execute_event.GetAsyncValue();
   executions_[launch_id].insert(
       {async_execution_key, std::move(execute_event)});
@@ -67,7 +67,7 @@ CpuScopedAsyncExecution CpuAsyncExecutionTracker::NewAsyncExecution(
 }
 
 bool CpuAsyncExecutionTracker::SetError(int32_t launch_id, absl::Status error) {
-  absl::ReleasableMutexLock lock(&mu_);
+  absl::ReleasableMutexLock lock(mu_);
   auto it = executions_.find(launch_id);
   if (it != executions_.end()) {
     absl::flat_hash_map<Key, tsl::AsyncValueRef<CpuEvent>> execute_events =
@@ -100,7 +100,7 @@ bool CpuAsyncExecutionTracker::SetError(int32_t launch_id, absl::Status error) {
 
 void CpuAsyncExecutionTracker::SetError(int32_t launch_id, Key key,
                                         absl::Status error) {
-  absl::ReleasableMutexLock lock(&mu_);
+  absl::ReleasableMutexLock lock(mu_);
   auto it = executions_.find(launch_id);
   if (it != executions_.end()) {
     auto it2 = it->second.find(key);
@@ -120,7 +120,7 @@ void CpuAsyncExecutionTracker::SetError(int32_t launch_id, Key key,
 }
 
 void CpuAsyncExecutionTracker::SetStateConcrete(int32_t launch_id, Key key) {
-  absl::ReleasableMutexLock lock(&mu_);
+  absl::ReleasableMutexLock lock(mu_);
   auto it = executions_.find(launch_id);
   if (it != executions_.end()) {
     auto it2 = it->second.find(key);
@@ -141,7 +141,7 @@ void CpuAsyncExecutionTracker::SetStateConcrete(int32_t launch_id, Key key) {
 
 void CpuAsyncExecutionTracker::RemoveAsyncExecution(int32_t launch_id,
                                                     Key key) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto it = executions_.find(launch_id);
   if (it != executions_.end()) {
     auto it2 = it->second.find(key);

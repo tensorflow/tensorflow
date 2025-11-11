@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -35,7 +37,12 @@ class GpuCostModelStatsCollectionTest : public HloHardwareIndependentTestBase {
  public:
   GpuCostModelStatsCollection cost_model_stats_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true}};
+      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
+      &symbolic_expr_context_};
+
+ protected:
+  mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(GpuCostModelStatsCollectionTest, FusinInEntryComputation) {

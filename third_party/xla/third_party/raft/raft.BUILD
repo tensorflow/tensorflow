@@ -28,12 +28,12 @@ cuda_library(
         "cpp/include/**/*.hpp",
         "cpp/internal/**/*.cuh",
     ]) + [
+        "cpp/include/raft/compat/clang_cuda_intrinsics.h",
         "cpp/include/raft/thirdparty/mdspan/include/experimental/mdarray",
         "cpp/include/raft/thirdparty/mdspan/include/experimental/mdspan",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@kokkos//:mdspan",
         "@rapids_logger",
         "@rmm",
     ],

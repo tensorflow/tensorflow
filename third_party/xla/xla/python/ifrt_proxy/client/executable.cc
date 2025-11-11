@@ -50,7 +50,6 @@
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -63,6 +62,7 @@
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -291,7 +291,7 @@ class LoadedExecutable::OutputSpecCache {
 
   // Returns the cached output spec if already cached, and std::nullopt if not.
   std::optional<absl::Span<const ArraySpec>> Retrieve() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (!data_.has_value()) {
       return std::nullopt;
     }
@@ -304,7 +304,7 @@ class LoadedExecutable::OutputSpecCache {
   absl::Status Cache(const tsl::protobuf::RepeatedPtrField<
                      LoadedExecutableExecuteResponse_Output>& outputs) {
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       if (data_.has_value()) {
         return absl::OkStatus();
       }
@@ -320,7 +320,7 @@ class LoadedExecutable::OutputSpecCache {
                                /*sharding=*/std::move(sharding)});
     }
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       if (!data_.has_value()) {
         data_.emplace(std::move(data));
       }
@@ -339,7 +339,7 @@ LoadedExecutable::LoadedExecutable(
     uint64_t handle, std::string name, int num_devices, DeviceListRef devices,
     std::vector<xla::ifrt::Device*> addressable_devices,
     absl::StatusOr<std::optional<std::string>> fingerprint,
-    Future<> ready_future,
+    tsl::Future<> ready_future,
     std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
         loaded_host_callbacks,
     std::vector<uint64_t> loaded_host_callback_handles)
@@ -369,22 +369,23 @@ LoadedExecutable::LoadedExecutable(
   }
 
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
-
       "IfrtProxyEntrypointLoadedExecutableCreate");
   // Asynchronously fetch shardings. Since users of `LoadedExecutable` typically
   // require sharding information to invoke the executable, it is beneficial to
   // eagerly schedule this fetch since, in some implementations, it may take a
   // long time for sharding information to be available.
 
-  auto promise = Future<std::shared_ptr<Metadata>>::CreatePromise();
-  metadata_future_ = Future<std::shared_ptr<Metadata>>(promise);
+  auto [promise, future] =
+      tsl::Future<std::shared_ptr<Metadata>>::MakePromise();
+  metadata_future_ = std::move(future);
 
   auto req = std::make_unique<LoadedExecutableMetadataRequest>();
   req->set_loaded_executable_handle(handle_);
 
-  auto on_done = [promise](absl::StatusOr<
-                           std::shared_ptr<LoadedExecutableMetadataResponse>>
-                               response) mutable {
+  auto on_done = [promise = std::move(promise)](
+                     absl::StatusOr<
+                         std::shared_ptr<LoadedExecutableMetadataResponse>>
+                         response) mutable {
     if (!response.ok()) {
       LOG(ERROR) << "LoadedExecutableMetadata: Got " << response.status();
       promise.Set(response.status());
@@ -529,7 +530,7 @@ absl::StatusOr<std::string> LoadedExecutable::Serialize() const {
       "underlying serialization format is not stable");
 }
 
-Future<> LoadedExecutable::GetReadyFuture() const { return ready_future_; }
+tsl::Future<> LoadedExecutable::GetReadyFuture() const { return ready_future_; }
 
 int LoadedExecutable::num_devices() const { return num_devices_; }
 
@@ -618,7 +619,72 @@ LoadedExecutable::GetHloModules() const {
 
 absl::StatusOr<xla::ifrt::AttributeMap> LoadedExecutable::GetCostAnalysis()
     const {
-  return absl::UnimplementedError("Unimplemented");
+  if (rpc_helper_->protocol_version() <
+      protocol_version::kLoadedExecutableGetCostAnalysis) {
+    return absl::UnimplementedError(
+        "LoadedExecutable::GetCostAnalysis() is unimplemented by IFRT proxy");
+  }
+
+  absl::MutexLock l(cost_analysis_mu_);
+  if (!cost_analysis_response_.has_value()) {
+    auto req = std::make_unique<LoadedExecutableCostAnalysisRequest>();
+    req->set_loaded_executable_handle(handle_);
+
+    absl::StatusOr<std::shared_ptr<LoadedExecutableCostAnalysisResponse>>
+        response =
+            rpc_helper_->LoadedExecutableCostAnalysis(std::move(req)).Await();
+
+    if (!response.ok()) {
+      // Connection-related error, so log the error.
+      LOG(ERROR) << "LoadedExecutableCostAnalysis: Got " << response.status();
+      cost_analysis_response_ = response.status();
+    }
+    if (response.ok() && response.value()->has_attributes()) {
+      cost_analysis_response_ =
+          AttributeMap::FromProto(response.value()->attributes());
+    } else {
+      cost_analysis_response_ =
+          tsl::StatusFromProto(response.value()->status());
+    }
+  }
+  return *cost_analysis_response_;
+}
+
+absl::StatusOr<std::string> LoadedExecutable::GetHumanReadableProgramText()
+    const {
+  if (rpc_helper_->protocol_version() <
+      protocol_version::kLoadedExecutableGetHumanReadableProgramText) {
+    return absl::UnimplementedError(
+        "LoadedExecutable::GetHumanReadableProgramText() is unimplemented by "
+        "IFRT proxy");
+  }
+
+  absl::MutexLock l(human_readable_program_text_mu_);
+  if (!human_readable_program_text_.has_value()) {
+    auto req =
+        std::make_unique<LoadedExecutableHumanReadableProgramTextRequest>();
+    req->set_loaded_executable_handle(handle_);
+
+    absl::StatusOr<
+        std::shared_ptr<LoadedExecutableHumanReadableProgramTextResponse>>
+        response =
+            rpc_helper_
+                ->LoadedExecutableHumanReadableProgramText(std::move(req))
+                .Await();
+
+    if (!response.ok()) {
+      // Connection-related error, so log the error.
+      LOG(ERROR) << "LoadedExecutableHumanReadableProgramText: Got "
+                 << response.status();
+      human_readable_program_text_ = response.status();
+    } else if ((*response)->has_human_readable_program_text()) {
+      human_readable_program_text_ = (*response)->human_readable_program_text();
+    } else {
+      human_readable_program_text_ =
+          tsl::StatusFromProto((*response)->status());
+    }
+  }
+  return *human_readable_program_text_;
 }
 
 absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult>
@@ -678,6 +744,15 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
       output_spec_cache_->Retrieve().has_value();
 
   xla::ifrt::LoadedExecutable::ExecuteResult result;
+  // TODO(hyeontaek): `GetOutputLayouts()` uses a concrete layout for a
+  // default layout. This will change as proper IFRT layout support is fleshed
+  // out. While the code here using `layouts` will automatically benefit from
+  // the semantics change for `GetOutputLayouts()`, we would have a slightly
+  // inconsistent state here until the change happens where output arrays use a
+  // concrete layout for a default layout. This will not cause an issue for the
+  // time being when the user always uses concrete layouts, but we would need to
+  // resolve this issue before the user begins to use `nullptr` default layouts
+  // without resolving it to a concrete layout.
   absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>> layouts =
       GetOutputLayouts();
 

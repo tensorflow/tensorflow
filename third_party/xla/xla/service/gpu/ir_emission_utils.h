@@ -140,11 +140,6 @@ std::optional<std::string> GetCustomFusionConfigName(
 // fusion. This is determined by checking the name of custom fusion config.
 bool IsDynamicSliceFusion(const HloInstruction* instr);
 
-// Returns true if the given instruction is a dynamic memcpy fusion. This
-// function only checks the fusion kind, which is populated by the
-// FusionDispatch pipeline.
-bool IsDynamicMemcpyFusion(const HloInstruction* instr);
-
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
 // This returns true if `hlo` is a CustomCall HLO with a call target equal to
@@ -154,6 +149,13 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo);
 
 // Returns true if `hlo` will be implemented as a call to a TopK routine.
 bool IsCustomCallToTopK(const HloInstruction& hlo);
+
+// Returns true if `hlo` will be implmented as a call to a custom PTX kernel
+// implementation.
+bool IsCustomCallToPtxKernel(const HloInstruction& hlo);
+
+// Returns true if instruction is a Mosaic GPU collective instruction.
+bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo);
 
 // Cholesky decomposition. Takes a (batched) matrix as input, and returns a
 // tuple of (result, workspace, info), where result is the result of the

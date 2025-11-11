@@ -291,7 +291,7 @@ CollectiveTransformationReorder::ReorderAllReduceTransformations(
   return true;
 }
 
-absl::StatusOr<bool> CollectiveTransformationReorder::Run(
+absl::StatusOr<bool> CollectiveTransformationReorder::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(bool ag_changed, ReorderAllGatherTransformations(

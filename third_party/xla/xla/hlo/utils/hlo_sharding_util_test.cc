@@ -466,6 +466,27 @@ TEST(HloShardingUtilTest, ReshapeShardingTranspose4) {
   EXPECT_EQ(result.value(), output_sharding);
 }
 
+TEST(HloShardingUtilTest, ReshapeShardingWithPadding1) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {4});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  HloSharding input_sharding = HloSharding::IotaTile({8});
+  std::optional<HloSharding> result =
+      ReshapeSharding(input_shape, output_shape, input_sharding);
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(HloShardingUtilTest, ReshapeShardingWithPadding2) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {4});
+  HloSharding input_sharding = HloSharding::IotaTile({2, 4});
+  HloSharding output_sharding =
+      HloSharding::PartialTile(TileAssignment({4, 2}));
+  std::optional<HloSharding> result =
+      ReshapeSharding(input_shape, output_shape, input_sharding);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result.value(), output_sharding);
+}
+
 TEST(HloShardingUtilTest, ReshapeToTileDimension2D) {
   // The two sharding in the vector are the same. They will be processed in
   // different branches in ReshapeToTileDimension.

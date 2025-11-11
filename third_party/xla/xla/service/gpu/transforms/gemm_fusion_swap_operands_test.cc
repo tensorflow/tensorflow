@@ -18,7 +18,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {

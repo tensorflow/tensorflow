@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -184,9 +183,9 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-absl::StatusOr<bool> ReductionLayoutNormalizer::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> ReductionLayoutNormalizer::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(bool changed,
                       EnforceMinorToMajorReduceOpVisitor().RunOnModule(
                           module, execution_threads));

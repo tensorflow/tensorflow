@@ -24,7 +24,7 @@ import re
 import sys
 from typing import Iterable, Sequence
 
-from xla.build_tools.lint import diff_parser
+from build_tools.lint import diff_parser
 
 
 @dataclasses.dataclass

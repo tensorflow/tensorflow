@@ -1,4 +1,5 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -67,7 +68,7 @@ py_strict_library(
     ],
     deps = [
         ":compression_ops",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python:tf2",
         "//tensorflow/python/data/experimental/service:_pywrap_server_lib",
         "//tensorflow/python/data/experimental/service:_pywrap_utils_exp",
@@ -82,7 +83,21 @@ py_strict_library(
         "//tensorflow/python/ops:experimental_dataset_ops_gen",
         "//tensorflow/python/ops:string_ops",
         "//tensorflow/python/saved_model:nested_structure_coder",
+        "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+tf_py_strict_test(
+    name = "data_service_ops_test",
+    srcs = ["data_service_ops_test.py"],
+    deps = [
+        ":data_service_ops",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

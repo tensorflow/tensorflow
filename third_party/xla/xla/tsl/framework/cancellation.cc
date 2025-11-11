@@ -48,7 +48,7 @@ void CancellationManager::StartCancelWithStatus(const absl::Status& status) {
   std::forward_list<CancellationManager*> children_to_cancel;
   absl::Notification* cancelled_notification = nullptr;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (is_cancelled_.load(std::memory_order_relaxed) || is_cancelling_) {
       return;
     }
@@ -87,7 +87,7 @@ void CancellationManager::StartCancelWithStatus(const absl::Status& status) {
     child->StartCancelWithStatus(status);
   }
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     is_cancelling_ = false;
     is_cancelled_.store(true, std::memory_order_release);
   }
@@ -112,7 +112,7 @@ bool CancellationManager::RegisterCallbackWithErrorLogging(
 bool CancellationManager::RegisterCallbackConfig(CancellationToken token,
                                                  CallbackConfiguration config) {
   DCHECK_LT(token, next_cancellation_token_) << "Invalid cancellation token";
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   bool should_register = !is_cancelled_ && !is_cancelling_;
   if (should_register) {
     if (!state_) {
@@ -124,14 +124,14 @@ bool CancellationManager::RegisterCallbackConfig(CancellationToken token,
 }
 
 bool CancellationManager::DeregisterCallback(CancellationToken token) {
-  mu_.Lock();
+  mu_.lock();
   if (is_cancelled_) {
-    mu_.Unlock();
+    mu_.unlock();
     return false;
   } else if (is_cancelling_) {
     absl::Notification* cancelled_notification =
         state_ ? &state_->cancelled_notification : nullptr;
-    mu_.Unlock();
+    mu_.unlock();
     // Wait for all of the cancellation callbacks to be called. This
     // wait ensures that the caller of DeregisterCallback does not
     // return immediately and free objects that may be used in the
@@ -144,13 +144,13 @@ bool CancellationManager::DeregisterCallback(CancellationToken token) {
     if (state_) {
       state_->callbacks.erase(token);
     }
-    mu_.Unlock();
+    mu_.unlock();
     return true;
   }
 }
 
 bool CancellationManager::RegisterChild(CancellationManager* child) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (is_cancelled_.load(std::memory_order_relaxed) || is_cancelling_) {
     child->is_removed_from_parent_ = true;
     return true;
@@ -176,7 +176,7 @@ void CancellationManager::DeregisterChild(CancellationManager* child) {
   DCHECK_EQ(child->parent_, this);
   absl::Notification* cancelled_notification = nullptr;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (!child->is_removed_from_parent_) {
       // Remove the child from this manager's list of children.
       DCHECK(state_);
@@ -209,7 +209,7 @@ void CancellationManager::DeregisterChild(CancellationManager* child) {
 }
 
 bool CancellationManager::TryDeregisterCallback(CancellationToken token) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (is_cancelled_ || is_cancelling_) {
     return false;
   } else {
@@ -230,7 +230,7 @@ CancellationManager::~CancellationManager() {
 }
 
 bool CancellationManager::IsCancelling() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return is_cancelling_;
 }
 

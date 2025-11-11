@@ -26,7 +26,7 @@ namespace {
 
 void FuzzTest(std::string data) {
   absl::string_view sp(data);
-  tensorflow::uint64 val;
+  uint64_t val;
 
   const bool leading_digits =
       tensorflow::str_util::ConsumeLeadingDigits(&sp, &val);

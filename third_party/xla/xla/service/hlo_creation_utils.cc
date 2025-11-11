@@ -406,6 +406,24 @@ absl::StatusOr<HloInstruction*> MakeRaggedDotHlo(
       ragged_dot_shape, lhs, rhs, group_sizes, dim_numbers, precision_config));
 }
 
+absl::StatusOr<HloInstruction*> MakeScaledDotHlo(
+    HloInstruction* lhs, HloInstruction* rhs, HloInstruction* lhs_scale,
+    HloInstruction* rhs_scale, const DotDimensionNumbers& dim_numbers,
+    const PrecisionConfig& precision_config,
+    std::optional<PrimitiveType> preferred_element_type) {
+  HloComputation* computation = lhs->parent();
+  CHECK_EQ(computation, lhs_scale->parent());
+  CHECK_EQ(computation, rhs->parent());
+  CHECK_EQ(computation, rhs_scale->parent());
+  TF_ASSIGN_OR_RETURN(
+      Shape dot_shape,
+      ShapeInference::InferDotOpShape(lhs->shape(), rhs->shape(), dim_numbers,
+                                      preferred_element_type));
+  return computation->AddInstruction(
+      HloInstruction::CreateScaledDot(dot_shape, lhs, rhs, lhs_scale, rhs_scale,
+                                      dim_numbers, precision_config));
+}
+
 absl::StatusOr<HloInstruction*> MakeMapHlo(
     absl::Span<HloInstruction* const> operands, HloComputation* map_computation,
     const OpMetadata* metadata) {
@@ -536,7 +554,7 @@ absl::StatusOr<HloInstruction*> MakeReduceHlo(
   CHECK_EQ(operands.size(), init_values.size());
   auto root = reduce_computation->root_instruction();
   if (root->shape().IsTuple()) {
-    CHECK_EQ(root->shape().tuple_shapes_size(), operands.size());
+    CHECK_EQ(root->shape().tuple_shapes().size(), operands.size());
   } else {
     CHECK_EQ(operands.size(), 1);
   }
@@ -917,6 +935,75 @@ absl::StatusOr<HloInstruction*> MakeWithinBounds(HloInstruction* inst,
       HloInstruction * gt,
       MakeCompareHlo(Comparison::Direction::kGt, upper_bound, inst));
   return MakeBinaryHlo(HloOpcode::kAnd, le, gt);
+}
+
+HloInstruction* MakeScalarLikeFromLiteral(HloInstruction* base,
+                                          Literal literal) {
+  auto scalar =
+      base->AddInstruction(HloInstruction::CreateConstant(std::move(literal)));
+  if (base->shape().dimensions().empty()) {
+    *scalar->mutable_shape() = base->shape();
+    return scalar;
+  }
+  return base->AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeStaticShape(base->shape()), scalar, {}));
+}
+
+std::unique_ptr<HloModule> NewModuleWithFusion(
+    const HloInstruction* instruction, HloInstruction::FusionKind fusion_kind) {
+  auto hlo_module = std::make_unique<HloModule>(
+      absl::StrCat("wrapped_module_", instruction->name()),
+      instruction->GetModule()->config());
+
+  // New computation  with a single instruction as given by the instruction
+  // parameter.
+  HloComputation::Builder fusion_builder(
+      absl::StrCat("wrapped_", instruction->name()));
+
+  const auto build_parameter_instructions =
+      [instruction](HloComputation::Builder& builder) {
+        std::vector<HloInstruction*> parameters;
+        parameters.reserve(instruction->operand_count());
+        for (int i = 0; i < instruction->operand_count(); ++i) {
+          const HloInstruction* operand = instruction->operand(i);
+          parameters.push_back(
+              builder.AddInstruction(HloInstruction::CreateParameter(
+                  i, operand->shape(), absl::StrCat("param_", i))));
+        }
+        return parameters;
+      };
+  std::vector<HloInstruction*> fusion_parameters =
+      build_parameter_instructions(fusion_builder);
+  HloInstruction* fused_root =
+      fusion_builder.AddInstruction(instruction->CloneWithNewOperands(
+          instruction->shape(), fusion_parameters));
+
+  // If the original instruction had any sub-computations (like to_apply), clone
+  // them.
+  if (!instruction->called_computations().empty()) {
+    HloCloneContext context(hlo_module.get());
+    fused_root->ReplaceCalledComputations([&](HloComputation* callee) {
+      if (callee->parent() != hlo_module.get()) {
+        return hlo_module->DeepCloneComputation(callee, &context);
+      }
+      return callee;
+    });
+  }
+
+  HloComputation* fused_computation =
+      hlo_module->AddEmbeddedComputation(fusion_builder.Build(fused_root));
+
+  // Entry computation for the new module.
+  HloComputation::Builder entry_builder("entry");
+  std::vector<HloInstruction*> entry_parameters =
+      build_parameter_instructions(entry_builder);
+  HloInstruction* fusion_instruction = entry_builder.AddInstruction(
+      HloInstruction::CreateFusion(instruction->shape(), fusion_kind,
+                                   entry_parameters, fused_computation));
+
+  hlo_module->AddEntryComputation(entry_builder.Build(fusion_instruction));
+
+  return hlo_module;
 }
 
 }  // namespace xla

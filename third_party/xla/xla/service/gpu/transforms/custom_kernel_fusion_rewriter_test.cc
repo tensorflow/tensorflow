@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/test.h"
 
 namespace xla::gpu {
 

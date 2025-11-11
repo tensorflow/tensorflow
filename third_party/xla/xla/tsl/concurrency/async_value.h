@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/concurrent_vector.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
@@ -59,8 +60,6 @@ constexpr bool kMaybeBase = std::is_class<T>::value && !std::is_final<T>::value;
 // data and the payload data in consecutive memory locations.
 class AsyncValue {
  public:
-  class Executor;
-
   ~AsyncValue();
 
   // Return true if state is kUnconstructed.
@@ -89,7 +88,12 @@ class AsyncValue {
   // Return reference count. This should be used for testing and debugging only.
   uint32_t NumRef() const { return refcount_.load(std::memory_order_acquire); }
 
-  // Return true if reference count is 1.
+  // Return true if this async value is a unique reference to the underlying
+  // payload. For concrete async values, this is equivalent to `NumRef() == 1`.
+  // For indirect async values it means that the whole chain of indirect async
+  // values has a reference count of 1. For unavailable indirect async values we
+  // conservatively return false as we don't know to what async value it will be
+  // forwarded.
   bool IsUnique() const;
 
   // Add a new reference to this object.
@@ -145,6 +149,10 @@ class AsyncValue {
   void emplace(Args&&... args);
 
   void SetError(absl::Status status);
+
+  // Returns true if and only if there are any waiters waiting for this value to
+  // become available.
+  bool HasWaiter() const;
 
   // If the value is available or becomes available, this invokes the waiter
   // immediately. Otherwise, adds the waiter to the waiter list and calls it
@@ -250,24 +258,6 @@ class AsyncValue {
   State state() const {
     return waiters_and_state_.load(std::memory_order_acquire).state();
   }
-
-  // AsyncValue executor allows to customize where the waiter callback is
-  // executed. By default the waiter callback is executed on the caller thread
-  // if async value is already available, or on a thread that sets async value
-  // available (emplacing a value or setting an error), which can accidentally
-  // lead to executing a very expensive computations on a low-latency thread.
-  //
-  // IMPORTANT: It's the caller responsibility to ensure that executor passed to
-  // all `AndThen` or `Map` function calls stay alive while async values have
-  // unresolved waiters waiting to be invoked.
-  class Executor {
-   public:
-    using Task = absl::AnyInvocable<void()>;
-
-    virtual ~Executor() = default;
-
-    virtual void Execute(Task task) = 0;
-  };
 
  protected:
   friend class IndirectAsyncValue;
@@ -447,7 +437,11 @@ class AsyncValue {
     DestructorFn destructor;
     GetErrorFn get_error;
     SetErrorFn set_error;
+#ifndef NDEBUG
+    // This function is only used in debug builds, so it can be omitted from the
+    // type info in optimized builds for better data locality of other members.
     HasDataFn has_data;
+#endif
   };
 
   template <typename Derived>
@@ -463,9 +457,11 @@ class AsyncValue {
         [](AsyncValue* v, absl::Status status) {
           static_cast<Derived*>(v)->SetError(std::move(status));
         },
+#ifndef NDEBUG
         [](const AsyncValue* v) {
           return static_cast<const Derived*>(v)->HasData();
         },
+#endif
     };
   }
 
@@ -815,10 +811,9 @@ class IndirectAsyncValue : public AsyncValue {
 
   bool IsUnique() const {
     // In addition to checking the refcount of this IndirectAsyncValue, we also
-    // need to check the refcount of the underlying value. If the underlying
-    // value is not available, we conservatively return false.
-    return (refcount_.load(std::memory_order_acquire) == 1) && IsAvailable() &&
-           value_->IsUnique();
+    // need to check the refcount of the underlying value. If indirect async
+    // value value is not forwarded, we conservatively return false.
+    return (NumRef() == 1) && value_ && value_->IsUnique();
   }
 
  protected:
@@ -1035,6 +1030,10 @@ inline const absl::Status& AsyncValue::GetError() const {
   return *result;
 }
 
+inline bool AsyncValue::HasWaiter() const {
+  return waiters_and_state_.load(std::memory_order_acquire).waiter() != nullptr;
+}
+
 template <typename Waiter>
 void AsyncValue::AndThen(Waiter&& waiter) {
   // Clients generally want to use AndThen without them each having to check
@@ -1053,6 +1052,34 @@ void AsyncValue::AndThen(Waiter&& waiter) {
 
 template <typename Waiter>
 void AsyncValue::AndThen(Executor& executor, Waiter&& waiter) {
+  // We don't know when the `executor` will run the `waiter`, so we need to add
+  // a reference to the AsyncValue to keep they underlying value alive for as
+  // long as the waiter is waiting to be executed.
+  struct SafeWaiter {
+    SafeWaiter(AsyncValue* value, Waiter waiter)
+        : value(value), waiter(std::move(waiter)) {
+      value->AddRef();
+    }
+
+    SafeWaiter(SafeWaiter&& other) noexcept
+        : value(other.value), waiter(std::move(other.waiter)) {
+      other.value = nullptr;
+    }
+
+    SafeWaiter& operator=(SafeWaiter&& other) = delete;
+
+    ~SafeWaiter() {
+      if (value) {
+        value->DropRef();
+      }
+    }
+
+    void operator()() { std::move(waiter)(); }
+
+    AsyncValue* value;
+    Waiter waiter;
+  };
+
   // Clients generally want to use AndThen without them each having to check
   // to see if the value is present. Check for them, and immediately run the
   // waiter if it is already here.
@@ -1060,12 +1087,13 @@ void AsyncValue::AndThen(Executor& executor, Waiter&& waiter) {
   if (waiters_and_state.state() == State::kConcrete ||
       waiters_and_state.state() == State::kError) {
     DCHECK_EQ(waiters_and_state.waiter(), nullptr);
-    executor.Execute(std::forward<Waiter>(waiter));
+    executor.Execute(SafeWaiter(this, std::forward<Waiter>(waiter)));
     return;
   }
 
   EnqueueWaiter(
-      [&executor, waiter = std::forward<Waiter>(waiter)] {
+      [&executor,
+       waiter = SafeWaiter(this, std::forward<Waiter>(waiter))]() mutable {
         executor.Execute(std::move(waiter));
       },
       waiters_and_state);
@@ -1128,7 +1156,7 @@ inline void AsyncValue::Destroy() {
 
 inline bool AsyncValue::IsUnique() const {
   if (kind() != Kind::kIndirect) {
-    return refcount_.load(std::memory_order_acquire) == 1;
+    return NumRef() == 1;
   }
 
   // If it is an IndirectAsyncValue, we also need to check the refcount of the

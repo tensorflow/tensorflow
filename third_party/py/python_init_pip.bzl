@@ -1,8 +1,11 @@
 """Hermetic Python initialization. Consult the WORKSPACE on how to use it."""
 
-load("@python//:defs.bzl", "interpreter")
 load("@python_version_repo//:py_version.bzl", "REQUIREMENTS_WITH_LOCAL_WHEELS")
 load("@rules_python//python:pip.bzl", "package_annotation", "pip_parse")
+load(
+    "//third_party/py:python_init_toolchains.bzl",
+    "get_toolchain_name_per_python_version",
+)
 
 def python_init_pip():
     numpy_annotations = {
@@ -29,6 +32,11 @@ cc_library(
     pip_parse(
         name = "pypi",
         annotations = numpy_annotations,
-        python_interpreter_target = interpreter,
+        python_interpreter_target = "@{}_host//:python".format(
+            get_toolchain_name_per_python_version("python"),
+        ),
+        extra_hub_aliases = {
+            "numpy": ["numpy_headers"],
+        },
         requirements_lock = REQUIREMENTS_WITH_LOCAL_WHEELS,
     )

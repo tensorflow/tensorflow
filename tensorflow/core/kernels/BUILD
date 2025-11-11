@@ -276,6 +276,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/platform:tstring",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 0,
@@ -564,7 +565,7 @@ cc_library(
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util:env_var",
-        "@local_xla//xla/stream_executor:numeric_options",
+        "@local_xla//xla/stream_executor:engine_options",
         "@local_xla//xla/tsl/util:determinism_for_kernels",
     ] + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
@@ -1066,7 +1067,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "gather_op",
     prefix = "gather_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -1356,6 +1360,8 @@ tf_kernel_library(
     srcs = ["ragged_gather_op.cc"],
     deps = [
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1746,14 +1752,22 @@ tf_cc_test(
         ":concat_op",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:math_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/cc:testutil",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:tstring",
         "@com_google_absl//absl/base:prefetch",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -2431,6 +2445,7 @@ tf_kernel_library(
         ":range_sampler",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -2442,6 +2457,8 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -2733,6 +2750,8 @@ tf_kernel_library(
         ":gather_functor",
         ":gpu_prim_hdrs",
         "//tensorflow/core:framework_internal",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2952,6 +2971,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/util:determinism_for_kernels",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
@@ -5451,6 +5471,8 @@ tf_kernel_library(
     deps = STATE_DEPS + [
         ":loose_headers",
         "//tensorflow/core/util:determinism_for_kernels",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -5460,6 +5482,8 @@ tf_kernel_library(
     deps = STATE_DEPS + [
         "//tensorflow/core/framework:op_requires",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -5875,6 +5899,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -6501,7 +6527,6 @@ filegroup(
         "variable_ops.h",
         "variant_ops_util.cc",
         "variant_ops_util.h",
-    ] + [
         "//tensorflow/c/kernels:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:non_max_suppression_op.cc",
         "//tensorflow/core/kernels/image:non_max_suppression_op.h",

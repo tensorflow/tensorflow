@@ -27,12 +27,14 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
 #include "xla/backends/cpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/cpu/runtime/all_to_all_thunk.h"
@@ -61,16 +63,28 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_convolution_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
-#include "xla/backends/cpu/xnnpack_config.pb.h"
+#include "xla/backends/cpu/xnn_fusion_options.pb.h"
+#include "xla/backends/cpu/ynn_fusion_options.pb.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
+
+#ifdef XLA_YNNPACK
+#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/ynn_emitter.h"
+#endif  // XLA_YNNPACK
 
 namespace xla::cpu {
 
@@ -163,6 +177,8 @@ static absl::StatusOr<Thunk::Kind> ProtoThunkToThunkKind(
       return Thunk::Kind::kPartitionId;
     case ThunkProto::ImplCase::kReplicaIdThunk:
       return Thunk::Kind::kReplicaId;
+    case ThunkProto::ImplCase::kYnnFusionThunk:
+      return Thunk::Kind::kYnnFusion;
     case ThunkProto::ImplCase::IMPL_NOT_SET:
       return Internal("Thunk kind not set.");
   }
@@ -343,6 +359,7 @@ class ThunkSerDesProtobuf : public SerDesBase<Thunk> {
  public:
   // Buffer allocations and resources are not needed for serialization.
   explicit ThunkSerDesProtobuf(
+      const HloModule* hlo_module = nullptr,
       const std::vector<BufferAllocation>* buffer_allocations = nullptr,
       const std::vector<std::shared_ptr<Resource>>* thunk_resources = nullptr);
   absl::StatusOr<std::string> Serialize(const Thunk& thunk) override;
@@ -355,16 +372,18 @@ class ThunkSerDesProtobuf : public SerDesBase<Thunk> {
       const ThunkProto& proto) const;
 
  private:
-  // TODO(basiol) remove NOLINT when this actually gets used
-  const std::vector<BufferAllocation>* buffer_allocations_;  // NOLINT
+  const HloModule* hlo_module_;
+  const std::vector<BufferAllocation>* buffer_allocations_;
 
   const std::vector<std::shared_ptr<Resource>>* thunk_resources_;
 };
 
 ThunkSerDesProtobuf::ThunkSerDesProtobuf(
+    const HloModule* hlo_module,
     const std::vector<BufferAllocation>* buffer_allocations,
     const std::vector<std::shared_ptr<Resource>>* thunk_resources)
-    : buffer_allocations_(buffer_allocations),
+    : hlo_module_(hlo_module),
+      buffer_allocations_(buffer_allocations),
       thunk_resources_(thunk_resources) {}
 
 absl::StatusOr<std::string> ThunkSerDesProtobuf::Serialize(const Thunk& thunk) {
@@ -720,6 +739,28 @@ static absl::Status ToProto(const WhileThunk& thunk, ThunkProto& proto) {
   return absl::OkStatus();
 }
 
+#ifdef XLA_YNNPACK
+static absl::Status ToProto(const YnnFusionThunk& thunk, ThunkProto& proto) {
+  YnnFusionThunkProto* ynn_fusion_proto = proto.mutable_ynn_fusion_thunk();
+  ynn_fusion_proto->mutable_options()->set_use_threadpool(
+      thunk.options().use_threadpool);
+  ynn_fusion_proto->set_instruction_id(thunk.hlo()->unique_id());
+
+  for (const YnnFusionThunk::Argument& argument : thunk.arguments()) {
+    TF_RETURN_IF_ERROR(
+        SerializeSliceShapeIntoProto(argument.slice, argument.shape,
+                                     ynn_fusion_proto->add_arguments_shapes()));
+  }
+
+  for (const YnnFusionThunk::Result& result : thunk.results()) {
+    TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+        result.slice, result.shape, ynn_fusion_proto->add_results_shapes()));
+  }
+
+  return absl::OkStatus();
+}
+#endif  // XLA_YNNPACK
+
 static absl::Status ToProto(const XnnFusionThunk& thunk, ThunkProto& proto) {
   // TODO(basioli) XnnFusionThunk is not serializable because it contains
   // a builder function that is not serializable.
@@ -980,6 +1021,12 @@ absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
                   internal::LogicalIdKind::kReplicaId>&>(thunk)),
           proto));
       break;
+#ifdef XLA_YNNPACK
+    case Thunk::Kind::kYnnFusion:
+      TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
+          tsl::down_cast<const YnnFusionThunk&>(thunk), proto));
+      break;
+#endif  // XLA_YNNPACK
     default:
       return absl::UnimplementedError(
           absl::StrFormat("ToProto is not implemented for thunk kind: %s",
@@ -1086,9 +1133,10 @@ ReduceScatterThunkFromProto(
 }
 
 static absl::StatusOr<std::unique_ptr<CallThunk>> CallThunkFromProto(
-    const ThunkProto& proto,
-    const std::vector<BufferAllocation>& buffer_allocations) {
-  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(&buffer_allocations);
+    const ThunkProto& proto, const HloModule* hlo_module,
+    const std::vector<BufferAllocation>* buffer_allocations) {
+  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(hlo_module,
+                                                    buffer_allocations);
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ThunkSequence> call_sequence,
@@ -1100,9 +1148,10 @@ static absl::StatusOr<std::unique_ptr<CallThunk>> CallThunkFromProto(
 
 static absl::StatusOr<std::unique_ptr<ConditionalThunk>>
 ConditionalThunkFromProto(
-    const ThunkProto& proto,
-    const std::vector<BufferAllocation>& buffer_allocations) {
-  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(&buffer_allocations);
+    const ThunkProto& proto, const HloModule* hlo_module,
+    const std::vector<BufferAllocation>* buffer_allocations) {
+  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(hlo_module,
+                                                    buffer_allocations);
 
   std::vector<ThunkSequence> branch_sequences;
   for (const ThunkSequenceProto& branch_sequence_proto :
@@ -1113,10 +1162,10 @@ ConditionalThunkFromProto(
   }
   TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice branch_index_buffer,
-      BufferAllocation::Slice::FromProto(
-          proto.conditional_thunk().branch_index_buffer(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice branch_index_buffer,
+                      BufferAllocation::Slice::FromProto(
+                          proto.conditional_thunk().branch_index_buffer(),
+                          *buffer_allocations));
 
   return ConditionalThunk::Create(std::move(info),
                                   std::move(branch_index_buffer),
@@ -1479,9 +1528,10 @@ static absl::StatusOr<std::unique_ptr<TopKThunk>> TopKThunkFromProto(
 }
 
 static absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunkFromProto(
-    const ThunkProto& proto,
-    const std::vector<BufferAllocation>& buffer_allocations) {
-  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(&buffer_allocations);
+    const ThunkProto& proto, const HloModule* hlo_module,
+    const std::vector<BufferAllocation>* buffer_allocations) {
+  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(hlo_module,
+                                                    buffer_allocations);
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ThunkSequence> cond_sequence,
@@ -1495,7 +1545,7 @@ static absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunkFromProto(
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice cond_buffer,
       BufferAllocation::Slice::FromProto(proto.while_thunk().cond_buffer(),
-                                         buffer_allocations));
+                                         *buffer_allocations));
 
   std::optional<int64_t> trip_count = std::nullopt;
   if (proto.while_thunk().trip_count().contains_value()) {
@@ -1506,6 +1556,86 @@ static absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunkFromProto(
                             std::move(*cond_sequence),
                             std::move(*body_sequence), trip_count);
 }
+
+#ifdef XLA_YNNPACK
+static absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunkFromProto(
+    const ThunkProto& proto, const HloModule* hlo_module,
+    const std::vector<BufferAllocation>& buffer_allocations) {
+  const YnnFusionThunkProto& ynn_fusion_proto = proto.ynn_fusion_thunk();
+
+  YnnFusionThunk::Options options = {
+      ynn_fusion_proto.options().use_threadpool(),
+  };
+
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  const HloInstruction* hlo = std::invoke([&]() -> const HloInstruction* {
+    for (const HloComputation* computation : hlo_module->computations()) {
+      for (const HloInstruction* instruction : computation->instructions()) {
+        if (instruction->unique_id() == ynn_fusion_proto.instruction_id()) {
+          return instruction;
+        }
+      }
+    }
+    return nullptr;
+  });
+
+  if (hlo == nullptr) {
+    return Internal(
+        "HLO instruction with unique id %d not found in the HLO module",
+        ynn_fusion_proto.instruction_id());
+  }
+
+  std::vector<YnnFusionThunk::Argument> arguments;
+  for (auto& argument_shape_proto : ynn_fusion_proto.arguments_shapes()) {
+    TF_ASSIGN_OR_RETURN(auto argument_shape,
+                        DeserializeSliceShapeFromProto(argument_shape_proto,
+                                                       buffer_allocations));
+    arguments.push_back(
+        YnnFusionThunk::Argument{argument_shape.first, argument_shape.second});
+  }
+
+  std::vector<YnnFusionThunk::Result> results;
+  for (auto& result_shape_proto : ynn_fusion_proto.results_shapes()) {
+    TF_ASSIGN_OR_RETURN(
+        auto result_shape,
+        DeserializeSliceShapeFromProto(result_shape_proto, buffer_allocations));
+    results.push_back(
+        YnnFusionThunk::Result{result_shape.first, result_shape.second});
+  }
+
+  absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
+      absl::Span<const se::DeviceMemoryBase> arguments_buffers)>
+      builder;
+  absl::Span<const int64_t> captured_arguments_ids;
+  if (hlo->opcode() == HloOpcode::kDot) {
+    const HloDotInstruction* dot = Cast<HloDotInstruction>(hlo);
+    // TODO(b/455903737): If we know the RHS is a constant, we should capture it
+    // here.
+    bool capture_rhs = false;
+    // Construct YNNPACK subgraph builder from the dot instruction.
+    TF_ASSIGN_OR_RETURN(builder, EmitYnnDotBuilder(dot, capture_rhs));
+    static constexpr int64_t kCapturedIds[1] = {1};
+    if (capture_rhs) {
+      captured_arguments_ids = kCapturedIds;
+    }
+  } else {
+    auto* fusion = Cast<HloFusionInstruction>(hlo);
+    const HloComputation* computation =
+        fusion->fused_instructions_computation();
+    // Construct YNNPACK subgraph builder from the fusion computation.
+    TF_ASSIGN_OR_RETURN(builder, EmitYnnFusionBuilder(computation));
+  }
+
+  return YnnFusionThunk::Create(
+      std::move(options), std::move(info), hlo, std::move(arguments),
+      std::move(results),
+      [b = std::move(builder)](auto, auto, auto arg_buffers) mutable {
+        return b(arg_buffers);
+      },
+      captured_arguments_ids);
+}
+#endif  // XLA_YNNPACK
 
 static absl::StatusOr<std::unique_ptr<XnnFusionThunk>> XnnFusionThunkFromProto(
     const ThunkProto& proto,
@@ -1661,9 +1791,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
       }
     }
     case Thunk::Kind::kCall:
-      return CallThunkFromProto(proto, *buffer_allocations_);
+      return CallThunkFromProto(proto, hlo_module_, buffer_allocations_);
     case Thunk::Kind::kConditional:
-      return ConditionalThunkFromProto(proto, *buffer_allocations_);
+      return ConditionalThunkFromProto(proto, hlo_module_, buffer_allocations_);
     case Thunk::Kind::kConvolution:
       return ConvolutionThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kCopy:
@@ -1687,7 +1817,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
     case Thunk::Kind::kTopK:
       return TopKThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kWhile:
-      return WhileThunkFromProto(proto, *buffer_allocations_);
+      return WhileThunkFromProto(proto, hlo_module_, buffer_allocations_);
     case Thunk::Kind::kXnnFusion: {
       TF_ASSIGN_OR_RETURN(
           auto xnn_fusion_kind,
@@ -1705,6 +1835,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
       return PartitionIdThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kReplicaId:
       return ReplicaIdThunkFromProto(proto, *buffer_allocations_);
+#ifdef XLA_YNNPACK
+    case Thunk::Kind::kYnnFusion:
+      return YnnFusionThunkFromProto(proto, hlo_module_, *buffer_allocations_);
+#endif  // XLA_YNNPACK
     default:
       return absl::Status(absl::StatusCode::kInvalidArgument,
                           absl::StrFormat("Unsupported thunk kind: %s",
@@ -1714,8 +1848,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
 }
 
 ThunkSequenceSerDesProtobuf::ThunkSequenceSerDesProtobuf(
+    const HloModule* hlo_module,
     const std::vector<BufferAllocation>* buffer_allocations)
-    : buffer_allocations_(buffer_allocations) {}
+    : hlo_module_(hlo_module), buffer_allocations_(buffer_allocations) {}
 
 absl::StatusOr<std::string> ThunkSequenceSerDesProtobuf::Serialize(
     const ThunkSequence& thunk_sequence) {
@@ -1735,7 +1870,7 @@ ThunkSequenceSerDesProtobuf::Deserialize(const std::string& serialized) {
 
 absl::StatusOr<ThunkSequenceProto> ThunkSequenceSerDesProtobuf::ToProto(
     const ThunkSequence& thunk_sequence) const {
-  ThunkSerDesProtobuf thunk_serdes(buffer_allocations_);
+  ThunkSerDesProtobuf thunk_serdes(hlo_module_, buffer_allocations_);
   ThunkSequenceProto proto;
   proto.mutable_thunks()->Reserve(thunk_sequence.size());
 
@@ -1797,7 +1932,7 @@ ThunkSequenceSerDesProtobuf::FromProto(const ThunkSequenceProto& proto) const {
 
   size_t thunk_index = 0;
   for (const ThunkProto& thunk_proto : proto.thunks()) {
-    ThunkSerDesProtobuf thunk_serdes(buffer_allocations_,
+    ThunkSerDesProtobuf thunk_serdes(hlo_module_, buffer_allocations_,
                                      &thunk_resources[thunk_index++]);
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk,
                         thunk_serdes.FromProto(thunk_proto));

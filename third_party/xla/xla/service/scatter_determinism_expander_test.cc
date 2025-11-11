@@ -883,7 +883,7 @@ TEST_F(ScatterDeterminismExpanderTest, ScatterAddHloVerificationTest) {
     CHECK-DAG:   %[[CONSTANT:.*]] = s32[1]{0} constant({2})
     CHECK-DAG:   %[[BROADCAST0:.*]] = s32[2,1]{1,0} broadcast(%[[CONSTANT]]), dimensions={1}
     CHECK-DAG:   %[[SELECT1:.*]] = s32[2,1]{1,0} select(%[[BROADCAST3]], %[[RESHAPE5]], %[[BROADCAST0]])
-    CHECK-DAG:   %[[CONSTANT2:.*]] = s32[] constant(0)
+    CHECK-DAG:   %[[CONSTANT2:.*]] = s32[] constant(2)
     CHECK-DAG:   %[[BROADCAST1:.*]] = s32[1]{0} broadcast(%[[CONSTANT2]]), dimensions={}
     CHECK-DAG:   %[[SLICE1:.*]] = s32[1]{0} slice(%[[GET_TUPLE_ELEMENT]]), slice={[0:1]}
     CHECK-DAG:   %[[CONCATENATE1:.*]] = s32[2]{0} concatenate(%[[BROADCAST1]], %[[SLICE1]]), dimensions={0}
@@ -1082,6 +1082,71 @@ TEST_F(ScatterDeterminismExpanderTest, ScalarUpdateChangesVectorDim) {
   TF_ASSERT_OK_AND_ASSIGN(
       bool result, RunHloPass(&scatter_determinism_expander, module.get()));
   EXPECT_TRUE(result);
+}
+
+TEST_F(ScatterDeterminismExpanderTest, UnsupportedScatterIndicesType) {
+  const char* const kModuleStr = R"(
+    HloModule m
+
+    update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+      lhs = s32[] parameter(0)
+      ROOT rhs = s32[] parameter(1)
+    }
+
+    ENTRY main {
+      operand = s32[129,3]{1,0} parameter(0)
+      indices = u8[6,2]{1,0} parameter(1)
+      updates = s32[6,1,1]{2,1,0} parameter(2)
+      ROOT scatter = s32[129,3]{1,0} scatter(operand, indices, updates),
+          to_apply=update_s32,
+          update_window_dims={1,2},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0,1},
+          index_vector_dim=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  ScatterDeterminismExpander scatter_determinism_expander;
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(ScatterDeterminismExpanderTest, UnsupportedVariadicScatter) {
+  const char* const kModuleStr = R"(
+    HloModule MultioutputScatter
+
+    update {
+      lhs0 = s32[] parameter(0)
+      lhs1 = f32[] parameter(1)
+      rhs0 = s32[] parameter(2)
+      rhs1 = f32[] parameter(3)
+      ROOT tuple = (s32[], f32[]) tuple(rhs0, rhs1)
+    }
+
+    ENTRY main {
+      operand0 = s32[3,3,2] parameter(0)
+      operand1 = f32[3,3,2] parameter(1)
+      indices = s32[2,2] parameter(2)
+      updates0 = s32[2,2] parameter(3)
+      updates1 = f32[2,2] parameter(4)
+      ROOT scatter = (s32[3,3,2], f32[3,3,2]) scatter(operand0, operand1, indices, updates0, updates1),
+          to_apply=update,
+          update_window_dims={1},
+          inserted_window_dims={0,1},
+          scatter_dims_to_operand_dims={0,1},
+          index_vector_dim=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  ScatterDeterminismExpander scatter_determinism_expander;
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  EXPECT_FALSE(result);
 }
 
 }  // namespace

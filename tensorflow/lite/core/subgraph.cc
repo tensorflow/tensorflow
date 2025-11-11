@@ -322,6 +322,7 @@ void Subgraph::CleanupNode(int node_index) {
   TfLiteIntArrayFree(node.intermediates);
   if (node.builtin_data) free(node.builtin_data);
   OpFree(registration, node.user_data);
+  node.user_data = nullptr;
   node.builtin_data = nullptr;
 }
 
@@ -523,7 +524,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
 
   // The subgraph is taking ownership of the external registration, in case the
   // user has supplied an opaque delegate.
-  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+  if (TfLiteDelegateIsOpaque(delegate)) {
     // If the user has supplied an opaque delegate, then they _must_ also use
     // TfLiteOperator.
     if (!registration.registration_external) {
@@ -594,7 +595,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
         int node_index;
 
         void* delegate_params = nullptr;
-        if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+        if (TfLiteDelegateIsOpaque(delegate)) {
           TfLiteOpaqueDelegateParams* opaque_params =
               CreateOpaqueDelegateParams(delegate, node_subset);
           delegate_params = opaque_params;
@@ -991,7 +992,8 @@ TfLiteStatus Subgraph::AllocateTensors(InliningStrategy auto_inline) {
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
 
   if (options_ && options_->GetShloCompositeInlining() &&
-      auto_inline == InliningStrategy::kAutoInline) {
+      auto_inline == InliningStrategy::kAutoInline &&
+      !IsDelegationSkippable() && !IsFullyDelegated()) {
     TF_LITE_ENSURE_STATUS(InlineCompositeNodes());
   }
 
@@ -1916,7 +1918,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     int tensor_index, TfLiteType type, const char* name, const size_t ndims,
     const int* dims, TfLiteQuantization quantization, const char* buffer,
     size_t bytes, const Allocation* allocation, TfLiteSparsity* sparsity,
-    const size_t buffer_identifier) {
+    const size_t buffer_identifier, const size_t external_buffer_id) {
   // Ensure quantization cleanup on failure.
   ScopedTfLiteQuantization scoped_quantization(&quantization);
   ScopedTfLiteSparsity scoped_sparsity(sparsity);
@@ -1966,6 +1968,10 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
   }
   if (buffer_identifier != kTfLiteNoBufferIdentifier) {
     tensor_buffer_identifiers_[tensor_index] = buffer_identifier;
+  }
+  if (external_buffer_id != kTfLiteNoBufferIdentifier &&
+      external_buffer_id != 0) {
+    tensor_external_buffer_ids_[tensor_index] = external_buffer_id;
   }
   return kTfLiteOk;
 }

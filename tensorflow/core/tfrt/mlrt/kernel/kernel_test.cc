@@ -399,7 +399,8 @@ TEST(KernelTest, CreateExecuteOpError) {
 
   EXPECT_THAT(
       execution_context.status(),
-      absl_testing::StatusIs(absl::StatusCode::kInternal, "test error"));
+      absl_testing::StatusIs(absl::StatusCode::kInternal,
+                             "test error\n\tError from kernel: TestError"));
 }
 
 REGISTER_OP("TestAsyncIdentity")

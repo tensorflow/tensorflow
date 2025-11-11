@@ -17,11 +17,13 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_GPUBLAS_LT_MATMUL_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -54,6 +56,11 @@ class CublasLtMatmulThunk : public Thunk {
   std::optional<const BufferAllocation::Slice> workspace() const {
     return workspace_;
   }
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+  static absl::StatusOr<std::unique_ptr<Thunk>> FromProto(
+      Thunk::ThunkInfo thunk_info, const CublasLtMatmulThunkProto& proto,
+      absl::Span<const BufferAllocation> allocations);
 
  protected:
   CublasLtMatmulThunk(const CublasLtMatmulThunk& rhs);

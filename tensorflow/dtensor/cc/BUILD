@@ -313,7 +313,7 @@ cc_library(
         "//tensorflow/c/eager:c_api_internal",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_xla//xla/pjrt:pjrt_future",
+        "@local_xla//xla:future",
     ],
 )
 

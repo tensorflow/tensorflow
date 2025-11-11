@@ -13,7 +13,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_NVSHMEM_COLLECTIVE_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_NVSHMEM_COLLECTIVE_THUNK_H_
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 
@@ -22,7 +21,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -68,7 +66,7 @@ class NvshmemCollectiveThunk : public Thunk {
                                             se::Stream& stream) = 0;
   virtual const CollectiveConfig& config() const = 0;
   virtual AsyncStreamKind GetAsyncStreamKind() const {
-    return AsyncStreamKind::kCollective;
+    return AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
   }
 
  private:
@@ -95,7 +93,8 @@ class NvshmemCollectiveDoneThunk : public Thunk {
 
  private:
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-  AsyncStreamKind async_stream_kind_ = AsyncStreamKind::kCollective;
+  AsyncStreamKind async_stream_kind_ =
+      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
 };
 
 //===----------------------------------------------------------------------===//

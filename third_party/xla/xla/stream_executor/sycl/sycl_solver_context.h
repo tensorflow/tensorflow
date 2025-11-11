@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
-namespace stream_executor {
+namespace stream_executor::sycl {
 
 class SyclSolverContext : public GpuSolverContext {
  public:
@@ -35,6 +35,6 @@ class SyclSolverContext : public GpuSolverContext {
   explicit SyclSolverContext();
 };
 
-}  // namespace stream_executor
+}  // namespace stream_executor::sycl
 
 #endif  // XLA_STREAM_EXECUTOR_SYCL_SYCL_SOLVER_CONTEXT_H_

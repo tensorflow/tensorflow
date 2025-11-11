@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_EXECUTOR_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_EXECUTOR_H_
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -65,8 +67,7 @@ class CudaExecutor : public GpuExecutor {
   absl::Status Init() override;
   bool SynchronizeAllActivity() override;
   absl::StatusOr<DeviceMemoryBase> GetMemoryRange(
-      const DeviceMemoryBase& location) override;
-
+      const DeviceMemoryBase& location) const override;
   absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
       Stream* stream, bool use_delay_kernel) override;
   absl::StatusOr<DeviceMemoryBase> GetSymbol(
@@ -114,7 +115,7 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) override;
 
   Stream* FindAllocatedStream(void* gpu_stream) override {
-    absl::MutexLock lock(&alive_gpu_streams_mu_);
+    absl::MutexLock lock(alive_gpu_streams_mu_);
     auto it = alive_gpu_streams_.find(gpu_stream);
     if (it == alive_gpu_streams_.end()) {
       return nullptr;
@@ -132,12 +133,79 @@ class CudaExecutor : public GpuExecutor {
   // Creates, allocates, and copies a CUtensorMap object for the given TMA
   // descriptor. Returns a TensorMap, which is 128 bytes of storage, to be
   // passed by value to the kernel.
-  absl::StatusOr<TensorMap> CreateTensorMap(TmaDescriptor tma_desc,
+  absl::StatusOr<TensorMap> CreateTensorMap(const TmaDescriptor& tma_desc,
                                             void* global_address) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
       MemoryType type) override;
 
+  // Returns the granularity which is the minimum unit of memory that can be
+  // allocated with VMM API. In order to map the memory slices to multicast
+  // object, the offset of the slices should be aligned with this granularity.
+  absl::StatusOr<size_t> GetVmmGranularity() const;
+
+  int GetGpuStreamPriority(StreamPriority priority) override;
+
+  // RAII wrapper for a VMM memory handle.
+  class VmmMemoryHandle {
+   public:
+    explicit VmmMemoryHandle(uint64_t handle) : handle_(handle) {}
+    ~VmmMemoryHandle();
+    VmmMemoryHandle(const VmmMemoryHandle&) = delete;
+    VmmMemoryHandle& operator=(const VmmMemoryHandle&) = delete;
+    VmmMemoryHandle(VmmMemoryHandle&&);
+    VmmMemoryHandle& operator=(VmmMemoryHandle&&);
+
+    uint64_t handle() const { return handle_; }
+
+   private:
+    absl::Status Release();
+    uint64_t handle_;
+  };
+
+  class CudaMulticastMemory : public MulticastMemory {
+   public:
+    CudaMulticastMemory()
+        : handle_(0),
+          padded_size_(0),
+          granularity_(0),
+          num_devices_(0),
+          subscribed_devices_(0) {}
+    ~CudaMulticastMemory() override;
+
+    absl::Status SubscribeDevice(int device_number) override;
+
+    absl::StatusOr<void*> MapMemory(const DeviceMemoryBase& location,
+                                    const GpuExecutor* gpu_executor) override;
+
+   private:
+    friend class CudaExecutor;
+    absl::Status Initialize(uint64_t size, int num_devices,
+                            const GpuExecutor* gpu_executor);
+    CUmemGenericAllocationHandle handle_;
+    uint64_t padded_size_;
+    uint64_t granularity_;
+    int num_devices_;
+    std::atomic<int> subscribed_devices_;
+    absl::flat_hash_map<int, CUdeviceptr> mapped_devices_
+        ABSL_GUARDED_BY(mapped_devices_mu_);
+    absl::Mutex mapped_devices_mu_;
+  };
+
+  absl::StatusOr<std::unique_ptr<MulticastMemory>> CreateMulticastMemory(
+      uint64_t size, int num_devices) const override;
+
+  // Returns a handle to the given memory if it was allocated with VMM API.
+  absl::StatusOr<VmmMemoryHandle> RetainVmmMemoryHandle(void* ptr) const;
+
+  bool is_multicast_supported() const override {
+    return is_multicast_supported_;
+  }
+
  private:
+  absl::Status VmmDeallocateMemory(void* ptr);
+
+  absl::StatusOr<void*> VmmAllocateMemory(uint64_t bytes);
+
   // Loads a module in cubin format.
   absl::StatusOr<ModuleHandle> LoadModuleFromCuBin(const char* cubin)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
@@ -151,6 +219,12 @@ class CudaExecutor : public GpuExecutor {
 
   // Returns true if a delay kernel is supported.
   absl::StatusOr<bool> DelayKernelIsSupported();
+
+  bool is_vmm_supported_ = false;
+
+  bool is_rdma_supported_ = false;
+
+  bool is_multicast_supported_ = false;
 
   // Guards the in-memory-module mapping.
   absl::Mutex in_memory_modules_mu_;
@@ -208,6 +282,13 @@ class CudaExecutor : public GpuExecutor {
 
   // CudaContext for this device.
   CudaContext* cuda_context_;
+
+  // Cached CUDA stream priority range. Initialized once on first non-default
+  // request and then reused for subsequent calls.
+  absl::once_flag stream_priority_once_;
+  int stream_priority_lowest_ = 0;
+  int stream_priority_highest_ = 0;
+  bool stream_priority_query_ok_ = false;
 };
 
 }  // namespace stream_executor::gpu

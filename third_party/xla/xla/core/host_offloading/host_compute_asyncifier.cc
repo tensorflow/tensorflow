@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
 namespace xla {
@@ -59,7 +60,7 @@ void RemoveTilesAndMemorySpaces(HloComputation* computation) {
 }
 }  // namespace
 
-absl::StatusOr<bool> HostComputeAsyncifier::Run(
+absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool modified = false;

@@ -581,10 +581,11 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> BatchNormExpander::Run(
+absl::StatusOr<bool> BatchNormExpander::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(2, "BatchNormExpander::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(
+      2, "BatchNormExpander::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
@@ -594,7 +595,8 @@ absl::StatusOr<bool> BatchNormExpander::Run(
       changed = true;
     }
   }
-  XLA_VLOG_LINES(2, "BatchNormExpander::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(2,
+                 "BatchNormExpander::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

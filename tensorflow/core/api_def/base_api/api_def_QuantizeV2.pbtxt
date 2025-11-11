@@ -42,6 +42,12 @@ If the `axis` attribute is specified, this will be a 1-D tensor whose size
 matches the `axis` dimension of the input and output tensors.
 END
   }
+  attr {
+    name: "round_mode"
+    description: <<END
+`round_mode='HALF_TO_EVEN'` only supported for mode 'SCALED'.
+END
+  }
   summary: "Quantize the \'input\' tensor of type float to \'output\' tensor of type \'T\'."
   description: <<END
 [min_range, max_range] are scalar floats that specify the range for

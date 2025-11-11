@@ -21,7 +21,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -74,6 +76,7 @@ class NVPTXCompilerTest : public HloTestBase {
     std::unique_ptr<GpuAliasInfo> alias_info =
         compiler.GetAliasInfo(gpu_device_info);
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, pointer_size, gpu_device_info,
+                                         &symbolic_expr_context_,
                                          alias_info.get())
                            .status());
 
@@ -88,6 +91,10 @@ class NVPTXCompilerTest : public HloTestBase {
         /*color_alignment=*/
         [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; });
   }
+
+ protected:
+  mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 class NVPTXCompilerTestTriton : public NVPTXCompilerTest {
@@ -175,9 +182,7 @@ ENTRY e {
   if (cc.IsAtLeastAmpere()) {
     MatchOptimizedHlo(hlo_string, R"(
 ; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: __triton_gemm
+; CHECK: __triton_nested_gemm_fusion
     )");
   } else {
     MatchOptimizedHlo(hlo_string, R"(

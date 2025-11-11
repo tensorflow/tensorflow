@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -31,8 +32,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-static absl::Status HostIOCallback(ffi::Token, ffi::Result<ffi::Token>,
-                                   ffi::Result<ffi::AnyBuffer>) {
+absl::Status HostIOCallback(ffi::Token, ffi::Result<ffi::Token>,
+                            ffi::Result<ffi::AnyBuffer>) {
   return absl::OkStatus();
 }
 
@@ -52,8 +53,8 @@ class CpuFFITest : public HloPjRtTestBase {
 };
 
 TEST_F(CpuFFITest, EmulateImpureCallbackWithTokens) {
-  auto module = CreateNewVerifiedModule();
-  auto builder = HloComputation::Builder(TestName());
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
 
   HloInstruction* p0 = builder.AddInstruction(HloInstruction::CreateToken());
   auto instr = Cast<HloCustomCallInstruction>(
@@ -66,7 +67,7 @@ TEST_F(CpuFFITest, EmulateImpureCallbackWithTokens) {
   instr->set_custom_call_has_side_effect(true);
   module->AddEntryComputation(builder.Build());
 
-  TF_EXPECT_OK(Execute(std::move(module), {}).status());
+  TF_EXPECT_OK(Execute(std::move(module), {}));
 }
 
 }  // namespace

@@ -55,12 +55,14 @@ Please check python_init_repositories() in your WORKSPACE file.
             ctx.read(custom_requirements_path),
         )
     elif ctx.attr.local_wheel_workspaces:
+        base_requirements = ctx.read(requirements)
         local_wheel_requirements = _get_injected_local_wheels(
             ctx,
             version,
             ctx.attr.local_wheel_workspaces,
+            base_requirements,
         )
-        requirements_content = [ctx.read(requirements)] + local_wheel_requirements
+        requirements_content = [base_requirements] + local_wheel_requirements
         merged_requirements_content = "\n".join(requirements_content)
 
         requirements_with_local_wheels = "@{repo}//:{label}".format(
@@ -176,7 +178,12 @@ def _parse_python_version(version_str):
 def _get_injected_local_wheels(
         ctx,
         py_version,
-        local_wheel_workspaces):
+        local_wheel_workspaces,
+        base_requirements):
+    os_name = ctx.os.name
+    is_windows = "windows" in os_name.lower()
+    local_file_path_prefix = "file:" if is_windows else "file://"
+
     local_wheel_requirements = []
     py_ver_marker = "-cp%s-" % py_version.replace(".", "")
     py_major_ver_marker = "-py%s-" % py_version.split(".")[0]
@@ -199,9 +206,18 @@ def _get_injected_local_wheels(
                 )
 
     for wheel_name, wheel_path in wheels.items():
+        # Normalize `foo_bar` to `foo-bar`. We assume that, if `foo_bar`
+        # isn't present in requirements, it must be named `foo-bar`. The
+        # exact same distribution name needs to be used to ensure it is
+        # correctly overridden.
+        if "_" in wheel_name and wheel_name not in base_requirements:
+            local_package_name = wheel_name.replace("_", "-")
+        else:
+            local_package_name = wheel_name
         local_wheel_requirements.append(
-            "{wheel_name} @ file://{wheel_path}".format(
-                wheel_name = wheel_name,
+            "{pypi_package_name} @ {local_file_path_prefix}{wheel_path}".format(
+                local_file_path_prefix = local_file_path_prefix,
+                pypi_package_name = local_package_name,
                 wheel_path = wheel_path.realpath,
             ),
         )

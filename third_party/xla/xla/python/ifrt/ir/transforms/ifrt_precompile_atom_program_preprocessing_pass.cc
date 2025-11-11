@@ -177,7 +177,7 @@ void IfrtPrecompileAtomProgramPreprocessingPass::runOnOperation() {
     auto callee_module = llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
     mlir::OpPassManager pm(mlir::ModuleOp::getOperationName());
     if (module_type_attr == kIfrtModuleTypeXla) {
-      createIfrtCompileXlaPreprocessingPipeline(pm);
+      createIfrtCompileXlaPreprocessingPipeline(pm, compile_options);
     } else if (module_type_attr != kIfrtModuleTypeMpmdReshard) {
       return call_op.emitOpError()
              << "module type " << module_type_attr << " is not supported";

@@ -38,11 +38,13 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -87,7 +89,7 @@ TSL_LIB_GTL_DEFINE_INT_TYPE(ExecutionStreamId, uint64_t);
 // Unique identifier for async events. The same identifier is expected to be
 // shared between a pair of StartThunk and corresponding DoneThunk. It is used
 // to collect async regions for a CommandBufferThunk.
-TSL_LIB_GTL_DEFINE_INT_TYPE(AsyncEventsUniqueId, uint64_t)
+TSL_LIB_GTL_DEFINE_INT_TYPE(AsyncEventsUniqueId, uint64_t);
 
 // Thunk acts as the bridge between IrEmitter and GpuExecutable. It stores the
 // metadata IrEmitter generates for GpuExecutable to invoke an HloInstruction.
@@ -135,6 +137,8 @@ class Thunk {
     kAllToAll,
     kAllToAllDone,
     kAllToAllStart,
+    kBuffersDebugChecksum,
+    kBuffersDebugFloatCheck,
     kCholesky,
     kCollectiveBroadcast,
     kCollectiveBroadcastDone,
@@ -220,11 +224,14 @@ class Thunk {
     static absl::StatusOr<Thunk::ThunkInfo> FromProto(
         const ThunkInfoProto& proto);
 
-    static ThunkInfo WithProfileAnnotation(const HloInstruction* instr);
+    static ThunkInfo WithProfileAnnotation(const HloInstruction* instr,
+                                           ThunkId thunk_id);
 
     std::string profile_annotation;
 
     ExecutionStreamId execution_stream_id = kDefaultExecutionStreamId;
+
+    ThunkId thunk_id = ThunkId{0};
 
     // Serializes a ThunkInfo to a ThunkInfoProto.
     ThunkInfoProto ToProto() const;
@@ -495,6 +502,15 @@ class Thunk {
   // Precondition: Initialize(initialize_params) has been called.
   virtual absl::Status ExecuteOnStream(const ExecuteParams& params) = 0;
 
+  using BufferUses = absl::InlinedVector<BufferUse, 4>;
+
+  // Returns all device buffers used by the thunk.
+  //
+  // Does not propagate buffers from nested thunks.
+  //
+  // The order of the buffers in returned vector is consistent across calls.
+  virtual BufferUses buffer_uses() const { return {}; }
+
   static absl::string_view KindToString(Thunk::Kind kind);
 
   ExecutionStreamId execution_stream_id() const {
@@ -519,6 +535,14 @@ class Thunk {
   // Invokes `fn` with this thunk and all nested thunks.
   virtual void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const;
 
+  // Invokes `fn` with this thunk and all nested thunks.
+  virtual void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn);
+
+  // Recursively replaces all nested thunks with the result of applying `fn` to
+  // them.
+  virtual void TransformAllNestedThunks(
+      absl::FunctionRef<std::unique_ptr<Thunk>(std::unique_ptr<Thunk>)> fn) {}
+
   // A helper function to get the `GpuCollectives*` pointer from the
   // CollectiveExecuteParams.
   static absl::StatusOr<GpuCollectives* absl_nonnull> GetGpuCollectives(
@@ -538,11 +562,18 @@ class Thunk {
   // Serializes the thunk into a `ThunkProto`.
   virtual absl::StatusOr<ThunkProto> ToProto() const;
 
+  // Serializes the metadata of the thunk into a `ThunkMetadataProto`.
+  ThunkMetadataProto ToMetadataProto() const;
+
   // This declares a deserializer callback that `FromProto` Thunk factory
   // functions can use to deserialize sub messages.
   using Deserializer =
       absl::AnyInvocable<absl::StatusOr<std::unique_ptr<Thunk>>(
           const ThunkProto&) const>;
+
+  using DeserializerWithCustomAllocations =
+      absl::AnyInvocable<absl::StatusOr<std::unique_ptr<Thunk>>(
+          const ThunkProto&, absl::Span<const BufferAllocation>) const>;
 
   void add_control_predecessor(const Thunk* control_predecessor) {
     control_predecessors_.push_back(control_predecessor);
@@ -577,16 +608,14 @@ using ThunkSequence = std::vector<std::unique_ptr<Thunk>>;
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 
-// A struct that defines a shaped slice, i.e., a BufferAllocation::Slice and its
-// shape.
-struct ShapedSlice {
-  BufferAllocation::Slice slice;
-  Shape shape;
-};
-
 // Returns if the thunk implements a reduction collective (all-reduce or
 // reduce-scatter).
 bool IsReductionCollective(Thunk::Kind kind);
+
+// Returns the metadata from all thunks in the given thunk graph.
+ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
+    const Thunk& root_thunk);
+
 }  // namespace gpu
 }  // namespace xla
 

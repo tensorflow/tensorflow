@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/statusor.h"
@@ -50,7 +51,8 @@ absl::Status Run(const std::string& filename, int operand_id, int output_id) {
   if (print_all) {
     get_operand_id = 0;
   }
-  mlir::MLIRContext ctx;
+  mlir::MLIRContext mlir_context;
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
   VLOG(1) << "module:\n" << module->ToString() << std::endl;
   LOG(INFO) << "root instruction is: " << root->ToString() << std::endl;
   VLOG(1) << "root is tuple: " << root->shape().IsTuple();
@@ -74,7 +76,7 @@ absl::Status Run(const std::string& filename, int operand_id, int output_id) {
 
   for (int out_id : output_ids) {
     HloInstructionIndexing indexing =
-        ComputeOutputToInputIndexing(root, out_id, &ctx);
+        ComputeOutputToInputIndexing(root, out_id, &symbolic_expr_context);
     LOG(INFO) << absl::StrFormat("output id %d has %d indexing maps", out_id,
                                  indexing.indexing_maps.size());
     if (indexing.indexing_maps.empty()) {
@@ -120,7 +122,9 @@ int main(int argc, char** argv) {
       absl::StrCat(kUsage, "\n\n", tsl::Flags::Usage(argv[0], flag_list));
   bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   if (!parse_ok) {
-    LOG(QFATAL) << kUsageString;
+    // Print the usage using cerr to avoid truncation by LOG.
+    std::cerr << kUsageString;
+    return 1;
   }
   tsl::port::InitMain(kUsageString.c_str(), &argc, &argv);
   if (argc < 2) {

@@ -99,8 +99,8 @@ SolGPUCostModel::Config GetPlatformConfig(
     const se::DeviceDescription& device_info) {
   std::string key = device_info.name();
   if (!device_to_cfg.contains(key)) {
-    LOG(WARNING) << "No SoL config found for device: " << device_info.name()
-                 << ". Using default config.";
+    VLOG(1) << "No SoL config found for device: " << device_info.name()
+            << ". Using default config.";
     return device_to_cfg[kUnknownKey];
   }
   VLOG(2) << "[SoL] Using config for device: " << device_info.name();
@@ -138,6 +138,9 @@ SolGPUCostModel::Config GetPlatformConfig(
     } else if (option_name == kSolChunkSizeBytes &&
                absl::SimpleAtoi(option_value, &value) && value > 0) {
       config.chunk_size_bytes = value;
+    } else if (option_name == kSolPartitionSize &&
+               absl::SimpleAtoi(option_value, &value) && value > 0) {
+      config.partition_size = value;
     }
   }
   return config;

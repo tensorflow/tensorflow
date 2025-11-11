@@ -20,7 +20,8 @@ limitations under the License.
 #include <optional>
 
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"     // from @llvm-project
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 
 // This file contains legalizations common to mapping both TensorFlow and
 // TensorFlow Lite to TOSA.
@@ -197,7 +198,7 @@ std::optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
                                         Value input_value,
                                         ElementsAttr axes_elems,
                                         bool keep_dims,
-                                        StringRef nan_mode = "PROPAGATE");
+                                        std::optional<tosa::NanPropagationMode> nan_mode = tosa::NanPropagationMode::PROPAGATE);
 
 // Lowers ReduceMax to a sequence of TOSA ops.
 std::optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
@@ -206,7 +207,7 @@ std::optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
                                         Value input_value,
                                         ElementsAttr axes_elems,
                                         bool keep_dims,
-                                        StringRef nan_mode = "PROPAGATE");
+                                        std::optional<tosa::NanPropagationMode> nan_mode = tosa::NanPropagationMode::PROPAGATE);
 
 // Lowers ReduceProd to a sequence of TOSA ops.
 std::optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
@@ -235,7 +236,7 @@ std::optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
 // Lowers ResizeBilinear and ResizeNearestNeighbor to TOSA resize.
 std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
                                      RankedTensorType output_type,
-                                     Value input_value, StringRef mode,
+                                     Value input_value, tosa::ResizeMode mode,
                                      bool align_corners,
                                      bool half_pixel_centers);
 

@@ -59,39 +59,37 @@ namespace gpu {
 namespace {
 std::vector<TritonGemmConfig> GetDefaultTritonConfigs(
     se::GpuComputeCapability compute_capability, bool autotune_tma) {
-  if (std::holds_alternative<se::CudaComputeCapability>(compute_capability)) {
-    auto cuda_compute_capability =
-        std::get<se::CudaComputeCapability>(compute_capability);
-    std::vector<TritonGemmConfig> configs;
-
-    if (cuda_compute_capability.IsAtLeastBlackwell()) {
-      configs = *kBlackwellConfigs;
-    } else if (cuda_compute_capability.IsHopper() ||
-               cuda_compute_capability.IsAmpere()) {
-      configs = *kHopperAmpereConfigs;
-    } else {
-      configs = *kDefaultCudaConfigs;
-    }
-
-    if (!autotune_tma) {
-      return configs;
-    }
-
-    // Hopper+ devices support TMA. Add TMA parameterized configs.
-    std::vector<TritonGemmConfig> tma_parameterized_configs;
-    for (auto& config : configs) {
-      config.is_tma_allowed = false;
-      tma_parameterized_configs.push_back(config);
-
-      config.is_tma_allowed = true;
-      tma_parameterized_configs.push_back(config);
-    }
-    return tma_parameterized_configs;
-  }
-  if (std::holds_alternative<se::RocmComputeCapability>(compute_capability)) {
+  if (compute_capability.IsRocm()) {
     return *kDefaultRocmConfigs;
   }
-  return {};
+
+  CHECK(compute_capability.IsCuda());
+  auto* cuda_compute_capability = compute_capability.cuda_compute_capability();
+  std::vector<TritonGemmConfig> configs;
+
+  if (cuda_compute_capability->IsAtLeastBlackwell()) {
+    configs = *kBlackwellConfigs;
+  } else if (cuda_compute_capability->IsHopper() ||
+             cuda_compute_capability->IsAmpere()) {
+    configs = *kHopperAmpereConfigs;
+  } else {
+    configs = *kDefaultCudaConfigs;
+  }
+
+  if (!autotune_tma) {
+    return configs;
+  }
+
+  // Hopper+ devices support TMA. Add TMA parameterized configs.
+  std::vector<TritonGemmConfig> tma_parameterized_configs;
+  for (auto& config : configs) {
+    config.is_tma_allowed = false;
+    tma_parameterized_configs.push_back(config);
+
+    config.is_tma_allowed = true;
+    tma_parameterized_configs.push_back(config);
+  }
+  return tma_parameterized_configs;
 }
 
 }  // namespace
@@ -201,7 +199,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   HloCostAnalysis::Options priority_fusion_options;
   priority_fusion_options.count_multiple_input_accesses = true;
   PriorityFusion priority_fusion(
-      /*thread_pool=*/nullptr, gpu_device_info, priority_fusion_options);
+      /*thread_pool=*/nullptr, gpu_device_info, priority_fusion_options,
+      symbolic_expr_context_);
   TF_RETURN_IF_ERROR(priority_fusion.Run(hlo_module.get()).status());
 
   // If the priority fusion pass above skipped some instructions, turn them
@@ -209,7 +208,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   FusionWrapper fusion_wrapper(gpu_device_info);
   TF_RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
 
-  NestGemmFusion nest_gemm_fusion(gpu_device_info.gpu_compute_capability());
+  NestGemmFusion nest_gemm_fusion(gpu_device_info, symbolic_expr_context_);
   TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(hlo_module.get()).status());
   return hlo_module;
 }

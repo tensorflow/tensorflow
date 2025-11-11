@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
@@ -76,8 +77,7 @@ class KernelThunk : public Thunk {
               const emitters::KernelArguments& kernel_arguments,
               LaunchDimensions launch_dimensions,
               std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
-              std::optional<stream_executor::gpu::TmaMetadata> tma_metadata =
-                  std::nullopt);
+              stream_executor::gpu::TmaMetadata tma_metadata);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
@@ -107,9 +107,11 @@ class KernelThunk : public Thunk {
   // The shared memory required by the kernel.
   int64_t shmem_bytes() const { return shmem_bytes_; }
 
-  const std::optional<stream_executor::gpu::TmaMetadata>& tma_metadata() const {
+  const stream_executor::gpu::TmaMetadata& tma_metadata() const {
     return tma_metadata_;
   }
+
+  BufferUses buffer_uses() const override;
 
  private:
   // Buffer slices passed to the kernel as arguments.
@@ -131,7 +133,7 @@ class KernelThunk : public Thunk {
 
   // Map of argument index to TmaDescriptor used to create arguments to the
   // kernel.
-  const std::optional<stream_executor::gpu::TmaMetadata> tma_metadata_;
+  stream_executor::gpu::TmaMetadata tma_metadata_;
 
   // Loaded kernels for each `StreamExecutor`.
   mutable absl::Mutex mutex_;
@@ -149,7 +151,8 @@ class KernelThunk : public Thunk {
 class CustomKernelThunk : public Thunk {
  public:
   CustomKernelThunk(const HloInstruction* inst, CustomKernel custom_kernel,
-                    const emitters::KernelArguments& kernel_arguments);
+                    const emitters::KernelArguments& kernel_arguments,
+                    ThunkId thunk_id);
 
   std::string ToString(int indent) const override;
 
@@ -172,6 +175,8 @@ class CustomKernelThunk : public Thunk {
   }
 
   int64_t shmem_bytes() const { return custom_kernel_.shared_memory_bytes(); }
+
+  BufferUses buffer_uses() const override;
 
  private:
   // Buffer slices passed to the kernel as arguments.

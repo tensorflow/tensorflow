@@ -19,7 +19,10 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -53,6 +56,16 @@ class QuantizeOpModel : public SingleOpModel {
   template <typename T>
   std::vector<T> GetOutput() {
     return ExtractVector<T>(output_);
+  }
+
+  std::vector<int8_t> GetOutputUnpackedInt4() {
+    TfLiteTensor* t = interpreter_->tensor(output_);
+    int num_elements = NumElements(t);
+    std::vector<int8_t> unpacked_output(num_elements);
+    tensor_utils::UnpackPackedIntToInt8(t->data.int8, num_elements,
+                                        /*bit_width=*/4,
+                                        unpacked_output.data());
+    return unpacked_output;
   }
 
  protected:
@@ -122,6 +135,17 @@ TEST(QuantizeOpTest, INT16) {
   EXPECT_THAT(m.GetOutput<int16_t>(),
               ElementsAreArray({-12700, -12600, -600, -400, -200, 200, 400, 600,
                                 12700, 12800}));
+}
+TEST(QuantizeOpTest, INT4) {
+  // [-3.5, 4] -> scale=0.5, zero_point=0 for INT4
+  QuantizeOpModel m({TensorType_FLOAT32, {2, 5}},
+                    {TensorType_INT4, {2, 5}, 0, 0, 0.5, 0});
+
+  m.SetInput({-4.5, -3, -2.5, -2, -1.5, 2, 2.5, 3, 3.5, 4});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  // Range of int4 is [-8, 7]. Values over the range are clamped to the range.
+  EXPECT_THAT(m.GetOutputUnpackedInt4(),
+              ElementsAreArray({-8, -6, -5, -4, -3, 4, 5, 6, 7, 7}));
 }
 
 // Per-channel quantization tests.

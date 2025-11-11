@@ -74,7 +74,8 @@ absl::StatusOr<bool> RunFileCheckWithPatternFile(
   file_check_process.SetChannelAction(tsl::CHAN_STDIN, tsl::ACTION_PIPE);
   file_check_process.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!file_check_process.Start()) {
-    return absl::InternalError("couldn't start FileCheck");
+    return absl::InternalError("couldn't start FileCheck at " +
+                               file_check_path);
   }
 
   std::string standard_error;

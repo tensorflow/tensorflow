@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/types.h"
+#include "xla/types.h"  // IWYU pragma: keep
 
 namespace xla::gpu {
 namespace se = ::stream_executor;

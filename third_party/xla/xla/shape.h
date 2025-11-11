@@ -77,12 +77,6 @@ class Shape {
   Shape& operator=(const Shape&);
   Shape& operator=(Shape&&) noexcept;
 
-  // Constructs a shape from a ShapeProto. Results in an invalid shape (as
-  // opposed to crashing) if the proto has logically invalid fields.
-  ABSL_DEPRECATE_AND_INLINE()
-  explicit Shape(const ShapeProto& shape_proto)
-      : Shape(FromProto(shape_proto).value_or(Shape())) {}
-
   // Creates a token, opaque or buffer shape.
   // Precondition:
   //  - `element_type` must be TOKEN, OPAQUE_TYPE or BUFFER.
@@ -694,12 +688,6 @@ class ProgramShape {
   ProgramShape(ProgramShape&&);
   ProgramShape& operator=(const ProgramShape&);
   ProgramShape& operator=(ProgramShape&&);
-
-  // Constructs a ProgramShape from a ProgramShapeProto protobuf. If the
-  // ProgramShapeProto is invalid, an empty ProgramShape is constructed.
-  ABSL_DEPRECATE_AND_INLINE()
-  explicit ProgramShape(const ProgramShapeProto& program_shape_proto)
-      : ProgramShape(FromProto(program_shape_proto).value_or(ProgramShape())) {}
 
   // Creates a ProgramShape from a ProgramShapeProto protobuf.
   static absl::StatusOr<ProgramShape> FromProto(

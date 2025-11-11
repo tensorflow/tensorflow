@@ -18,10 +18,10 @@ limitations under the License.
 #include <cstdint>
 #include <exception>
 #include <string>
-#include <utility>
 
 // Placeholder for lineage logging import.
 // Placeholder for lineage logging additional import.
+#include "absl/base/call_once.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -36,6 +36,8 @@ namespace tensorflow {
 namespace saved_model {
 namespace python {
 
+// Helper variable for logging.
+
 namespace py = pybind11;
 
 class MetricException : public std::exception {
@@ -47,10 +49,9 @@ class MetricException : public std::exception {
   std::string message_ = "";
 };
 
+// Placeholder for a helper function for logging.
+
 void DefineMetricsModule(py::module main_module) {
-  // Deduplicate writes from lineage log. This should reduce the number of
-  // outgoing calls to UMB from lineage log. See b/415794129 for details.
-  // Placeholder for lineage logging enable dedupe call.
   auto m = main_module.def_submodule("metrics");
 
   m.doc() = "Python bindings for TensorFlow SavedModel and Checkpoint Metrics.";
@@ -207,6 +208,7 @@ void DefineMetricsModule(py::module main_module) {
         }
         metrics::SavedModelReadPathAndSingleprint().Set(
             path_and_singleprint.value());
+        // Placeholder for lineage logging dedup setup.
         // Placeholder for lineage logging input call.
       },
       py::kw_only(), py::arg("path"), py::arg("singleprint"),
@@ -243,6 +245,7 @@ void DefineMetricsModule(py::module main_module) {
         }
         metrics::SavedModelWritePathAndSingleprint().Set(
             path_and_singleprint.value());
+        // Placeholder for lineage logging dedup setup.
         // Placeholder for lineage logging output call.
       },
       py::kw_only(), py::arg("path"), py::arg("singleprint"),

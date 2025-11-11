@@ -125,10 +125,6 @@ struct HloProtoEvaluator {
   HloProtoEvaluator& WithComputation(
       std::unique_ptr<HloComputation> new_computation) {
     computation = new_computation.get();
-    computation->ClearUniqueIdInternal();
-    for (HloInstruction* inst : computation->instructions()) {
-      inst->ClearUniqueIdInternal();
-    }
     module.AddEmbeddedComputation(std::move(new_computation));
     return *this;
   }
@@ -168,7 +164,10 @@ struct HloProtoEvaluator {
       int64_t operand_handle = inst.operand_ids(i);
       std::unique_ptr<HloInstruction> operand =
           HloInstruction::CreateConstant(operands[i].Clone());
-      operand_map[operand_handle] = operand.get();
+      // FromProto uses local ids, so explicitly downcasts the unique id to
+      // a local id to avoid issues.
+      operand_map[HloInstruction::CalculateLocalId(operand_handle)] =
+          operand.get();
       builder.AddInstruction(std::move(operand));
     }
 
@@ -190,7 +189,6 @@ struct HloProtoEvaluator {
     TF_ASSIGN_OR_RETURN(
         auto new_instruction,
         HloInstruction::CreateFromProto(inst, operand_map, computation_map));
-    new_instruction->ClearUniqueIdInternal();
     builder.AddInstruction(std::move(new_instruction));
     auto computation = builder.Build();
     module.AddEntryComputation(std::move(computation));
@@ -413,7 +411,8 @@ struct PostorderDFSVisitor {
     for (int64_t operand_id : proto->operand_ids()) {
       const HloInstructionProto* operand =
           handle_to_instruction(operand_id).value();
-      auto operand_shape = std::make_unique<Shape>(operand->shape());
+      auto operand_shape = Shape::FromProto(operand->shape());
+      TF_CHECK_OK(operand_shape.status());
 
       if (operand_shape->IsArray() &&
           ShapeUtil::ElementsIn(*operand_shape) > kLargeShapeElementLimit &&
@@ -1717,7 +1716,12 @@ absl::StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
   TF_ASSIGN_OR_RETURN(auto* inst, builder_->LookUpInstructionByHandle(handle));
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(inst->opcode()));
   std::vector<Literal> operands;
-  auto output_shape = std::make_unique<const Shape>(inst->shape());
+  std::unique_ptr<Shape> output_shape;
+  {
+    TF_ASSIGN_OR_RETURN(auto output_shape_stack,
+                        Shape::FromProto(inst->shape()));
+    output_shape = std::make_unique<Shape>(std::move(output_shape_stack));
+  }
   switch (opcode) {
     case HloOpcode::kSlice:
     case HloOpcode::kConcatenate:

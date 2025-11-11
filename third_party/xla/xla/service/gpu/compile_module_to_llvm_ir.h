@@ -72,7 +72,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     const std::string& target_triple, const std::string& data_layout,
     const se::Platform* platform, const se::DeviceDescription& device_desc,
     const GpuAliasInfo* alias_info,
-    const BufferValue::SizeFunction& buffer_size_bytes_function,
+    BufferValue::SizeFunction buffer_size_bytes_function,
     bool split_constants_module = false);
 
 }  // namespace gpu

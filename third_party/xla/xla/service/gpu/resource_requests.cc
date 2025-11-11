@@ -68,6 +68,14 @@ absl::Status ResourceRequests::AddClique(const GpuCliqueKey& clique_key) {
   return absl::OkStatus();
 }
 
+std::vector<GpuCliqueKey> ResourceRequests::CliqueKeys() const {
+  std::vector<GpuCliqueKey> clique_keys;
+  for (const auto& [key, unused] : cliques_) {
+    clique_keys.push_back(key);
+  }
+  return clique_keys;
+}
+
 absl::StatusOr<Thunk::CollectiveCliques>
 ResourceRequests::AcquireCollectiveCliques(
     const Thunk::CollectiveExecuteParams& params, bool use_persistent_cliques) {
@@ -122,7 +130,7 @@ ResourceRequests::AcquireCollectiveCliques(
     // Check if we have a persistent clique for this key.
     if (use_persistent_cliques) {
       auto& pc = GetPersistentCliquesMap();
-      absl::MutexLock lock(&pc.mutex);
+      absl::MutexLock lock(pc.mutex);
 
       if (auto it = pc.cliques_map.find(r.key); it != pc.cliques_map.end()) {
         VLOG(2) << "Found persistent clique for key " << r.key.ToString();
@@ -151,7 +159,7 @@ ResourceRequests::AcquireCollectiveCliques(
     // it, it's 100% their fault and they will suffer.
     if (use_persistent_cliques) {
       auto& pc = GetPersistentCliquesMap();
-      absl::MutexLock lock(&pc.mutex);
+      absl::MutexLock lock(pc.mutex);
       pc.cliques_map[r.key] = clique;
     }
 

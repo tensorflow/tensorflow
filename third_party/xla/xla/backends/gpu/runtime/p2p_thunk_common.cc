@@ -26,24 +26,28 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/global_device_id.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 absl::Status ExecutionCounters::Initialize(se::StreamExecutor* executor,
                                            RunId run_id) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   CounterKey key = {executor, run_id};
   if (counters_.contains(key)) return absl::OkStatus();
   counters_.emplace(key, 0);
@@ -52,7 +56,7 @@ absl::Status ExecutionCounters::Initialize(se::StreamExecutor* executor,
 
 absl::StatusOr<int64_t*> ExecutionCounters::GetCounter(
     se::StreamExecutor* executor, RunId run_id) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   CounterKey key = {executor, run_id};
   auto counter = counters_.find(key);
   if (counter == counters_.end()) {
@@ -98,7 +102,8 @@ P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
 
   // All execution instances of a Send/Recv together form a replica group.
   const int64_t num_participants =
-      config.group_mode == CollectiveOpGroupMode::kCrossReplica
+      config.group_mode ==
+              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
           ? replica_count
           : partition_count;
   config.replica_groups.emplace_back();
@@ -176,15 +181,32 @@ AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr) {
     const auto it = fe_map.find(kCollectiveStreamAttrName);
     if (it != fe_map.end() && it->second == kCollectiveStreamP2P) {
       // Use any of the two p2p streams.
-      return AsyncStreamKind::kP2P0;
+      return AsyncStreamKind::ASYNC_STREAM_KIND_P2P0;
     }
   }
 
   const auto it = fe_map.find(kSendRecvPipelineAttr);
   if (it != fe_map.end() && it->second == "1") {
-    return AsyncStreamKind::kP2P1;
+    return AsyncStreamKind::ASYNC_STREAM_KIND_P2P1;
   }
-  return AsyncStreamKind::kP2P0;
+  return AsyncStreamKind::ASYNC_STREAM_KIND_P2P0;
+}
+
+// Retrieves the current collective ID (replica or partition ID) for the
+// executing device.
+absl::StatusOr<const int64_t> GetCollectiveCurrentId(
+    Thunk::CollectiveExecuteParams* collective_params,
+    const P2PConfig& config) {
+  GlobalDeviceId global_device_id = collective_params->global_device_id;
+  TF_ASSIGN_OR_RETURN(
+      const DeviceAssignment::LogicalID current_logical_id,
+      collective_params->device_assn->LogicalIdForDevice(global_device_id));
+  const int64_t current_id =
+      config.config.group_mode ==
+              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
+          ? current_logical_id.replica_id
+          : current_logical_id.computation_id;
+  return current_id;
 }
 
 }  // namespace gpu

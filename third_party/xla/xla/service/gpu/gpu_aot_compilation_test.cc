@@ -64,13 +64,12 @@ ENTRY main {
                           platform->ExecutorForDevice(0));
 
   // Compile AOT.
-  auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
   AotCompilationOptions aot_options(compiler->PlatformId());
   aot_options.set_executor(stream_exec);
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
-      compiler->CompileAheadOfTime(std::move(module_group), aot_options));
+      compiler->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
@@ -105,8 +104,6 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
                           platform->ExecutorForDevice(0));
 
-  auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
-
   // Stream executor is not passed as an option.
   Compiler::TargetConfig gpu_target_config(stream_exec);
   AotCompilationOptions aot_options(compiler->PlatformId());
@@ -114,7 +111,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
-      compiler->CompileAheadOfTime(std::move(module_group), aot_options));
+      compiler->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
@@ -222,13 +219,12 @@ TEST_F(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
                           platform->ExecutorForDevice(0));
 
   // Compile AOT.
-  auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
   AotCompilationOptions aot_options(compiler->PlatformId());
   aot_options.set_executor(stream_exec);
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
-      compiler->CompileAheadOfTime(std::move(module_group), aot_options));
+      compiler->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,

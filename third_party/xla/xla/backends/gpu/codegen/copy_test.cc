@@ -314,6 +314,24 @@ TEST_F(CopyFusionTest, BuildUpdateSliceDescriptor) {
   EXPECT_EQ(offset.byte_stride, 8 * 8 * sizeof(float));
 }
 
+TEST_F(CopyFusionTest, PackedSubByteTypesAreNotSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    dynamic_slice {
+      a = s4[20]{0:E(4)} parameter(0)
+      c = s32[] constant(10)
+      s = s4[10] dynamic-slice(a, c), dynamic_slice_sizes={10}
+    }
+
+    entry {
+      a = s4[20]{0:E(4)} parameter(0)
+      f = s4[10] fusion(a), kind=kLoop, calls=dynamic_slice
+    }
+  )"));
+  EXPECT_FALSE(
+      DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(GetFusion(module.get()))
+          .has_value());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

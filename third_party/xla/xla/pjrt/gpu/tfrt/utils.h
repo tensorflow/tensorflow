@@ -34,6 +34,7 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/maybe_owning.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -65,8 +65,14 @@ limitations under the License.
 
 namespace xla {
 
-PjRtFuture<>::Promise CreatePromiseForEvent(
-    tsl::AsyncValueRef<xla::GpuEvent> event);
+std::unique_ptr<se::Stream> MaybeCreateStream(se::StreamExecutor* executor);
+
+absl::Status WaitForEventOnStream(se::Stream* stream, se::Event* event);
+
+absl::StatusOr<std::shared_ptr<se::Event>> CreateCudaEvent(
+    TfrtGpuDevice* device);
+
+Future<> CreateFutureForEvent(tsl::AsyncValueRef<xla::GpuEvent> event);
 
 absl::StatusOr<Shape> GetDestinationDeviceShape(const Shape& host_shape,
                                                 TfrtGpuDevice* device,
@@ -157,7 +163,8 @@ using DeviceTopologyPair =
 
 absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     absl::string_view platform_name, LocalClient* xla_client, int node_id,
-    int num_nodes, gpu::GpuExecutableRunOptions* gpu_executable_run_options,
+    int num_nodes, int max_inflight_computations,
+    gpu::GpuExecutableRunOptions* gpu_executable_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
     std::optional<absl::string_view> mock_gpu_topology,
     std::optional<int> partition_index,
@@ -172,6 +179,13 @@ void EnqueueWorkWhenReady(
     tsl::thread::ThreadPool* pool,
     absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
     absl::AnyInvocable<void()> callee);
+
+absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
+GetLatestIncarnations(
+    absl::Span<PjRtDevice* const> devices,
+    const absl::flat_hash_map<int, IncarnationId>& incarnations);
+
+absl::Status BlockHostUntilDoneWithHostCallback(se::Stream* stream);
 
 }  // namespace xla
 

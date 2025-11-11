@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <limits>
+
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/types.h"
 
@@ -32,15 +35,19 @@ TEST(IntegralTypes, Basic) {
 }
 
 TEST(IntegralTypes, MinAndMaxConstants) {
-  EXPECT_EQ(static_cast<uint8>(kint8min), static_cast<uint8>(kint8max) + 1);
-  EXPECT_EQ(static_cast<uint16>(kint16min), static_cast<uint16>(kint16max) + 1);
-  EXPECT_EQ(static_cast<uint32>(kint32min), static_cast<uint32>(kint32max) + 1);
-  EXPECT_EQ(static_cast<uint64>(kint64min), static_cast<uint64>(kint64max) + 1);
+  EXPECT_EQ(static_cast<uint8_t>(std::numeric_limits<int8_t>::min()),
+            static_cast<uint8_t>(std::numeric_limits<int8_t>::max()) + 1);
+  EXPECT_EQ(static_cast<uint16_t>(std::numeric_limits<int16_t>::min()),
+            static_cast<uint16_t>(std::numeric_limits<int16_t>::max()) + 1);
+  EXPECT_EQ(static_cast<uint32_t>(std::numeric_limits<int32_t>::min()),
+            static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) + 1);
+  EXPECT_EQ(static_cast<uint64_t>(std::numeric_limits<int64_t>::min()),
+            static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1);
 
-  EXPECT_EQ(0, static_cast<uint8>(kuint8max + 1));
-  EXPECT_EQ(0, static_cast<uint16>(kuint16max + 1));
-  EXPECT_EQ(0, static_cast<uint32>(kuint32max + 1));
-  EXPECT_EQ(0, static_cast<uint64>(kuint64max + 1));
+  EXPECT_EQ(0, static_cast<uint8_t>(std::numeric_limits<uint8_t>::max() + 1));
+  EXPECT_EQ(0, static_cast<uint16_t>(std::numeric_limits<uint16_t>::max() + 1));
+  EXPECT_EQ(0, static_cast<uint32_t>(std::numeric_limits<uint32_t>::max() + 1));
+  EXPECT_EQ(0, static_cast<uint64_t>(std::numeric_limits<uint64_t>::max() + 1));
 }
 
 }  // namespace

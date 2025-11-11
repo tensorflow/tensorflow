@@ -210,11 +210,6 @@ inline bool StrContains(absl::string_view haystack, absl::string_view needle) {
   return absl::StrContains(haystack, needle);
 }
 
-// Returns the length of the given null-terminated byte string 'str'.
-// Returns 'string_max_len' if the null character was not found in the first
-// 'string_max_len' bytes of 'str'.
-size_t Strnlen(const char* str, const size_t string_max_len);
-
 //   ----- NON STANDARD, TF SPECIFIC METHOD -----
 // Converts "^2ILoveYou!" to "i_love_you_". More specifically:
 // - converts all non-alphanumeric characters to underscores

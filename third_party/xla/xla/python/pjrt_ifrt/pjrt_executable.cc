@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -26,30 +28,33 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/ffi/execution_context.h"
-#include "xla/ffi/type_id_registry.h"
+#include "xla/ffi/type_registry.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/layout.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/layout_mode.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
@@ -62,10 +67,13 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -120,20 +128,21 @@ GetFirstModuleOutputDimensions(
 
 // Returns the output shardings of the first module in a
 // `PjRtLoadedExecutable`.
-absl::StatusOr<std::optional<HloSharding>> GetFirstModuleOutputSharding(
+absl::StatusOr<std::optional<xla::HloSharding>> GetFirstModuleOutputSharding(
     xla::PjRtLoadedExecutable* pjrt_loaded_executable,
     const xla::Shape& shape) {
   auto output_shardings = pjrt_loaded_executable->GetOutputShardings();
   std::optional<xla::HloSharding> result_hlo_sharding;
   if (output_shardings.has_value()) {
-    std::vector<HloSharding> hlo_shardings;
+    std::vector<xla::HloSharding> hlo_shardings;
     hlo_shardings.reserve(output_shardings->size());
     for (const auto& sharding : *output_shardings) {
-      TF_ASSIGN_OR_RETURN(auto hlo_sharding, HloSharding::FromProto(sharding));
+      TF_ASSIGN_OR_RETURN(auto hlo_sharding,
+                          xla::HloSharding::FromProto(sharding));
       hlo_shardings.push_back(hlo_sharding);
     }
     if (shape.IsTuple()) {
-      return HloSharding::Tuple(shape, hlo_shardings);
+      return xla::HloSharding::Tuple(shape, hlo_shardings);
     } else {
       return hlo_shardings.front();
     }
@@ -142,6 +151,7 @@ absl::StatusOr<std::optional<HloSharding>> GetFirstModuleOutputSharding(
 }
 
 // Returns the flattened output memory_kinds of the first module in a
+// `PjRtLoadedExecutable`.
 // `UnimplementedError` will be converted into `std::nullopt`.
 absl::StatusOr<std::optional<std::vector<absl::string_view>>>
 GetFirstModuleOutputMemoryKinds(
@@ -158,6 +168,39 @@ GetFirstModuleOutputMemoryKinds(
     return FailedPrecondition("No output memory kinds found");
   }
   return std::move(output_memory_kinds)->front();
+}
+
+// Returns the flattened output layouts of the first module in a
+// `PjRtLoadedExecutable`.
+// `UnimplementedError` will be converted into a vector of `nullptr`.
+absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+GetFirstModuleOutputLayouts(
+    xla::PjRtLoadedExecutable* pjrt_loaded_executable,
+    absl::Span<const xla::LayoutMode> output_layout_modes) {
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+      executable_output_layouts = pjrt_loaded_executable->GetOutputLayouts();
+  // An unimplemented error is converted into all-default layouts.
+  if (absl::IsUnimplemented(executable_output_layouts.status())) {
+    return std::vector<std::shared_ptr<const xla::PjRtLayout>>(
+        /*size=*/output_layout_modes.size(), /*value=*/nullptr);
+  }
+  TF_RETURN_IF_ERROR(executable_output_layouts.status());
+  std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts;
+  if (executable_output_layouts->size() != output_layout_modes.size()) {
+    return FailedPrecondition(
+        "Output memory kinds and output layout modes have different sizes: %d "
+        "vs. %d",
+        executable_output_layouts->size(), output_layout_modes.size());
+  }
+  output_layouts.reserve(executable_output_layouts->size());
+  for (int i = 0; i < executable_output_layouts->size(); ++i) {
+    if (output_layout_modes[i].mode == xla::LayoutMode::Mode::kDefault) {
+      output_layouts.push_back(nullptr);
+    } else {
+      output_layouts.push_back(std::move((*executable_output_layouts)[i]));
+    }
+  }
+  return output_layouts;
 }
 
 struct ShapePartialInfo {
@@ -183,6 +226,36 @@ absl::StatusOr<ShapePartialInfo> CreateShapePartialInfo(
   return partial_info;
 }
 
+// Special `xla::GetLayoutModes()` implementation for obtaining layout modes
+// from `hlo_module` without serializing it into proto.
+
+static const char* kDelimiter = ";";
+
+static absl::StatusOr<std::vector<LayoutMode>> GetLayoutModesFromFrontendAttr(
+    absl::string_view attr) {
+  // SkipEmpty() needed to avoid returning the empty string when attr is empty.
+  std::vector<std::string> str_modes =
+      absl::StrSplit(attr, kDelimiter, absl::SkipEmpty());
+  std::vector<LayoutMode> result;
+  for (const std::string& str_mode : str_modes) {
+    TF_ASSIGN_OR_RETURN(LayoutMode mode, LayoutMode::FromString(str_mode));
+    result.emplace_back(std::move(mode));
+  }
+  return result;
+}
+
+static absl::StatusOr<std::vector<LayoutMode>> GetLayoutModes(
+    const HloModule& hlo_module, absl::string_view frontend_attr_name,
+    size_t num_values) {
+  const auto& frontend_attrs = hlo_module.frontend_attributes().map();
+  auto iter = frontend_attrs.find(frontend_attr_name);
+  if (iter == frontend_attrs.end()) {
+    // Return all default layouts if frontend attr isn't present.
+    return std::vector<LayoutMode>(num_values);
+  }
+  return GetLayoutModesFromFrontendAttr(iter->second);
+}
+
 }  // namespace
 
 char PjRtCompatibleExecutable::ID = 0;
@@ -206,7 +279,7 @@ absl::StatusOr<std::string> PjRtExecutable::Serialize() const {
 }
 
 absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
-    PjRtCompatibleClient* client,
+    PjRtClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
     DeviceListRef executable_devices) {
@@ -223,11 +296,39 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
   TF_ASSIGN_OR_RETURN(
       auto result_memory_kinds,
       GetFirstModuleOutputMemoryKinds(pjrt_loaded_executable.get()));
+  // Obtaining output layout modes and output layouts directly from
+  // `PjRtLoadedExecutable` may fail because the currently PjRt implementations
+  // often fetch and serialize the optimized HLO. For now, we gracefully
+  // handle it by omitting output layouts at creation time and using output
+  // `PjRtBuffer`'s concrete layouts.
+  // TODO(hyeontaek): Add a way to obtain output layout modes and
+  // `PjRtLoadedExecutable::GetOutputLayouts()` without causing the optimized
+  // HLO to be serialized and fetched.
+  std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+      output_layouts;
+  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> hlo_modules =
+      pjrt_loaded_executable->GetHloModules();
+  if (hlo_modules.ok()) {
+    if (hlo_modules->empty()) {
+      return FailedPrecondition("Requires at least one HloModule.");
+    }
+    absl::StatusOr<std::vector<xla::LayoutMode>> output_layout_modes =
+        GetLayoutModes(*hlo_modules->front(), "out_layout_modes",
+                       result_element_types.size());
+    if (output_layout_modes.ok()) {
+      absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+          first_module_output_layouts = GetFirstModuleOutputLayouts(
+              pjrt_loaded_executable.get(), *output_layout_modes);
+      if (first_module_output_layouts.ok()) {
+        output_layouts = *std::move(first_module_output_layouts);
+      }
+    }
+  }
   return CreateInternal(client, std::move(pjrt_loaded_executable),
                         result_element_types, result_dimensions,
                         /*result_hlo_sharding=*/std::nullopt,
-                        result_memory_kinds, loaded_host_callbacks,
-                        std::move(executable_devices));
+                        result_memory_kinds, output_layouts,
+                        loaded_host_callbacks, std::move(executable_devices));
 }
 
 static absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
@@ -247,7 +348,7 @@ static absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
 }
 
 absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
-    PjRtCompatibleClient* client, mlir::ModuleOp module,
+    PjRtClient* client, mlir::ModuleOp module,
     xla::CompileOptions compile_options,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
     DeviceListRef executable_devices) {
@@ -263,9 +364,17 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       (build_options.use_auto_spmd_partitioning() ||
        build_options.any_allow_spmd_sharding_propagation_to_parameters() ||
        build_options.any_allow_spmd_sharding_propagation_to_output());
+
+  // We have to do process the MLIR before the compile call, since the latter
+  // will use the MLIR as scratch space, or possibly even deallocate it.
+  TF_ASSIGN_OR_RETURN(const std::vector<xla::Shape> result_shapes,
+                      ResultShapesOfModule(module));
+  absl::StatusOr<std::vector<xla::LayoutMode>> output_layout_modes =
+      GetOutputLayoutModes(module);
+
   TF_ASSIGN_OR_RETURN(auto pjrt_loaded_executable,
                       client->pjrt_client()->CompileAndLoad(
-                          module, std::move(compile_options)));
+                          std::move(module), std::move(compile_options)));
 
   if (auto_spmd_partitioning) {
     // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard
@@ -280,16 +389,34 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
     TF_ASSIGN_OR_RETURN(
         auto result_memory_kinds,
         GetFirstModuleOutputMemoryKinds(pjrt_loaded_executable.get()));
+    // Obtaining output layout modes and output layouts directly from
+    // `PjRtLoadedExecutable` may fail because the currently PjRt
+    // implementations often fetch and serialize the optimized HLO. For now, we
+    // gracefully handle it by omitting output layouts at creation time and
+    // using output `PjRtBuffer`'s concrete layouts.
+    // TODO(hyeontaek): Add a way to obtain output layout modes and
+    // `PjRtLoadedExecutable::GetOutputLayouts()` without causing the optimized
+    // HLO to be serialized and fetched.
+    std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+        output_layouts;
+    if (output_layout_modes.ok()) {
+      absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+          first_module_output_layouts = GetFirstModuleOutputLayouts(
+              pjrt_loaded_executable.get(), *output_layout_modes);
+      if (first_module_output_layouts.ok()) {
+        output_layouts = *std::move(first_module_output_layouts);
+      }
+    }
     return CreateInternal(client, std::move(pjrt_loaded_executable),
                           result_element_types, result_dimensions,
                           /*result_hlo_sharding=*/std::nullopt,
-                          result_memory_kinds, std::move(loaded_host_callbacks),
+                          result_memory_kinds, output_layouts,
+                          std::move(loaded_host_callbacks),
                           std::move(executable_devices));
   } else {
     VLOG(3) << "Using full shape";
     // TODO(yueshengys): Consider getting element types and dimensions directly
     // from module.
-    TF_ASSIGN_OR_RETURN(auto result_shapes, ResultShapesOfModule(module));
     bool tuple_output = result_shapes.size() != 1;
     xla::Shape result_shape;
     std::vector<xla::Shape> output_shapes;
@@ -310,21 +437,41 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
     TF_ASSIGN_OR_RETURN(
         auto result_memory_kinds,
         GetFirstModuleOutputMemoryKinds(pjrt_loaded_executable.get()));
-    return CreateInternal(client, std::move(pjrt_loaded_executable),
-                          shape_partial_info.element_types,
-                          shape_partial_info.dimensions, result_hlo_sharding,
-                          result_memory_kinds, std::move(loaded_host_callbacks),
-                          std::move(executable_devices));
+    // Obtaining output layout modes and output layouts directly from
+    // `PjRtLoadedExecutable` may fail because the currently PjRt
+    // implementations often fetch and serialize the optimized HLO. For now, we
+    // gracefully handle it by omitting output layouts at creation time and
+    // using output `PjRtBuffer`'s concrete layouts.
+    // TODO(hyeontaek): Add a way to obtain output layout modes and
+    // `PjRtLoadedExecutable::GetOutputLayouts()` without causing the optimized
+    // HLO to be serialized and fetched.
+    std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+        output_layouts;
+    if (output_layout_modes.ok()) {
+      absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+          first_module_output_layouts = GetFirstModuleOutputLayouts(
+              pjrt_loaded_executable.get(), *output_layout_modes);
+      if (first_module_output_layouts.ok()) {
+        output_layouts = *std::move(first_module_output_layouts);
+      }
+    }
+    return CreateInternal(
+        client, std::move(pjrt_loaded_executable),
+        shape_partial_info.element_types, shape_partial_info.dimensions,
+        result_hlo_sharding, result_memory_kinds, output_layouts,
+        std::move(loaded_host_callbacks), std::move(executable_devices));
   }
 }
 
 absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::CreateInternal(
-    PjRtCompatibleClient* client,
+    PjRtClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     absl::Span<const xla::PrimitiveType> result_element_types,
     absl::Span<const xla::DimensionVector> result_dimensions,
     const std::optional<xla::HloSharding>& result_hlo_sharding,
     const std::optional<std::vector<absl::string_view>>& result_memory_kinds,
+    const std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>&
+        output_layouts,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
     DeviceListRef executable_devices) {
   // For jit(pmap(...)), the device assignment (passed as `executable_devices`)
@@ -374,19 +521,18 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::CreateInternal(
 
     CHECK(xla::primitive_util::IsArrayType(element_type));
 
-    xla::DimensionVector tile_shape_dimensions = dimensions;
     if (sharding != nullptr) {
-      CHECK(!sharding->IsTuple());
-      // TODO(yueshengys): Consider overloading `HloSharding::TileShape` to
-      // directly take `xla::DimensionVector` as inputs.
-      tile_shape_dimensions =
-          xla::ShapeUtil::CreateDimensionVectorFromShape(sharding->TileShape(
-              xla::ShapeUtil::MakeShape(element_type, dimensions)));
+      output_shardings.push_back(ifrt::HloSharding::Create(
+          executable_devices, memory_kind, *sharding));
+    } else {
+      // Assume a traditional replication computation where tile shapes are
+      // the same as global shapes.
+      const xla::DimensionVector& tile_shape_dimensions = dimensions;
+      output_shardings.push_back(ifrt::ConcreteEvenSharding::Create(
+          executable_devices, memory_kind,
+          /*shape=*/ifrt::Shape(dimensions),
+          /*shard_shape=*/ifrt::Shape(tile_shape_dimensions)));
     }
-    output_shardings.push_back(ifrt::ConcreteEvenSharding::Create(
-        executable_devices, memory_kind,
-        /*shape=*/ifrt::Shape(dimensions),
-        /*shard_shape=*/ifrt::Shape(tile_shape_dimensions)));
     return absl::OkStatus();
   };
   auto append_token = [&](MemoryKind memory_kind) {
@@ -485,18 +631,21 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::CreateInternal(
       client, std::move(pjrt_loaded_executable), std::move(executable_devices),
       std::move(addressable_devices), std::move(loaded_host_callbacks),
       std::move(host_send_and_recv_callbacks), std::move(output_dtypes),
-      std::move(output_shapes), std::move(output_shardings)));
+      std::move(output_shapes), std::move(output_shardings),
+      std::move(output_layouts)));
 }
 
 PjRtLoadedExecutable::PjRtLoadedExecutable(
-    PjRtCompatibleClient* client,
+    PjRtClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     DeviceListRef devices, std::vector<Device*> addressable_devices,
     std::vector<tsl::RCReference<LoadedHostCallback>> all_loaded_host_callbacks,
     std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
         host_send_recv_callbacks,
     std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
-    std::vector<ShardingRef> output_shardings)
+    std::vector<ShardingRef> output_shardings,
+    std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+        output_layouts)
     : client_(client),
       pjrt_loaded_executable_(std::move(pjrt_loaded_executable)),
       devices_(std::move(devices)),
@@ -508,6 +657,7 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
       output_dtypes_(std::move(output_dtypes)),
       output_shapes_(std::move(output_shapes)),
       output_shardings_(std::move(output_shardings)),
+      output_layouts_(std::move(output_layouts)),
       user_context_(UserContextScope::current()) {}
 
 PjRtLoadedExecutable::~PjRtLoadedExecutable() = default;
@@ -564,11 +714,31 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   }
 
   xla::ExecuteOptions opts;
-  opts.untuple_result = true;
   opts.launch_id = options.launch_id;
   opts.use_major_to_minor_data_layout_for_callbacks = true;
   opts.non_donatable_input_indices = options.non_donatable_input_indices;
   opts.execution_stream_id = options.execution_stream_id;
+  absl::StatusOr<absl::flat_hash_map<int, IncarnationId>> incarnations =
+      client()->Incarnations();
+  if (incarnations.ok()) {
+    opts.incarnations = *std::move(incarnations);
+  } else {
+    VLOG(3) << "Unable to get incarnations: " << incarnations.status();
+  }
+
+  if (options.custom_options.has_value()) {
+    const auto& attributes = options.custom_options->map();
+    // Check if the custom options contain a call location key.
+    if (auto it = attributes.find(
+            xla::ifrt::PjRtCompatibleLoadedExecutable::kCallLocation);
+        it != attributes.end()) {
+      const xla::ifrt::AttributeMap::Value& value = it->second;
+      if (const auto* call_location =
+              std::get_if<xla::ifrt::AttributeMap::StringValue>(&value)) {
+        opts.call_location = call_location->value;
+      }
+    }
+  }
 
   auto context = std::make_unique<xla::ExecuteContext>();
   auto platform_id = pjrt_loaded_executable_->client()->platform_id();
@@ -597,8 +767,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
     }
     ffi_callbacks->callbacks = callbacks->data();
     ffi_callbacks->num_callbacks = callbacks->size();
-    auto type_id = xla::ffi::TypeIdRegistry::TypeId(
-        xla::FfiLoadedHostCallbacks::id.type_id);
+    ffi::TypeRegistry::TypeId type_id(FfiLoadedHostCallbacks::id.type_id);
     CHECK_OK(context->ffi_context().Insert(type_id, ffi_callbacks.get()));
     opts.context = context.get();
   }
@@ -633,9 +802,9 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
 
   // Execute the computation.
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> pjrt_outputs;
-  xla::ifrt::Future<> status;
+  tsl::Future<> status;
   if (portable_execution) {
-    std::optional<PjRtFuture<>> returned_pjrt_future;
+    std::optional<tsl::Future<>> returned_pjrt_future;
     TF_RET_CHECK(portable_execution_device->IsAddressable());
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<PjRtBuffer>> single_device_pjrt_results,
@@ -647,7 +816,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
     pjrt_outputs.push_back(std::move(single_device_pjrt_results));
     status = *std::move(returned_pjrt_future);
   } else {
-    std::optional<std::vector<PjRtFuture<>>> returned_pjrt_futures;
+    std::optional<std::vector<tsl::Future<>>> returned_pjrt_futures;
     returned_pjrt_futures.emplace();
 
     TF_ASSIGN_OR_RETURN(
@@ -690,11 +859,13 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   // memory_kind shares the same Sharding object.
   absl::flat_hash_map<MemoryKind, ShardingRef> single_device_shardings;
 
-  // TODO(emilyaf): Simplify the handling of layouts here when they're plumbed
-  // through from JAX.
   std::vector<std::shared_ptr<const xla::PjRtLayout>> layouts;
   layouts.reserve(num_outputs);
-  if (!pjrt_outputs.empty()) {
+  if (output_layouts_.has_value()) {
+    // TODO(hyeontaek): Once we can get `output_layouts_` reliably, only keep
+    // this path.
+    layouts = *output_layouts_;
+  } else if (!pjrt_outputs.empty()) {
     for (int i = 0; i < num_outputs; ++i) {
       auto layout = output_dtypes_[i].kind() == xla::ifrt::DType::kToken
                         ? std::make_shared<xla::PjRtLayout>(xla::Layout())
@@ -710,7 +881,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
           layout = std::make_shared<xla::PjRtLayout>(xla::Layout());
         } else {
           TF_ASSIGN_OR_RETURN(layout,
-                              client_->GetDefaultLayout(
+                              client_->GetDefaultPjRtLayout(
                                   output_dtypes_[i], output_shapes_[i].dims(),
                                   devices_->devices().front(),
                                   output_shardings_[i]->memory_kind()));

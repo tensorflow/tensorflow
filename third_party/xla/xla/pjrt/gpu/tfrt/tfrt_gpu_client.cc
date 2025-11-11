@@ -26,13 +26,9 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -46,12 +42,12 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/maybe_owning.h"
@@ -62,7 +58,6 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
-#include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_async_host_to_device_transfer_manager.h"
@@ -71,7 +66,6 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/gpu/tfrt/utils.h"
 #include "xla/pjrt/host_memory_spaces.h"
-#include "xla/pjrt/layout_mode.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -79,6 +73,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
@@ -86,6 +81,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/shaped_buffer.h"
@@ -100,12 +96,10 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/framework/allocator.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -147,6 +141,7 @@ TfrtGpuClient::TfrtGpuClient(
     std::string platform_name, int process_index, xla::LocalClient* xla_client,
     std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
     bool should_stage_host_to_device_transfers,
+    bool abort_collectives_on_failure,
     MaybeOwning<se::DeviceMemoryAllocator> allocator,
     std::unique_ptr<tsl::Allocator> host_memory_allocator,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
@@ -157,6 +152,7 @@ TfrtGpuClient::TfrtGpuClient(
       xla_client_(CHECK_NOTNULL(xla_client)),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
+      abort_collectives_on_failure_(abort_collectives_on_failure),
       allocator_(std::move(allocator)),
       host_memory_allocator_(std::make_unique<HostMemoryAllocator>(
           std::move(host_memory_allocator))),
@@ -227,6 +223,22 @@ absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupAddressableDevice(
   }
   return InvalidArgument("No matching device found for local_hardware_id %d",
                          local_device_id.value());
+}
+
+void TfrtGpuClient::UpdateGlobalProcessInfo(
+    absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
+  if (!abort_collectives_on_failure_) {
+    // If we're not aborting collectives, we don't need to track information
+    // about other processes. We only track global process info to know when to
+    // abort.
+    VLOG(5) << "Not updating global process info because "
+               "abort_collectives_on_failure_ is false";
+    return;
+  }
+  absl::Status s = ::xla::gpu::UpdateGlobalProcessInfo(infos);
+  if (!s.ok()) {
+    LOG(WARNING) << "Failed to update global process info: " << s;
+  }
 }
 
 absl::StatusOr<Layout> TfrtGpuClient::GetDefaultLayout(
@@ -343,7 +355,8 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false, &exec_build_options));
+      /*return_tuple=*/false, &exec_build_options,
+      mlir::mhlo::getGpuChloToHighLevelMhloOptions()));
 
   // If the compile options specify argument layout, then let's
   // fall back to using the options to determine layouts.
@@ -448,6 +461,64 @@ TfrtGpuClient::CreateUninitializedBuffer(const Shape& shape,
       compact_shape, tsl::MakeAvailableAsyncValueRef<GpuEvent>(),
       tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]), this,
       memory_space);
+}
+
+absl::StatusOr<
+    std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
+TfrtGpuClient::CreateAliasBuffer(const Shape& shape,
+                                 PjRtMemorySpace* memory_space) {
+  auto buffer_promise = tsl::MakeIndirectAsyncValue();
+  auto definition_event_promise = tsl::MakeIndirectAsyncValue();
+  auto ready_event_promise = tsl::MakeIndirectAsyncValue();
+
+  auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
+      tsl::AsyncValueRef<GpuDeviceMemory>(buffer_promise),
+      tsl::AsyncValueRef<GpuEvent>(definition_event_promise),
+      tsl::AsyncValueRef<GpuEvent>(ready_event_promise));
+
+  if (memory_space->devices().size() != 1) {
+    return absl::InternalError(
+        "CreateAliasBuffer only supports single-device memory spaces");
+  }
+  auto* device = tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]);
+  auto result_buffer = std::make_unique<TfrtGpuBuffer>(
+      shape, std::move(tracked_device_buffer), this, device, memory_space);
+
+  xla::PjRtFulfillAliasBufferCallback fulfill_alias_buffer_cb =
+      [buffer_promise = std::move(buffer_promise),
+       definition_event_promise = std::move(definition_event_promise),
+       ready_event_promise = std::move(ready_event_promise)](
+          absl::StatusOr<xla::PjRtBuffer*> buffer_or) -> absl::Status {
+    if (!buffer_or.ok()) {
+      definition_event_promise->SetError(buffer_or.status());
+      ready_event_promise->SetError(buffer_or.status());
+      buffer_promise->SetError(buffer_or.status());
+      return buffer_or.status();
+    }
+    auto* tfrt_buffer = tsl::down_cast<xla::TfrtGpuBuffer*>(*buffer_or);
+    if (tfrt_buffer == nullptr) {
+      auto status = absl::InternalError("Failed to cast to TfrtGpuBuffer");
+      definition_event_promise->SetError(status);
+      ready_event_promise->SetError(status);
+      buffer_promise->SetError(status);
+      return status;
+    }
+    {
+      absl::MutexLock lock(tfrt_buffer->mu_);
+      xla::TrackedGpuDeviceBuffer* tracked_gpu_buffer =
+          tfrt_buffer->tracked_device_buffer_.get();
+      buffer_promise->ForwardTo(tracked_gpu_buffer->buffer().CopyRCRef());
+      definition_event_promise->ForwardTo(
+          tracked_gpu_buffer->definition_event().CopyRCRef());
+      ready_event_promise->ForwardTo(
+          tracked_gpu_buffer->ready_event().CopyRCRef());
+    }
+
+    return absl::OkStatus();
+  };
+
+  return std::make_pair(std::move(result_buffer),
+                        std::move(fulfill_alias_buffer_cb));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
@@ -779,8 +850,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
   absl::InlinedVector<int64_t, 4> tmp_strides;
   if (!byte_strides) {
     tmp_strides.resize(dims.size());
-    TF_RETURN_IF_ERROR(
-        ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(tmp_strides)));
+    TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+        device_shape, absl::MakeSpan(tmp_strides)));
     byte_strides = tmp_strides;
   }
 
@@ -797,8 +868,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
 
   absl::InlinedVector<int64_t, 4> shape_strides(
       device_shape.dimensions().size());
-  TF_RETURN_IF_ERROR(
-      ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(shape_strides)));
+  TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+      device_shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
       (byte_size == 0 || *byte_strides == shape_strides);
 
@@ -812,7 +883,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     options.dims = dims;
     options.permutation = permutation;
     options.input_layout = TransposePlan::Striding{*byte_strides};
-    absl::MutexLock lock(&transpose_mu_);
+    absl::MutexLock lock(transpose_mu_);
     TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }
 
@@ -907,10 +978,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
       return;
     }
 
-    {
-      tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-      status = stream->BlockHostUntilDone();
-    }
+    status = BlockHostUntilDoneWithHostCallback(stream);
     VLOG(3) << "H2D copy done. " << status;
 
     if (status.ok()) {
@@ -1043,11 +1111,7 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
         TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
             stream, literal, shaped_buffer));
 
-        absl::Status status;
-        {
-          tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-          status = stream->BlockHostUntilDone();
-        }
+        absl::Status status = BlockHostUntilDoneWithHostCallback(stream);
         CHECK_OK(status) << "Failed to block host until done";
         VLOG(3) << "BufferFromHostLiteral done for device_buffer: "
                 << device_buffer;
@@ -1069,7 +1133,7 @@ absl::Status TfrtGpuClient::DmaMap(void* data, size_t buffer_size) {
     return absl::InternalError(absl::StrFormat(
         "Failed to register host memory at address: %ps", data));
   }
-  absl::MutexLock lock(&dma_maps_mutex_);
+  absl::MutexLock lock(dma_maps_mutex_);
   dma_maps_.insert({data, buffer_size});
   return absl::OkStatus();
 }
@@ -1085,13 +1149,13 @@ absl::Status TfrtGpuClient::DmaUnmap(void* data) {
     return absl::InternalError(absl::StrFormat(
         "Failed to unregister host memory at address: %ps", data));
   }
-  absl::MutexLock lock(&dma_maps_mutex_);
+  absl::MutexLock lock(dma_maps_mutex_);
   dma_maps_.erase(data);
   return absl::OkStatus();
 }
 
 bool TfrtGpuClient::IsDmaMapped(const void* data_start, int64_t transfer_size) {
-  absl::MutexLock lock(&dma_maps_mutex_);
+  absl::MutexLock lock(dma_maps_mutex_);
   if (dma_maps_.empty()) {
     return false;
   }
@@ -1145,7 +1209,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
   TF_ASSIGN_OR_RETURN(
       DeviceTopologyPair device_topology_pair,
       BuildDistributedDevices(
-          pjrt_platform_name, xla_client, options.node_id, options.num_nodes,
+          pjrt_platform_name, xla_client, options.node_id,
+          options.max_inflight_computations, options.num_nodes,
           gpu_run_options.get(), kv_store, options.enable_mock_nccl,
           options.mock_gpu_topology, options.partition_index, absl::Minutes(2),
           absl::Minutes(5)));
@@ -1162,9 +1227,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtGpuClient>(
       std::move(pjrt_platform_name), options.node_id, xla_client,
       std::move(devices), options.should_stage_host_to_device_transfers,
-      std::move(allocator), std::move(host_memory_allocator),
-      std::move(gpu_run_options), std::move(kv_store),
-      std::move(gpu_topology)));
+      options.abort_collectives_on_failure, std::move(allocator),
+      std::move(host_memory_allocator), std::move(gpu_run_options),
+      std::move(kv_store), std::move(gpu_topology)));
 }
 
 }  // namespace xla

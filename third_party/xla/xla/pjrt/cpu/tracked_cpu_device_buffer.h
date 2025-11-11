@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/future.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/device_event.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -201,6 +201,9 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
   std::vector<tsl::RCReference<tsl::AsyncValue>> GetAsyncValueDefinitionEvents()
       override;
 
+  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> GetDefinitionEvent(
+      PjRtMemorySpace* memory_space) override;
+
   tsl::RCReference<CommonPjRtRawBuffer> GetRawBuffer(
       PjRtMemorySpace* memory_space) override;
 
@@ -208,8 +211,7 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
   void Delete(PjRtMemorySpace* memory_space) override;
 
-  PjRtFuture<>::Promise GetReadyFuturePromise(
-      PjRtMemorySpace* memory_space) override;
+  Future<> GetReadyFuture(PjRtMemorySpace* memory_space) override;
 
   absl::Status BlockForOperationsToComplete(
       PjRtMemorySpace* memory_space) override;

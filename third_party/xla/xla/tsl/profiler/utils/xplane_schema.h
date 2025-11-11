@@ -290,6 +290,8 @@ enum StatType {
   kScaledValue,
   kThreadId,
   kMatrixUnitUtilizationPercent,
+  // Cost analysis related.
+  kTimeScaleMultiplier,
   // XLA metadata map related.
   kHloProto,
   // Device capability related.
@@ -346,6 +348,7 @@ enum StatType {
   kEdgeTpuModelProfileInfo,
   kEdgeTpuMlir,
   kDroppedTraces,
+  kNanCounterEvents,
   kCudaGraphId,
   // Many events have kCudaGraphId, such as graph sub events when tracing is in
   // node level. Yet kCudaGraphExecId is used only for CudaGraphExecution events
@@ -500,7 +503,7 @@ class XFlow {
   }
 
   // Encoding
-  uint64 ToStatValue() const { return encoded_.whole; }
+  uint64_t ToStatValue() const { return encoded_.whole; }
 
   // Decoding
   static XFlow FromStatValue(uint64_t encoded) { return XFlow(encoded); }

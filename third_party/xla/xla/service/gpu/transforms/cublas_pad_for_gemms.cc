@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemm_fusion.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -195,7 +196,7 @@ absl::StatusOr<std::vector<HloDotInstruction*>> GetRelevantDots(
 
 }  // namespace
 
-absl::StatusOr<bool> CublasPadForGemms::Run(
+absl::StatusOr<bool> CublasPadForGemms::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

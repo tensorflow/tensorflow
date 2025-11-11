@@ -34,8 +34,8 @@ limitations under the License.
 #ifdef TF_GPU_USE_PJRT
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
+#include "xla/future.h"
 #include "xla/literal.h"
-#include "xla/pjrt/pjrt_future.h"
 #endif  // TF_GPU_USE_PJRT
 
 #include "tensorflow/core/common_runtime/copy_tensor.h"
@@ -376,7 +376,7 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
       literal = std::make_unique<xla::MutableBorrowingLiteral>(
           cpu_tensor->tensor_data().data(), shape);
     }
-    xla::PjRtFuture<> future =
+    tsl::Future<void> future =
         pjrt_tensor_buffer->pjrt_buffer()->ToLiteral(literal.get());
     future.OnReady([literal = std::move(literal),
                     done](const absl::Status& status) { done(status); });

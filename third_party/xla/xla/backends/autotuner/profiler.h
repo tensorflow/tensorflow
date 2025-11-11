@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
-#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -63,26 +62,6 @@ class Profiler {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
                         CreateInputBuffers(executable.get()));
     return Profile(executable.get(), *buffers);
-  }
-
-  // Profiles multiple executables with shared buffers. This guarantees that
-  // the provided executables have same arguments. This is important for
-  // autotuning as we run same instruction with different configs.
-  // Note that an executable can still fail during runtime even if it compiled
-  // successfully, which is why the return type is a vector of StatusOr.
-  virtual absl::StatusOr<std::vector<absl::StatusOr<ProfileResult>>>
-  ProfileWithSharedBuffers(
-      std::vector<std::unique_ptr<Executable>> executables) {
-    std::vector<absl::StatusOr<ProfileResult>> results;
-    if (executables.empty()) {
-      return results;
-    }
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
-                        CreateInputBuffers(executables[0].get()));
-    for (auto& executable : executables) {
-      results.push_back(Profile(executable.get(), *buffers));
-    }
-    return results;
   }
 
   // Creates Input buffers for a given executable on the device. The buffers

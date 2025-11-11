@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <variant>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -24,12 +25,20 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Metadata.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -37,7 +46,10 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -47,10 +59,15 @@ limitations under the License.
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
+#include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
+#include "triton/Dialect/Triton/IR/Types.h"
 
 namespace xla::gpu::triton {
 
@@ -65,11 +82,6 @@ namespace ma = ::mlir::arith;
 namespace mh = ::mlir::mhlo;
 namespace mm = ::mlir::math;
 namespace mt = ::mlir::triton;
-
-ScalarOrTensor::ScalarOrTensor(mlir::Value value) : value_(value) {
-  CHECK(IsScalar() || UnwrapTensor().getType().getRank() > 0)
-      << "0D tensors are not supported by Triton";
-}
 
 SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
   SmallVector<int64_t> result;
@@ -106,6 +118,10 @@ absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
       return b.getType<mlir::Float8E5M2Type>();
     case F8E4M3FN:
       return b.getType<mlir::Float8E4M3FNType>();
+    case F8E8M0FNU:
+      return b.getType<mlir::Float8E8M0FNUType>();
+    case F4E2M1FN:
+      return b.getType<mlir::Float4E2M1FNType>();
     default:
       return absl::UnimplementedError(
           absl::StrCat("This type is not supported yet: ",
@@ -114,6 +130,7 @@ absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
 }
 
 absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
+  // NOLINTBEGIN(google-readability-braces-around-statements)
   if (t.isF64()) return F64;
   if (t.isF32()) return F32;
   if (t.isF16()) return F16;
@@ -126,6 +143,8 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
   if (t.isInteger(1)) return PRED;
   if (mlir::isa<mlir::Float8E5M2Type>(t)) return F8E5M2;
   if (mlir::isa<mlir::Float8E4M3FNType>(t)) return F8E4M3FN;
+  if (mlir::isa<mlir::Float8E8M0FNUType>(t)) return F8E8M0FNU;
+  // NOLINTEND(google-readability-braces-around-statements)
   return absl::UnimplementedError("Unsupported type in getPrimitiveType.\n");
 }
 
@@ -213,6 +232,11 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
       }
       return b.create<ma::ExtSIOp>(dst_ty, value);
     }
+    // int => bool is always value != 0.
+    if (dst_element_ty.isInteger(1)) {
+      return b.create<ma::CmpIOp>(ma::CmpIPredicate::ne, value,
+                                  ZerosLike(b, value));
+    }
     return b.create<ma::TruncIOp>(dst_ty, value);
   }
   // int => float
@@ -231,20 +255,18 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
     }
     // The current logic handles signed integer types only. Additional handling
     // is needed for unsigned integer types.
-    auto cst_int = [&](int64_t x) {
+    auto cst_int = [&](int64_t x) -> Value {
       if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-        return CreateConst(b, dst_element_ty, x, src_shaped_ty.getShape())
-            .UnwrapUnsafe();
+        return CreateConst(b, dst_element_ty, x, src_shaped_ty.getShape());
       } else {
-        return CreateConst(b, dst_element_ty, x).UnwrapUnsafe();
+        return CreateConst(b, dst_element_ty, x);
       }
     };
-    auto cst_float = [&](int64_t x) {
+    auto cst_float = [&](int64_t x) -> Value {
       if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-        return CreateConst(b, src_fp_element_ty, x, src_shaped_ty.getShape())
-            .UnwrapUnsafe();
+        return CreateConst(b, src_fp_element_ty, x, src_shaped_ty.getShape());
       } else {
-        return CreateConst(b, src_fp_element_ty, x).UnwrapUnsafe();
+        return CreateConst(b, src_fp_element_ty, x);
       }
     };
     auto fptosi = b.create<ma::FPToSIOp>(dst_ty, value);
@@ -338,13 +360,6 @@ Value Minimum(EmitterLocOpBuilder& b, const se::DeviceDescription& device_info,
       values[0], values[1]);
 }
 
-ScalarOrTensor Splat(EmitterLocOpBuilder& b, ScalarOrTensor value,
-                     ArrayRef<int64_t> shape) {
-  CHECK(!shape.empty());
-  auto type = mlir::RankedTensorType::get(shape, value.getType());
-  return ScalarOrTensor(b.create<mt::SplatOp>(type, value.UnwrapUnsafe()));
-}
-
 bool IsSupportedElementwiseLibdeviceFunction(const HloInstruction& hlo) {
   auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
   if (!dev_fn_id.has_value()) {
@@ -356,6 +371,8 @@ bool IsSupportedElementwiseLibdeviceFunction(const HloInstruction& hlo) {
          output_type == PrimitiveType::F32 || output_type == PrimitiveType::F64;
 }
 
+// TODO(willfroom): Remove this (and associated functions) once the legacy
+// matmul is removed.
 absl::StatusOr<Value> EmitElementwiseLibdeviceFunction(
     EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info, const HloInstruction& hlo,
@@ -372,8 +389,7 @@ absl::StatusOr<Value> EmitElementwiseLibdeviceFunction(
         absl::StrCat("Unsupported elementwise operation ", hlo.ToString()));
   }
   llvm::Triple triple("nvptx64-unknown-unknown");
-  if (std::holds_alternative<se::RocmComputeCapability>(
-          device_info.gpu_compute_capability())) {
+  if (device_info.gpu_compute_capability().IsRocm()) {
     triple.setTriple("amdgcn-unknown-unknown");
   }
   llvm::SmallVector<Value, 2> casted_inputs;
@@ -398,14 +414,9 @@ absl::StatusOr<Value> EmitElementwiseLibdeviceFunction(
 }
 
 absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
-                                      absl::string_view libdevice_path,
                                       const se::DeviceDescription& device_info,
                                       const HloInstruction& hlo,
                                       ValueRange inputs) {
-  if (IsSupportedElementwiseLibdeviceFunction(hlo)) {
-    return EmitElementwiseLibdeviceFunction(b, libdevice_path, device_info, hlo,
-                                            inputs);
-  }
   const bool is_integer =
       mlir::isa<mlir::IntegerType>(getElementTypeOrSelf(inputs[0].getType()));
 
@@ -434,6 +445,11 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
     }
     case HloOpcode::kAdd:
       if (is_integer) {
+        // XLA add semantics for predicates is equal to bitwise OR, while Arith
+        // defines it differently. Replace add with or in this case.
+        if (getElementTypeOrSelf(inputs[0]).isInteger(1)) {
+          return b.create<ma::OrIOp>(inputs[0], inputs[1]);
+        }
         return b.create<ma::AddIOp>(inputs[0], inputs[1]);
       }
       return b.create<ma::AddFOp>(inputs[0], inputs[1]);
@@ -476,16 +492,60 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
                   mh::ComparisonDirection::NE),
           inputs[1], inputs[2]);
     case HloOpcode::kReducePrecision:
-      return mh::reducePrecision<mt::BitcastOp>(
+      return mh::reducePrecision<mlir::tensor::BitcastOp>(
           b.getLoc(), inputs[0], hlo.exponent_bits(), hlo.mantissa_bits(), &b);
+    case HloOpcode::kAcos:
+      return b.create<mm::AcosOp>(inputs[0]);
+    case HloOpcode::kAcosh:
+      return b.create<mm::AcoshOp>(inputs[0]);
+    case HloOpcode::kAsin:
+      return b.create<mm::AsinOp>(inputs[0]);
+    case HloOpcode::kAsinh:
+      return b.create<mm::AsinhOp>(inputs[0]);
+    case HloOpcode::kAtan2:
+      return b.create<mm::Atan2Op>(inputs[0], inputs[1]);
+    case HloOpcode::kAtanh:
+      return b.create<mm::AtanhOp>(inputs[0]);
+    case HloOpcode::kCos:
+      return b.create<mm::CosOp>(inputs[0]);
+    case HloOpcode::kCosh:
+      return b.create<mm::CoshOp>(inputs[0]);
+    case HloOpcode::kExp:
+      return b.create<mm::ExpOp>(inputs[0]);
+    case HloOpcode::kErf:
+      return b.create<mm::ErfOp>(inputs[0]);
+    case HloOpcode::kExpm1:
+      return b.create<mm::ExpM1Op>(inputs[0]);
+    case HloOpcode::kLog:
+      return b.create<mm::LogOp>(inputs[0]);
+    case HloOpcode::kLog1p:
+      return b.create<mm::Log1pOp>(inputs[0]);
+    case HloOpcode::kPower:
+      return b.create<mm::PowFOp>(inputs[0], inputs[1]);
+    case HloOpcode::kRemainder:
+      return b.create<ma::RemFOp>(inputs[0], inputs[1]);
+    case HloOpcode::kRsqrt:
+      return b.create<mm::RsqrtOp>(inputs[0]);
+    case HloOpcode::kSin:
+      return b.create<mm::SinOp>(inputs[0]);
+    case HloOpcode::kSinh:
+      return b.create<mm::SinhOp>(inputs[0]);
+    case HloOpcode::kSqrt:
+      return b.create<mm::SqrtOp>(inputs[0]);
+    case HloOpcode::kTan:
+      return b.create<mm::TanOp>(inputs[0]);
+    case HloOpcode::kTanh:
+      return b.create<mm::TanhOp>(inputs[0]);
+    case HloOpcode::kCbrt:
+      return b.create<mm::CbrtOp>(inputs[0]);
     default:
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported elementwise operation ", hlo.ToString()));
   }
 }
 
-absl::StatusOr<ScalarOrTensor> EmitConstant(EmitterLocOpBuilder& b,
-                                            const HloInstruction& constant) {
+absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
+    EmitterLocOpBuilder& b, const HloInstruction& constant) {
   TF_ASSIGN_OR_RETURN(Type ty, TritonType(b, constant.shape().element_type()));
   llvm::SmallVector<int64_t> shape{constant.shape().dimensions().begin(),
                                    constant.shape().dimensions().end()};
@@ -500,6 +560,104 @@ absl::StatusOr<ScalarOrTensor> EmitConstant(EmitterLocOpBuilder& b,
     }
   }
   return CreateConst(b, ty, ScalarConstantValue<double>(constant, F64), shape);
+}
+
+Value Bitcast(EmitterLocOpBuilder& b, Value value, Type type) {
+  auto value_type = value.getType();
+  value_type = mlir::dyn_cast<ShapedType>(value_type).clone(type);
+  return b.create<mlir::arith::BitcastOp>(value_type, value);
+}
+
+std::vector<llvm::Metadata*> ExtractNvvmAnnotations(
+    llvm::Module* ll_triton_module) {
+  std::vector<llvm::Metadata*> captured_nvvm_annotations;
+  llvm::NamedMDNode* nvvm_annotations =
+      ll_triton_module->getNamedMetadata("nvvm.annotations");
+  if (nvvm_annotations) {
+    for (llvm::MDNode* operand : nvvm_annotations->operands()) {
+      captured_nvvm_annotations.push_back(operand);
+    }
+    ll_triton_module->eraseNamedMetadata(nvvm_annotations);
+  }
+  return captured_nvvm_annotations;
+}
+
+absl::StatusOr<stream_executor::ThreadDim> ExtractThreadDims(
+    mlir::ModuleOp triton_module, mlir::LLVM::LLVMFuncOp func_op) {
+  // Extract the launch information from the Triton module.
+  auto threads_per_warp_attr =
+      triton_module->getAttrOfType<mlir::IntegerAttr>("ttg.threads-per-warp");
+  if (!threads_per_warp_attr) {
+    return absl::InternalError("ttg.threads-per-warp attribute not found.");
+  }
+  auto num_warps_attr =
+      triton_module->getAttrOfType<mlir::IntegerAttr>("ttg.num-warps");
+  if (!num_warps_attr) {
+    return absl::InternalError("ttg.num-warps attribute not found.");
+  }
+  auto total_num_warps_attr =
+      triton_module->getAttrOfType<mlir::IntegerAttr>("ttg.total-num-warps");
+  if (!total_num_warps_attr) {
+    return absl::InternalError("ttg.total-num-warps attribute not found.");
+  }
+  auto reqntid_attr =
+      func_op->getAttrOfType<mlir::DenseI32ArrayAttr>("nvvm.reqntid");
+  if (!reqntid_attr) {
+    return absl::InternalError("nvvm.reqntid attribute not found.");
+  }
+  auto reqntids = reqntid_attr.asArrayRef();
+  if (reqntids.empty()) {
+    return absl::InternalError("nvvm.reqntid attribute is empty.");
+  }
+  if (reqntids.size() > 3) {
+    return absl::InternalError(
+        "nvvm.reqntid attribute has more than 3 dimensions.");
+  }
+
+  // Validate the launch information.
+  if (num_warps_attr.getInt() != total_num_warps_attr.getInt()) {
+    VLOG(6)
+        << "num_warps and total_num_warps are different! This can happen if "
+           "Triton compilation decides to use a different number of warps than "
+           "configured. e.g. auto warp specialization can do that.";
+  }
+  int64_t expected_total_threads = xla::Product<int32_t>(reqntids);
+  int64_t actual_total_threads =
+      total_num_warps_attr.getInt() * threads_per_warp_attr.getInt();
+  if (actual_total_threads != expected_total_threads) {
+    return absl::InternalError(absl::StrCat(
+        "Expected total threads as per reqntid attribute to be ",
+        expected_total_threads, " but got ", actual_total_threads,
+        " as per ttg.total-num-warps and tt.threads-per-warp attributes."));
+  }
+
+  stream_executor::ThreadDim thread_dims(reqntids[0],
+                                         reqntids.size() > 1 ? reqntids[1] : 1,
+                                         reqntids.size() > 2 ? reqntids[2] : 1);
+  return thread_dims;
+}
+
+absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
+    mlir::LLVM::LLVMFuncOp func_op) {
+  stream_executor::gpu::TmaMetadata tma_metadata;
+  for (auto [idx, arg] : llvm::enumerate(func_op.getArguments())) {
+    if (auto attr =
+            func_op.getArgAttrOfType<mlir::triton::xla::TmaDescriptorAttr>(
+                idx, "tt.tma_descriptor")) {
+      TF_ASSIGN_OR_RETURN(
+          auto tma_desc,
+          CreateTmaDescriptor(attr.getGlobalShape(), attr.getTileShape(),
+                              attr.getTileStrides(), attr.getLayout(),
+                              attr.getElementByteSize(),
+                              attr.getSwizzleMode().getValue()));
+      tma_metadata.arg_index_to_tma_info.insert({idx, tma_desc});
+    }
+  }
+  return tma_metadata;
+}
+
+mt::PointerType GetGlobalPointerType(mlir::Type element_type) {
+  return mlir::cast<mt::PointerType>(mt::getPointerTypeToElement(element_type));
 }
 
 }  // namespace xla::gpu::triton

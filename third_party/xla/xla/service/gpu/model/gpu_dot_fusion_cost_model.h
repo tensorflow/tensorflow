@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -58,6 +58,11 @@ absl::StatusOr<BlockLevelParameters> FindBestBlockLevelParameters(
 }  // namespace GpuDotFusionCostModel
 
 namespace detail {
+
+// Returns the effective HBM bandwidth in bytes per second for a given dma_size.
+// dma_size is the total amount of data transferred to/from HBM in bytes.
+float GetEffectiveHbmBandwidth(int64_t dma_size,
+                               const se::DeviceDescription& device_info);
 
 // Calculates the HBM time for a GPU DOT operation. Current implementation
 // uses a flat derate on top of the spec bandwidth. A HBM bandwidth model based

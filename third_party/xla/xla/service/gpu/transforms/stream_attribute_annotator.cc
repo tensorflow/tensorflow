@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -32,11 +33,10 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -156,6 +156,9 @@ absl::StatusOr<bool> AnnotateStreamAttributesForUsers(
   std::vector<HloInstruction*> all_consumers;
   for (auto user : instr->users()) {
     if (HloPredicateIsOp<HloOpcode::kGetTupleElement>(user)) {
+      if (user->user_count() == 0) {
+        continue;
+      }
       user = user->users()[0];
     }
     all_consumers.push_back(user);
@@ -177,11 +180,11 @@ absl::StatusOr<bool> AnnotateStreamAttributesForUsers(
 }
 }  // namespace
 
-absl::StatusOr<bool> StreamAttributeAnnotator::Run(
+absl::StatusOr<bool> StreamAttributeAnnotator::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
-      5, "StreamAttributeAnnotator::Run(), before:\n" + module->ToString());
+      5, "StreamAttributeAnnotator::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
   int64_t channel_id = hlo_query::NextChannelId(*module);
   for (const HloComputation* comp :
@@ -225,7 +228,7 @@ absl::StatusOr<bool> StreamAttributeAnnotator::Run(
     }
   }
   XLA_VLOG_LINES(
-      5, "StreamAttributeAnnotator::Run(), after:\n" + module->ToString());
+      5, "StreamAttributeAnnotator::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

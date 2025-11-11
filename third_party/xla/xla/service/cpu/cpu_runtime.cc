@@ -71,17 +71,6 @@ namespace xla {
 namespace cpu {
 namespace runtime {
 
-// TODO(zhangqiaorjc): Prefer to make callers set and use device_ordinal
-// directly since callers may not have a Stream*.
-int GetDeviceOrdinal(const xla::ExecutableRunOptions* run_options) {
-  if (!run_options) {
-    return 0;
-  } else if (run_options->device_ordinal() != -1) {
-    return run_options->device_ordinal();
-  }
-  return run_options->stream()->parent()->device_ordinal();
-}
-
 extern const char* const kEigenMatMulF16SymbolName =
     "__xla_cpu_runtime_EigenMatMulF16";
 extern const char* const kEigenMatMulF32SymbolName =
@@ -110,11 +99,6 @@ extern const char* const kEigenConv3DF16SymbolName =
     "__xla_cpu_runtime_EigenConv3DF16";
 extern const char* const kEigenConv3DF32SymbolName =
     "__xla_cpu_runtime_EigenConv3DF32";
-extern const char* const kLegacyDuccFftSymbolName =
-    "__xla_cpu_runtime_LegacyDuccFft";
-extern const char* const kDuccFftSymbolName = "__xla_cpu_runtime_DuccFft";
-extern const char* const kDuccSingleThreadedFftSymbolName =
-    "__xla_cpu_runtime_DuccSingleThreadedFft";
 extern const char* const kEigenSingleThreadedMatMulF8E4M3FNSymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulF8E4M3FN";
 extern const char* const kEigenSingleThreadedMatMulF8E5M2SymbolName =
@@ -174,12 +158,6 @@ extern const char* const kPartitionIdSymbolName =
 extern const char* const kReplicaIdSymbolName = "__xla_cpu_runtime_ReplicaId";
 extern const char* const kOneDnnMatMulSymbolName =
     "__xla_cpu_runtime_OneDnnMatMul";
-extern const char* const kOneDnnSoftmaxSymbolName =
-    "__xla_cpu_runtime_OneDnnSoftmax";
-extern const char* const kOneDnnLayerNormSymbolName =
-    "__xla_cpu_runtime_OneDnnLayerNorm";
-extern const char* const kOneDnnConvolutionSymbolName =
-    "__xla_cpu_runtime_OneDnnConvolution";
 extern const char* const kOneDnnMatMulReorderSymbolName =
     "__xla_cpu_runtime_OneDnnMatMulReorder";
 extern const char* const kHandleFfiCallSymbolName =

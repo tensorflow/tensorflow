@@ -30,10 +30,11 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/codegen/kernel_definition.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -44,25 +45,10 @@ limitations under the License.
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace cpu {
 namespace {
-
-std::string LlvmModuleToString(const llvm::Module& module) {
-  std::string dump;
-  llvm::raw_string_ostream stream(dump);
-  stream << module;
-  return dump;
-}
-
-std::string MlirModuleToString(const mlir::ModuleOp& module) {
-  std::string mlir_dump;
-  llvm::raw_string_ostream mlir_stream(mlir_dump);
-  module->print(mlir_stream);
-  return mlir_dump;
-}
 
 class CpuFusionEmitterTest : public HloHardwareIndependentTestBase {
  protected:
@@ -129,8 +115,11 @@ TEST_F(CpuFusionEmitterTest, ScatterMlir) {
                           RunBufferAssignment(*hlo_module));
   auto fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
-  auto context = FusionCompiler::CreateContext();
-  CpuScatterFusion emitter(*buffer_assignment, fusion, context.get());
+  auto mlir_context = FusionCompiler::CreateContext();
+  auto symbolic_expr_context =
+      std::make_unique<SymbolicExprContext>(mlir_context.get());
+  CpuScatterFusion emitter(*buffer_assignment, fusion,
+                           symbolic_expr_context.get());
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());
   const auto& mlir_source = kernel_definition.source();
@@ -157,14 +146,18 @@ TEST_F(CpuFusionEmitterTest, ScatterLlvm) {
                           RunBufferAssignment(*hlo_module));
   auto fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
-  auto context = FusionCompiler::CreateContext();
-  CpuScatterFusion emitter(*buffer_assignment, fusion, context.get());
+  auto mlir_context = FusionCompiler::CreateContext();
+  auto symbolic_expr_context =
+      std::make_unique<SymbolicExprContext>(mlir_context.get());
+  CpuScatterFusion emitter(*buffer_assignment, fusion,
+                           symbolic_expr_context.get());
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());
-  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
-  FusionCompiler compiler(context.get(), FusionCompiler::Options{512, 1, true});
-  TF_ASSERT_OK_AND_ASSIGN(LlvmIrKernelSource llvm_source,
-                          compiler.Compile(std::move(source)));
+  FusionCompiler compiler(mlir_context.get(),
+                          FusionCompiler::Options{512, 1, true});
+  TF_ASSERT_OK_AND_ASSIGN(
+      LlvmKernelSource llvm_source,
+      compiler.Compile(std::move(kernel_definition).TakeSource()));
   auto llvm_dump = llvm_source.ToString();
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                           RunFileCheck(llvm_dump, kExpected));

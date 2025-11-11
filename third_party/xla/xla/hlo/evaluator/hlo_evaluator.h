@@ -196,7 +196,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   absl::StatusOr<Literal> EvaluateScaledDotOp(
       const DotDimensionNumbers& dim_numbers,
       const PrecisionConfig& precision_config, const Literal& lhs,
-      const Literal& lhs_scale, const Literal& rhs, const Literal& rhs_scale);
+      const Literal& rhs, const Literal& lhs_scale, const Literal& rhs_scale);
 
   void set_dynamic_dimension_inference(
       DynamicDimensionInference* dynamic_dimension_inference) override {
@@ -220,6 +220,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   void set_custom_call_handler(CustomCallHandler handler) override {
     custom_call_handler_ = std::move(handler);
   }
+
+  // Gets the handler for custom call ops.
+  CustomCallHandler custom_call_handler() { return custom_call_handler_; }
 
   // Callback for each multiply-accumulate in each dot or convolution operation.
   using TraceMACHandler = std::function<void(
@@ -370,6 +373,8 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   absl::Status HandleReduceWindow(const HloInstruction* hlo) override;
   absl::Status HandleMap(const HloInstruction* map) override;
   absl::Status HandleCustomCall(const HloInstruction* custom_call) override;
+  absl::Status HandleOptimizationBarrier(
+      const HloInstruction* optimization_barrier) override;
 
   // Unsupported HLOs, note some of them (such as BatchNorm*) are typically
   // expanded in a semantic-preserving way into other HLOs by adding expansion

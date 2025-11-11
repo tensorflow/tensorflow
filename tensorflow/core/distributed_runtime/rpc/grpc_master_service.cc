@@ -309,7 +309,7 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
       id = absl::string_view(it->second.data(), it->second.size());
     }
     return new tsl::profiler::TraceMe(
-        [&] { return strings::StrCat(name, ":", id); },
+        [&] { return absl::StrCat(name, ":", id); },
         tsl::profiler::TraceMeLevel::kInfo);
   }
 

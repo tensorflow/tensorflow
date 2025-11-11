@@ -168,7 +168,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::
     ~TfrtGpuAsyncHostToDeviceTransferManager() {
   for (int buffer_index = 0; buffer_index < transfers_in_flight_.size();
        buffer_index++) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     // Make sure we don't leave dangling pointers in cleanup routines even
     // if the client lets the object go out of scope.
     mu_.Await(absl::Condition(
@@ -196,7 +196,7 @@ absl::Status TfrtGpuAsyncHostToDeviceTransferManager::TransferLiteralToBuffer(
 
   tsl::AsyncValueRef<GpuDeviceMemory> buffer;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
 
     DCHECK_LT(buffer_index, buffer_ptrs_.size());
     if (last_transfer_started_[buffer_index]) {
@@ -235,11 +235,7 @@ absl::Status TfrtGpuAsyncHostToDeviceTransferManager::TransferLiteralToBuffer(
     TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(stream, literal,
                                                                shaped_buffer));
 
-    absl::Status status;
-    {
-      tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-      status = stream->BlockHostUntilDone();
-    }
+    absl::Status status = BlockHostUntilDoneWithHostCallback(stream);
     VLOG(3) << "Finish transfer h2d for literal with shape "
             << literal.shape().ToString() << " on device "
             << device_->DebugString() << " with status " << status;
@@ -282,7 +278,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
 
   se::DeviceMemoryBase sub_buffer;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     DCHECK_LT(buffer_index, buffer_ptrs_.size());
     if (last_transfer_started_[buffer_index]) {
       return InvalidArgument(
@@ -339,11 +335,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
       TF_CHECK_OK(stream->Memcpy(&sub_buffer, host_data_ptr, transfer_size))
           << "Failed to copy data to GPU";
 
-      absl::Status status;
-      {
-        tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-        status = stream->BlockHostUntilDone();
-      }
+      absl::Status status = BlockHostUntilDoneWithHostCallback(stream);
       VLOG(3) << "H2D copy done: " << status;
       CHECK_OK(status) << "Failed to block host until done";
     }
@@ -360,7 +352,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
 void TfrtGpuAsyncHostToDeviceTransferManager::SetBufferError(
     int buffer_index, absl::Status error) {
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     // For a given buffer_index, SetBufferError can't be called twice, or
     // called after the last transfer has been enqueued.
     CHECK(!definition_events_[buffer_index].IsConcrete());
@@ -388,7 +380,7 @@ void TfrtGpuAsyncHostToDeviceTransferManager::CleanUp(
     tsl::profiler::TraceMe traceme(
         "TfrtGpuAsyncHostToDeviceTransferManager::CleanUp");
 
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
 
     bool last_transfer_started = last_transfer_started_[buffer_index];
     size_t transfers_in_flight = transfers_in_flight_[buffer_index];

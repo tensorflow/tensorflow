@@ -14,7 +14,7 @@
 # ============================================================================
 from absl.testing import absltest
 
-from xla.build_tools.lint import generate_compile_commands
+from build_tools.lint import generate_compile_commands
 
 CompileCommand = generate_compile_commands.CompileCommand
 

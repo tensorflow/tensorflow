@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_LOCAL_DEVICE_STATE_H_
 #define XLA_PJRT_LOCAL_DEVICE_STATE_H_
 
+#include <deque>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
+#include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/semaphore.h"
@@ -207,6 +209,20 @@ class LocalDeviceState {
     return allow_delete_before_fulfill_;
   }
 
+  absl::Status AllocateAndRecordEvent(BufferSequencingEventRef event,
+                                      se::Stream* stream);
+
+  size_t GetNextComputeStreamSyncPoint() {
+    return next_compute_stream_sync_point_.load();
+  }
+
+  // Allows handing out very cheap event ids (GetNextComputeStreamSyncPoint())
+  // which only incur the expense of constructing a cuda event if they're really
+  // needed. This allows constructing a definition event per buffer.
+  absl::StatusOr<BufferSequencingEventRef> GetEventForComputeStreamSyncPoint(
+      size_t sync_point, tsl::thread::ThreadPool* thread_pool,
+      bool nullptr_if_past = false);
+
  private:
   absl::Status SynchronizeAllActivity();
 
@@ -269,6 +285,10 @@ class LocalDeviceState {
   std::unique_ptr<WorkerThread> cleanup_thread_;
 
   bool allow_delete_before_fulfill_ = true;
+
+  std::atomic<size_t> next_compute_stream_sync_point_{0};
+  size_t base_compute_event_sequence_id_ ABSL_GUARDED_BY(mu_) = 0;
+  std::deque<BufferSequencingEventRef> compute_events_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace xla

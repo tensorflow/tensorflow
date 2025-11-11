@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/codegen/mlir_kernel_definition.h"
-#include "xla/codegen/mlir_kernel_emitter.h"
+#include "xla/codegen/kernel_emitter.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
@@ -35,7 +35,7 @@ namespace xla::cpu {
 // into the dedicated MLIR context and module instance. This kernel emitter is
 // intended to be used for testing purposes only: (1) load pre-compiled LLVM IR
 // into the XLA kernel spec; (2) Execute it with user provided input buffers.
-class MlirTestKernelEmitter : public MlirKernelEmitter {
+class MlirTestKernelEmitter : public KernelEmitter<MlirKernelSource> {
  public:
   // When loading kernel IR into the KernelSpec we create a separate buffer
   // allocation for every kernel argument. We don't use buffer assignment in
@@ -49,9 +49,8 @@ class MlirTestKernelEmitter : public MlirKernelEmitter {
                         NumWorkGroups num_workgroups,
                         absl::Span<const KernelArg> args);
 
-  absl::StatusOr<MlirKernelDefinition> EmitKernelDefinition() final;
-
-  std::string name() const override { return "mlir_test_kernel_emitter"; }
+  absl::string_view name() const override { return "mlir_test_kernel_emitter"; }
+  absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
 
  private:
   std::string mlir_;

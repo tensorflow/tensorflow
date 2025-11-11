@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -25,8 +27,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -164,26 +168,6 @@ ENTRY main {
   EXPECT_EQ(clone->operand_count(), 2);
 }
 
-TEST_F(HloInstructionTest, ComparatorWorksWith64BitUniqueIds) {
-  std::unique_ptr<HloInstruction> param1 =
-      HloInstruction::CreateParameter(0, Shape(F32, {4}), "param1");
-  std::unique_ptr<HloInstruction> param2 =
-      HloInstruction::CreateParameter(0, Shape(F32, {4}), "param2");
-  std::unique_ptr<HloInstruction> param3 =
-      HloInstruction::CreateParameter(0, Shape(F32, {4}), "param3");
-
-  param1->SetUniqueId(1 + (static_cast<int64_t>(1) << 32));
-  param2->SetUniqueId(1 + (static_cast<int64_t>(2) << 32));
-  param3->SetUniqueId(1 + (static_cast<int64_t>(3) << 32));
-
-  std::vector<const HloInstruction*> instructions = {param3.get(), param1.get(),
-                                                     param2.get()};
-
-  absl::c_sort(instructions, HloPtrComparator());
-  EXPECT_THAT(instructions,
-              ElementsAre(param1.get(), param2.get(), param3.get()));
-}
-
 TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
   const char* const kModuleStr = R"(
     HloModule m
@@ -211,5 +195,49 @@ TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
   *module->mutable_entry_computation_layout() =
       module->compute_computation_layout();
 }
+
+TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           R"(
+    HloModule m
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT result = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
+    }
+  )"));
+
+  xla::HloPrintOptions hlo_print_options =
+      xla::HloPrintOptions(xla::HloPrintOptions::Canonical());
+  hlo_print_options.set_is_in_nested_computation(true);
+
+  xla::CanonicalNameMap new_map;
+  xla::StringPrinter printer;
+  // Param 0
+  module->entry_computation()
+      ->parameter_instruction(0)
+      ->PrintWithCanonicalNameMap(&printer, hlo_print_options, &new_map);
+  std::string param1_to_string = std::move(printer).ToString();
+
+  printer = StringPrinter();
+  // Param 1
+  module->entry_computation()
+      ->parameter_instruction(1)
+      ->PrintWithCanonicalNameMap(&printer, hlo_print_options, &new_map);
+  std::string param2_to_string = std::move(printer).ToString();
+
+  printer = StringPrinter();
+  // Result Root Instruction
+  module->entry_computation()->root_instruction()->PrintWithCanonicalNameMap(
+      &printer, hlo_print_options, &new_map);
+  std::string param3_to_string = std::move(printer).ToString();
+
+  EXPECT_EQ(param1_to_string, "tmp_0 = f32[] parameter(0)");
+  EXPECT_EQ(param2_to_string, "tmp_1 = f32[] parameter(1)");
+  EXPECT_EQ(param3_to_string,
+            "tmp_2 = pred[] compare(f32[] tmp_0, f32[] tmp_1), direction=GT, "
+            "type=TOTALORDER");
+}
+
 }  // namespace
 }  // namespace xla

@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/future.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -322,22 +322,34 @@ void TrackedCpuDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
   });
 }
 
-PjRtFuture<>::Promise TrackedCpuDeviceBuffer::GetReadyFuturePromise(
-    PjRtMemorySpace* memory_space) {
-  PjRtFuture<>::Promise promise =
-      tensorflow::down_cast<CommonPjRtClient*>(memory_space->client())
-          ->CreateUserPromise(memory_space, "BufferDefinitionEvent");
-  definition_event().AndThen(
-      [definition_event = definition_event().AsPtr(), promise]() mutable {
-        if (definition_event.IsError()) {
-          const absl::Status& s = definition_event.GetError();
-          promise.Set(tsl::errors::CreateWithUpdatedMessage(
-              s, absl::StrCat("Buffer Definition Event: ", s.message())));
-        } else {
-          promise.Set();
-        }
-      });
-  return promise;
+Future<> TrackedCpuDeviceBuffer::GetReadyFuture(PjRtMemorySpace* memory_space) {
+  auto [promise, future] = Future<>::MakePromise();
+
+  tensorflow::down_cast<CommonPjRtClient*>(memory_space->client())
+      ->TrackFuture(memory_space, "BufferDefinitionEvent", future);
+
+  definition_event().AndThen([definition_event = definition_event().AsPtr(),
+                              promise = std::move(promise)]() mutable {
+    if (definition_event.IsError()) {
+      const absl::Status& s = definition_event.GetError();
+      promise.Set(tsl::errors::CreateWithUpdatedMessage(
+          s, absl::StrCat("Buffer Definition Event: ", s.message())));
+    } else {
+      promise.Set();
+    }
+  });
+
+  return future;
+}
+
+absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+TrackedCpuDeviceBuffer::GetDefinitionEvent(PjRtMemorySpace* memory_space) {
+  if (!definition_event_) {
+    return absl::InternalError(
+        "GetDefinitionEvent only supported on CPU for buffers with "
+        "exactly 1 definition event.");
+  }
+  return tsl::MakeRef<CpuTrackedDeviceEvent>(definition_event_);
 }
 
 absl::Status TrackedCpuDeviceBuffer::BlockForOperationsToComplete(

@@ -769,7 +769,9 @@ std::optional<PatternMatchResult> MatchDynamicSlicePadAllGather(
   // Match all-gather for kFlattenedID collective mode.
   absl::StatusOr<CollectiveOpGroupMode> mode = GetCollectiveOpGroupMode(ag_hlo);
 
-  if (!mode.ok() || mode.value() != CollectiveOpGroupMode::kFlattenedID) {
+  if (!mode.ok() ||
+      mode.value() !=
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
     VLOG(2) << "AG does not use global device ids or channel id "
             << ag_hlo->ToString();
     return std::nullopt;
@@ -958,7 +960,7 @@ absl::Status AllGatherPadDsSimplifierVisitor::HandleDynamicSlice(
   return ReplaceInstruction(dynamic_slice, *selected);
 }
 
-absl::StatusOr<bool> AllGatherPadDsSimplifier::Run(
+absl::StatusOr<bool> AllGatherPadDsSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

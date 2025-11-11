@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 
-namespace stream_executor::gpu {
+namespace stream_executor::sycl {
 namespace {
 
 using ::testing::HasSubstr;
@@ -46,4 +46,4 @@ TEST(SyclStatusTest, ToStatusIncludesDetailMessage) {
 }
 
 }  // namespace
-}  // namespace stream_executor::gpu
+}  // namespace stream_executor::sycl

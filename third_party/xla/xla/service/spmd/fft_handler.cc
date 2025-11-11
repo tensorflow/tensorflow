@@ -26,11 +26,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/literal_util.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
@@ -235,7 +235,7 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
       ShapeUtil::ChangeElementType(partition_id->shape(),
                                    hlo->shape().element_type()),
       partition_id));
-  // Buid while loop body.
+  // Build while loop body.
   SpmdBuilder body_b("fft_collective_permute_body", hlo);
   auto param = body_b.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0,
@@ -426,10 +426,7 @@ absl::Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
       partitioned_input.state().next_channel_id, module_,
       partitioned_input.state().b);
 
-  result->set_sharding(hlo->sharding());
-  auto partitioned_fft =
-      PartitionedHlo(result, hlo->shape(), partitioned_input.state());
-  SetPartitionedHlo(hlo, std::move(partitioned_fft));
+  SetPartitionedHlo(hlo, result);
   return absl::OkStatus();
 }
 

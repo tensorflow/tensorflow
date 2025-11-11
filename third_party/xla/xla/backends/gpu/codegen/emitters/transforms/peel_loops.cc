@@ -79,7 +79,9 @@ struct PeelLoop : public OpRewritePattern<LoopOp> {
       peeled_map.Simplify();
 
       // If the symbol is still constrained, peeling does not help.
-      if (peeled_map.IsSymbolConstrained(sym_index)) continue;
+      if (peeled_map.IsSymbolConstrained(sym_index)) {
+        continue;
+      }
 
       // Create remainder indexing map.
       IndexingMap tail_map = indexing_map;
@@ -104,7 +106,9 @@ struct PeelLoop : public OpRewritePattern<LoopOp> {
     Location loc = loop_op.getLoc();
     SmallVector<Value, 4> inits = loop_op.getInits();
     for (const auto& indexing_map : llvm::reverse(indexing_maps)) {
-      if (indexing_map.IsKnownEmpty()) continue;
+      if (indexing_map.IsKnownEmpty()) {
+        continue;
+      }
       auto tail_loop = rewriter.create<LoopOp>(
           loc, indexing_map, loop_op.getDims(), inits,
           [&](OpBuilder& nested_b, Location nested_loc, ValueRange ivs,

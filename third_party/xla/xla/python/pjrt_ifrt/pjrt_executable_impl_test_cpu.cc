@@ -18,9 +18,9 @@ limitations under the License.
 #include "xla/python/ifrt/test_util.h"
 
 int main(int argc, char** argv) {
-  // PjRtCpuExecutable::IsDeleted() always returns false.
+  // This implementation does not export executables in the standard format yet.
   static constexpr absl::string_view kFilter =
-      "-LoadedExecutableImplTest.IsDeleted";
+      "-ExecutableTest.ExecutableSerialization";
   xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);
 
   testing::InitGoogleTest(&argc, argv);

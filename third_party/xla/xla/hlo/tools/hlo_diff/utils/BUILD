@@ -77,7 +77,8 @@ cc_library(
     srcs = ["text_diff.cc"],
     hdrs = ["text_diff.h"],
     deps = [
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

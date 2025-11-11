@@ -29,13 +29,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
-#include "xla/hlo/ir/collective_device_list.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/model/collective_interpolator_data.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -55,6 +56,17 @@ limitations under the License.
 namespace xla::gpu {
 
 namespace {
+
+static const DeviceHloInstructionProfiles& Profile() {
+  static const DeviceHloInstructionProfiles* profile = []() {
+    auto* profile = new DeviceHloInstructionProfiles();
+    CHECK(tsl::protobuf::TextFormat::ParseFromString(kDefaultCollectivePTable,
+                                                     profile))
+        << "Cannot parse a default profile.";
+    return profile;
+  }();
+  return *profile;
+}
 
 constexpr int64_t kMaxDefaultTransferSizeBytes = 1 << 30;
 
@@ -322,18 +334,12 @@ HloOpcode AsyncToSyncOpcode(const HloCollectiveInstruction& instr) {
 
 absl::StatusOr<HloInstructionProfileList> ReadDefaultProfiles(
     const se::DeviceDescription& device_info) {
-  DeviceHloInstructionProfiles profile;
-
-  if (!tsl::protobuf::TextFormat::ParseFromString(kDefaultCollectivePTable,
-                                                  &profile)) {
-    return absl::FailedPreconditionError("Cannot parse a default profile.");
-  }
   std::string key = HloOpProfiles::GetProfileName(device_info);
 
-  if (!profile.entries().contains(key)) {
+  if (!Profile().entries().contains(key)) {
     return absl::NotFoundError(absl::StrCat("Cannot find key: ", key));
   }
-  return profile.entries().at(key);
+  return Profile().entries().at(key);
 }
 
 int64_t GetBytesTransferred(const HloInstruction& instr,

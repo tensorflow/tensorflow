@@ -16,6 +16,8 @@ limitations under the License.
 #include <array>
 
 #include "absl/status/status_matchers.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_memory.h"
 #ifndef _WIN32
 #include <unistd.h>
@@ -36,12 +38,15 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Parser/Parser.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -291,20 +296,18 @@ TEST(PjRtCpuClientTest, HloSnapshot) {
 }
 
 TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
-  static constexpr char kProgram[] = R"(
-    HloModule add
-    ENTRY add {
-      x = f32[3,2] parameter(0)
-      y = f32[3,2] parameter(1)
-      ROOT add = f32[3,2] add(x, y)
+  static constexpr absl::string_view kProgram = R"(
+    module {
+      func.func @main(%arg0: tensor<3x2xf32>, %arg1: tensor<3x2xf32>) -> tensor<3x2xf32> {
+        %0 = mhlo.add %arg0, %arg1 : tensor<3x2xf32>
+        return %0 : tensor<3x2xf32>
+      }
     })";
 
   CpuClientOptions cpu_options;
   cpu_options.cpu_device_count = 1;
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetPjRtCpuClient(std::move(cpu_options)));
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
 
   std::string dir =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "UnoptimizedHloSnapshot");
@@ -313,9 +316,14 @@ TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
   debug_opts->set_xla_dump_to(dir);
   debug_opts->set_xla_dump_hlo_snapshots(true);
   debug_opts->set_xla_dump_hlo_unoptimized_snapshots(true);
-  XlaComputation xla_computation(hlo_module->ToProto());
+
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::func::FuncDialect, mlir::mhlo::MhloDialect>();
+  auto mlir_module =
+      mlir::parseSourceString<mlir::ModuleOp>(kProgram, &context);
+
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->CompileAndLoad(xla_computation, options));
+                          client->CompileAndLoad(mlir_module.get(), options));
 
   std::vector<float> data1{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   std::vector<float> data2{10.0, 20.0, 30.0, 40.0, 50.0, 60.0};
@@ -1023,6 +1031,59 @@ TEST(PjRtCpuClientTest, CustomAllocator) {
   // Check that buffer was constructed in the data array provided by the custom
   // allocator.
   EXPECT_THAT(data, ElementsAreArray(literal.data<float>()));
+}
+
+TEST(PjRtCpuClientTest, SerializeYnnFusions) {
+  constexpr absl::string_view kProgram = R"(
+    HloModule add_and_multiply
+
+    ynn_fusion {
+      %lhs = f32[4] parameter(0)
+      %rhs = f32[4] parameter(1)
+      %add = f32[4] add(%lhs, %rhs)
+      ROOT %mul = f32[4] multiply(%add, %add)
+    }
+
+    ENTRY entry {
+      %p0 = f32[4] parameter(0)
+      %p1 = f32[4] parameter(1)
+      ROOT %fusion = f32[4] fusion(%p0, %p1), kind=kCustom, calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(kProgram, {}));
+
+  XlaComputation xla_computation(m->ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          client->CompileAndLoad(xla_computation, {}));
+
+  Literal literal = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  TF_ASSERT_OK_AND_ASSIGN(auto buf, client->BufferFromHostLiteral(
+                                        literal, client->memory_spaces()[0]));
+
+  ExecuteOptions opts;
+  auto result = executable->Execute({{buf.get(), buf.get()}}, opts);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                          result->at(0).at(0)->ToLiteralSync());
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({4.0f, 16.0f, 36.0f, 64.0f}),
+      *result_literal));
+
+  // Check that serialized/deserialized executable works and produces the same
+  // result.
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
+                          executable->SerializeExecutable());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto reloaded_executable,
+      client->LoadSerializedExecutable(serialized, std::nullopt, {}));
+
+  result = executable->Execute({{buf.get(), buf.get()}}, opts);
+  TF_ASSERT_OK_AND_ASSIGN(result_literal, result->at(0).at(0)->ToLiteralSync());
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({4.0f, 16.0f, 36.0f, 64.0f}),
+      *result_literal));
 }
 
 }  // namespace

@@ -131,16 +131,18 @@ bool GatherSimplifier::IsSimplifiedGather(const HloGatherInstruction* gather) {
   auto* start_indices = gather->operands()[1];
   const auto& dims = gather->gather_dimension_numbers();
   return start_indices->shape().dimensions().size() == 2 &&
-         dims.index_vector_dim() == 1 &&
-         IsIdentityPermutation(dims.start_index_map()) &&
-         dims.collapsed_slice_dims().empty() &&
+         dims.index_vector_dim() == 1 && dims.collapsed_slice_dims().empty() &&
          *dims.offset_dims().begin() == 1 &&
          *dims.offset_dims().rbegin() == dims.offset_dims().size();
 }
 
 bool GatherSimplifier::InstructionMatchesPattern(HloInstruction* inst) {
   auto* gather = DynCast<HloGatherInstruction>(inst);
-  return gather && !IsSimplifiedGather(gather);
+  // TODO(crem): Remove the IsIdentityPermutation check once the
+  // GatherSimplifier pass is updated to handle non-trivial start_index_maps.
+  return gather && !(IsSimplifiedGather(gather) &&
+                     IsIdentityPermutation(
+                         gather->gather_dimension_numbers().start_index_map()));
 }
 
 }  // namespace xla

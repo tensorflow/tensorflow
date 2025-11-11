@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_PROXY_CLIENT_GLOBAL_FLAGS_H_
 #define XLA_PYTHON_IFRT_PROXY_CLIENT_GLOBAL_FLAGS_H_
 
+#include <cstdint>
 #include <ostream>
 
 namespace xla {
@@ -40,6 +41,8 @@ struct GlobalClientFlags {
   // Zero or negative values are interpreted as no maximum.
   int grpc_max_ongoing_host_buffer_stores;
   int grpc_max_ongoing_host_buffer_lookups;
+
+  int64_t grpc_large_transfer_optimization_threshold_bytes;
 };
 
 GlobalClientFlags* GetGlobalClientFlags();
@@ -52,7 +55,9 @@ inline std::ostream& operator<<(std::ostream& os, GlobalClientFlags flags) {
             << "grpc_max_ongoing_host_buffer_stores="
             << flags.grpc_max_ongoing_host_buffer_stores << ","
             << "grpc_max_ongoing_host_buffer_lookups="
-            << flags.grpc_max_ongoing_host_buffer_lookups << "}";
+            << flags.grpc_max_ongoing_host_buffer_lookups << ","
+            << "grpc_large_transfer_optimization_threshold_bytes="
+            << flags.grpc_large_transfer_optimization_threshold_bytes << "}";
 }
 
 }  // namespace proxy

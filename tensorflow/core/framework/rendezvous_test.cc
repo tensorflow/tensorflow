@@ -39,7 +39,7 @@ namespace tensorflow {
 namespace {
 
 TEST(RendezvousTest, Key) {
-  const string key = Rendezvous::CreateKey(
+  const std::string key = Rendezvous::CreateKey(
       "/job:mnist/replica:1/task:2/CPU:0", 7890,
       "/job:mnist/replica:1/task:2/device:GPU:0", "var0", FrameAndIter(0, 0));
   EXPECT_EQ(key,
@@ -61,8 +61,7 @@ TEST(RendezvousTest, Key) {
                                     "/job:mnist/replica:1/task:2/device:GPU:0;",
                                     &parsed)
                    .ok());
-  EXPECT_FALSE(
-      Rendezvous::ParseKey(strings::StrCat(key, ";", key), &parsed).ok());
+  EXPECT_FALSE(Rendezvous::ParseKey(absl::StrCat(key, ";", key), &parsed).ok());
 }
 
 class LocalRendezvousTest : public ::testing::Test {
@@ -84,23 +83,23 @@ class LocalRendezvousTest : public ::testing::Test {
 };
 
 // string -> Tensor<string>
-Tensor V(const string& content) {
+Tensor V(const std::string& content) {
   Tensor tensor(DT_STRING, TensorShape({}));
   tensor.scalar<tstring>()() = content;
   return tensor;
 }
 
 // Tensor<string> -> string
-string V(const Tensor& tensor) {
+std::string V(const Tensor& tensor) {
   CHECK_EQ(tensor.dtype(), DT_STRING);
   CHECK(TensorShapeUtils::IsScalar(tensor.shape()));
   return tensor.scalar<tstring>()();
 }
 
-Rendezvous::ParsedKey MakeKey(const string& name) {
-  string s = Rendezvous::CreateKey("/job:mnist/replica:1/task:2/CPU:0", 7890,
-                                   "/job:mnist/replica:1/task:2/device:GPU:0",
-                                   name, FrameAndIter(0, 0));
+Rendezvous::ParsedKey MakeKey(const std::string& name) {
+  std::string s = Rendezvous::CreateKey(
+      "/job:mnist/replica:1/task:2/CPU:0", 7890,
+      "/job:mnist/replica:1/task:2/device:GPU:0", name, FrameAndIter(0, 0));
   Rendezvous::ParsedKey k;
   TF_EXPECT_OK(Rendezvous::ParseKey(s, &k));
   return k;
@@ -300,14 +299,14 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
     SchedClosure([this, i, micros]() {
       Env::Default()->SleepForMicroseconds(micros);
       Rendezvous::Args args;
-      TF_ASSERT_OK(rendez_->Send(MakeKey(strings::StrCat(i)), args,
-                                 V(strings::StrCat(i)), false));
+      TF_ASSERT_OK(rendez_->Send(MakeKey(absl::StrCat(i)), args,
+                                 V(absl::StrCat(i)), false));
     });
     auto recv_done = [this, &state, i](const absl::Status& status,
                                        const Rendezvous::Args& sender_args,
                                        const Rendezvous::Args& recver_args,
                                        const Tensor& val, const bool val_dead) {
-      EXPECT_EQ(strings::StrCat(i), V(val));
+      EXPECT_EQ(absl::StrCat(i), V(val));
       bool done = false;
       {
         mutex_lock l(state.lock);
@@ -323,7 +322,7 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
     micros = 100 + rnd.Uniform(1000);
     SchedClosure([this, i, micros, recv_done]() {
       Env::Default()->SleepForMicroseconds(micros);
-      rendez_->RecvAsync(MakeKey(strings::StrCat(i)), Rendezvous::Args(),
+      rendez_->RecvAsync(MakeKey(absl::StrCat(i)), Rendezvous::Args(),
                          recv_done);
     });
   }
@@ -343,7 +342,7 @@ TEST_F(LocalRendezvousTest, MultiSends) {
   Rendezvous::Args args;
   SchedClosure([=]() {
     for (int i = 0; i < N; ++i) {
-      TF_ASSERT_OK(rendez_->Send(key_foo, args, V(strings::StrCat(i)), false));
+      TF_ASSERT_OK(rendez_->Send(key_foo, args, V(absl::StrCat(i)), false));
       RandomSleep();
     }
   });

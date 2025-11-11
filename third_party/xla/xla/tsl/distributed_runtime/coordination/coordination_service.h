@@ -101,7 +101,7 @@ class CoordinationService {
                       std::unique_ptr<CoordinationClientCache> client_cache);
 
   ~CoordinationService() {
-    absl::MutexLock lock(&state_mu_);
+    absl::MutexLock lock(state_mu_);
     Stop();
   }
 

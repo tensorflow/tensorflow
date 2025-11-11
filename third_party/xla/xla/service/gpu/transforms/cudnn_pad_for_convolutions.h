@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -37,9 +37,9 @@ class CudnnPadForConvolutions : public HloModulePass {
   absl::string_view name() const override {
     return "cudnn_pad_for_convolutions";
   }
-  // Run PadForConvolutions on the given module and return if any change is made
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

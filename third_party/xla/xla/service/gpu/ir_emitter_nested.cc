@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -54,6 +53,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/fingerprint.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -110,16 +110,12 @@ IrEmitterNested::IrEmitterNested(const HloComputation& nested_computation,
 // Nested function serves the same purpose on GPU as a thread-local function on
 // a CPU.
 absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
-  // Include a fingerprint of the HLO in the function name. Currently, codegen
-  // is invoked on temporary HLO objects, which means the address of the
-  // computation is not necessarily unique.
-  std::string fingerprint =
-      emitters::GetComputationFingerprint(&nested_computation_, {});
-  size_t hash = absl::Hash<std::string>{}(fingerprint);
-  std::string function_name = llvm_ir::SanitizeFunctionName(
-      absl::StrCat(nested_computation_.name(), "_",
-                   absl::Hex(reinterpret_cast<intptr_t>(&nested_computation_)),
-                   "_", absl::Hex(hash)));
+  // Include a fingerprint of the HLO in the function name to make the name
+  // unique.
+  tsl::Fprint128 fingerprint = tsl::Fingerprint128(
+      emitters::GetComputationFingerprint(&nested_computation_, {}));
+  std::string function_name = llvm_ir::SanitizeFunctionName(absl::StrCat(
+      nested_computation_.name(), "_", fingerprint.low64, fingerprint.high64));
 
   auto* function =
       ir_emitter_context_->llvm_module()->getFunction(function_name);

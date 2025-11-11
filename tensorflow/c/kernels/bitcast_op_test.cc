@@ -60,7 +60,7 @@ void TestBitcastOp(Tensor* input_tensor, DataType out_type,
   (*def.mutable_attr())["type"] = outTypeAttr;
 
   def.add_input(
-      strings::StrCat("input1: ", DataTypeString(input_tensor->dtype())));
+      absl::StrCat("input1: ", DataTypeString(input_tensor->dtype())));
 
   std::unique_ptr<OpKernel> kernel =
       CreateOpKernel(DeviceType(DEVICE_CPU), nullptr, nullptr, def, 1, &status);
@@ -86,13 +86,13 @@ void TestBitcastOp(Tensor* input_tensor, DataType out_type,
 TEST(BitcastOpTest, TestUpcast) {
   Tensor int8_input(DT_UINT8, {8});
   for (int i = 0; i < 8; i++) {
-    int8_input.vec<uint8>()(i) = static_cast<uint8>(1);
+    int8_input.vec<uint8_t>()(i) = static_cast<uint8_t>(1);
   }
   TestBitcastOp(&int8_input, DT_UINT64, TensorShape(), error::OK);
 }
 
 TEST(BitcastOpTest, TestDowncast) {
-  Tensor int64_input(static_cast<uint64>(1));
+  Tensor int64_input(static_cast<uint64_t>(1));
   TestBitcastOp(&int64_input, DT_UINT8, TensorShape({8}), error::OK);
 }
 

@@ -136,7 +136,7 @@ static absl::StatusOr<std::vector<LocalTopologyProto>> GetAllLocalTopologies(
       absl::StatusOr<std::string> local_topology_str =
           kv_store->Get(GetLocalTopologyKey(platform, i), timeout);
       {
-        absl::MutexLock lock(&mu);
+        absl::MutexLock lock(mu);
         local_topology_strs[i] = local_topology_str;
       }
       blocking_counter.DecrementCount();

@@ -131,9 +131,8 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
       codegen_opt_level = llvm::CodeGenOptLevel::None;
   }
   return absl::WrapUnique(target->createTargetMachine(
-      triple.str(), llvm_ir::AsStringRef(cpu_name),
-      llvm_ir::AsStringRef(feature_str), target_options,
-      llvm::codegen::getExplicitRelocModel(),
+      triple, llvm_ir::AsStringRef(cpu_name), llvm_ir::AsStringRef(feature_str),
+      target_options, llvm::codegen::getExplicitRelocModel(),
       llvm::codegen::getExplicitCodeModel(), codegen_opt_level));
 }
 
@@ -265,9 +264,9 @@ absl::Status LinkAndOptimizeModule(
   llvm::ModuleAnalysisManager mam;
 
   xla::codegen::intrinsics::DeviceType device_type;
-  if (std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
+  if (gpu_version.IsCuda()) {
     device_type = xla::codegen::intrinsics::DeviceType::kNvidiaGpu;
-  } else if (std::holds_alternative<se::RocmComputeCapability>(gpu_version)) {
+  } else if (gpu_version.IsRocm()) {
     device_type = xla::codegen::intrinsics::DeviceType::kAmdGpu;
   } else {
     LOG(FATAL) << "Unsupported GPU type";

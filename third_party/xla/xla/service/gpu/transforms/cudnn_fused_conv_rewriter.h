@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -105,13 +106,13 @@ namespace gpu {
 // pass returns an error -- cudnn will not be able to run it.
 class CudnnFusedConvRewriter : public HloModulePass {
  public:
-  CudnnFusedConvRewriter(se::CudaComputeCapability cc,
+  CudnnFusedConvRewriter(const se::CudaComputeCapability& cc,
                          se::dnn::VersionInfo dnn_version,
                          se::SemanticVersion toolkit_version)
       : compute_capability_(cc),
         dnn_version_(dnn_version),
         toolkit_version_(toolkit_version) {}
-  CudnnFusedConvRewriter(se::RocmComputeCapability cc,
+  CudnnFusedConvRewriter(const se::RocmComputeCapability& cc,
                          se::dnn::VersionInfo dnn_version,
                          se::SemanticVersion toolkit_version)
       : compute_capability_(cc),
@@ -122,8 +123,8 @@ class CudnnFusedConvRewriter : public HloModulePass {
     return "cudnn-fused-convolution-rewriter";
   }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

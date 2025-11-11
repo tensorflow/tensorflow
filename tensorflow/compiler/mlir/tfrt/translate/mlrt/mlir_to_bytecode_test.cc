@@ -45,8 +45,6 @@ namespace {
 using ::testing::ElementsAreArray;
 using ::testing::FloatEq;
 using ::testing::IsEmpty;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 TEST(MlirToByteCodeTest, Basic) {
   constexpr char kBasicMlir[] =
@@ -147,16 +145,20 @@ TEST(MlirToByteCodeTest, BasicAttributes) {
   EXPECT_EQ(*attr_iter, "ts");
   ++attr_iter;
 
-  EXPECT_THAT(DecodeAttribute<int32_t>(*attr_iter), IsOkAndHolds(100));
+  EXPECT_THAT(DecodeAttribute<int32_t>(*attr_iter),
+              absl_testing::IsOkAndHolds(100));
   ++attr_iter;
 
-  EXPECT_THAT(DecodeAttribute<int64_t>(*attr_iter), IsOkAndHolds(200));
+  EXPECT_THAT(DecodeAttribute<int64_t>(*attr_iter),
+              absl_testing::IsOkAndHolds(200));
   ++attr_iter;
 
-  EXPECT_THAT(DecodeAttribute<float>(*attr_iter), IsOkAndHolds(FloatEq(3.0)));
+  EXPECT_THAT(DecodeAttribute<float>(*attr_iter),
+              absl_testing::IsOkAndHolds(FloatEq(3.0)));
   ++attr_iter;
 
-  EXPECT_THAT(DecodeAttribute<uint8_t>(*attr_iter), IsOkAndHolds(0));
+  EXPECT_THAT(DecodeAttribute<uint8_t>(*attr_iter),
+              absl_testing::IsOkAndHolds(0));
   ++attr_iter;
 
   bc::Vector<int64_t> list_of_i64((*attr_iter).data());
@@ -171,7 +173,8 @@ TEST(MlirToByteCodeTest, BasicAttributes) {
   EXPECT_THAT(list_of_str, ElementsAreArray({"string 0", "string 1"}));
   ++attr_iter;
 
-  EXPECT_THAT(DecodeAttribute<uint32_t>(*attr_iter), IsOkAndHolds(1));
+  EXPECT_THAT(DecodeAttribute<uint32_t>(*attr_iter),
+              absl_testing::IsOkAndHolds(1));
   EXPECT_EQ(executable.functions()[1].name().Get(), "callee");
   ++attr_iter;
 
@@ -272,9 +275,10 @@ TEST(MlirToByteCodeTest, UnsupportedAttributes) {
       &mlir_context);
 
   AttributeEncoderRegistry attribute_encoder_registry;
-  EXPECT_THAT(EmitExecutable(attribute_encoder_registry, mlir_module.get()),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       "Try to encode unsupported attribute: unit"));
+  EXPECT_THAT(
+      EmitExecutable(attribute_encoder_registry, mlir_module.get()),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             "Try to encode unsupported attribute: unit"));
 }
 
 class CustomDense {

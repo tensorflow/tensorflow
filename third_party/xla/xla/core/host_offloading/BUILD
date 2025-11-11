@@ -103,6 +103,7 @@ strict_cc_test(
     deps = [
         ":host_offloading_transforms",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tsl/lib/core:status_test_util",
@@ -117,8 +118,13 @@ strict_cc_test(
 tf_proto_library(
     name = "host_offloading_executable_proto",
     srcs = ["host_offloading_executable.proto"],
-    compatible_with = get_compatible_with_libtpu_portable(),
-    deps = ["//xla/service:hlo_proto"],
+    compatible_with = get_compatible_with_libtpu_portable() + [
+        # copybara:uncomment "//buildenv/target:non_prod",
+    ],
+    deps = [
+        "//xla/service:hlo_proto",
+        "//xla/service/cpu:executable_proto",
+    ],
 )
 
 cc_library(
@@ -238,11 +244,15 @@ strict_cc_test(
         "//xla:literal_util",
         "//xla:shape_tree",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/nanort:nanort_client",
         "//xla/backends/cpu/nanort:nanort_executable",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
+        "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:hlo_module_config",
+        "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
@@ -252,7 +262,6 @@ strict_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:casts",
@@ -355,6 +364,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
         "//xla/core/host_offloading:hlo_host_device_type_call_wrapper",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",

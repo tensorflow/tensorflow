@@ -42,10 +42,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "xla/tools/run_hlo_module.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -226,7 +228,6 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   // thread pool if we need to run multiple executions in parallel.
   ExecuteOptions execute_options;
   execute_options.execution_mode = ExecuteOptions::ExecutionMode::kSynchronous;
-  execute_options.untuple_result = true;
 
   std::vector<std::vector<PjRtBuffer*>> execution_args_ptrs(
       benchmark_options.num_executions);

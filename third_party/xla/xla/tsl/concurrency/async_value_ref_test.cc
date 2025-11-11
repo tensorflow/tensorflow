@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -181,12 +182,15 @@ TEST(AsyncValueRefTest, AndThen) {
 
   EXPECT_FALSE(ref.IsConcrete());
   EXPECT_FALSE(ref.IsAvailable());
+  EXPECT_FALSE(ref.HasWaiter());
 
   bool executed = false;
   ref.AndThen([&]() { executed = true; });
+  EXPECT_TRUE(ref.HasWaiter());
 
   ref.emplace(42);
   EXPECT_TRUE(executed);
+  EXPECT_FALSE(ref.HasWaiter());
 }
 
 TEST(AsyncValueRefTest, AndThenError) {
@@ -404,7 +408,7 @@ TEST(AsyncValueRefTest, FlatMapUnavailableError) {
   EXPECT_EQ(fmapped_to_float.GetError(), absl::InternalError("error"));
 }
 
-struct DeferredExecutor : public AsyncValue::Executor {
+struct DeferredExecutor : public Executor {
   void Execute(Task task) final { tasks.push_back(std::move(task)); }
 
   size_t Quiesce() {
@@ -412,7 +416,7 @@ struct DeferredExecutor : public AsyncValue::Executor {
     while (!tasks.empty()) {
       Task task = std::move(tasks.back());
       tasks.pop_back();
-      task();
+      std::move(task)();
       ++n;
     }
     return n;

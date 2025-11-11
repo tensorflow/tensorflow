@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -792,8 +793,6 @@ void AlgebraicSimplifierVisitor::ReplaceWithBitcast(HloInstruction* instruction,
   if (operand == nullptr) {
     operand = instruction->mutable_operand(0);
   }
-  CHECK_EQ(ShapeUtil::ElementsIn(instruction->shape()),
-           ShapeUtil::ElementsIn(operand->shape()));
   CHECK_EQ(ShapeUtil::ByteSizeOf(instruction->shape()),
            ShapeUtil::ByteSizeOf(operand->shape()));
 
@@ -1627,15 +1626,40 @@ absl::Status AlgebraicSimplifierVisitor::HandleBitcastConvert(
     return absl::OkStatus();
   }
   if (options_.is_layout_sensitive() &&
-      options_.rewrite_no_op_bitcast_convert_to_bitcast() &&
-      // Equal shape ignoring element type implies same bitwidth, as for
-      // different bitwidth shape inference would yield a different shape for
-      // the output. A bitcast-convert with same shape but different bitwidth
-      // would fail the HloVerifier.
-      ShapeUtil::EqualIgnoringElementType(bitcast->shape(), operand->shape())) {
-    ReplaceWithBitcast(bitcast);
-    return absl::OkStatus();
+      options_.rewrite_no_op_bitcast_convert_to_bitcast()) {
+    // Equal shape ignoring element type implies same bitwidth, as for
+    // different bitwidth shape inference would yield a different shape for
+    // the output. A bitcast-convert with same shape but different bitwidth
+    // would fail the HloVerifier.
+    if (ShapeUtil::EqualIgnoringElementType(bitcast->shape(),
+                                            operand->shape())) {
+      ReplaceWithBitcast(bitcast);
+      return absl::OkStatus();
+    }
+
+    auto last_dim_is_contiguous = [](const Shape& shape) {
+      if (!ShapeUtil::LastDimIsMinorMost(shape)) {
+        return false;
+      }
+      const int type_bit_width = primitive_util::BitWidth(shape.element_type());
+      if (!shape.has_layout() || shape.layout().element_size_in_bits() == 0) {
+        return type_bit_width % 8 == 0;
+      }
+      return shape.layout().element_size_in_bits() == type_bit_width;
+    };
+
+    const Shape& shape_with_extra_dimension =
+        operand->shape().dimensions().size() >
+                bitcast->shape().dimensions().size()
+            ? operand->shape()
+            : bitcast->shape();
+
+    if (last_dim_is_contiguous(shape_with_extra_dimension)) {
+      ReplaceWithBitcast(bitcast);
+      return absl::OkStatus();
+    }
   }
+
   // Eliminate bitcast converts between same shape.
   ReplaceInstructionIfCompatible(bitcast, bitcast->mutable_operand(0));
   return absl::OkStatus();
@@ -2697,6 +2721,12 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::MoveDotParamToRhs(
   dot->SetupDerivedInstruction(new_dot);
   dot->SetupDerivedInstruction(new_transpose);
   TF_RETURN_IF_ERROR(ReplaceInstruction(dot, new_transpose));
+  // Don't propagate the user-guided fusion attribute to the new auto-generated
+  // transpose if it is not an intervening instruction before another must-fuse
+  // instruction.
+  // Note: This is used for backend-specific optimization. In the future, we
+  // should find a better way that does not expose it to the third-party.
+  AmendUserGuidedFusionAttr(new_transpose);
   return true;
 }
 
@@ -5094,12 +5124,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
   // optimization barrier. Additionally if the operand is a tuple producing
   // instruction it should also be safe to create a sub tuple of only the used
   // components to enable module level dce.
-  std::vector<bool> used_elements(barrier->shape().tuple_shapes().size());
-  bool has_non_gte_use = false;
+  std::vector<bool> used_elements(barrier->shape().tuple_shapes().size(),
+                                  false);
   for (auto use : barrier->users()) {
     if (use->opcode() != HloOpcode::kGetTupleElement) {
-      has_non_gte_use = true;
-      break;
+      return absl::OkStatus();
     }
     used_elements[use->tuple_index()] = true;
   }
@@ -5118,7 +5147,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
     }
   }
 
-  if (has_non_gte_use || !absl::c_linear_search(used_elements, false)) {
+  if (absl::c_all_of(used_elements, [](bool v) { return v; })) {
     return absl::OkStatus();
   }
 
@@ -5240,23 +5269,18 @@ absl::Status AlgebraicSimplifierVisitor::HandleBroadcast(
         dims.erase(dims.begin() + inserted_index);
       }
 
-      HloInstruction* replaced_inst = operand;
-      if (replaced_inst->original_value()) {
-        HloInstruction* replacing_inst = operand->mutable_operand(0);
-        auto build_entry_computation = [](xla::HloComputation::Builder& builder,
-                                          const xla::Shape& input_shape,
-                                          const xla::Shape& output_shape) {
-          xla::HloInstruction* param = builder.AddInstruction(
-              xla::HloInstruction::CreateParameter(0, input_shape, "p"));
-          return builder.AddInstruction(
-              xla::HloInstruction::CreateReshape(output_shape, param));
-        };
-        HloModule* module = broadcast->parent()->parent();
-        module->mutable_original_value_recovery_table()
-            .BuildAndAddRecoveryModule(replaced_inst, replacing_inst,
-                                       build_entry_computation);
-      }
-
+      HloModule* module = broadcast->parent()->parent();
+      module->mutable_original_value_recovery_table()
+          .BuildAndAddRecoveryComputation(
+              operand, operand->mutable_operand(0),
+              [](xla::HloComputation::Builder& builder, const ShapeIndex& index,
+                 const OriginalArray& old_original_array,
+                 const xla::Shape& old_shape, const xla::Shape& new_shape) {
+                xla::HloInstruction* param = builder.AddInstruction(
+                    xla::HloInstruction::CreateParameter(0, new_shape, "p"));
+                return builder.AddInstruction(
+                    xla::HloInstruction::CreateReshape(old_shape, param));
+              });
       return ReplaceWithNewInstruction(
           broadcast,
           HloInstruction::CreateBroadcast(broadcast->shape(),
@@ -6118,6 +6142,119 @@ absl::Status AlgebraicSimplifierVisitor::HandleRemainder(
   return absl::OkStatus();
 }
 
+absl::StatusOr<bool>
+AlgebraicSimplifierVisitor::TryRemovingReshapeTransposeChain(
+    HloInstruction* reshape) {
+  // Detect a chain of transposes and reshapes that can be replaced with a
+  // nop. All reshapes only add, remove or shuffle degenerate dimensions, such
+  // as [x,y,z]->[x,y,1,z] or its reverse, [x,y,1,z]->[x,1,y,z], etc. And all
+  // the shapes in the chain have at most one degenerate dimension. Then all
+  // the transposes in the chain effectively permute x,y,z, while the
+  // degenerate dimension is ignored. As long as all transposes compose to
+  // identity permutation, the chain can be replaced with a nop if the
+  // starting shape and ending shape match. This is done before layout
+  // assignment so layout is completely ignored.
+
+  auto get_num_of_degenerate_dimensions = [](const Shape& shape) {
+    return std::accumulate(shape.dimensions().begin(), shape.dimensions().end(),
+                           0, [](int64_t count, int64_t element) {
+                             return count + (element == 1 ? 1 : 0);
+                           });
+  };
+
+  auto is_valid_reshape = [&](const HloInstruction* reshape) {
+    CHECK(reshape->opcode() == HloOpcode::kReshape);
+    return get_num_of_degenerate_dimensions(reshape->shape()) <= 1 &&
+           get_num_of_degenerate_dimensions(reshape->operand(0)->shape()) <=
+               1 &&
+           reshape->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
+  };
+
+  auto get_degenerate_dimension = [](const Shape& shape) {
+    for (int64_t i = 0; i < shape.dimensions().size(); ++i) {
+      if (shape.dimensions(i) == 1) {
+        return i;
+      }
+    }
+    return int64_t{-1};
+  };
+
+  // Returns the effective permutation of the transpose. The degenerate
+  // dimension is ignored.
+  auto get_effective_permutation =
+      [&](absl::Span<const int64_t> permutation, const Shape& from_shape,
+          const Shape& to_shape) -> DimensionVector {
+    CHECK_EQ(from_shape.dimensions().size(), permutation.size());
+    CHECK_EQ(to_shape.dimensions().size(), permutation.size());
+    if (get_num_of_degenerate_dimensions(from_shape) == 1) {
+      int64_t degenerate_dimension = get_degenerate_dimension(from_shape);
+      DimensionVector new_permutation;
+      new_permutation.reserve(permutation.size() - 1);
+      for (int64_t i = 0; i < permutation.size(); ++i) {
+        if (permutation[i] == degenerate_dimension) {
+          CHECK_EQ(to_shape.dimensions(i), 1);
+          // Skip degenerate dimension.
+          continue;
+        }
+        if (permutation[i] > degenerate_dimension) {
+          new_permutation.push_back(permutation[i] - 1);
+        } else {
+          new_permutation.push_back(permutation[i]);
+        }
+      }
+      return new_permutation;
+    }
+
+    // The shapes should have no degenerate dimension.
+    return DimensionVector(permutation.begin(), permutation.end());
+  };
+
+  if (!options_.is_layout_sensitive() && is_valid_reshape(reshape)) {
+    int64_t effective_size = ShapeUtil::TrueNumDimensions(reshape->shape());
+    std::vector<int64_t> permutation(effective_size);
+    // Init with identity permutation.
+    std::iota(permutation.begin(), permutation.end(), 0);
+
+    bool is_nop = true;
+    HloInstruction* starting_instruction = nullptr;
+    HloInstruction* current = reshape->mutable_operand(0);
+    while (current->opcode() == HloOpcode::kReshape ||
+           current->opcode() == HloOpcode::kTranspose) {
+      if (current->opcode() == HloOpcode::kReshape &&
+          !is_valid_reshape(current)) {
+        is_nop = false;
+        break;
+      }
+      if (current->opcode() == HloOpcode::kTranspose) {
+        if (IsIdentityPermutation(
+                Cast<HloTransposeInstruction>(current)->dimensions())) {
+          // This transpose will be eliminated separately in HandleTranspose.
+          is_nop = false;
+          break;
+        }
+        permutation = ComposePermutations(
+            get_effective_permutation(current->dimensions(),
+                                      current->operand(0)->shape(),
+                                      current->shape()),
+            permutation);
+      }
+      starting_instruction = current;
+      current = current->mutable_operand(0);
+    }
+
+    if (is_nop && starting_instruction != nullptr &&
+        Shape::Equal().IgnoreLayout()(
+            reshape->shape(), starting_instruction->operand(0)->shape()) &&
+        IsIdentityPermutation(permutation)) {
+      VLOG(2) << "Deleting reshape-transpose chain: " << reshape->ToString();
+      TF_RETURN_IF_ERROR(ReplaceInstruction(
+          reshape, starting_instruction->mutable_operand(0)));
+      return true;
+    }
+  }
+  return false;
+}
+
 absl::Status AlgebraicSimplifierVisitor::HandleReshape(
     HloInstruction* reshape) {
   auto operand = reshape->mutable_operand(0);
@@ -6153,6 +6290,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
   if (operand->opcode() == HloOpcode::kRng && operand->user_count() == 1) {
     *operand->mutable_shape() = reshape->shape();
     return ReplaceInstruction(reshape, operand);
+  }
+
+  TF_ASSIGN_OR_RETURN(bool reshape_transpose_chain_removed,
+                      TryRemovingReshapeTransposeChain(reshape));
+  if (reshape_transpose_chain_removed) {
+    return absl::OkStatus();
   }
 
   if (options_.is_layout_sensitive()) {
@@ -6269,6 +6412,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
     }
   }
 
+  // reshape(broadcast(x)) -> new_broadcast(x) if x's dimensions are unmodified
+  // by reshape.
   if (HloOpcode::kBroadcast == operand->opcode()) {
     auto opt_dims =
         ReshapeLeavesDimensionsUnmodified(reshape, operand->dimensions());
@@ -9888,7 +10033,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleMap(HloInstruction* map) {
   return ReplaceWithNewInstruction(map, std::move(clone));
 }
 
-absl::StatusOr<bool> AlgebraicSimplifier::Run(
+absl::StatusOr<bool> AlgebraicSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

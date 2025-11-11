@@ -87,11 +87,8 @@ class ParallelTaskAssigner : public HloModulePass {
     return "cpu-parallel-task-assigner";
   }
 
-  // Run parallel task assigner on computations with specified
-  // `execution_threads` in 'module'. By default, all `execution_threads` are
-  // included. Returns true if the computation was changed, false otherwise.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

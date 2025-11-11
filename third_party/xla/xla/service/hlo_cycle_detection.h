@@ -33,20 +33,15 @@ namespace xla {
 
 class CycleDetectionVisitor : public DfsHloVisitorWithDefault {
  public:
+  // Relies on HloInstruction::Accept() to run PostOrderDFS which does cycle
+  // detection by default.
   absl::Status VerifyNoCycle(HloModule* module) {
     for (auto* comp : module->computations()) {
       TF_RETURN_IF_ERROR(comp->Accept(this));
     }
     return absl::OkStatus();
   }
-  // Relies on HloInstruction::Accept() to run PostOrderDFS which does cycle
-  // detection by default.
-  absl::Status VerifyNoCycle(HloModuleGroup* module_group) {
-    for (auto* comp : module_group->module(0).computations()) {
-      TF_RETURN_IF_ERROR(comp->Accept(this));
-    }
-    return absl::OkStatus();
-  }
+
   absl::Status DefaultAction(HloInstruction* instruction) override {
     return absl::OkStatus();
   }
@@ -57,21 +52,12 @@ class HloCycleDetection : public HloModulePass {
  public:
   absl::string_view name() const override { return "hlo-cycle-detection"; }
 
+ protected:
   // Never returns true; no instructions are ever modified by this pass.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     TF_RETURN_IF_ERROR(visitor_.VerifyNoCycle(module));
-    return false;
-  }
-
-  using HloPassInterface::RunOnModuleGroup;
-  absl::StatusOr<bool> RunOnModuleGroup(
-      HloModuleGroup* module_group,
-      const absl::flat_hash_set<absl::string_view>& execution_threads)
-      override {
-    TF_RETURN_IF_ERROR(visitor_.VerifyNoCycle(module_group));
     return false;
   }
 

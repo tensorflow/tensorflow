@@ -38,64 +38,14 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
 namespace {
 namespace m = ::xla::match;
-
-// If exactly one index of `dims` is false, returns that index.  If 0 or more
-// than one index is false, returns nullopt.
-std::optional<int64_t> FindFalseIndex(absl::Span<const bool> vals) {
-  std::optional<int64_t> missing_dim;
-  for (int i = 0; i < vals.size(); i++) {
-    if (vals[i]) {
-      continue;
-    }
-    if (missing_dim.has_value()) {
-      VLOG(2) << "Multiple dimensions are missing from conv dnums; can't "
-                 "determine which is vect_c dimension";
-      return std::nullopt;
-    }
-    missing_dim = i;
-  }
-  return missing_dim;
-}
-
-// Finds the vect_c dimension in the convolution's output.
-//
-// The vect_c dimension in dnums is the dimension that's not mentioned in
-// `dnums`.  If there's zero or more than one such dimension, returns nullopt.
-std::optional<int64_t> FindOutputVectCDim(HloInstruction* conv) {
-  const ConvolutionDimensionNumbers& dnums =
-      conv->convolution_dimension_numbers();
-  int64_t num_dims = conv->shape().tuple_shapes(0).dimensions().size();
-  absl::InlinedVector<bool, 5> seen_dims(num_dims);
-  seen_dims[dnums.output_batch_dimension()] = true;
-  seen_dims[dnums.output_feature_dimension()] = true;
-  for (int64_t d : dnums.output_spatial_dimensions()) {
-    seen_dims[d] = true;
-  }
-  return FindFalseIndex(seen_dims);
-}
-
-// Finds the vect_c dimension in the convolution's kernel.
-std::optional<int64_t> FindKernelVectCDim(HloInstruction* conv) {
-  const ConvolutionDimensionNumbers& dnums =
-      conv->convolution_dimension_numbers();
-  int64_t num_dims = conv->operand(1)->shape().dimensions().size();
-  absl::InlinedVector<bool, 5> seen_dims(num_dims);
-  seen_dims[dnums.kernel_input_feature_dimension()] = true;
-  seen_dims[dnums.kernel_output_feature_dimension()] = true;
-  for (int64_t d : dnums.kernel_spatial_dimensions()) {
-    seen_dims[d] = true;
-  }
-  return FindFalseIndex(seen_dims);
-}
 
 // Attempts to count the number of output features at the end of conv that are
 // guaranteed to be 0.
@@ -108,66 +58,6 @@ std::optional<int64_t> NumTrailingZeroOutputFeatures(HloInstruction* conv) {
   int64_t feature_dim = dnums.kernel_output_feature_dimension();
   const HloInstruction* weights = conv->operand(1);
 
-  // If the filter is reordered for an int8x32 NCHW_VECT_C convolution, find the
-  // original, un-reordered filter and check *it* for trailing zero output
-  // features.
-  auto backend_config = conv->backend_config<GpuBackendConfig>();
-  if (backend_config.ok() &&
-      backend_config->cudnn_conv_backend_config().reordered_int8_nchw_vect()) {
-    VLOG(2) << "Matched int8x32 convolution with filter reordering";
-
-    // Try to set weights to the original, un-reordered value.
-    const HloInstruction *reshape, *transpose;
-    bool matched =
-        Match(weights, m::Reshape(m::Transpose(
-                           &transpose, m::Reshape(&reshape, m::Op(&weights)))));
-
-    // Verify some properties of the reshape-transpose-reshape pattern.
-    // If these don't hold, it means that some pass (e.g. constant folding)
-    // has modified the filter, making making it infeasible to get the original,
-    // un-reordered value.
-    if (!matched || feature_dim != 0 ||
-        transpose->shape().dimensions().size() != 8) {
-      VLOG(2) << "The filter output feature dimension cannot be determined, as "
-                 "the reordering sequence is modified";
-      return std::nullopt;
-    }
-
-    // Calculate the actual output feature dimension before the transpose.
-    // For example: the input filter [I, O, H, W] will get reshaped to
-    // [I/32, 8, 4, O/8, 4, 2, H, W], transposed in a way that is compatible
-    // with cuDNN INT8x32_CONFIG convolutions (see 'cudnn_support_utils.h') and
-    // reshaped again to [O, I/32, H, W, 32]. While the output features
-    // dimension is zero, we need to get the dimension in the original shape
-    // (equals to one in this example).
-    const auto& transpose_dimensions =
-        Cast<HloTransposeInstruction>(transpose)->dimensions();
-
-    // Calculate combined dimensions size before the first appearing output
-    // component [O/8], which appears in position 3 of the transpose.
-    int64_t preceding_size = 1;
-    for (int64_t i = transpose_dimensions.at(3) - 1; i >= 0; --i) {
-      preceding_size *= reshape->shape().dimensions(i);
-    }
-
-    // Skip dimensions in front until the output features dimension is found.
-    int64_t accumulated_size = 1;
-    for (int64_t size : weights->shape().dimensions()) {
-      if (accumulated_size < preceding_size) {
-        accumulated_size *= size;
-        ++feature_dim;
-      } else {
-        break;
-      }
-    }
-    // Sanity check; if this condition doesn't hold, something is off.
-    if (accumulated_size != preceding_size) {
-      VLOG(2) << "Something is really wrong here, I give up";
-      return std::nullopt;
-    }
-    VLOG(2) << "Computed output feature dimension: " << feature_dim;
-  }
-
   VLOG(2) << "Computing NumTrailingZeroOutputFeatures of " << conv->ToString()
           << "\nwith weights " << weights->ToString();
   if (Match(weights, m::Pad(m::Op(), m::ConstantEffectiveScalar(0)))) {
@@ -177,56 +67,8 @@ std::optional<int64_t> NumTrailingZeroOutputFeatures(HloInstruction* conv) {
     VLOG(2) << "Success: Weights is a pad; padding on output feature dim is "
             << padding_config.edge_padding_high();
     return padding_config.edge_padding_high();
-  } else if (const HloInstruction * pad; Match(
-                 weights, m::Reshape(m::Pad(&pad, m::Op(),
-                                            m::ConstantEffectiveScalar(0))))) {
-    // Check that the reshape merely adds a VECT_C to the kernel input features.
-    // That is, we reshape from [I,O,H,W] (in some order) to [I/k,k,O,H,W] (in
-    // the same order) for some constant k (probably 32).  Then check how much
-    // the pad adds to the O dimension.
-    std::optional<int64_t> vect_c_dim = FindKernelVectCDim(conv);
-    if (!vect_c_dim.has_value()) {
-      VLOG(2) << "fail: Can't find vect_c dimension in conv.";
-      return std::nullopt;
-    }
-    if (*vect_c_dim != dnums.kernel_input_feature_dimension() + 1) {
-      VLOG(2) << "fail: vect_c dim is in the wrong place; should be right "
-                 "after kernel input feature dims in conv.";
-      return std::nullopt;
-    }
-    absl::InlinedVector<int64_t, 5> expected_pad_dim_sizes(
-        weights->shape().dimensions().begin(),
-        weights->shape().dimensions().end());
-    expected_pad_dim_sizes[dnums.kernel_input_feature_dimension()] *=
-        weights->shape().dimensions(*vect_c_dim);
-    expected_pad_dim_sizes.erase(expected_pad_dim_sizes.begin() + *vect_c_dim);
-    if (pad->shape().dimensions() != expected_pad_dim_sizes) {
-      VLOG(2) << "fail: Reshape doesn't simply merge vect_c dimension into "
-                 "input features dim "
-              << weights->ToString() << " but expected dims "
-              << absl::StrJoin(expected_pad_dim_sizes, ",");
-      return std::nullopt;
-    }
-
-    // If the filter dnums are e.g. [I,O,H,W] then after reshape they are
-    // [I/k,k,O,H,W] and the new index of O is greater less than before the
-    // reshape (which we know only adds the I/k and k dims, which we also know
-    // are contiguous).  OTOH if the O comes before the I in the original, then
-    // the index of O doesn't change after the reshape.
-    int64_t feature_dim_before_reshape = feature_dim;
-    if (dnums.kernel_output_feature_dimension() >
-        dnums.kernel_input_feature_dimension()) {
-      feature_dim_before_reshape--;
-    }
-    const PaddingConfig::PaddingConfigDimension& padding_config =
-        pad->padding_config().dimensions(feature_dim_before_reshape);
-
-    // The last N output feature weights are all 0.
-    VLOG(2) << "Success: Weights is a reshape of a pad; padding on output "
-               "feature dim is "
-            << padding_config.edge_padding_high();
-    return padding_config.edge_padding_high();
-  } else if (Match(weights, m::Constant())) {
+  }
+  if (Match(weights, m::Constant())) {
     // Iterate backwards over `weights` to find the index of the first nonzero
     // value.
     //
@@ -287,15 +129,9 @@ std::optional<int64_t> NumTrailingZeroOutputFeatures(HloInstruction* conv) {
 }
 
 absl::StatusOr<bool> TrySimplifyPadding(HloInstruction* instr) {
-  // Match one of the following patterns.
-  //   conv -> slice -> pad
-  //   conv -> reshape -> slice-> pad
-  //   conv -> transpose -> reshape -> slice -> pad
-  //
+  // Match pattern: conv -> slice -> pad
   // where `pad` (the root of the pattern) is `instr`.
   HloInstruction* conv;
-  HloInstruction* transpose = nullptr;  // optional
-  HloInstruction* reshape = nullptr;    // optional
   HloInstruction* slice;
   HloInstruction* pad;
   auto conv_matcher = m::GetTupleElement(
@@ -309,29 +145,12 @@ absl::StatusOr<bool> TrySimplifyPadding(HloInstruction* instr) {
   if (!MatchAndLogIfFailed(instr, "conv-slice-pad",
                            m::Pad(&pad, m::Slice(&slice, conv_matcher),
                                   m::ConstantEffectiveScalar(0)),
-                           VLOG_IS_ON(3), pad_matcher) &&
-      !MatchAndLogIfFailed(
-          instr, "conv-reshape-slice-pad",
-          m::Pad(&pad, m::Slice(&slice, m::Reshape(&reshape, conv_matcher)),
-                 m::ConstantEffectiveScalar(0)),
-          VLOG_IS_ON(3), pad_matcher) &&
-      !MatchAndLogIfFailed(
-          instr, "conv-transpose-reshape-slice-pad",
-          m::Pad(&pad,
-                 m::Slice(&slice,
-                          m::Reshape(&reshape,
-                                     m::Transpose(&transpose, conv_matcher))),
-                 m::ConstantEffectiveScalar(0)),
-          VLOG_IS_ON(3), pad_matcher)) {
+                           VLOG_IS_ON(3), pad_matcher)) {
     return false;
   }
 
   VLOG(2) << "Found pattern to attempt to simplify:\n"
           << "conv: " << conv->ToString()  //
-          << "\ntranspose: "
-          << (transpose != nullptr ? transpose->ToString() : "(null)")
-          << "\nreshape: "
-          << (reshape != nullptr ? reshape->ToString() : "(null)")
           << "\nslice: " << slice->ToString()  //
           << "\npad: " << pad->ToString();
 
@@ -354,59 +173,7 @@ absl::StatusOr<bool> TrySimplifyPadding(HloInstruction* instr) {
   // optional-reshape + optional-transpose + slice + pad combination is setting
   // all of these features to 0.  If so, we can merge the slice into the pad.
   const auto& dnums = conv->convolution_dimension_numbers();
-  int64_t output_feature_dim;
-  if (reshape == nullptr) {
-    CHECK_EQ(transpose, nullptr);
-    output_feature_dim = dnums.output_feature_dimension();
-  } else {
-    std::optional<int64_t> vect_c_dim_before_transpose =
-        FindOutputVectCDim(conv);
-    if (!vect_c_dim_before_transpose.has_value()) {
-      VLOG(2) << "Couldn't find vect_c output dim in conv.";
-      return false;
-    }
-
-    // If there's no transpose, check that the vect_c dim is immediately after
-    // the feature dim.  OTOH if there is a transpose, check that the transpose
-    // moves the vect_c dim immediately after the feature dim.
-    int64_t feature_dim_after_transpose;
-    int64_t vect_c_dim_after_transpose;
-    if (transpose == nullptr) {
-      feature_dim_after_transpose = dnums.output_feature_dimension();
-      vect_c_dim_after_transpose = *vect_c_dim_before_transpose;
-    } else {
-      const auto& transpose_dims = transpose->dimensions();
-      feature_dim_after_transpose = std::distance(
-          transpose->dimensions().begin(),
-          absl::c_find(transpose_dims, dnums.output_feature_dimension()));
-      vect_c_dim_after_transpose = std::distance(
-          transpose->dimensions().begin(),
-          absl::c_find(transpose_dims, *vect_c_dim_before_transpose));
-    }
-    if (vect_c_dim_after_transpose != feature_dim_after_transpose + 1) {
-      VLOG(2) << "fail: after transpose (if present), vect_c dim must appear "
-                 "immediately after output feature dim: Computed "
-                 "vect_d_dim_after_transpose to be "
-              << vect_c_dim_after_transpose;
-      return false;
-    }
-
-    // Now check that the reshape merges the feature + vect_c dims and
-    // doesn't do anything else.
-    absl::InlinedVector<int64_t, 5> expected_reshape_dim_sizes(
-        reshape->operand(0)->shape().dimensions().begin(),
-        reshape->operand(0)->shape().dimensions().end());
-    expected_reshape_dim_sizes[feature_dim_after_transpose] *=
-        expected_reshape_dim_sizes[vect_c_dim_after_transpose];
-    expected_reshape_dim_sizes.erase(expected_reshape_dim_sizes.begin() +
-                                     vect_c_dim_after_transpose);
-    if (reshape->shape().dimensions() != expected_reshape_dim_sizes) {
-      VLOG(2) << "fail: Reshape doesn't merge vect_c with feature dimension.";
-      return false;
-    }
-
-    output_feature_dim = feature_dim_after_transpose;
-  }
+  int64_t output_feature_dim = dnums.output_feature_dimension();
 
   // Check that `slice` slices only the output feature dimension.
   if (!absl::c_all_of(slice->slice_starts(), [](auto v) { return v == 0; }) ||
@@ -469,7 +236,7 @@ absl::StatusOr<bool> TrySimplifyPadding(HloInstruction* instr) {
 
 }  // anonymous namespace
 
-absl::StatusOr<bool> CudnnSimplifyPadding::Run(
+absl::StatusOr<bool> CudnnSimplifyPadding::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -39,10 +39,9 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -65,7 +64,9 @@ GetPatternReplacements(const CustomKernelFusionPattern::Match& match) {
 
   for (HloInstruction* instr : match.instructions()) {
     for (HloInstruction* user : instr->users()) {
-      if (instr == match.root() || instructions_set.contains(user)) continue;
+      if (instr == match.root() || instructions_set.contains(user)) {
+        continue;
+      }
 
       if (match.HasReplacement(instr)) {
         requires_replacement.insert(instr);
@@ -179,7 +180,9 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
   TF_RETURN_IF_ERROR(fusion->set_backend_config(std::move(gpu_config)));
 
   // If we don't have workspace we can return constructed fusion instruction.
-  if (match.workspace_size_bytes() == 0) return fusion;
+  if (match.workspace_size_bytes() == 0) {
+    return fusion;
+  }
 
   // Otherwise have to get result corresponding to the original value;
   return parent->AddInstruction(
@@ -187,7 +190,7 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
 }
 }  // namespace
 
-absl::StatusOr<bool> CustomKernelFusionRewriter::Run(
+absl::StatusOr<bool> CustomKernelFusionRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<CustomKernelFusionPattern::Match> matches;
@@ -200,14 +203,18 @@ absl::StatusOr<bool> CustomKernelFusionRewriter::Run(
     }
   }
 
-  if (matches.empty()) return false;
+  if (matches.empty()) {
+    return false;
+  }
 
   for (const CustomKernelFusionPattern::Match& match : matches) {
     VLOG(2) << "Matched custom kernel fusion " << match.config().name()
             << "; root instruction: " << match.instructions().back()->name();
 
     auto replacememts = GetPatternReplacements(match);
-    if (!replacememts.has_value()) continue;
+    if (!replacememts.has_value()) {
+      continue;
+    }
 
     auto captures = GetPatternCaptures(match);
 

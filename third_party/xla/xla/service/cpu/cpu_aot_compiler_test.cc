@@ -18,8 +18,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/StringMap.h"  // IWYU pragma: keep
+#include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/compiler.h"
@@ -34,6 +36,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace cpu {
@@ -92,10 +95,9 @@ ENTRY e {
     SCOPED_TRACE(test_name);
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo));
-    auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
     TF_ASSERT_OK_AND_ASSIGN(
         std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
-        compiler->CompileAheadOfTime(std::move(module_group), *aot_options));
+        compiler->CompileAheadOfTime(std::move(module), *aot_options));
 
     TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
                             aot_results[0]->SerializeAsString());
@@ -124,6 +126,61 @@ ENTRY e {
 
   test("Test kHloAdd1", kHloAdd1, 1, 2);
   test("Test kHloAdd2", kHloAdd2, 1, 3);
+}
+
+TEST_F(CpuAotCompilerTest,
+       ExportedExecutableTargetMachineOptionsMatchTheCompilationMachine) {
+  absl::string_view module_string = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  a_plus_b = f32[] add(a, b)
+  ROOT result = f32[] add(a_plus_b, b)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          se::PlatformManager::PlatformWithName("host"));
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                          platform->ExecutorForDevice(0));
+
+  Compiler* compiler = backend().compiler();
+  ASSERT_NE(compiler, nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(module_string));
+
+  xla::Compiler::CompileOptions compile_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      hlo_module, compiler->RunHloPasses(std::move(hlo_module), stream_exec,
+                                         compile_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable, compiler->RunBackend(std::move(hlo_module), stream_exec,
+                                            compile_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto aot_result, compiler->Export(executable.get()));
+
+  CpuAotCompilationResult* cpu_aot_result =
+      tsl::down_cast<CpuAotCompilationResult*>(aot_result.get());
+  ASSERT_NE(cpu_aot_result, nullptr);
+
+  EXPECT_EQ(
+      llvm::Triple(cpu_aot_result->proto().target_machine_options().triple())
+          .getArchName(),
+      llvm::Triple(kTargetTripleForHost).getArchName());
+
+  auto host_machine_features = llvm::sys::getHostCPUFeatures();
+  std::vector<absl::string_view> enabled_features;
+  for (const auto& feature : host_machine_features) {
+    if (feature.getValue()) {
+      enabled_features.push_back(feature.getKey());
+    }
+  }
+
+  EXPECT_EQ(cpu_aot_result->proto().target_machine_options().features(),
+            absl::StrJoin(enabled_features, ","));
 }
 
 }  // namespace

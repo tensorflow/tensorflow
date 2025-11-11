@@ -61,7 +61,7 @@ struct radix_key_codec_base<tsl::bfloat16>
 namespace traits {
 
 template <>
-struct rocprim::traits::define<Eigen::half> {
+struct define<Eigen::half> {
   using float_bit_mask =
       rocprim::traits::float_bit_mask::values<uint16_t, 0x8000, 0x7C00, 0x03FF>;
   using is_arithmetic = rocprim::traits::is_arithmetic::values<true>;
@@ -70,7 +70,7 @@ struct rocprim::traits::define<Eigen::half> {
 };
 
 template <>
-struct rocprim::traits::define<tsl::bfloat16> {
+struct define<tsl::bfloat16> {
   using float_bit_mask =
       rocprim::traits::float_bit_mask::values<uint16_t, 0x8000, 0x7F80, 0x007F>;
   using is_arithmetic = rocprim::traits::is_arithmetic::values<true>;

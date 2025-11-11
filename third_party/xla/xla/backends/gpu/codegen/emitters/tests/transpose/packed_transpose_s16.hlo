@@ -11,7 +11,6 @@ fusion {
 // CHECK-SAME:      %[[OUTPU:.*]]: tensor<4x2x6x10x64xi16>
 
 // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
-// CHECK-DAG:  %[[VC0:.*]] = arith.constant dense<0> : vector<2x2xi16>
 
 // CHECK:  xla_gpu.allocate_shared : tensor<64x64xi16>
 
@@ -27,18 +26,15 @@ fusion {
 // CHECK:        %[[V0:.*]] = vector.transfer_read %[[SHMEM_SYNC]]
 // CHECK-SAME:     : tensor<64x64xi16>, vector<2xi16>
 // CHECK:        %[[V1:.*]] = vector.extract %[[V0]][0] : i16 from vector<2xi16>
-// CHECK:        %[[V2:.*]] = vector.insert %[[V1]], %[[VC0]] [0, 0]
 // CHECK:        %[[V3:.*]] = vector.extract %[[V0]][1] : i16 from vector<2xi16>
-// CHECK:        %[[V4:.*]] = vector.insert %[[V3]], %[[V2]] [1, 0]
 // CHECK:        %[[V5:.*]] = arith.addi
 
 // Reading the second horizontal vector.
 // CHECK:        %[[V6:.*]] = vector.transfer_read %[[SHMEM_SYNC]][%[[V5]]
 // CHECK-SAME:     : tensor<64x64xi16>, vector<2xi16>
 // CHECK:        %[[V7:.*]] = vector.extract %{{.*}}[0] : i16 from vector<2xi16>
-// CHECK:        %[[V8:.*]] = vector.insert %{{.*}}[0, 1]
 // CHECK:        %[[V9:.*]] = vector.extract %{{.*}}[1] : i16 from vector<2xi16>
-// CHECK:        %[[V10:.*]] = vector.insert %{{.*}}[1, 1]
+// CHECK:        %[[V10:.*]] = vector.from_elements %[[V1]], %[[V7]], %[[V3]], %[[V9]] : vector<2x2xi16>
 
 // Writing back the transpose <VECTOR_SIZE x VECTOR_SIZE> vector.
 // CHECK:        xla.loop

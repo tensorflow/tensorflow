@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_CPU_CPU_AOT_COMPILATION_RESULT_H_
 
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,10 +25,10 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/buffer_allocation_info.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
-#include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
@@ -106,8 +105,10 @@ class CpuAotCompilationResult : public AotCompilationResult {
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
       absl::string_view function_name, std::vector<ObjFileProto> obj_files,
       std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
-      FunctionLibrary* function_library,
-      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
+      std::unique_ptr<FunctionLibrary> function_library,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+      TargetMachineOptionsProto target_machine_options =
+          TargetMachineOptionsProto());
 
   ~CpuAotCompilationResult() override = default;
 
@@ -117,7 +118,8 @@ class CpuAotCompilationResult : public AotCompilationResult {
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       [[maybe_unused]] Compiler* compiler,
-      const se::StreamExecutor* stream_exec) const&& override;
+      const se::StreamExecutor* stream_exec) &&
+      override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
 
@@ -147,21 +149,17 @@ class CpuAotCompilationResult : public AotCompilationResult {
     return temp_allocation_index_;
   }
 
-  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos() const {
-    return buffer_infos_;
+  absl::Span<const BufferAllocationInfo> buffer_allocation_infos() const {
+    return buffer_allocation_infos_;
   }
 
   const HloProfilePrinterData* hlo_profile_printer_data() const {
     return hlo_profile_printer_data_.get();
   }
 
-  static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> FromString(
-      const std::string& serialized, FunctionLibrary* function_library) {
-    CompilationResultProto proto;
-    if (!proto.ParseFromString(serialized)) {
-      return Internal("Failed to parse serialized CpuAotCompilationResult.");
-    }
-
+  static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> FromProto(
+      CompilationResultProto proto,
+      std::unique_ptr<FunctionLibrary> function_library) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> module,
         HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
@@ -170,19 +168,31 @@ class CpuAotCompilationResult : public AotCompilationResult {
         proto, std::move(module), std::move(function_library)));
   }
 
+  static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> FromString(
+      const std::string& serialized,
+      std::unique_ptr<FunctionLibrary> function_library) {
+    CompilationResultProto proto;
+    if (!proto.ParseFromString(serialized)) {
+      return Internal("Failed to parse serialized CpuAotCompilationResult.");
+    }
+
+    return FromProto(std::move(proto), std::move(function_library));
+  }
+
  private:
   CpuAotCompilationResult(
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
       absl::string_view function_name, std::vector<ObjFileProto> obj_files,
       std::vector<SymbolProto> symbols, const ThunkSequenceProto& thunks,
       std::optional<size_t> temp_allocation_index,
-      std::vector<cpu_function_runtime::BufferInfo> buffer_infos,
-      FunctionLibrary* function_library,
-      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
+      std::vector<BufferAllocationInfo> buffer_allocation_infos,
+      std::unique_ptr<FunctionLibrary> function_library,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+      TargetMachineOptionsProto target_machine_options);
 
-  explicit CpuAotCompilationResult(CompilationResultProto proto,
-                                   std::unique_ptr<HloModule> module,
-                                   FunctionLibrary* function_library)
+  explicit CpuAotCompilationResult(
+      CompilationResultProto proto, std::unique_ptr<HloModule> module,
+      std::unique_ptr<FunctionLibrary> function_library)
       : proto_(std::move(proto)),
         module_(std::move(module)),
         function_library_(std::move(function_library)) {}
@@ -190,12 +200,9 @@ class CpuAotCompilationResult : public AotCompilationResult {
   CompilationResultProto proto_;
   std::unique_ptr<HloModule> module_;
   std::optional<size_t> temp_allocation_index_;
-  std::vector<cpu_function_runtime::BufferInfo> buffer_infos_;
+  std::vector<BufferAllocationInfo> buffer_allocation_infos_;
 
-  // Exists only to be moved to the executable on loading, has to be a raw
-  // pointer because the executable takes ownership of the library, and
-  // LoadExecutable() is const.
-  FunctionLibrary* function_library_;
+  std::unique_ptr<FunctionLibrary> function_library_;
 
   // Contains an instance of HloProfilePrinterData if HLO profiling is enabled,
   // otherwise is nullptr.

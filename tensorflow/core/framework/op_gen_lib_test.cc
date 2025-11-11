@@ -72,7 +72,7 @@ END
 
 TEST(OpGenLibTest, MultilinePBTxt) {
   // Non-multiline pbtxt
-  const string pbtxt = R"(foo: "abc"
+  const std::string pbtxt = R"(foo: "abc"
 foo: ""
 foo: "\n\n"
 foo: "abc\nEND"
@@ -81,7 +81,7 @@ bar: "quotes:\""
 )";
 
   // Field "foo" converted to multiline but not "bar".
-  const string ml_foo = R"(foo: <<END
+  const std::string ml_foo = R"(foo: <<END
 abc
 END
 foo: <<END
@@ -105,7 +105,7 @@ bar: "quotes:\""
 )";
 
   // Both fields "foo" and "bar" converted to multiline.
-  const string ml_foo_bar = R"(foo: <<END
+  const std::string ml_foo_bar = R"(foo: <<END
 abc
 END
 foo: <<END
@@ -161,10 +161,10 @@ TEST(OpGenLibTest, PBTxtToMultilineErrorCases) {
 }
 
 TEST(OpGenLibTest, PBTxtToMultilineComments) {
-  const string pbtxt = R"(f: "bar"  # Comment 1
+  const std::string pbtxt = R"(f: "bar"  # Comment 1
     f: "\n"  # Comment 2
 )";
-  const string ml = R"(f: <<END
+  const std::string ml = R"(f: <<END
 bar
 END  # Comment 1
     f: <<END
@@ -267,7 +267,7 @@ TEST(OpGenLibTest, ApiDefLoadSingleApiDef) {
 }
 
 TEST(OpGenLibTest, ApiDefOverrideVisibility) {
-  const string api_def1 = R"(
+  const std::string api_def1 = R"(
 op {
   graph_op_name: "testop"
   endpoint {
@@ -275,7 +275,7 @@ op {
   }
 }
 )";
-  const string api_def2 = R"(
+  const std::string api_def2 = R"(
 op {
   graph_op_name: "testop"
   visibility: HIDDEN
@@ -304,7 +304,7 @@ op {
 }
 
 TEST(OpGenLibTest, ApiDefOverrideEndpoints) {
-  const string api_def1 = R"(
+  const std::string api_def1 = R"(
 op {
   graph_op_name: "testop"
   endpoint {
@@ -327,7 +327,7 @@ op {
 }
 
 TEST(OpGenLibTest, ApiDefOverrideArgs) {
-  const string api_def1 = R"(
+  const std::string api_def1 = R"(
 op {
   graph_op_name: "testop"
   in_arg {
@@ -363,7 +363,7 @@ op {
 }
 
 TEST(OpGenLibTest, ApiDefOverrideDescriptions) {
-  const string api_def1 = R"(
+  const std::string api_def1 = R"(
 op {
   graph_op_name: "testop"
   summary: "New summary"
@@ -375,7 +375,7 @@ END
 }
 )";
 
-  const string api_def2 = R"(
+  const std::string api_def2 = R"(
 op {
   graph_op_name: "testop"
   description_prefix: "B"
@@ -402,7 +402,7 @@ op {
 }
 
 TEST(OpGenLibTest, ApiDefInvalidOpInOverride) {
-  const string api_def1 = R"(
+  const std::string api_def1 = R"(
 op {
   graph_op_name: "different_testop"
   endpoint {
@@ -420,7 +420,7 @@ op {
 }
 
 TEST(OpGenLibTest, ApiDefInvalidArgOrder) {
-  const string api_def1 = R"(
+  const std::string api_def1 = R"(
 op {
   graph_op_name: "testop"
   arg_order: "arg_a"
@@ -428,14 +428,14 @@ op {
 }
 )";
 
-  const string api_def2 = R"(
+  const std::string api_def2 = R"(
 op {
   graph_op_name: "testop"
   arg_order: "arg_a"
 }
 )";
 
-  const string api_def3 = R"(
+  const std::string api_def3 = R"(
 op {
   graph_op_name: "testop"
   arg_order: "arg_a"
@@ -462,7 +462,7 @@ op {
 }
 
 TEST(OpGenLibTest, ApiDefInvalidSyntax) {
-  const string api_def = R"pb(
+  const std::string api_def = R"pb(
     op { bad_op_name: "testop" }
   )pb";
 
@@ -474,7 +474,7 @@ TEST(OpGenLibTest, ApiDefInvalidSyntax) {
 }
 
 TEST(OpGenLibTest, ApiDefUpdateDocs) {
-  const string op_list1 = R"(op {
+  const std::string op_list1 = R"(op {
   name: "testop"
   input_arg {
     name: "arg_a"
@@ -492,7 +492,7 @@ TEST(OpGenLibTest, ApiDefUpdateDocs) {
 }
 )";
 
-  const string api_def1 = R"(
+  const std::string api_def1 = R"(
 op {
   graph_op_name: "testop"
   endpoint {
@@ -519,7 +519,7 @@ op {
   TF_CHECK_OK(api_map.LoadApiDef(api_def1));
   api_map.UpdateDocs();
 
-  const string expected_description =
+  const std::string expected_description =
       "`arg_aa`, `arg_cc`, `attr_aa`, `testop2`";
   EXPECT_EQ(expected_description, api_map.GetApiDef("testop")->description());
   EXPECT_EQ(expected_description,

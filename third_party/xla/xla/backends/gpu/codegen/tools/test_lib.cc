@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -32,7 +33,7 @@ namespace xla {
 namespace gpu {
 
 absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
-    const HloModule& module) {
+    const HloModule& module, SymbolicExprContext& symbolic_expr_context) {
   auto data = std::make_unique<EmitterData>();
   data->fusion = DynCast<HloFusionInstruction>(
       module.entry_computation()->root_instruction());
@@ -41,7 +42,7 @@ absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
   data->analysis.emplace(
       HloFusionAnalysis::Create(*data->fusion, data->device.value()));
   PreBufferAssignmentFusionInfo info(data->analysis.value());
-  auto fusion_emitter = GetFusionEmitter(info);
+  auto fusion_emitter = GetFusionEmitter(info, &symbolic_expr_context);
 
   auto emitter = dynamic_cast<EmitterBase*>(fusion_emitter.get());
   TF_RET_CHECK(emitter != nullptr) << "Expected emitter to be an EmitterBase";
@@ -53,6 +54,11 @@ absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
 
 mlir::MLIRContext GetMlirContextForTest() {
   return mlir::MLIRContext(EmitterBase::GetDialectRegistry());
+}
+
+SymbolicExprContext GetSymbolicExprContextForTest(
+    mlir::MLIRContext* mlir_context) {
+  return SymbolicExprContext(mlir_context);
 }
 
 }  // namespace gpu

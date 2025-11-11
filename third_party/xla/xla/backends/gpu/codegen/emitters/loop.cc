@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -56,33 +56,41 @@ const Shape& GetIndexShape(const Shape& shape) {
 }  // namespace
 
 std::optional<IndexingMap> LoopFusion::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, mlir::MLIRContext* ctx) const {
+    int64_t root_index, SymbolicExprContext* symbolic_expr_context) const {
   return emitters::LoopFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(
       GetWorkDimensions(),
-      GetIndexShape(analysis_.fusion_root(root_index).shape()), ctx);
+      GetIndexShape(analysis_.fusion_root(root_index).shape()),
+      symbolic_expr_context);
 }
 
-std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(
-    int64_t root_index, int64_t hero_operand_index,
-    mlir::MLIRContext* ctx) const {
+std::optional<std::vector<IndexingMap>>
+LoopFusion::ComputeThreadIdToInputIndexing(
+    int64_t root_index, SymbolicExprContext* symbolic_expr_context) const {
   std::optional<IndexingMap> thread_id_to_output_indexing =
-      ComputeThreadIdToOutputIndexing(root_index, ctx);
+      ComputeThreadIdToOutputIndexing(root_index, symbolic_expr_context);
   if (!thread_id_to_output_indexing.has_value()) {
     return std::nullopt;
   }
   const HloInstruction* fusion_root =
       &analysis_.fusion_root(root_index).instruction();
-  auto output_to_input_indexing =
-      ComputeOutputToInputIndexing(fusion_root, /*output_id=*/0, ctx);
-  IndexingMapSet output_to_input_indexing_set = ToIndexingMapSet(
-      output_to_input_indexing.indexing_maps[hero_operand_index]);
-  // Since we are computing the indexing for a non-fusion op, there is only one
-  // indexing map per operand.
-  CHECK_EQ(output_to_input_indexing_set.size(), 1);
-  IndexingMap thread_id_to_input_indexing_map = ComposeIndexingMaps(
-      *thread_id_to_output_indexing, *output_to_input_indexing_set.begin());
-  thread_id_to_input_indexing_map.Simplify();
-  return thread_id_to_input_indexing_map;
+  auto output_to_input_indexing = ComputeOutputToInputIndexing(
+      fusion_root, /*output_id=*/0, symbolic_expr_context);
+  std::vector<IndexingMap> result;
+  result.reserve(fusion_root->operand_count());
+  for (int64_t operand_index = 0; operand_index < fusion_root->operand_count();
+       ++operand_index) {
+    auto output_to_input_indexing_maps =
+        output_to_input_indexing.indexing_maps[operand_index];
+    // Since we are computing the indexing for a non-fusion op, there is only
+    // one indexing map per operand.
+    CHECK_EQ(output_to_input_indexing_maps.size(), 1);
+    IndexingMap thread_id_to_input_indexing_map =
+        ComposeIndexingMaps(*thread_id_to_output_indexing,
+                            output_to_input_indexing_maps.begin()->map());
+    thread_id_to_input_indexing_map.Simplify();
+    result.push_back(thread_id_to_input_indexing_map);
+  }
+  return result;
 }
 
 LaunchDimensions LoopFusion::launch_dimensions() const {
@@ -99,17 +107,17 @@ WorkDimensions LoopFusion::GetWorkDimensions() const {
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoopFusion::CreateMLIRModule(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
   emitters::LoopFusionKernelEmitter emitter(
-      context, fusion, analysis_.fusion_spec(), buffer_assignment,
+      symbolic_expr_context, fusion, analysis_.fusion_spec(), buffer_assignment,
       GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,
       BackendKind::kGpu);
 
   TF_ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
-  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
-  return std::move(source).ReleaseStorage().module;
+  return std::move(kernel_definition).TakeSource().TakeModule();
 }
 
 absl::Status LoopFusion::EmitEntryFunction(

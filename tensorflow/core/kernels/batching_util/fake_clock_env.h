@@ -46,22 +46,22 @@ class FakeClockEnv : public EnvWrapper {
 
   // Blocks until there is a sleeping thread that is scheduled to wake up at
   // the given (absolute) time.
-  void BlockUntilSleepingThread(uint64 wake_time);
+  void BlockUntilSleepingThread(uint64_t wake_time);
 
   // Blocks until there are at least num_threads sleeping.
   void BlockUntilThreadsAsleep(int num_threads);
 
   // Methods that this class implements.
-  uint64 NowMicros() const override;
+  uint64_t NowMicros() const override;
   void SleepForMicroseconds(int64_t micros) override;
 
  private:
   mutable mutex mu_;
 
-  uint64 current_time_ TF_GUARDED_BY(mu_) = 0;
+  uint64_t current_time_ TF_GUARDED_BY(mu_) = 0;
 
   struct SleepingThread {
-    uint64 wake_time;
+    uint64_t wake_time;
     absl::Notification* wake_notification;
   };
   std::vector<SleepingThread> sleeping_threads_ TF_GUARDED_BY(mu_);

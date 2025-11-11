@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -55,12 +57,12 @@ class DummyCopyEmitter : public EmitterBase {
   LaunchDimensions launch_dimensions() const final { return {1, 100}; }
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t, mlir::MLIRContext*) const final {
+      int64_t, SymbolicExprContext*) const final {
     return std::nullopt;
   }
 
-  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
-      int64_t, int64_t, mlir::MLIRContext*) const final {
+  std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
+      int64_t, SymbolicExprContext*) const final {
     return std::nullopt;
   }
 
@@ -85,11 +87,11 @@ class DummyCopyEmitter : public EmitterBase {
 class EmitterBaseTest : public HloHardwareIndependentTestBase {
  protected:
   EmitterBaseTest() {
-    context_.appendDialectRegistry(EmitterBase::GetDialectRegistry());
-    context_.loadAllAvailableDialects();
+    mlir_context_.appendDialectRegistry(EmitterBase::GetDialectRegistry());
+    mlir_context_.loadAllAvailableDialects();
   }
 
-  mlir::MLIRContext context_;
+  mlir::MLIRContext mlir_context_;
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
 };
@@ -110,7 +112,7 @@ TEST_F(EmitterBaseTest, CreateMlirModule) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto mlir_module,
       emitter.CreateMLIRModule(
-          context_,
+          mlir_context_,
           *Cast<HloFusionInstruction>(
               module->entry_computation()->root_instruction()),
           "fusion",
@@ -141,7 +143,7 @@ TEST_F(EmitterBaseTest, CreateLLVMModule) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto llvm_module,
       emitter.CreateLLVMModule(
-          context_, llvm_context, device_info_,
+          mlir_context_, llvm_context, device_info_,
           *Cast<HloFusionInstruction>(
               module->entry_computation()->root_instruction()),
           "fusion",

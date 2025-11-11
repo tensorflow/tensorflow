@@ -55,8 +55,8 @@ class XlaCustomCallOp : public XlaOpKernel {
   }
 
  private:
-  string target_name_;
-  string backend_config_;
+  std::string target_name_;
+  std::string backend_config_;
   DataType output_type_;
   TensorShape output_shape_;
 };

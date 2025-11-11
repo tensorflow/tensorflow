@@ -22,11 +22,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/custom_kernel.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
-#include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -43,11 +44,17 @@ namespace gpu {
 class FissionBackend : public GpuCodegenBackend {
  public:
   explicit FissionBackend(stream_executor::StreamExecutor* stream_executor,
-                          const DebugOptions* debug_options, Compiler* compiler)
-      : GpuCodegenBackend("Fission", stream_executor, debug_options, compiler),
-        cublas_backend_(stream_executor, debug_options, compiler),
-        cublaslt_backend_(stream_executor, debug_options, compiler),
-        custom_kernel_backend_(stream_executor, debug_options, compiler) {}
+                          const DebugOptions* debug_options, Compiler* compiler,
+                          const Compiler::TargetConfig* target_config,
+                          SymbolicExprContext* symbolic_expr_context)
+      : GpuCodegenBackend("Fission", debug_options, compiler, target_config),
+        cublas_backend_(stream_executor, debug_options, compiler,
+                        target_config),
+        cublaslt_backend_(stream_executor, debug_options, compiler,
+                          target_config),
+        custom_kernel_backend_(stream_executor, debug_options, compiler,
+                               target_config),
+        symbolic_expr_context_(symbolic_expr_context) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
@@ -58,9 +65,15 @@ class FissionBackend : public GpuCodegenBackend {
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
 
+ private:
+  bool IsSupported(const HloInstruction& instr) override {
+    return instr.opcode() == HloOpcode::kFusion;
+  }
+
   CublasBackend cublas_backend_;
   CublasLtBackend cublaslt_backend_;
   CustomKernelBackend custom_kernel_backend_;
+  SymbolicExprContext* symbolic_expr_context_;
 };
 
 }  // namespace gpu

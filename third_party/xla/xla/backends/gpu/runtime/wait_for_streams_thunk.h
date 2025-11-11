@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_WAIT_FOR_STREAMS_THUNK_H_
 
 #include <memory>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"

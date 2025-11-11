@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstring>
 
+#include "absl/strings/ascii.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -366,7 +367,7 @@ TEST(RamFileBlockCacheTest, RemoveFile) {
     char c = (filename == "a") ? 'a' : (filename == "b") ? 'b' : 'x';
     if (offset > 0) {
       // The first block is lower case and all subsequent blocks are upper case.
-      c = toupper(c);
+      c = absl::ascii_toupper(c);
     }
     memset(buffer, c, n);
     *bytes_transferred = n;

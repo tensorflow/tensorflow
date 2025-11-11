@@ -3,6 +3,13 @@
 # learning applications.
 
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
+
+# buildifier: disable=out-of-order-load
+# copybara:comment_begin(oss-only)
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+# copybara:comment_end
+# buildifier: enable=out-of-order-load
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -1026,6 +1033,7 @@ package_group(
         "//tensorflow_models/google/recml/...",
         "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",
         "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/pathways/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
         "//third_party/py/gldm/...",
@@ -1178,7 +1186,6 @@ tf_cc_shared_library(
                 "//tensorflow/c:env",
                 "//tensorflow/c:kernels",
                 "//tensorflow/c:kernels_experimental",
-                "//tensorflow/c:logging",
                 "//tensorflow/c:ops",
                 "//tensorflow/cc/saved_model:fingerprinting_impl",
                 "//tensorflow/cc/saved_model:loader_lite_impl",
@@ -1695,7 +1702,7 @@ generate_apis(
     visibility = ["//visibility:public"],
 )
 
-py_library(
+py_strict_library(
     name = "tensorflow_py",
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
@@ -1707,7 +1714,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "tensorflow_py_no_contrib",
     srcs = select({
         "api_version_2": [":tf_python_api_gen_v2"],

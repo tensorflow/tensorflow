@@ -133,12 +133,22 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       // 2 to a byte.
       *bytes = sizeof(int8_t);
       break;
+    case kTfLiteInt2:
+      // Similar to Int4, Int2 values are packed. Multiple Int2 values
+      // (specifically 4) are stored within a single byte. However, this
+      // function is expected to return the size of a single element as if it
+      // were unpacked. When unpacked, each Int2 value would occupy the space
+      // of an int8_t to be addressable in memory. The actual packed size
+      // is handled in the BytesRequired function.
+      *bytes = sizeof(int8_t);
+      break;
     default:
       if (context) {
         TF_LITE_KERNEL_LOG(
             context,
-            "Type %d is unsupported. Only float16, float32, float64, int8, "
-            "int16, int32, int64, uint8, uint64, bool, complex64 and "
+            "Type %d is unsupported. Only float16, float32, float64, int2, "
+            "int4, "
+            "int8, int16, int32, int64, uint8, uint64, bool, complex64 and "
             "complex128 supported currently.",
             type);
       }
@@ -218,6 +228,19 @@ TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
   // Thus the required bytes must be divided by half after everything for int4.
   if (type == kTfLiteInt4) {
     *bytes = (*bytes + 1) / 2;
+  } else if (type == kTfLiteInt2) {
+    // For kTfLiteInt2, 4 elements are packed into a single byte.
+    // The '*bytes' variable at this point holds the total number of elements,
+    // because GetSizeOfType returns sizeof(int8_t) for each Int2 element.
+    // To get the actual number of bytes needed for the packed representation,
+    // we need to divide the total number of elements by 4.
+    // The expression `(*bytes + 3) / 4` implements integer division with
+    // ceiling, ensuring that we allocate enough bytes to store all elements.
+    // For example:
+    // 1 element: (1 + 3) / 4 = 1 byte
+    // 4 elements: (4 + 3) / 4 = 1 byte
+    // 5 elements: (5 + 3) / 4 = 2 bytes
+    *bytes = (*bytes + 3) / 4;
   }
 
   return kTfLiteOk;

@@ -126,7 +126,8 @@ void AddDevicesToOp(mlir::Operation* op, const DeviceSet* device_set) {
   // For device that do not have any metadata, or if we failed to parse metadata
   // from the DeviceSet, we add a unit attribute to the `tf.devices` attribute.
   for (Device* device : device_set->devices()) {
-    string name = DeviceNameUtils::ParsedNameToString(device->parsed_name());
+    std::string name =
+        DeviceNameUtils::ParsedNameToString(device->parsed_name());
 
     if (device->device_type() == DEVICE_GPU) {
       auto metadata = ParseGpuDeviceMetadata(*device, &builder);

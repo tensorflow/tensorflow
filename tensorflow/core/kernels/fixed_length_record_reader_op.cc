@@ -35,8 +35,7 @@ class FixedLengthRecordReader : public ReaderBase {
   FixedLengthRecordReader(const string& node_name, int64_t header_bytes,
                           int64_t record_bytes, int64_t footer_bytes,
                           int64_t hop_bytes, const string& encoding, Env* env)
-      : ReaderBase(
-            strings::StrCat("FixedLengthRecordReader '", node_name, "'")),
+      : ReaderBase(absl::StrCat("FixedLengthRecordReader '", node_name, "'")),
         header_bytes_(header_bytes),
         record_bytes_(record_bytes),
         footer_bytes_(footer_bytes),
@@ -121,7 +120,7 @@ class FixedLengthRecordReader : public ReaderBase {
     // Copy first record_bytes_ from cache to value
     *value = lookahead_cache_.substr(0, record_bytes_);
 
-    *key = strings::StrCat(current_work(), ":", record_number_);
+    *key = absl::StrCat(current_work(), ":", record_number_);
     *produced = true;
     ++record_number_;
 

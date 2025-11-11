@@ -55,7 +55,7 @@ std::string LibDevicePath(absl::string_view xla_gpu_cuda_data_dir) {
   static auto& libdevice_dir_path_cache ABSL_GUARDED_BY(libdevice_cache_mu) =
       *new absl::flat_hash_map<std::string, std::string>();
   std::string libdevice_dir_path = [&] {
-    absl::MutexLock l(&libdevice_cache_mu);
+    absl::MutexLock l(libdevice_cache_mu);
     auto it = libdevice_dir_path_cache.find(xla_gpu_cuda_data_dir);
     if (it != libdevice_dir_path_cache.end()) {
       return it->second;

@@ -132,10 +132,15 @@ inline constexpr llvm::StringRef kManualAxes = "xla.sdy.manual_axes";
 // `true` or not set.
 inline constexpr char kHasUnreducedAxes[] = "xla.sdy.has_unreduced_axes";
 
-// The function name of the of the body of a `ManualComputationOp` during Shardy
-// round tripping. Used
-inline constexpr llvm::StringRef kManualComputationBodyFuncName =
+// The function name of the body of a `ManualComputationOp` during Shardy
+// round tripping.
+inline constexpr llvm::StringRef kManualComputationFuncName =
     "xla.sdy.manual_computation_body";
+
+// The function name of the body of a `ManualComputationOp` that should
+// be inlined after stablehlo-round-trip-export
+inline constexpr llvm::StringRef kInlineableManualComputationFuncName =
+    "xla.sdy.inlinable_manual_computation_body";
 
 // The target name of the custom call that changes operands from global to local
 // shape during Shardy round tripping.

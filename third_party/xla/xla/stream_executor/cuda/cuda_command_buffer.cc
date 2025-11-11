@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/path.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -76,19 +77,6 @@ using GraphConditionalHandle = GpuCommandBuffer::GraphConditionalHandle;
 // CUgraphNode.
 CUgraphNode ToCudaGraphHandle(GraphNodeHandle handle) {
   return absl::bit_cast<CUgraphNode>(handle);
-}
-
-int ToCudaGraphKernelNodePriority(StreamPriority priority) {
-  switch (priority) {
-    case StreamPriority::Default:
-      return 0;
-    case StreamPriority::Lowest:
-      return -1;
-    case StreamPriority::Highest:
-      return 1;
-    default:
-      return 0;
-  }
 }
 
 // Converts a platform independent GraphConditionalHandle into a CUDA specific
@@ -542,7 +530,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
 
   if (priority != StreamPriority::Default) {
     CUlaunchAttributeValue value;
-    value.priority = ToCudaGraphKernelNodePriority(priority);
+    value.priority = stream_exec_->GetGpuStreamPriority(priority);
     TF_RETURN_IF_ERROR(
         cuda::ToStatus(cuGraphKernelNodeSetAttribute(
                            node_handle, CU_LAUNCH_ATTRIBUTE_PRIORITY, &value),
@@ -702,6 +690,7 @@ absl::Status CudaCommandBuffer::SetPriority(StreamPriority priority) {
   TF_RETURN_IF_ERROR(
       cuda::ToStatus(cuGraphGetNodes(graph_, nodes.data(), &num_nodes)));
 
+  int priority_value = stream_exec_->GetGpuStreamPriority(priority);
   for (size_t i = 0; i < num_nodes; i++) {
     CUgraphNodeType type;
     TF_RETURN_IF_ERROR(cuda::ToStatus(cuGraphNodeGetType(nodes[i], &type),
@@ -709,7 +698,7 @@ absl::Status CudaCommandBuffer::SetPriority(StreamPriority priority) {
 
     if (type == CU_GRAPH_NODE_TYPE_KERNEL) {
       CUlaunchAttributeValue value;
-      value.priority = ToCudaGraphKernelNodePriority(priority);
+      value.priority = priority_value;
       TF_RETURN_IF_ERROR(
           cuda::ToStatus(cuGraphKernelNodeSetAttribute(
                              nodes[i], CU_LAUNCH_ATTRIBUTE_PRIORITY, &value),
@@ -829,6 +818,27 @@ absl::Status CudaCommandBuffer::CheckCanBeUpdated() {
         "Command buffer has to have a graph executable to be updated.");
   }
   return absl::OkStatus();
+}
+
+std::string CudaCommandBuffer::ToString() const {
+  std::string path = tsl::io::GetTempFilename(/*extension=*/"dot");
+#if CUDA_VERSION >= 12000
+  int flags = CU_GRAPH_DEBUG_DOT_FLAGS_VERBOSE;
+  auto dot_print_status =
+      cuda::ToStatus(cuGraphDebugDotPrint(graph_, path.c_str(), flags),
+                     "Failed to print gpu graph debug file");
+  if (!dot_print_status.ok()) {
+    return std::string(dot_print_status.message());
+  }
+  std::string dot_file_contents;
+  auto read_status =
+      tsl::ReadFileToString(tsl::Env::Default(), path, &dot_file_contents);
+  if (!read_status.ok()) {
+    return std::string(read_status.message());
+  }
+  return dot_file_contents;
+#endif  // CUDA_VERSION >= 12000
+  return "CUDA graph debug dot print is not supported.";
 }
 
 }  // namespace stream_executor::gpu

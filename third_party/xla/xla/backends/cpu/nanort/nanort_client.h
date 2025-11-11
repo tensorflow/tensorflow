@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/service/compiler.h"
 
 namespace xla::cpu {
 
@@ -33,6 +34,10 @@ class NanoRtClient {
   // backend.
   absl::StatusOr<std::unique_ptr<NanoRtExecutable>> Compile(
       const XlaComputation& computation);
+
+  // Exports the given NanoRtExecutable to an AotCompilationResult.
+  absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+      NanoRtExecutable* executable);
 };
 
 }  // namespace xla::cpu

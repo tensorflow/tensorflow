@@ -30,44 +30,59 @@ namespace xla::gpu::experimental {
 
 class TilingSpace;
 
-// A map from tile IDs, sizes and runtime variables to tile's offsets, sizes,
-// strides and upper bounds. Offsets-sizes-strides define what slice to extract,
-// upper bounds define masking, i.e. if the tile attempts to extract elements
-// with the indices outside of the bounds, the tile will be masked.
+// Tiling of a single dimension.
 //
-// (tile IDs) [tile sizes] {runtime variables} ->
-//     offsets [offsets_]  sizes [sizes_] strides [strides_]
-//     upper bounds [upper_bounds_]
+// Offsets, sizes and strides define the slice of the tensor dimension. Upper
+// bounds set the range [0, upper_bound), values outside of this range are
+// masked.
 //
-// tile IDs correspond to the dimension variables of the affine expressions;
-// tile sizes and RT vars correspond to the symbol variables.
+// Expressions for offset, size, stride and upper bound are AffineExpr
+// functions. The TilingSpace keeps track of all dimensions and symbols we use
+// in the expressions and allows to create a consistent mapping from dimensions
+// and runtime variables to affine expression dimensions and symbols.
 //
-// The masking condition of the upper bound can be written as:
-// dimension_index < upper_bounds[i](tile IDs)
+// N.B.! not all of the symbols that the TilingSpace defines are used in
+// every expression. That depends on the position of the instruction in
+// the graph and the traversal path that we took.
+// Number of dimensions equals to the number of dimensions of the instruction
+// output, parallel dimensions the corresponding root instruction are followed
+// by sequential dimensions.
 //
-// In most of the cases, the upper bounds will coincide with the shape of the
-// tensor from which the tile is extracted.
-//
-// One example when upper bound does not match the shape is a reshape:
-// output = s32[2, 17] reshape (s32[34] input)
-//
-// If we propagate the `output` tile with the ts0 == 1,
-//
-// (tid0, tid1)[ts1] -> offsets [tid0, tid1 * ts1] sizes [1, ts1] strides [1, 1]
-//              upper bounds [2, 17]
-//
-// to the `input` we will get a stricter upper bound
-//
-// (tid0, tid1)[ts1] -> offsets [17 * tid0 + tid1 * ts1] sizes [ts1] strides [1]
-//              upper bounds [17 * tid0]
+// Symbols are:
+//  - tile sizes of all dimensions, followed by
+//  - runtime variables.
 struct DimTile {
   bool operator==(const DimTile& other) const;
 
   mlir::AffineExpr offset;
   mlir::AffineExpr size;
   mlir::AffineExpr stride;
+  // The masking condition of the upper bound can be written as:
+  // dimension_index < upper_bounds(tile IDs)[tile sizes]{runtime variables}
+  //
+  // In most of the cases, the upper bounds will coincide with the shape of the
+  // tensor from which the tile is extracted. One example when upper bound does
+  // not match the shape is a reshape:
+  //
+  // output = s32[2, 17] reshape (s32[34] input)
+  //
+  // If we propagate the `output` SymbolicTile with the tile size of first
+  // dimension equal to 1
+  //
+  // (tid0, tid1)[ts1] -> offsets [tid0, tid1 * ts1]
+  //                      sizes [1, ts1]
+  //                      strides [1, 1]
+  //                      upper bounds [2, 17]
+  //
+  // then for to the `input` instruction we will get a stricter upper bound
+  //
+  // (tid0, tid1)[ts1] -> offsets [17 * tid0 + tid1 * ts1]
+  //                      sizes [ts1]
+  //                      strides [1]
+  //                      upper bounds [17 * tid0]
   mlir::AffineExpr upper_bound;
 };
+
 template <typename H>
 H AbslHashValue(H h, const DimTile& dim_tile) {
   llvm::hash_code dim_tile_hash = llvm::hash_combine(
@@ -75,6 +90,9 @@ H AbslHashValue(H h, const DimTile& dim_tile) {
   return H::combine(std::move(h), static_cast<size_t>(dim_tile_hash));
 }
 
+// SymbolicTile is a collection of tilings for every dimension of output tensor
+// of an HLO instruction. SymbolicTiledHloInstruction associates a SymbolicTile
+// with an HLO instruction.
 class SymbolicTile {
  public:
   SymbolicTile(const TilingSpace& tiling_space,
@@ -120,8 +138,9 @@ H AbslHashValue(H h, const SymbolicTile& symbolic_tile) {
   return h;
 }
 
-// Returns a DimTile that covers the entire dimension, i.e.
-// offset 0, size = next_power_of_2(dim_size), stride 1, upper_bound = dim_size.
+// Returns a DimTile that covers the entire dimension with a single power of 2
+// sized tile, i.e. offset 0, size = next_power_of_2(dim_size), stride 1,
+// upper_bound = dim_size.
 DimTile GetFullDimTile(int64_t dim_size, mlir::MLIRContext* ctx);
 
 // Returns a DimTile that covers the entire dimension, i.e.

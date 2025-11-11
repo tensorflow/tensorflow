@@ -35,12 +35,13 @@ class TFProfTimelineTest : public ::testing::Test {
     string graph_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "core/profiler/internal/testdata/graph.pbtxt");
-    std::unique_ptr<tensorflow::GraphDef> graph_pb(new tensorflow::GraphDef());
+    std::unique_ptr<tensorflow::GraphDef> graph_pb =
+        std::make_unique<tensorflow::GraphDef>();
     TF_CHECK_OK(
         ReadProtoFile(Env::Default(), graph_path, graph_pb.get(), false));
 
-    std::unique_ptr<tensorflow::RunMetadata> run_meta_pb(
-        new tensorflow::RunMetadata());
+    std::unique_ptr<tensorflow::RunMetadata> run_meta_pb =
+        std::make_unique<tensorflow::RunMetadata>();
     string run_meta_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "core/profiler/internal/testdata/run_meta");

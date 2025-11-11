@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "stablehlo/dialect/Version.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -187,6 +187,7 @@ absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
 
 absl::StatusCode PjrtErrorCodeToStatusCode(PJRT_Error_Code code) {
   switch (code) {
+    case PJRT_Error_Code_OK:
     case PJRT_Error_Code_CANCELLED:
     case PJRT_Error_Code_UNKNOWN:
     case PJRT_Error_Code_INVALID_ARGUMENT:
@@ -459,22 +460,22 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
   }
 }
 
-xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
-                                           const PJRT_Api* c_api) {
-  using xla::PjRtFuture;
+xla::Future<> ConvertCEventToCppFuture(PJRT_Event* c_event,
+                                       const PJRT_Api* c_api) {
   PJRT_Event_OnReady_Args event_onready_args;
   event_onready_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
   event_onready_args.extension_start = nullptr;
   event_onready_args.event = c_event;
 
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+  auto [promise, future] = xla::Future<>::MakePromise();
   event_onready_args.user_arg = new std::function<void(PJRT_Error*)>(
-      [promise, c_event, c_api](PJRT_Error* error) mutable {
+      [promise = std::move(promise).ToShared(), c_event,
+       c_api](PJRT_Error* error) mutable {
         if (error != nullptr) {
-          promise.Set(::pjrt::PjrtErrorToStatus(error, c_api));
+          promise->Set(::pjrt::PjrtErrorToStatus(error, c_api));
           ::pjrt::MakeErrorDeleter(c_api)(error);
         } else {
-          promise.Set();
+          promise->Set();
         }
         ::pjrt::MakeEventDeleter(c_api)(c_event);
       });
@@ -487,9 +488,9 @@ xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
 
   PJRT_Error* error = c_api->PJRT_Event_OnReady(&event_onready_args);
   if (error != nullptr) {
-    return PjRtFuture<>(::pjrt::PjrtErrorToStatus(error, c_api));
+    return xla::Future<>(::pjrt::PjrtErrorToStatus(error, c_api));
   }
-  return PjRtFuture<>(std::move(promise));
+  return std::move(future);
 }
 
 static absl::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(

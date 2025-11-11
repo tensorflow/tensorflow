@@ -301,6 +301,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"Raw Value", kRawValue},
        {"Scaled Value", kScaledValue},
        {"Thread Id", kThreadId},
+       {"Time Scale Multiplier", kTimeScaleMultiplier},
        {"matrix_unit_utilization_percent", kMatrixUnitUtilizationPercent},
        // XLA metadata map related.
        {"Hlo Proto", kHloProto},
@@ -364,6 +365,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"dcn_chunk", kDcnChunk},
        {"dcn_loop_index", kDcnLoopIndex},
        {"dropped_traces", kDroppedTraces},
+       {"nan_counter_events", kNanCounterEvents},
        {"cuda_graph_id", kCudaGraphId},
        {"cuda_graph_exec_id", kCudaGraphExecId},
        {"cuda_graph_orig_id", kCudaGraphOrigId},
@@ -566,7 +568,7 @@ bool IsInternalEvent(std::optional<int64_t> event_type) {
 bool IsInternalStat(std::optional<int64_t> stat_type) {
   if (!stat_type.has_value()) return false;
   switch (*stat_type) {
-    case StatType::kKernelDetails:
+    // case StatType::kKernelDetails:  # removed for rocm gpu kernel details
     case StatType::kProducerType:
     case StatType::kProducerId:
     case StatType::kConsumerType:

@@ -36,9 +36,9 @@ class Advisor {
 
   static AdvisorOptionsProto DefaultOptions() {
     AdvisorOptionsProto options;
-    std::vector<string> checkers(
+    std::vector<std::string> checkers(
         kCheckers, kCheckers + sizeof(kCheckers) / sizeof(*kCheckers));
-    for (const string& checker : checkers) {
+    for (const std::string& checker : checkers) {
       (*options.mutable_checkers())[checker];
     }
     return options;
@@ -66,7 +66,7 @@ class Advisor {
     }
     for (const auto& checker : ret.checkers()) {
       absl::FPrintF(stdout, "\n%s:\n", checker.first);
-      for (const string& r : checker.second.reports()) {
+      for (const std::string& r : checker.second.reports()) {
         absl::FPrintF(stdout, "%s\n", r);
       }
     }

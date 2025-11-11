@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <string>
@@ -31,17 +32,17 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -87,11 +88,9 @@ using AlgorithmEmitter = absl::StatusOr<Value> (*)(EmitterLocOpBuilder,
 // must override any accumulated result if the last partial product is
 // non-finite. See b/115844437.
 Value ZeroNaNs(EmitterLocOpBuilder b, Value input) {
-  Value positive_inf =
-      CreateConst<float>(b, b.getF32Type(),
-                         std::numeric_limits<float>::infinity(),
-                         mlir::cast<ShapedType>(input.getType()).getShape())
-          .UnwrapTensor();
+  Value positive_inf = CreateConst<float>(
+      b, b.getF32Type(), std::numeric_limits<float>::infinity(),
+      mlir::cast<ShapedType>(input.getType()).getShape());
   Value abs_input = b.create<math::AbsFOp>(input);
   Value is_finite = b.create<arith::CmpFOp>(arith::CmpFPredicate::OGT,
                                             positive_inf, abs_input);
@@ -126,6 +125,49 @@ std::vector<Value> SplitF32(EmitterLocOpBuilder b, Value input,
     split_inputs.push_back(input_as_bf16);
   }
   return split_inputs;
+}
+
+absl::StatusOr<ttir::ScaleDotElemType> GetScaleDotElemType(Type value) {
+  auto type = getElementTypeOrSelf(value);
+  if (type == mlir::Float8E4M3FNType::get(value.getContext())) {
+    return ttir::ScaleDotElemType::E4M3;
+  }
+  if (type == mlir::Float8E5M2Type::get(value.getContext())) {
+    return ttir::ScaleDotElemType::E5M2;
+  }
+  if (type == mlir::Float4E2M1FNType::get(value.getContext())) {
+    return ttir::ScaleDotElemType::E2M1;
+  }
+  if (type == mlir::BFloat16Type::get(value.getContext())) {
+    return ttir::ScaleDotElemType::BF16;
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unsupported type: ", llvm_ir::DumpToString(type)));
+}
+
+absl::StatusOr<Value> ScaledDot(EmitterLocOpBuilder b,
+                                ScaledDotOperands& operands) {
+  TF_ASSIGN_OR_RETURN(auto lhs_dot_elem_type,
+                      GetScaleDotElemType(operands.lhs.getType()));
+  TF_ASSIGN_OR_RETURN(auto rhs_dot_elem_type,
+                      GetScaleDotElemType(operands.rhs.getType()));
+
+  Value lhs_scale;
+  if (lhs_dot_elem_type != ttir::ScaleDotElemType::BF16) {
+    lhs_scale = Bitcast(b, operands.lhs_scale, b.getI8Type());
+  }
+  Value rhs_scale;
+  if (rhs_dot_elem_type != ttir::ScaleDotElemType::BF16) {
+    rhs_scale = Bitcast(b, operands.rhs_scale, b.getI8Type());
+    rhs_scale = b.create<mlir::stablehlo::TransposeOp>(
+        rhs_scale, b.getDenseI64ArrayAttr({1, 0}));
+  }
+
+  // make type with the same shape as the scale but with i8 type
+  return b.create<ttir::DotScaledOp>(
+      operands.accumulator.getType(), operands.lhs, operands.rhs,
+      operands.accumulator, lhs_scale, rhs_scale, lhs_dot_elem_type,
+      rhs_dot_elem_type, true);
 }
 
 Value IEEEDot(EmitterLocOpBuilder b, Value lhs, Value rhs, Value acc) {
@@ -486,6 +528,12 @@ absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder b,
   }
 
   return result;
+}
+
+absl::StatusOr<Value> EmitSingleTileScaledDot(
+    EmitterLocOpBuilder b, const HloScaledDotInstruction& scaled_dot,
+    ScaledDotOperands dot_operands) {
+  return ScaledDot(b, dot_operands);
 }
 
 }  // namespace triton

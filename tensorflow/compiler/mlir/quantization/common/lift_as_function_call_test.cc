@@ -50,8 +50,6 @@ using ::testing::NotNull;
 using ::testing::SizeIs;
 using ::testing::StrEq;
 using ::tsl::protobuf::util::MessageDifferencer;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 using LiftAsFunctionCallTest = QuantizationTestBase;
 

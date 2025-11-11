@@ -27,13 +27,18 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 
@@ -138,6 +143,29 @@ absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
   return result;
 }
 
+absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
+StreamExecutorGpuTopologyDescription::LogicalDeviceOfDefaultTypeForId(
+    xla::PjRtGlobalDeviceId device_id) const {
+  // TODO: b/435476605 - improve the lookup performance by adding a lookup api
+  // in pjrt topology description.
+  for (const auto& device_desc : DeviceDescriptions()) {
+    if (device_desc->id() == device_id) {
+      const auto& gpu_device_desc =
+          tsl::down_cast<const xla::PjRtStreamExecutorDeviceDescription&>(
+              *device_desc);
+      const auto& coords = gpu_device_desc.coords();
+      if (coords.size() != 3) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "GPU topology must have 3 dimensions, but got ", coords.size()));
+      }
+      return std::make_pair(
+          PjRtDeviceDimensions{coords[0], coords[1], coords[2]}, 0);
+    }
+  }
+  return absl::NotFoundError(absl::StrCat("Device id ", device_id.value(),
+                                          " not found in GPU topology."));
+}
+
 absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) const {
   Shape shape = ShapeUtil::MakeShape(element_type, dims);
@@ -150,6 +178,40 @@ absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
     layout.set_element_size_in_bits(primitive_util::BitWidth(element_type));
   }
   return layout;
+}
+
+absl::StatusOr<xla::PjRtTopologyDescriptionProto>
+StreamExecutorGpuTopologyDescription::ToProto() const {
+  PjRtTopologyDescriptionProto proto;
+  proto.set_platform_id(platform_id());
+  proto.set_platform_name(platform_name());
+  proto.set_platform_version(platform_version());
+  proto.set_is_subslice_topology(is_subslice_topology());
+
+  GpuTopologyProto gpu_topology_proto = gpu_topology_->ToProto();
+  proto.mutable_platform_specific_topology()->PackFrom(gpu_topology_proto);
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<StreamExecutorGpuTopologyDescription>>
+StreamExecutorGpuTopologyDescription::FromProto(
+    const xla::PjRtTopologyDescriptionProto& proto) {
+  if (proto.platform_id() != xla::CudaId() &&
+      proto.platform_id() != xla::RocmId()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("The platform_id is not a GPU platform. platform_id: ",
+                     proto.platform_id()));
+  }
+  if (!proto.platform_specific_topology().Is<GpuTopologyProto>()) {
+    return absl::InvalidArgumentError(
+        "The platform_specific_topology is not a GpuTopologyProto.");
+  }
+  GpuTopologyProto gpu_topology_proto;
+  proto.platform_specific_topology().UnpackTo(&gpu_topology_proto);
+  auto gpu_topology = std::shared_ptr<const GpuTopology>(
+      GpuTopology::FromProto(gpu_topology_proto));
+  return std::make_unique<StreamExecutorGpuTopologyDescription>(
+      proto.platform_id(), proto.platform_name(), std::move(gpu_topology));
 }
 
 }  // namespace xla

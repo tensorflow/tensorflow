@@ -24,11 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "xla/future.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/python/ifrt/array.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
 
@@ -89,8 +92,10 @@ absl::StatusOr<SingleBufferCopyPlan> SetupTransferDestList(
   size_t copy_size = xla::ShapeUtil::ByteSizeOf(shape);
 
   results.dests.push_back(MakeDmaDestination(atm, 0, copy_size));
-  TF_ASSIGN_OR_RETURN(auto arr,
-                      ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0)));
+  // `CreateBuffersForAsyncHostToDevice` uses a default layout.
+  TF_ASSIGN_OR_RETURN(
+      auto arr, ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0),
+                                             /*has_custom_layout=*/false));
   results.arrays.push_back(std::move(arr));
   return results;
 }
@@ -125,7 +130,7 @@ void CopyIntoDest(tsl::RCReference<ChunkDestination> dest,
                             absl::StatusOr<void*> buf,
                             const DmaCopyChunk& chunk) {
           CHECK_OK(buf.status());
-          absl::MutexLock l(&mu);
+          absl::MutexLock l(mu);
           local_queue.push_back(LocalQueueInfo{*buf, chunk.offset, chunk.size});
         });
   }
@@ -134,7 +139,7 @@ void CopyIntoDest(tsl::RCReference<ChunkDestination> dest,
     mu.LockWhen(absl::Condition(&cond));
     auto state = local_queue.front();
     local_queue.pop_front();
-    mu.Unlock();
+    mu.unlock();
     TF_ASSERT_OK(
         dest->Put(state.buff, state.offset, state.size,
                   [cstate, buf = state.buff]() { cstate->ReturnBuffer(buf); }));
@@ -150,6 +155,60 @@ absl::StatusOr<std::vector<int32_t>> FetchResult(
                             xla::ifrt::ArrayCopySemantics::kReuseInput)
           .Await());
   return result;
+}
+
+TEST(PremappedCopierState, FreeCycle) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
+  std::shared_ptr<xla::PjRtClient> pjrt_client =
+      tensorflow::down_cast<xla::ifrt::PjRtClient*>(client.get())
+          ->shared_ptr_pjrt_client();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto scratch, AllocateAndMapPjrtMemory(pjrt_client, 1024 * 1024 * 16));
+  auto cstate = std::make_shared<PremappedCopierState>(scratch, 4, 4096);
+  std::vector<void*> buffers_to_return;
+  for (size_t i = 0; i < 2; ++i) {
+    cstate->ScheduleCopy(
+        {/*copy_fn=*/[](void* dst, int64_t offset,
+                        int64_t transfer_size) -> xla::Future<> {
+           return xla::Future<>(absl::OkStatus());
+         },
+         /*buffer_id=*/0,
+         /*offset=*/100,
+         /*size=*/100},
+        [&buffers_to_return](PremappedCopierState* state,
+                             absl::StatusOr<void*> buf,
+                             const DmaCopyChunk& chunk) {
+          TF_CHECK_OK(buf.status());
+          buffers_to_return.push_back(buf.value());
+        });
+  }
+  class BufferReturner {
+   public:
+    explicit BufferReturner(absl::AnyInvocable<void() &&> on_done)
+        : on_done_(std::move(on_done)) {}
+    ~BufferReturner() { std::move(on_done_)(); }
+
+   private:
+    absl::AnyInvocable<void() &&> on_done_;
+  };
+  cstate->ScheduleCopy(
+      {/*copy_fn=*/[buffer = std::make_unique<BufferReturner>(
+                        [b = buffers_to_return[0], cstate]() {
+                          cstate->ReturnBuffer(b);
+                        })](void* dst, int64_t offset,
+                            int64_t transfer_size) -> xla::Future<> {
+         return xla::Future<>(absl::OkStatus());
+       },
+       /*buffer_id=*/0,
+       /*offset=*/100,
+       /*size=*/100},
+      [buffer = std::make_unique<BufferReturner>(
+           [b = buffers_to_return[1], cstate]() { cstate->ReturnBuffer(b); })](
+          PremappedCopierState* state, absl::StatusOr<void*> buf,
+          const DmaCopyChunk& chunk) {
+        TF_CHECK_OK(buf.status());
+        state->ReturnBuffer(buf.value());
+      });
 }
 
 TEST(PremappedCopierState, RoundTrip) {
@@ -246,10 +305,10 @@ TEST(Semaphore, Async) {
   auto thread_wait_flip = [&thread_id, &mu](size_t my_thread_id) {
     auto cond = [&] { return thread_id == my_thread_id; };
     mu.LockWhen(absl::Condition(&cond));
-    mu.Unlock();
+    mu.unlock();
   };
   auto thread_flip = [&thread_id, &mu](size_t my_thread_id) {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     thread_id = 1 - thread_id;
   };
 

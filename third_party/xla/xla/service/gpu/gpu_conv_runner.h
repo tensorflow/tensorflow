@@ -25,17 +25,20 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_conv_runner.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -237,6 +240,11 @@ struct GpuConvDescriptor {
   Window window;
   ConvolutionDimensionNumbers dnums;
   int64_t feature_group_count;
+
+  static absl::StatusOr<GpuConvDescriptor> FromProto(
+      const GpuConvDescriptorProto& proto);
+
+  GpuConvDescriptorProto ToProto() const;
 };
 
 // Returns the convolution configuration given a XLA HLO instruction.

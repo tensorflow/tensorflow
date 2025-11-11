@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_MODULE_GROUP_H_
 #define XLA_HLO_IR_HLO_MODULE_GROUP_H_
 
+#include <array>
 #include <iosfwd>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -34,17 +36,8 @@ namespace xla {
 // concurrently across different devices.
 class HloModuleGroup {
  public:
-  // Construct an empty module group.
-  explicit HloModuleGroup(absl::string_view name) : name_(name) {}
-
   // Construct a module group containing a single module.
   explicit HloModuleGroup(std::unique_ptr<HloModule> module);
-
-  // Construct a module group containing any number of modules.
-  HloModuleGroup(absl::string_view name,
-                 absl::Span<std::unique_ptr<HloModule>> modules);
-  HloModuleGroup(absl::string_view name,
-                 std::vector<std::unique_ptr<HloModule>>&& modules);
 
   HloModuleGroup(const HloModuleGroup& other) = delete;
   HloModuleGroup(HloModuleGroup&& other) = default;
@@ -52,17 +45,17 @@ class HloModuleGroup {
   HloModuleGroup& operator=(HloModuleGroup&& other) = default;
 
   // Returns the modules contained in the group.
-  const std::vector<HloModule*>& modules() const { return module_ptrs_; }
+  std::array<HloModule*, 1> modules() const { return {module_.get()}; }
 
   // Returns a module at a particular index.
-  HloModule& module(int index) const { return *module_ptrs_.at(index); }
+  HloModule& module() const { return *module_; }
+  HloModule& module(int index) const {
+    CHECK_EQ(index, 0);
+    return *module_;
+  }
 
-  // Add a module to the back of vector of modules in the group.
-  void push_back(std::unique_ptr<HloModule> module);
-
-  // Replaces the existing module at the given index with the given module. The
-  // existing module is discarded.
-  void ReplaceModule(int index, std::unique_ptr<HloModule> module);
+  // Adds a module to the group, taking ownership of it.
+  void AddModule(std::unique_ptr<HloModule> module);
 
   // Moves all modules from the group into the returned vector. After this
   // method runs, the module group will be empty.
@@ -74,17 +67,17 @@ class HloModuleGroup {
 
   // Deallocate removed instructions in each module.
   void Cleanup() {
-    for (auto& module : modules_) {
-      module->Cleanup();
+    if (module_) {
+      module_->Cleanup();
     }
   }
 
   template <typename H>
   friend H AbslHashValue(H h, const HloModuleGroup& group) {
-    for (auto& module : group.modules_) {
-      h = H::combine(std::move(h), *module);
+    if (!group.module_) {
+      return h;
     }
-    return H::combine(std::move(h), group.modules_.size());
+    return H::combine(std::move(h), group.module_);
   }
 
   // Serialize the module group to/from a proto.
@@ -94,10 +87,10 @@ class HloModuleGroup {
       absl::Span<const HloModuleConfig> module_configs);
 
   // Returns the number of modules in the module group.
-  int size() const { return modules_.size(); }
+  int size() const { return module_ ? 1 : 0; }
 
   // Returns true if there are no modules in the module group.
-  bool empty() const { return modules_.empty(); }
+  bool empty() const { return !module_; }
 
   absl::string_view cache_key() const { return cache_key_; }
   void set_cache_key(absl::string_view cache_key) {
@@ -108,11 +101,7 @@ class HloModuleGroup {
   std::string name_;
 
   // Vector of modules as std::unique_ptrs.
-  std::vector<std::unique_ptr<HloModule>> modules_;
-
-  // Vector of modules as normal pointers. This vector is kept in sync with
-  // modules_ as modules are added to the group with push_back.
-  std::vector<HloModule*> module_ptrs_;
+  std::unique_ptr<HloModule> module_;
 
   std::string cache_key_;
 };

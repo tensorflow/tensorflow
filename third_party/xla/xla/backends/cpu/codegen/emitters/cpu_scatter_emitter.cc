@@ -59,10 +59,10 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -91,22 +91,23 @@ namespace ma = ::mlir::arith;
 namespace scf = ::mlir::scf;
 
 std::vector<emitters::EpilogueSpecification> CpuScatterFusion::GetEpilogues(
-    const HloFusionInstruction& fusion, mlir::MLIRContext* context) const {
+    const HloFusionInstruction& fusion,
+    SymbolicExprContext* symbolic_expr_context) const {
   const auto* scatter = fusion_->fused_expression_root();
   // We don't actually support epilogues for scatter, but this is how we tell
   // the base class that we don't want it to generate code for the scatter.
   return {emitters::EpilogueSpecification::FromIdentityIndexing(
-      scatter, scatter, context)};
+      scatter, scatter, symbolic_expr_context)};
 }
 
 std::optional<IndexingMap> CpuScatterFusion::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, mlir::MLIRContext* ctx) const {
+    int64_t root_index, SymbolicExprContext* ctx) const {
   return std::nullopt;
 }
 
 std::optional<IndexingMap> CpuScatterFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
-    mlir::MLIRContext* ctx) const {
+    SymbolicExprContext* ctx) const {
   const auto* scatter =
       DynCast<HloScatterInstruction>(fusion_->fused_expression_root());
   CHECK(ScatterSimplifier::IsSimplifiedScatter(scatter))
@@ -183,10 +184,10 @@ SmallVector<Value> EmitScatterComputation(
 
 CpuScatterFusion::CpuScatterFusion(const BufferAssignment& buffer_assignment,
                                    const HloFusionInstruction* fusion,
-                                   mlir::MLIRContext* context)
+                                   SymbolicExprContext* symbolic_expr_context)
     : buffer_assignment_(buffer_assignment),
       fusion_(fusion),
-      context_(context) {
+      symbolic_expr_context_(symbolic_expr_context) {
   const auto* scatter = Cast<HloScatterInstruction>(
       fusion->fused_instructions_computation()->root_instruction());
   auto update_shape = scatter->scatter_updates().front()->shape();
@@ -248,8 +249,9 @@ IndexingMap GetScatterIndexingMap(
       {}, constraints);
 }
 
-absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
-  mlir::OpBuilder builder(context_);
+absl::StatusOr<CpuScatterFusion::KernelDefinition>
+CpuScatterFusion::EmitKernelDefinition() {
+  mlir::OpBuilder builder(symbolic_expr_context_->GetMLIRContext());
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                       CreateNamedMlirModuleOp(*fusion_, builder));
 
@@ -273,9 +275,10 @@ absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
                            std::string(module_name), buffer_assignment_));
 
   std::vector<emitters::EpilogueSpecification> epilogues =
-      GetEpilogues(*fusion_, context_);
+      GetEpilogues(*fusion_, symbolic_expr_context_);
   emitters::PartitionedComputations computations(
-      fusion_->fused_instructions_computation(), context_, epilogues);
+      fusion_->fused_instructions_computation(), symbolic_expr_context_,
+      epilogues);
   TF_ASSIGN_OR_RETURN(
       emitters::CallTargetProvider call_targets,
       EmitCallTargets(mlir_module.get(), *fusion_, computations, epilogues));
@@ -323,8 +326,8 @@ absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
                          std::move(argument_buffers), std::move(result_buffers),
                          std::move(invariant_arguments));
 
-  return MlirKernelDefinition(std::move(kernel_spec),
-                              MlirKernelSource(std::move(mlir_module)));
+  return KernelDefinition(std::move(kernel_spec),
+                          MlirKernelSource(std::move(mlir_module)));
 }
 
 absl::Status CpuScatterFusion::EmitEntryFunction(

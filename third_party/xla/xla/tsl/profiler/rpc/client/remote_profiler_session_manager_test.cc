@@ -50,7 +50,7 @@ ProfileRequest PopulateProfileRequest(
     absl::string_view repository_root, absl::string_view session_id,
     absl::string_view host_name,
     const RemoteProfilerSessionManagerOptions& options) {
-  constexpr uint64 kMaxEvents = 1000000;
+  constexpr uint64_t kMaxEvents = 1000000;
   const absl::string_view kXPlanePb = "xplane.pb";
   ProfileRequest request;
   // TODO(b/169976117) Remove duration from request.

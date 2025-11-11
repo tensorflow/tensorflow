@@ -22,6 +22,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <tuple>
@@ -34,6 +35,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/add.h"
 #include "tensorflow/lite/kernels/internal/reference/mul.h"
 #include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
@@ -4796,6 +4799,78 @@ inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& output_shape, TfLiteTensor* output) {
   SequentialTensorWriter<T> writer(input, output);
   return Slice(op_params, input_shape, output_shape, &writer);
+}
+
+// Iterates through the desired slice region and copies nibbles directly from
+// the input to the output tensor.
+inline void SliceInt4(const tflite::SliceParams& op_params,
+                      const RuntimeShape& input_shape,
+                      const TfLiteTensor* input,
+                      const RuntimeShape& output_shape, TfLiteTensor* output) {
+  ruy::profiler::ScopeLabel label("SliceInt4");
+
+  const int8_t* input_data = GetTensorData<int8_t>(input);
+  int8_t* output_data = GetTensorData<int8_t>(output);
+
+  // Clear output buffer, as we will be writing nibbles.
+  const int output_byte_size = (output_shape.FlatSize() + 1) / 2;
+  memset(output_data, 0, output_byte_size);
+
+  // Calculate the start and stop indices for each dimension of the slice.
+  const RuntimeShape ext_input_shape =
+      RuntimeShape::ExtendedShape(5, input_shape);
+  TFLITE_DCHECK_LE(op_params.begin_count, 5);
+  TFLITE_DCHECK_LE(op_params.size_count, 5);
+  const int begin_count = op_params.begin_count;
+  const int size_count = op_params.size_count;
+  // We front-pad the begin and size vectors.
+  int start[5];
+  int stop[5];
+  for (int i = 0; i < 5; ++i) {
+    int padded_i = 5 - i;
+    start[i] =
+        begin_count < padded_i ? 0 : op_params.begin[begin_count - padded_i];
+    stop[i] =
+        (size_count < padded_i || op_params.size[size_count - padded_i] == -1)
+            ? ext_input_shape.Dims(i)
+            : start[i] + op_params.size[size_count - padded_i];
+  }
+
+  // Loop over the slice region and copy nibbles.
+  int output_nibble_idx = 0;
+  for (int i0 = start[0]; i0 < stop[0]; ++i0) {
+    for (int i1 = start[1]; i1 < stop[1]; ++i1) {
+      for (int i2 = start[2]; i2 < stop[2]; ++i2) {
+        for (int i3 = start[3]; i3 < stop[3]; ++i3) {
+          for (int i4 = start[4]; i4 < stop[4]; ++i4) {
+            const int input_nibble_idx =
+                Offset(ext_input_shape, i0, i1, i2, i3, i4);
+
+            // Get nibble from input. Since int4 data is packed, two nibbles
+            // share a byte.
+            const int8_t input_byte = input_data[input_nibble_idx / 2];
+            int8_t nibble;
+            if (input_nibble_idx % 2 == 0) {  // low nibble
+              // The `(val << 4) >> 4` trick is to sign-extend the 4-bit value.
+              nibble = static_cast<int8_t>(input_byte << 4) >> 4;
+            } else {  // high nibble
+              nibble = input_byte >> 4;
+            }
+
+            // Set nibble in output.
+            if (output_nibble_idx % 2 == 0) {
+              // First nibble of a byte. We simply set the lower 4 bits.
+              output_data[output_nibble_idx / 2] = (nibble & 0x0F);
+            } else {
+              // Second nibble. OR with existing low nibble.
+              output_data[output_nibble_idx / 2] |= (nibble << 4);
+            }
+            output_nibble_idx++;
+          }
+        }
+      }
+    }
+  }
 }
 
 template <typename T>

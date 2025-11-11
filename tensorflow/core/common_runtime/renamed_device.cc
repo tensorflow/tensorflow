@@ -17,8 +17,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/renamed_device.h"
 
+#include <utility>
+
 #include "absl/memory/memory.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
@@ -43,16 +46,15 @@ std::unique_ptr<Device> RenamedDevice::NewRenamedDevice(
   attributes.set_name(name);
   // Call absl::WrapUnique to access private constructor.
   return absl::WrapUnique(
-      new RenamedDevice(underlying, attributes, owns_underlying,
+      new RenamedDevice(underlying, std::move(attributes), owns_underlying,
                         isolate_session_state, underlying_threadpool));
 }
 
-RenamedDevice::RenamedDevice(Device* underlying,
-                             const DeviceAttributes& attributes,
+RenamedDevice::RenamedDevice(Device* underlying, DeviceAttributes attributes,
                              bool owns_underlying_device,
                              bool isolate_session_state,
                              thread::ThreadPoolInterface* underlying_threadpool)
-    : Device(underlying->env(), attributes),
+    : Device(underlying->env(), std::move(attributes)),
       underlying_device_(underlying),
       owns_underlying_device_(owns_underlying_device),
       isolate_session_state_(isolate_session_state) {

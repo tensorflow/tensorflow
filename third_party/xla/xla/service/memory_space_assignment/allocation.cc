@@ -376,7 +376,8 @@ CopyAllocation::CopyAllocation(
     int64_t copy_start_schedule_after_time,
     int64_t copy_done_schedule_before_time, int64_t end_time,
     std::optional<int64_t> cross_program_prefetch_index,
-    HloInstruction* sync_mem_op)
+    HloInstruction* sync_mem_op, HloInstruction* async_mem_op_start,
+    HloInstruction* async_mem_op_done)
     : Allocation(
           /*defining_position=*/{nullptr, {}}, memory_space, chunk,
           // Allocation uses an inclusive start time
@@ -385,6 +386,8 @@ CopyAllocation::CopyAllocation(
       prev_allocation_(prev_allocation),
       copy_start_schedule_after_(copy_start_schedule_after_time),
       copy_done_schedule_before_(copy_done_schedule_before_time),
+      copy_start_(async_mem_op_start),
+      copy_done_(async_mem_op_done),
       sync_mem_op_(sync_mem_op) {}
 
 int64_t CopyAllocation::earliest_available_time() const {
@@ -392,6 +395,17 @@ int64_t CopyAllocation::earliest_available_time() const {
 }
 
 absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
+  // If the copy start and copy done instructions are already present in the
+  // original schedule we just need to schedule them in correct positions. There
+  // is no need to create new instructions.
+  if (copy_start_ != nullptr && copy_done_ != nullptr) {
+    // Update the allocation position with the copy complete instruction, so
+    // that if there are further copies from it, they can find the correct
+    // position.
+    set_original_defining_position(HloPosition{copy_start_, {0}});
+    return absl::OkStatus();
+  }
+
   // Copy allocations need to insert asynchronous copy nodes.
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
@@ -457,13 +471,16 @@ std::string CopyAllocation::ToString() const {
     absl::StrAppend(&memory_space_str, " (off: ", chunk->offset,
                     ", size: ", chunk->size, ")");
   }
-  return absl::StrCat("Copy Allocation in ", memory_space_str,
-                      ", start_time:", start_time(), ", end_time:", end_time(),
-                      ", copy_start_after_time: ", copy_start_schedule_after(),
-                      ", copy_done_before_time: ", copy_done_schedule_before(),
-                      ", uses: ", UsesToString(uses()), ", sync_mem_op: ",
-                      sync_mem_op_ ? sync_mem_op_->name() : "none", ", from ",
-                      prev_allocation_.ToString());
+  return absl::StrCat(
+      "Copy Allocation in ", memory_space_str, ", start_time:", start_time(),
+      ", end_time:", end_time(),
+      ", copy_start_after_time: ", copy_start_schedule_after(),
+      ", copy_done_before_time: ", copy_done_schedule_before(),
+      ", uses: ", UsesToString(uses()),
+      ", existing sync_mem_op: ", sync_mem_op_ ? sync_mem_op_->name() : "none",
+      ", existing copy_start: ", copy_start_ ? copy_start_->name() : "none",
+      ", existing copy_done: ", copy_done_ ? copy_done_->name() : "none",
+      ", from ", prev_allocation_.ToString());
 }
 
 HloPosition CopyAllocation::defining_position() const {

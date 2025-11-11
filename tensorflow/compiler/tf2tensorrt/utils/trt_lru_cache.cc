@@ -99,7 +99,7 @@ string TRTEngineCacheResource::DebugString() const {
 EngineContext* TRTEngineCacheResource::GetEngineContext(
     const std::vector<TensorShape>& input_shapes) {
   EngineContext* engine_context = nullptr;
-  int64 min_matched_batch_size = kint64max;
+  int64 min_matched_batch_size = std::numeric_limits<int64_t>::max();
   for (const auto& pair : cache_) {
     const std::vector<TensorShape>& cached_input_shapes = pair.first;
     // This should not happen, but just for safety.

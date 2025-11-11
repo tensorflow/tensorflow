@@ -61,15 +61,14 @@
 # //tensorflow/tensorflow.bzl) will include the necessary symbols in binary
 # build targets.
 
-# Placeholder: load py_proto_library
+load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load(
     "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
 )
-
-# Placeholder: load java_proto_library
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -494,7 +493,6 @@ cc_library(
         "@local_tsl//tsl/platform:framework_lite_hdrs",
         "@local_xla//xla/tsl/framework:numeric_types.h",
         "@local_xla//xla/tsl/framework:type_traits.h",
-        "@local_xla//xla/tsl/platform/default:integral_types.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -1074,6 +1072,7 @@ cc_library(
 #         "@com_google_absl//absl/status:statusor",
 #         "@com_google_absl//absl/strings",
 #         "@com_google_absl//absl/types:optional",
+#         "@local_xla//xla/tsl/concurrency:executor",
 #         "@local_xla//xla/tsl/framework/fixedpoint",
 #         "@local_xla//xla/tsl/util:safe_reinterpret_cast",
 #         "//tensorflow/core/platform:resource",
@@ -1537,7 +1536,6 @@ cc_library(
     hdrs = [
         "//tensorflow/core/platform:tflite_portable_logging_hdrs",
         "@local_tsl//tsl/platform:tflite_portable_logging_hdrs",
-        "@local_xla//xla/tsl/platform/default:integral_types.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),
@@ -1938,21 +1936,15 @@ tf_cc_tests(
 )
 
 tf_cc_tests(
-    name = "cell_reader_test",
+    name = "test_utils_test",
     size = "small",
     srcs = [
-        "//tensorflow/core/lib/monitoring:cell_reader_test.cc",
         "//tensorflow/core/lib/monitoring:test_utils_test.cc",
     ],
     deps = [
         ":protos_all_cc",
         ":test",
         ":test_main",
-        "//tensorflow/core/lib/monitoring:cell_reader",
-        "//tensorflow/core/lib/monitoring:counter",
-        "//tensorflow/core/lib/monitoring:gauge",
-        "//tensorflow/core/lib/monitoring:percentile_sampler",
-        "//tensorflow/core/lib/monitoring:sampler",
         "//tensorflow/core/lib/monitoring:test_utils",
         "//tensorflow/core/lib/monitoring:types",
         "//tensorflow/core/platform:errors",

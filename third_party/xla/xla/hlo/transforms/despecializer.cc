@@ -53,7 +53,7 @@ void Despecializer::AddReduceWindowToReduceBroadcastDeconstruct() {
   pipeline_.AddPass<DeconstructReduceWindowToReduceBroadcast>();
 }
 
-absl::StatusOr<bool> Despecializer::Run(
+absl::StatusOr<bool> Despecializer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return pipeline_.Run(module, execution_threads);
@@ -66,7 +66,7 @@ absl::StatusOr<bool> Despecializer::Run(
 // reference platform perspective, i.e., for testing, this custom-call should be
 // a copy since no optimizations are performed and runtime is not the criterion
 // while obtaining reference results.
-absl::StatusOr<bool> AssumeGatherIndicesInBoundRewriteToCopy::Run(
+absl::StatusOr<bool> AssumeGatherIndicesInBoundRewriteToCopy::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<HloInstruction*> candidates;
@@ -87,7 +87,7 @@ absl::StatusOr<bool> AssumeGatherIndicesInBoundRewriteToCopy::Run(
   return !candidates.empty();
 }
 
-absl::StatusOr<bool> DeconstructReduceWindowToReduceBroadcast::Run(
+absl::StatusOr<bool> DeconstructReduceWindowToReduceBroadcast::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

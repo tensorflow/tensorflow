@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -213,7 +214,7 @@ absl::StatusOr<std::unique_ptr<Graph>> BuildConstOpGraphWithOutputShapes() {
   std::initializer_list<int64_t> dims = {2, 3, 4, 5};
   Tensor tensor(data_type, TensorShape(dims));
   for (int i = 0; i < 2 * 3 * 4 * 5; ++i) {
-    tensor.flat<int32>()(i) = i;
+    tensor.flat<int32_t>()(i) = i;
   }
 
   NodeDef node;
@@ -259,7 +260,8 @@ absl::StatusOr<xla::XlaComputation> BuildHloFromGraph(
   mlir::MLIRContext mlir_context;
   llvm::SmallVector<xla::XlaOp, 4> xla_params;
   for (int i = 0; i < xla_args.size(); ++i) {
-    xla_params.push_back(Parameter(&builder, i, std::get<1>(xla_args[i].shape),
+    xla_params.push_back(Parameter(&builder, i,
+                                   std::get<xla::Shape>(xla_args[i].shape),
                                    "arg" + std::to_string(i)));
   }
   std::vector<xla::XlaOp> returns(1);

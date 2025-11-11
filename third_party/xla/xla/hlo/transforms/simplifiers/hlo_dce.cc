@@ -51,6 +51,9 @@ namespace xla {
 
 namespace {
 
+const absl::string_view kDceSideEffectFrontendAttribute =
+    "xla_allow_dce_side_effecting_op";
+
 // Checks if the instruction is a removable while given
 // remove_cross_partition_collective_ops
 bool IsRemovableWhile(const HloInstruction* instruction,
@@ -208,7 +211,12 @@ bool CanRemoveInstruction(
                             !maybe_collective_op->constrain_layout();
     bool allow_while =
         IsRemovableWhile(instruction, remove_cross_partition_collective_ops);
-    if (!allow_collective && !allow_while) {
+    bool allow_custom_call = instruction->IsCustomCall("tpu_custom_call") &&
+                             instruction->frontend_attributes().map().contains(
+                                 kDceSideEffectFrontendAttribute) &&
+                             instruction->frontend_attributes().map().at(
+                                 kDceSideEffectFrontendAttribute) == "true";
+    if (!allow_collective && !allow_while && !allow_custom_call) {
       return false;
     }
   }
@@ -381,7 +389,7 @@ absl::StatusOr<bool> RemoveDanglingComputations(
   return changed;
 }
 
-absl::StatusOr<bool> HloDCE::Run(
+absl::StatusOr<bool> HloDCE::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Before dce; threads: " << absl::StrJoin(execution_threads, ",");

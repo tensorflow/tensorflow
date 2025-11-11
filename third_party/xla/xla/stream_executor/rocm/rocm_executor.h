@@ -84,7 +84,7 @@ class RocmExecutor : public GpuExecutor {
       Stream* stream, absl::Span<const uint8_t> content) override;
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
   absl::StatusOr<DeviceMemoryBase> GetMemoryRange(
-      const DeviceMemoryBase& location) override;
+      const DeviceMemoryBase& location) const override;
   void Deallocate(DeviceMemoryBase* mem) override;
   bool SynchronizeAllActivity() override;
   absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
@@ -116,7 +116,7 @@ class RocmExecutor : public GpuExecutor {
   absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) override;
 
   Stream* FindAllocatedStream(void* gpu_stream) override {
-    absl::MutexLock lock(&alive_gpu_streams_mu_);
+    absl::MutexLock lock(alive_gpu_streams_mu_);
     auto it = alive_gpu_streams_.find(gpu_stream);
     if (it == alive_gpu_streams_.end()) {
       return nullptr;
@@ -132,6 +132,8 @@ class RocmExecutor : public GpuExecutor {
   absl::StatusOr<const RocmKernel*> GetRocmKernel(const Kernel* kernel);
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
       MemoryType type) override;
+
+  int GetGpuStreamPriority(StreamPriority priority) override;
 
  private:
   // Initializes Blas interfaces

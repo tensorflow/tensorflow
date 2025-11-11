@@ -3323,21 +3323,31 @@ def decode_image(contents,
   """
   with ops.name_scope(name, 'decode_image'):
     channels = 0 if channels is None else channels
+    original_dtype = dtype
     if dtype not in [dtypes.float32, dtypes.uint8, dtypes.uint16]:
-      dest_dtype = dtype
-      dtype = dtypes.uint16
-      return convert_image_dtype(
-          gen_image_ops.decode_image(
-              contents=contents,
-              channels=channels,
-              expand_animations=expand_animations,
-              dtype=dtype), dest_dtype)
+      dtype_for_decode = dtypes.uint16
     else:
-      return gen_image_ops.decode_image(
-          contents=contents,
-          channels=channels,
-          expand_animations=expand_animations,
-          dtype=dtype)
+      dtype_for_decode = dtype
+
+    image = gen_image_ops.decode_image(
+        contents=contents,
+        channels=channels,
+        expand_animations=expand_animations,
+        dtype=dtype_for_decode,
+    )
+
+    if dtype_for_decode != original_dtype:
+      image = convert_image_dtype(image, original_dtype)
+
+    if not expand_animations:
+      # If not expanding animations, the output is always 3D.
+      if channels != 0:
+        image.set_shape([None, None, channels])
+      else:
+        # We can still set the rank, which is what matters for the resize op.
+        image.set_shape([None, None, None])
+
+    return image
 
 
 @tf_export('image.total_variation')

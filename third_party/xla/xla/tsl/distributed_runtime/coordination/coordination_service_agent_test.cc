@@ -389,7 +389,7 @@ TEST_F(CoordinationServiceAgentTest, IncrementKeyValue_Simple_Success) {
   // Initialize coordination agent.
   InitializeAgent();
   auto result = agent_->IncrementKeyValue(test_key, 1);
-  EXPECT_THAT(result, IsOkAndHolds(11));
+  EXPECT_THAT(result, absl_testing::IsOkAndHolds(11));
 }
 
 TEST_F(CoordinationServiceAgentTest, GetKeyValueDir_Simple_Success) {

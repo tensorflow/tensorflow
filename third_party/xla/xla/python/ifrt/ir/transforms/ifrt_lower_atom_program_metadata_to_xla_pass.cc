@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 
+#include "absl/status/statusor.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
@@ -51,6 +54,10 @@ class IfrtLowerAtomProgramMetadataToXlaPass
     : public impl::IfrtLowerAtomProgramMetadataToXlaPassBase<
           IfrtLowerAtomProgramMetadataToXlaPass> {
  public:
+  using impl::IfrtLowerAtomProgramMetadataToXlaPassBase<
+      IfrtLowerAtomProgramMetadataToXlaPass>::
+      IfrtLowerAtomProgramMetadataToXlaPassBase;
+
   void runOnOperation() override;
 };
 
@@ -66,7 +73,37 @@ void IfrtLowerAtomProgramMetadataToXlaPass::runOnOperation() {
     signalPassFailure();
     return;
   }
-  const bool is_sdy = module_op->hasAttr(kIsSdyPartitioned);
+
+  // If the ModuleOp has a compile options key, then try to use the provided
+  // compile options.
+  auto compile_options_key =
+      module_op->getAttrOfType<mlir::StringAttr>(kIfrtCompileOptionsKey);
+  absl::StatusOr<std::optional<xla::CompileOptions>>
+      compile_options_override_or = GetModuleXlaCompileOverrides(
+          compile_options_key, compile_options->compile_options_overrides);
+
+  if (!compile_options_override_or.ok()) {
+    module_op.emitOpError()
+        << "Unexpected error getting compile options override: "
+        << compile_options_override_or.status().message();
+    signalPassFailure();
+    return;
+  }
+
+  // TODO(b/433244129) - Do not use kIsSdyPartitioned attr and default to true
+  // after 6 month bwd compatibility window.
+  bool is_sdy = module_op->hasAttr(kIsSdyPartitioned);
+  if (is_sdy) {
+    module_op.emitWarning()
+        << "`" << kIsSdyPartitioned
+        << "` attribute is deprecated and will be removed. See b/433244129."
+           " Please use `compile_options_override` to specify sharding.";
+  }
+  if (compile_options_override_or->has_value()) {
+    is_sdy = compile_options_override_or->value()
+                 .executable_build_options.use_shardy_partitioner();
+  }
+
   int num_devices = num_devices_attr.getInt();
   mlir::func::FuncOp func_op = GetMainFunction(module_op);
   auto local_view_attr =
@@ -209,11 +246,5 @@ void IfrtLowerAtomProgramMetadataToXlaPass::runOnOperation() {
 }
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtLowerAtomProgramMetadataToXlaPass() {
-  return std::make_unique<IfrtLowerAtomProgramMetadataToXlaPass>();
-}
-
 }  // namespace ifrt
 }  // namespace xla

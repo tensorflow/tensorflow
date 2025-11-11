@@ -15,14 +15,21 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/windowed_einsum_handler.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -46,11 +53,10 @@ limitations under the License.
 #include "xla/service/while_loop_unroller.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -704,9 +710,8 @@ absl::Status PostProcessUnrolledLoop(HloInstruction* loop, int64_t stream_id) {
     }
   }
   if (partial_accumulations.size() > 0 &&
-      while_body->name().find(
-          WindowedEinsumHandler::kWindowedEinsumAgLoopName) !=
-          std::string::npos) {
+      absl::StrContains(while_body->name(),
+                        WindowedEinsumHandler::kWindowedEinsumAgLoopName)) {
     TF_RETURN_IF_ERROR(
         MoveAccumulationOutsideLoop(partial_accumulations, while_body, loop));
   }
@@ -1350,11 +1355,11 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> WindowedEinsumHandler::Run(
+absl::StatusOr<bool> WindowedEinsumHandler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
-      5, "WindowedEinsumHandler::Run(), before:\n" + module->ToString());
+      5, "WindowedEinsumHandler::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
   int64_t stream_id = hlo_query::NextChannelId(*module);
   std::vector<HloInstruction*> all_windowed_einsum_loops;
@@ -1456,8 +1461,8 @@ absl::StatusOr<bool> WindowedEinsumHandler::Run(
     }
     changed |= result.unrolled;
   }
-  XLA_VLOG_LINES(5,
-                 "WindowedEinsumHandler::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(
+      5, "WindowedEinsumHandler::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

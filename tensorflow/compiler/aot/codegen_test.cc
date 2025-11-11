@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/Support/TargetSelect.h"
 #include "tensorflow/compiler/aot/compile.h"
-#include "xla/cpu_function_runtime.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/shape_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -40,7 +39,7 @@ namespace tensorflow {
 namespace tfcompile {
 namespace {
 
-using ::xla::cpu_function_runtime::BufferInfo;
+using ::xla::cpu::BufferAllocationInfo;
 
 void ExpectErrorContains(const absl::Status& status, absl::string_view str) {
   EXPECT_NE(absl::OkStatus(), status);
@@ -54,7 +53,7 @@ TEST(ValidateCppIdent, Simple) {
   TF_EXPECT_OK(ValidateCppIdent("_abc", ""));
   TF_EXPECT_OK(ValidateCppIdent("_abc123", ""));
   // Make sure we didn't skip a valid letter or digit
-  string ident;
+  std::string ident;
   for (char c = 'a'; c <= 'z'; c++) {
     ident.append(1, c);
   }
@@ -79,18 +78,19 @@ TEST(ValidateCppIdent, Simple) {
 
 class ParseCppClassTest : public ::testing::Test {
  protected:
-  void ExpectOK(const string& cpp_class, const string& want_class_name,
-                const std::vector<string>& want_namespaces) {
-    string class_name;
-    std::vector<string> namespaces;
+  void ExpectOK(const std::string& cpp_class,
+                const std::string& want_class_name,
+                const std::vector<std::string>& want_namespaces) {
+    std::string class_name;
+    std::vector<std::string> namespaces;
     TF_EXPECT_OK(ParseCppClass(cpp_class, &class_name, &namespaces));
     EXPECT_EQ(class_name, want_class_name);
     EXPECT_EQ(namespaces, want_namespaces);
   }
 
-  void ExpectFail(const string& cpp_class) {
-    string class_name;
-    std::vector<string> namespaces;
+  void ExpectFail(const std::string& cpp_class) {
+    std::string class_name;
+    std::vector<std::string> namespaces;
     EXPECT_NE(ParseCppClass(cpp_class, &class_name, &namespaces),
               absl::OkStatus())
         << cpp_class;
@@ -111,7 +111,7 @@ TEST_F(ParseCppClassTest, ParseOK) {
   ExpectOK("::_foo::MyClass", "MyClass", {"_foo"});
   ExpectOK("::_foo::_MyClass", "_MyClass", {"_foo"});
   // Make sure we didn't skip a valid letter or digit
-  string ident;
+  std::string ident;
   for (char c = 'a'; c <= 'z'; c++) {
     ident.append(1, c);
   }
@@ -144,10 +144,10 @@ TEST_F(ParseCppClassTest, ParseFail) {
 }
 
 static void CompareWithGoldenFile(
-    const string& tensorflow_relative_golden_file_name,
-    const string& expected_contents, bool ignore_cr) {
+    const std::string& tensorflow_relative_golden_file_name,
+    const std::string& expected_contents, bool ignore_cr) {
   // Get rid of all CR characters, we may be running under windows.
-  string sanitized_expected_contents(expected_contents);
+  std::string sanitized_expected_contents(expected_contents);
   if (ignore_cr) {
     sanitized_expected_contents.erase(
         std::remove(sanitized_expected_contents.begin(),
@@ -160,7 +160,7 @@ static void CompareWithGoldenFile(
   // blaz test --test_strategy=local \
   //   "third_party/tensorflow/compiler/aot:codegen_test"
   const bool update_golden = false;
-  string golden_file_name =
+  std::string golden_file_name =
       GetDataDependencyFilepath(tensorflow_relative_golden_file_name);
 
   if (update_golden) {
@@ -168,7 +168,7 @@ static void CompareWithGoldenFile(
         WriteStringToFile(Env::Default(), golden_file_name, expected_contents));
   }
 
-  string golden_file_contents;
+  std::string golden_file_contents;
   TF_ASSERT_OK(ReadFileToString(Env::Default(), golden_file_name,
                                 &golden_file_contents));
   if (ignore_cr) {

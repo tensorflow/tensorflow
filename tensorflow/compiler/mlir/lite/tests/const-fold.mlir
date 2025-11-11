@@ -1186,8 +1186,8 @@ func.func @NoFoldFullyConnectedNonFloat() -> tensor<1024xf32> {
   // CHECK: return %[[VAL]] : tensor<1024xf32>
 }
 
-// CHECK-LABEL: @NoFoldFullyConnectedHighRank
-func.func @NoFoldFullyConnectedHighRank() -> tensor<2x1024xf32> {
+// CHECK-LABEL: @ConstantFoldFullyConnectedHighRank
+func.func @ConstantFoldFullyConnectedHighRank() -> tensor<2x1024xf32> {
   %cst_input = arith.constant dense<1.0> : tensor<2x512xf32>
   %cst_weights = arith.constant dense<2.0> : tensor<1024x512xf32>
   %cst_bias = arith.constant dense<4.0> : tensor<1024xf32>
@@ -1195,11 +1195,9 @@ func.func @NoFoldFullyConnectedHighRank() -> tensor<2x1024xf32> {
   %0 = "tfl.fully_connected" (%cst_input, %cst_weights, %cst_bias) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x512xf32>, tensor<1024x512xf32>, tensor<1024xf32>) -> tensor<2x1024xf32>
 
   func.return %0 : tensor<2x1024xf32>
-  // CHECK-DAG: %[[CST:.*]] = arith.constant dense<1.000000e+00> : tensor<2x512xf32>
-  // CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<2.000000e+00> : tensor<1024x512xf32>
-  // CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<4.000000e+00> : tensor<1024xf32>
-  // CHECK: %[[VAL:.*]] = "tfl.fully_connected"(%[[CST]], %[[CST_0]], %[[CST_1]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x512xf32>, tensor<1024x512xf32>, tensor<1024xf32>) -> tensor<2x1024xf32>
-  // CHECK: return %[[VAL]] : tensor<2x1024xf32>
+  // 1.0 * 2.0 * 512 + 4.0 = 1028.0
+  // CHECK: %[[CST:.*]] = arith.constant dense<1.028000e+03> : tensor<2x1024xf32>
+  // CHECK:  return %[[CST]]
 }
 
 // CHECK-LABEL: @ConstantFoldFullyConnectedCheckPrecision
@@ -1226,6 +1224,20 @@ func.func @fully_connected_with_unit_dim() -> tensor<1x5xf32> {
 
 // CHECK:     %cst = arith.constant dense<6.000000e+00> : tensor<1x5xf32>
 // CHECK-NOT: fully_connected
+
+// CHECK-LABEL: @ConstantFoldFullyConnectedBatched
+func.func @ConstantFoldFullyConnectedBatched() -> tensor<13x1536xf32> {
+  %cst_input = arith.constant dense<1.0> : tensor<13x1536xf32>
+  %cst_weights = arith.constant dense<1.0> : tensor<1536x1536xf32>
+  %cst_bias = "tfl.no_value"() {value = unit} : () -> none
+
+  %0 = "tfl.fully_connected" (%cst_input, %cst_weights, %cst_bias) {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<13x1536xf32>, tensor<1536x1536xf32>, none) -> tensor<13x1536xf32>
+  func.return %0 : tensor<13x1536xf32>
+
+  // 1.0 * 1.0 * 1536 = 1536.0
+  // CHECK: %[[CST:.*]] = arith.constant dense<1.536000e+03> : tensor<13x1536xf32>
+  // CHECK:  return %[[CST]]
+}
 
 // CHECK-LABEL: @ShapeOpI32
 func.func @ShapeOpI32(%arg0 : tensor<576x72xf32>) -> tensor<2xi32> {

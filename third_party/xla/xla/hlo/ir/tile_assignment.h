@@ -110,8 +110,10 @@ class IotaTileAssignment {
   std::optional<IotaTileAssignment> Transpose(absl::Span<const int> perm) const;
 
   void Print(Printer* printer) const;
+  void PrintArray(Printer* printer) const;
 
   std::string ToString() const;
+  std::string ArrayToString() const;
 
   // Materializes array representation of IotaTileAssignment.
   Array<int64_t> ToArray() const;
@@ -146,18 +148,6 @@ class IotaTileAssignment {
 
   int size_bytes() const {
     return ndims_ * kPerDimBytes + reshape_ndims_ * kPerReshapeDimBytes;
-  }
-
-  bool next_index(absl::Span<int64_t> index) const {
-    DCHECK_EQ(index.size(), ndims_);
-    for (int64_t i = ndims_ - 1; i >= 0; --i) {
-      index[i]++;
-      if (index[i] < dims_ptr()[i]) {
-        return true;
-      }
-      index[i] = 0;
-    }
-    return false;
   }
   int32_t ndims_;
   int32_t reshape_ndims_;
@@ -249,8 +239,10 @@ class TileAssignment {
   [[nodiscard]] TileAssignment Transpose(absl::Span<const int> perm) const;
 
   void Print(Printer* printer) const;
+  void PrintArray(Printer* printer) const;
 
   std::string ToString() const;
+  std::string ArrayToString() const;
 
   bool UsesDevice(int64_t device) const;
 

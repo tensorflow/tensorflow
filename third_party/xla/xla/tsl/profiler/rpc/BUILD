@@ -28,6 +28,7 @@ cc_library(
         "//tensorflow_serving/model_servers:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
         "//third_party/xprof/pywrap:__pkg__",
+        "//xla/tsl/profiler:friends",
     ]),
     deps = [
         "//xla/tsl/platform:env",
@@ -36,6 +37,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/rpc/client:save_profile",
         "//xla/tsl/profiler/utils:file_system_utils",
         "//xla/tsl/profiler/utils:math_utils",
@@ -43,6 +45,7 @@ cc_library(
         "//xla/tsl/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/profiler/lib:profiler_session",

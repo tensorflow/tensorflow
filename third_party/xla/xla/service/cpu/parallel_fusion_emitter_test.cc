@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -24,14 +25,17 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/IR/FMF.h"
+#include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
-#include "xla/codegen/llvm_kernel_definition.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -61,6 +65,7 @@ FusionCompiler::Options CreateDefaultOptions() {
   options.vector_width = 128;
   options.verification_level = 1;
   options.fast_min_max = false;
+  options.fast_math_flags = llvm::FastMathFlags::getFast();
 
   return options;
 }
@@ -92,14 +97,14 @@ TEST_F(ParallelFusionEmitterTest, HappyPathSingleFusion) {
   constexpr absl::string_view expected_name = "root_fusion";
   constexpr absl::string_view trivial_fusion = R"(
     add1 {
-      p = s32[] parameter(0)
-      c = s32[] constant(1)
-      ROOT a = s32[] add(p, c)
+      p = f32[] parameter(0)
+      c = f32[] constant(1)
+      ROOT a = f32[] add(p, c)
     }
 
     ENTRY main {
-      p = s32[] parameter(0)
-      ROOT root_fusion = s32[] fusion(p), kind=kLoop, calls=add1
+      p = f32[] parameter(0)
+      ROOT root_fusion = f32[] fusion(p), kind=kLoop, calls=add1
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
@@ -118,14 +123,18 @@ TEST_F(ParallelFusionEmitterTest, HappyPathSingleFusion) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto kernels, fussion_emitter.ConsumeKernels());
   ASSERT_EQ(kernels.size(), 1);
-  LlvmKernelDefinition& lowered_kernel = kernels[0];
-  auto [spec, source] = std::move(lowered_kernel).ReleaseStorage();
-  EXPECT_EQ(spec.name(), expected_name);
+  KernelDefinition<LlvmKernelSource>& lowered_kernel = kernels[0];
+  EXPECT_EQ(lowered_kernel.spec().name(), expected_name);
+  auto source = std::move(lowered_kernel).TakeSource();
 
-  llvm::orc::ThreadSafeModule llvm_module =
+  llvm::orc::ThreadSafeModule thread_safe_llvm_module =
       std::move(source).thread_safe_module();
-  EXPECT_NE(llvm_module.getModuleUnlocked()->getFunction(expected_name),
-            nullptr);
+  llvm::Module* llvm_module = thread_safe_llvm_module.getModuleUnlocked();
+  EXPECT_NE(llvm_module->getFunction(expected_name), nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool passed,
+      RunFileCheck(llvm_ir::DumpToString(*llvm_module), "CHECK: fadd fast"));
+  EXPECT_TRUE(passed);
 }
 
 TEST_F(ParallelFusionEmitterTest, FusionsAreSorted) {

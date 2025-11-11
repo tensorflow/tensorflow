@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "xla/debug_options_parsers.h"
 
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -28,6 +30,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/repeated_field.h"
 #include "xla/debug_options_flags.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/dump.h"
@@ -35,7 +38,6 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace {
@@ -44,6 +46,7 @@ using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::IsEmpty;
+using ::xla::details::ParseIntRangeInclusive;
 using ::xla::details::ParseRepeatedEnumModifiers;
 using ::xla::details::RepeatedFlagModifier;
 
@@ -390,10 +393,13 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
   const auto& enabled_features =
       debug_options.xla_gpu_unsupported_generic_triton_emitter_features();
 
-  // Check that the default setting is empty.
+  // Check default setting.
   ASSERT_THAT(
       enabled_features,
-      ElementsAre(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM));
+      testing::UnorderedElementsAre(
+          DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM,
+          DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES,
+          DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION));
 
   // Initialize the flag objects.
   std::vector<tsl::Flag> flag_objects;
@@ -401,24 +407,23 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
 
   // Adding options.
   SetXlaFlagsEnvVar(
-      "--xla_gpu_unsupported_generic_triton_emitter_features=+allow_all_gemm_"
-      "shapes");
+      "--xla_gpu_unsupported_generic_triton_emitter_features="
+      "-allow_all_gemm_shapes");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_features.size(), 2);
   EXPECT_THAT(
       enabled_features,
-      ElementsAre(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM,
-                  DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES));
+      testing::UnorderedElementsAre(
+          DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM,
+          DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION));
 
   // Overwriting options.
   SetXlaFlagsEnvVar(
       "--xla_gpu_unsupported_generic_triton_emitter_features=disable_legacy_"
       "gemm,allow_all_ops_in_gemm_fusion");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_features.size(), 2);
   EXPECT_THAT(
       enabled_features,
-      ElementsAre(
+      testing::UnorderedElementsAre(
           DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM,
           DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION));
 
@@ -427,10 +432,9 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
       "--xla_gpu_unsupported_generic_triton_emitter_features=-disable_legacy_"
       "gemm,-unspecified,+enable_nested_gemm,+allow_all_ops_in_gemm_fusion");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_features.size(), 2);
   EXPECT_THAT(
       enabled_features,
-      ElementsAre(
+      testing::UnorderedElementsAre(
           DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION,
           DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM));
 }
@@ -497,7 +501,7 @@ void TestLibraryFusionType(absl::string_view lib) {
       absl::StrCat("--xla_cpu_experimental_", lib, "_fusion_type");
 
   {
-    const tsl::protobuf::RepeatedField<int> enabled_types =
+    const google::protobuf::RepeatedField<int> enabled_types =
         lib == "onednn"
             ? debug_options.xla_cpu_experimental_onednn_fusion_type()
             : debug_options.xla_cpu_experimental_xnn_fusion_type();
@@ -510,7 +514,7 @@ void TestLibraryFusionType(absl::string_view lib) {
     // Overwriting the default setting.
     SetXlaFlagsEnvVar(absl::StrCat(flag_name, "=dot,eltwise"));
     ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-    const tsl::protobuf::RepeatedField<int> enabled_types =
+    const google::protobuf::RepeatedField<int> enabled_types =
         lib == "onednn"
             ? debug_options.xla_cpu_experimental_onednn_fusion_type()
             : debug_options.xla_cpu_experimental_xnn_fusion_type();
@@ -525,7 +529,7 @@ void TestLibraryFusionType(absl::string_view lib) {
     // Adding / removing options from the existing setting.
     SetXlaFlagsEnvVar(absl::StrCat(flag_name, "=+reduce,-eltwise"));
     ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-    const tsl::protobuf::RepeatedField<int> enabled_types =
+    const google::protobuf::RepeatedField<int> enabled_types =
         lib == "onednn"
             ? debug_options.xla_cpu_experimental_onednn_fusion_type()
             : debug_options.xla_cpu_experimental_xnn_fusion_type();
@@ -543,6 +547,49 @@ TEST(ParseRepeatedEnumFlagsTest, OneDnnFusionType) {
 
 TEST(ParseRepeatedEnumFlagsTest, XnnFusionType) {
   TestLibraryFusionType("xnn");
+}
+
+TEST(ParseIntRangeInclusiveTest, SingleInteger) {
+  IntRangeInclusive range;
+  EXPECT_TRUE(ParseIntRangeInclusive("10", range));
+  EXPECT_EQ(range.first(), 10);
+  EXPECT_EQ(range.last(), 10);
+}
+
+TEST(ParseIntRangeInclusiveTest, Range) {
+  IntRangeInclusive range;
+  EXPECT_TRUE(ParseIntRangeInclusive("10:20", range));
+  EXPECT_EQ(range.first(), 10);
+  EXPECT_EQ(range.last(), 20);
+}
+
+TEST(ParseIntRangeInclusiveTest, HalfOpenRangeWithMin) {
+  IntRangeInclusive range;
+  EXPECT_TRUE(ParseIntRangeInclusive("10:", range));
+  EXPECT_EQ(range.first(), 10);
+  EXPECT_EQ(range.last(), std::numeric_limits<int64_t>::max());
+}
+
+TEST(ParseIntRangeInclusiveTest, HalfOpenRangeWithMax) {
+  IntRangeInclusive range;
+  EXPECT_TRUE(ParseIntRangeInclusive(":100", range));
+  EXPECT_EQ(range.first(), std::numeric_limits<int64_t>::min());
+  EXPECT_EQ(range.last(), 100);
+}
+
+TEST(ParseIntRangeInclusiveTest, InvalidRange) {
+  IntRangeInclusive range;
+  EXPECT_FALSE(ParseIntRangeInclusive("10:20:30", range));
+}
+
+TEST(ParseIntRangeInclusiveTest, InvalidHalfOpenRange) {
+  IntRangeInclusive range;
+  EXPECT_FALSE(ParseIntRangeInclusive(":", range));
+}
+
+TEST(ParseIntRangeInclusiveTest, ReversedRange) {
+  IntRangeInclusive range;
+  EXPECT_FALSE(ParseIntRangeInclusive("20:10", range));
 }
 
 }  // namespace

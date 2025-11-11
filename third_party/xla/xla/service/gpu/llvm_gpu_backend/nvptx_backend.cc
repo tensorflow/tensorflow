@@ -247,13 +247,16 @@ std::string GetSmName(se::CudaComputeCapability compute_capability) {
       {12, 1}, {12, 0}, {11, 0}, {10, 3}, {10, 0}, {9, 0}, {8, 9}, {8, 7},
       {8, 6},  {8, 0},  {7, 5},  {7, 2},  {7, 0},  {6, 2}, {6, 1}, {6, 0},
       {5, 3},  {5, 2},  {5, 0},  {3, 7},  {3, 5},  {3, 2}, {3, 0}};
-  auto target_compute_capability = kSupportedVersions[0];
+  // Initialize to the least supported version, which acts as a safe fallback
+  auto target_compute_capability =
+      kSupportedVersions[std::size(kSupportedVersions) - 1];
 
   for (const auto& v : kSupportedVersions) {
-    if (!gpu_compute_capability.CanRunOn(v)) {
+    if (gpu_compute_capability.SupportsAllFeaturesOf(v)) {
+      // Found the most advanced supported capability
+      target_compute_capability = v;
       break;
     }
-    target_compute_capability = v;
   }
 
   if (target_compute_capability.major == gpu_compute_capability.major &&
@@ -273,7 +276,7 @@ std::string GetSmName(se::CudaComputeCapability compute_capability) {
     // major version supports the forward compatible feature
     // extension.
     target_compute_capability.feature_extension =
-        se::CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures;
+        se::CudaComputeCapability::FeatureExtension::kFamilyCompatibleFeatures;
   }
 
   // If the current CC isn't supported by LLVM and it is newer then
@@ -318,8 +321,7 @@ absl::StatusOr<std::string> CompileToPtx(
       return std::string();
     }
 
-    auto compute_capability =
-        std::get_if<se::CudaComputeCapability>(&gpu_version);
+    auto compute_capability = gpu_version.cuda_compute_capability();
     if (!compute_capability) {
       return xla::Internal("Incompatible compute capability was specified.");
     }

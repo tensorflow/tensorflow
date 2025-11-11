@@ -30,14 +30,13 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -82,7 +81,8 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
                       params.collective_params->device_assn->LogicalIdForDevice(
                           global_device_id));
   const int64_t current_id =
-      config_.config.group_mode == CollectiveOpGroupMode::kCrossReplica
+      config_.config.group_mode ==
+              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
           ? current_logical_id.replica_id
           : current_logical_id.computation_id;
   std::string device_string = GetDeviceString(*params.collective_params);
@@ -132,14 +132,10 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
     if (should_run) {
       TF_RETURN_IF_ERROR(
           MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
-      auto event = comm_handle.comm->Send(
+      auto future = comm_handle.comm->Send(
           src_addr, buffer.element_type, buffer.element_count,
           RankId(*target_id), GpuCollectives::On(stream));
-
-      tsl::BlockUntilReady(event);
-      if (event.IsError()) {
-        return event.GetError();
-      }
+      TF_RETURN_IF_ERROR(future.Await());
     } else {
       VLOG(3) << "[" << device_ordinal << "] Skipping Send";
     }

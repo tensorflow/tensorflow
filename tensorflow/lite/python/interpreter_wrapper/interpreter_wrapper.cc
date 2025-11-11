@@ -129,6 +129,16 @@ PyObject* PyArrayFromFloatVector(const float* data, npy_intp size) {
   return obj;
 }
 
+PyObject* PyArrayFromFloat16Vector(const uint16_t* data, npy_intp size) {
+  void* pydata = malloc(size * sizeof(uint16_t));
+  if (data != nullptr) {
+    memcpy(pydata, data, size * sizeof(uint16_t));
+  }
+  PyObject* obj = PyArray_SimpleNewFromData(1, &size, NPY_FLOAT16, pydata);
+  PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(obj), NPY_ARRAY_OWNDATA);
+  return obj;
+}
+
 PyObject* PyArrayFromIntVector(const int* data, npy_intp size) {
   void* pydata = malloc(size * sizeof(int));
   if (data != nullptr) {
@@ -534,6 +544,9 @@ PyObject* InterpreterWrapper::TensorQuantizationParameters(
   int32_t scales_size = 0;
   int32_t zero_points_size = 0;
   int32_t quantized_dimension = 0;
+  int32_t block_size = 0;
+  PyObject* scales_array = nullptr;
+
   if (quantization.type == kTfLiteAffineQuantization) {
     const TfLiteAffineQuantization* q_params =
         reinterpret_cast<const TfLiteAffineQuantization*>(quantization.params);
@@ -546,15 +559,41 @@ PyObject* InterpreterWrapper::TensorQuantizationParameters(
       zero_points_size = q_params->zero_point->size;
     }
     quantized_dimension = q_params->quantized_dimension;
+    scales_array = PyArrayFromFloatVector(scales_data, scales_size);
+  } else if (quantization.type == kTfLiteBlockwiseQuantization) {
+    const TfLiteBlockwiseQuantization* bq_params =
+        reinterpret_cast<const TfLiteBlockwiseQuantization*>(
+            quantization.params);
+    TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(bq_params->scale, subgraph_index);
+    const TfLiteTensor* scale_tensor = subgraph->tensor(bq_params->scale);
+    auto* scales_data =
+        reinterpret_cast<const uint16_t*>(scale_tensor->data.f16);
+    scales_size = scale_tensor->bytes / sizeof(uint16_t);
+    scales_array = PyArrayFromFloat16Vector(scales_data, scales_size);
+    if (bq_params->zero_point != -1) {
+      TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(bq_params->zero_point,
+                                             subgraph_index);
+      const TfLiteTensor* zero_point_tensor =
+          subgraph->tensor(bq_params->zero_point);
+      zero_points_data = zero_point_tensor->data.i32;
+      zero_points_size = zero_point_tensor->bytes / sizeof(int32_t);
+    } else {
+      zero_points_data = nullptr;
+      zero_points_size = 0;
+    }
+    quantized_dimension = bq_params->quantized_dimension;
+    block_size = bq_params->blocksize;
+  } else {
+    scales_array = PyArrayFromFloatVector(scales_data, scales_size);
   }
-  PyObject* scales_array = PyArrayFromFloatVector(scales_data, scales_size);
   PyObject* zero_points_array =
       PyArrayFromIntVector(zero_points_data, zero_points_size);
 
-  PyObject* result = PyTuple_New(3);
+  PyObject* result = PyTuple_New(4);
   PyTuple_SET_ITEM(result, 0, scales_array);
   PyTuple_SET_ITEM(result, 1, zero_points_array);
   PyTuple_SET_ITEM(result, 2, PyLong_FromLong(quantized_dimension));
+  PyTuple_SET_ITEM(result, 3, PyLong_FromLong(block_size));
   return result;
 }
 
@@ -576,7 +615,12 @@ PyObject* InterpreterWrapper::SetTensor(int tensor_index, PyObject* value,
   TfLiteTensor* tensor =
       interpreter_->subgraph(subgraph_index)->tensor(tensor_index);
 
-  if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
+  if (tensor->type == kTfLiteInt4) {
+    return python_utils::SetInt4Tensor(tensor, array, tensor_index);
+  }
+
+  TfLiteType incoming_type = python_utils::TfLiteTypeFromPyArray(array);
+  if (incoming_type != tensor->type) {
     PyErr_Format(PyExc_ValueError,
                  "Cannot set tensor:"
                  " Got value of type %s"

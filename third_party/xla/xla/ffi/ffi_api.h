@@ -19,10 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/api.h"
@@ -142,11 +144,11 @@ class ScopedExecutionContext {
 //===----------------------------------------------------------------------===//
 
 struct HandlerRegistration {
-  XLA_FFI_Handler_Bundle bundle = {};
-  XLA_FFI_Handler_Traits traits = {};
+  XLA_FFI_Metadata metadata;
+  XLA_FFI_Handler_Bundle bundle;
 };
 
-bool IsCommandBufferCompatible(XLA_FFI_Handler_Traits traits);
+bool IsCommandBufferCompatible(const XLA_FFI_Metadata& metadata);
 
 // Returns registered FFI handler for a given name and platform, or an error if
 // it's not found in the static registry.
@@ -163,6 +165,54 @@ StaticRegisteredHandlers(absl::string_view platform);
 
 const XLA_FFI_Api* GetXlaFfiApi();
 
+//===----------------------------------------------------------------------===//
+// Helper functions
+//===----------------------------------------------------------------------===//
+
+// Decodes XLA FFI traits packed into a 32-bit integer into a vector of traits.
+inline std::vector<Traits> DecodeTraits(XLA_FFI_Handler_Traits traits) {
+  std::vector<Traits> result;
+  if (traits & XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE) {
+    result.push_back(Traits::kCmdBufferCompatible);
+  }
+  return result;
+}
+
+//===----------------------------------------------------------------------===//
+// Pretty printinting for FFI C++ types.
+//===----------------------------------------------------------------------===//
+
+template <typename Sink>
+static void AbslStringify(Sink& sink, Traits traits) {
+  switch (traits) {
+    case Traits::kCmdBufferCompatible:
+      absl::Format(&sink, "cmd_buffer_compatible");
+      break;
+  }
+}
+
 }  // namespace xla::ffi
+
+//===----------------------------------------------------------------------===//
+// Pretty printinting for FFI C types.
+//===----------------------------------------------------------------------===//
+
+template <typename Sink>
+static void AbslStringify(Sink& sink, const XLA_FFI_TypeId& type_id) {
+  if (type_id.type_id == XLA_FFI_UNKNOWN_TYPE_ID.type_id) {
+    absl::Format(&sink, "unknown");
+  } else {
+    absl::Format(&sink, "%d", type_id.type_id);
+  }
+}
+
+template <typename Sink>
+static void AbslStringify(Sink& sink, const XLA_FFI_Metadata& metadata) {
+  absl::Format(&sink, "{api_version: %d.%d, traits: [%s], state: %v}",
+               metadata.api_version.major_version,
+               metadata.api_version.minor_version,
+               absl::StrJoin(xla::ffi::DecodeTraits(metadata.traits), ", "),
+               metadata.state_type_id);
+}
 
 #endif  // XLA_FFI_FFI_API_H_

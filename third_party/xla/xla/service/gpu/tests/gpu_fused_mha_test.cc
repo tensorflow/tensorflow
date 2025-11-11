@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/array4d.h"
 #include "xla/error_spec.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -357,7 +359,7 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
   const std::string                                                   // NOLINT
   GetModuleFlash_Attention_BMM1_Bias_Softmax_BMM2_HloString_BF16() {  // NOLINT
     const std::string hlo_text = R"(
-    HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,2048,128]{3,2,1,0},bf16[2,6,128,2048]{3,2,1,0},bf16[2,6,2048,128]{3,2,1,0},bf16[2,6,2048,2048]{3,2,1,0})->bf16[2,6,2048,128]{3,2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
+    HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,2048,128]{3,2,1,0},bf16[2,6,128,2048]{3,2,1,0},bf16[2,6,2048,128]{3,2,1,0},$bias_type[2,6,2048,2048]{3,2,1,0})->bf16[2,6,2048,128]{3,2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
 
     region_0.28 {
       Arg_0.29 = bf16[] parameter(0)
@@ -378,8 +380,9 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
       constant.6 = bf16[] constant(2)
       broadcast.7 = bf16[2,6,2048,2048]{3,2,1,0} broadcast(constant.6), dimensions={}
       multiply.11 = bf16[2,6,2048,2048]{3,2,1,0} multiply(dot.10, broadcast.7)
-      Arg_3.4 = bf16[2,6,2048,2048]{3,2,1,0} parameter(3), sharding={replicated}
-      add.27 = bf16[2,6,2048,2048]{3,2,1,0} add(multiply.11, Arg_3.4)
+      Arg_3.4 = $bias_type[2,6,2048,2048]{3,2,1,0} parameter(3), sharding={replicated}
+      convert.1 = bf16[2,6,2048,2048]{3,2,1,0} convert(Arg_3.4)
+      add.27 = bf16[2,6,2048,2048]{3,2,1,0} add(multiply.11, convert.1)
       constant.9 = bf16[] constant(-inf)
       reduce.32 = bf16[2,6,2048]{2,1,0} reduce(add.27, constant.9), dimensions={3}, to_apply=region_0.28
       reshape.33 = bf16[2,6,2048,1]{3,2,1,0} reshape(reduce.32)
@@ -407,15 +410,15 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
   const std::string  // NOLINT
   GetModuleFlash_Attention_CuDNN_BMM1_Bias_Softmax_BMM2_HloString_BF16() {  // NOLINT
     const std::string hlo_text = R"(
-    HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,128,2048]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,2048,2048]{3,2,1,0})->bf16[2,6,2048,128]{3,2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
+    HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,128,2048]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0}, $bias_type[2,6,2048,2048]{3,2,1,0})->bf16[2,6,2048,128]{3,2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
 
     ENTRY main.52 {
       Arg_0.1 = bf16[2,6,2048,128]{3,2,1,0} parameter(0), sharding={replicated}
       Arg_1.2 = bf16[2,6,128,2048]{3,2,1,0} parameter(1), sharding={replicated}
       transpose = bf16[2,6,2048,128]{3,2,1,0} transpose(Arg_1.2), dimensions={0,1,3,2}
       Arg_2.3 = bf16[2,6,2048,128]{3,2,1,0} parameter(2), sharding={replicated}
-      Arg_3.4 = bf16[2,6,2048,2048]{3,2,1,0} parameter(3), sharding={replicated}
-      fmha-bmm-scale-bias-softmax-bmm = (bf16[2,6,2048,128]{3,2,1,0}, u8[0]{0}) custom-call(Arg_0.1, transpose, Arg_2.3, Arg_3.4), custom_call_target="__cudnn$fmhaScaleBiasSoftmax", operand_layout_constraints={bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,2048,2048]{3,2,1,0}}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_fmha_backend_config":{"algorithm":{"algo_id":"0","math_type":"TENSOR_OP_MATH","tuning_knobs":{"24":"0","17":"1"},"workspace_size":"0"},"fmha_scale":2,"dropout_rate":0,"bmm1_dot_dimension_numbers":{"lhs_contracting_dimensions":["3"],"rhs_contracting_dimensions":["3"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"bmm2_dot_dimension_numbers":{"lhs_contracting_dimensions":["3"],"rhs_contracting_dimensions":["2"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"intermediate_tensor_shape":{"element_type":"BF16","dimensions":["2","6","2048","2048"],"tuple_shapes":[],"layout":{"dim_level_types":[],"dim_unique":[],"dim_ordered":[],"minor_to_major":["3","2","1","0"],"tiles":[],"tail_padding_alignment_in_elements":"1","element_size_in_bits":"0","memory_space":"0","index_primitive_type":"PRIMITIVE_TYPE_INVALID","pointer_primitive_type":"PRIMITIVE_TYPE_INVALID","dynamic_shape_metadata_prefix_bytes":"0","split_configs":[]},"is_dynamic_dimension":[false,false,false,false]},"seed":"42","is_flash_attention":false,"is_causal_mask":false,"mask_type":"NO_MASK","force_deterministic":false,"sliding_window_length":0},"force_earliest_schedule":false}
+      Arg_3.4 = $bias_type[2,6,2048,2048]{3,2,1,0} parameter(3), sharding={replicated}
+      fmha-bmm-scale-bias-softmax-bmm = (bf16[2,6,2048,128]{3,2,1,0}, u8[0]{0}) custom-call(Arg_0.1, transpose, Arg_2.3, Arg_3.4), custom_call_target="__cudnn$fmhaScaleBiasSoftmax", operand_layout_constraints={bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0}, $bias_type[2,6,2048,2048]{3,2,1,0}}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_fmha_backend_config":{"algorithm":{"algo_id":"0","math_type":"TENSOR_OP_MATH","tuning_knobs":{"24":"0","17":"1"},"workspace_size":"0"},"fmha_scale":2,"dropout_rate":0,"bmm1_dot_dimension_numbers":{"lhs_contracting_dimensions":["3"],"rhs_contracting_dimensions":["3"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"bmm2_dot_dimension_numbers":{"lhs_contracting_dimensions":["3"],"rhs_contracting_dimensions":["2"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"intermediate_tensor_shape":{"element_type":"BF16","dimensions":["2","6","2048","2048"],"tuple_shapes":[],"layout":{"dim_level_types":[],"dim_unique":[],"dim_ordered":[],"minor_to_major":["3","2","1","0"],"tiles":[],"tail_padding_alignment_in_elements":"1","element_size_in_bits":"0","memory_space":"0","index_primitive_type":"PRIMITIVE_TYPE_INVALID","pointer_primitive_type":"PRIMITIVE_TYPE_INVALID","dynamic_shape_metadata_prefix_bytes":"0","split_configs":[]},"is_dynamic_dimension":[false,false,false,false]},"seed":"42","is_flash_attention":false,"is_causal_mask":false,"mask_type":"NO_MASK","force_deterministic":false,"sliding_window_length":0},"force_earliest_schedule":false}
       ROOT get-tuple-element = bf16[2,6,2048,128]{3,2,1,0} get-tuple-element(fmha-bmm-scale-bias-softmax-bmm), index=0
     } // main.52
   )";
@@ -612,7 +615,7 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
   const std::string  // NOLINT
   GetModuleFlash_Attention_BMM1_Bias_Softmax_BMM2_Dbias_HloString_BF16() {  // NOLINT
     const std::string hlo_text = R"(
-      HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[4,1024,1024]{2,1,0})->(bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[4,1024,1024]{2,1,0})}, allow_spmd_sharding_propagation_to_parameters={true,true,true,true,true}, allow_spmd_sharding_propagation_to_output={true,true,true,true,true}
+      HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[1024,1024]{1,0})->(bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[4,1024,1024]{2,1,0})}, allow_spmd_sharding_propagation_to_parameters={true,true,true,true,true}, allow_spmd_sharding_propagation_to_output={true,true,true,true,true}
 
       region_0.14 {
         Arg_0.15 = bf16[] parameter(0)
@@ -640,8 +643,8 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
         Arg_1.2 = bf16[2,1024,4,64]{3,2,1,0} parameter(1)
         transpose.15 = bf16[2,4,64,1024]{3,2,1,0} transpose(Arg_1.2), dimensions={0,2,3,1}
         dot = bf16[2,4,1024,1024]{3,2,1,0} dot(transpose.13, transpose.15), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
-        Arg_4.5 = bf16[4,1024,1024]{2,1,0} parameter(4)
-        broadcast.9 = bf16[2,4,1024,1024]{3,2,1,0} broadcast(Arg_4.5), dimensions={1,2,3}
+        Arg_4.5 = bf16[1024,1024]{1,0} parameter(4)
+        broadcast.9 = bf16[2,4,1024,1024]{3,2,1,0} broadcast(Arg_4.5), dimensions={2,3}
         add.2 = bf16[2,4,1024,1024]{3,2,1,0} add(dot, broadcast.9)
         constant.10 = bf16[] constant(-inf)
         reduce.18 = bf16[2,4,1024]{2,1,0} reduce(add.2, constant.10), dimensions={3}, to_apply=region_0.14
@@ -691,7 +694,7 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
   const std::string  // NOLINT
   GetModuleFlash_Attention_CuDNN_BMM1_Bias_Softmax_BMM2_Dbias_HloString_BF16() {  // NOLINT
     const std::string hlo_text = R"(
-    HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[4,1024,1024]{2,1,0})->(bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[4,1024,1024]{2,1,0})}, allow_spmd_sharding_propagation_to_parameters={true,true,true,true,true}, allow_spmd_sharding_propagation_to_output={true,true,true,true,true}
+    HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[1024,1024]{1,0})->(bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[4,1024,1024]{2,1,0})}, allow_spmd_sharding_propagation_to_parameters={true,true,true,true,true}, allow_spmd_sharding_propagation_to_output={true,true,true,true,true}
 
     ENTRY main.87 {
       Arg_0.1 = bf16[2,1024,4,64]{3,2,1,0} parameter(0)
@@ -702,9 +705,9 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
       Arg_2.3 = bf16[2,1024,4,64]{3,2,1,0} parameter(2)
       transpose.1 = bf16[2,4,64,1024]{3,2,1,0} transpose(Arg_2.3), dimensions={0,2,3,1}
       transpose.27 = bf16[2,4,1024,64]{3,2,1,0} transpose(transpose.1), dimensions={0,1,3,2}
-      Arg_4.5 = bf16[4,1024,1024]{2,1,0} parameter(4)
-      reshape.131 = bf16[1,4,1024,1024]{3,2,1,0} reshape(Arg_4.5)
-      fmha-bmm-scale-bias-softmax-bmm = (bf16[2,4,1024,64]{3,2,1,0}, f32[2,4,1024]{2,1,0}, u8[0]{0}) custom-call(transpose.2, transpose.26, transpose.27, reshape.131), custom_call_target="__cudnn$fmhaScaleBiasSoftmax", operand_layout_constraints={bf16[2,4,1024,64]{3,2,1,0}, bf16[2,4,1024,64]{3,2,1,0}, bf16[2,4,1024,64]{3,2,1,0}, bf16[1,4,1024,1024]{3,2,1,0}}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_fmha_backend_config":{"algorithm":{"algo_id":"0","math_type":"TENSOR_OP_MATH","tuning_knobs":{"17":"1","24":"0"},"workspace_size":"0"},"fmha_scale":1,"dropout_rate":0,"bmm1_dot_dimension_numbers":{"lhs_contracting_dimensions":["3"],"rhs_contracting_dimensions":["3"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"bmm2_dot_dimension_numbers":{"lhs_contracting_dimensions":["3"],"rhs_contracting_dimensions":["2"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"intermediate_tensor_shape":{"element_type":"BF16","dimensions":["2","4","1024","1024"],"tuple_shapes":[],"layout":{"dim_level_types":[],"dim_unique":[],"dim_ordered":[],"minor_to_major":["3","2","1","0"],"tiles":[],"tail_padding_alignment_in_elements":"1","element_size_in_bits":"0","memory_space":"0","index_primitive_type":"PRIMITIVE_TYPE_INVALID","pointer_primitive_type":"PRIMITIVE_TYPE_INVALID","dynamic_shape_metadata_prefix_bytes":"0","split_configs":[]},"is_dynamic_dimension":[false,false,false,false]},"seed":"42","is_flash_attention":false,"is_causal_mask":false,"mask_type":"NO_MASK","force_deterministic":false,"sliding_window_length":0},"force_earliest_schedule":false}
+      Arg_4.5 = bf16[1024,1024]{1,0} parameter(4)
+      reshape.131 = bf16[1,1,1024,1024]{3,2,1,0} reshape(Arg_4.5)
+      fmha-bmm-scale-bias-softmax-bmm = (bf16[2,4,1024,64]{3,2,1,0}, f32[2,4,1024]{2,1,0}, u8[0]{0}) custom-call(transpose.2, transpose.26, transpose.27, reshape.131), custom_call_target="__cudnn$fmhaScaleBiasSoftmax", operand_layout_constraints={bf16[2,4,1024,64]{3,2,1,0}, bf16[2,4,1024,64]{3,2,1,0}, bf16[2,4,1024,64]{3,2,1,0}, bf16[1,1,1024,1024]{3,2,1,0}}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_fmha_backend_config":{"algorithm":{"algo_id":"0","math_type":"TENSOR_OP_MATH","tuning_knobs":{"17":"1","24":"0"},"workspace_size":"0"},"fmha_scale":1,"dropout_rate":0,"bmm1_dot_dimension_numbers":{"lhs_contracting_dimensions":["3"],"rhs_contracting_dimensions":["3"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"bmm2_dot_dimension_numbers":{"lhs_contracting_dimensions":["3"],"rhs_contracting_dimensions":["2"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"intermediate_tensor_shape":{"element_type":"BF16","dimensions":["2","4","1024","1024"],"tuple_shapes":[],"layout":{"dim_level_types":[],"dim_unique":[],"dim_ordered":[],"minor_to_major":["3","2","1","0"],"tiles":[],"tail_padding_alignment_in_elements":"1","element_size_in_bits":"0","memory_space":"0","index_primitive_type":"PRIMITIVE_TYPE_INVALID","pointer_primitive_type":"PRIMITIVE_TYPE_INVALID","dynamic_shape_metadata_prefix_bytes":"0","split_configs":[]},"is_dynamic_dimension":[false,false,false,false]},"seed":"42","is_flash_attention":false,"is_causal_mask":false,"mask_type":"NO_MASK","force_deterministic":false,"sliding_window_length":0},"force_earliest_schedule":false}
       get-tuple-element.5 = bf16[2,4,1024,64]{3,2,1,0} get-tuple-element(fmha-bmm-scale-bias-softmax-bmm), index=0
       transpose.21 = bf16[2,4,64,1024]{3,2,1,0} transpose(get-tuple-element.5), dimensions={0,1,3,2}
       transpose.11 = bf16[2,1024,4,64]{3,2,1,0} transpose(transpose.21), dimensions={0,3,1,2}
@@ -713,7 +716,7 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
       get-tuple-element.7 = f32[2,4,1024]{2,1,0} get-tuple-element(fmha-bmm-scale-bias-softmax-bmm), index=1
       Arg_3.4 = bf16[2,1024,4,64]{3,2,1,0} parameter(3)
       transpose.6 = bf16[2,4,1024,64]{3,2,1,0} transpose(Arg_3.4), dimensions={0,2,1,3}
-      fmha-bmm-scale-bias-softmax-bmm-backward = (bf16[2,4,1024,64]{3,2,1,0}, bf16[2,4,1024,64]{3,2,1,0}, bf16[2,4,1024,64]{3,2,1,0}, bf16[1,4,1024,1024]{3,2,1,0}, u8[0]{0}) custom-call(transpose.2, transpose.7, transpose.29, get-tuple-element.7, transpose.6, /*index=5*/reshape.131, get-tuple-element.5), custom_call_target="__cudnn$fmhaScaleBiasSoftmaxBackward", operand_layout_constraints={bf16[2,4,1024,64]{3,2,1,0}, bf16[2,4,1024,64]{3,2,1,0}, bf16[2,4,1024,64]{3,2,1,0}, f32[2,4,1024]{2,1,0}, bf16[2,4,1024,64]{3,2,1,0}, bf16[1,4,1024,1024]{3,2,1,0}, bf16[2,4,1024,64]{3,2,1,0}}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_fmha_backend_config":{"algorithm":{"algo_id":"0","math_type":"TENSOR_OP_MATH","tuning_knobs":{"24":"0","17":"1"},"workspace_size":"0"},"fmha_scale":1,"dropout_rate":0,"intermediate_tensor_shape":{"element_type":"BF16","dimensions":["2","4","1024","1024"],"tuple_shapes":[],"layout":{"dim_level_types":[],"dim_unique":[],"dim_ordered":[],"minor_to_major":["3","2","1","0"],"tiles":[],"tail_padding_alignment_in_elements":"1","element_size_in_bits":"0","memory_space":"0","index_primitive_type":"PRIMITIVE_TYPE_INVALID","pointer_primitive_type":"PRIMITIVE_TYPE_INVALID","dynamic_shape_metadata_prefix_bytes":"0","split_configs":[]},"is_dynamic_dimension":[false,false,false,false]},"bmm1_grad_gemm1_dot_dimension_numbers":{"lhs_contracting_dimensions":["2"],"rhs_contracting_dimensions":["2"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"bmm1_grad_gemm2_dot_dimension_numbers":{"lhs_contracting_dimensions":["3"],"rhs_contracting_dimensions":["2"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"bmm2_grad_gemm1_dot_dimension_numbers":{"lhs_contracting_dimensions":["2"],"rhs_contracting_dimensions":["2"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"bmm2_grad_gemm2_dot_dimension_numbers":{"lhs_contracting_dimensions":["3"],"rhs_contracting_dimensions":["3"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"seed":"42","is_flash_attention":false,"is_causal_mask":false,"mask_type":"NO_MASK","force_deterministic":false,"sliding_window_length":0},"force_earliest_schedule":false}
+      fmha-bmm-scale-bias-softmax-bmm-backward = (bf16[2,4,1024,64]{3,2,1,0}, bf16[2,4,1024,64]{3,2,1,0}, bf16[2,4,1024,64]{3,2,1,0}, bf16[1,4,1024,1024]{3,2,1,0}, u8[0]{0}) custom-call(transpose.2, transpose.7, transpose.29, get-tuple-element.7, transpose.6, /*index=5*/reshape.131, get-tuple-element.5), custom_call_target="__cudnn$fmhaScaleBiasSoftmaxBackward", operand_layout_constraints={bf16[2,4,1024,64]{3,2,1,0}, bf16[2,4,1024,64]{3,2,1,0}, bf16[2,4,1024,64]{3,2,1,0}, f32[2,4,1024]{2,1,0}, bf16[2,4,1024,64]{3,2,1,0}, bf16[1,1,1024,1024]{3,2,1,0}, bf16[2,4,1024,64]{3,2,1,0}}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_fmha_backend_config":{"algorithm":{"algo_id":"0","math_type":"TENSOR_OP_MATH","tuning_knobs":{"24":"0","17":"1"},"workspace_size":"0"},"fmha_scale":1,"dropout_rate":0,"intermediate_tensor_shape":{"element_type":"BF16","dimensions":["2","4","1024","1024"],"tuple_shapes":[],"layout":{"dim_level_types":[],"dim_unique":[],"dim_ordered":[],"minor_to_major":["3","2","1","0"],"tiles":[],"tail_padding_alignment_in_elements":"1","element_size_in_bits":"0","memory_space":"0","index_primitive_type":"PRIMITIVE_TYPE_INVALID","pointer_primitive_type":"PRIMITIVE_TYPE_INVALID","dynamic_shape_metadata_prefix_bytes":"0","split_configs":[]},"is_dynamic_dimension":[false,false,false,false]},"bmm1_grad_gemm1_dot_dimension_numbers":{"lhs_contracting_dimensions":["2"],"rhs_contracting_dimensions":["2"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"bmm1_grad_gemm2_dot_dimension_numbers":{"lhs_contracting_dimensions":["3"],"rhs_contracting_dimensions":["2"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"bmm2_grad_gemm1_dot_dimension_numbers":{"lhs_contracting_dimensions":["2"],"rhs_contracting_dimensions":["2"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"bmm2_grad_gemm2_dot_dimension_numbers":{"lhs_contracting_dimensions":["3"],"rhs_contracting_dimensions":["3"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"seed":"42","is_flash_attention":false,"is_causal_mask":false,"mask_type":"NO_MASK","force_deterministic":false,"sliding_window_length":0},"force_earliest_schedule":false}
       get-tuple-element.8 = bf16[2,4,1024,64]{3,2,1,0} get-tuple-element(fmha-bmm-scale-bias-softmax-bmm-backward), index=0
       transpose.14 = bf16[2,1024,4,64]{3,2,1,0} transpose(get-tuple-element.8), dimensions={0,2,1,3}
       get-tuple-element.9 = bf16[2,4,1024,64]{3,2,1,0} get-tuple-element(fmha-bmm-scale-bias-softmax-bmm-backward), index=1
@@ -741,8 +744,24 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
         GetModuleFlash_Attention_BMM1_Bias_Softmax_BMM2_HloString_BF16();
     std::string hlo_string_ref =
         GetModuleFlash_Attention_CuDNN_BMM1_Bias_Softmax_BMM2_HloString_BF16();
-    EXPECT_TRUE(RunAndCompareTwoModules(hlo_string, hlo_string_ref,
-                                        ErrorSpec{1e-3, 1e-5}));
+
+    if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) >=
+        se::dnn::VersionInfo(9, 13, 0)) {
+      // fp32 bias is supported to cudnn 9.13 and above
+      std::string f32_bias_hlo_string =
+          absl::StrReplaceAll(hlo_string, {{"$bias_type", "f32"}});
+      std::string f32_bias_hlo_string_ref =
+          absl::StrReplaceAll(hlo_string_ref, {{"$bias_type", "f32"}});
+      EXPECT_TRUE(RunAndCompareTwoModules(
+          f32_bias_hlo_string, f32_bias_hlo_string_ref, ErrorSpec{1e-3, 1e-5}));
+    }
+
+    std::string bf16_bias_hlo_string =
+        absl::StrReplaceAll(hlo_string, {{"$bias_type", "bf16"}});
+    std::string bf16_bias_hlo_string_ref =
+        absl::StrReplaceAll(hlo_string_ref, {{"$bias_type", "bf16"}});
+    EXPECT_TRUE(RunAndCompareTwoModules(
+        bf16_bias_hlo_string, bf16_bias_hlo_string_ref, ErrorSpec{1e-3, 1e-5}));
   }
 
   void TestImpl_Flash_Attention_Training_BMM1_Bias_Softmax_BMM2() {
@@ -1695,10 +1714,16 @@ absl::string_view GetModuleFlashAttentionBMMScaleSoftmaxBMMCommonF8() {
 // BMM1 - Scale - Softmax - BMM2 fp8
 TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
        Flash_Attention_Inference_BMM1_NoMask_Softmax_BMM2_BNTH_F8) {
-  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  if (skip_reason_) {
+    GTEST_SKIP() << *skip_reason_;
+  }
   if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
       se::dnn::VersionInfo(9, 1, 0)) {
     GTEST_SKIP() << "Flash Attention requires cuDNN >= 9.1.0.";
+  }
+  if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) ==
+      se::dnn::VersionInfo(9, 10, 0)) {
+    GTEST_SKIP() << "Flash Attention is not supported in cuDNN 9.10.0.";
   }
   auto cc = GetCudaComputeCapability();
   if (!cc.IsAtLeastHopper()) {
@@ -1872,10 +1897,16 @@ TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
 
 TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
        Flash_Attention_Inference_BMM1_NoMask_Softmax_BMM2_BTNH_F8) {
-  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  if (skip_reason_) {
+    GTEST_SKIP() << *skip_reason_;
+  }
   if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
       se::dnn::VersionInfo(9, 1, 0)) {
     GTEST_SKIP() << "Flash Attention requires cuDNN >= 9.1.0.";
+  }
+  if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) ==
+      se::dnn::VersionInfo(9, 10, 0)) {
+    GTEST_SKIP() << "Flash Attention is not supported in cuDNN 9.10.0.";
   }
   auto cc = GetCudaComputeCapability();
   if (!cc.IsAtLeastHopper()) {

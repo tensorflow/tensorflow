@@ -31,12 +31,13 @@ limitations under the License.
 #include "xla/core/collectives/clique_key.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 
 bool IsP2PStreamKind(AsyncStreamKind stream_kind) {
-  return stream_kind != AsyncStreamKind::kCollective;
+  return stream_kind != AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
 }
 
 CollectiveStreamId GetCollectiveStreamId(bool is_async,

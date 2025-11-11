@@ -33,6 +33,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -209,7 +210,7 @@ std::ostream& operator<<(std::ostream& stream,
 absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForModule(
     const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
     const AliasInfo* alias_info,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const LogicalBuffer::SizeFunction* absl_nonnull size_function) {
   if (schedule.empty()) {
     return 0;
   }
@@ -232,7 +233,7 @@ absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForModule(
 absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
     const HloComputation& computation, const HloInstructionSequence& sequence,
     const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const LogicalBuffer::SizeFunction* absl_nonnull size_function) {
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
       HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
@@ -245,7 +246,8 @@ absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
 absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     std::unique_ptr<HeapAlgorithm<HloValue>> algorithm, const HloModule& module,
     const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
-    const AliasInfo* alias_info, const BufferValue::SizeFunction& size_fn,
+    const AliasInfo* alias_info,
+    const BufferValue::SizeFunction* absl_nonnull size_fn,
     const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options, &schedule);
   const HloComputation* entry_computation = module.entry_computation();
@@ -266,7 +268,8 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
     const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
-    const BufferValue::SizeFunction& size_fn, const Options& options) {
+    const BufferValue::SizeFunction* absl_nonnull size_fn,
+    const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
                      /*schedule=*/nullptr);
   HloSchedule schedule(computation.parent());
@@ -286,8 +289,8 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
     const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
-    const BufferValue::SizeFunction& size_fn, const HloSchedule* schedule,
-    const Options& options) {
+    const BufferValue::SizeFunction* absl_nonnull size_fn,
+    const HloSchedule* schedule, const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
                      /*schedule=*/schedule);
   TF_ASSIGN_OR_RETURN(
@@ -376,7 +379,7 @@ absl::Status HeapSimulator::RunComputation(
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     int64_t size = 0;
     for (const HloValue* value : buffer.values()) {
-      size = std::max(size, size_fn_(*value));
+      size = std::max(size, (*size_fn_)(*value));
     }
     for (const HloValue* value : buffer.values()) {
       buffer_sizes_[value] = size;
@@ -464,7 +467,7 @@ absl::Status HeapSimulator::RunComputation(
               operand_live_range.end = user_live_range.end;
               VLOG(1) << "Sharing " << value->ToShortString() << " with "
                       << operand_value->ToShortString()
-                      << ", size:" << size_fn_(*value);
+                      << ", size:" << (*size_fn_)(*value);
               shared = true;
               break;
             }
@@ -492,10 +495,10 @@ absl::Status HeapSimulator::RunComputation(
   return absl::OkStatus();
 }
 
-HeapSimulator::HeapSimulator(std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
-                             const BufferValue::SizeFunction& size_fn,
-                             const Options& options,
-                             const HloSchedule* schedule)
+HeapSimulator::HeapSimulator(
+    std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
+    const BufferValue::SizeFunction* absl_nonnull size_fn,
+    const Options& options, const HloSchedule* schedule)
     : no_fragmentation_stats_(
           std::make_unique<NoFragmentationStatsHeap<HloValue>>()),
       algorithm_(std::move(algorithm)),

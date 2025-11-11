@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles_data.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/protobuf.h"
 
@@ -43,8 +44,8 @@ namespace gpu {
 
 /*static*/ std::string HloOpProfiles::GetProfileName(
     const se::DeviceDescription& device_info) {
-  if (auto* ptr = std::get_if<stream_executor::CudaComputeCapability>(
-          &device_info.gpu_compute_capability())) {
+  if (auto* ptr =
+          device_info.gpu_compute_capability().cuda_compute_capability()) {
     return absl::StrCat("sm_", ptr->major, ptr->minor);
   }
   return "<unknown>";

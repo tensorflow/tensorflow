@@ -45,8 +45,8 @@ static const char kPlaceholderFile[] =
     "tensorflow/tools/proto_text/placeholder.txt";
 
 bool IsPlaceholderFile(const char* s) {
-  string ph(kPlaceholderFile);
-  string str(s);
+  std::string ph(kPlaceholderFile);
+  std::string str(s);
   return str.size() >= strlen(kPlaceholderFile) &&
          ph == str.substr(str.size() - ph.size());
 }
@@ -76,14 +76,15 @@ int MainImpl(int argc, char** argv) {
     return -1;
   }
 
-  const string output_root = argv[1];
-  const string output_relative_path = kTensorFlowHeaderPrefix + string(argv[2]);
+  const std::string output_root = argv[1];
+  const std::string output_relative_path =
+      kTensorFlowHeaderPrefix + std::string(argv[2]);
 
-  string src_relative_path;
+  std::string src_relative_path;
   bool has_placeholder = false;
   for (int i = 3; i < argc; ++i) {
     if (IsPlaceholderFile(argv[i])) {
-      const string s(argv[i]);
+      const std::string s(argv[i]);
       src_relative_path = s.substr(0, s.size() - strlen(kPlaceholderFile));
       has_placeholder = true;
     }
@@ -102,13 +103,14 @@ int MainImpl(int argc, char** argv) {
 
   for (int i = 3; i < argc; i++) {
     if (IsPlaceholderFile(argv[i])) continue;
-    const string proto_path = string(argv[i]).substr(src_relative_path.size());
+    const std::string proto_path =
+        std::string(argv[i]).substr(src_relative_path.size());
 
     const tensorflow::protobuf::FileDescriptor* fd =
         importer.Import(proto_path);
 
     const int index = proto_path.find_last_of('.');
-    string proto_path_no_suffix = proto_path.substr(0, index);
+    std::string proto_path_no_suffix = proto_path.substr(0, index);
 
     proto_path_no_suffix =
         proto_path_no_suffix.substr(output_relative_path.size());
@@ -118,8 +120,8 @@ int MainImpl(int argc, char** argv) {
 
     // Three passes, one for each output file.
     for (int pass = 0; pass < 3; ++pass) {
-      string suffix;
-      string data;
+      std::string suffix;
+      std::string data;
       if (pass == 0) {
         suffix = ".pb_text.h";
         data = code.header;
@@ -131,7 +133,8 @@ int MainImpl(int argc, char** argv) {
         data = code.cc;
       }
 
-      const string path = output_root + "/" + proto_path_no_suffix + suffix;
+      const std::string path =
+          output_root + "/" + proto_path_no_suffix + suffix;
       FILE* f = fopen(path.c_str(), "w");
       if (f == nullptr) {
         // We don't expect this output to be generated. It was specified in the

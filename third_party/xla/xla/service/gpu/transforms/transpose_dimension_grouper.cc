@@ -35,8 +35,8 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -199,9 +199,9 @@ class TransposeDimensionGroupVisitor : public DfsHloRewriteVisitor {
 };
 }  // namespace
 
-absl::StatusOr<bool> TransposeDimensionGrouper::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> TransposeDimensionGrouper::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(
       bool changed,
       TransposeDimensionGroupVisitor().RunOnModule(module, execution_threads));

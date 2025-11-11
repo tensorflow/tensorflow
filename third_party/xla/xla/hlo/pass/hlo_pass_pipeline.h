@@ -87,15 +87,6 @@ class HloPassPipeline : public HloPassInterface {
 #endif  // NDEBUG
   }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-  using HloPassInterface::RunOnModuleGroup;
-  absl::StatusOr<bool> RunOnModuleGroup(
-      HloModuleGroup* module_group,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   bool IsPassPipeline() const override { return true; }
 
   // Return size of passes_.
@@ -103,40 +94,45 @@ class HloPassPipeline : public HloPassInterface {
   // Return reference to pass specified by index.
   HloPassInterface& GetPass(int index) { return *passes_[index]; }
 
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+  absl::StatusOr<bool> RunImpl(
+      std::unique_ptr<HloModule>& module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
  private:
   // Returns the set of passes which are enabled. DebugOptions can selectively
   // disable passes via --xla_disable_hlo_passes flag.
   std::vector<HloPassInterface*> GetEnabledPasses(
       const DebugOptions& debug_options);
 
-  // Maybe dumps the given module or module group depending on flag values
-  // contained in DebugOptions of module config. If it is dumped, saves the
-  // filenames of the dumps into module metadata.
-  void MaybeDumpHloAndSaveFilenames(HloModuleGroup& module_group,
-                                    absl::string_view after_pass_name,
-                                    absl::string_view before_pass_name);
+  // Maybe dumps the given module depending on flag values contained in
+  // DebugOptions of module config. If it is dumped, saves the filenames of the
+  // dumps into module metadata.
   void MaybeDumpHloAndSaveFilenames(HloModule& module,
                                     absl::string_view after_pass_name,
                                     absl::string_view before_pass_name);
 
   // Runs the invariant checker on the given HLO for specified
   // `execution_threads`. Empty `execution_threads` means all execution threads
-  // are included. HloT can be either HloModule or HloModuleGroup.
+  // are included.
+
   template <typename HloT>
-  absl::Status RunInvariantCheckers(HloT* hlo,
+  absl::Status RunInvariantCheckers(HloT hlo,
                                     absl::string_view after_pass_name) {
     return RunInvariantCheckers(hlo, after_pass_name, /*execution_threads=*/{});
   }
   template <typename HloT>
   absl::Status RunInvariantCheckers(
-      HloT* hlo, absl::string_view after_pass_name,
+      HloT hlo, absl::string_view after_pass_name,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
-  // Helper which runs the given pass on the given HLO. HloT can be either
-  // HloModule or HloModuleGroup.
+  // Helper which runs the given pass on the given HLO.
   template <typename HloT>
   absl::StatusOr<bool> RunPassesInternal(
-      HloT* hlo, const DebugOptions& debug_options,
+      HloT hlo, const DebugOptions& debug_options,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Helpers which run the given passes on the given HLO construct. Only
@@ -144,19 +140,12 @@ class HloPassPipeline : public HloPassInterface {
   // empty thread list means all `execution_threads` are considered. These
   // helpers enable templating of the core of the pipeline logic by providing
   // HloModule and HloModuleGroup specific methods with the same name.
+  template <typename HloT>
   static absl::StatusOr<bool> RunHelper(
-      HloPassInterface* pass, HloModule* module,
+      HloPassInterface* pass, HloT module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     TF_ASSIGN_OR_RETURN(bool changed, pass->Run(module, execution_threads));
     module->Cleanup();
-    return changed;
-  }
-  static absl::StatusOr<bool> RunHelper(
-      HloPassInterface* pass, HloModuleGroup* module_group,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) {
-    TF_ASSIGN_OR_RETURN(
-        bool changed, pass->RunOnModuleGroup(module_group, execution_threads));
-    module_group->Cleanup();
     return changed;
   }
 

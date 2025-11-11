@@ -36,6 +36,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.saved_model import nested_structure_coder
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 COMPRESSION_AUTO = "AUTO"
@@ -228,6 +229,42 @@ def _to_string(dataset_id) -> str:
           if isinstance(dataset_id, bytes) else str(dataset_id))
 
 
+class HashableElementSpec:
+  """Wrapper for element_spec to make it hashable."""
+
+  def __init__(self, element_spec):
+    self.element_spec = element_spec
+    self._flattened_reprs = tuple(repr(s) for s in nest.flatten(element_spec))
+    self._hash = hash(self._flattened_reprs)
+
+  def __hash__(self):
+    return self._hash
+
+  def __eq__(self, other):
+    if not isinstance(other, HashableElementSpec):
+      return NotImplemented
+    return self._flattened_reprs == other._flattened_reprs
+
+
+@functools.lru_cache(maxsize=128)
+def _get_uncompress_func(
+    hashable_spec: HashableElementSpec,
+) -> structured_function.StructuredFunctionWrapper:
+  """Returns a cached StructuredFunctionWrapper for uncompression.
+
+  Args:
+    hashable_spec: A HashableElementSpec wrapping a nested structure of
+      `tf.TypeSpec`s representing the type of elements produced by the dataset.
+  """
+  return structured_function.StructuredFunctionWrapper(
+      lambda x: compression_ops.uncompress(
+          x, output_spec=hashable_spec.element_spec
+      ),
+      transformation_name="DataServiceDataset.uncompress()",
+      input_structure=tensor.TensorSpec(shape=(), dtype=dtypes.variant),
+  )
+
+
 class _DataServiceDatasetV2(dataset_ops.DatasetSource):
   """A `Dataset` that reads elements from the tf.data service."""
 
@@ -340,10 +377,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         dtype=dtypes.int64,
         name="max_outstanding_requests")
     self._element_spec = element_spec
-    uncompress_func = structured_function.StructuredFunctionWrapper(
-        lambda x: compression_ops.uncompress(x, output_spec=element_spec),
-        transformation_name="DataServiceDataset.uncompress()",
-        input_structure=tensor.TensorSpec(shape=(), dtype=dtypes.variant))
+    uncompress_func = _get_uncompress_func(HashableElementSpec(element_spec))
     cross_trainer_cache_options = (
         cross_trainer_cache._to_proto().SerializeToString()
         if cross_trainer_cache else None)
@@ -944,7 +978,9 @@ def _from_dataset_id(processing_mode,
       protocol to use. If it's a tuple, it should be (protocol, address).
     dataset_id: The id of the dataset to read from. This id is returned by
       `register_dataset` when the dataset is registered with the tf.data
-      service.
+      service. Note: If two clients register different datasets and use the same
+      `job_name`, both will share the same job regardless of the value of
+      `dataset_id`.
     element_spec: A nested structure of `tf.TypeSpec`s representing the type of
       elements produced by the dataset. This argument is only required inside a
       tf.function. Use `tf.data.Dataset.element_spec` to get the element spec
@@ -952,7 +988,9 @@ def _from_dataset_id(processing_mode,
     job_name: (Optional.) The name of the job. If provided, it must be a
       non-empty string or tensor. This argument makes it possible for multiple
       datasets to share the same job. The default behavior is that the dataset
-      creates anonymous, exclusively owned jobs.
+      creates anonymous, exclusively owned jobs. Note: for the case when
+      `job_name` and `dataset_id` are both present, see `dataset_id` comment for
+      more details.
     consumer_index: (Optional.) The index of the consumer in the range from `0`
       to `num_consumers`. Must be specified alongside `num_consumers`. When
       specified, consumers will read from the job in a strict round-robin order,

@@ -42,10 +42,10 @@ OpDef MakeOpDef(int num_inputs, int num_outputs) {
   OpRegistrationData op_reg_data;
   OpDefBuilder b("dummy");
   for (int i = 0; i < num_inputs; ++i) {
-    b.Input(strings::StrCat("i", i, ": float"));
+    b.Input(absl::StrCat("i", i, ": float"));
   }
   for (int i = 0; i < num_outputs; ++i) {
-    b.Output(strings::StrCat("o", i, ": float"));
+    b.Output(absl::StrCat("o", i, ": float"));
   }
   CHECK(b.Attr("foo:string").Finalize(&op_reg_data).ok());
   return op_reg_data.op_def;
@@ -1790,7 +1790,7 @@ TEST(CommonShapeFnsTest, ReduceScatter_NotEvenlyDivisible) {
   EXPECT_EQ(3, c.num_inputs());
   EXPECT_EQ(1, c.num_outputs());
   EXPECT_THAT(ReduceScatterShape(&c),
-              tensorflow::testing::StatusIs(
+              absl_testing::StatusIs(
                   error::INVALID_ARGUMENT,
                   "Dimension size must be evenly divisible by 2 but is 3"));
 }
@@ -1818,7 +1818,7 @@ TEST(CommonShapeFnsTest, ReduceScatter_INVALID_GROUP_ASSIGNMENT) {
   EXPECT_EQ(3, c.num_inputs());
   EXPECT_EQ(1, c.num_outputs());
   EXPECT_THAT(ReduceScatterShape(&c),
-              tensorflow::testing::StatusIs(
+              absl_testing::StatusIs(
                   error::INVALID_ARGUMENT,
                   "ReduceScatter group_assignment should be rank 2"));
 }

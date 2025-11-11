@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -44,9 +45,10 @@ using ::xla::gpu::ir_emitter_triton_internal::DumpTritonIR;
 
 class EmitterLocOpBuilderTest : public HloHardwareIndependentTestBase {
  protected:
-  void SetUp() override { gpu::LoadMlirDialectsForTriton(context_); }
+  void SetUp() override { gpu::LoadMlirDialectsForTriton(mlir_context_); }
 
-  mlir::MLIRContext context_;
+  mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 NameLoc NameLoc(mlir::MLIRContext& context, absl::string_view name) {
@@ -65,9 +67,9 @@ mlir::OwningOpRef<mlir::ModuleOp> MakeModuleWithOneOp(
 }
 
 TEST_F(EmitterLocOpBuilderTest, IRWithAnnotations) {
-  auto loc = NameLoc(context_, "IRWithAnnotations");
-  EmitterLocOpBuilder b(loc, &context_, /*annotate_loc=*/true);
-  auto triton_module = MakeModuleWithOneOp(context_, b);
+  auto loc = NameLoc(mlir_context_, "IRWithAnnotations");
+  EmitterLocOpBuilder b(loc, &mlir_context_, /*annotate_loc=*/true);
+  auto triton_module = MakeModuleWithOneOp(mlir_context_, b);
   std::string ir = DumpTritonIR(triton_module.get(), /*dump_annotations=*/true);
   if constexpr (EmitterLocOpBuilder::kSourceLocationSupported) {
     EXPECT_THAT(RunFileCheck(ir, R"(
@@ -83,9 +85,9 @@ TEST_F(EmitterLocOpBuilderTest, IRWithAnnotations) {
 }
 
 TEST_F(EmitterLocOpBuilderTest, IRWithoutAnnotations) {
-  auto loc = NameLoc(context_, "IRWithoutAnnotations");
-  EmitterLocOpBuilder b(loc, &context_, /*annotate_loc=*/false);
-  auto triton_module = MakeModuleWithOneOp(context_, b);
+  auto loc = NameLoc(mlir_context_, "IRWithoutAnnotations");
+  EmitterLocOpBuilder b(loc, &mlir_context_, /*annotate_loc=*/false);
+  auto triton_module = MakeModuleWithOneOp(mlir_context_, b);
   std::string ir =
       DumpTritonIR(triton_module.get(), /*dump_annotations=*/false);
   EXPECT_THAT(RunFileCheck(ir, R"(

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -52,7 +53,7 @@ absl::Status CreateWeakHandle(OpKernelContext* ctx, T* resource,
                               ResourceHandle* handle) {
   static std::atomic<int64_t> resource_id_counter(0);
   string unique_name =
-      strings::StrCat(container_name, resource_id_counter.fetch_add(1));
+      absl::StrCat(container_name, resource_id_counter.fetch_add(1));
   ResourceMgr* mgr = ctx->resource_manager();
   TF_RETURN_IF_ERROR(mgr->Create<T>(container_name, unique_name, resource));
 

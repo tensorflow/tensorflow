@@ -244,7 +244,7 @@ class TfrtSession : public tensorflow::Session {
     optimization_options.session_options = &options_;
     FunctionLibraryDefinition flib_def = fallback_state->func_lib_def();
     optimization_options.flib_def = &flib_def;
-    std::unordered_map<string, std::unique_ptr<Graph>> partition_graphs;
+    std::unordered_map<std::string, std::unique_ptr<Graph>> partition_graphs;
     auto initial_graph =
         std::make_unique<tensorflow::Graph>(tensorflow::OpRegistry::Global());
     tensorflow::GraphConstructorOptions opts;

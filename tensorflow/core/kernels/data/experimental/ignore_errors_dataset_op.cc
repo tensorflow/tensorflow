@@ -56,7 +56,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::IgnoreErrors")});
+          Iterator::Params{this, absl::StrCat(prefix, "::IgnoreErrors")});
     }
 
     const DataTypeVector& output_dtypes() const override {

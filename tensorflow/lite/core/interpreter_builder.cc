@@ -416,7 +416,9 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
         reinterpret_cast<TfLiteBlockwiseQuantization*>(
             malloc(sizeof(TfLiteBlockwiseQuantization)));
     blockwise_quantization->scale = src_quant->scales();
-    blockwise_quantization->quantized_dimension = 0;
+    blockwise_quantization->zero_point = src_quant->zero_points();
+    blockwise_quantization->quantized_dimension =
+        src_quantization->quantized_dimension();
     blockwise_quantization->blocksize = src_quant->block_size();
     quantization->params = reinterpret_cast<void*>(blockwise_quantization);
     return kTfLiteOk;
@@ -723,7 +725,8 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       if (subgraph->SetTensorParametersReadOnly(
               i, type, get_name(tensor), dims, quantization, buffer_ptr,
               buffer_size, allocation_, sparsity,
-              /*buffer_identifier=*/tensor->buffer()) != kTfLiteOk) {
+              /*buffer_identifier=*/tensor->buffer(),
+              /*external_buffer_id=*/tensor->external_buffer()) != kTfLiteOk) {
         TF_LITE_REPORT_ERROR(error_reporter_,
                              "Tensor %d is invalidly specified in schema.\n",
                              i);

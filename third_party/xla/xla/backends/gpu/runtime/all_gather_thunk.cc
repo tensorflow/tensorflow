@@ -21,21 +21,19 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -74,7 +72,8 @@ AllGatherStartThunk::AllGatherStartThunk(ThunkInfo thunk_info,
                                          std::vector<Buffer> buffers,
                                          bool p2p_memcpy_enabled)
     : CollectiveThunk(Thunk::kAllGatherStart, thunk_info,
-                      IsGPUSyncCollective(*inst), AsyncStreamKind::kCollective),
+                      IsGPUSyncCollective(*inst),
+                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
       config_(impl::GetAllGatherConfig(inst)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
@@ -113,7 +112,7 @@ absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
   TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
                                           use_symmetric_buffer));
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
-  tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
+  Future<> future = gpu_comm->GroupExecute(
       [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
         for (DeviceBufferPair& buffer : buffers) {
           TF_RETURN_IF_ERROR(comm->LaunchAllGather(
@@ -124,12 +123,9 @@ absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
         return absl::OkStatus();
       });
 
-  tsl::BlockUntilReady(event);
+  TF_RETURN_IF_ERROR(future.Await());
   VLOG(3) << "[" << device_ordinal
           << "] Done performing all-gather for ordinal: " << device_ordinal;
-  if (event.IsError()) {
-    return event.GetError();
-  }
   return absl::OkStatus();
 }
 

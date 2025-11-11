@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/cc_op_gen_util.h"
 
-#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -29,6 +28,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -107,10 +107,10 @@ string ToGuard(absl::string_view path) {
   string guard;
   guard.reserve(path.size() + 1);  // + 1 -> trailing _
   for (const char c : path) {
-    if (c >= 'A' && c <= 'Z') {
+    if (absl::ascii_isupper(c)) {
       guard += c;
-    } else if (c >= 'a' && c <= 'z') {
-      guard += c + 'A' - 'a';
+    } else if (absl::ascii_islower(c)) {
+      guard += absl::ascii_toupper(c);
     } else {
       guard += '_';
     }
@@ -306,7 +306,7 @@ string ToCamelCase(absl::string_view str) {
     } else if (c == joiner) {
       cap = true;
     } else if (cap) {
-      result += toupper(c);
+      result += absl::ascii_toupper(c);
       cap = false;
     } else {
       result += c;

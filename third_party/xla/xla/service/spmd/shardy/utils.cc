@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
@@ -437,6 +438,48 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module) {
 
 bool hasShardyMesh(mlir::ModuleOp module) {
   return !module.getOps<mlir::sdy::MeshOp>().empty();
+}
+
+namespace {
+// Returns the first non-maximal mesh on the result shardings, if there is
+// one. Otherwise returns `std::nullopt`.
+// TODO(enver): Use a common helper that takes an std::function to get the
+// sharding given an index.
+std::optional<Attribute> getMeshOrRefOnResults(
+    mlir::func::FuncOp funcOp, const mlir::SymbolTable& symbolTable) {
+  for (int64_t resultNum = 0; resultNum < funcOp.getNumResults(); ++resultNum) {
+    if (mlir::sdy::TensorShardingAttr sdySharding =
+            mlir::sdy::getFuncResultSharding(funcOp, resultNum);
+        sdySharding && !sdySharding.getMesh(symbolTable).isMaximal()) {
+      return std::make_optional(sdySharding.getMeshOrRef());
+    }
+  }
+  return std::nullopt;
+}
+}  // namespace
+
+mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
+    mlir::func::CallOp callOp, mlir::func::FuncOp funcOp,
+    const mlir::SymbolTable& symbolTable) {
+  std::optional<mlir::Attribute> meshOrRef =
+      getMeshOrRefOnResults(funcOp, symbolTable);
+  if (!meshOrRef) {
+    return nullptr;
+  }
+  SmallVector<mlir::sdy::TensorShardingAttr> resultShardings;
+  resultShardings.reserve(funcOp.getNumResults());
+  for (int64_t resultNum = 0; resultNum < funcOp.getNumResults(); ++resultNum) {
+    mlir::sdy::TensorShardingAttr sdySharding =
+        mlir::sdy::getFuncResultSharding(funcOp, resultNum);
+    resultShardings.push_back(
+        sdySharding ? sdySharding
+                    : mlir::sdy::TensorShardingAttr::getFullyOpen(
+                          funcOp.getContext(),
+                          mlir::sdy::getTensorRank(callOp.getResult(resultNum)),
+                          *meshOrRef));
+  }
+  return mlir::sdy::TensorShardingPerValueAttr::get(funcOp.getContext(),
+                                                    resultShardings);
 }
 
 }  // namespace sdy

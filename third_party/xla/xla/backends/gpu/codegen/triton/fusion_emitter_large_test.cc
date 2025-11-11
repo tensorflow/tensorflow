@@ -38,8 +38,7 @@ class TritonGemmTest : public GpuCodegenTest {
   }
 
   void SetUp() override {
-    if (std::holds_alternative<se::RocmComputeCapability>(
-            GetGpuComputeCapability())) {
+    if (GetGpuComputeCapability().IsRocm()) {
       GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
     }
   }

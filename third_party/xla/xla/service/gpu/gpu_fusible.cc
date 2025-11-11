@@ -31,8 +31,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/permutation_util.h"
@@ -391,6 +394,7 @@ bool IsUniversallyLoopFusible(const HloInstruction& instr) {
       return instr.fusion_kind() == HloInstruction::FusionKind::kLoop;
 
     case HloOpcode::kBitcast:
+      return hlo_instruction_utils::KeepsBitwidth(instr);
     case HloOpcode::kBroadcast:
     case HloOpcode::kConcatenate:
     case HloOpcode::kDynamicSlice:
@@ -423,18 +427,6 @@ bool IsLoopFusibleAsProducer(const HloInstruction& instr) {
     default:
       return IsUniversallyLoopFusible(instr);
   }
-}
-
-static bool AllSatisfy(const HloInstruction& instr,
-                       const HloPredicate& predicate) {
-  if (instr.opcode() != HloOpcode::kFusion) {
-    return predicate(&instr);
-  }
-
-  return absl::c_all_of(
-      instr.fused_instructions(), [&](const HloInstruction* i) {
-        return i->opcode() == HloOpcode::kParameter || predicate(i);
-      });
 }
 
 FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
@@ -559,7 +551,7 @@ static int64_t SharedMemoryUsageNoCache(
 
 int64_t FusionInfoCache::GetSharedMemoryUsage(const HloInstruction& instr) {
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     auto it = shared_memory_usage_.find(&instr);
     if (it != shared_memory_usage_.end()) {
       return it->second;
@@ -572,7 +564,7 @@ int64_t FusionInfoCache::GetSharedMemoryUsage(const HloInstruction& instr) {
   // SharedMemoryUsageNoCache and use the cache *within* the fusion.
   int64_t shared_memory_usage = SharedMemoryUsageNoCache(instr, device_info_);
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   shared_memory_usage_.emplace(&instr, shared_memory_usage);
   return shared_memory_usage;
 }
@@ -609,7 +601,7 @@ static int64_t NumUnnestedReductionsNoCache(
 
 int64_t FusionInfoCache::GetNumUnnestedReductions(const HloInstruction& instr) {
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     auto it = num_unnested_reductions_.find(&instr);
     if (it != num_unnested_reductions_.end()) {
       return it->second;
@@ -623,7 +615,7 @@ int64_t FusionInfoCache::GetNumUnnestedReductions(const HloInstruction& instr) {
   int64_t num_unnested_reductions =
       NumUnnestedReductionsNoCache(instr, device_info_);
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   num_unnested_reductions_.emplace(&instr, num_unnested_reductions);
   return num_unnested_reductions;
 }
@@ -860,13 +852,27 @@ bool IsGenericTritonFusion(const HloInstruction& instr) {
                  .kind() == kTritonFusionKind;
 }
 
-bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
+bool MayCausePerformanceDropIfUnrolled(const HloFusionAdaptor& fusion) {
   // An empirically chosen constant: unrolling concat with a large amount of
   // arguments causes excessive register spilling.
   static constexpr int kMaxConcatArgumentsForUnrolling = 10;
+  // An empirically chosen constant: One thread handles a full window of
+  // ReduceWindow, so if we unroll it might make parallelism even worse. For
+  // small window sizes this is still ok.
+  static constexpr int kMaxReduceWindowSize = 8;
   return HloAnyOf(fusion, [&](auto node) {
     switch (node.opcode()) {
-      case HloOpcode::kReduceWindow:
+      case HloOpcode::kReduceWindow: {
+        auto window_dims = Cast<HloReduceWindowInstruction>(&node.instruction())
+                               ->window()
+                               .dimensions();
+        std::vector<int64_t> window_sizes;
+        window_sizes.reserve(window_dims.size());
+        for (const auto& window_dim : window_dims) {
+          window_sizes.push_back(window_dim.size());
+        }
+        return Product(window_sizes) > kMaxReduceWindowSize;
+      }
       case HloOpcode::kSort:
       case HloOpcode::kDot:
         return true;
@@ -937,7 +943,7 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   int64_t n_threads_max = analysis.device_info().threads_per_core_limit() *
                           analysis.device_info().core_count();
   if (num_elements >= n_threads_max &&
-      !MayPreventVectorization(analysis.fusion())) {
+      !MayCausePerformanceDropIfUnrolled(analysis.fusion())) {
     unroll_factor = ComputeMaxUnrollFactor(num_elements);
   }
   // CHECK that unroll_factor is a power-of-2, as needed by the logic below.
@@ -947,9 +953,9 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   // safe even if the new unroll_factor doesn't divide the number of elements,
   // as the parallel loop emitter will insert a bounds check in this case to
   // ensure the out-of-bounds element is not computed and written. Setting
-  // unroll_factor is safe even if MayPreventVectorization returns false, as
-  // the MayPreventVectorization check is an optimization, not a correctness
-  // requirement.
+  // unroll_factor is safe even if MayCausePerformanceDropIfUnrolled returns
+  // true, as the MayCausePerformanceDropIfUnrolled check is an optimization,
+  // not a correctness requirement.
   unroll_factor = std::max(
       unroll_factor,
       CeilOfRatio(8, analysis.input_output_info().smallest_output_dtype_bits));

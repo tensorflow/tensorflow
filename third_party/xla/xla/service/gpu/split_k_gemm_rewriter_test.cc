@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
@@ -790,6 +791,239 @@ ENTRY %entry_computation {
       module->entry_computation()->root_instruction(), config));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Reduce(m::Fusion(), m::Constant())));
+}
+
+TEST_F(SplitKTest, CleanupUncompilable) {
+  // Test that the pass doesn't create dangling ops.
+  const std::string hlo_text = R"(
+triton_gemm_dot {
+  lhs = f32[16,128] parameter(0)
+  rhs = f32[32,256] parameter(1)
+  rhs_sliced = f32[32,128] slice(rhs), slice={[0:32],[0:128]}
+  ROOT dot = f32[16,32] dot(lhs, rhs_sliced),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY %entry_computation {
+  lhs = f32[16,128] parameter(0)
+  rhs = f32[32,256] parameter(1)
+  ROOT fusion = f32[16,32] fusion(lhs, rhs), kind=kCustom,
+    calls=triton_gemm_dot
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TritonGemmConfig config(16, 16, 16, /*split_k=*/4, 1, 1);
+  EXPECT_THAT(MakeDotSplitKBatch(
+                  module->entry_computation()->root_instruction(), config),
+              absl_testing::StatusIs(
+                  tsl::error::CANCELLED,
+                  "Sliced contracting dimension is not supported yet."));
+}
+
+TEST_F(SplitKTest, ScaledDot_SameBlockSize) {
+  const std::string hlo_text = R"(
+triton_gemm_dot {
+  lhs = f8e4m3fn[16,128] parameter(0)
+  rhs = f8e5m2[32,128] parameter(1)
+  lhs_scale = f8e8m0fnu[16,4] parameter(2)
+  rhs_scale = f8e8m0fnu[32,4] parameter(3)
+  ROOT dot = f32[16,32] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY %entry_computation {
+  lhs = f8e4m3fn[16,128] parameter(0)
+  rhs = f8e5m2[32,128] parameter(1)
+  lhs_scale = f8e8m0fnu[16,4] parameter(2)
+  rhs_scale = f8e8m0fnu[32,4] parameter(3)
+  ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
+      kind=kCustom, calls=triton_gemm_dot
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TritonGemmConfig config(16, 16, 16, /*split_k=*/3, 1, 1);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
+
+  HloInstruction* dot_fusion;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Reduce(m::Fusion(&dot_fusion), m::ConstantScalar())));
+  EXPECT_THAT(
+      dot_fusion->called_computations()[0]->root_instruction(),
+      GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 512}),
+                              m::Op().WithShape(F8E5M2, {32, 3, 512}),
+                              m::Op().WithShape(F8E8M0FNU, {16, 3, 16}),
+                              m::Op().WithShape(F8E8M0FNU, {32, 3, 16}))));
+}
+
+TEST_F(SplitKTest, ScaledDot_DifferentBlockSize) {
+  const std::string hlo_text = R"(
+triton_gemm_dot {
+  lhs = f8e4m3fn[16,128] parameter(0)
+  rhs = f8e5m2[32,128] parameter(1)
+  lhs_scale = f8e8m0fnu[16,4] parameter(2)
+  rhs_scale = f8e8m0fnu[32,8] parameter(3)
+  ROOT dot = f32[16,32] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY %entry_computation {
+  lhs = f8e4m3fn[16,128] parameter(0)
+  rhs = f8e5m2[32,128] parameter(1)
+  lhs_scale = f8e8m0fnu[16,4] parameter(2)
+  rhs_scale = f8e8m0fnu[32,8] parameter(3)
+  ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
+      kind=kCustom, calls=triton_gemm_dot
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TritonGemmConfig config(16, 16, 16, /*split_k=*/3, 1, 1);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
+
+  HloInstruction* dot_fusion;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Reduce(m::Fusion(&dot_fusion), m::ConstantScalar())));
+  EXPECT_THAT(
+      dot_fusion->called_computations()[0]->root_instruction(),
+      GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 512}),
+                              m::Op().WithShape(F8E5M2, {32, 3, 512}),
+                              m::Op().WithShape(F8E8M0FNU, {16, 3, 16}),
+                              m::Op().WithShape(F8E8M0FNU, {32, 3, 32}))));
+}
+
+// TODO(b/436988479): Re-enable when split-K is fixed for scaled dots.
+TEST_F(SplitKTest, DISABLED_ScaledDot_LhsOnly) {
+  const std::string hlo_text = R"(
+triton_gemm_dot {
+  lhs = f8e4m3fn[16,128] parameter(0)
+  rhs = bf16[32,128] parameter(1)
+  lhs_scale = f8e8m0fnu[16,4] parameter(2)
+  rhs_scale = bf16[1,1] parameter(3)
+  ROOT dot = f32[16,32] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY %entry_computation {
+  lhs = f8e4m3fn[16,128] parameter(0)
+  rhs = bf16[32,128] parameter(1)
+  lhs_scale = f8e8m0fnu[16,4] parameter(2)
+  rhs_scale = bf16[1,1] constant(1.0)
+  ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
+      kind=kCustom, calls=triton_gemm_dot
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TritonGemmConfig config(16, 16, 16, /*split_k=*/3, 1, 1);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
+
+  HloInstruction* dot_fusion;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Reduce(m::Fusion(&dot_fusion), m::ConstantScalar())));
+  EXPECT_THAT(dot_fusion->called_computations()[0]->root_instruction(),
+              GmockMatch(m::ScaledDot(m::Op().WithShape(F8E4M3FN, {16, 3, 512}),
+                                      m::Op().WithShape(BF16, {32, 3, 512}),
+                                      m::Op().WithShape(F8E8M0FNU, {16, 3, 16}),
+                                      m::Op().WithShape(BF16, {1, 1, 1}))));
+}
+
+// TODO(b/436988479): Re-enable once the split-K is fixed for scaled dots.
+TEST_F(SplitKTest, DISABLED_ScaledDot_RhsOnly) {
+  const std::string hlo_text = R"(
+triton_gemm_dot {
+  lhs = bf16[16,128] parameter(0)
+  rhs = f8e5m2[32,128] parameter(1)
+  lhs_scale = bf16[1,1] parameter(2)
+  rhs_scale = f8e8m0fnu[32,4] parameter(3)
+  ROOT dot = f32[16,32] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY %entry_computation {
+  lhs = bf16[16,128] parameter(0)
+  rhs = f8e5m2[32,128] parameter(1)
+  lhs_scale = bf16[1,1] constant(1.0)
+  rhs_scale = f8e8m0fnu[32,4] parameter(2)
+  ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
+      kind=kCustom, calls=triton_gemm_dot
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TritonGemmConfig config(16, 16, 16, /*split_k=*/3, 1, 1);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
+
+  HloInstruction* dot_fusion;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Reduce(m::Fusion(&dot_fusion), m::ConstantScalar())));
+  EXPECT_THAT(
+      dot_fusion->called_computations()[0]->root_instruction(),
+      GmockMatch(m::ScaledDot(m::Op().WithShape(BF16, {16, 3, 512}),
+                              m::Op().WithShape(F8E5M2, {32, 3, 512}),
+                              m::Op().WithShape(BF16, {1, 1, 1}),
+                              m::Op().WithShape(F8E8M0FNU, {32, 3, 16}))));
+}
+
+TEST_F(SplitKTest, ScaledDot_IncompatibleBlockSize) {
+  const std::string hlo_text = R"(
+triton_gemm_dot {
+  lhs = f8e4m3fn[16,35] parameter(0)
+  rhs = f8e5m2[32,35] parameter(1)
+  lhs_scale = f8e8m0fnu[16,7] parameter(2)
+  rhs_scale = f8e8m0fnu[32,5] parameter(3)
+  ROOT dot = f32[16,32] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY %entry_computation {
+  lhs = f8e4m3fn[16,35] parameter(0)
+  rhs = f8e5m2[32,35] parameter(1)
+  lhs_scale = f8e8m0fnu[16,7] parameter(2)
+  rhs_scale = f8e8m0fnu[32,5] parameter(3)
+  ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
+      kind=kCustom, calls=triton_gemm_dot
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TritonGemmConfig config(16, 16, 16, /*split_k=*/3, 1, 1);
+  EXPECT_THAT(MakeDotSplitKBatch(
+                  module->entry_computation()->root_instruction(), config),
+              absl_testing::StatusIs(tsl::error::CANCELLED,
+                                     "Unable to split-K block scaled dot."));
+}
+
+TEST_F(SplitKTest, ScaledDot_SmallDimension) {
+  const std::string hlo_text = R"(
+    triton_gemm_dot {
+      lhs = f8e4m3fn[16,128] parameter(0)
+      rhs = f8e5m2[32,128] parameter(1)
+      lhs_scale = f8e8m0fnu[16,4] parameter(2)
+      rhs_scale = f8e8m0fnu[32,4] parameter(3)
+      ROOT dot = f32[16,32] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+        lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+
+    ENTRY %entry_computation {
+      lhs = f8e4m3fn[16,128] parameter(0)
+      rhs = f8e5m2[32,128] parameter(1)
+      lhs_scale = f8e8m0fnu[16,4] parameter(2)
+      rhs_scale = f8e8m0fnu[32,4] parameter(3)
+      ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
+          kind=kCustom, calls=triton_gemm_dot
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TritonGemmConfig config(16, 16, 16, /*split_k=*/4, 1, 1);
+  EXPECT_THAT(MakeDotSplitKBatch(
+                  module->entry_computation()->root_instruction(), config),
+              absl_testing::StatusIs(
+                  tsl::error::CANCELLED,
+                  "Too small divisible part of the contracting dimension."));
 }
 
 }  // namespace

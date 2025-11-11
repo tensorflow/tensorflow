@@ -1269,9 +1269,8 @@ TEST(SavedModelTest, EmitUnifiedModelIdWhenNoFingerprintFile) {
                                                     /*tags=*/{"serve"});
   TF_CHECK_OK(saved_model.status());
 
-  EXPECT_EQ(
-      unified_model_id.Read(model_name, ::tsl::strings::StrCat(model_version)),
-      "(empty)");
+  EXPECT_EQ(unified_model_id.Read(model_name, absl::StrCat(model_version)),
+            "(empty)");
 }
 
 TEST(SavedModelTest, EmitUnifiedModelIdWhenFingerprintHasNoUUID) {

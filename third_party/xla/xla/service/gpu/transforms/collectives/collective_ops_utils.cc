@@ -18,20 +18,21 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <optional>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/hlo/ir/collective_device_list.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -43,9 +44,26 @@ namespace xla {
 namespace gpu {
 namespace {
 
-struct CommunicationMetadata {
-  absl::flat_hash_map<int64_t, size_t> node_to_participant_count;
-  int num_devices_per_host;
+// Computes a map from source partition ID to a set of target partition IDs for
+// a collective-permute instruction. A partition ID is computed by dividing the
+// device (replica) ID by the number of devices per host.
+absl::flat_hash_map<int64_t, absl::flat_hash_set<int64_t>>
+GetSourceToTargetsNodeMap(const HloCollectivePermuteInstruction& instr,
+                          int num_devices_per_partition) {
+  absl::flat_hash_map<int64_t, absl::flat_hash_set<int64_t>>
+      source_to_targets_partition_map;
+  for (const auto& [source, target] : instr.source_target_pairs()) {
+    int64_t source_partition = source / num_devices_per_partition;
+    int64_t target_partition = target / num_devices_per_partition;
+    source_to_targets_partition_map[source_partition].insert(target_partition);
+  }
+  return source_to_targets_partition_map;
+}
+
+struct CollectiveMetadata {
+  // map for ops with `replica_groups`, e.g. all-gather.
+  absl::flat_hash_map<int64_t, size_t> partition_to_participant_count;
+  int num_devices_per_partition;
   int64_t replica_count;
 };
 
@@ -66,69 +84,54 @@ bool SameParticipantCounts(const absl::flat_hash_map<int64_t, size_t>& lhs,
   return lhs_counts == rhs_counts;
 }
 
-absl::StatusOr<CommunicationMetadata> CommunicationContext(
-    const HloChannelInstruction& instr, int num_devices_per_host) {
-  absl::flat_hash_map<int64_t, size_t> node_to_participant_count;
+absl::StatusOr<CollectiveMetadata> CommunicationContext(
+    const HloCollectiveInstruction& instr, int num_devices_per_partition) {
+  absl::flat_hash_map<int64_t, size_t> partition_to_participant_count;
 
-  if (auto* collective =
-          dynamic_cast<const HloCollectiveInstruction*>(&instr)) {
-    for (const ReplicaGroup& replica_group :
-         collective->device_list().replica_groups()) {
-      absl::flat_hash_map<int64_t, size_t> buffer;
-      for (int64_t rank : replica_group.replica_ids()) {
-        int64_t node_id = rank / num_devices_per_host;
-        buffer[node_id]++;
-      }
-      if (!node_to_participant_count.empty() &&
-          !SameParticipantCounts(buffer, node_to_participant_count)) {
-        return absl::FailedPreconditionError(
-            absl::StrCat("Non homogenous replica group: ",
-                         collective->device_list().ToString()));
-      }
-      if (node_to_participant_count.empty()) {
-        node_to_participant_count = buffer;
-      }
+  for (const ReplicaGroup& replica_group :
+       instr.device_list().replica_groups()) {
+    absl::flat_hash_map<int64_t, size_t> buffer;
+    for (int64_t rank : replica_group.replica_ids()) {
+      int64_t partition_id = rank / num_devices_per_partition;
+      buffer[partition_id]++;
     }
-  } else if (auto* permute =
-                 dynamic_cast<const HloCollectivePermuteInstruction*>(&instr)) {
-    for (const auto& [source, target] : permute->source_target_pairs()) {
-      int64_t source_node = source / num_devices_per_host;
-      int64_t target_node = target / num_devices_per_host;
-      node_to_participant_count[source_node]++;
-      node_to_participant_count[target_node]++;
+    if (!partition_to_participant_count.empty() &&
+        !SameParticipantCounts(buffer, partition_to_participant_count)) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Non homogenous replica group: ", instr.device_list().ToString()));
     }
-  } else {
-    return absl::FailedPreconditionError(
-        "Cannot determine communication context for non-collective channel "
-        "instruction");
+    if (partition_to_participant_count.empty()) {
+      partition_to_participant_count = buffer;
+    }
   }
-
-  return CommunicationMetadata{node_to_participant_count, num_devices_per_host,
-                               instr.GetModule()->config().replica_count()};
+  return CollectiveMetadata{partition_to_participant_count,
+                            num_devices_per_partition,
+                            instr.GetModule()->config().replica_count()};
 }
 
-bool IsSingleHost(const CommunicationMetadata& pattern) {
-  if (pattern.node_to_participant_count.size() == 1) {
+bool IsSingleHost(const CollectiveMetadata& pattern) {
+  if (pattern.partition_to_participant_count.size() == 1) {
     return true;
   }
   return pattern.replica_count > 0 &&
-         pattern.node_to_participant_count.empty() &&
-         pattern.replica_count <= pattern.num_devices_per_host;
+         pattern.partition_to_participant_count.empty() &&
+         pattern.replica_count <= pattern.num_devices_per_partition;
 }
 
-bool IsRailAligned(const CommunicationMetadata& pattern) {
-  if (!IsSingleHost(pattern) && pattern.node_to_participant_count.empty()) {
+bool IsWorldLevelCommunication(const CollectiveMetadata& pattern) {
+  if (!IsSingleHost(pattern) &&
+      pattern.partition_to_participant_count.empty()) {
     return true;
   }
   return absl::c_all_of(
-      pattern.node_to_participant_count, [&pattern](const auto& elem) {
-        const auto& [node_id, participant_count] = elem;
-        return participant_count == pattern.num_devices_per_host;
+      pattern.partition_to_participant_count, [&pattern](const auto& elem) {
+        const auto& [partition_id, participant_count] = elem;
+        return participant_count == pattern.num_devices_per_partition;
       });
 }
 
-bool IsNonRailAligned(const CommunicationMetadata& pattern) {
-  return !IsSingleHost(pattern) && !IsRailAligned(pattern);
+bool IsNonWorldLevelCommunication(const CollectiveMetadata& pattern) {
+  return !IsSingleHost(pattern) && !IsWorldLevelCommunication(pattern);
 }
 
 }  // namespace
@@ -142,52 +145,55 @@ bool IsGPUSyncCollective(const HloInstruction& instr) {
 }
 
 absl::StatusOr<GPUCommunicationType> CommunicationType(
-    int num_devices_per_host, const HloChannelInstruction& instr,
+    int num_devices_per_partition, const HloChannelInstruction& instr,
     const se::GpuComputeCapability& gpu_version) {
-  if (!std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
+  if (!gpu_version.IsCuda()) {
     return absl::FailedPreconditionError("Only CUDA is supported.");
   }
 
-  TF_ASSIGN_OR_RETURN(CommunicationMetadata comm,
-                      CommunicationContext(instr, num_devices_per_host));
-  if (IsSingleHost(comm)) {
-    return GPUCommunicationType::SINGLE_HOST;
-  }
-  if (IsRailAligned(comm)) {
-    return GPUCommunicationType::RAIL_ALIGNED;
-  }
-  if (IsNonRailAligned(comm)) {
-    return GPUCommunicationType::NON_RAIL_ALIGNED;
+  if (const auto* collective = DynCast<HloCollectiveInstruction>(&instr)) {
+    TF_ASSIGN_OR_RETURN(
+        CollectiveMetadata comm,
+        CommunicationContext(*collective, num_devices_per_partition));
+    if (IsSingleHost(comm)) {
+      return GPUCommunicationType::SINGLE_PARTITION;
+    }
+    if (IsWorldLevelCommunication(comm)) {
+      return GPUCommunicationType::MULTI_HOST_WORLD_LEVEL;
+    }
+    if (IsNonWorldLevelCommunication(comm)) {
+      return GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL;
+    }
+  } else if (const auto* collective_permute =
+                 DynCast<HloCollectivePermuteInstruction>(&instr)) {
+    const auto source_to_targets_partition_map = GetSourceToTargetsNodeMap(
+        *collective_permute, num_devices_per_partition);
+    for (const auto& [source_partition, target_partition_set] :
+         source_to_targets_partition_map) {
+      if (target_partition_set.size() > 1) {
+        return GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL;
+      }
+      CHECK_EQ(target_partition_set.size(), 1);
+      if (source_partition != *target_partition_set.begin()) {
+        return GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL;
+      }
+    }
+    return GPUCommunicationType::SINGLE_PARTITION;
+  } else {
+    return absl::FailedPreconditionError(
+        "Cannot determine communication type for non-collective channel "
+        "instruction");
   }
 
   return GPUCommunicationType::UNDEFINED;
 }
 
-bool EnableHeuristicCollectiveCombining(
-    const HloModuleConfig& config,
-    const se::DeviceDescription& device_description,
-    int64_t nvlink_slice_size) {
-  if (!config.debug_options()
-           .xla_gpu_experimental_enable_heuristic_collective_combining()) {
-    return false;
-  }
-  se::CudaComputeCapability cc = device_description.cuda_compute_capability();
-  // Heuristic collective combining is not turned on before Ampere GPUs.
-  if (!cc.IsAtLeastAmpere()) {
-    return false;
-  }
-  int hlo_device_count = config.num_partitions() * config.replica_count();
-  if (hlo_device_count <= nvlink_slice_size) {
-    VLOG(1) << "Disabled heuristic collective combining for intra-NVLink "
-               "domain communication: HLO device count "
-            << hlo_device_count << " <= NVLink slice size "
-            << nvlink_slice_size;
-    return false;
-  }
-  VLOG(1) << "Enabled heuristic collective combining for inter-NVLink domain "
-             "communication: HLO device count "
-          << hlo_device_count << " > NVLink slice size " << nvlink_slice_size;
-  return true;
+bool IsIntraNVLinkDomain(const HloModuleConfig& config, int64_t slice_size) {
+  int device_count = config.num_partitions() * config.replica_count();
+  bool is_intra = device_count <= slice_size;
+  VLOG(1) << "IsIntraNVLinkDomain: device_count=" << device_count
+          << " slice_size=" << slice_size << " is_intra=" << is_intra;
+  return is_intra;
 }
 
 }  // namespace gpu

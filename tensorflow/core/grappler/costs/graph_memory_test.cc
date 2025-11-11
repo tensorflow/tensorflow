@@ -57,7 +57,7 @@ TEST_F(GraphMemoryTest, Basic) {
 
   std::set<string> tensors;
   for (const auto& t : mem_usage.live_tensors) {
-    tensors.insert(strings::StrCat(t.node, ":", t.output_id));
+    tensors.insert(absl::StrCat(t.node, ":", t.output_id));
   }
   // When the execution of the 'Sign' node completes, TF can start executing
   // 'Sign_1' and release the memory used by 'x'. Since we can't be sure of
@@ -87,7 +87,7 @@ TEST_F(GraphMemoryTest, UnknownBatchSize) {
 
   std::set<string> tensors;
   for (const auto& t : mem_usage.live_tensors) {
-    tensors.insert(strings::StrCat(t.node, ":", t.output_id));
+    tensors.insert(absl::StrCat(t.node, ":", t.output_id));
   }
   std::set<string> expected;
   expected.insert("Const/Const:0");
@@ -111,7 +111,7 @@ TEST_F(GraphMemoryTest, MultiDevice) {
   EXPECT_EQ(16777216, cpu_mem.used_memory);
   std::set<string> cpu_tensors;
   for (const auto& t : cpu_mem.live_tensors) {
-    cpu_tensors.insert(strings::StrCat(t.node, ":", t.output_id));
+    cpu_tensors.insert(absl::StrCat(t.node, ":", t.output_id));
   }
   std::set<string> cpu_expected;
   cpu_expected.insert("Recv_Sign_1_0_on_/CPU_0:0");
@@ -124,7 +124,7 @@ TEST_F(GraphMemoryTest, MultiDevice) {
   EXPECT_EQ(16777216, gpu_mem.used_memory);
   std::set<string> gpu_tensors;
   for (const auto& t : gpu_mem.live_tensors) {
-    gpu_tensors.insert(strings::StrCat(t.node, ":", t.output_id));
+    gpu_tensors.insert(absl::StrCat(t.node, ":", t.output_id));
   }
   std::set<string> gpu_expected;
   gpu_expected.insert("Recv_AddN_0_on_/GPU_0:0");
@@ -151,7 +151,7 @@ TEST_F(GraphMemoryTest, GpuSwapping) {
     EXPECT_EQ(20971520, gpu_mem.used_memory);
     std::set<string> gpu_tensors;
     for (const auto& t : gpu_mem.live_tensors) {
-      gpu_tensors.insert(strings::StrCat(t.node, ":", t.output_id));
+      gpu_tensors.insert(absl::StrCat(t.node, ":", t.output_id));
     }
     std::set<string> gpu_expected;
     gpu_expected.insert("Sign:0");
@@ -178,7 +178,7 @@ TEST_F(GraphMemoryTest, GpuSwapping) {
     EXPECT_EQ(20971520, new_gpu_mem.used_memory);
     std::set<string> new_gpu_tensors;
     for (const auto& t : new_gpu_mem.live_tensors) {
-      new_gpu_tensors.insert(strings::StrCat(t.node, ":", t.output_id));
+      new_gpu_tensors.insert(absl::StrCat(t.node, ":", t.output_id));
     }
     std::set<string> new_gpu_expected;
     new_gpu_expected.insert("AddN:0");
@@ -214,7 +214,7 @@ TEST_F(GraphMemoryTest, CtrlDependencies) {
   EXPECT_EQ(36, mem.used_memory);
   std::set<string> tensors;
   for (const auto& t : mem.live_tensors) {
-    tensors.insert(strings::StrCat(t.node, ":", t.output_id));
+    tensors.insert(absl::StrCat(t.node, ":", t.output_id));
   }
   std::set<string> expected;
   expected.insert("a:0");

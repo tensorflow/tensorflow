@@ -23,149 +23,90 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <variant>
-#include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
 
-// ROCm compute capability, as reported by the device description.
-class RocmComputeCapability {
+class GpuComputeCapability {
  public:
-  // gcn_arch_name example --  gfx90a:sramecc+:xnack-
-  // gfx_version is the "gfx90a" part of the gcn_arch_name
-  explicit RocmComputeCapability(std::string gcn_arch_name)
-      : gcn_arch_name_(std::move(gcn_arch_name)) {}
+  GpuComputeCapability() = default;
+  GpuComputeCapability(const CudaComputeCapability& compute_capability)
+      : compute_capability_(compute_capability) {}
+  explicit GpuComputeCapability(const RocmComputeCapability& compute_capability)
+      : compute_capability_(compute_capability) {}
 
-  explicit RocmComputeCapability(const RocmComputeCapabilityProto& proto)
-      : gcn_arch_name_(proto.gcn_arch_name()) {}
-
-  RocmComputeCapability() = default;
-
-  std::string gcn_arch_name() const { return gcn_arch_name_; }
-
-  std::string gfx_version() const {
-    std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name_, ':');
-    return tokens[0];
+  GpuComputeCapability& operator=(
+      const CudaComputeCapability& compute_capability) {
+    compute_capability_ = compute_capability;
+    return *this;
   }
 
-  bool is_supported_gfx_version() const {
-    return absl::c_count(kSupportedGfxVersions, gfx_version()) != 0;
+  GpuComputeCapability& operator=(
+      const RocmComputeCapability& compute_capability) {
+    compute_capability_ = compute_capability;
+    return *this;
   }
 
-  std::string supported_gfx_versions_str() const {
-    return absl::StrJoin(kSupportedGfxVersions, ", ");
+  bool IsCuda() const {
+    return std::holds_alternative<CudaComputeCapability>(compute_capability_);
   }
 
-  bool gfx9_mi100() const { return gfx_version() == "gfx908"; }
-
-  bool gfx9_mi200() const { return gfx_version() == "gfx90a"; }
-
-  bool gfx9_mi300() const { return gfx_version() == "gfx942"; }
-
-  bool gfx9_mi350() const { return gfx_version() == "gfx950"; }
-
-  bool gfx9_mi300_series() const { return gfx9_mi300() || gfx9_mi350(); }
-
-  bool gfx9_mi100_or_later() const {
-    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a", "gfx942",
-                                                  "gfx950"};
-    return absl::c_count(kList, gfx_version()) != 0;
+  bool IsRocm() const {
+    return std::holds_alternative<RocmComputeCapability>(compute_capability_);
   }
 
-  bool gfx9_mi200_or_later() const {
-    static constexpr absl::string_view kList[] = {"gfx90a", "gfx942", "gfx950"};
-    return absl::c_count(kList, gfx_version()) != 0;
+  const CudaComputeCapability* cuda_compute_capability() const {
+    return std::get_if<CudaComputeCapability>(&compute_capability_);
   }
 
-  bool gfx10_rx68xx() const { return gfx_version() == "gfx1030"; }
-
-  bool gfx10_rx69xx() const { return gfx_version() == "gfx1030"; }
-
-  bool gfx11() const { return gfx_version().find("gfx11"); }
-
-  bool gfx1200() const { return gfx_version() == "gfx1200"; }
-
-  bool gfx1201() const { return gfx_version() == "gfx1201"; }
-
-  bool has_nhwc_layout_support() const { return gfx9_mi100_or_later(); }
-
-  bool has_bf16_dtype_support() const { return gfx9_mi100_or_later(); }
-
-  bool has_fast_fp16_support() const {
-    return gfx9_mi100_or_later() || gfx10_rx68xx() || gfx10_rx69xx() || gfx11();
+  const RocmComputeCapability* rocm_compute_capability() const {
+    return std::get_if<RocmComputeCapability>(&compute_capability_);
   }
 
-  bool has_mfma_instr_support() const { return gfx9_mi100_or_later(); }
-
-  bool has_amd_matrix_core() const {
-    return (gfx9_mi100_or_later() || gfx_version().find("gfx11") ||
-            gfx_version().find("gfx12"));
+  std::string ToString() const {
+    if (auto ptr = cuda_compute_capability()) {
+      return ptr->ToString();
+    }
+    return rocm_compute_capability()->ToString();
   }
 
-  bool has_packed_fp16_atomics_support() const { return gfx9_mi100_or_later(); }
+  GpuComputeCapabilityProto ToProto() const;
 
-  bool has_packed_bf16_atomics_support() const { return gfx9_mi300_series(); }
+  static absl::StatusOr<GpuComputeCapability> FromProto(
+      const GpuComputeCapabilityProto& proto);
 
-  bool fence_before_barrier() const {
-    return gfx_version() != "gfx900" && gfx_version() != "gfx906";
+  friend bool operator==(const GpuComputeCapability& lhs,
+                         const GpuComputeCapability& rhs) {
+    return lhs.compute_capability_ == rhs.compute_capability_;
   }
 
-  bool has_hipblaslt() const {
-    return gfx9_mi200_or_later() || gfx1200() || gfx1201();
-  }
-
-  bool has_fp8_support() const {
-    return has_ocp_fp8_support() || has_nanoo_fp8_support();
-  }
-
-  bool has_ocp_fp8_support() const {
-    return gfx1200() || gfx1201() || gfx9_mi350();
-  }
-
-  bool has_nanoo_fp8_support() const { return gfx9_mi300(); }
-
-  std::string ToString() const { return gcn_arch_name(); }
-
-  RocmComputeCapabilityProto ToProto() const {
-    RocmComputeCapabilityProto proto;
-    proto.set_gcn_arch_name(gcn_arch_name_);
-    return proto;
-  }
-
-  bool operator==(const RocmComputeCapability& other) const {
-    return gcn_arch_name_ == other.gcn_arch_name_;
+  friend bool operator!=(const GpuComputeCapability& lhs,
+                         const GpuComputeCapability& rhs) {
+    return !(lhs == rhs);
   }
 
  private:
-  std::string gcn_arch_name_ = "gfx000";  // default to invalid arch.
-
-  static constexpr absl::string_view kSupportedGfxVersions[]{
-      "gfx900",   // MI25
-      "gfx906",   // MI50 / MI60
-      "gfx908",   // MI100
-      "gfx90a",   // MI200
-      "gfx942",   // MI300
-      "gfx950",   // MI355
-      "gfx1030",  // RX68xx / RX69xx
-      "gfx1100",  // RX7900
-      "gfx1101", "gfx1200", "gfx1201",
-  };
+  std::variant<CudaComputeCapability, RocmComputeCapability>
+      compute_capability_;
 };
 
-using GpuComputeCapability =
-    std::variant<CudaComputeCapability, RocmComputeCapability>;
+// Information about NVLink/UALink.
+struct DeviceInterconnectInfo {
+  int active_links = 0;
+
+  // Uuid of the cluster to which this GPU belongs.
+  std::string cluster_uuid;
+  // ID of the fabric clique to which this GPU belongs.
+  std::string clique_id;
+};
 
 // Data that describes the execution target of the StreamExecutor, in terms of
 // important logical parameters. These include dimensionality limits and
@@ -175,6 +116,8 @@ using GpuComputeCapability =
 // Thread-safe: immutable post-initialization.
 class DeviceDescription {
  public:
+  DeviceDescription() = default;
+
   // Returns the platform being run on; this value is primarily intended for
   // printing, and comes out something like "OpenCL 1.2" or "Compute Capability
   // 3.5".
@@ -238,34 +181,28 @@ class DeviceDescription {
   // Returns the limit on the total number of threads that can be launched in a
   // single block; i.e. the limit on x * y * z dimensions of a ThreadDim.
   // This limit affects what constitutes a legitimate kernel launch request.
-  const int64_t& threads_per_block_limit() const {
-    return threads_per_block_limit_;
-  }
+  int64_t threads_per_block_limit() const { return threads_per_block_limit_; }
 
   // Returns the limit on the total number of threads that can be simultaneously
   // launched on a given multiprocessor.
-  const int64_t& threads_per_core_limit() const {
-    return threads_per_core_limit_;
-  }
+  int64_t threads_per_core_limit() const { return threads_per_core_limit_; }
 
   // Returns the number of threads per warp/wavefront.
   constexpr int64_t threads_per_warp() const { return threads_per_warp_; }
 
   // Returns the limit on the total number of registers per core.
-  const int64_t& registers_per_core_limit() const {
-    return registers_per_core_limit_;
-  }
+  int64_t registers_per_core_limit() const { return registers_per_core_limit_; }
 
   // Returns the limit on the total number of registers that can be
   // simultaneously used by a block.
-  const int64_t& registers_per_block_limit() const {
+  int64_t registers_per_block_limit() const {
     return registers_per_block_limit_;
   }
 
   // Returns the number of address bits available to kernel code running on the
   // platform. This affects things like the maximum allocation size and perhaps
   // types used in kernel code such as size_t.
-  const int64_t& device_address_bits() const { return device_address_bits_; }
+  int64_t device_address_bits() const { return device_address_bits_; }
 
   // Returns the device memory size in bytes.
   int64_t device_memory_size() const { return device_memory_size_; }
@@ -277,6 +214,9 @@ class DeviceDescription {
   // reads/writes to/from the device's own memory, not for transfers between the
   // host and device.)
   int64_t memory_bandwidth() const { return memory_bandwidth_; }
+
+  // Returns the PCIe memory bandwidth in bytes/sec.
+  int64_t pcie_bandwidth() const { return pcie_bandwidth_; }
 
   // Returns the device's core clock rate in GHz.
   float clock_rate_ghz() const { return clock_rate_ghz_; }
@@ -321,77 +261,61 @@ class DeviceDescription {
   // also we do not count what occupies cache, but rather claim that what is
   // much smaller than the cache size will likely stay in it.
   constexpr int64_t l1_cache_size_per_SM() const {
-    return std::visit(
-        [](const auto& capability) -> int64_t {
-          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
-                                       RocmComputeCapability>) {
-            // MI100 and MI200 has 16KB L1 cache per CU.
-            if (capability.gfx9_mi100() || capability.gfx9_mi200()) {
-              return 16 * 1024;
-            }
-            // MI300 has 32KB L1 cache per CU.
-            if (capability.gfx9_mi300_series()) {
-              return 32 * 1024;
-            }
-          }
-          // Default return for other GPUs (e.g., RTX A6000).
-          return 2 * 1024;
-        },
-        gpu_compute_capability_);
+    if (auto* capability = gpu_compute_capability_.rocm_compute_capability()) {
+      // MI100 and MI200 has 16KB L1 cache per CU.
+      if (capability->gfx9_mi100() || capability->gfx9_mi200()) {
+        return 16 * 1024;
+      }
+      // MI300 has 32KB L1 cache per CU.
+      if (capability->gfx9_mi300_series()) {
+        return 32 * 1024;
+      }
+    }
+    // Default return for other GPUs (e.g., RTX A6000).
+    return 2 * 1024;
   }
 
   constexpr int64_t dram_to_l2_transaction_size_bytes() const {
-    return std::visit(
-        [](const auto& capability) -> int {
-          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
-                                       RocmComputeCapability>) {
-            // DRAM->L2 bus is 128 Byte width for MI300.
-            if (capability.gfx9_mi300_series()) {
-              return 128;
-            }
-          }
-          // Cache line is 128B that is split into 4 sectors of 32B. Default
-          // transaction size from DRAM -> L2 = 64 Bytes = 2 sectors, since
-          // V100, but it can be also configured.
-          // https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21819-optimizing-applications-for-nvidia-ampere-gpu-architecture.pdf
-          // (page 10).
-          // return 64 Bytes by default.
-          return 64;
-        },
-        gpu_compute_capability_);
+    if (auto* capability = gpu_compute_capability_.rocm_compute_capability()) {
+      // DRAM->L2 bus is 128 Byte width for MI300.
+      if (capability->gfx9_mi300_series()) {
+        return 128;
+      }
+    }
+    // Cache line is 128B that is split into 4 sectors of 32B. Default
+    // transaction size from DRAM -> L2 = 64 Bytes = 2 sectors, since
+    // V100, but it can be also configured.
+    // https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21819-optimizing-applications-for-nvidia-ampere-gpu-architecture.pdf
+    // (page 10).
+    // return 64 Bytes by default.
+    return 64;
   }
 
   constexpr int64_t memory_transactions_per_clock() const {
-    return std::visit(
-        [](const auto& capability) -> int {
-          if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
-                                       RocmComputeCapability>) {
-            // 16 works well on MI300.
-            if (capability.gfx9_mi300_series()) {
-              return 16;
-            }
-          }
-          // Default return for other GPUs.
-          return 32;
-        },
-        gpu_compute_capability_);
+    if (auto* capability = gpu_compute_capability_.rocm_compute_capability()) {
+      // 16 works well on MI300.
+      if (capability->gfx9_mi300_series()) {
+        return 16;
+      }
+    }
+    // Default return for other GPUs.
+    return 32;
+  }
+
+  const DeviceInterconnectInfo& device_interconnect_info() const {
+    return interconnect_info_;
   }
 
   GpuDeviceInfoProto ToGpuProto() const;
 
   std::string ToString() const;
 
-  DeviceDescription() = default;
   static absl::StatusOr<DeviceDescription> FromProto(
       const GpuDeviceInfoProto& proto);
 
   // For string values that are not available via the underlying platform, this
   // value will be provided.
   static inline const char* const kUndefinedString = "<undefined>";
-
-  void set_gpu_compute_capability(const GpuComputeCapability& c) {
-    gpu_compute_capability_ = c;
-  }
 
   void set_block_dim_limit_x(int64_t limit) { block_dim_limit_.x = limit; }
 
@@ -443,6 +367,7 @@ class DeviceDescription {
   void set_device_memory_size(int64_t value) { device_memory_size_ = value; }
   void set_l2_cache_size(int64_t value) { l2_cache_size_ = value; }
   void set_memory_bandwidth(int64_t value) { memory_bandwidth_ = value; }
+  void set_pcie_bandwidth(int64_t value) { pcie_bandwidth_ = value; }
 
   void set_shared_memory_per_core(int64_t value) {
     shared_memory_per_core_ = value;
@@ -456,6 +381,10 @@ class DeviceDescription {
 
   void set_clock_rate_ghz(float value) { clock_rate_ghz_ = value; }
 
+  void set_gpu_compute_capability(const GpuComputeCapability& c) {
+    gpu_compute_capability_ = c;
+  }
+
   void set_cuda_compute_capability(const CudaComputeCapability& cc) {
     gpu_compute_capability_ = cc;
   }
@@ -468,6 +397,10 @@ class DeviceDescription {
   void set_core_count(int value) { core_count_ = value; }
   void set_fpus_per_core(int value) { fpus_per_core_ = value; }
   void set_ecc_enabled(bool value) { ecc_enabled_ = value; }
+
+  void set_device_interconnect_info(DeviceInterconnectInfo info) {
+    interconnect_info_ = std::move(info);
+  }
 
  private:
   // For description of the following members, see the corresponding accessor
@@ -499,7 +432,9 @@ class DeviceDescription {
   int64_t device_address_bits_ = kUninitialized<int64_t>;
   int64_t device_memory_size_ = kUninitialized<int64_t>;
   int64_t l2_cache_size_ = kUninitialized<int64_t>;
+
   int64_t memory_bandwidth_ = kUninitialized<int64_t>;
+  int64_t pcie_bandwidth_ = kUninitialized<int64_t>;
 
   // Shared memory limits on a given device.
   int64_t shared_memory_per_core_ = kUninitialized<int64_t>;
@@ -519,6 +454,8 @@ class DeviceDescription {
   SemanticVersion runtime_version_{0, 0, 0};
   SemanticVersion compile_time_toolkit_version_{0, 0, 0};
   SemanticVersion dnn_version_{0, 0, 0};
+
+  DeviceInterconnectInfo interconnect_info_;
 };
 
 // Returns whether the given thread_dim is acceptable given the limits described

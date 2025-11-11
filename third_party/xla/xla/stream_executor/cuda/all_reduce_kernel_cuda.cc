@@ -91,6 +91,9 @@ __device__ __forceinline__ void WaitSignalFlag<PlatformType::CUDA>(
 REGISTER_ALL_REDUCE_KERNEL(AddBF16, xla::bfloat16, __nv_bfloat16, SUM);
 REGISTER_ALL_REDUCE_KERNEL(AddF32, float, float, SUM);
 
+// Multimem so far supported only for f32.
+REGISTER_ALL_REDUCE_KERNEL_IMPL(AddF32, float, float, SUM, kMultimem);
+
 // AllReduce doesn't have a corresponding reduction kind for logical operations.
 // NCCL uses MAX and MIN on uint8_t for logical operations.
 REGISTER_ALL_REDUCE_KERNEL(OrPRED, bool, uint8_t, MAX);

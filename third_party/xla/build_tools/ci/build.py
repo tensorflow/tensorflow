@@ -52,7 +52,10 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
     "//build_tools/...",
     "@local_tsl//tsl/...",
 )
-_XLA_ONEAPI_TARGET_PATTERNS = ("//xla/stream_executor/sycl/...",)
+_XLA_ONEAPI_TARGET_PATTERNS = (
+    "//xla/stream_executor/sycl/...",
+    "//xla/service/gpu/...",
+)
 _XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
     "//xla/tools/multihost_hlo_runner:hlo_runner_main",
     "//xla/tools:compute_xspace_stats_main",
@@ -104,6 +107,7 @@ class BuildType(enum.Enum):
   """
 
   XLA_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS = enum.auto()
@@ -114,6 +118,9 @@ class BuildType(enum.Enum):
   XLA_LINUX_X86_GPU_L4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_L4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_A4_224_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_L4_16_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_L4_48_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
 
   XLA_MACOS_X86_CPU_KOKORO = enum.auto()
   XLA_MACOS_ARM64_CPU_KOKORO = enum.auto()
@@ -156,7 +163,12 @@ class Build:
 
   def __post_init__(self):
     # pylint: disable=protected-access
-    assert self.type_ not in self.__class__._builds
+    assert (
+        self.type_ not in self.__class__._builds
+    ), "Can't have multiple builds of same BuildType!"
+    assert (
+        self.repo == "openxla/xla" or self.override_repository
+    ), "Must override repo if repo under test isn't XLA!"
     self.__class__._builds[self.type_] = self
 
   @classmethod
@@ -300,6 +312,16 @@ Build(
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
 )
 
+Build(
+    type_=BuildType.XLA_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "nonccl", "rbe_linux_cpu", "bzlmod"),
+    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
+    build_tag_filters=cpu_x86_tag_filter,
+    test_tag_filters=cpu_x86_tag_filter,
+    options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+)
+
 cpu_arm_tag_filter = (
     "-no_oss",
     "-gpu",
@@ -355,7 +377,13 @@ oneapi_test_tag_filter = (
 Build(
     type_=BuildType.XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=("sycl", "sycl_hermetic", "icpx_clang"),
+    configs=(
+        "nonccl",
+        "rbe_linux_cpu",
+        "sycl",
+        "sycl_hermetic",
+        "icpx_clang",
+    ),
     target_patterns=_XLA_ONEAPI_TARGET_PATTERNS,
     build_tag_filters=oneapi_build_tag_filter,
     test_tag_filters=oneapi_test_tag_filter,
@@ -422,6 +450,39 @@ Build(
 )
 
 Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_L4_16_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    test_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    )
+    + _tag_filters_for_compute_capability(compute_capability=75),
+    build_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    ),
+    options={
+        "run_under": "//build_tools/ci:parallel_gpu_execute",
+        "//xla/tsl:ci_build": True,
+        "@local_config_cuda//cuda:include_cuda_libs": False,
+        **_DEFAULT_BAZEL_OPTIONS,
+    },
+    repo_env={
+        "TF_CUDA_COMPUTE_CAPABILITIES": "7.5",
+    },
+    extra_setup_commands=(["nvidia-smi"],),
+    subcommand="build",
+)
+
+Build(
     type_=BuildType.XLA_LINUX_X86_GPU_L4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
     configs=("warnings", "rbe_linux_cuda_nvcc"),
@@ -444,6 +505,39 @@ Build(
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
+        **_DEFAULT_BAZEL_OPTIONS,
+    },
+    repo_env={
+        "TF_CUDA_COMPUTE_CAPABILITIES": "7.5",
+    },
+    extra_setup_commands=(["nvidia-smi"],),
+    subcommand="build",
+)
+
+Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_L4_48_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    test_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    )
+    + _tag_filters_for_compute_capability(compute_capability=75),
+    build_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    ),
+    options={
+        "run_under": "//build_tools/ci:parallel_gpu_execute",
+        "//xla/tsl:ci_build": True,
+        "@local_config_cuda//cuda:include_cuda_libs": False,
         **_DEFAULT_BAZEL_OPTIONS,
     },
     repo_env={
@@ -477,6 +571,42 @@ Build(
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         # Use User Mode and Kernel Mode Drivers pre-installed on the system.
         "//xla/tsl:ci_build": True,
+        **_DEFAULT_BAZEL_OPTIONS,
+    },
+    repo_env={
+        "TF_CUDA_COMPUTE_CAPABILITIES": "10",
+        "HERMETIC_CUDA_VERSION": "12.8.0",
+        "HERMETIC_CUDNN_VERSION": "9.8.0",
+    },
+    extra_setup_commands=(["nvidia-smi"],),
+    subcommand="build",
+)
+
+Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=(),
+    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
+    test_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    )
+    + _tag_filters_for_compute_capability(compute_capability=100),
+    build_tag_filters=(
+        "-no_oss",
+        "requires-gpu-nvidia",
+        "gpu",
+        "-rocm-only",
+        "-oneapi-only",
+    ),
+    options={
+        "run_under": "//build_tools/ci:parallel_gpu_execute",
+        # Use User Mode and Kernel Mode Drivers pre-installed on the system.
+        "//xla/tsl:ci_build": True,
+        "@local_config_cuda//cuda:include_cuda_libs": False,
         **_DEFAULT_BAZEL_OPTIONS,
     },
     repo_env={
@@ -640,7 +770,27 @@ Build(
         test_lang_filters="cc,py",
         color="yes",
     ),
+    override_repository=dict(
+        local_xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
+    ),
     repo_env={"USE_PYWRAP_RULES": "True"},
+    extra_setup_commands=(
+        # This is pretty devious - but we have to do some adhoc extra Copybara
+        # work here to get XLA into the shape TF expects. b/407638223
+        # pyformat:disable
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+        ],
+    ),
 )
 
 Build(
@@ -661,6 +811,9 @@ Build(
     ),
     build_tag_filters=tensorflow_gpu_tag_filters,
     test_tag_filters=tensorflow_gpu_tag_filters,
+    override_repository=dict(
+        local_xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
+    ),
     options=dict(
         verbose_failures=True,
         test_output="errors",
@@ -670,6 +823,21 @@ Build(
     ),
     repo_env={"USE_PYWRAP_RULES": "True"},
     extra_setup_commands=(
+        # This is pretty devious - but we have to do some adhoc extra Copybara
+        # work here to get XLA into the shape TF expects. b/407638223
+        # pyformat:disable
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+        ],
         ["nvidia-smi"],
     ),
 )

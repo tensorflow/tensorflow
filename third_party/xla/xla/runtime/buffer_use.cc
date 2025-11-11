@@ -26,10 +26,10 @@ BufferUse::ReadWriteSet::ReadWriteSet() = default;
 
 void BufferUse::ReadWriteSet::Add(BufferUse use) {
   switch (use.access()) {
-    case BufferUse::kRead:
+    case BufferUse::MemoryAccess::kRead:
       AddRead(use.slice());
       break;
-    case BufferUse::kWrite:
+    case BufferUse::MemoryAccess::kWrite:
       AddWrite(use.slice());
       break;
   }
@@ -44,7 +44,9 @@ void BufferUse::ReadWriteSet::AddWrite(BufferAllocation::Slice slice) {
 }
 
 void BufferUse::ReadWriteSet::AddAll(absl::Span<const BufferUse> uses) {
-  for (const auto& use : uses) Add(use);
+  for (const auto& use : uses) {
+    Add(use);
+  }
 }
 
 bool BufferUse::ReadWriteSet::HasConflicts(const BufferUse& use) const {

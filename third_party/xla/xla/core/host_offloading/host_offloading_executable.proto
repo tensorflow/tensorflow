@@ -17,6 +17,7 @@ syntax = "proto3";
 
 package xla;
 
+import "xla/service/cpu/executable.proto";
 import "xla/service/hlo.proto";
 
 message HostOffloadingExecutableProto {
@@ -28,4 +29,6 @@ message HostOffloadingExecutableProto {
 
   HloModuleProto hlo_module = 1;
   ExecutableType executable_type = 2;
+  // Only used for NanoRt executables.
+  optional xla.cpu.CompilationResultProto aot_compilation_result = 3;
 }

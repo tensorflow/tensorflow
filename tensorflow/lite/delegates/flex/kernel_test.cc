@@ -460,10 +460,10 @@ tensorflow::OpDef MakeOpDef(int num_inputs, int num_outputs) {
   tensorflow::OpRegistrationData op_reg_data;
   tensorflow::OpDefBuilder b("dummy");
   for (int i = 0; i < num_inputs; ++i) {
-    b.Input(tensorflow::strings::StrCat("i", i, ": float"));
+    b.Input(absl::StrCat("i", i, ": float"));
   }
   for (int i = 0; i < num_outputs; ++i) {
-    b.Output(tensorflow::strings::StrCat("o", i, ": float"));
+    b.Output(absl::StrCat("o", i, ": float"));
   }
   CHECK_OK(b.Attr("foo:string").Finalize(&op_reg_data));
   return op_reg_data.op_def;

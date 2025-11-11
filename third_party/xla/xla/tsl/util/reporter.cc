@@ -42,7 +42,7 @@ absl::Status TestReportFile::Initialize() {
   if (fname_.empty()) {
     return absl::OkStatus();
   }
-  string mangled_fname = strings::StrCat(
+  string mangled_fname = absl::StrCat(
       fname_, absl::StrJoin(str_util::Split(test_name_, '/'), "__"));
   Env* env = Env::Default();
   if (env->FileExists(mangled_fname).ok()) {

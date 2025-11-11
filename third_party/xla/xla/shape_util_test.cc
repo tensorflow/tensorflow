@@ -26,6 +26,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -45,6 +46,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 
 TEST(ShapeUtilTest, GetDimensionHelperCanNegativeIndex) {
@@ -342,12 +344,21 @@ TEST(ShapeUtilTest, ByteSizeOfWithoutPadding) {
   EXPECT_EQ(1600, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {10, 20})));
 }
 
-TEST(ShapeUtilTest, ByteStrides) {
+TEST(ShapeUtilTest, UnpackedByteStrides) {
   Shape shape1 = ShapeUtil::MakeShape(F32, {3, 5, 7});
   Shape shape2 = ShapeUtil::MakeShape(F16, {5, 7, 9});
+  Shape shape3 = ShapeUtil::MakeShape(S4, {2, 4});
+  shape3.mutable_layout()->set_element_size_in_bits(4);
 
-  EXPECT_THAT(*ShapeUtil::ByteStrides(shape1), ElementsAre(140, 28, 4));
-  EXPECT_THAT(*ShapeUtil::ByteStrides(shape2), ElementsAre(126, 18, 2));
+  EXPECT_THAT(*ShapeUtil::UnpackedByteStrides(shape1), ElementsAre(140, 28, 4));
+  EXPECT_THAT(*ShapeUtil::UnpackedByteStrides(shape2), ElementsAre(126, 18, 2));
+  EXPECT_THAT(*ShapeUtil::UnpackedByteStrides(shape3), ElementsAre(4, 1));
+}
+
+TEST(ShapeUtilTest, ByteStridesFailsOnFractionalElementSize) {
+  Shape shape = ShapeUtil::MakeShape(S4, {10, 20});
+  shape.mutable_layout()->set_element_size_in_bits(4);
+  EXPECT_THAT(ShapeUtil::ByteStrides(shape), std::nullopt);
 }
 
 TEST(ShapeUtilTest, NilShape) {
@@ -1395,7 +1406,7 @@ TEST(ShapeUtilTest, DecomposeBitcastToReshape) {
       ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape);
 
   EXPECT_TRUE(std::holds_alternative<ShapeUtil::BitcastDecompositionReshape>(
-      decomposition));
+      *decomposition));
 }
 
 TEST(ShapeUtilTest, DecomposeBitcastToReshape2) {
@@ -1408,7 +1419,7 @@ TEST(ShapeUtilTest, DecomposeBitcastToReshape2) {
       ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape);
 
   EXPECT_TRUE(std::holds_alternative<ShapeUtil::BitcastDecompositionReshape>(
-      decomposition));
+      *decomposition));
 }
 
 TEST(ShapeUtilTest, DecomposeBitcastToTranspose) {
@@ -1422,9 +1433,9 @@ TEST(ShapeUtilTest, DecomposeBitcastToTranspose) {
       ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape);
 
   ASSERT_TRUE(std::holds_alternative<ShapeUtil::BitcastDecompositionTranspose>(
-      decomposition));
+      *decomposition));
   ShapeUtil::BitcastDecompositionTranspose decomposition_transpose =
-      std::get<ShapeUtil::BitcastDecompositionTranspose>(decomposition);
+      std::get<ShapeUtil::BitcastDecompositionTranspose>(*decomposition);
   EXPECT_EQ(decomposition_transpose.transpose_dims, kExpectedTransposeDims);
 }
 
@@ -1444,9 +1455,9 @@ TEST(ShapeUtilTest, DecomposeBitcastToReshapeAndTranspose) {
       ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape);
 
   ASSERT_TRUE(std::holds_alternative<ShapeUtil::BitcastDecompositionTrt>(
-      decomposition));
+      *decomposition));
   ShapeUtil::BitcastDecompositionTrt decomposition_trt =
-      std::get<ShapeUtil::BitcastDecompositionTrt>(decomposition);
+      std::get<ShapeUtil::BitcastDecompositionTrt>(*decomposition);
   EXPECT_EQ(decomposition_trt.transpose1_dims, kExpectedTranspose1Dims);
   EXPECT_TRUE(decomposition_trt.IsTranspose1Identity());
   EXPECT_EQ(decomposition_trt.transpose1_shape, kExpectedTranspose1Shape);
@@ -1471,9 +1482,9 @@ TEST(ShapeUtilTest, DecomposeBitcastToReshapeAndTranspose2) {
       ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape);
 
   ASSERT_TRUE(std::holds_alternative<ShapeUtil::BitcastDecompositionTrt>(
-      decomposition));
+      *decomposition));
   ShapeUtil::BitcastDecompositionTrt decomposition_trt =
-      std::get<ShapeUtil::BitcastDecompositionTrt>(decomposition);
+      std::get<ShapeUtil::BitcastDecompositionTrt>(*decomposition);
   EXPECT_EQ(decomposition_trt.transpose1_dims, kExpectedTranspose1Dims);
   EXPECT_TRUE(decomposition_trt.IsTranspose1Identity());
   EXPECT_EQ(decomposition_trt.transpose1_shape, kExpectedTranspose1Shape);
@@ -1498,9 +1509,9 @@ TEST(ShapeUtilTest, DecomposeBitcastToTransposeAndReshape) {
       ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape);
 
   ASSERT_TRUE(std::holds_alternative<ShapeUtil::BitcastDecompositionTrt>(
-      decomposition));
+      *decomposition));
   ShapeUtil::BitcastDecompositionTrt decomposition_trt =
-      std::get<ShapeUtil::BitcastDecompositionTrt>(decomposition);
+      std::get<ShapeUtil::BitcastDecompositionTrt>(*decomposition);
   EXPECT_EQ(decomposition_trt.transpose1_dims, kExpectedTranspose1Dims);
   EXPECT_FALSE(decomposition_trt.IsTranspose1Identity());
   EXPECT_EQ(decomposition_trt.transpose1_shape, kExpectedTranspose1Shape);
@@ -1526,15 +1537,27 @@ TEST(ShapeUtilTest, DecomposeBitcastToTrt) {
       ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape);
 
   ASSERT_TRUE(std::holds_alternative<ShapeUtil::BitcastDecompositionTrt>(
-      decomposition));
+      *decomposition));
   ShapeUtil::BitcastDecompositionTrt decomposition_trt =
-      std::get<ShapeUtil::BitcastDecompositionTrt>(decomposition);
+      std::get<ShapeUtil::BitcastDecompositionTrt>(*decomposition);
   EXPECT_EQ(decomposition_trt.transpose1_dims, kExpectedTranspose1Dims);
   EXPECT_FALSE(decomposition_trt.IsTranspose1Identity());
   EXPECT_EQ(decomposition_trt.transpose1_shape, kExpectedTranspose1Shape);
   EXPECT_EQ(decomposition_trt.reshape_shape, kExpectedReshapeShape);
   EXPECT_EQ(decomposition_trt.transpose2_dims, kExpectedTranspose2Dims);
   EXPECT_FALSE(decomposition_trt.IsTranspose2Identity());
+}
+
+TEST(ShapeUtilTest, FailOnNonDecomposableBitcast) {
+  const Shape kInputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(S4, {3, 2}, {1, 0});
+  const Shape kOutputShape = ShapeUtil::MakeShapeWithDenseLayout(S8, {3}, {0});
+  EXPECT_FALSE(ShapeUtil::IsDecomposableBitcast(kInputShape, kOutputShape));
+  EXPECT_FALSE(
+      ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape).has_value());
+
+  EXPECT_TRUE(ShapeUtil::IsDecomposableBitcast(
+      kInputShape, ShapeUtil::ChangeElementType(kInputShape, S8)));
 }
 
 TEST(ShapeUtilTest, ReorderDimensionsTest) {

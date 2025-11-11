@@ -50,7 +50,6 @@ using ::testing::IsEmpty;
 using ::testing::IsNull;
 using ::testing::NotNull;
 using ::testing::Optional;
-using ::tsl::testing::StatusIs;
 
 using AttrsAndConstraintsTest = ::mlir::quant::QuantizationTestBase;
 

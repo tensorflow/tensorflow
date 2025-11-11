@@ -749,7 +749,7 @@ TEST_F(
   HloInstruction* fusion = FindInstruction(module.get(), "fusion");
   ASSERT_NE(fusion, nullptr);
   EXPECT_TRUE(fusion->shape().IsTuple());
-  EXPECT_EQ(fusion->shape().tuple_shapes_size(), 2);
+  EXPECT_EQ(fusion->shape().tuple_shapes().size(), 2);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kTuple);

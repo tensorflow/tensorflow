@@ -21,7 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/shape.h"
+#include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_map.h"
+#include "xla/literal_util.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
@@ -34,6 +36,7 @@ limitations under the License.
 #endif
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -48,9 +51,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -95,6 +100,8 @@ XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(::xla::Range, StructMember<int64_t>("lo"),
 
 namespace xla {
 namespace {
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 using CustomCallTest = ClientLibraryTestRunnerMixin<HloTestBase>;
 
@@ -364,9 +371,12 @@ TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   auto status = ExecuteAndTransfer(&b, {}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kUnimplemented);
-  EXPECT_THAT(status.message(),
-              ::testing::HasSubstr("No registered implementation"));
+  EXPECT_THAT(
+      status,
+      StatusIs(
+          absl::StatusCode::kNotFound,
+          HasSubstr(
+              "No FFI handler registered for __xla_test$$unknown_target")));
 }
 
 // Memcpy and SubBuffers tests are already ported in
@@ -770,6 +780,92 @@ TEST_F(CustomCallTest, FfiExecutionState) {
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
   TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+}
+
+//===----------------------------------------------------------------------===//
+// Asynchronous custom calls example.
+//===----------------------------------------------------------------------===//
+
+// This is an example of how to implement an asynchronous custom call:
+//
+//   1. Start custom call initiates async operations and extends the lifetime of
+//      the input buffer by aliasing it with the output.
+//   2. Done custom call waits for the async operations to complete and returns
+//      the result.
+//
+// Because HLO type system doesn't allow to express arbitrary values passed
+// between operations, we rely on a "side channel" to communicate between
+// start and done custom calls. In this example, this side channel is
+// implemented as a global static map.
+static absl::NoDestructor<absl::flat_hash_map<int32_t, void*>> async_work_map;
+
+static absl::Status AsyncStartCustomCall(ffi::AnyBuffer arg,
+                                         ffi::Result<ffi::AnyBuffer> ret,
+                                         int32_t channel) {
+  // Inside that start custom call we alias input with output and by doing that
+  // extend the lifetime of the input buffer until the linked done custom call.
+  EXPECT_EQ(arg.untyped_data(), ret->untyped_data());
+  EXPECT_EQ(arg.element_type(), F32);
+  EXPECT_EQ(ret->element_type(), F32);
+
+  EXPECT_TRUE(async_work_map->empty());
+  async_work_map->insert({channel, arg.untyped_data()});
+
+  return absl::OkStatus();
+}
+
+static absl::Status AsyncDoneCustomCall(ffi::AnyBuffer arg,
+                                        ffi::Result<ffi::AnyBuffer> ret,
+                                        int32_t channel) {
+  // In done custom call we "allocate" real result buffer.
+  EXPECT_NE(arg.untyped_data(), ret->untyped_data());
+  EXPECT_EQ(arg.element_type(), F32);
+
+  // Chat that argument is the same as the one we put into a map earlier.
+  EXPECT_EQ(async_work_map->at(channel), arg.untyped_data());
+
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(
+    kAsyncStartCustomCall, AsyncStartCustomCall,
+    ffi::Ffi::Bind().Arg<ffi::AnyBuffer>().Ret<ffi::AnyBuffer>().Attr<int32_t>(
+        "channel"));
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.async_start_custom_call",
+                         PLATFORM, kAsyncStartCustomCall);
+
+XLA_FFI_DEFINE_HANDLER(
+    kAsyncDoneCustomCall, AsyncDoneCustomCall,
+    ffi::Ffi::Bind().Arg<ffi::AnyBuffer>().Ret<ffi::AnyBuffer>().Attr<int32_t>(
+        "channel"));
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.async_done_custom_call",
+                         PLATFORM, kAsyncDoneCustomCall);
+
+TEST_F(CustomCallTest, AsyncCustomCalls) {
+  auto shape = ShapeUtil::MakeShape(F32, {});
+
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, shape, "p0");
+
+  auto start = CustomCall(
+      &b, "xla.gpu.async_start_custom_call",
+      /*operands=*/{Copy(p0)}, ShapeUtil::MakeShape(F32, {}),
+      /*opaque=*/"{channel = 0 : i32}",
+      /*has_side_effect=*/false,
+      /*output_operand_aliasing=*/{{{}, {0, {}}}}, /*literal=*/nullptr,
+      /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+
+  CustomCall(&b, "xla.gpu.async_done_custom_call",
+             /*operands=*/{start}, ShapeUtil::MakeShape(F32, {}),
+             /*opaque=*/"{channel = 0 : i32}",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+
+  Literal literal = LiteralUtil::CreateR0<float>(42.0f);
+  TF_ASSERT_OK(ExecuteAndTransfer(&b, {&literal}).status());
 }
 
 //===----------------------------------------------------------------------===//

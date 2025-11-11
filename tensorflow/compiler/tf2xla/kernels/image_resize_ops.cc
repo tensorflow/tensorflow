@@ -120,8 +120,8 @@ ResizeConvolutionDims ComputeResizeConvolutionParameters(
       const int64_t out_size_factor =
           align_corners ? out_size[i] - 1 : out_size[i];
 
-      int64_t gcd = MathUtil::GCD(static_cast<uint64>(in_size_factor),
-                                  static_cast<uint64>(out_size_factor));
+      int64_t gcd = MathUtil::GCD(static_cast<uint64_t>(in_size_factor),
+                                  static_cast<uint64_t>(out_size_factor));
       dims.stride[i] = in_size_factor / gcd;
       dims.kernel_size[i] = out_size_factor / gcd;
     }

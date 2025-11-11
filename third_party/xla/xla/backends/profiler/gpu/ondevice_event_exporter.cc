@@ -55,7 +55,7 @@ class EventQueueWithStringSilo {
   using EventQueue = ::tsl::profiler::BlockedQueue<GpuOnDeviceTraceEvent>;
 
   void Clear() {
-    absl::MutexLock lock(&m_);
+    absl::MutexLock lock(m_);
     string_silo_.Clear();
     events_.Clear();
   }
@@ -73,7 +73,7 @@ class EventQueueWithStringSilo {
 using EventQueue = EventQueueWithStringSilo::EventQueue;
 
 void EventQueueWithStringSilo::AddEvent(GpuOnDeviceTraceEvent&& event) {
-  absl::MutexLock lock(&m_);
+  absl::MutexLock lock(m_);
   event.tag_name = string_silo_.Dedup(event.tag_name);
   events_.Push(std::move(event));
 }
@@ -82,7 +82,7 @@ absl::flat_hash_map<int64_t, EventQueue>
 EventQueueWithStringSilo::GroupPerInstanceEvents() {
   absl::flat_hash_map<int64_t, EventQueue> grouped;
   // Note: after GroupPerInstanceEvents, the events_ is empty.
-  absl::MutexLock lock(&m_);
+  absl::MutexLock lock(m_);
   for (std::optional<GpuOnDeviceTraceEvent> event = events_.Pop();
        event.has_value(); event = events_.Pop()) {
     grouped[event->injection_instance_id].Push(std::move(event.value()));

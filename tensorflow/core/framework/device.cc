@@ -24,8 +24,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Device::Device(Env* env, const DeviceAttributes& device_attributes)
-    : DeviceBase(env), device_attributes_(device_attributes) {
+Device::Device(Env* env, DeviceAttributes device_attributes)
+    : DeviceBase(env), device_attributes_(std::move(device_attributes)) {
   CHECK(DeviceNameUtils::ParseFullName(name(), &parsed_name_))
       << "Invalid device name: " << name();
   rmgr_ = new ResourceMgr(parsed_name_.job);

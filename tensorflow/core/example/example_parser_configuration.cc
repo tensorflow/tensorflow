@@ -134,28 +134,28 @@ absl::Status ExtractExampleParserConfiguration(
   int sparse_shapes_output_start = sparse_values_output_start + num_sparse;
   int dense_values_output_start = sparse_shapes_output_start + num_sparse;
 
-  string node_output_prefix = strings::StrCat(node_name, ":");
+  string node_output_prefix = absl::StrCat(node_name, ":");
 
   for (int i = 0; i < num_sparse; ++i) {
     VarLenFeature& config = (*var_len_features)[i];
 
     int indices_offset = sparse_indices_output_start + i;
     config.indices_output_tensor_name =
-        strings::StrCat(node_output_prefix, indices_offset);
+        absl::StrCat(node_output_prefix, indices_offset);
 
     int values_offset = sparse_values_output_start + i;
     config.values_output_tensor_name =
-        strings::StrCat(node_output_prefix, values_offset);
+        absl::StrCat(node_output_prefix, values_offset);
 
     int shapes_offset = sparse_shapes_output_start + i;
     config.shapes_output_tensor_name =
-        strings::StrCat(node_output_prefix, shapes_offset);
+        absl::StrCat(node_output_prefix, shapes_offset);
   }
 
   for (int i = 0; i < num_dense; ++i) {
     int output_idx = dense_values_output_start + i;
     (*fixed_len_features)[i].values_output_tensor_name =
-        strings::StrCat(node_output_prefix, output_idx);
+        absl::StrCat(node_output_prefix, output_idx);
   }
   return absl::OkStatus();
 }

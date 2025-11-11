@@ -34,12 +34,14 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/executable_run_options.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/maybe_owning.h"
@@ -61,13 +64,13 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
+#include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compiler.h"
@@ -108,10 +111,29 @@ limitations under the License.
 
 namespace xla {
 
-PjRtFuture<>::Promise CreatePromiseForEvent(
-    tsl::AsyncValueRef<xla::GpuEvent> event) {
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-  auto done_fn = [promise, event]() mutable {
+std::unique_ptr<se::Stream> MaybeCreateStream(se::StreamExecutor* executor) {
+  if (executor == nullptr) {
+    return nullptr;
+  }
+  return executor->CreateStream().value();
+}
+
+absl::Status WaitForEventOnStream(se::Stream* stream, se::Event* event) {
+  if (!event) {
+    return absl::OkStatus();
+  }
+  return stream->WaitFor(event);
+}
+
+absl::StatusOr<std::shared_ptr<se::Event>> CreateCudaEvent(
+    TfrtGpuDevice* device) {
+  TF_ASSIGN_OR_RETURN(auto cuda_event, device->executor()->CreateEvent());
+  return absl::ShareUniquePtr(std::move(cuda_event));
+}
+
+Future<> CreateFutureForEvent(tsl::AsyncValueRef<xla::GpuEvent> event) {
+  auto [promise, future] = Future<>::MakePromise();
+  auto done_fn = [promise = std::move(promise), event]() mutable {
     if (const absl::Status* error = event.GetErrorIfPresent()) {
       VLOG(3) << "Setting future: " << *error;
       promise.Set(*error);
@@ -126,7 +148,7 @@ PjRtFuture<>::Promise CreatePromiseForEvent(
   } else {
     event.AndThen(std::move(done_fn));
   }
-  return promise;
+  return future;
 }
 
 absl::StatusOr<Shape> GetDestinationDeviceShape(const Shape& host_shape,
@@ -292,13 +314,13 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
         dst_(dst),
         done_(std::move(done)) {}
 
-  PjRtFuture<> AddChunk(PjRtChunk chunk) final {
+  Future<> AddChunk(PjRtChunk chunk) final {
     tsl::profiler::TraceMe trace([&] {
       return tsl::profiler::TraceMeEncode("TfrtGpuCopyToDeviceStream::AddChunk",
                                           {{"channel_id", channel_id_}});
     });
 
-    absl::ReleasableMutexLock lock(&mu_);
+    absl::ReleasableMutexLock lock(mu_);
 
     VLOG(4) << "Add chunk to a H2D channel #" << channel_id_ << ": "
             << "size=" << chunk.size() << ", "
@@ -309,7 +331,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
       done_.SetError(absl::InvalidArgumentError(absl::StrFormat(
           "Chunk size (%d) was not a multiple of the granule size (%d)",
           chunk.size(), granule_size_in_bytes())));
-      return PjRtFuture<>(done_.GetError());
+      return Future<>(done_.GetError());
     }
 
     if (current_bytes_ + chunk.size() > total_bytes_) {
@@ -317,7 +339,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
           absl::StrFormat("Adding chunk of size %d would overflow buffer of "
                           "size %d (%d already transferred)",
                           chunk.size(), total_bytes_, current_bytes_)));
-      return PjRtFuture<>(done_.GetError());
+      return Future<>(done_.GetError());
     }
 
     se::DeviceMemoryBase dst(
@@ -333,7 +355,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
     auto copied = stream_->Memcpy(&dst, chunk.data(), chunk.size());
     if (!copied.ok()) {
       done_.SetError(copied);
-      return PjRtFuture<>(done_.GetError());
+      return Future<>(done_.GetError());
     }
 
     // Delete chunk once the memcpy operation completes.
@@ -343,7 +365,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
         });
     if (!deleted.ok()) {
       done_.SetError(deleted);
-      return PjRtFuture<>(done_.GetError());
+      return Future<>(done_.GetError());
     }
 
     // Record done event once processed the last chunk. It is the caller
@@ -353,12 +375,12 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
       auto recorded = stream_->RecordEvent(done_.get().get());
       if (!recorded.ok()) {
         done_.SetError(recorded);
-        return PjRtFuture<>(done_.GetError());
+        return Future<>(done_.GetError());
       }
       done_.SetStateConcrete();
     }
 
-    return PjRtFuture<>(absl::OkStatus());
+    return Future<>(absl::OkStatus());
   }
 
  private:
@@ -437,10 +459,7 @@ SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
       }
 
       // Wait for the data to be available on the host.
-      {
-        tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-        status = stream->BlockHostUntilDone();
-      }
+      status = BlockHostUntilDoneWithHostCallback(stream);
       VLOG(3) << "D2H copy done. " << status;
       if (!status.ok()) {
         done_event.SetError(absl::InternalError(absl::StrFormat(
@@ -685,7 +704,8 @@ using DeviceTopologyPair =
 
 absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     absl::string_view platform_name, LocalClient* xla_client, int node_id,
-    int num_nodes, gpu::GpuExecutableRunOptions* gpu_executable_run_options,
+    int max_inflight_computations, int num_nodes,
+    gpu::GpuExecutableRunOptions* gpu_executable_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
     std::optional<absl::string_view> mock_gpu_topology,
     std::optional<int> partition_index,
@@ -707,13 +727,13 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
   auto make_compute_capability_string =
       [](const stream_executor::DeviceDescription* desc) -> std::string {
     stream_executor::GpuComputeCapability cc = desc->gpu_compute_capability();
-    if (std::holds_alternative<stream_executor::CudaComputeCapability>(cc)) {
-      auto nvcc = std::get<stream_executor::CudaComputeCapability>(cc);
-      return absl::StrCat(nvcc.major, ".", nvcc.minor);
+    if (cc.IsCuda()) {
+      auto* nvcc = cc.cuda_compute_capability();
+      return absl::StrCat(nvcc->major, ".", nvcc->minor);
     }
-    if (std::holds_alternative<stream_executor::RocmComputeCapability>(cc)) {
-      auto rocmcc = std::get<stream_executor::RocmComputeCapability>(cc);
-      return rocmcc.gfx_version();
+    if (cc.IsRocm()) {
+      auto* rocmcc = cc.rocm_compute_capability();
+      return rocmcc->gfx_version();
     }
     return "unknown";
   };
@@ -835,7 +855,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       options.process_index = node.node_id();
       options.process_index_in_partition = curr_process_index_in_partition;
       options.partition_index = device_proto.partition_index();
-      options.max_inflight_computations = 8;
+      options.max_inflight_computations = max_inflight_computations;
       options.platform_version = device_proto.name();
       options.device_vendor = device_proto.vendor();
       options.compute_capability = device_proto.compute_capability();
@@ -916,6 +936,39 @@ void EnqueueWorkWhenReady(
     VLOG(3) << "EnqueueWork: pool: " << pool;
     EnqueueWork(pool, std::move(callee));
   });
+}
+
+absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
+GetLatestIncarnations(
+    absl::Span<PjRtDevice* const> devices,
+    const absl::flat_hash_map<int, IncarnationId>& incarnations) {
+  // Map every device to its incarnation.
+  absl::flat_hash_map<GlobalDeviceId, IncarnationId> device_incarnations;
+  for (const PjRtDevice* device : devices) {
+    int task_id = device->process_index();
+    auto it = incarnations.find(task_id);
+    if (it == incarnations.end()) {
+      return FailedPrecondition("Incarnation for task %d not found", task_id);
+    }
+    GlobalDeviceId device_id(device->global_device_id().value());
+    device_incarnations[device_id] = it->second;
+  }
+  return device_incarnations;
+}
+
+absl::Status BlockHostUntilDoneWithHostCallback(se::Stream* stream) {
+  absl::Notification event;
+
+  tsl::profiler::TraceMe traceme("BlockHostUntilDoneWithHostCallback");
+  auto status = stream->DoHostCallback([&event]() {
+    tsl::profiler::TraceMe traceme(
+        "BlockHostUntilDoneWithHostCallback::Callback");
+    event.Notify();
+  });
+
+  event.WaitForNotification();
+
+  return status;
 }
 
 }  // namespace xla

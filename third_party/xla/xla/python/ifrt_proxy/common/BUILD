@@ -83,7 +83,7 @@ tf_proto_library(
     srcs = ["ifrt_service.proto"],
     protodeps = [
         ":types_proto",
-        # copybara:uncomment "@com_google_protobuf//:any",
+        # copybara:uncomment "@com_google_protobuf//:any_proto",
         "//xla:xla_data_proto",
         "//xla/pjrt/proto:execute_options_proto",
         "//xla/python/ifrt:array_spec_proto",
@@ -148,6 +148,7 @@ ifrt_proxy_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -182,6 +183,7 @@ ifrt_proxy_cc_test(
         "//xla/python/ifrt",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
@@ -244,6 +246,20 @@ cc_library(
 cc_library(
     name = "versions",
     hdrs = ["versions.h"],
+)
+
+cc_library(
+    name = "transfer_util",
+    srcs = ["transfer_util.cc"],
+    hdrs = ["transfer_util.h"],
+    deps = [
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 # copybara:uncomment_begin

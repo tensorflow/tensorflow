@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
-#include <cctype>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_split.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -99,8 +99,7 @@ std::vector<std::string> BridgeLoggerConfig::GetFilter(
 
 bool BridgeLoggerConfig::ShouldOnlyDumpTopLevelPasses() {
   const char* env_var = getenv(kEnableOnlyTopLevelPassesEnvVar);
-  std::string value(env_var);
-  std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+  std::string value = absl::AsciiStrToLower(env_var);
   // Return true if value is "1" or "true"; otherwise, false.
   return value == "1" || value == "true";
 }

@@ -52,6 +52,9 @@ absl::StatusOr<KernelLoaderSpec> GetAddI32TestKernelSpec(
 // Returns a PTX kernel loader spec for the `AddI32` PTX kernel above.
 KernelLoaderSpec GetAddI32PtxKernelSpec();
 
+// Returns TMA test kernel loaded from PTX.
+KernelLoaderSpec GetTmaPtxKernelSpec();
+
 }  // namespace stream_executor::gpu
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_GPU_TEST_KERNELS_H_

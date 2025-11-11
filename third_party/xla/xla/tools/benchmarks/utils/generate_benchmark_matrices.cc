@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "json/json.h"
+#include "google/protobuf/repeated_ptr_field.h"
+#include "google/protobuf/text_format.h"
 #include "xla/tools/benchmarks/proto/benchmark_config.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "tsl/platform/path.h"
@@ -106,24 +108,24 @@ GetHardwareToRunnerLabelMap() {
 
 const absl::flat_hash_map<std::string, std::string>&
 GetHardwareToContainerImage() {
-  static const auto* kHardwareToContainerImage =
-      new absl::flat_hash_map<std::string, std::string>{
-          {"CPU_X86",
-           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
-           "ml-build:latest"},
-          {"CPU_ARM64",
-           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
-           "ml-build-arm64:latest"},
-          {"GPU_L4",
-           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
-           "ml-build-cuda12.8-cudnn9.8:latest"},
-          {"GPU_B200",
-           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
-           "ml-build-cuda12.8-cudnn9.8:latest"},
-          {"GPU_L4_1H_4D",
-           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
-           "ml-build-cuda12.8-cudnn9.8:latest"},
-      };
+  static const auto* kHardwareToContainerImage = new absl::flat_hash_map<
+      std::string, std::string>{
+      {"CPU_X86",
+       "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
+       "ml-build:infrastructure-public-image-530371eedb7e"},
+      {"CPU_ARM64",
+       "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
+       "ml-build-arm64:latest"},
+      {"GPU_L4",
+       "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
+       "ml-build-cuda12.8-cudnn9.8:infrastructure-public-image-46c0fc3324bc"},
+      {"GPU_B200",
+       "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
+       "ml-build-cuda12.8-cudnn9.8:infrastructure-public-image-46c0fc3324bc"},
+      {"GPU_L4_1H_4D",
+       "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
+       "ml-build-cuda12.8-cudnn9.8:infrastructure-public-image-46c0fc3324bc"},
+  };
   return *kHardwareToContainerImage;
 }
 

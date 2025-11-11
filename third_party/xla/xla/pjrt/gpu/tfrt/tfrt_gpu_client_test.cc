@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
+#include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_executable.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -64,7 +66,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/raw_buffer.h"
@@ -137,9 +138,8 @@ absl::StatusOr<std::shared_ptr<xla::Literal>> ExtractSingleResult(
   TF_RET_CHECK(result->size() == 1);
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = (*result)[0];
   TF_RET_CHECK(result_buffers.size() == 1);
-  auto literal_or = result_buffers[0]->ToLiteralSync();
-  if (!literal_or.status().ok()) return literal_or.status();
-  return *literal_or;
+  TF_ASSIGN_OR_RETURN(auto literal, result_buffers[0]->ToLiteralSync());
+  return literal;
 }
 
 static constexpr char const* kProgram = R"(HloModule HostTransfer
@@ -238,12 +238,13 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kAddProgram, *client));
 
+  ExecuteOptions options;
   TF_ASSERT_OK_AND_ASSIGN(
       auto result,
-      executable->Execute({{buffer.get(), buffer.get()}}, /*options=*/{}));
+      executable->Execute({{buffer.get(), buffer.get()}}, /*options=*/options));
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_EQ(result[0].size(), 1);
+  ASSERT_EQ(result[0].size(), 2);
   EXPECT_EQ(result[0][0]->GetReadyFuture().Await(), input_error);
 }
 
@@ -512,8 +513,7 @@ TEST(TfrtGpuClientTest, DonateWithControlDependency) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
 
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-  PjRtFuture<> future(promise);
+  auto [promise, future] = Future<>::MakePromise();
   auto blocked_buffer =
       std::move(*(buffer->DonateWithControlDependency(future)));
   EXPECT_TRUE(buffer->IsDeleted());
@@ -524,7 +524,7 @@ TEST(TfrtGpuClientTest, DonateWithControlDependency) {
       ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
   bool got_literal = false;
   blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     TF_ASSERT_OK(s);
     got_literal = true;
   });
@@ -535,7 +535,7 @@ TEST(TfrtGpuClientTest, DonateWithControlDependency) {
   EXPECT_TRUE(future.IsReady());
 
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&got_literal));
   }
 
@@ -701,14 +701,13 @@ TEST(TfrtGpuClientTest, ToLiteralAsync) {
 
   Shape host_shape =
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape());
-  auto literal_promise = PjRtFuture<MutableLiteralBase*>::CreatePromise();
+  auto [literal_promise, literal_future] =
+      Future<MutableLiteralBase*>::MakePromise();
 
   // Literal is not ready.
-  buffer
-      ->LazyToLiteral(
-          [&]() { return PjRtFuture<MutableLiteralBase*>(literal_promise); })
+  buffer->LazyToLiteral([f = std::move(literal_future)]() { return f; })
       .OnReady([&](absl::Status s) {
-        absl::MutexLock l(&mu);
+        absl::MutexLock l(mu);
         TF_ASSERT_OK(s);
         got_literal = true;
       });
@@ -719,7 +718,7 @@ TEST(TfrtGpuClientTest, ToLiteralAsync) {
   literal_promise.Set(literal.get());
 
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&got_literal));
   }
 
@@ -757,12 +756,11 @@ TEST(TfrtGpuClientTest, ToLiteralAsyncWithNonCompactLayout) {
 
   Shape host_shape =
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape());
-  auto literal_promise = PjRtFuture<MutableLiteralBase*>::CreatePromise();
+  auto [literal_promise, literal_future] =
+      Future<MutableLiteralBase*>::MakePromise();
 
   absl::Notification n;
-  buffer
-      ->LazyToLiteral(
-          [&]() { return PjRtFuture<MutableLiteralBase*>(literal_promise); })
+  buffer->LazyToLiteral([f = std::move(literal_future)]() { return f; })
       .OnReady([&](absl::Status s) {
         TF_ASSERT_OK(s);
         n.Notify();
@@ -868,7 +866,7 @@ TEST(TfrtGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
   bool got_literal = false;
 
   buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     TF_ASSERT_OK(s);
     got_literal = true;
   });
@@ -881,7 +879,7 @@ TEST(TfrtGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
   buffer.reset();
 
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&got_literal));
   }
 
@@ -931,12 +929,12 @@ TEST(TfrtGpuClientTest, FromHostAsync) {
     literals.push_back(std::make_shared<Literal>(
         ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape())));
     buffer->ToLiteral(literals.back().get()).OnReady([&](absl::Status s) {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       TF_ASSERT_OK(s);
       ++got_literal_count;
     });
     buffer->GetReadyFuture().OnReady([&](absl::Status s) {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       TF_ASSERT_OK(s);
       ++got_callback_count;
     });
@@ -948,7 +946,7 @@ TEST(TfrtGpuClientTest, FromHostAsync) {
       return got_literal_count == src_literals.size() &&
              got_callback_count == src_literals.size();
     };
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&done));
   }
 
@@ -1110,7 +1108,7 @@ TEST(TfrtGpuClientTest, CreateMixOfErrorBuffers) {
       TF_ASSERT_OK(transfer_manager->TransferLiteralToBuffer(i, src_literals[i],
                                                              [&]() {}));
       buffer->GetReadyFuture().OnReady([&](absl::Status s) {
-        absl::MutexLock l(&mu);
+        absl::MutexLock l(mu);
         TF_ASSERT_OK(s);
         ++got_callback_count;
       });
@@ -1119,7 +1117,7 @@ TEST(TfrtGpuClientTest, CreateMixOfErrorBuffers) {
       transfer_manager->SetBufferError(i, error);
       buffer->GetReadyFuture().OnReady(
           [error, &mu, &got_callback_count](absl::Status s) {
-            absl::MutexLock l(&mu);
+            absl::MutexLock l(mu);
             EXPECT_THAT(s.message(), HasSubstr(error.message()));
             ++got_callback_count;
           });
@@ -1129,7 +1127,7 @@ TEST(TfrtGpuClientTest, CreateMixOfErrorBuffers) {
 
   {
     auto done = [&]() { return got_callback_count == src_literals.size(); };
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     QCHECK(mu.AwaitWithTimeout(absl::Condition(&done), absl::Seconds(60)));
   }
 }
@@ -1236,8 +1234,7 @@ TEST(TfrtGpuClientTest, CopyRawToHostFuture) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
 
-  auto dst_promise = xla::PjRtFuture<void*>::CreatePromise();
-  xla::PjRtFuture<void*> dst_future(dst_promise);
+  auto [dst_promise, dst_future] = xla::Future<void*>::MakePromise();
 
   TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
   auto ready = buffer->GetReadyFuture();
@@ -1442,7 +1439,6 @@ TEST(TfrtGpuClientTest, ExecutePinnedHostOutputTupleTest) {
   // Untuple the result so that we get separate buffers.
   // This is how JAX invokes XLA.
   ExecuteOptions execute_options;
-  execute_options.untuple_result = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, executable->Execute({{input.get()}}, execute_options));
 
@@ -1658,7 +1654,7 @@ TEST(TfrtGpuClientTest, AsyncCopyToDevice) {
 
   auto literal = std::make_shared<Literal>(src_literal.shape());
 
-  PjRtFuture<> local_recv_literal = local_recv_buffer->ToLiteral(literal.get());
+  Future<> local_recv_literal = local_recv_buffer->ToLiteral(literal.get());
   TF_EXPECT_OK(local_recv_literal.Await());
 
   EXPECT_TRUE(ShapeUtil::Compatible(src_literal.shape(), literal->shape()));
@@ -1710,9 +1706,9 @@ TEST(TfrtGpuClientTest, DeviceAttributes) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::se::DeviceDescription> desc,
                             platform->DescriptionForDevice(0));
     stream_executor::GpuComputeCapability cc = desc->gpu_compute_capability();
-    auto nvcc = std::get<stream_executor::CudaComputeCapability>(cc);
+    auto* nvcc = cc.cuda_compute_capability();
     std::string expected_compute_capability =
-        absl::StrCat(nvcc.major, ".", nvcc.minor);
+        absl::StrCat(nvcc->major, ".", nvcc->minor);
     EXPECT_EQ(compute_capability, expected_compute_capability);
 
     // Attribute `coords`.
@@ -1883,6 +1879,65 @@ TEST(TfrtGpuClientTest, HostExecuteRuntimeTest) {
                           ExtractSingleResult(result));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(0.2f),
                                      *result_literal));
+}
+
+TEST(TfrtGpuClientTest, CreateAliasBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+
+  std::vector<int32_t> data{1, 2, 3, 4, 5, 6};
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto alias_buffer,
+      client->CreateAliasBuffer(shape, client->memory_spaces()[0]));
+
+  // Create a buffer from host data.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto param,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  // Define a simple "add one" kernel in StableHLO MLIR.
+  constexpr char kAddOneMlir[] = R"(
+    module @jit_add_one attributes {stablehlo.num_partitions = 1 : i32, stablehlo.num_replicas = 1 : i32} {
+      func.func @main(%arg0: tensor<2x3xi32>) -> tensor<2x3xi32> {
+        %0 = stablehlo.constant dense<1> : tensor<i32>
+        %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<i32>) -> tensor<2x3xi32>
+        %2 = stablehlo.add %arg0, %1 : tensor<2x3xi32>
+        return %2 : tensor<2x3xi32>
+      }
+    })";
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          xla::ParseMlirModuleString(kAddOneMlir, context));
+
+  // Compile and load the executable.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                          client->CompileAndLoad(*module, CompileOptions()));
+
+  // Execute the kernel.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+      executable->Execute({{param.get()}}, ExecuteOptions()));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 1);
+  std::unique_ptr<PjRtBuffer>& result_buffer = results[0][0];
+
+  // Wait for the result buffer to be ready.
+  TF_ASSERT_OK(result_buffer->GetReadyFuture().Await());
+
+  // Fulfill the alias buffer with the result of the add one kernel.
+  ASSERT_NE(alias_buffer.second, nullptr);
+  TF_ASSERT_OK(std::move(alias_buffer.second)(result_buffer.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_literal,
+                          alias_buffer.first->ToLiteralSync());
+
+  // Expected result: data + 1
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32_t>({{2, 3, 4}, {5, 6, 7}}), *alias_literal));
 }
 
 }  // namespace

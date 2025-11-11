@@ -66,7 +66,7 @@ GcsDnsCache::GcsDnsCache(Env* env, int64_t refresh_rate_secs)
 
 void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
   // TODO(saeta): Denylist failing IP addresses.
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (!started_) {
     VLOG(1) << "Starting GCS DNS cache.";
     DCHECK(!worker_) << "Worker thread already exists!";
@@ -235,7 +235,7 @@ void GcsDnsCache::WorkerThread() {
   while (true) {
     {
       // Don't immediately re-resolve the addresses.
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       if (cancelled_) return;
       cond_var_.WaitWithTimeout(&mu_, absl::Seconds(refresh_rate_secs_));
       if (cancelled_) return;
@@ -245,7 +245,7 @@ void GcsDnsCache::WorkerThread() {
     auto new_addresses = ResolveNames(kCachedDomainNames);
 
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       // Update instance variables.
       addresses_.swap(new_addresses);
     }

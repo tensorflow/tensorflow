@@ -65,8 +65,8 @@ absl::Status ValidateNumThreads(int32_t num_threads) {
 class ThreadPoolResource : public ResourceBase {
  public:
   ThreadPoolResource(Env* env, const ThreadOptions& thread_options,
-                     const string& name, int num_threads, bool low_latency_hint,
-                     int max_intra_op_parallelism)
+                     const std::string& name, int num_threads,
+                     bool low_latency_hint, int max_intra_op_parallelism)
       : thread_pool_(env, thread_options, name, num_threads, low_latency_hint),
         max_intra_op_parallelism_(max_intra_op_parallelism) {}
 
@@ -86,9 +86,9 @@ class ThreadPoolResource : public ResourceBase {
     }
   }
 
-  int32 NumThreads() { return thread_pool_.NumThreads(); }
+  int32_t NumThreads() { return thread_pool_.NumThreads(); }
 
-  string DebugString() const override { return "ThreadPoolResource"; }
+  std::string DebugString() const override { return "ThreadPoolResource"; }
 
  private:
   thread::ThreadPool thread_pool_;
@@ -156,7 +156,7 @@ class ThreadPoolHandleOp : public OpKernel {
   mutex mu_;
   ContainerInfo cinfo_ TF_GUARDED_BY(mu_);
   bool initialized_ TF_GUARDED_BY(mu_) = false;
-  string display_name_;
+  std::string display_name_;
   int num_threads_;
   int max_intra_op_parallelism_;
 };
@@ -194,9 +194,9 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::ThreadPool")});
+          Iterator::Params{this, absl::StrCat(prefix, "::ThreadPool")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -206,7 +206,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return "ThreadPoolDatasetOp::Dataset";
     }
 
@@ -316,9 +316,9 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
-        this, strings::StrCat(prefix, "::MaxIntraOpParallelism")});
+        this, absl::StrCat(prefix, "::MaxIntraOpParallelism")});
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -328,7 +328,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return "MaxIntraOpParallelismDatasetOp::Dataset";
   }
 
@@ -460,9 +460,9 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(
-        Iterator::Params{this, strings::StrCat(prefix, "::PrivateThreadPool")});
+        Iterator::Params{this, absl::StrCat(prefix, "::PrivateThreadPool")});
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -472,7 +472,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return "PrivateThreadPoolDatasetOp::Dataset";
   }
 

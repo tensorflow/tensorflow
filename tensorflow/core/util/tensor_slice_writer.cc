@@ -96,7 +96,7 @@ TensorSliceWriter::TensorSliceWriter(const string& filename,
 
   data_filename_ = filename_;
   if (use_temp_file_) {
-    data_filename_ = strings::StrCat(filename_, ".tempstate", random::New64());
+    data_filename_ = absl::StrCat(filename_, ".tempstate", random::New64());
   }
   VersionDef* versions = sts_.mutable_meta()->mutable_versions();
   versions->set_producer(TF_CHECKPOINT_VERSION);

@@ -151,13 +151,13 @@ void RegisterHistogramSummaryOpKernel() {
 TF_ATTRIBUTE_UNUSED static bool IsHistogramSummaryOpKernelRegistered = []() {
   if (SHOULD_REGISTER_OP_KERNEL("HistogramSummary")) {
     RegisterHistogramSummaryOpKernel<int64_t>();
-    RegisterHistogramSummaryOpKernel<tensorflow::uint64>();
-    RegisterHistogramSummaryOpKernel<tensorflow::int32>();
-    RegisterHistogramSummaryOpKernel<tensorflow::uint32>();
-    RegisterHistogramSummaryOpKernel<tensorflow::uint16>();
-    RegisterHistogramSummaryOpKernel<tensorflow::int16>();
-    RegisterHistogramSummaryOpKernel<tensorflow::int8>();
-    RegisterHistogramSummaryOpKernel<tensorflow::uint8>();
+    RegisterHistogramSummaryOpKernel<uint64_t>();
+    RegisterHistogramSummaryOpKernel<int32_t>();
+    RegisterHistogramSummaryOpKernel<uint32_t>();
+    RegisterHistogramSummaryOpKernel<uint16_t>();
+    RegisterHistogramSummaryOpKernel<int16_t>();
+    RegisterHistogramSummaryOpKernel<int8_t>();
+    RegisterHistogramSummaryOpKernel<uint8_t>();
     RegisterHistogramSummaryOpKernel<Eigen::half>();
     RegisterHistogramSummaryOpKernel<tensorflow::bfloat16>();
     RegisterHistogramSummaryOpKernel<float>();

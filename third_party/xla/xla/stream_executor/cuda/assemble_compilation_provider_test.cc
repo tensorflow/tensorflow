@@ -25,10 +25,12 @@ limitations under the License.
 #include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/cuda_root_path.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 
 namespace stream_executor::cuda {
 
@@ -36,6 +38,16 @@ namespace {
 using ::testing::AllOf;
 using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
+
+TEST(AssembleCompilationProviderTest, CandidateCudaRootsConsidersCUDA_HOME) {
+  const std::string cuda_home = "/my/cuda/home";
+  tsl::setenv("CUDA_HOME", cuda_home.c_str(), 1);
+  if (!tsl::kIsOpenSource) {
+    GTEST_SKIP()
+        << "CUDA_HOME is only being considered in the OSS build of XLA.";
+  }
+  EXPECT_THAT(tsl::CandidateCudaRoots(), ::testing::Contains(cuda_home));
+}
 
 TEST(AssembleCompilationProviderTest,
      ReturnsErrorIfNoCompilationProviderIsAvailable) {

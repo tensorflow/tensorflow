@@ -52,6 +52,10 @@ service GrpcIfrtService {
   // Deletes a host buffer from the server.
   rpc HostBufferDelete(GrpcHostBufferDeleteRequest)
       returns (GrpcHostBufferDeleteResponse);
+
+  // Sends a host buffer from the client to the server as a file.
+  rpc HostBufferReadFromDisk(GrpcHostBufferReadFromDiskRequest)
+      returns (GrpcHostBufferReadFromDiskResponse);
 }
 
 message GrpcGetVersionRequest {
@@ -86,6 +90,12 @@ message GrpcHostBufferStoreRequest {
 }
 
 message GrpcHostBufferStoreResponse {}
+
+message GrpcHostBufferReadFromDiskRequest {
+  GrpcHostBufferStoreMetadata metadata = 1;
+}
+
+message GrpcHostBufferReadFromDiskResponse {}
 
 // `Lookup` request that specifies which host buffer in the server to read.
 message GrpcHostBufferLookupRequest {

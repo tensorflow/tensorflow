@@ -1,4 +1,11 @@
 op {
   graph_op_name: "StatsAggregatorHandleV2"
+  attr {
+    name: "container"
+    description: <<END
+The name of `container` should start with `'.'` or `letter` or `digit`,
+with ['-', '.', '/'] or `letter` or `digit` follows several times.
+END
+  }
   visibility: HIDDEN
 }

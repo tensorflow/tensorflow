@@ -23,13 +23,12 @@ limitations under the License.
 #include <string>
 #include <thread>  // NOLINT
 #include <utility>
-#include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
-#include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
@@ -37,22 +36,18 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/error_spec.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -66,8 +61,6 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -75,6 +68,7 @@ limitations under the License.
 #include "tsl/profiler/lib/profiler_lock.h"
 
 namespace xla::gpu {
+using ::testing::HasSubstr;
 
 using MemoryAccess = BufferUse::MemoryAccess;
 using KernelArgsPacking = se::KernelLoaderSpec::KernelArgsPacking;
@@ -117,8 +111,8 @@ KernelArgsPacking CreateDefaultArgsPacking() {
 // Some of the tests rely on CUDA 12.3+ features.
 bool IsAtLeastCuda12300(const se::StreamExecutor* stream_executor) {
   const auto& device_description = stream_executor->GetDeviceDescription();
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &device_description.gpu_compute_capability());
+  const auto* cuda_cc =
+      device_description.gpu_compute_capability().cuda_compute_capability();
   if (cuda_cc != nullptr) {
     // We need a recent driver to support the feature at runtime and we need a
     // recent version of the toolkit at compile time, so that we have access to
@@ -135,8 +129,8 @@ bool IsAtLeastCuda12300(const se::StreamExecutor* stream_executor) {
 
 bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
   const auto& device_description = stream_executor->GetDeviceDescription();
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &device_description.gpu_compute_capability());
+  const auto* cuda_cc =
+      device_description.gpu_compute_capability().cuda_compute_capability();
   if (cuda_cc != nullptr) {
     // We need a recent driver to support the feature at runtime and we need a
     // recent version of the toolkit at compile time, so that we have access to
@@ -417,6 +411,11 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersEnabledDuringProfiling) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto profiler_lock,
                           tsl::profiler::ProfilerLock::Acquire());
+
+  // skip warm up iteration
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
   // Execute command buffer thunk and verify that it set the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
@@ -955,24 +954,22 @@ TEST(CommandBufferThunkTest, DISABLED_DynamicSliceFusionCmd) {
   TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
   // Prepare buffer allocations for recording command buffer.
-  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
-  fake_allocations[0] = std::make_unique<BufferAllocation>(
+  std::vector<BufferAllocation> fake_allocations;
+  fake_allocations.reserve(4);
+  fake_allocations.emplace_back(
       /*index=*/0, fake_lhs_length, /*color=*/0);
-  fake_allocations[1] =
-      std::make_unique<BufferAllocation>(/*index=*/1, rhs_length, /*color=*/0);
-  fake_allocations[2] =
-      std::make_unique<BufferAllocation>(/*index=*/2, out_length,
-                                         /*color=*/0);
+  fake_allocations.emplace_back(
+      /*index=*/1, rhs_length, /*color=*/0);
+  fake_allocations.emplace_back(/*index=*/2, out_length,
+                                /*color=*/0);
 
-  fake_allocations[3] =
-      std::make_unique<BufferAllocation>(/*index=*/3, 1024 * 1024,
-                                         /*color=*/0);
-  BufferAllocation::Slice fake_slice_lhs(fake_allocations[0].get(), 0,
+  fake_allocations.emplace_back(/*index=*/3, 1024 * 1024,
+                                /*color=*/0);
+  BufferAllocation::Slice fake_slice_lhs(&fake_allocations[0], 0,
                                          fake_lhs_length);
-  BufferAllocation::Slice slice_rhs(fake_allocations[1].get(), 0, rhs_length);
-  BufferAllocation::Slice slice_out(fake_allocations[2].get(), 0, out_length);
-  BufferAllocation::Slice slice_workspace(fake_allocations[3].get(), 0,
-                                          1024 * 1024);
+  BufferAllocation::Slice slice_rhs(&fake_allocations[1], 0, rhs_length);
+  BufferAllocation::Slice slice_out(&fake_allocations[2], 0, out_length);
+  BufferAllocation::Slice slice_workspace(&fake_allocations[3], 0, 1024 * 1024);
   auto config = GemmConfig::For(
       ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
       ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
@@ -1581,8 +1578,8 @@ TEST(CommandBufferThunkTest, ToStringPrintsNestedThunks) {
   CommandBufferThunk thunk(
       std::move(executor), Thunk::ThunkInfo(),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks)));
-  EXPECT_TRUE(
-      absl::StrContains(thunk.ToString(/*indent=*/1), "    kMemset32BitValue"));
+  EXPECT_THAT(thunk.ToString(/*indent=*/1),
+              HasSubstr("    000: kMemset32BitValue"));
 }
 
 }  // namespace xla::gpu

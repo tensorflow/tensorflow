@@ -20,13 +20,11 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -43,6 +41,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
@@ -163,14 +162,15 @@ bool CollectiveConfig::IsDegenerate(int64_t replica_count,
       });
 
   switch (group_mode) {
-    case CollectiveOpGroupMode::kCrossReplica:
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA:
       return all_groups_singleton || (groups_empty && replica_count == 1);
-    case CollectiveOpGroupMode::kCrossPartition:
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION:
       return all_groups_singleton || (groups_empty && partition_count == 1);
-    case CollectiveOpGroupMode::kCrossReplicaAndPartition:
+    case CollectiveOpGroupMode::
+        COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION:
       return (all_groups_singleton && partition_count == 1) ||
              (groups_empty && replica_count == 1 && partition_count == 1);
-    case CollectiveOpGroupMode::kFlattenedID:
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID:
       CHECK(!groups_empty)
           << "replica groups cannot be empty if use_global_device_ids = true";
       return all_groups_singleton;
@@ -305,7 +305,8 @@ absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
                       CollectiveThunk::GetGpuCollectives(params));
   return GetGpuCliqueKey(collectives, params, collective_config.replica_groups,
                          collective_config.group_mode,
-                         AsyncStreamKind::kCollective, use_nccl);
+                         AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE,
+                         use_nccl);
 }
 
 absl::StatusOr<CommunicatorHandle> GetComm(
@@ -351,24 +352,35 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
   return device_buffers;
 }
 
+absl::Status MaybeRegisterBuffer(se::StreamExecutor* executor,
+                                 const se::DeviceMemoryBase& buffer,
+                                 Communicator* comm,
+                                 bool use_symmetric_buffer) {
+  TF_ASSIGN_OR_RETURN(auto range, executor->GetMemoryRange(buffer));
+  VLOG(1) << "[" << executor->device_ordinal()
+          << "] Registering range: " << range.opaque()
+          << " with size: " << range.size()
+          << " for buffer: " << buffer.opaque()
+          << " with size: " << buffer.size()
+          << " is symmetric: " << (use_symmetric_buffer ? "true" : "false");
+  // If the collective memory buffer is a slice of a larger preallocated buffer,
+  // we need to register the entire preallocated buffer once.
+  return comm->RegisterBufferOnce(range, executor->device_ordinal(),
+                                  use_symmetric_buffer);
+}
+
 absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
                                   const std::vector<DeviceBufferPair>& buffers,
                                   Communicator* comm,
                                   bool use_symmetric_buffer) {
   for (int i = 0; i < buffers.size(); ++i) {
     if (buffers[i].source_memory_space == kCollectiveMemorySpaceColor) {
-      TF_ASSIGN_OR_RETURN(auto range,
-                          executor->GetMemoryRange(buffers[i].source_buffer));
-      TF_RETURN_IF_ERROR(comm->RegisterBufferOnce(
-          buffers[i].source_buffer, range, executor->device_ordinal(),
-          use_symmetric_buffer));
+      TF_RETURN_IF_ERROR(MaybeRegisterBuffer(executor, buffers[i].source_buffer,
+                                             comm, use_symmetric_buffer));
     }
     if (buffers[i].destination_memory_space == kCollectiveMemorySpaceColor) {
-      TF_ASSIGN_OR_RETURN(
-          auto range, executor->GetMemoryRange(buffers[i].destination_buffer));
-      TF_RETURN_IF_ERROR(comm->RegisterBufferOnce(
-          buffers[i].destination_buffer, range, executor->device_ordinal(),
-          use_symmetric_buffer));
+      TF_RETURN_IF_ERROR(MaybeRegisterBuffer(
+          executor, buffers[i].destination_buffer, comm, use_symmetric_buffer));
     }
   }
   return absl::OkStatus();
@@ -376,7 +388,7 @@ absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
 
 absl::Status CollectiveThunk::AsyncEvents::Initialize(
     se::StreamExecutor* executor) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (events_.contains(executor)) return absl::OkStatus();
 
   TF_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
@@ -387,7 +399,7 @@ absl::Status CollectiveThunk::AsyncEvents::Initialize(
 
 absl::StatusOr<se::Event*> CollectiveThunk::AsyncEvents::GetEvent(
     se::StreamExecutor* executor) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   auto event = events_.find(executor);
   if (event == events_.end()) {
@@ -474,7 +486,8 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     auto rendezvous_key = FirstCallRendezvousKey{std::move(clique_key)};
     auto rendezvous_name = absl::StrFormat(
-        "first call to collective operation %d; run_id=%ld", config().op_id,
+        "first call to collective operation %d; kind=%s; run_id=%ld",
+        config().op_id, Thunk::KindToString(kind()),
         params.collective_params->run_id.ToInt());
 
     const xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();

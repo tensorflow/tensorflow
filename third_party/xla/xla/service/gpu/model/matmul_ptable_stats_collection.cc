@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,11 +39,11 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/gpu/model/matmul_interpolator.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
@@ -93,7 +94,9 @@ HloDotInstruction* GetTritonGemmInstruction(const HloInstruction& dot_fusion) {
 absl::StatusOr<BlockLevelParameters> GetBlockLevelParams(
     HloDotInstruction& dot, TritonGemmConfig& config) {
   mlir::MLIRContext ctx;
-  return ::xla::gpu::detail::FindBlockLevelParameters(&dot, config, &ctx);
+  SymbolicExprContext symbolic_expr_context(&ctx);
+  return ::xla::gpu::detail::FindBlockLevelParameters(
+      &dot, config, &symbolic_expr_context, se::DeviceDescription());
 }
 
 absl::Status SetReificationCost(HloInstruction& instr, absl::Duration exec_time,
@@ -150,7 +153,7 @@ absl::Status MaybeRecordPerfTablesForDotsAndCustomCalls(
 
 }  // namespace
 
-absl::StatusOr<bool> MatmulPerfTableStatsCollection::Run(
+absl::StatusOr<bool> MatmulPerfTableStatsCollection::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(HloInstructionProfileList profiles,

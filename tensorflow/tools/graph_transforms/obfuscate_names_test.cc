@@ -92,7 +92,7 @@ class ObfuscateNamesTest : public ::testing::Test {
     GraphDef graph_def;
     for (int i = 0; i < 1000; ++i) {
       NodeDef* const_node = graph_def.add_node();
-      const_node->set_name(strings::StrCat("const_node", i));
+      const_node->set_name(absl::StrCat("const_node", i));
       const_node->set_op("Const");
     }
 
@@ -111,7 +111,7 @@ class ObfuscateNamesTest : public ::testing::Test {
     GraphDef graph_def;
     for (int i = 0; i < 1000; ++i) {
       NodeDef* const_node = graph_def.add_node();
-      const_node->set_name(strings::StrCat("1", i));
+      const_node->set_name(absl::StrCat("1", i));
       const_node->set_op("Const");
     }
 

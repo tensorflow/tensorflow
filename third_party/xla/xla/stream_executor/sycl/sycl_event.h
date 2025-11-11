@@ -22,8 +22,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
 
-namespace stream_executor {
-namespace gpu {
+namespace stream_executor::sycl {
 
 // This class implements the Event class for SYCL devices.
 class SyclEvent : public Event {
@@ -32,20 +31,20 @@ class SyclEvent : public Event {
 
   // Waits for the event to complete on the specified stream.
   static absl::Status WaitStreamOnEvent(StreamExecutor* executor,
-                                        sycl::queue* stream_handle,
-                                        const sycl::event& event);
+                                        ::sycl::queue* stream_handle,
+                                        const ::sycl::event& event);
 
   // Waits for the event to complete on an external stream.
   absl::Status WaitForEventOnExternalStream(std::intptr_t stream) override;
 
   // Creates a SyclEvent instance and initializes it with a default
-  // constructed sycl::event that has no dependencies and associated commands.
+  // constructed ::sycl::event that has no dependencies and associated commands.
   static absl::StatusOr<SyclEvent> Create(StreamExecutor* executor);
 
-  sycl::event GetEvent() const { return event_; }
+  ::sycl::event GetEvent() const { return event_; }
 
-  // We don't need a destructor for sycl::event since it is handled by the SYCL
-  // runtime.
+  // We don't need a destructor for ::sycl::event since it is handled by the
+  // SYCL runtime.
   ~SyclEvent() = default;
 
   // Ensure SyclEvent is moveable but not copyable.
@@ -55,17 +54,16 @@ class SyclEvent : public Event {
   SyclEvent& operator=(SyclEvent&& other) noexcept;
 
  private:
-  explicit SyclEvent(StreamExecutor* executor, const sycl::event& event)
+  explicit SyclEvent(StreamExecutor* executor, const ::sycl::event& event)
       : executor_(executor), event_(event) {}
 
-  // The Executor used to which this object and sycl::event are bound.
+  // The Executor used to which this object and ::sycl::event are bound.
   StreamExecutor* executor_;
 
   // The underlying SYCL event.
-  sycl::event event_;
+  ::sycl::event event_;
 };
 
-}  // namespace gpu
-}  // namespace stream_executor
+}  // namespace stream_executor::sycl
 
 #endif  // XLA_STREAM_EXECUTOR_SYCL_SYCL_EVENT_H_

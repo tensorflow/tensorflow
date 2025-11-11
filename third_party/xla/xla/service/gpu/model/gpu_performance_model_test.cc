@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -63,6 +64,7 @@ class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
   }
 
   mlir::MLIRContext mlir_context_;
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
   GpuHloCostAnalysis::Options options_{.count_multiple_input_accesses = true};
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
@@ -71,11 +73,12 @@ class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
   GpuHloCostAnalysis analysis_{options_, device_info_};
   GpuPerformanceModelCache gpu_performance_model_cache_;
   GpuPerformanceModel gpu_performance_model_{
-      device_info_, fusion_analysis_cache_, gpu_performance_model_cache_};
+      device_info_, fusion_analysis_cache_, gpu_performance_model_cache_,
+      &symbolic_expr_context_};
 
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
       &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
-      &mlir_context_};
+      &symbolic_expr_context_};
 };
 
 TEST_F(GpuPerformanceModelTest, LargeWrite) {

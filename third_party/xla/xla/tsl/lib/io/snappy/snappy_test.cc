@@ -81,7 +81,7 @@ absl::Status TestMultipleWritesWriteFile(size_t compress_input_buf_size,
     if (with_flush) {
       TF_RETURN_IF_ERROR(out.Flush());
     }
-    strings::StrAppend(&expected_result, data);
+    absl::StrAppend(&expected_result, data);
   }
   TF_RETURN_IF_ERROR(out.Flush());
   TF_RETURN_IF_ERROR(file_writer->Flush());
@@ -154,7 +154,7 @@ absl::Status TestMultipleWrites(size_t compress_input_buf_size,
     for (int i = 0; i < num_writes; i++) {
       tstring decompressed_output;
       TF_RETURN_IF_ERROR(in.ReadNBytes(data.size(), &decompressed_output));
-      strings::StrAppend(&actual_result, decompressed_output);
+      absl::StrAppend(&actual_result, decompressed_output);
     }
 
     if (actual_result != expected_result) {
@@ -193,7 +193,7 @@ absl::Status TestMultipleWritesInputStream(
       tstring decompressed_output;
       TF_RETURN_IF_ERROR(
           snappy_input_stream.ReadNBytes(data.size(), &decompressed_output));
-      strings::StrAppend(&actual_result, decompressed_output);
+      absl::StrAppend(&actual_result, decompressed_output);
     }
 
     if (actual_result != expected_result) {

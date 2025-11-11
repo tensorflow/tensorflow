@@ -355,7 +355,7 @@ void BM_SubgraphHelper(::testing::benchmark::State& state,
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     Node* last_node = nullptr;
     for (int i = 0; i < num_nodes; i++) {
-      string name = strings::StrCat("N", i);
+      string name = absl::StrCat("N", i);
       if (i > 0) {
         last_node = ops::UnaryOp("Op", last_node, b.opts().WithName(name));
       } else {
@@ -367,10 +367,10 @@ void BM_SubgraphHelper(::testing::benchmark::State& state,
 
   std::vector<string> fed;
   if (num_nodes > 1000) {
-    fed.push_back(strings::StrCat("N", num_nodes - 1000));
+    fed.push_back(absl::StrCat("N", num_nodes - 1000));
   }
   std::vector<string> fetch;
-  std::vector<string> targets = {strings::StrCat("N", num_nodes - 1)};
+  std::vector<string> targets = {absl::StrCat("N", num_nodes - 1)};
 
   for (auto s : state) {
     Graph* subgraph = new Graph(OpRegistry::Global());

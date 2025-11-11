@@ -154,7 +154,7 @@ class ClientCreationState : public ResourceBase {
   // false after the first call). This modifies internal state (i.e. the first
   // call clears `first_task_`).
   bool FirstThread() ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (first_task_) {
       first_task_ = false;
       return true;
@@ -321,7 +321,6 @@ absl::Status CreateClientOnce(
             /*host_memory_allocator=*/std::move(info->host_memory_allocator),
             /*should_stage_host_to_device_transfers=*/true,
             /*gpu_run_options=*/std::move(gpu_run_options), kv_store,
-            /*distributed_client=*/nullptr,
             /*abort_collectives_on_failure=*/false,
             /*gpu_topology=*/
             xla::GpuTopology::FromProto(device_topology_pair->second),

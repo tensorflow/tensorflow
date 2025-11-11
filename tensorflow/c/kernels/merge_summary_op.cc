@@ -50,7 +50,7 @@ void MergeSummaryOp_Delete(void* kernel) {}
 
 void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   tensorflow::Summary s;
-  std::unordered_set<tensorflow::string> tags;
+  std::unordered_set<std::string> tags;
   Safe_TF_StatusPtr status(TF_NewStatus());
   for (int input_num = 0; input_num < TF_NumInputs(ctx); ++input_num) {
     TF_Tensor* input;
@@ -74,7 +74,7 @@ void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
       for (int v = 0; v < summary_in.value_size(); ++v) {
         // This tag is unused by the TensorSummary op, so no need to check for
         // duplicates.
-        const tensorflow::string& tag = summary_in.value(v).tag();
+        const std::string& tag = summary_in.value(v).tag();
         if ((!tag.empty()) && !tags.insert(tag).second) {
           std::ostringstream err;
           err << "Duplicate tag " << tag << " found in summary inputs ";

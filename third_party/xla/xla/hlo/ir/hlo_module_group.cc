@@ -22,8 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
@@ -34,40 +36,21 @@ limitations under the License.
 namespace xla {
 
 HloModuleGroup::HloModuleGroup(std::unique_ptr<HloModule> module)
-    : name_(module->name()) {
-  push_back(std::move(module));
-}
-
-HloModuleGroup::HloModuleGroup(absl::string_view name,
-                               absl::Span<std::unique_ptr<HloModule>> modules)
-    : name_(name) {
-  for (auto& module : modules) {
-    push_back(std::move(module));
-  }
-}
-
-HloModuleGroup::HloModuleGroup(
-    absl::string_view name, std::vector<std::unique_ptr<HloModule>>&& modules)
-    : name_(name) {
-  for (auto& module : modules) {
-    push_back(std::move(module));
-  }
+    : name_(module->name()), module_(std::move(module)) {
+  module_->metadata()->set_module_group_name(name_);
 }
 
 std::vector<std::unique_ptr<HloModule>> HloModuleGroup::ConsumeModules() {
-  std::vector<std::unique_ptr<HloModule>> ret_modules = std::move(modules_);
-
-  // Clear everything so the object state is in a known (empty) state.
-  modules_.clear();
-  module_ptrs_.clear();
+  std::vector<std::unique_ptr<HloModule>> ret_modules;
+  ret_modules.push_back(std::move(module_));
   return ret_modules;
 }
 
 std::string HloModuleGroup::ToString() const {
   std::ostringstream s;
   s << "HloModuleGroup " << name() << "\n\n";
-  for (const HloModule* module : modules()) {
-    s << module->ToString() << "\n";
+  if (module_) {
+    s << module_->ToString() << "\n";
   }
   return s.str();
 }
@@ -75,8 +58,8 @@ std::string HloModuleGroup::ToString() const {
 HloModuleGroupProto HloModuleGroup::ToProto() const {
   HloModuleGroupProto proto;
   proto.set_name(name());
-  for (const HloModule* module : modules()) {
-    *proto.add_hlo_modules() = module->ToProto();
+  if (module_) {
+    *proto.add_hlo_modules() = module_->ToProto();
   }
   return proto;
 }
@@ -90,28 +73,23 @@ HloModuleGroupProto HloModuleGroup::ToProto() const {
   TF_RET_CHECK(proto.hlo_modules_size() == module_configs.size());
 
   std::vector<std::unique_ptr<HloModule>> modules;
-  for (int i = 0; i < proto.hlo_modules_size(); ++i) {
-    const HloModuleProto& module_proto = proto.hlo_modules(i);
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloModule> module,
-        HloModule::CreateFromProto(module_proto, module_configs[i]));
-    modules.push_back(std::move(module));
+  if (proto.hlo_modules_size() != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("HloModuleGroupProto should have exactly one module, "
+                     "but it has ",
+                     proto.hlo_modules_size()));
   }
+  const HloModuleProto& module_proto = proto.hlo_modules(0);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      HloModule::CreateFromProto(module_proto, module_configs[0]));
 
-  return HloModuleGroup(proto.name(), absl::MakeSpan(modules));
+  return HloModuleGroup(std::move(module));
 }
 
-void HloModuleGroup::push_back(std::unique_ptr<HloModule> module) {
-  module->metadata()->set_module_group_name(name());
-  modules_.push_back(std::move(module));
-  module_ptrs_.push_back(modules_.back().get());
-}
-
-void HloModuleGroup::ReplaceModule(int index,
-                                   std::unique_ptr<HloModule> module) {
-  modules_.at(index)->MoveMetadataToModule(module.get());
-  modules_.at(index) = std::move(module);
-  module_ptrs_.at(index) = modules_.at(index).get();
+void HloModuleGroup::AddModule(std::unique_ptr<HloModule> module) {
+  CHECK_EQ(module_, nullptr);
+  module_ = std::move(module);
 }
 
 std::ostream& operator<<(std::ostream& out, const HloModuleGroup& group) {

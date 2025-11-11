@@ -101,23 +101,7 @@ namespace tsl {
 // usage of `OkStatus()` when constructing such an OK status.
 ABSL_DEPRECATE_AND_INLINE() inline absl::Status OkStatus() {
   return absl::OkStatus();
-};
-
-// Given `Status.message()` does not guarantee to be always backed by a
-// null-terminated string, we have this utility function when it's needed for
-// the Tensorflow C-API.
-// A more robust API would be to get both a `char*` of the beginning of the
-// string, plus the size (see e.g. `XlaCustomCallStatusSetFailure`).
-// NB: This Windows-only implementation is exists only to avoid a linker error.
-// Remove if this is resolved.
-#ifdef _WIN32
-const char* NullTerminatedMessage(const absl::Status& status);
-#else
-ABSL_DEPRECATE_AND_INLINE()
-inline const char* NullTerminatedMessage(const absl::Status& status) {
-  return absl::StatusMessageAsCStr(status);
 }
-#endif
 
 // TODO(b/197552541) Move this namespace to errors.h.
 namespace errors {
@@ -186,29 +170,9 @@ class StatusGroup {
 
 typedef std::function<void(const absl::Status&)> StatusCallback;
 
-extern ::tsl::string* TfCheckOpHelperOutOfLine(const absl::Status& v,
-                                               const char* msg);
-
-inline ::tsl::string* TfCheckOpHelper(absl::Status v, const char* msg) {
-  if (v.ok()) return nullptr;
-  return TfCheckOpHelperOutOfLine(v, msg);
-}
-
-#define TF_DO_CHECK_OK(val, level)                          \
-  while (auto* _result = ::tsl::TfCheckOpHelper(val, #val)) \
-  LOG(level) << *(_result)
-
-#define TF_CHECK_OK(val) TF_DO_CHECK_OK(val, FATAL)
-#define TF_QCHECK_OK(val) TF_DO_CHECK_OK(val, QFATAL)
-
-// DEBUG only version of TF_CHECK_OK.  Compiler still parses 'val' even in opt
-// mode.
-#ifndef NDEBUG
-#define TF_DCHECK_OK(val) TF_CHECK_OK(val)
-#else
-#define TF_DCHECK_OK(val) \
-  while (false && (absl::OkStatus() == (val))) LOG(FATAL)
-#endif
+#define TF_CHECK_OK(val) CHECK_OK(val)
+#define TF_QCHECK_OK(val) QCHECK_OK(val)
+#define TF_DCHECK_OK(val) DCHECK_OK(val)
 
 }  // namespace tsl
 

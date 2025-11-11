@@ -31,6 +31,8 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -50,8 +52,6 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
-#include "xla/service/gpu/model/symbolic_tile_analysis.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/gpu/transforms/reduction_dimension_grouper.h"
 #include "xla/service/gpu/transforms/reduction_splitter.h"
@@ -62,11 +62,9 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -253,7 +251,7 @@ absl::StatusOr<HloFusionInstruction*> MakeFusionForDiamond(
                       normalization_fusion->backend_config<GpuBackendConfig>());
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
-  backend_config.set_kind(std::string(kTritonFusionKind));
+  backend_config.set_kind(kTritonFusionKind);
   TF_RETURN_IF_ERROR(normalization_fusion->set_backend_config(gpu_config));
   return xla::Cast<HloFusionInstruction>(normalization_fusion);
 }
@@ -268,7 +266,8 @@ absl::StatusOr<HloFusionInstruction*> MakeFusionForDiamond(
 // passes that rewrite and split reductions.
 absl::Status RunFusionPipeline(
     HloModule* module, const se::DeviceDescription& device_info,
-    const HloCostAnalysis::ShapeSizeFunction& shape_size) {
+    const HloCostAnalysis::ShapeSizeFunction& shape_size,
+    SymbolicExprContext* symbolic_expr_context) {
   HloPassPipeline reduction_pipeline("reduction_pipeline");
   // Passes that run after SoftmaxRewriterTriton and before PriorityFusion and
   // transform reductions.
@@ -281,7 +280,8 @@ absl::Status RunFusionPipeline(
   TF_RETURN_IF_ERROR(reduction_pipeline.Run(module).status());
 
   return FusionPipeline(module->config().debug_options(), shape_size,
-                        /*thread_pool=*/nullptr, device_info)
+                        /*thread_pool=*/nullptr, device_info,
+                        symbolic_expr_context)
       .Run(module)
       .status();
 }
@@ -299,14 +299,15 @@ absl::StatusOr<absl::Duration>
 EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
-    const HloCostAnalysis::ShapeSizeFunction& shape_size) {
+    const HloCostAnalysis::ShapeSizeFunction& shape_size,
+    SymbolicExprContext* symbolic_expr_context) {
   auto new_module = ExtractComputationIntoNewModule(
       *fusion->fused_instructions_computation());
 
   // After this call, the `new_module` will have instruction fused without
   // SoftmaxRewriterTriton.
-  TF_RETURN_IF_ERROR(
-      RunFusionPipeline(new_module.get(), device_info, shape_size));
+  TF_RETURN_IF_ERROR(RunFusionPipeline(new_module.get(), device_info,
+                                       shape_size, symbolic_expr_context));
 
   VLOG(3) << "priority fusion module: " << new_module->ToString();
 
@@ -321,7 +322,8 @@ EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
 
   absl::Duration total_run_time = absl::ZeroDuration();
 
-  GpuPerformanceModelOwning gpu_performance_model(device_info);
+  GpuPerformanceModelOwning gpu_performance_model(device_info,
+                                                  symbolic_expr_context);
   for (const HloInstruction* instr : entry_computation->instructions()) {
     total_run_time += gpu_performance_model.Get()
                           .EstimateRunTimeForInstruction(instr, &cost_analysis)
@@ -346,6 +348,7 @@ DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
     GpuPerformanceModelWithIndexingAnalysis& indexing_performance_model,
     const se::DeviceDescription& device_info,
     const HloCostAnalysis::ShapeSizeFunction& shape_size,
+    SymbolicExprContext* symbolic_expr_context,
     bool use_cost_model_to_evaluate_fusions) {
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(normalization_fusion);
 
@@ -365,7 +368,8 @@ DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
   if (use_cost_model_to_evaluate_fusions) {
     TF_ASSIGN_OR_RETURN(absl::Duration run_time_without_softmax_rewriter,
                         EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
-                            normalization_fusion, device_info, shape_size));
+                            normalization_fusion, device_info, shape_size,
+                            symbolic_expr_context));
 
     VLOG(2) << "run time estimate if normalization diamond fused together: "
             << tiled_runtime_data.runtime_data.exec_time;
@@ -397,6 +401,7 @@ absl::StatusOr<bool> MaybeFuseDiamondImpl(
     GpuPerformanceModelWithIndexingAnalysis& indexing_performance_model,
     const se::DeviceDescription& device_info,
     const HloCostAnalysis::ShapeSizeFunction& shape_size,
+    SymbolicExprContext* symbolic_expr_context,
     bool use_cost_model_to_evaluate_fusions) {
   TF_ASSIGN_OR_RETURN(HloFusionInstruction * normalization_fusion,
                       MakeFusionForDiamond(diamond));
@@ -404,11 +409,11 @@ absl::StatusOr<bool> MaybeFuseDiamondImpl(
 
   VLOG(2) << "MaybeFuseDiamondImpl: " << normalization_fusion->ToString();
 
-  TF_ASSIGN_OR_RETURN(
-      FusionDecision fusion_decision,
-      DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
-          normalization_fusion, indexing_performance_model, device_info,
-          shape_size, use_cost_model_to_evaluate_fusions));
+  TF_ASSIGN_OR_RETURN(FusionDecision fusion_decision,
+                      DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
+                          normalization_fusion, indexing_performance_model,
+                          device_info, shape_size, symbolic_expr_context,
+                          use_cost_model_to_evaluate_fusions));
 
   if (!fusion_decision.CanFuse()) {
     VLOG(2) << "Not fusing: " << fusion_decision.Explain();
@@ -437,9 +442,10 @@ absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamond(
   TF_ASSIGN_OR_RETURN(HloFusionInstruction * normalization_fusion,
                       MakeFusionForDiamond(diamond));
   mlir::MLIRContext context;
+  SymbolicExprContext symbolic_expr_context(&context);
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or_error =
       SymbolicTileAnalysis::AnalyzeComputation(
-          *normalization_fusion->called_computation(), &context,
+          *normalization_fusion->called_computation(), &symbolic_expr_context,
           TritonEmitterConstraints::GetBuilder(device_info));
 
   bool can_tile = std::holds_alternative<SymbolicTileAnalysis>(
@@ -633,13 +639,15 @@ absl::StatusOr<bool> SoftmaxRewriterTriton::MaybeFuseNormalizationDiamond(
     const DiamondDescriptor& diamond) {
   HloFusionAnalysisCache fusion_analysis_cache(device_info_);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
-      &device_info_, &fusion_analysis_cache, shape_size_, &mlir_context_);
+      &device_info_, &fusion_analysis_cache, shape_size_,
+      symbolic_expr_context_);
 
   return MaybeFuseDiamondImpl(diamond, indexing_performance_model, device_info_,
-                              shape_size_, use_cost_model_to_evaluate_fusions_);
+                              shape_size_, symbolic_expr_context_,
+                              use_cost_model_to_evaluate_fusions_);
 }
 
-absl::StatusOr<bool> SoftmaxRewriterTriton::Run(
+absl::StatusOr<bool> SoftmaxRewriterTriton::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(

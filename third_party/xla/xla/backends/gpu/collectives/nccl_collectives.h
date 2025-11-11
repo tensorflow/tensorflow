@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COLLECTIVES_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COLLECTIVES_H_
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -49,14 +50,36 @@ class NcclCollectives : public GpuCollectives {
   CreateCommunicators(const CliqueKey& clique_key,
                       const std::optional<CliqueIds>& clique_ids,
                       absl::Span<const DeviceRank> ranks,
-                      const Collectives::Config& config) final;
+                      const Collectives::Config& config) final {
+    return CreateCommunicatorsWithCancel(clique_key, clique_ids, ranks, config,
+                                         nullptr);
+  }
+
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+  CreateCommunicatorsWithCancel(const CliqueKey& clique_key,
+                                const std::optional<CliqueIds>& clique_ids,
+                                absl::Span<const DeviceRank> ranks,
+                                const Collectives::Config& config,
+                                std::atomic_bool* cancel) final;
+
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
+      absl::Span<const Communicator* const> comms, int32_t color,
+      absl::Span<const RankId> keys, const Collectives::Config& config,
+      absl::Span<const DeviceRank> ranks) final {
+    return SplitCommunicatorsWithCancel(comms, color, keys, config, ranks,
+                                        nullptr);
+  }
+
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+  SplitCommunicatorsWithCancel(absl::Span<const Communicator* const> comms,
+                               int32_t color, absl::Span<const RankId> keys,
+                               const Collectives::Config& config,
+                               absl::Span<const DeviceRank> ranks,
+                               std::atomic_bool* cancel) final;
 
   absl::StatusOr<std::unique_ptr<Communicator>> CreateCommunicator() final {
     return absl::UnimplementedError("Not implemented.");
   }
-  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
-      absl::Span<const Communicator* const> comms, int32_t color,
-      absl::Span<const RankId> keys, const Collectives::Config& config) final;
 
   absl::StatusOr<void*> Allocate(uint64_t bytes) final;
 

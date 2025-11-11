@@ -11,6 +11,16 @@ func.func @splat_constants() -> tensor<1x64x224x224xf32> {
 
 // -----
 
+// CHECK-LABEL: @non_mhlo_constant
+func.func @non_mhlo_constant() -> tensor<128x1014x508xcomplex<f64>> {
+// CHECK:     arith.constant dense<(1.000000e+00,2.000000e+00)> : tensor<128x1014x508xcomplex<f64>>
+// CHECK-NOT: mhlo.broadcast_in_dim
+  %0 = arith.constant dense<(1.000000e+00,2.000000e+00)> : tensor<128x1014x508xcomplex<f64>>
+  func.return %0 : tensor<128x1014x508xcomplex<f64>>
+}
+
+// -----
+
 // CHECK-LABEL: @splat_constant_complex_float
 func.func @splat_constant_complex_float() -> tensor<128x1014x508xcomplex<f64>> {
 // CHECK: %[[CST:.*]] = mhlo.constant dense<(1.000000e+00,2.000000e+00)> : tensor<complex<f64>>

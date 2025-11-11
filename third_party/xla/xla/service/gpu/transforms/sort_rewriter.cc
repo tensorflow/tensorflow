@@ -398,8 +398,8 @@ bool ShouldRewriteCompatibleSort(se::DeviceDescription device_description,
   }
 
   if (SortRewriter::SortMode() == SortRewriter::Mode::kAuto) {
-    if (auto cuda_cc = std::get_if<se::CudaComputeCapability>(
-            &device_description.gpu_compute_capability())) {
+    if (auto* cuda_cc = device_description.gpu_compute_capability()
+                            .cuda_compute_capability()) {
       int bitwidth = primitive_util::BitWidth(operand_shape.element_type());
       int batch_size = Product(operand_shape.dimensions()) / num_elements;
 
@@ -573,17 +573,17 @@ absl::StatusOr<bool> SortRewriter::RunOnComputation(
 }
 
 // Replace compatible sort operations with custom calls.
-absl::StatusOr<bool> SortRewriter::Run(
+absl::StatusOr<bool> SortRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(3, "SortRewriter::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(3, "SortRewriter::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
-  XLA_VLOG_LINES(3, "SortRewriter::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(3, "SortRewriter::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

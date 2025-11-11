@@ -82,7 +82,7 @@ std::string PyObject_ToString(PyObject* o, int length = -1) {
     return str;
   }
   absl::string_view str_piece(str);
-  return tensorflow::strings::StrCat(str_piece.substr(length), "...");
+  return absl::StrCat(str_piece.substr(length), "...");
 }
 
 // Assume inputs are name, inputs, outputs

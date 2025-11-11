@@ -717,7 +717,7 @@ def ngrams(data,
     pad_values: A tuple of (left_pad_value, right_pad_value), a single string,
       or None. If None, no padding will be added; if a single string, then that
       string will be used for both left and right padding. Values must be Python
-      strings.
+      strings. Should be set when `padding_width` is not None.
     padding_width: If set, `padding_width` pad values will be added to both
       sides of each sequence. Defaults to `ngram_width`-1. Must be greater than
       0. (Note that 1-grams are never padded, regardless of this value.)
@@ -737,6 +737,7 @@ def ngrams(data,
     TypeError: if `pad_values` is set to an invalid type.
     ValueError: if `pad_values`, `padding_width`, or `ngram_width` is set to an
       invalid value.
+    ValueError: if `padding_width` is not None and `pad_values` is None.
   """
 
   with ops.name_scope(name, "StringNGrams", [data]):

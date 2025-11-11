@@ -77,7 +77,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     return std::make_unique<Iterator>(
-        Iterator::Params{this, strings::StrCat(prefix, "::Model")});
+        Iterator::Params{this, absl::StrCat(prefix, "::Model")});
   }
 
   const DataTypeVector& output_dtypes() const override {

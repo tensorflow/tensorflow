@@ -42,7 +42,7 @@ bool LogToListeners(string msg, string end) {
     return false;
   }
 
-  string ended_msg = strings::StrCat(msg, end);
+  string ended_msg = absl::StrCat(msg, end);
 
   for (auto& listener : *listeners) {
     listener(ended_msg.c_str());

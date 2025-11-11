@@ -27,12 +27,13 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<bool> GpuCostModelStatsCollection::Run(
+absl::StatusOr<bool> GpuCostModelStatsCollection::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Scan all computations for fusion instructions.
 
-  GpuPerformanceModelOwning gpu_performance_model{device_info_};
+  GpuPerformanceModelOwning gpu_performance_model{device_info_,
+                                                  symbolic_expr_context_};
   for (auto* computation : module->MakeComputationPostOrder()) {
     TF_CHECK_OK(computation->Accept(&cost_analysis_));
 

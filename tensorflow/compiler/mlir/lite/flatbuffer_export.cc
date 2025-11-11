@@ -217,6 +217,13 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     switch (itype.getWidth()) {
       case 1:
         return tflite::TensorType_BOOL;
+      case 2:
+        if (itype.isUnsigned()) {
+          return Status(absl::StatusCode::kInvalidArgument,
+                        "Unsupported 2bit unsigned int type");
+        } else {
+          return tflite::TensorType_INT2;
+        }
       case 4:
         if (itype.isUnsigned()) {
           return Status(absl::StatusCode::kInvalidArgument,
@@ -879,7 +886,7 @@ class Translator {
   std::vector<std::unique_ptr<char[], std::function<void(char*)>>>
       string_buffers_to_delete_;
   std::vector<std::unique_ptr<std::vector<uint8_t>>>
-      packed_int4_buffers_to_delete_;
+      packed_low_bit_buffers_to_delete_;
 
   // Maps custom options data to corresponding node
   // Key is set to be the list of input tensor indices and list of output tensor
@@ -1027,18 +1034,21 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   auto type = mlir::cast<TensorType>(value.getType());
   tflite::TensorType tflite_element_type =
       GetTFLiteType(type.getElementType()).value();
-  if (tflite_element_type == tflite::TensorType_INT4) {
+  if (tflite_element_type == tflite::TensorType_INT4 ||
+      tflite_element_type == tflite::TensorType_INT2) {
     std::vector<uint8_t> data;
     for (mlir::APInt v : attr.getValues<mlir::APInt>()) {
       data.emplace_back(static_cast<uint8_t>(*(v.getRawData())));
     }
-    auto packed_buffer = std::make_unique<std::vector<uint8_t>>(
-        tflite::PackInt4ValuesDensely(data));
+    auto packed_buffer =
+        std::make_unique<std::vector<uint8_t>>(tflite::PackLowBitValuesDensely(
+            data, /*bit_width=*/(
+                tflite_element_type == tflite::TensorType_INT4 ? 4 : 2)));
     if (use_buffer_offset_) {
       buffer_data_map_[index] =
           absl::string_view(reinterpret_cast<char*>(packed_buffer->data()),
                             packed_buffer->size());
-      packed_int4_buffers_to_delete_.emplace_back(std::move(packed_buffer));
+      packed_low_bit_buffers_to_delete_.emplace_back(std::move(packed_buffer));
       return tflite::CreateBuffer(builder_, 0, 1, 1);
     } else {
       if (IsModelBiggerThan2GB(packed_buffer->size())) {
@@ -4239,10 +4249,10 @@ std::optional<std::string> Translator::TranslateInternal() {
 
   // Free all the buffers/tensors, etc. that were created but were kept around
   // to copy into the flatbuffer.
-  for (auto& packed_int4_buffer : packed_int4_buffers_to_delete_) {
-    packed_int4_buffer.reset();
+  for (auto& packed_low_bit_buffer : packed_low_bit_buffers_to_delete_) {
+    packed_low_bit_buffer.reset();
   }
-  packed_int4_buffers_to_delete_.clear();
+  packed_low_bit_buffers_to_delete_.clear();
 
   for (auto& str_buffer : string_buffers_to_delete_) {
     str_buffer.reset();

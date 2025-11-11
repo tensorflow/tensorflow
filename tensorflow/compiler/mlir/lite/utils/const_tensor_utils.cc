@@ -67,10 +67,10 @@ template <typename T>
 llvm::SmallVector<mlir::APInt> ReadAsHostEndian(ArrayRef<uint8_t> bytes) {
   llvm::SmallVector<mlir::APInt> ret;
   size_t read_size = sizeof(T);
-  int bytes_len = bytes.size();
+  size_t bytes_len = bytes.size();
   assert(bytes_len % read_size == 0);
 
-  int elem_count = bytes_len / read_size;
+  size_t elem_count = bytes_len / read_size;
   ret.reserve(elem_count);
 
   const char* data_ptr = reinterpret_cast<const char*>(bytes.data());
@@ -301,9 +301,17 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
       return mlir::ElementsAttr(
           DenseElementsAttr::get(shaped_type, ArrayRef<bool>(boolValues)));
     }
+    case 2: {
+      auto i2Values = tflite::UnpackDenseLowBitIntoInt8(
+          buffer, shaped_type.getNumElements(), /*bit_width=*/2);
+      // Use `getFromRawBuffer()` instead of `get()` to bypass a templated size
+      // check which doesn't work with int2 because int2_t doesn't exist.
+      return mlir::ElementsAttr(DenseElementsAttr::getFromRawBuffer(
+          shaped_type, ArrayRef<char>(i2Values)));
+    }
     case 4: {
-      auto i4Values =
-          tflite::UnpackDenseInt4IntoInt8(buffer, shaped_type.getNumElements());
+      auto i4Values = tflite::UnpackDenseLowBitIntoInt8(
+          buffer, shaped_type.getNumElements(), /*bit_width=*/4);
       // Use `getFromRawBuffer()` instead of `get()` to bypass a templated size
       // check which doesn't work with int4 because int4_t doesn't exist.
       return mlir::ElementsAttr(DenseElementsAttr::getFromRawBuffer(

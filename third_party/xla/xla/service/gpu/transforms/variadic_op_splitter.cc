@@ -27,9 +27,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -96,7 +96,7 @@ std::vector<HloInstruction*> GetRelevantVariadicOps(HloComputation* comp) {
 
 }  // namespace
 
-absl::StatusOr<bool> VariadicOpSplitter::Run(
+absl::StatusOr<bool> VariadicOpSplitter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

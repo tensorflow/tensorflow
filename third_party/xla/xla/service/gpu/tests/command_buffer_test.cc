@@ -14,21 +14,55 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/platform_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {
+
+se::StreamExecutor* GpuExecutor() {
+  auto name =
+      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  auto* platform = se::PlatformManager::PlatformWithName(name).value();
+  return platform->ExecutorForDevice(0).value();
+}
+
+bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
+  const auto& device_description = stream_executor->GetDeviceDescription();
+  const auto* cuda_cc =
+      device_description.gpu_compute_capability().cuda_compute_capability();
+  if (cuda_cc != nullptr) {
+    if (device_description.driver_version() >=
+            stream_executor::SemanticVersion(12, 9, 0) &&
+        device_description.runtime_version() >=
+            stream_executor::SemanticVersion(12, 9, 0)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 class CommandBufferTest
     : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
@@ -38,6 +72,121 @@ class CommandBufferTest
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_command_buffer_scheduling_mode(GetParam());
+    return debug_options;
+  }
+
+  // Execute compiled module three times to exercise warm-up, create, and
+  // update paths. Third run uses cloned arguments to encourage device buffer
+  // address changes.
+  void ExecuteThreePhasesAndExpect(std::unique_ptr<HloModule> module,
+                                   absl::Span<const Literal* const> arguments,
+                                   const Literal& expected,
+                                   bool run_hlo_passes) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<OpaqueExecutable> executable,
+        CreateExecutable(std::move(module), run_hlo_passes));
+
+    // 1) Warm-up (may run thunks)
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal result1,
+        test_runner().ExecuteWithExecutable(executable.get(), arguments));
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result1));
+
+    // 2) Create (record and execute command buffer)
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal result2,
+        test_runner().ExecuteWithExecutable(executable.get(), arguments));
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result2));
+
+    // 3) Update (execute with cloned arguments to attempt buffer changes)
+    std::vector<Literal> cloned_args_storage;
+    cloned_args_storage.reserve(arguments.size());
+    std::vector<const Literal*> cloned_args;
+    cloned_args.reserve(arguments.size());
+    for (const Literal* arg : arguments) {
+      cloned_args_storage.push_back(arg->Clone());
+      cloned_args.push_back(&cloned_args_storage.back());
+    }
+
+    TF_ASSERT_OK_AND_ASSIGN(Literal result3,
+                            test_runner().ExecuteWithExecutable(
+                                executable.get(), absl::MakeSpan(cloned_args)));
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result3));
+  }
+
+  // Same as above, but generates fake inputs and compares results to a
+  // reference execution. Useful for tests originally using RunAndCompare.
+  ::testing::AssertionResult RunAndCompareThreeIterations(
+      std::unique_ptr<HloModule> module, bool run_hlo_passes,
+      const std::optional<ErrorSpec>& error) {
+    // Verify module then clone for reference.
+    TF_CHECK_OK(this->verifier().Run(module.get()).status());
+    std::unique_ptr<HloModule> reference_module = module->Clone();
+
+    // Prepare fake args for both runners.
+    absl::StatusOr<std::vector<Literal>> fake_args_or =
+        MakeFakeArguments(module.get());
+    if (!fake_args_or.ok()) {
+      return ::testing::AssertionFailure() << fake_args_or.status().message();
+    }
+    std::vector<Literal> fake_args = std::move(*fake_args_or);
+    std::vector<const Literal*> arg_ptrs = LiteralUtil::MakePointers(fake_args);
+
+    // Reference once.
+    absl::StatusOr<Literal> reference = reference_runner().Execute(
+        std::move(reference_module), absl::MakeSpan(arg_ptrs), run_hlo_passes);
+    if (!reference.ok()) {
+      return ::testing::AssertionFailure() << reference.status();
+    }
+
+    // Compile once on test backend and run three iterations.
+    absl::StatusOr<std::unique_ptr<OpaqueExecutable>> exec_or =
+        CreateExecutable(std::move(module), run_hlo_passes);
+    if (!exec_or.ok()) {
+      return ::testing::AssertionFailure() << exec_or.status();
+    }
+    std::unique_ptr<OpaqueExecutable> exec = std::move(*exec_or);
+
+    // 1) Warm-up
+    absl::StatusOr<Literal> r1 = test_runner().ExecuteWithExecutable(
+        exec.get(), absl::MakeSpan(arg_ptrs));
+    if (!r1.ok()) return ::testing::AssertionFailure() << r1.status();
+    if (!LiteralTestUtil::NearOrEqual(*reference, *r1, error))
+      return ::testing::AssertionFailure() << "Mismatch on warm-up run";
+
+    // 2) Create
+    absl::StatusOr<Literal> r2 = test_runner().ExecuteWithExecutable(
+        exec.get(), absl::MakeSpan(arg_ptrs));
+    if (!r2.ok()) return ::testing::AssertionFailure() << r2.status();
+    if (!LiteralTestUtil::NearOrEqual(*reference, *r2, error))
+      return ::testing::AssertionFailure() << "Mismatch on create run";
+
+    // 3) Update with cloned args
+    std::vector<Literal> cloned_args_storage;
+    cloned_args_storage.reserve(arg_ptrs.size());
+    std::vector<const Literal*> cloned_arg_ptrs;
+    cloned_arg_ptrs.reserve(arg_ptrs.size());
+    for (const Literal* a : arg_ptrs) {
+      cloned_args_storage.push_back(a->Clone());
+      cloned_arg_ptrs.push_back(&cloned_args_storage.back());
+    }
+
+    absl::StatusOr<Literal> r3 = test_runner().ExecuteWithExecutable(
+        exec.get(), absl::MakeSpan(cloned_arg_ptrs));
+    if (!r3.ok()) return ::testing::AssertionFailure() << r3.status();
+    if (!LiteralTestUtil::NearOrEqual(*reference, *r3, error))
+      return ::testing::AssertionFailure() << "Mismatch on update run";
+
+    return ::testing::AssertionSuccess();
+  }
+};
+
+// Test fixture that enables loop unrolling for command buffers.
+class CommandBufferUnrollTest : public CommandBufferTest {
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_command_buffer_scheduling_mode(GetParam());
+    debug_options.set_xla_gpu_command_buffer_unroll_loops(true);
     return debug_options;
   }
 };
@@ -79,10 +228,8 @@ TEST_P(CommandBufferTest, Fusions) {
   Literal argument = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   Literal expected = LiteralUtil::CreateR2<float>({{3.0, 8.0}, {15.0, 24.0}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal result,
-      Execute(std::move(module), {&argument}, /*run_hlo_passes=*/false));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  ExecuteThreePhasesAndExpect(std::move(module), {&argument}, expected,
+                              /*run_hlo_passes=*/false);
 }
 
 TEST_P(CommandBufferTest, TrueFalseConditional) {
@@ -130,9 +277,8 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
 
     Literal pred = LiteralUtil::CreateR0<bool>(true);
     Literal expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&pred, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&pred, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 
   {  // Execute `false` branch.
@@ -140,9 +286,8 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
 
     Literal pred = LiteralUtil::CreateR0<bool>(false);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&pred, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&pred, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 }
 
@@ -190,9 +335,8 @@ TEST_P(CommandBufferTest, IndexConditional) {
 
     Literal index = LiteralUtil::CreateR0<int32_t>(0);
     Literal expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&index, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&index, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 
   {  // Execute `1` branch.
@@ -200,9 +344,8 @@ TEST_P(CommandBufferTest, IndexConditional) {
 
     Literal index = LiteralUtil::CreateR0<int32_t>(1);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&index, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&index, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 
   {  // Execute `1024` branch (our of bound index executes N-1 branch).
@@ -210,9 +353,8 @@ TEST_P(CommandBufferTest, IndexConditional) {
 
     Literal index = LiteralUtil::CreateR0<int32_t>(1024);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&index, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&index, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 }
 
@@ -273,10 +415,8 @@ TEST_P(CommandBufferTest, WhileLoop) {
   Literal expected_value = LiteralUtil::CreateR0<float>(20.0);
   Literal expected = LiteralUtil::MakeTuple({&expected_cnt, &expected_value});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal result,
-      Execute(std::move(module), {&argument}, /*run_hlo_passes=*/false));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  ExecuteThreePhasesAndExpect(std::move(module), {&argument}, expected,
+                              /*run_hlo_passes=*/false);
 }
 
 TEST_P(CommandBufferTest, ControlDependencyTest) {
@@ -534,11 +674,190 @@ TEST_P(CommandBufferTest, DynamicSliceCopyFusionCmd) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_text, config));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-3, 2e-3}));
+  EXPECT_TRUE(RunAndCompareThreeIterations(
+      std::move(module), /*run_hlo_passes=*/false, ErrorSpec{1e-3, 2e-3}));
+
+  if (!IsAtLeastCuda12900(GpuExecutor())) {
+    GTEST_SKIP() << "While loop unrolling is not supported for CUDA < 12.9";
+  }
+
+  debug_options.add_xla_gpu_enable_command_buffer(
+      DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
+  debug_options.set_xla_gpu_command_buffer_unroll_loops(true);
+  config.set_debug_options(debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto unrolled_module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+
+  EXPECT_TRUE(RunAndCompareThreeIterations(std::move(unrolled_module),
+                                           /*run_hlo_passes=*/false,
+                                           ErrorSpec{1e-3, 2e-3}));
+}
+
+TEST_P(CommandBufferUnrollTest, WhileLoop) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+
+  if (!IsAtLeastCuda12900(stream_executor)) {
+    GTEST_SKIP() << "Child command is not supported for CUDA < 12.9";
+  }
+
+  constexpr absl::string_view hlo_text = R"(
+  HloModule m, is_scheduled=true
+
+  compare_fusion {
+    p0 = s32[] parameter(0)
+    ten = s32[] constant(10)
+    ROOT compare = compare(p0, ten), direction=LT
+  }
+
+  add_one {
+    p0 = s32[] parameter(0)
+    one = s32[] constant(1)
+    ROOT add = add(p0, one)
+  }
+
+  add_two {
+    p0 = f32[] parameter(0)
+    two = f32[] constant(2.0)
+    ROOT add = add(p0, two)
+  }
+
+  body {
+    p0 = (s32[], f32[]) parameter(0)
+    cnt = get-tuple-element(p0), index=0
+    val = get-tuple-element(p0), index=1
+    add_cnt = s32[] fusion(cnt), kind=kLoop, calls=add_one
+    add_val = f32[] fusion(val), kind=kLoop, calls=add_two
+    ROOT tuple = (s32[], f32[]) tuple(add_cnt, add_val)
+  }
+
+  cond {
+    p0 = (s32[], f32[]) parameter(0)
+    cnt = get-tuple-element(p0), index=0
+    ROOT compare = pred[] fusion(cnt), kind=kLoop, calls=compare_fusion
+  }
+
+  command_buffer {
+    p0 = (s32[], f32[]) parameter(0)
+    ROOT while = while(p0), condition=cond, body=body, backend_config={"known_trip_count":{"n":"10"}}
+  }
+
+  ENTRY main {
+    p0 = (s32[], f32[]) parameter(0)
+    ROOT call = (s32[], f32[]) call(p0), to_apply=command_buffer
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal cnt = LiteralUtil::CreateR0<int32_t>(0);
+  Literal value = LiteralUtil::CreateR0<float>(0.0);
+  Literal argument = LiteralUtil::MakeTuple({&cnt, &value});
+
+  Literal expected_cnt = LiteralUtil::CreateR0<int32_t>(10);
+  Literal expected_value = LiteralUtil::CreateR0<float>(20.0);
+  Literal expected = LiteralUtil::MakeTuple({&expected_cnt, &expected_value});
+
+  ExecuteThreePhasesAndExpect(std::move(module), {&argument}, expected,
+                              /*run_hlo_passes=*/false);
+}
+
+TEST_P(CommandBufferUnrollTest, WhileLoopMultiDevice) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+
+  if (!IsAtLeastCuda12900(stream_executor)) {
+    GTEST_SKIP() << "Child command is not supported for CUDA < 12.9";
+  }
+
+  // Require at least two visible GPU devices for multi-device execution.
+  auto name =
+      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  auto* platform = se::PlatformManager::PlatformWithName(name).value();
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires >= 2 visible GPU devices";
+  }
+
+  constexpr absl::string_view hlo_text = R"(
+  HloModule m, is_scheduled=true
+
+  compare_fusion {
+    p0 = s32[] parameter(0)
+    ten = s32[] constant(10)
+    ROOT compare = compare(p0, ten), direction=LT
+  }
+
+  add_one {
+    p0 = s32[] parameter(0)
+    one = s32[] constant(1)
+    ROOT add = add(p0, one)
+  }
+
+  add_two {
+    p0 = f32[] parameter(0)
+    two = f32[] constant(2.0)
+    ROOT add = add(p0, two)
+  }
+
+  body {
+    p0 = (s32[], f32[]) parameter(0)
+    cnt = get-tuple-element(p0), index=0
+    val = get-tuple-element(p0), index=1
+    add_cnt = s32[] fusion(cnt), kind=kLoop, calls=add_one
+    add_val = f32[] fusion(val), kind=kLoop, calls=add_two
+    ROOT tuple = (s32[], f32[]) tuple(add_cnt, add_val)
+  }
+
+  cond {
+    p0 = (s32[], f32[]) parameter(0)
+    cnt = get-tuple-element(p0), index=0
+    ROOT compare = pred[] fusion(cnt), kind=kLoop, calls=compare_fusion
+  }
+
+  command_buffer {
+    a = s32[] parameter(0)
+    b = f32[] parameter(1)
+    tuple = (s32[], f32[]) tuple(a, b)
+    ROOT while = while(tuple), condition=cond, body=body, backend_config={"known_trip_count":{"n":"10"}}
+  }
+
+  ENTRY main {
+    a = s32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT call = (s32[], f32[]) call(a, b), to_apply=command_buffer
+  })";
+
+  // Parse with replica_count=2 to run on two devices.
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+
+  Literal cnt = LiteralUtil::CreateR0<int32_t>(0);
+  Literal value = LiteralUtil::CreateR0<float>(0.0);
+
+  Literal expected_cnt = LiteralUtil::CreateR0<int32_t>(10);
+  Literal expected_value = LiteralUtil::CreateR0<float>(20.0);
+  Literal expected = LiteralUtil::MakeTuple({&expected_cnt, &expected_value});
+
+  // Flatten tuple parameter into individual leaves for PJRT replicated execute.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {&cnt, &value}, /*num_replicas=*/2,
+                        /*use_threads=*/true, /*run_hlo_passes=*/false));
+  ASSERT_EQ(results.size(), 2);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, results[1]));
 }
 
 INSTANTIATE_TEST_SUITE_P(CommandBufferTests, CommandBufferTest,
+                         ::testing::Values(DebugOptions::LHS,
+                                           DebugOptions::CONCURRENT));
+INSTANTIATE_TEST_SUITE_P(CommandBufferTestsUnroll, CommandBufferUnrollTest,
                          ::testing::Values(DebugOptions::LHS,
                                            DebugOptions::CONCURRENT));
 

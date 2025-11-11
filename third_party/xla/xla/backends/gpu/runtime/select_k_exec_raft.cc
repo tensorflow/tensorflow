@@ -82,6 +82,12 @@ class OwningScratchAllocator {
     return absl::NotFoundError("Pointer not found");
   }
 
+  se::DeviceMemoryAllocator* get_allocator() const { return allocator_; }
+
+  void set_allocator(se::DeviceMemoryAllocator* allocator) {
+    allocator_ = allocator;
+  }
+
  private:
   int device_ordinal_;
   se::DeviceMemoryAllocator* allocator_;
@@ -95,6 +101,14 @@ class XlaDeviceMemoryResource : public rmm::mr::device_memory_resource {
   XlaDeviceMemoryResource(int device_ordinal,
                           se::DeviceMemoryAllocator* allocator)
       : scratch_allocator_(device_ordinal, allocator) {}
+
+  se::DeviceMemoryAllocator* get_allocator() const {
+    return scratch_allocator_.get_allocator();
+  }
+
+  void set_allocator(se::DeviceMemoryAllocator* allocator) {
+    scratch_allocator_.set_allocator(allocator);
+  }
 
  protected:
   void* do_allocate(std::size_t bytes, rmm::cuda_stream_view stream) override {
@@ -122,6 +136,8 @@ class XlaDeviceMemoryResource : public rmm::mr::device_memory_resource {
 // RAII wrapper for RAFT resources bound to a CUDA stream
 struct RaftStreamResource : public se::Stream::Resource {
   raft::resources res;
+  std::shared_ptr<XlaDeviceMemoryResource> xla_dev_mem_res;
+  ~RaftStreamResource() override = default;
 
   // Factory to create a RaftStreamResource tied to a CUDA stream.
   // Sets up `raft::resources` with a custom XlaDeviceMemoryResource
@@ -138,9 +154,10 @@ struct RaftStreamResource : public se::Stream::Resource {
       cudaStream_t cuda_stream) {
     // Assign our custom AllocatorForRaft for this device
     auto handle = std::make_unique<RaftStreamResource>();
-    raft::resource::set_workspace_resource(
-        handle->res,
-        std::make_shared<XlaDeviceMemoryResource>(device_ordinal, allocator));
+    handle->xla_dev_mem_res =
+        std::make_shared<XlaDeviceMemoryResource>(device_ordinal, allocator);
+    raft::resource::set_workspace_resource(handle->res,
+                                           handle->xla_dev_mem_res);
     // Set Cuda Stream
     raft::resource::set_cuda_stream(handle->res,
                                     rmm::cuda_stream_view{cuda_stream});
@@ -246,6 +263,8 @@ absl::Status select_k_exec(int device_ordinal,
   SelectAlgo algo = choose_select_k_algorithm<T>(batch, n, k);
   VLOG(3) << "select_k_exec_raft: "
           << "device_ordinal: " << device_ordinal << ", "
+          << "allocator: " << allocator << ", "
+          << "stream: " << stream << ", "
           << "data_in: " << data_in.opaque() << " (" << data_in.size() << "B)"
           << ", data_out: " << data_out.opaque() << " (" << data_out.size()
           << "B)"
@@ -267,6 +286,13 @@ absl::Status select_k_exec(int device_ordinal,
           });
   TF_RET_CHECK(resContainer != nullptr)
       << "Failed to create or retrieve RaftStreamResource";
+
+  // resContainer is scoped to a single stream.
+  // Because a stream does not execute select_k_exec concurrently from multiple
+  // threads, it is safe to update the allocator without additional locking.
+  if (allocator != resContainer->xla_dev_mem_res->get_allocator()) {
+    resContainer->xla_dev_mem_res->set_allocator(allocator);
+  }
 
   try {
     // Wrap raw device pointers in RAFT matrix views

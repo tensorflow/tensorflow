@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/repeat_buffer_kernel.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -67,6 +68,12 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
+
+using tsl::profiler::TraceMe;
+using tsl::profiler::TraceMeEncode;
+using tsl::profiler::TraceMeLevel;
 
 namespace xla {
 namespace gpu {
@@ -357,7 +364,7 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
       new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64_t>,
                    absl::Mutex>();
 
-  absl::MutexLock global_lock(&mu);
+  absl::MutexLock global_lock(mu);
   auto it = mutexes
                 ->emplace(std::piecewise_construct,
                           std::make_tuple(stream_exec->GetPlatform(),
@@ -405,16 +412,22 @@ absl::Status ExecuteKernelOnStream(
     se::Kernel& kernel, absl::Span<const se::KernelArgument> args,
     const LaunchDimensions& dims,
     const std::optional<se::ClusterDim>& cluster_dim, se::Stream* stream) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
-      se::PackKernelArgs(args, kernel.metadata()));
+  TraceMe trace([] { return TraceMeEncode("ExecuteKernelOnStream", {}); },
+                /*level=*/TraceMeLevel::kVerbose);
 
-  if (cluster_dim.has_value()) {
-    return kernel.Launch(dims.thread_counts_per_block(), dims.block_counts(),
-                         cluster_dim.value(), stream, *kernel_args);
+  std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args;
+  {
+    TraceMe trace(
+        [] {
+          return TraceMeEncode("ExecuteKernelOnStream/PackKernelArgs", {});
+        },
+        /*level=*/TraceMeLevel::kVerbose);
+    TF_ASSIGN_OR_RETURN(kernel_args,
+                        se::PackKernelArgs(args, kernel.metadata()));
   }
+
   return kernel.Launch(dims.thread_counts_per_block(), dims.block_counts(),
-                       stream, *kernel_args);
+                       cluster_dim, stream, *kernel_args);
 }
 
 // Unimplemented for integers yet.
@@ -545,8 +558,7 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
       buffer_type);
 }
 
-absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
-    CudnnConvKind kind) {
+se::dnn::ConvolutionKind CudnnConvKindToProto(CudnnConvKind kind) {
   switch (kind) {
     case CudnnConvKind::kBackwardFilter:
       return se::dnn::BACKWARD_FILTER;
@@ -558,6 +570,23 @@ absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
       return se::dnn::FORWARD_BIAS_ACTIVATION;
     case CudnnConvKind::kForwardGraph:
       return se::dnn::FORWARD_GRAPH;
+      // No default case to ensure that all cases are handled at compile time.
+  }
+}
+
+absl::StatusOr<CudnnConvKind> CudnnConvKindFromProto(
+    se::dnn::ConvolutionKind kind) {
+  switch (kind) {
+    case se::dnn::BACKWARD_FILTER:
+      return CudnnConvKind::kBackwardFilter;
+    case se::dnn::BACKWARD_DATA:
+      return CudnnConvKind::kBackwardInput;
+    case se::dnn::FORWARD:
+      return CudnnConvKind::kForward;
+    case se::dnn::FORWARD_BIAS_ACTIVATION:
+      return CudnnConvKind::kForwardActivation;
+    case se::dnn::FORWARD_GRAPH:
+      return CudnnConvKind::kForwardGraph;
     default:
       break;
   }

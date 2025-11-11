@@ -1,3 +1,5 @@
+load("@rules_python//python:py_info.bzl", "PyInfo")
+
 """ Repository and build rules for Python wheels packaging utilities. """
 
 def _get_host_environ(repository_ctx, name, default_value = None):

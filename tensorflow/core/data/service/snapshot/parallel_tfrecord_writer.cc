@@ -70,7 +70,7 @@ ParallelTFRecordWriter::~ParallelTFRecordWriter() {
 
 absl::Status ParallelTFRecordWriter::Write(std::vector<Tensor> record)
     ABSL_LOCKS_EXCLUDED(mu_) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   while (status_.ok() && !finalized_ && buffer_.size() >= buffer_size_) {
     ready_to_push_.Wait(&mu_);
   }
@@ -88,14 +88,14 @@ absl::Status ParallelTFRecordWriter::Write(std::vector<Tensor> record)
 absl::StatusOr<ParallelTFRecordWriter::FileToStatsMap>
 ParallelTFRecordWriter::Finalize() ABSL_LOCKS_EXCLUDED(mu_) {
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     finalized_ = true;
     ready_to_push_.SignalAll();
     ready_to_pop_.SignalAll();
   }
 
   thread_pool_.reset();
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   TF_RETURN_IF_ERROR(status_);
   return file_stats_;
 }
@@ -107,7 +107,7 @@ void ParallelTFRecordWriter::WriteFiles() {
 }
 
 bool ParallelTFRecordWriter::HasNext() const ABSL_LOCKS_EXCLUDED(mu_) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (!status_.ok()) {
     return false;
   }
@@ -130,7 +130,7 @@ bool ParallelTFRecordWriter::ShouldWriteFile(const std::string& filename) const
   if (!HasNext()) {
     return false;
   }
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   auto iterator = file_stats_.find(filename);
   return iterator == file_stats_.end() ||
          iterator->second.estimated_size < max_file_size_;
@@ -153,7 +153,7 @@ absl::Status ParallelTFRecordWriter::WriteRecord(
 absl::StatusOr<std::optional<std::vector<Tensor>>>
 ParallelTFRecordWriter::GetNextRecord(const std::string& filename)
     ABSL_LOCKS_EXCLUDED(mu_) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   while (status_.ok() && !finalized_ && buffer_.empty()) {
     ready_to_pop_.Wait(&mu_);
   }
@@ -175,7 +175,7 @@ ParallelTFRecordWriter::GetNextRecord(const std::string& filename)
 
 absl::Status ParallelTFRecordWriter::DeleteEmptyFile(
     const std::string& filename) ABSL_LOCKS_EXCLUDED(mu_) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   auto iterator = file_stats_.find(filename);
   if (iterator != file_stats_.end() && iterator->second.num_records > 0) {
     return absl::OkStatus();
@@ -204,7 +204,7 @@ void ParallelTFRecordWriter::UpdateStatus(absl::Status status)
   if (status.ok()) {
     return;
   }
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   status_.Update(std::move(status));
   ready_to_push_.SignalAll();
   ready_to_pop_.SignalAll();

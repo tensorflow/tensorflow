@@ -56,7 +56,7 @@ bool MemorySpacePropagation::RunOnComputation(HloComputation* computation) {
   return modified;
 }
 
-absl::StatusOr<bool> MemorySpacePropagation::Run(
+absl::StatusOr<bool> MemorySpacePropagation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool modified = false;
@@ -124,6 +124,13 @@ bool MemorySpacePropagation::Propagate(ShapeIndexView index,
     shape->mutable_layout()->clear_split_configs();
     if (src_split_config.has_value()) {
       shape->mutable_layout()->add_split_configs(*src_split_config);
+    }
+
+    if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      auto op_0 = instruction->mutable_operand(0);
+      op_0->mutable_shape()->mutable_layout()->set_memory_space(
+          src_shape.layout().memory_space());
+      op_0->mutable_shape()->mutable_layout()->clear_split_configs();
     }
     modified = true;
 

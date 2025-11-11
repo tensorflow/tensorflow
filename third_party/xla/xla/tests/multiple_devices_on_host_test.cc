@@ -49,7 +49,7 @@ void CompileAndExecute(
   absl::StatusOr<ScopedShapedBuffer> result =
       executable->Run(absl::Span<const ShapedBuffer* const>(), execute_options);
   {
-    absl::MutexLock lock(results_mutex);
+    absl::MutexLock lock(*results_mutex);
     results->emplace_back(device_ordinal, std::move(result));
   }
 }

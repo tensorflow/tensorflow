@@ -19,7 +19,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 
-namespace stream_executor::gpu {
+namespace stream_executor::sycl {
 namespace {
 
 const int kDefaultDeviceOrdinal = 0;
@@ -27,9 +27,9 @@ const int kDefaultDeviceOrdinal = 0;
 class SyclEventTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                            stream_executor::PlatformManager::PlatformWithId(
-                                stream_executor::sycl::kSyclPlatformId));
+    TF_ASSERT_OK_AND_ASSIGN(
+        Platform * platform,
+        stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
     TF_ASSERT_OK_AND_ASSIGN(executor_,
                             platform->ExecutorForDevice(kDefaultDeviceOrdinal));
   }
@@ -66,4 +66,4 @@ TEST_F(SyclEventTest, MoveEvent) {
 
 }  // namespace
 
-}  // namespace stream_executor::gpu
+}  // namespace stream_executor::sycl

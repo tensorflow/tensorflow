@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -39,10 +40,15 @@ struct EmitterData {
   std::unique_ptr<EmitterBase> emitter;
 };
 absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
-    const HloModule& module);
+    const HloModule& module, SymbolicExprContext& symbolic_expr_context);
 
 // Returns an MLIR context with all the dialects needed for testing.
 mlir::MLIRContext GetMlirContextForTest();
+
+// Returns a symbolic expression context with all the dialects needed for
+// testing.
+SymbolicExprContext GetSymbolicExprContextForTest(
+    mlir::MLIRContext* mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

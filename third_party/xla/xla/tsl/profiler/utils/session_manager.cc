@@ -136,6 +136,13 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
             options.set_delay_ms(value);
           },
           nullptr);
+    } else if (key == "session_id") {
+      SetOption<std::string>(
+          key, kw.second,
+          [&options](tensorflow::ProfileOptions*, std::string value) {
+            options.mutable_profiler_options()->set_session_id(value);
+          },
+          nullptr);
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }
@@ -213,7 +220,7 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
 }
 
 absl::Status ValidateHostPortPair(absl::string_view host_port) {
-  tsl::uint32 port;
+  uint32_t port;
   std::vector<absl::string_view> parts = absl::StrSplit(host_port, ':');
   // Must be host:port, port must be a number, host must not contain a '/',
   // host also must not be empty.

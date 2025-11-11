@@ -39,7 +39,7 @@ namespace {
 
 void CreateTestGraph(const ::tensorflow::Scope& root,
                      benchmark_model::InputLayerInfo* input,
-                     string* output_name, GraphDef* graph_def) {
+                     std::string* output_name, GraphDef* graph_def) {
   // Create a simple graph and write it to filename_pb.
   const int input_width = 400;
   const int input_height = 10;
@@ -59,15 +59,15 @@ void CreateTestGraph(const ::tensorflow::Scope& root,
 }
 
 TEST(BenchmarkModelTest, InitializeAndRun) {
-  const string dir = testing::TmpDir();
-  const string filename_pb = io::JoinPath(dir, "graphdef.pb");
+  const std::string dir = testing::TmpDir();
+  const std::string filename_pb = io::JoinPath(dir, "graphdef.pb");
   auto root = Scope::NewRootScope().ExitOnError();
 
   benchmark_model::InputLayerInfo input;
-  string output_name;
+  std::string output_name;
   GraphDef graph_def;
   CreateTestGraph(root, &input, &output_name, &graph_def);
-  string graph_def_serialized;
+  std::string graph_def_serialized;
   graph_def.SerializeToString(&graph_def_serialized);
   TF_ASSERT_OK(
       WriteStringToFile(Env::Default(), filename_pb, graph_def_serialized));
@@ -88,12 +88,12 @@ TEST(BenchmarkModelTest, InitializeAndRun) {
 }
 
 TEST(BenchmarkModeTest, TextProto) {
-  const string dir = testing::TmpDir();
-  const string filename_txt = io::JoinPath(dir, "graphdef.pb.txt");
+  const std::string dir = testing::TmpDir();
+  const std::string filename_txt = io::JoinPath(dir, "graphdef.pb.txt");
   auto root = Scope::NewRootScope().ExitOnError();
 
   benchmark_model::InputLayerInfo input;
-  string output_name;
+  std::string output_name;
   GraphDef graph_def;
   CreateTestGraph(root, &input, &output_name, &graph_def);
   TF_ASSERT_OK(WriteTextProto(Env::Default(), filename_txt, graph_def));

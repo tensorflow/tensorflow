@@ -1,5 +1,6 @@
 """Provides build configuration for TensorFlow."""
 
+load("@rules_cc//cc:cc_library.bzl", _cc_library = "cc_library")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("@rules_java//java:defs.bzl", "java_test")
 load(
@@ -3097,8 +3098,7 @@ def pybind_library(
         **kwargs):
     # Mark common dependencies as required for build_cleaner.
     tags = tags + ["req_dep=" + clean_dep("//third_party/pybind11"), "req_dep=@local_config_python//:python_headers"]
-
-    native.cc_library(
+    _cc_library(
         name = name,
         copts = copts + ["-fexceptions"],
         features = features + [

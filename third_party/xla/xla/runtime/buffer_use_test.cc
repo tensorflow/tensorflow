@@ -16,8 +16,8 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "xla/service/buffer_assignment.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -26,12 +26,60 @@ TEST(BufferUseTest, Equality) {
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
 
-  BufferUse use0(slice0, BufferUse::MemoryAccess::kRead);
-  BufferUse use1(slice0, BufferUse::MemoryAccess::kWrite);
-  BufferUse use2(slice0, BufferUse::MemoryAccess::kRead);
+  BufferUse use_read0 = BufferUse::Read(slice0);
+  BufferUse use_read1 = BufferUse::Read(slice0);
+  BufferUse use_write = BufferUse::Write(slice0);
+  BufferUse use_scratch = BufferUse::Scratch(slice0);
+  BufferUse use_consume = BufferUse::Consume(slice0);
 
-  EXPECT_NE(use0, use1);
-  EXPECT_EQ(use0, use2);
+  EXPECT_EQ(use_read0, use_read1);
+  EXPECT_NE(use_read0, use_write);
+  EXPECT_NE(use_read0, use_scratch);
+  EXPECT_NE(use_read0, use_consume);
+
+  EXPECT_NE(use_write, use_scratch);
+  EXPECT_NE(use_write, use_consume);
+
+  EXPECT_NE(use_scratch, use_consume);
+}
+
+TEST(BufferUseTest, HasDefinedContents) {
+  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, 0, 10);
+
+  BufferUse read = BufferUse::Read(slice);
+  EXPECT_TRUE(read.HasDefinedContentsOnInput());
+  EXPECT_TRUE(read.HasDefinedContentsOnOutput());
+
+  BufferUse write = BufferUse::Write(slice);
+  EXPECT_FALSE(write.HasDefinedContentsOnInput());
+  EXPECT_TRUE(write.HasDefinedContentsOnOutput());
+
+  BufferUse scratch = BufferUse::Scratch(slice);
+  EXPECT_FALSE(scratch.HasDefinedContentsOnInput());
+  EXPECT_FALSE(scratch.HasDefinedContentsOnOutput());
+
+  BufferUse consume = BufferUse::Consume(slice);
+  EXPECT_TRUE(consume.HasDefinedContentsOnInput());
+  EXPECT_FALSE(consume.HasDefinedContentsOnOutput());
+}
+
+TEST(BufferUseTest, AbslStringify) {
+  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, 0, 10);
+
+  EXPECT_EQ(
+      absl::StrCat(BufferUse::Read(slice)),
+      "{slice: {index:0, offset:0, size:10}, access: R, content_validity: IO}");
+  EXPECT_EQ(
+      absl::StrCat(BufferUse::Write(slice)),
+      "{slice: {index:0, offset:0, size:10}, access: W, content_validity: O}");
+  EXPECT_EQ(
+      absl::StrCat(BufferUse::Scratch(slice)),
+      "{slice: {index:0, offset:0, size:10}, access: W, content_validity: }");
+  EXPECT_EQ(
+      absl::StrCat(BufferUse::Consume(slice)),
+      "{slice: {index:0, offset:0, size:10}, access: W, content_validity: I}");
 }
 
 TEST(BufferUseTest, ReadWriteSet) {

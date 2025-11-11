@@ -16,17 +16,25 @@ limitations under the License.
 #ifndef XLA_HLO_IR_BACKEND_CONFIG_H_
 #define XLA_HLO_IR_BACKEND_CONFIG_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "google/protobuf/message.h"
+#include "tsl/platform/human_readable_json.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
+
+template <typename T>
+using EnableIfProto = typename std::enable_if_t<
+    std::is_base_of<tsl::protobuf::Message, T>::value>;
 
 // Returns a string representation of a proto in the format used by
 // HloInstruction::raw_backend_config_string.
@@ -48,7 +56,7 @@ std::unique_ptr<tsl::protobuf::Message> CloneBackendConfigProto(
 // A wrapper around the BackendConfig proto. It can be initialized either with
 // a proto object or a string representing the JSON encoding of a proto. Once
 // the wrapper is initialized (either during construction or via an assignment)
-// it becomes immutable and any further assignment attempts will fail.
+// it can only be mutated by calling the ApplyFnOnProto method.
 //
 // When the wrapper is initialized only the provided format is stored. If the
 // other format is requested from the wrapper later, it is lazily computed and
@@ -65,7 +73,7 @@ class BackendConfigWrapper {
   explicit BackendConfigWrapper(const tsl::protobuf::Message& proto)
       : proto_(CloneBackendConfigProto(&proto)) {}
   BackendConfigWrapper(const BackendConfigWrapper& other) {
-    absl::MutexLock other_lock{&other.mutex_};
+    absl::MutexLock other_lock{other.mutex_};
     proto_ = CloneBackendConfigProto(other.proto_.get());
     raw_string_ = other.raw_string_;
   }
@@ -87,13 +95,62 @@ class BackendConfigWrapper {
   //
   //          Prefer to use the safer (but potentially slower) GetProto().
   const std::string& GetRawString() const {
-    absl::WriterMutexLock lock{&mutex_};
+    absl::WriterMutexLock lock{mutex_};
     return GetRawStringWithoutMutex();
   }
   absl::Status GetProto(tsl::protobuf::Message* output_proto) const;
 
+  // Type trait to check if a type has the mutable_custom_call_metadata method.
+  template <typename T, typename = void>
+  struct has_mutable_custom_call_metadata : std::false_type {};
+
+  template <typename T>
+  struct has_mutable_custom_call_metadata<
+      T,
+      std::void_t<decltype(std::declval<T>().mutable_custom_call_metadata())>>
+      : std::true_type {};
+
+  // Applies a function `fn` to the underlying proto. The function receives a
+  // mutable pointer to a proto of type `ConfigProto`.
+  //
+  // If there is no proto initialized, will try to initialize from the
+  // raw_string_. If raw_string_ is also empty, will return an error.
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::Status ApplyFnOnProto(
+      const std::function<absl::Status(ConfigProto*)>& fn) {
+    absl::WriterMutexLock lock{mutex_};
+    if (proto_ == nullptr) {
+      if (raw_string_.empty()) {
+        return absl::InvalidArgumentError(
+            "Has no proto to apply the modifier function on.");
+      }
+      auto proto = std::make_unique<ConfigProto>();
+      absl::Status status =
+          tsl::HumanReadableJsonToProto(raw_string_, proto.get());
+      if (!status.ok()) {
+        // If the proto is unparsable, move the raw string to the custom call
+        // metadata field. This preserves the original string for lowering
+        // emitters that might depend on it.
+        if constexpr (has_mutable_custom_call_metadata<ConfigProto>::value) {
+          auto* custom_call_metadata = proto->mutable_custom_call_metadata();
+          custom_call_metadata->set_metadata(raw_string_);
+          VLOG(1) << "Moving the unparsable backend config " << raw_string_
+                  << " to custom call metadata.";
+          raw_string_.clear();
+        } else {
+          return status;
+        }
+      }
+      proto_ = std::move(proto);
+    }
+    absl::Status status = fn(static_cast<ConfigProto*>(proto_.get()));
+    // Invalidate string cache, as the proto might have been mutated.
+    raw_string_.clear();
+    return status;
+  }
+
   bool empty() const {
-    absl::MutexLock lock{&mutex_};
+    absl::MutexLock lock{mutex_};
     return proto_ == nullptr && raw_string_.empty();
   }
 

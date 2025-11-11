@@ -113,7 +113,8 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
 
   if (fusion_backend_config.kind() == kTritonFusionKind ||
       fusion_backend_config.kind() == kTritonGemmFusionKind ||
-      fusion_backend_config.kind() == kTritonNestedGemmFusionKind) {
+      fusion_backend_config.kind() == kTritonNestedGemmFusionKind ||
+      fusion_backend_config.kind() == kTritonScaledDotFusionKind) {
     return HloFusionAnalysis::EmitterFusionKind::kTriton;
   }
 
@@ -202,6 +203,14 @@ int SmallestBitWidth(const Container& args) {
 }
 
 }  // namespace
+
+bool IsGpuFusionKind(const HloInstruction& hlo, absl::string_view kind) {
+  auto gpu_config = hlo.backend_config<GpuBackendConfig>();
+  if (!gpu_config.ok()) {
+    return false;
+  }
+  return gpu_config->fusion_backend_config().kind() == kind;
+}
 
 HloFusionAnalysis::HloFusionAnalysis(
     FusionBackendConfig fusion_backend_config, HloFusionSpec fusion_spec,

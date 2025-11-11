@@ -60,8 +60,18 @@ bool SetReificationCost(HloInstruction* instr, double cost_us) {
     return false;
   }
   auto reification_cost = gpu_config->add_reification_cost();
+  VLOG(3) << "Setting exec_time_us=" << cost_us << " for " << instr->name()
+          << " in SolGpuCostModelStatsCollection";
   reification_cost->set_exec_time_us(cost_us);
   reification_cost->set_name("sol");
+  if (instr->opcode() == HloOpcode::kAsyncStart &&
+      instr->async_wrapped_instruction() != nullptr) {
+    VLOG(9) << "AsyncStart: Setting reification cost for async start "
+            << instr->ToString() << " computation:"
+            << instr->async_wrapped_computation()->ToString();
+    return SetReificationCost(
+        instr->async_wrapped_computation()->root_instruction(), cost_us);
+  }
   return instr->set_backend_config(*gpu_config).ok();
 }
 
@@ -72,15 +82,19 @@ bool RecordReificationCost(HloInstruction& instr,
     HloGraphNode from(&instr, /*original_position=*/-1);
     HloGraphNode to(instr.users()[0], /*original_position=*/-1);
     if (estimator.IsAsyncPair(from, to)) {
+      VLOG(10) << "Recording reification cost for async pair from: "
+               << instr.ToString() << " to: " << instr.users()[0]->ToString();
       return SetReificationCost(&instr, estimator.GetLatencyBetween(from, to));
     }
   }
+  VLOG(10) << "Recording reification cost for single node: "
+           << instr.ToString();
   return SetReificationCost(&instr, estimator.NodeCost(&instr));
 }
 
 }  // namespace
 
-absl::StatusOr<bool> SolGpuCostModelStatsCollection::Run(
+absl::StatusOr<bool> SolGpuCostModelStatsCollection::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto cost_analysis =
@@ -105,7 +119,7 @@ absl::StatusOr<bool> SolGpuCostModelStatsCollection::Run(
           scheduler_config,
           std::make_unique<GpuLatencyEstimator>(pointer_size_), device_info_,
           shape_size_in_bytes_fn_, module->entry_computation(),
-          std::move(cost_analysis)));
+          symbolic_expr_context_, std::move(cost_analysis)));
 
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {

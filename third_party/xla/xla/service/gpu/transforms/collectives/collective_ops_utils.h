@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 
-#include <cstdint>
-
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -28,32 +26,29 @@ namespace xla {
 namespace gpu {
 
 enum class GPUCommunicationType {
+  // The communication type could not be determined.
   UNDEFINED = 0,
-  RAIL_ALIGNED = 1,
-  NON_RAIL_ALIGNED = 2,
-  SINGLE_HOST = 3
+  // Communication involves devices from multiple hosts, and every host
+  // involved in the communication pattern has all of its devices participating.
+  MULTI_HOST_WORLD_LEVEL = 1,
+  // Communication involves devices from multiple hosts, but at least one of
+  // the involved hosts has only a subset of its devices participating.
+  MULTI_HOST_NON_WORLD_LEVEL = 2,
+  // All devices participating in the collective operation reside on the same
+  // fast-interconnect domain.
+  SINGLE_PARTITION = 3
 };
 
 // Returns the type of communication pattern for a channel instruction.
 absl::StatusOr<GPUCommunicationType> CommunicationType(
-    int num_devices_per_host, const HloChannelInstruction& instr,
+    int partition_size, const HloChannelInstruction& instr,
     const se::GpuComputeCapability& gpu_version);
 
 // Returns true if instruction is a synchronous collective op.
 bool IsGPUSyncCollective(const HloInstruction& instr);
 
-enum class GPUTopologyType {
-  UNKNOWN = 0,
-  SINGLE_HOST = 1,
-  MULTI_HOST = 2,
-};
-
-// Returns true if heuristic collective combining is enabled.
-// Heuristic collective combining enables more aggressive optimizations based
-// on the platform and HLO's topology.
-bool EnableHeuristicCollectiveCombining(
-    const HloModuleConfig& config,
-    const se::DeviceDescription& device_description, int64_t nvlink_slice_size);
+// Returns true if all devices are within the same NVLink domain (slice).
+bool IsIntraNVLinkDomain(const HloModuleConfig& config, int64_t slice_size);
 
 }  // namespace gpu
 }  // namespace xla

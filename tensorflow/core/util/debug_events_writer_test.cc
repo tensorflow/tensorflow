@@ -37,8 +37,8 @@ Env* env() { return Env::Default(); }
 
 class DebugEventsWriterTest : public ::testing::Test {
  public:
-  static string GetDebugEventFileName(DebugEventsWriter* writer,
-                                      DebugEventFileType type) {
+  static std::string GetDebugEventFileName(DebugEventsWriter* writer,
+                                           DebugEventFileType type) {
     return writer->FileName(type);
   }
 
@@ -46,12 +46,12 @@ class DebugEventsWriterTest : public ::testing::Test {
                                    DebugEventFileType type,
                                    std::vector<DebugEvent>* protos) {
     protos->clear();
-    const string filename = writer->FileName(type);
+    const std::string filename = writer->FileName(type);
     std::unique_ptr<RandomAccessFile> debug_events_file;
     TF_CHECK_OK(env()->NewRandomAccessFile(filename, &debug_events_file));
     io::RecordReader* reader = new io::RecordReader(debug_events_file.get());
 
-    uint64 offset = 0;
+    uint64_t offset = 0;
     DebugEvent actual;
     while (ReadDebugEventProto(reader, &offset, &actual)) {
       protos->push_back(actual);
@@ -60,7 +60,7 @@ class DebugEventsWriterTest : public ::testing::Test {
     delete reader;
   }
 
-  static bool ReadDebugEventProto(io::RecordReader* reader, uint64* offset,
+  static bool ReadDebugEventProto(io::RecordReader* reader, uint64_t* offset,
                                   DebugEvent* proto) {
     tstring record;
     absl::Status s = reader->ReadRecord(offset, &record);
@@ -88,8 +88,8 @@ class DebugEventsWriterTest : public ::testing::Test {
     }
   }
 
-  string dump_root_;
-  string tfdbg_run_id_;
+  std::string dump_root_;
+  std::string tfdbg_run_id_;
 };
 
 TEST_F(DebugEventsWriterTest, GetDebugEventsWriterSameRootGivesSameObject) {
@@ -134,7 +134,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentGetDebugEventsWriterDiffDumpRoots) {
   std::vector<DebugEventsWriter*> writers;
   mutex mu;
   auto fn = [this, &counter, &writers, &mu]() {
-    const string new_dump_root =
+    const std::string new_dump_root =
         io::JoinPath(dump_root_, strings::Printf("%ld", counter.fetch_add(1)));
     DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
         new_dump_root, tfdbg_run_id_,
@@ -159,7 +159,7 @@ TEST_F(DebugEventsWriterTest, GetDebugEventsWriterDifferentRoots) {
   // Test the DebugEventsWriters for different directories are different.
   DebugEventsWriter* writer_1 = DebugEventsWriter::GetDebugEventsWriter(
       dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
-  const string dump_root_2 = io::JoinPath(dump_root_, "subdirectory");
+  const std::string dump_root_2 = io::JoinPath(dump_root_, "subdirectory");
   DebugEventsWriter* writer_2 = DebugEventsWriter::GetDebugEventsWriter(
       dump_root_2, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
   EXPECT_NE(writer_1, writer_2);
@@ -177,7 +177,7 @@ TEST_F(DebugEventsWriterTest, GetAndInitDebugEventsWriter) {
   EXPECT_EQ(actuals.size(), 1);
   EXPECT_GT(actuals[0].debug_metadata().tensorflow_version().length(), 0);
   // Check the content of the file version string.
-  const string file_version = actuals[0].debug_metadata().file_version();
+  const std::string file_version = actuals[0].debug_metadata().file_version();
   EXPECT_EQ(file_version.find(DebugEventsWriter::kVersionPrefix), 0);
   EXPECT_GT(file_version.size(), strlen(DebugEventsWriter::kVersionPrefix));
   // Check the tfdbg run ID.
@@ -223,7 +223,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentInitCalls) {
   EXPECT_EQ(actuals.size(), 1);
   EXPECT_GT(actuals[0].debug_metadata().tensorflow_version().length(), 0);
   // Check the content of the file version string.
-  const string file_version = actuals[0].debug_metadata().file_version();
+  const std::string file_version = actuals[0].debug_metadata().file_version();
   EXPECT_EQ(file_version.find(DebugEventsWriter::kVersionPrefix), 0);
   EXPECT_GT(file_version.size(), strlen(DebugEventsWriter::kVersionPrefix));
   EXPECT_EQ(actuals[0].debug_metadata().tfdbg_run_id(), "test_tfdbg_run_id");
@@ -247,7 +247,7 @@ TEST_F(DebugEventsWriterTest, InitTwiceDoesNotCreateNewMetadataFile) {
   EXPECT_EQ(actuals[0].debug_metadata().tfdbg_run_id(), "test_tfdbg_run_id");
   EXPECT_GE(actuals[0].debug_metadata().file_version().size(), 0);
 
-  string metadata_path_1 =
+  std::string metadata_path_1 =
       GetDebugEventFileName(writer, DebugEventFileType::METADATA);
   TF_ASSERT_OK(writer->Init());
   EXPECT_EQ(GetDebugEventFileName(writer, DebugEventFileType::METADATA),
@@ -434,7 +434,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheSameFile) {
       new thread::ThreadPool(Env::Default(), "test_pool", 8);
   std::atomic_int_fast64_t counter(0);
   auto fn = [&writer, &counter]() {
-    const string file_path = strings::Printf(
+    const std::string file_path = strings::Printf(
         "/home/tf_programs/program_%.3ld.py", counter.fetch_add(1));
     SourceFile* source_file = new SourceFile();
     source_file->set_file_path(file_path);
@@ -451,8 +451,8 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheSameFile) {
   std::vector<DebugEvent> actuals;
   ReadDebugEventProtos(writer, DebugEventFileType::SOURCE_FILES, &actuals);
   EXPECT_EQ(actuals.size(), kConcurrentWrites);
-  std::vector<string> file_paths;
-  std::vector<string> host_names;
+  std::vector<std::string> file_paths;
+  std::vector<std::string> host_names;
   for (size_t i = 0; i < kConcurrentWrites; ++i) {
     file_paths.push_back(actuals[i].source_file().file_path());
     host_names.push_back(actuals[i].source_file().host_name());
@@ -475,7 +475,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteAndFlushCallsToTheSameFile) {
       new thread::ThreadPool(Env::Default(), "test_pool", 8);
   std::atomic_int_fast64_t counter(0);
   auto fn = [&writer, &counter]() {
-    const string file_path = strings::Printf(
+    const std::string file_path = strings::Printf(
         "/home/tf_programs/program_%.3ld.py", counter.fetch_add(1));
     SourceFile* source_file = new SourceFile();
     source_file->set_file_path(file_path);
@@ -493,8 +493,8 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteAndFlushCallsToTheSameFile) {
   std::vector<DebugEvent> actuals;
   ReadDebugEventProtos(writer, DebugEventFileType::SOURCE_FILES, &actuals);
   EXPECT_EQ(actuals.size(), kConcurrentWrites);
-  std::vector<string> file_paths;
-  std::vector<string> host_names;
+  std::vector<std::string> file_paths;
+  std::vector<std::string> host_names;
   for (size_t i = 0; i < kConcurrentWrites; ++i) {
     file_paths.push_back(actuals[i].source_file().file_path());
     host_names.push_back(actuals[i].source_file().host_name());
@@ -545,8 +545,8 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
   std::vector<DebugEvent> actuals;
   ReadDebugEventProtos(writer, DebugEventFileType::SOURCE_FILES, &actuals);
   EXPECT_EQ(actuals.size(), kConcurrentWrites / 3);
-  std::vector<string> file_paths;
-  std::vector<string> host_names;
+  std::vector<std::string> file_paths;
+  std::vector<std::string> host_names;
   for (int32_t i = 0; i < kConcurrentWrites / 3; ++i) {
     file_paths.push_back(actuals[i].source_file().file_path());
     host_names.push_back(actuals[i].source_file().host_name());
@@ -560,7 +560,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
 
   ReadDebugEventProtos(writer, DebugEventFileType::STACK_FRAMES, &actuals);
   EXPECT_EQ(actuals.size(), kConcurrentWrites / 3);
-  std::vector<string> stack_frame_ids;
+  std::vector<std::string> stack_frame_ids;
   for (int32_t i = 0; i < kConcurrentWrites / 3; ++i) {
     stack_frame_ids.push_back(actuals[i].stack_frame_with_id().id());
   }
@@ -571,8 +571,8 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
 
   ReadDebugEventProtos(writer, DebugEventFileType::GRAPHS, &actuals);
   EXPECT_EQ(actuals.size(), kConcurrentWrites / 3);
-  std::vector<string> op_types;
-  std::vector<string> op_names;
+  std::vector<std::string> op_types;
+  std::vector<std::string> op_names;
   for (int32_t i = 0; i < kConcurrentWrites / 3; ++i) {
     op_types.push_back(actuals[i].graph_op_creation().op_type());
     op_names.push_back(actuals[i].graph_op_creation().op_name());
@@ -809,7 +809,7 @@ TEST_F(DebugEventsWriterTest, RegisterDeviceAndGetIdTrace) {
   int device_ids[8];
   for (int i = 0; i < 8; ++i) {
     thread_pool->Schedule([i, &writer, &device_ids]() {
-      const string device_name = strings::Printf(
+      const std::string device_name = strings::Printf(
           "/job:localhost/replica:0/task:0/device:GPU:%d", i % 4);
       device_ids[i] = writer->RegisterDeviceAndGetId(device_name);
     });
@@ -833,7 +833,7 @@ TEST_F(DebugEventsWriterTest, RegisterDeviceAndGetIdTrace) {
   // are 8 threads each calling `RegisterDeviceAndGetId`.
   EXPECT_EQ(actuals.size(), 4);
   for (const DebugEvent& actual : actuals) {
-    const string& device_name = actual.debugged_device().device_name();
+    const std::string& device_name = actual.debugged_device().device_name();
     int device_index = -1;
     CHECK(absl::SimpleAtoi(device_name.substr(strlen(
                                "/job:localhost/replica:0/task:0/device:GPU:")),

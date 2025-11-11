@@ -32,9 +32,10 @@ namespace tensorflow {
 class Tensor;
 
 struct ShapeInferenceTestOp {
-  typedef std::pair<string, DataType> ShapeAndType;
-  explicit ShapeInferenceTestOp(absl::string_view name) : name(string(name)) {}
-  string name;
+  typedef std::pair<std::string, DataType> ShapeAndType;
+  explicit ShapeInferenceTestOp(absl::string_view name)
+      : name(std::string(name)) {}
+  std::string name;
   NodeDef node_def;
   std::vector<const Tensor*> input_tensors;
   std::vector<std::vector<ShapeAndType>*>
@@ -67,15 +68,16 @@ class ShapeInferenceTestutil {
   //            the second is which dimension in that input it corresponds to.
   // <expected_outs> can be "e"; this is used to indicate that shape inference
   // should have failed.
-  static absl::Status InferShapes(ShapeInferenceTestOp op, const string& ins,
-                                  const string& expected_outs);
+  static absl::Status InferShapes(ShapeInferenceTestOp op,
+                                  const std::string& ins,
+                                  const std::string& expected_outs);
 
  private:
   ShapeInferenceTestutil() = default;
 
   // Makes a shape out of 'spec'.
   static absl::Status MakeShapeFromString(
-      InferenceContext::ShapeManager* manager, const string& spec,
+      InferenceContext::ShapeManager* manager, const std::string& spec,
       ShapeHandle* output);
 };
 

@@ -56,6 +56,20 @@ TEST_F(HloInstructionUtilsTest, TestIsUnstridedSlice) {
   EXPECT_FALSE(IsUnstridedSlice(strided_slice));
 }
 
+TEST_F(HloInstructionUtilsTest, KeepsBitwidth) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  a = s8[2] parameter(0)
+  b = s16[] bitcast(a)
+  c = s16[] add(b, b)
+})"));
+  const HloInstruction& root = *m->entry_computation()->root_instruction();
+  EXPECT_TRUE(KeepsBitwidth(root));
+  EXPECT_FALSE(KeepsBitwidth(*root.operand(0)));
+  EXPECT_TRUE(KeepsBitwidth(*root.operand(0)->operand(0)));
+}
+
 TEST_F(HloInstructionUtilsTest, TestAddOrUpdateVectorOfPairsAsAttribute) {
   const char* hlo = R"(
     HloModule test

@@ -93,12 +93,7 @@ class AddLoopUnrollFlagsPass
   static int64_t RecursiveWalk(
       mlir::scf::ForOp for_op,
       llvm::DenseMap<mlir::scf::ForOp, int64_t>& nested_iteration_map) {
-    auto lb = for_op.getLowerBound();
-    auto ub = for_op.getUpperBound();
-    auto step = for_op.getStep();
-
-    std::optional<int64_t> this_trip_count =
-        mlir::constantTripCount(lb, ub, step);
+    std::optional<llvm::APInt> this_trip_count = for_op.getStaticTripCount();
 
     if (!this_trip_count.has_value()) {
       return 0;
@@ -113,11 +108,13 @@ class AddLoopUnrollFlagsPass
 
     nested_iteration_map.insert({for_op, nested_iterations});
 
+    int64_t this_trip_count_int = this_trip_count->getZExtValue();
+
     if (nested_iterations == 0) {
-      return *this_trip_count;
+      return this_trip_count_int;
     }
 
-    return *this_trip_count * nested_iterations;
+    return this_trip_count_int * nested_iterations;
   }
 };
 

@@ -24,40 +24,22 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Simplifies or eliminates padding introduced by CudnnPadForConvolutions and
-// CudnnVectorizeConvolutions.
+// Simplifies or eliminates padding introduced by CudnnPadForConvolutions.
 //
-// CudnnVectorizeConvolutions will generate code that does the following.
-//  - pad input and output features to a multiple of 32 (or 4),
-//  - reshape input from [N,C,H,W] to [N,C/32,H,W,32] and reshape kernel from
-//    [I,O,H,W] to [I/32,32,O,H,W],
-//  - run the conv,
-//  - reshape output from [N,C/32,H,W,32] to [N,C,H,W], and finally
-//  - slice off the padding on the C channel.
-//
-// But if this is followed by another convolution (very common), then the slice
-// is immediately followed by another pad. This may be redundant; we know that
-// the trailing channels sliced off from the first conv are 0.
-//
-// Ideally we can eliminate the whole reshape+slice+pad+reshape sequence between
-// the two convolutions.
-//
-// Specifically, this pass tries to merge the slice at the end of the sequence
-// above into the pad from the next convolution (when we can prove that the
-// sliced-off elements are all 0). We then rely on algsimp to remove the pad if
-// it's a nop and then to merge and eliminate the remaining reshapes.
-//
-// This pass should run after CudnnVectorizeConvolutions and there should be no
-// simplification passes in between that modify the reshape-transpose-reshape
-// introduced by int8x32 convolution filter reordering.
+// If a convolution's weights are padded with 0s in the output feature
+// dimension, then the convolution output will contain 0s in corresponding
+// features. If these zero features are sliced off, and then padded back with 0s
+// (e.g. as input to another convolution), this slice+pad sequence may be
+// redundant. This pass simplifies such slice+pad sequences by merging the slice
+// into the pad. We then rely on algsimp to remove the pad if it's a nop.
 class CudnnSimplifyPadding : public HloModulePass {
  public:
   CudnnSimplifyPadding() = default;
 
   absl::string_view name() const override { return "cudnn_simplify_padding"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

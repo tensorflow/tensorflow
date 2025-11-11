@@ -110,7 +110,7 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
 
-  auto size_fn = [](const BufferValue& buffer) {
+  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
 
@@ -124,7 +124,7 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
       HloAliasAnalysis::Run(module.get(), &alias_info_).value();
   EXPECT_EQ(25, HeapSimulator::MinimumMemoryForModule(schedule, *alias_analysis,
-                                                      &alias_info_, size_fn)
+                                                      &alias_info_, &size_fn)
                     .value());
 }
 
@@ -230,7 +230,7 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   schedule.set_sequence(body_computation, while_body_vec);
   schedule.set_sequence(entry_computation, entry_comp_vec);
 
-  auto size_fn = [](const BufferValue& buffer) {
+  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape());
   };
 
@@ -241,7 +241,7 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   // so we don't double count.
   EXPECT_EQ(64, HeapSimulator::MinimumMemoryForComputation(
                     *entry_computation, schedule.sequence(entry_computation),
-                    *alias_analysis, &alias_info_, size_fn)
+                    *alias_analysis, &alias_info_, &size_fn)
                     .value());
 }
 
@@ -352,12 +352,13 @@ class HeapSimulatorTracker {
     // the sequence. This lets us ensure the Alloc calls are in the sequence
     // order. The Free calls are sorted by BufferValue.id, which is at least
     // deterministic.
-    auto size_fn = [&reverse_position](const BufferValue& buffer) {
-      return reverse_position[buffer.instruction()];
-    };
+    BufferValue::SizeFunction size_fn =
+        [&reverse_position](const BufferValue& buffer) {
+          return reverse_position[buffer.instruction()];
+        };
     auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
     result_ = HeapSimulator::Run(std::move(algorithm), *module_, schedule,
-                                 *alias_analysis_, &alias_info_, size_fn)
+                                 *alias_analysis_, &alias_info_, &size_fn)
                   .value();
   }
 
@@ -416,7 +417,9 @@ class HeapSimulatorTracker {
     // size of the buffers doesn't matter, so we always return 0.  We rely on
     // the secondary sorting criteria of DecreasingSizeRunsHeap to sort calls
     // by buffer id, for determinism in the tests.
-    auto zero_size = [](const BufferValue& buffer) { return 0; };
+    BufferValue::SizeFunction zero_size = [](const BufferValue& buffer) {
+      return 0;
+    };
     auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
 
     alias_analysis_ = HloAliasAnalysis::Run(module_.get(), alias_info).value();
@@ -426,7 +429,7 @@ class HeapSimulatorTracker {
     result_ =
         HeapSimulator::Run(std::move(algorithm), *module_->entry_computation(),
                            HloInstructionSequence(instruction_sequence),
-                           *alias_analysis_, &alias_info_, zero_size, options)
+                           *alias_analysis_, &alias_info_, &zero_size, options)
             .value();
   }
 
@@ -998,7 +1001,7 @@ TEST_F(HeapSimulatorTest, AsyncCallImplicitSharding) {
                           ParseAndReturnUnverifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
                           HloAliasAnalysis::Run(module.get(), &alias_info_));
-  auto size_fn = [](const BufferValue& buffer) -> int64_t {
+  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) -> int64_t {
     const Shape& shape = buffer.shape();
     if (!shape.IsArray()) {
       return 0;
@@ -1010,7 +1013,7 @@ TEST_F(HeapSimulatorTest, AsyncCallImplicitSharding) {
 
   HeapSimulator::Result<HloValue> result =
       HeapSimulator::Run(std::move(algorithm), *module, module->schedule(),
-                         *alias_analysis, &alias_info_, size_fn)
+                         *alias_analysis, &alias_info_, &size_fn)
           .value();
   for (const auto& [value, chunk] : result.heap_results[0].chunk_map) {
     if (value->instruction()->name() == "dynamic-update-slice") {

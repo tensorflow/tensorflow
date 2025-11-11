@@ -110,7 +110,7 @@ TEST_F(StablehloUtilsTest, ConvertShardyToHloNoSharding) {
 
   const std::string kExpectedHloPattern = R"(
   CHECK: Arg_0.1 = f32[400,400]{1,0} parameter(0), sharding={replicated}
-  CHECK: Arg_1.2 = f32[400,400]{1,0} parameter(1), sharding={replicated}
+  CHECK: Arg_1.1 = f32[400,400]{1,0} parameter(1), sharding={replicated}
   )";
 
   ConvertShardyAndCompare(kShardyMlirString, kExpectedHloPattern);
@@ -123,7 +123,7 @@ TEST_F(StablehloUtilsTest, ConvertShardyToHlo1DSharding) {
 
   const std::string kExpectedHloPattern = R"(
   CHECK: %Arg_0.1 = f32[400,400]{1,0} parameter(0), sharding={devices=[4,1,2]<=[8] last_tile_dim_replicate}
-  CHECK: %Arg_1.2 = f32[400,400]{1,0} parameter(1), sharding={replicated}
+  CHECK: %Arg_1.1 = f32[400,400]{1,0} parameter(1), sharding={replicated}
   )";
 
   ConvertShardyAndCompare(kShardyMlirString, kExpectedHloPattern);
@@ -136,7 +136,7 @@ TEST_F(StablehloUtilsTest, ConvertShardyToHlo2DSharding) {
 
   const std::string kExpectedHloPattern = R"(
   CHECK: %Arg_0.1 = f32[400,400]{1,0} parameter(0), sharding={devices=[4,1,2]<=[8] last_tile_dim_replicate}
-  CHECK:  %Arg_1.2 = f32[400,400]{1,0} parameter(1), sharding={devices=[1,2,4]<=[4,2]T(1,0) last_tile_dim_replicate}
+  CHECK:  %Arg_1.1 = f32[400,400]{1,0} parameter(1), sharding={devices=[1,2,4]<=[4,2]T(1,0) last_tile_dim_replicate}
   )";
 
   ConvertShardyAndCompare(kShardyMlirString, kExpectedHloPattern);
@@ -158,10 +158,10 @@ TEST_F(StablehloUtilsTest, ConvertShardyToHloDataFlowEdge) {
   )MLIR";
 
   const std::string kExpectedHloPattern = R"(
-  CHECK: %region_0.7 (Arg_.4: s64[4]) -> s64[4]
-  CHECK: %region_1.11 (Arg_.8: s64[4]) -> s64[4]
-  CHECK: ENTRY %main.13 (Arg_0.1: s32[], Arg_1.2: s64[4], Arg_2.3: s64[4]) -> s64[4]
-  CHECK: ROOT %conditional.12 = s64[4]{0} conditional(%Arg_0.1, %Arg_1.2, %Arg_2.3), branch_computations={%region_0.7, %region_1.11}, sharding={replicated}
+  CHECK: %region_0.1 (Arg_.1: s64[4]) -> s64[4]
+  CHECK: %region_1.2 (Arg_.3: s64[4]) -> s64[4]
+  CHECK: ENTRY %main.3 (Arg_0.1: s32[], Arg_1.1: s64[4], Arg_2.1: s64[4]) -> s64[4]
+  CHECK: ROOT %conditional.1 = s64[4]{0} conditional(%Arg_0.1, %Arg_1.1, %Arg_2.1), branch_computations={%region_0.1, %region_1.2}, sharding={replicated}
   )";
 
   ConvertShardyAndCompare(kShardyMlirString, kExpectedHloPattern);

@@ -153,7 +153,9 @@ void createIfrtToOutlinedAtomProgramsPipeline(
 void createIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm);
 
 // Creates pipeline to lower an IFRT XLA program to be ready for compilation.
-void createIfrtCompileXlaPreprocessingPipeline(mlir::OpPassManager& pm);
+void createIfrtCompileXlaPreprocessingPipeline(
+    mlir::OpPassManager& pm,
+    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options);
 
 struct OutlinedAtomProgramsToCompiledPipelineOptions
     : mlir::PassPipelineOptions<OutlinedAtomProgramsToCompiledPipelineOptions> {

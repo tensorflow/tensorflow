@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/custom_call_status.h"
-#include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
@@ -55,16 +55,6 @@ namespace cpu {
 // architecture, so JIT-ed code and host code share the same ABI.
 class CpuExecutable : public Executable {
  public:
-  // Creates a CpuExecutable from JIT compiled cpu function by resolving
-  // `entry_function_name` in the `jit`.
-  static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
-      std::unique_ptr<FunctionLibrary> function_library,
-      std::unique_ptr<BufferAssignment> assignment,
-      std::unique_ptr<HloModule> hlo_module,
-      const std::string& entry_function_name,
-      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
-
   // Creates a CpuExecutable from a thunk sequence.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
       std::unique_ptr<FunctionLibrary> function_library,
@@ -72,19 +62,14 @@ class CpuExecutable : public Executable {
       std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
       std::vector<ConstantAllocation> constants,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
+      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+      TargetMachineOptionsProto target_machine_options);
 
   ~CpuExecutable() override;
 
   absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments) override;
-
-  // Calls the generated function performing the computation with the given
-  // arguments using the supplied buffers.
-  absl::Status ExecuteComputeFunction(
-      const ExecutableRunOptions* run_options,
-      absl::Span<MaybeOwningDeviceMemory const> buffers);
 
   // Calls emitted thunk sequence with the given arguments using the supplied
   // buffers.
@@ -140,27 +125,20 @@ class CpuExecutable : public Executable {
 
   static int64_t ShapeSizeBytes(const Shape& shape);
 
-  // Type of the computation function we expect in the JIT.
-  using ComputeFunctionType =
-      void (*)(void* /*result*/, const ExecutableRunOptions* /*run_options*/,
-               const void** /*args*/, void** /*buffer_table*/,
-               XlaCustomCallStatus* /*status*/, int64_t* /*profile_counters*/);
-
-  bool has_compute_function() const { return compute_function_ != nullptr; }
-  ComputeFunctionType compute_function() const { return compute_function_; }
-
   bool has_thunks() const { return thunks_.has_value(); }
   ThunkExecutor& thunks() { return *thunks_; }
 
   bool has_xnn_fusions() const { return has_xnn_fusions_; }
+  bool has_ynn_fusions() const { return has_ynn_fusions_; }
 
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
   absl::Span<const ConstantAllocation> constants() const { return constants_; }
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
-  absl::Span<const BufferAllocation> GetAllocations() const override {
-    return assignment_->Allocations();
+  absl::Span<const BufferAllocation* absl_nonnull const> GetAllocations()
+      const override {
+    return alloc_ptrs_;
   }
 
   FunctionLibrary* function_library() const { return function_library_.get(); }
@@ -172,6 +150,10 @@ class CpuExecutable : public Executable {
   // Finalize construction of the CpuExecutable and finalize all internal data
   // structures that might have been used at compile time.
   void Finalize();
+
+  const TargetMachineOptionsProto& target_machine_options() const {
+    return target_machine_options_;
+  }
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
@@ -225,6 +207,7 @@ class CpuExecutable : public Executable {
 
   // Buffer assignment for the buffers we need to allocate.
   std::shared_ptr<BufferAssignment> assignment_;
+  std::vector<const BufferAllocation*> alloc_ptrs_;
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving
@@ -245,9 +228,6 @@ class CpuExecutable : public Executable {
   // We are currently transitioning from (1) to (2) with a long term plan to
   // unify thunk-based runtime with all XLA backends.
 
-  // A function pointer to the jit-compiled entry function.
-  ComputeFunctionType compute_function_ = nullptr;
-
   // A thunk executor created from the compiled thunk sequence.
   std::optional<ThunkExecutor> thunks_;
   // Vector indexed by BufferAllocation::Index for efficient access.
@@ -256,13 +236,19 @@ class CpuExecutable : public Executable {
   // Whether the thunk executor contains any XNN fusion thunks.
   bool has_xnn_fusions_ = false;
 
+  // Whether the thunk executor contains any YNN fusion thunks.
+  bool has_ynn_fusions_ = false;
+
+  TargetMachineOptionsProto target_machine_options_;
+
   // Entry function name for the computation.
   std::string entry_function_name_;
 
   CpuExecutable(std::unique_ptr<HloModule> hlo_module,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-                std::unique_ptr<BufferAssignment> assignment);
+                std::unique_ptr<BufferAssignment> assignment,
+                TargetMachineOptionsProto target_machine_options);
   CpuExecutable(const CpuExecutable&) = delete;
   CpuExecutable& operator=(const CpuExecutable&) = delete;
 };

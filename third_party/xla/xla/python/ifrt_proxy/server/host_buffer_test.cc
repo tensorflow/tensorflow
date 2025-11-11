@@ -15,8 +15,8 @@
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 
 #include <cstdint>
-#include <memory>
 #include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -25,7 +25,7 @@
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/python/ifrt/future.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
 
@@ -57,15 +57,15 @@ TEST(HostBufferStoreTest, WriteAfterReadStarted) {
   HostBufferStore store;
   const uint64_t kHandle = 1;
 
-  auto lookup_promise =
-      Future<std::shared_ptr<const std::string>>::CreatePromise();
-  Future<std::shared_ptr<const std::string>> lookup_fut(lookup_promise);
+  auto [lookup_promise, lookup_fut] =
+      tsl::Future<HostBufferStore::MemRegion>::MakePromise();
 
   absl::Notification closure_started;
-  tsl::Env::Default()->SchedClosure([&]() {
-    closure_started.Notify();
-    lookup_promise.Set(store.Lookup(kHandle, /*timeout=*/absl::Seconds(10)));
-  });
+  tsl::Env::Default()->SchedClosure(
+      [&, promise = std::move(lookup_promise)]() mutable {
+        closure_started.Notify();
+        promise.Set(store.Lookup(kHandle, /*timeout=*/absl::Seconds(10)));
+      });
 
   closure_started.WaitForNotification();
   absl::SleepFor(absl::Seconds(1));
@@ -79,15 +79,14 @@ TEST(HostBufferStoreTest, ShutdownAfterReadStarted) {
   HostBufferStore store;
   const uint64_t kHandle = 1;
 
-  auto lookup_promise =
-      Future<std::shared_ptr<const std::string>>::CreatePromise();
-  Future<std::shared_ptr<const std::string>> lookup_fut(lookup_promise);
+  auto [lookup_promise, lookup_fut] =
+      tsl::Future<HostBufferStore::MemRegion>::MakePromise();
 
   absl::Notification closure_started;
-  tsl::Env::Default()->SchedClosure([&]() {
+  tsl::Env::Default()->SchedClosure([&, promise = std::move(
+                                            lookup_promise)]() mutable {
     closure_started.Notify();
-    lookup_promise.Set(
-        store.Lookup(kHandle, /*timeout=*/absl::InfiniteDuration()));
+    promise.Set(store.Lookup(kHandle, /*timeout=*/absl::InfiniteDuration()));
   });
 
   closure_started.WaitForNotification();

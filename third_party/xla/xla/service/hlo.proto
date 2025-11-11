@@ -667,6 +667,7 @@ message BufferAllocationProto {
     int64 logical_buffer_id = 1;
     int64 offset = 2;
     int64 size = 3;
+    xla.PrimitiveType element_type = 4;
   }
 
   int64 index = 1;
@@ -863,8 +864,8 @@ message HloPassMetadata {
 
 message OriginalValueRecoveryTableProto {
   message Entry {
-    OriginalArrayProto replaced_original_array = 1;
-    OriginalArrayProto replacing_original_array = 2;
+    OriginalArrayProto old_original_array = 1;
+    OriginalArrayProto new_original_array = 2;
     HloModuleProto recovery_module = 3;
   }
   repeated Entry entries = 1;

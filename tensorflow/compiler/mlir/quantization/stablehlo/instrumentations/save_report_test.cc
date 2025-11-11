@@ -43,8 +43,6 @@ using ::stablehlo::quantization::io::ReadFileToString;
 using ::testing::SizeIs;
 using ::testing::StrEq;
 using ::tsl::protobuf::TextFormat;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 using SaveQuantizationReportInstrumentationTest = QuantizationTestBase;
 

@@ -31,16 +31,15 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
-#include "xla/core/collectives/communicator.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace gpu {
@@ -173,7 +172,7 @@ absl::Status IsValidNvshmemOperand(Shape shape, Thunk::Kind reduction_op) {
 
 absl::StatusOr<void*> NvshmemBufferAddresses::GetNvshmemPtr(
     int device_ordinal) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto it = buffer_addrs_.find(device_ordinal);
   if (it != buffer_addrs_.end()) {
     return it->second;
@@ -183,7 +182,7 @@ absl::StatusOr<void*> NvshmemBufferAddresses::GetNvshmemPtr(
 
 void NvshmemBufferAddresses::StoreNvshmemPtr(int device_ordinal,
                                              void* buffer_addr) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   buffer_addrs_[device_ordinal] = buffer_addr;
 }
 

@@ -63,8 +63,8 @@ limitations under the License.
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -263,7 +263,7 @@ class CudnnAccess {
   }
 
   ~CudnnAccess() {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     cudnnDestroy(handle_);
 
     if (compilation_handle_) {
@@ -311,7 +311,7 @@ class CudnnAccess {
   void NotifyStreamDestroyed(Stream* stream) {
     CUstream cu_stream =
         absl::bit_cast<CUstream>(stream->platform_specific_handle().stream);
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (current_stream_ && cu_stream == *current_stream_) {
       current_stream_.reset();
     }
@@ -875,9 +875,6 @@ class CudnnConvolutionDescriptor {
     absl::Span<const int64_t> strides64 = convolution_descriptor.strides();
     absl::Span<const int64_t> padding64 = convolution_descriptor.padding();
     absl::Span<const int64_t> dilations64 = convolution_descriptor.dilations();
-    CHECK_NE(convolution_descriptor.pad_alignment(),
-             dnn::PadAlignment::kTensorFlowPadding)
-        << "TensorFlow padding alignment is not supported.";
 
     // cuDNN requires arrays of ints.
     std::vector<int> strides(convolution_descriptor.ndims());
@@ -948,7 +945,7 @@ class CudnnPoolingDescriptor {
  public:
   explicit CudnnPoolingDescriptor(
       const dnn::PoolingDescriptor& pooling_descriptor,
-      const NumericOptions& numeric_options)
+      const EngineOptions& engine_options)
       : handle_(CreatePoolingDescriptor()) {
     absl::Span<const int64_t> strides64 = pooling_descriptor.strides();
     absl::Span<const int64_t> padding64 = pooling_descriptor.padding();
@@ -965,7 +962,7 @@ class CudnnPoolingDescriptor {
     std::transform(shape64.cbegin(), shape64.cend(), shape.begin(),
                    &CheckedNarrowing<int64_t, int>);
     bool propagate_nans = pooling_descriptor.propagate_nans();
-    const auto cudnn_max_pooling_mode = numeric_options.require_determinism
+    const auto cudnn_max_pooling_mode = engine_options.require_determinism
                                             ? CUDNN_POOLING_MAX_DETERMINISTIC
                                             : CUDNN_POOLING_MAX;
     CHECK_CUDNN_OK(cudnnSetPoolingNdDescriptor(
@@ -1304,7 +1301,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
       cudnnDirectionMode_t direction_mode, cudnnRNNMode_t rnn_mode,
       cudnnDataType_t data_type, cudnnDataType_t compute_type,
       const dnn::AlgorithmConfig& algorithm_config,
-      const NumericOptions& numeric_options, float dropout, uint64_t seed,
+      const EngineOptions& engine_options, float dropout, uint64_t seed,
       ScratchAllocator* state_allocator, bool use_padded_io) {
     TF_ASSIGN_OR_RETURN(
         CudnnDropoutDescriptor dropout_desc,
@@ -1327,8 +1324,8 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     // TODO(csigg): Minimal support cuDNN version is 7.3, clean up.
     bool allow_tensor_ops = data_type == CUDNN_DATA_HALF;
     if (data_type == CUDNN_DATA_FLOAT)
-      allow_tensor_ops = numeric_options.allow_tf32 &&
-                         tsl::tensor_float_32_execution_enabled();
+      allow_tensor_ops =
+          engine_options.allow_tf32 && tsl::tensor_float_32_execution_enabled();
     bool use_tensor_ops =
         algorithm_config.algorithm().has_value()
             ? algorithm_config.algorithm()->tensor_ops_enabled()
@@ -2266,7 +2263,7 @@ CudnnSupport::CreateRnnDescriptor(
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
     dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-    const NumericOptions& numeric_options, float dropout, uint64_t seed,
+    const EngineOptions& engine_options, float dropout, uint64_t seed,
     ScratchAllocator* state_allocator, bool use_padded_io) {
   // Setting up a cudnnRNNDescriptor requires a cuDNN handle, but because it's
   // not enqueueing anything into a stream, we pass in the null stream.
@@ -2278,7 +2275,7 @@ CudnnSupport::CreateRnnDescriptor(
           ToCudnnRnnInputMode(input_mode),
           ToCudnnRnnDirectionMode(direction_mode), ToCudnnRnnMode(rnn_mode),
           ToCudnnDataType(data_type), GetRnnComputeType(data_type),
-          algorithm_config, numeric_options, dropout, seed, state_allocator,
+          algorithm_config, engine_options, dropout, seed, state_allocator,
           use_padded_io));
   return std::unique_ptr<dnn::RnnDescriptor>(
       new CudnnRnnDescriptor(std::move(rnn_desc)));
@@ -2942,9 +2939,6 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
   int conv_dim = convolution_descriptor.ndims();
 
   auto accumulator_type = ToCudnnDataType(GetConvAccumulatorType(input_type));
-  CHECK_NE(convolution_descriptor.pad_alignment(),
-           dnn::PadAlignment::kTensorFlowPadding)
-      << "TensorFlow padding alignment is not supported.";
 
   auto conv_desc =
       cudnn_frontend::ConvDescBuilder()
@@ -3043,15 +3037,15 @@ OpNameStringToOperandKindAndMode(std::string opstring) {
 // Struct describing the convolution, pointwise and reduction ops in the
 // graph.
 struct OpDescriptor {
-  int uid;                        // The UID of the op.
-  std::vector<int> operand_uids;  // The UIDs of the operands of the op that
-                                  // are part of the graph.
-  OpMode mode;                    // The mode describing the op.
-  TensorKind operand_kind;        // The kind of a second operand.
-  TensorKind result_kind;         // The kind of the output.
-  dnn::DataType result_type;      // The type of the output.
-  bool is_virtual;                // A virtual op has a user within the graph.
-  int sequence_index;             // The index of the op in the sequence.
+  int64_t uid;                        // The UID of the op.
+  std::vector<int64_t> operand_uids;  // The UIDs of the operands of the op that
+                                      // are part of the graph.
+  OpMode mode;                        // The mode describing the op.
+  TensorKind operand_kind;            // The kind of a second operand.
+  TensorKind result_kind;             // The kind of the output.
+  dnn::DataType result_type;          // The type of the output.
+  bool is_virtual;     // A virtual op has a user within the graph.
+  int sequence_index;  // The index of the op in the sequence.
 };
 
 // Class describing the graph of ops to be fused into the cuDNN convolution
@@ -3060,13 +3054,13 @@ class OpGraph {
  public:
   OpGraph() = default;
 
-  absl::Status AddOp(int uid, std::vector<int> operand_uids, OpMode mode,
-                     TensorKind operand_kind, TensorKind result_kind,
-                     dnn::DataType result_type) {
+  absl::Status AddOp(int64_t uid, std::vector<int64_t> operand_uids,
+                     OpMode mode, TensorKind operand_kind,
+                     TensorKind result_kind, dnn::DataType result_type) {
     ops_.emplace_back(OpDescriptor({uid, operand_uids, mode, operand_kind,
                                     result_kind, result_type, false, -1}));
     // If they exist, the operands are virtual.
-    for (int operand_uid : operand_uids) {
+    for (int64_t operand_uid : operand_uids) {
       auto it = std::find_if(
           ops_.begin(), ops_.end(),
           [operand_uid](OpDescriptor op) { return op.uid == operand_uid; });
@@ -3078,7 +3072,7 @@ class OpGraph {
     return absl::OkStatus();
   }
 
-  absl::StatusOr<OpDescriptor> FindOpDescriptor(int uid) const {
+  absl::StatusOr<OpDescriptor> FindOpDescriptor(int64_t uid) const {
     auto it = std::find_if(ops_.begin(), ops_.end(),
                            [uid](OpDescriptor op) { return op.uid == uid; });
     if (it == ops_.end()) {
@@ -3094,7 +3088,7 @@ class OpGraph {
     return ops_[index];
   }
 
-  absl::Status SetSequenceIndex(int uid, int index) {
+  absl::Status SetSequenceIndex(int64_t uid, int index) {
     auto it = std::find_if(ops_.begin(), ops_.end(),
                            [uid](OpDescriptor op) { return op.uid == uid; });
     if (it == ops_.end()) {
@@ -3143,15 +3137,15 @@ GetGenericCudnnOperationGraph(
       dnn::DataType output_type;
       std::string::size_type m = serialized_graph.find('[', pos);
       std::string::size_type n = serialized_graph.find(']', pos);
-      int uid = std::stoi(serialized_graph.substr(pos, m - pos - 1));
+      int64_t uid = std::stol(serialized_graph.substr(pos, m - pos - 1));
       std::string data_type_string = serialized_graph.substr(m + 1, n - m - 1);
       m = serialized_graph.find('(', pos);
       std::string op_string = serialized_graph.substr(n + 1, m - n - 1);
-      std::vector<int> operands;
+      std::vector<int64_t> operands;
       std::string::size_type l = serialized_graph.find_first_of(",)", m + 1);
       while (l > m + 1) {
         operands.push_back(
-            std::stoi(serialized_graph.substr(m + 1, l - m - 1)));
+            std::stol(serialized_graph.substr(m + 1, l - m - 1)));
         if (serialized_graph[l] == ')') {
           break;
         }
@@ -3291,9 +3285,6 @@ GetGenericCudnnOperationGraph(
                         /*is_virtual=*/op_descriptor.is_virtual));
 
   auto accumulator_type = ToCudnnDataType(GetConvAccumulatorType(input_type));
-  CHECK_NE(convolution_descriptor.pad_alignment(),
-           dnn::PadAlignment::kTensorFlowPadding)
-      << "TensorFlow padding alignment is not supported.";
 
   int conv_dim = convolution_descriptor.ndims();
   auto conv_desc =
@@ -3338,7 +3329,7 @@ GetGenericCudnnOperationGraph(
     TF_ASSIGN_OR_RETURN(op_descriptor, op_graph.OpDescriptorAt(op_index));
     std::vector<OpDescriptor> preceding_ops;
     preceding_ops.reserve(op_descriptor.operand_uids.size());
-    for (int operand_uid : op_descriptor.operand_uids) {
+    for (int64_t operand_uid : op_descriptor.operand_uids) {
       preceding_ops.emplace_back(
           op_graph.FindOpDescriptor(operand_uid).value());
     }
@@ -3615,10 +3606,6 @@ GetCudnnFusedOperationGraph(
                   : CUDNN_CROSS_CORRELATION;
 
   int conv_dim = convolution_descriptor.ndims();
-
-  CHECK_NE(convolution_descriptor.pad_alignment(),
-           dnn::PadAlignment::kTensorFlowPadding)
-      << "TensorFlow padding alignment is not supported.";
 
   cudnnDataType_t cudnn_convolution_type = ToCudnnDataType(accumulator_type);
   cudnnDataType_t cudnn_activation_type = ToCudnnDataType(activation_type);
@@ -4104,11 +4091,14 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
 
   // Setting bias
   if (bias_descriptor.has_value()) {
+    cudnn_frontend::DataType_t dataType =
+        ToCudnnFrontendDataType(bias_descriptor->type());
     auto bias_tensor =
         graph.tensor(Tensor_attributes()
                          .set_name("bias")
                          .set_dim(bias_descriptor->dimensions())
                          .set_stride(bias_descriptor->GetLogicalStrides())
+                         .set_data_type(dataType)
                          .set_uid(next_uid()));
     sdpa_options.set_bias(bias_tensor);
   }
@@ -4255,8 +4245,9 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
   }
   CudnnGraph cudnnGraph(std::move(graph));
   TF_RETURN_IF_ERROR(cudnnGraph.Prepare(
-      dnn_support, NumericOptions{/*require_determinism=*/false,
-                                  /*allow_tf32=*/true}));
+      dnn_support, EngineOptions{/*require_determinism=*/false,
+                                 /*allow_tf32=*/true,
+                                 /*require_command_buffer=*/false}));
   TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/std::nullopt));
 
   VLOG(4) << "\b flash attention operation graph: " << cudnnGraph.Graph();
@@ -4401,8 +4392,9 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
   }
   CudnnGraph cudnnGraph(std::move(graph));
   TF_RETURN_IF_ERROR(cudnnGraph.Prepare(
-      dnn_support, NumericOptions{/*require_determinism=*/false,
-                                  /*allow_tf32=*/true}));
+      dnn_support, EngineOptions{/*require_determinism=*/false,
+                                 /*allow_tf32=*/true,
+                                 /*require_command_buffer=*/false}));
   TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/std::nullopt));
 
   VLOG(4) << "\b workspace size:" << cudnnGraph.Graph().get_workspace_size();
@@ -4590,8 +4582,9 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
 
   CudnnGraph cudnnGraph(std::move(graph));
   TF_RETURN_IF_ERROR(cudnnGraph.Prepare(
-      dnn_support, NumericOptions{/*require_determinism=*/false,
-                                  /*allow_tf32=*/true}));
+      dnn_support, EngineOptions{/*require_determinism=*/false,
+                                 /*allow_tf32=*/true,
+                                 /*require_command_buffer=*/false}));
   TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/std::nullopt));
 
   VLOG(4) << "\b workspace size:" << cudnnGraph.Graph().get_workspace_size();
@@ -4610,10 +4603,11 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
     const dnn::TensorDescriptor& lhs_scale,
     const dnn::TensorDescriptor& rhs_data,
     const dnn::TensorDescriptor& rhs_scale, dnn::DataType result_type,
-    int block_size) {
+    int block_size, bool has_global_scale) {
 #if CUDNN_VERSION >= 90700
   using cudnn_frontend::graph::Block_scale_dequantize_attributes;
   using cudnn_frontend::graph::Matmul_attributes;
+  using cudnn_frontend::graph::Pointwise_attributes;
   using cudnn_frontend::graph::Tensor_attributes;
 
   VLOG(4) << "\n lhs_data: " << lhs_data.ToString()
@@ -4621,7 +4615,8 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
           << "\n rhs_data: " << rhs_data.ToString()
           << "\n rhs_scale: " << rhs_scale.ToString()
           << "\n result_type: " << dnn::DataType_Name(result_type)
-          << "\n block_size: " << block_size;
+          << "\n block_size: " << block_size
+          << "\n global_scale: " << has_global_scale;
 
   cudnn_frontend::graph::Graph graph;
   auto compute_type = cudnn_frontend::DataType_t::FLOAT;
@@ -4670,14 +4665,33 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
 
   auto matmul_attr = Matmul_attributes().set_compute_data_type(compute_type);
   auto d_tensor = graph.matmul(a_dq, b_dq, matmul_attr);
-  d_tensor->set_uid(next_uid());
   d_tensor->set_data_type(ToCudnnFrontendDataType(result_type));
-  d_tensor->set_is_virtual(false);
+  if (!has_global_scale) {
+    d_tensor->set_uid(next_uid());
+    d_tensor->set_is_virtual(false);
+  } else {
+    std::vector<int64_t> scalar(lhs_data.ndims(), 1);
+    auto scale_attr = Tensor_attributes()
+                          .set_uid(next_uid())
+                          .set_dim(scalar)
+                          .set_stride(scalar)
+                          .set_data_type(d_tensor->get_data_type());
+    auto global_scale = graph.tensor(scale_attr.set_name("global_scale"));
+
+    auto mul_attr = Pointwise_attributes()
+                        .set_mode(cudnn_frontend::PointwiseMode_t::MUL)
+                        .set_compute_data_type(compute_type);
+    auto result = graph.pointwise(d_tensor, global_scale, mul_attr);
+    result->set_data_type(d_tensor->get_data_type());
+    result->set_uid(next_uid());
+    result->set_is_virtual(false);
+  }
 
   CudnnGraph cudnnGraph(std::move(graph));
   TF_RETURN_IF_ERROR(cudnnGraph.Prepare(
-      dnn_support, NumericOptions{/*require_determinism=*/false,
-                                  /*allow_tf32=*/true}));
+      dnn_support, EngineOptions{/*require_determinism=*/false,
+                                 /*allow_tf32=*/true,
+                                 /*require_command_buffer=*/false}));
   TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/std::nullopt));
 
   VLOG(4) << "\b workspace size:" << cudnnGraph.Graph().get_workspace_size();
@@ -4806,23 +4820,22 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   std::shared_ptr<Tensor_attributes> d_bias_tensor;
   if (use_bias) {
     DCHECK(bias_descriptor != std::nullopt);
+    cudnn_frontend::DataType_t dataType =
+        ToCudnnFrontendDataType(bias_descriptor->type());
     auto bias_dims = bias_descriptor->dimensions();
     auto bias_strides = bias_descriptor->GetLogicalStrides();
-    auto b = bias_dims[0];
-    auto n = bias_dims[1];
-    auto q_n = q_dims[1];
     auto bias_tensor = graph.tensor(Tensor_attributes()
                                         .set_name("bias")
                                         .set_dim(bias_dims)
                                         .set_stride(bias_strides)
+                                        .set_data_type(dataType)
                                         .set_uid(next_uid()));
     sdpa_backward_options.set_bias(bias_tensor);
 
-    // shapes [1, 1, s, s], [b, 1, s, s], [b, h, s, s] are not supported for
-    // dbias calculation but they are supported for forward bias calculation
+    // shapes [1, 1, s, s], [1, h, s, s], [b, 1, s, s], [b, h, s, s] are
+    // supported for dbias calculation.
     // Set UID later: this is the last output tuple element.
     if (dbias_descriptor != std::nullopt) {
-      DCHECK(b == 1 && n == q_n);
       d_bias_tensor =
           graph.tensor(Tensor_attributes()
                            .set_name("dBias")
@@ -4969,9 +4982,10 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   }
 
   CudnnGraph cudnnGraph(std::move(graph));
-  TF_RETURN_IF_ERROR(
-      cudnnGraph.Prepare(dnn_support, NumericOptions{force_deterministic,
-                                                     /*allow_tf32=*/true}));
+  TF_RETURN_IF_ERROR(cudnnGraph.Prepare(
+      dnn_support, EngineOptions{force_deterministic,
+                                 /*allow_tf32=*/true,
+                                 /*require_command_buffer=*/false}));
   TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/std::nullopt));
 
   VLOG(4) << "\b flash attention operation backward graph: "
@@ -5368,19 +5382,19 @@ absl::Status CreateOpRunners(
     dnn::ConvolutionKind kind, dnn::DataType input_type,
     absl::Span<const int64_t> input_uids, bool use_fallback,
     std::vector<std::unique_ptr<const dnn::OpRunner<Sig>>>* out_runners,
-    bool need_side_input, const NumericOptions& numeric_options) {
+    bool need_side_input, const EngineOptions& engine_options) {
   cudnn_frontend::EngineConfigList filtered_configs;
   const bool disable_winograd = !CudnnEnvVar<WinogradNonfused>::IsEnabled();
   const bool disable_tensor_core =
-      !IsTensorMathEnabled(stream, input_type, numeric_options.allow_tf32);
+      !IsTensorMathEnabled(stream, input_type, engine_options.allow_tf32);
   auto generic_filter_fn = [=](cudnnBackendDescriptor_t engine_config) -> bool {
     return GenericEngineFilter(engine_config, disable_winograd,
-                               numeric_options.require_determinism,
+                               engine_options.require_determinism,
                                disable_tensor_core);
   };
   VLOG(4) << "Filtering engine configs with disable_winograd="
           << disable_winograd
-          << ", disable_nondeterminism=" << numeric_options.require_determinism
+          << ", disable_nondeterminism=" << engine_options.require_determinism
           << ", disable_tensor_core=" << disable_tensor_core;
 
   std::array<std::string, 1> heur_mode = {use_fallback ? "heuristics_fallback"
@@ -5418,6 +5432,11 @@ absl::Status CreateOpRunners(
                     .setEngineConfig(filtered_configs[i], op_graph->getTag())
                     .build();
     if (plan.get_status() != CUDNN_STATUS_SUCCESS) {
+      std::string message(65535, '\0');
+      cudnnGetLastErrorString(message.data(), message.size());
+      VLOG(4) << "Failed building ExecutionPlan: found error: "
+              << cudnnGetErrorString(plan.get_status())
+              << " with message: " << message;
       continue;
     }
 
@@ -5459,7 +5478,7 @@ absl::Status CreateOpRunners(
         std::move(runner_or).value()));
 
     // We will use the first working plan when determinism is required.
-    if (numeric_options.require_determinism) {
+    if (engine_options.require_determinism) {
       break;
     }
   }
@@ -5482,7 +5501,7 @@ absl::Status CudnnSupport::GetConvolveRunners(
     DeviceMemoryBase /*output_data*/,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
     ScratchAllocator* /*scratch_allocator*/,
-    const NumericOptions& numeric_options,
+    const EngineOptions& engine_options,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans) {
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   TF_ASSIGN_OR_RETURN(
@@ -5494,7 +5513,7 @@ absl::Status CudnnSupport::GetConvolveRunners(
   return CreateOpRunners<dnn::ConvSignature>(
       stream, cudnn, parent_, cudnn_.get(), std::move(op_graph), kind,
       input_type, {'x', 'w', 'y'}, use_fallback, out_exec_plans,
-      /*need_side_input=*/false, numeric_options);
+      /*need_side_input=*/false, engine_options);
 }
 
 absl::Status CudnnSupport::GetGraphConvolveRunners(
@@ -5504,7 +5523,7 @@ absl::Status CudnnSupport::GetGraphConvolveRunners(
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    const NumericOptions& numeric_options,
+    const EngineOptions& engine_options,
     std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* out_exec_plans,
     std::string serialized_graph) {
   auto cudnn = cudnn_->GetHandle(parent_, stream);
@@ -5516,7 +5535,7 @@ absl::Status CudnnSupport::GetGraphConvolveRunners(
   return CreateOpRunners<dnn::GraphConvSignature>(
       stream, cudnn, parent_, cudnn_.get(), std::move(op_graph_and_uids.first),
       kind, input_type, op_graph_and_uids.second, use_fallback, out_exec_plans,
-      /*need_side_input=*/false, numeric_options);
+      /*need_side_input=*/false, engine_options);
 }
 
 absl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
@@ -5621,7 +5640,7 @@ absl::Status CudnnSupport::GetFusedConvolveRunners(
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
     const dnn::ActivationMode activation_mode,
-    const NumericOptions& numeric_options,
+    const EngineOptions& engine_options,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
   // Fused convolutions with identity activations are broken in that they
   // implicitly do ReLU on some engines, and we can't reliably detect which
@@ -5660,7 +5679,7 @@ absl::Status CudnnSupport::GetFusedConvolveRunners(
   return CreateOpRunners<dnn::FusedConvSignature>(
       stream, cudnn, parent_, cudnn_.get(), std::move(op_graph), kind,
       input_type, {'x', 'w', 'z', 'b', 'y'}, use_fallback, out_exec_plans,
-      need_side_input, numeric_options);
+      need_side_input, engine_options);
 }
 
 absl::Status CudnnSupport::GetFusedMatmulRunners(
@@ -5668,7 +5687,7 @@ absl::Status CudnnSupport::GetFusedMatmulRunners(
     dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
     uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
     dnn::ActivationMode activation_mode, bool use_fallback,
-    const NumericOptions& numeric_options,
+    const EngineOptions& engine_options,
     std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
         out_exec_plans) {
   auto cudnn = cudnn_->GetHandle(parent_, stream);
@@ -5688,17 +5707,17 @@ absl::Status CudnnSupport::GetFusedMatmulRunners(
   return CreateOpRunners<dnn::FusedMatmulSignature>(
       stream, cudnn, parent_, cudnn_.get(), std::move(op_graph),
       dnn::ConvolutionKind::INVALID, input_type, {'a', 'b', 'z', 'c'},
-      use_fallback, out_exec_plans, /*need_side_input=*/true, numeric_options);
+      use_fallback, out_exec_plans, /*need_side_input=*/true, engine_options);
 }
 
 bool CudnnSupport::GetConvolveAlgorithms(
     CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    const NumericOptions& numeric_options,
+    const EngineOptions& engine_options,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   PreloadCudnnSubLibs(PreloadCudnnType::ConvFwd);
 
   bool tensor_op_math_available = IsTensorMathEnabled(
-      cuda_compute_capability, input_type, numeric_options.allow_tf32);
+      cuda_compute_capability, input_type, engine_options.allow_tf32);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types;
@@ -5900,12 +5919,12 @@ bool CudnnSupport::GetRnnAlgorithms(
 
 bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
     CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    const NumericOptions& numeric_options,
+    const EngineOptions& engine_options,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   PreloadCudnnSubLibs(PreloadCudnnType::ConvBwdData);
 
   bool tensor_op_math_available = IsTensorMathEnabled(
-      cuda_compute_capability, input_type, numeric_options.allow_tf32);
+      cuda_compute_capability, input_type, engine_options.allow_tf32);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
@@ -5919,7 +5938,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled()) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
-  if (numeric_options.require_determinism) {
+  if (engine_options.require_determinism) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_0);
   }
 
@@ -5936,12 +5955,12 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
 
 bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
     CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    const NumericOptions& numeric_options,
+    const EngineOptions& engine_options,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   PreloadCudnnSubLibs(PreloadCudnnType::ConvBwdFilter);
 
   bool tensor_op_math_available = IsTensorMathEnabled(
-      cuda_compute_capability, input_type, numeric_options.allow_tf32);
+      cuda_compute_capability, input_type, engine_options.allow_tf32);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
@@ -5959,7 +5978,7 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled()) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED);
   }
-  if (!numeric_options.require_determinism) {
+  if (!engine_options.require_determinism) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0);
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3);
   }
@@ -6411,7 +6430,7 @@ absl::Status CudnnSupport::DoPrepareForCtcLoss(
     absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data,
-    const NumericOptions& numeric_options, ScratchAllocator* scratch_allocator,
+    const EngineOptions& engine_options, ScratchAllocator* scratch_allocator,
     DeviceMemory<uint8_t>* scratch_memory, int* ctc_loss_algo_id) {
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   // Query the workspace size.
@@ -6425,7 +6444,7 @@ absl::Status CudnnSupport::DoPrepareForCtcLoss(
   // Try running with `algo`, if successful then pick it. The
   // non-deterministic algorithm is first and thus preferentially picked
   // when determinism is not required.
-  auto algo = numeric_options.require_determinism
+  auto algo = engine_options.require_determinism
                   ? CUDNN_CTC_LOSS_ALGO_DETERMINISTIC
                   : CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC;
   cudnnStatus_t status = cudnnGetCTCLossWorkspaceSize(
@@ -6437,7 +6456,7 @@ absl::Status CudnnSupport::DoPrepareForCtcLoss(
       /*algo=*/algo,
       /*ctcLossDesc=*/cudnn_ctc_loss_desc.handle(),
       /*sizeInBytes=*/&workspace_size_in_bytes);
-  if (numeric_options.require_determinism) {
+  if (engine_options.require_determinism) {
     RETURN_IF_CUDNN_ERROR(status);
   }
 
@@ -6582,14 +6601,14 @@ absl::Status CudnnSupport::DoPoolForward(
     const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
     ScratchAllocator* workspace_allocator) {
   return DoPoolForward(element_type, stream, pooling_dimensions,
-                       NumericOptions{}, input_dimensions, input_data,
+                       EngineOptions{}, input_dimensions, input_data,
                        output_dimensions, output_data, workspace_allocator);
 }
 
 absl::Status CudnnSupport::DoPoolForward(
     dnn::DataType element_type, Stream* stream,
     const dnn::PoolingDescriptor& pooling_dimensions,
-    const NumericOptions& numeric_options,
+    const EngineOptions& engine_options,
     const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
     const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
     ScratchAllocator* workspace_allocator) {
@@ -6610,7 +6629,7 @@ absl::Status CudnnSupport::DoPoolForward(
       ToCudnnDataType(element_type, input_dimensions.layout());
   cudnnDataType_t cudnn_output_type =
       ToCudnnDataType(element_type, output_dimensions.layout());
-  CudnnPoolingDescriptor pooling_desc(pooling_dimensions, numeric_options);
+  CudnnPoolingDescriptor pooling_desc(pooling_dimensions, engine_options);
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   auto cudnn_launcher = [&](CudnnTensorDescriptor& src_desc,
@@ -6661,7 +6680,7 @@ absl::Status CudnnSupport::DoPoolBackward(
     DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,
     ScratchAllocator* workspace_allocator) {
   return DoPoolBackward(element_type, stream, pooling_dimensions,
-                        NumericOptions{}, input_dimensions, input_data,
+                        EngineOptions{}, input_dimensions, input_data,
                         output_dimensions, output_data, input_diff_data,
                         output_diff_data, workspace_allocator);
 }
@@ -6669,7 +6688,7 @@ absl::Status CudnnSupport::DoPoolBackward(
 absl::Status CudnnSupport::DoPoolBackward(
     dnn::DataType element_type, Stream* stream,
     const dnn::PoolingDescriptor& pooling_dimensions,
-    const NumericOptions& numeric_options,
+    const EngineOptions& engine_options,
     const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
     const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
     DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,
@@ -6691,7 +6710,7 @@ absl::Status CudnnSupport::DoPoolBackward(
       ToCudnnDataType(element_type, input_dimensions.layout());
   cudnnDataType_t cudnn_output_type =
       ToCudnnDataType(element_type, output_dimensions.layout());
-  CudnnPoolingDescriptor pooling_desc(pooling_dimensions, numeric_options);
+  CudnnPoolingDescriptor pooling_desc(pooling_dimensions, engine_options);
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   auto cudnn_launcher = [&](CudnnTensorDescriptor& src_desc,
@@ -6850,18 +6869,22 @@ absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> CudnnSupport::DeserializeGraph(
 }
 
 absl::Status CudnnGraph::Prepare(dnn::DnnSupport& dnn_support,
-                                 const NumericOptions& numeric_options) {
+                                 const EngineOptions& engine_options) {
   const CudnnSupport& cudnn_support = static_cast<CudnnSupport&>(dnn_support);
   TF_ASSIGN_OR_RETURN(auto cudnn_handle,
                       cudnn_support.cudnn_->GetCompilationHandle());
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.validate());
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.build_operation_graph(cudnn_handle));
-  if (numeric_options.require_determinism) {
+  RETURN_IF_CUDNN_FRONTEND_ERROR(
+      graph_.create_execution_plans({cudnn_frontend::HeurMode_t::A}));
+  if (engine_options.require_determinism) {
     graph_.deselect_numeric_notes(
         {cudnn_frontend::NumericalNote_t::NONDETERMINISTIC});
   }
-  RETURN_IF_CUDNN_FRONTEND_ERROR(
-      graph_.create_execution_plans({cudnn_frontend::HeurMode_t::A}));
+  if (engine_options.require_command_buffer) {
+    graph_.select_behavior_notes(
+        {cudnn_frontend::BehaviorNote_t::SUPPORTS_CUDA_GRAPH_NATIVE_API});
+  }
   RETURN_CUDNN_FRONTEND_STATUS(graph_.check_support(cudnn_handle));
 }
 

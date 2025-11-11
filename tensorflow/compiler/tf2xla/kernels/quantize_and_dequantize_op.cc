@@ -113,7 +113,7 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
           errors::Internal("Expected 4 inputs to QuantizeAndDequantize"));
       num_bits = ctx->Input(3);
     } else {
-      num_bits = xla::ConstantR0<int32>(b, num_bits_);
+      num_bits = xla::ConstantR0<int32_t>(b, num_bits_);
     }
 
     const xla::XlaOp zero = XlaHelpers::Zero(b, data_type);
@@ -129,17 +129,17 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
     xla::XlaOp min_quantized, max_quantized;
     if (signed_input_) {
       if (narrow_range_) {
-        min_quantized =
-            -Pow(two, ConvertElementType(
-                          num_bits - xla::ConstantR0<int32>(b, 1), xla_type)) +
-            one;
+        min_quantized = -Pow(two, ConvertElementType(
+                                      num_bits - xla::ConstantR0<int32_t>(b, 1),
+                                      xla_type)) +
+                        one;
       } else {
         min_quantized =
             -Pow(two, ConvertElementType(
-                          num_bits - xla::ConstantR0<int32>(b, 1), xla_type));
+                          num_bits - xla::ConstantR0<int32_t>(b, 1), xla_type));
       }
       max_quantized =
-          Pow(two, ConvertElementType(num_bits - xla::ConstantR0<int32>(b, 1),
+          Pow(two, ConvertElementType(num_bits - xla::ConstantR0<int32_t>(b, 1),
                                       xla_type)) -
           one;
     } else {
@@ -222,7 +222,7 @@ class QuantizeAndDequantizeV2Op : public QuantizeAndDequantizeOp {
     OP_REQUIRES(ctx, num_bits_ > 0 && num_bits_ < (signed_input_ ? 62 : 63),
                 errors::InvalidArgument("num_bits is out of range: ", num_bits_,
                                         " with signed_input_ ", signed_input_));
-    string round_mode_string;
+    std::string round_mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("round_mode", &round_mode_string));
     OP_REQUIRES(
         ctx,

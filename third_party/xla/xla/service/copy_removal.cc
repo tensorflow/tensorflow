@@ -611,7 +611,7 @@ CopyRemover::CopyRemover(
   // Instruction indices based on post order traversal of computations and
   // instructions. Used as an enhancement for getting strict weak ordering
   // used for sorting below.
-  absl::flat_hash_map<int, int64_t> instruction_ids;
+  absl::flat_hash_map<int64_t, int64_t> instruction_ids;
   int64_t id = 0;
 
   // Generate instruction ids for all instructions in the module, starting at

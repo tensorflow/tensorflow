@@ -76,13 +76,13 @@ class SymbolRepositoryRegistry {
  public:
   void Register(const std::string& name,
                 std::unique_ptr<SymbolRepository> repo) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     VLOG(1) << "Registering SymbolRepository " << name;
     repo_[name] = std::move(repo);
   }
 
   SymbolRepository* repo(absl::string_view name) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     const auto it = repo_.find(name);
     if (it == repo_.end()) {
       return nullptr;

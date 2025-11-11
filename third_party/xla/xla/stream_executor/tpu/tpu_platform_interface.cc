@@ -97,7 +97,7 @@ TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform(
   static TpuPlatformInterface* tpu_registered_platform =
       GetRegisteredPlatformStatic(initialize_platform, num_tries);
 
-  absl::MutexLock lock(mu);
+  absl::MutexLock lock(*mu);
   if (!requested_initialize_platform && initialize_platform) {
     // If the first time this function is called, we did not request
     // initializing the platform, but the next caller wants the platform

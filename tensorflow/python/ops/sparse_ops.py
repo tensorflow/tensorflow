@@ -3687,6 +3687,12 @@ _UNARY_OPS = [
     # TODO(b/120307967) Add dispatchers for additional TensorFlow ops.
     math_ops.abs,
     math_ops.negative,
+    math_ops.asinh,
+    math_ops.sin,
+    math_ops.tan,
+    math_ops.atan,
+    math_ops.asin,
+    math_ops.atanh,
     math_ops.sign,
     math_ops.square,
     math_ops.sqrt,

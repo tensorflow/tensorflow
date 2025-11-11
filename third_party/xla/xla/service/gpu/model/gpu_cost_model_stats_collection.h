@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -35,21 +36,25 @@ class GpuCostModelStatsCollection : public HloModulePass {
  public:
   explicit GpuCostModelStatsCollection(
       const se::DeviceDescription& d,
-      const GpuHloCostAnalysis::Options& cost_analysis_options)
-      : device_info_(d), cost_analysis_(cost_analysis_options, device_info_) {}
+      const GpuHloCostAnalysis::Options& cost_analysis_options,
+      SymbolicExprContext* symbolic_expr_context)
+      : device_info_(d),
+        cost_analysis_(cost_analysis_options, device_info_),
+        symbolic_expr_context_(symbolic_expr_context) {}
 
   absl::string_view name() const override {
     return "gpu_cost_model_stats_collection";
   }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   se::DeviceDescription device_info_;
   GpuHloCostAnalysis cost_analysis_;
+  SymbolicExprContext* symbolic_expr_context_;
 };
 
 }  // namespace gpu

@@ -29,8 +29,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 
 namespace xla {
@@ -79,16 +81,12 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
   // correctly report process count.
   absl::StatusOr<int> ProcessCount() const override { return 1; }
 
-  absl::StatusOr<int> CoreCountOfDefaultType() const override {
+  absl::StatusOr<int> ChipsPerProcess() const override {
     return cpu_topology_.number_of_devices();
   }
 
-  absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const override {
-    return cpu_topology_.number_of_devices();
-  }
-
-  absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override {
-    return cpu_topology_.number_of_devices();
+  absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerChip() const override {
+    return 1;
   }
 
   absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override {
@@ -96,6 +94,10 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
   }
 
   absl::StatusOr<std::string> Serialize() const override;
+
+  absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
+  LogicalDeviceOfDefaultTypeForId(
+      xla::PjRtGlobalDeviceId device_id) const override;
 
   // Returns vendor specific attributes about the topology.
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
@@ -106,6 +108,11 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
+
+  absl::StatusOr<xla::PjRtTopologyDescriptionProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<CpuTopologyDescription>> FromProto(
+      const xla::PjRtTopologyDescriptionProto& proto);
 
  private:
   const PjRtPlatformId platform_id_;

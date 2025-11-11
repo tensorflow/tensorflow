@@ -28,7 +28,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/shape.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -171,9 +174,6 @@ struct HloVerifierOpts {
   // Should enforce no function renames unless the name instruction has been
   // cloned (".clone" suffix) or rematted (".remat");
   bool verify_instruction_name_unchanged = false;
-
-  // Check if channel instructions all have unique channel ids.
-  bool verify_unique_channel_ids = true;
 
   // Check if a shape has a host memory space color
   bool verify_no_host_memory_space = false;
@@ -487,9 +487,8 @@ class HloVerifier : public HloModulePass {
   absl::string_view name() const override { return "hlo-verifier"; }
 
   // Never returns true; no instructions are ever modified by this pass.
-  using HloPassInterface::Run;
-  using HloPassInterface::RunOnModuleGroup;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

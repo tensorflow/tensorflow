@@ -37,6 +37,9 @@ static thread_local int on_send_guard = 0;
 void EnterHostCallback() { ++on_send_guard; }
 void LeaveHostCallback() { --on_send_guard; }
 
+HostCallbackScope::HostCallbackScope() { ++on_send_guard; }
+HostCallbackScope::~HostCallbackScope() { --on_send_guard; }
+
 bool ThisThreadIsInsideHostCallback() { return on_send_guard > 0; }
 
 absl::Status HostCallbackContext::OnSend(int arg_num,
@@ -90,9 +93,11 @@ absl::Status HostCallbackContext::OnSend(int arg_num,
     result_ptrs.push_back(results.back().data());
   }
 
-  EnterHostCallback();
-  auto status = host_callback_.callback(result_ptrs.data(), arg_ptrs.data());
-  LeaveHostCallback();
+  absl::Status status;
+  {
+    xla::HostCallbackScope scope;
+    status = host_callback_.callback(result_ptrs.data(), arg_ptrs.data());
+  }
 
   // TODO(chky): Consider populating garbage data in results upon errors.
 
@@ -175,7 +180,11 @@ CreateHostCallbackStateAndAppendSendRecvCallbacks(
 
 // First 64 bits of SHA-512 of "xla::FfiLoadedHostCallbacks".
 ffi::TypeId FfiLoadedHostCallbacks::id = {7357244197867843242};
+ffi::TypeInfo FfiLoadedHostCallbacks::info =
+    ffi::MakeTypeInfo<FfiLoadedHostCallbacks>();
+
 XLA_FFI_REGISTER_TYPE(ffi::GetXlaFfiApi(), "FfiLoadedHostCallbacks",
-                      &FfiLoadedHostCallbacks::id);
+                      &FfiLoadedHostCallbacks::id,
+                      &FfiLoadedHostCallbacks::info);
 
 }  // namespace xla

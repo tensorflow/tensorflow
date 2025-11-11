@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tsl/platform/str_util.h"
 
-#include <cctype>
+#include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <string>
+#include <system_error>  // NOLINT
 
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/stringpiece.h"
 
@@ -48,28 +51,16 @@ size_t RemoveWhitespaceContext(absl::string_view* text) {
 }
 
 bool ConsumeLeadingDigits(absl::string_view* s, uint64_t* val) {
-  const char* p = s->data();
-  const char* limit = p + s->size();
-  uint64_t v = 0;
-  while (p < limit) {
-    const char c = *p;
-    if (c < '0' || c > '9') break;
-    uint64_t new_v = (v * 10) + (c - '0');
-    if (new_v / 8 < v) {
-      // Overflow occurred
-      return false;
-    }
-    v = new_v;
-    p++;
-  }
-  if (p > s->data()) {
-    // Consume some digits
-    s->remove_prefix(p - s->data());
-    *val = v;
-    return true;
-  } else {
+  uint64_t v;
+  auto [p, ec] =
+      std::from_chars(s->data(), s->data() + s->size(), v, /*base=*/10);
+  if (ec != std::errc{}) {
     return false;
   }
+  // Consume some digits
+  s->remove_prefix(p - s->data());
+  *val = v;
+  return true;
 }
 
 bool ConsumeNonWhitespace(absl::string_view* s, absl::string_view* val) {
@@ -77,7 +68,7 @@ bool ConsumeNonWhitespace(absl::string_view* s, absl::string_view* val) {
   const char* limit = p + s->size();
   while (p < limit) {
     const char c = *p;
-    if (isspace(c)) break;
+    if (absl::ascii_isspace(c)) break;
     p++;
   }
   const size_t n = p - s->data();
@@ -95,9 +86,9 @@ void TitlecaseString(string* s, absl::string_view delimiters) {
   bool upper = true;
   for (string::iterator ss = s->begin(); ss != s->end(); ++ss) {
     if (upper) {
-      *ss = toupper(*ss);
+      *ss = absl::ascii_toupper(*ss);
     }
-    upper = (delimiters.find(*ss) != absl::string_view::npos);
+    upper = absl::StrContains(delimiters, *ss);
   }
 }
 
@@ -120,14 +111,6 @@ string StringReplace(absl::string_view s, absl::string_view oldsub,
   return res;
 }
 
-size_t Strnlen(const char* str, const size_t string_max_len) {
-  size_t len = 0;
-  while (len < string_max_len && str[len] != '\0') {
-    ++len;
-  }
-  return len;
-}
-
 string ArgDefCase(absl::string_view s) {
   const size_t n = s.size();
 
@@ -138,7 +121,7 @@ string ArgDefCase(absl::string_view s) {
   size_t to_skip = 0;
   for (size_t i = 0; i < n; ++i) {
     // If we are skipping and current letter is non-alpha, skip it as well
-    if (i == to_skip && !isalpha(s[i])) {
+    if (i == to_skip && !absl::ascii_isalpha(s[i])) {
       ++to_skip;
       continue;
     }
@@ -147,7 +130,8 @@ string ArgDefCase(absl::string_view s) {
     // If this letter is upper case, not the very first char in the
     // resulting string, and previous letter isn't replaced with an underscore,
     // we will need to insert an underscore.
-    if (isupper(s[i]) && i != to_skip && i > 0 && isalnum(s[i - 1])) {
+    if (absl::ascii_isupper(s[i]) && i != to_skip && i > 0 &&
+        absl::ascii_isalnum(s[i - 1])) {
       ++extra_us;
     }
   }
@@ -162,15 +146,15 @@ string ArgDefCase(absl::string_view s) {
     char c = s[i];
     // If c is not alphanumeric, we don't need to do anything
     // since there is already an underscore in its place.
-    if (isalnum(c)) {
-      if (isupper(c)) {
+    if (absl::ascii_isalnum(c)) {
+      if (absl::ascii_isupper(c)) {
         // If current char is upper case, we might need to insert an
         // underscore.
         if (i != to_skip) {
           DCHECK_GT(j, 0);
           if (result[j - 1] != '_') ++j;
         }
-        result[j] = tolower(c);
+        result[j] = absl::ascii_tolower(c);
       } else {
         result[j] = c;
       }

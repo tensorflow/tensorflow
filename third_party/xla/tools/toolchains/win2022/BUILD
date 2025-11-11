@@ -9,8 +9,6 @@ java_runtime(
 )
 
 # Register a Windows 2022 (Clang) platform.
-# Note that while this does support RBE, the current pool size is tiny,
-# and this platform is meant to be used as a non-RBE one, for now.
 platform(
     name = "windows_ltsc2022_clang",
     constraint_values = [
@@ -18,20 +16,11 @@ platform(
         "@platforms//os:windows",
         "@bazel_tools//tools/cpp:clang-cl",
     ],
-    remote_execution_properties = """
-        properties:{
-          name: "container-image"
-	  value: "docker://gcr.io/tensorflow-testing/tf-win2022@sha256:915cb093630432c38b028f56bd31116a5559ebbc688d427b6092d86828ae03bc"
-        }
-        properties:{
-          name: "OSFamily"
-          value: "Windows"
-        }
-        properties:{
-          name: "Pool" value: "win2022"
-        }
-        properties:{
-          name: "dockerNetwork" value: "off"
-        }
-        """,
+    exec_properties = {
+        "container-image": "docker://gcr.io/tensorflow-testing/tf-win2022@sha256:915cb093630432c38b028f56bd31116a5559ebbc688d427b6092d86828ae03bc",
+        "OSFamily": "Windows",
+        "Pool": "win2022",
+        "dockerNetwork": "off",
+        "cache-silo-key": "20251105-1762360217",
+    },
 )

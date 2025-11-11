@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -76,7 +75,6 @@ class CommandBufferScheduling : public HloModulePass {
     // DebugOptions control which commands are enabled. Long term we want to
     // remove that flag and enable all supported commands by default.
     absl::flat_hash_set<DebugOptions::CommandBufferCmdType> enabled_commands;
-    absl::flat_hash_set<std::string> enabled_legacy_custom_call_targets;
     const se::DeviceDescription& device_description;
   };
 
@@ -87,23 +85,9 @@ class CommandBufferScheduling : public HloModulePass {
     return "command-buffer-scheduling";
   }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   static std::vector<HloInstructionSequence> CollectCommandBufferSequences(
       HloInstructionSequence schedule, const CommandBufferConfig& config,
       int32_t min_num_commands = 1);
-
-  // Moves kParameter and kConstant instructions in a computation to
-  // the beginning of the computation. This simplifies the construction of
-  // command buffer computations because we don't need to deal with parameters
-  // and constants that have users outside of a command buffer.
-  // Returns true if there is a change in the order of instructions, false
-  // otherwise.
-  static absl::StatusOr<bool> MoveParametersAndConstantsToFront(
-      HloComputation* computation);
 
   struct CommandBuffer {
     // Command buffer arguments (call instruction arguments).
@@ -131,6 +115,11 @@ class CommandBufferScheduling : public HloModulePass {
   static absl::StatusOr<HloComputation*> RewriteCommandBuffer(
       HloComputation* parent, const HloInstructionSequence& seq,
       CommandBuffer command_buffer);
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   se::DeviceDescription device_description_;

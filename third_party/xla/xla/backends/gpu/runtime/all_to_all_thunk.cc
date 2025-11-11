@@ -35,7 +35,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
@@ -48,9 +47,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -81,7 +80,7 @@ AllToAllStartThunk::AllToAllStartThunk(
     std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
     : CollectiveThunk(Thunk::kAllToAllStart, thunk_info,
                       IsGPUSyncCollective(*instr),
-                      AsyncStreamKind::kCollective),
+                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
       config_(GetAllToAllConfig(instr)),
       buffers_(std::move(buffers)),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {
@@ -133,7 +132,7 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
     TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
     se::StreamExecutor* executor = params.executor;
     {
-      absl::MutexLock lock(&pointer_maps_mutex_);
+      absl::MutexLock lock(pointer_maps_mutex_);
       if (!receive_pointer_maps_.count(executor)) {
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<se::MemoryAllocation> alloc,
@@ -144,7 +143,7 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
       }
     }
     {
-      absl::MutexLock lock(&events_mutex_);
+      absl::MutexLock lock(events_mutex_);
       if (!events_.count(executor)) {
         TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
                             executor->CreateEvent());
@@ -196,7 +195,7 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
           (rank.value().value() - peer + num_ranks) % num_ranks;
       uint64_t* recv_ptr;
       {
-        absl::MutexLock lock(&pointer_maps_mutex_);
+        absl::MutexLock lock(pointer_maps_mutex_);
         recv_ptr = reinterpret_cast<uint64_t*>(
             receive_pointer_maps_[executor]->opaque());
       }
@@ -218,7 +217,7 @@ absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
   if (is_local() && p2p_memcpy_enabled_) {
     uint64_t* receive_pointer_map = nullptr;
     {
-      absl::MutexLock lock(&pointer_maps_mutex_);
+      absl::MutexLock lock(pointer_maps_mutex_);
       receive_pointer_map = reinterpret_cast<uint64_t*>(
           receive_pointer_maps_[stream.parent()]->opaque());
     }
@@ -226,12 +225,12 @@ absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
         comm_handle.clique_key.rank(params.collective_params->global_device_id);
     se::Event* event = nullptr;
     {
-      absl::MutexLock lock(&events_mutex_);
+      absl::MutexLock lock(events_mutex_);
       event = events_[stream.parent()].get();
     }
     std::vector<se::Event*> events;
     {
-      absl::MutexLock lock(&events_mutex_);
+      absl::MutexLock lock(events_mutex_);
       absl::c_transform(events_, std::back_inserter(events),
                         [](const auto& pair) { return pair.second.get(); });
     }
@@ -248,7 +247,7 @@ absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
 
 AsyncStreamKind AllToAllStartThunk::GetAsyncStreamKind() const {
   if (is_local() && p2p_memcpy_enabled_) {
-    return AsyncStreamKind::kMemCpyP2P;
+    return AsyncStreamKind::ASYNC_STREAM_KIND_MEMCPYP2P;
   }
   return CollectiveThunk::GetAsyncStreamKind();
 }
@@ -317,51 +316,23 @@ absl::Status RunAllToAll(bool has_split_dimension,
       }
     }
 
-    auto event = comm->AllToAll(
+    auto future = comm->AllToAll(
         std::move(send_buffers), std::move(recv_buffers), element_type,
         chunk_element_count, GpuCollectives::On(stream));
-
-    tsl::BlockUntilReady(event);
-    if (event.IsError()) {
-      return event.GetError();
-    }
+    TF_RETURN_IF_ERROR(future.Await());
   } else {
     for (const DeviceBufferPair& buffer : buffers) {
       send_buffers.push_back(buffer.source_buffer);
       recv_buffers.push_back(buffer.destination_buffer);
     }
 
-    auto event =
+    auto future =
         comm->AllToAll(std::move(send_buffers), std::move(recv_buffers),
                        element_type, element_count, GpuCollectives::On(stream));
-
-    tsl::BlockUntilReady(event);
-    if (event.IsError()) {
-      return event.GetError();
-    }
+    TF_RETURN_IF_ERROR(future.Await());
   }
 
   return absl::OkStatus();
-}
-
-static absl::Status SendPtrToPeer(void* ptr, RankId peer, GpuCommunicator* comm,
-                                  se::Stream& stream) {
-  VLOG(3) << absl::StreamFormat(
-      "RecvPtrFromPeer on device #%d; peer=%d; comm=%p; stream=%p",
-      stream.parent()->device_ordinal(), peer.value(), comm, &stream);
-
-  return comm->LaunchSend(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1,
-                          peer, GpuCollectives::On(stream));
-}
-
-static absl::Status RecvPtrFromPeer(void* ptr, RankId peer,
-                                    GpuCommunicator* comm, se::Stream& stream) {
-  VLOG(3) << absl::StreamFormat(
-      "RecvPtrFromPeer on device #%d; peer=%d; comm=%p; stream=%p",
-      stream.parent()->device_ordinal(), peer.value(), comm, &stream);
-
-  return comm->LaunchRecv(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1,
-                          peer, GpuCollectives::On(stream));
 }
 
 // Syncs the execution progress across all devices.

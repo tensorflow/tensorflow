@@ -153,7 +153,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   }
 
   SE_Stream* get_stream(Stream* ptr) {
-    absl::MutexLock m(&tpu_platform().mutex());
+    absl::MutexLock m(tpu_platform().mutex());
     return stream_map()[ptr];
   }
 

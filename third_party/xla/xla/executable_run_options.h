@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
@@ -47,6 +48,7 @@ class AsyncValueRef;
 
 namespace xla {
 
+class CliqueKey;
 class DeviceAssignment;
 class ExecutionProfile;
 class Shape;
@@ -254,6 +256,10 @@ class ExecutableRunOptions {
   ExecutableRunOptions& set_local_device_count(int local_device_count);
   int local_device_count() const;
 
+  ExecutableRunOptions& set_clique_keys(
+      std::vector<std::unique_ptr<CliqueKey>>* clique_keys);
+  std::vector<std::unique_ptr<CliqueKey>>* clique_keys() const;
+
  private:
   stream_executor::DeviceMemoryAllocator* allocator_ = nullptr;
   int device_ordinal_ = -1;
@@ -274,6 +280,7 @@ class ExecutableRunOptions {
   const cpu::CpuExecutableRunOptions* cpu_executable_run_options_ = nullptr;
   const gpu::GpuExecutableRunOptions* gpu_executable_run_options_ = nullptr;
   const ffi::ExecutionContext* ffi_execution_context_ = nullptr;
+  std::vector<std::unique_ptr<CliqueKey>>* clique_keys_ = nullptr;
 };
 
 }  // namespace xla

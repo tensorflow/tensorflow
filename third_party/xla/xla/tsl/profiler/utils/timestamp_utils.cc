@@ -16,11 +16,14 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/timestamp_utils.h"
 
 #include <cstdint>
+#include <optional>
+#include <utility>
 
 #include "absl/log/log.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
@@ -43,6 +46,27 @@ void SetSessionTimestamps(uint64_t start_walltime_ns, uint64_t stop_walltime_ns,
                     "stop_walltime_ns) : "
                  << start_walltime_ns << ", " << stop_walltime_ns;
   }
+}
+
+std::optional<std::pair<uint64_t, uint64_t>> GetSessionTimestamps(
+    const tensorflow::profiler::XSpace& space) {
+  auto task_env_plane =
+      tsl::profiler::FindPlaneWithName(space, tsl::profiler::kTaskEnvPlaneName);
+  if (task_env_plane == nullptr) {
+    LOG(WARNING) << "No task env plane found. Skipping getting session "
+                    "timestamps.";
+    return std::nullopt;
+  }
+  XPlaneVisitor visitor(task_env_plane, {}, {FindTaskEnvStatType});
+  auto start_stat = visitor.GetStat(kEnvProfileStartTime);
+  auto stop_stat = visitor.GetStat(kEnvProfileStopTime);
+  if (!start_stat.has_value() || !stop_stat.has_value()) {
+    LOG(WARNING) << "No session timestamps found. Skipping getting session "
+                    "timestamps.";
+    return std::nullopt;
+  }
+  return std::make_pair(start_stat->IntOrUintValue(),
+                        stop_stat->IntOrUintValue());
 }
 
 }  // namespace profiler

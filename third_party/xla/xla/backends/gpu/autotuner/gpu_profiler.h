@@ -63,11 +63,11 @@ class GpuProfiler : public Profiler {
   explicit GpuProfiler(
       se::StreamExecutor* stream_executor, se::DeviceMemoryAllocator* allocator,
       std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator,
-      std::unique_ptr<se::Stream> stream, ProfileOptions options)
+      se::Stream* stream, ProfileOptions options)
       : stream_executor_(stream_executor),
         allocator_(allocator),
         owned_allocator_(std::move(owned_allocator)),
-        stream_(std::move(stream)),
+        stream_(stream),
         options_(options) {}
 
   absl::StatusOr<ExecutionOutput> Execute(Executable* executable,
@@ -77,7 +77,7 @@ class GpuProfiler : public Profiler {
   se::StreamExecutor* stream_executor_;
   se::DeviceMemoryAllocator* allocator_;
   std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
-  std::unique_ptr<se::Stream> stream_;
+  se::Stream* stream_;
   ProfileOptions options_;
 };
 

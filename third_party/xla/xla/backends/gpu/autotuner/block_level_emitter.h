@@ -39,17 +39,17 @@ namespace gpu {
 //
 // This backend enables autotuning of Triton-based fusion computations at the
 // block level. It generates tiling configurations, applies them to
-// instructions,and prepares them for compilation using the Triton emitter.
+// instructions, and prepares them for compilation using the Triton emitter.
 class BlockLevelEmitterBackend : public GpuCodegenBackend {
  public:
   explicit BlockLevelEmitterBackend(
-      stream_executor::StreamExecutor* absl_nonnull stream_executor,
       const DebugOptions* absl_nonnull debug_options,
       Compiler* absl_nonnull compiler,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+      const Compiler::TargetConfig* target_config,
       bool use_default_config = false)
-      : GpuCodegenBackend("BlockLevelEmitter", stream_executor, debug_options,
-                          compiler),
+      : GpuCodegenBackend("BlockLevelEmitter", debug_options, compiler,
+                          target_config),
         use_default_config_(use_default_config),
         shape_size_fn_(std::move(shape_size_fn)) {}
 
@@ -68,6 +68,10 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
 
   // Determines whether the given HLO instruction is supported by this backend.
   bool IsSupported(const HloInstruction& instr);
+
+  // We don't want to use the Triton emitter as a reference because it can
+  // produce wrong results.
+  bool CanProduceWrongResults() const override { return true; }
 
  private:
   absl::StatusOr<BlockLevelFusionConfig> GetCostModelConfig(

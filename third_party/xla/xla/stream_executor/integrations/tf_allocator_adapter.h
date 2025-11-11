@@ -139,7 +139,7 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
         auto result, it->second[device_ordinal]->Allocate(
                          device_ordinal, size, retry_on_failure, memory_space));
 
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     buffer_memory_spaces_[{device_ordinal, result->opaque()}] = memory_space;
     return result;
   }
@@ -150,7 +150,7 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
     // buffer_memory_spaces_.
     int64_t memory_space;
     {
-      absl::MutexLock lock(&mu_);
+      absl::MutexLock lock(mu_);
       auto it = buffer_memory_spaces_.find({device_ordinal, mem.opaque()});
       if (it == buffer_memory_spaces_.end()) {
         // There might be situation when device memory was allocated somewhere

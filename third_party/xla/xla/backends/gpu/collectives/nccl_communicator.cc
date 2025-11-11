@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -40,14 +39,14 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/single_threaded_executor.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/future.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/concurrency/async_value.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -68,34 +67,6 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
-
-// Blocks until ref is ready and returns its value (or error).
-template <typename T>
-absl::StatusOr<T> BlockAndGet(tsl::AsyncValueRef<T> ref) {
-  tsl::BlockUntilReady(ref);
-  if (ref.IsError()) {
-    return ref.GetError();
-  }
-  return std::move(std::move(ref).get());
-}
-
-// Blocks until ref is ready and returns its value (or error).
-absl::Status BlockAndGet(tsl::AsyncValueRef<absl::Status> ref) {
-  tsl::BlockUntilReady(ref);
-  if (ref.IsError()) {
-    return ref.GetError();
-  }
-  return ref.get();
-}
-
-// Blocks until ref is ready and returns absl::OkStatus() (or error).
-absl::Status BlockAndGet(tsl::AsyncValueRef<NcclCommunicator::Event> ref) {
-  tsl::BlockUntilReady(ref);
-  if (ref.IsError()) {
-    return ref.GetError();
-  }
-  return absl::OkStatus();
-}
 
 se::Stream* ToStream(const Communicator::Executor& executor) {
   return tsl::down_cast<const GpuCollectives::Executor&>(executor).stream();
@@ -182,8 +153,8 @@ class NcclCommunicator::NcclRegisteredBufferHandle
     : public Communicator::RegisteredBufferHandle {
  public:
   NcclRegisteredBufferHandle(NcclCommunicator& comm, void* handle,
-                             tsl::AsyncValue::Executor* executor,
-                             bool symmetric_handle, int device_ordinal)
+                             tsl::Executor* executor, bool symmetric_handle,
+                             int device_ordinal)
       : comm_(comm),
         handle_(handle),
         executor_(),
@@ -210,10 +181,7 @@ class NcclCommunicator::NcclRegisteredBufferHandle
         XLA_NCCL_RETURN_IF_ERROR(ncclCommDeregister(comm_.comm(), handle_));
         return comm_.PollUntilDone();
       };
-      if (!executor_) {
-        return f();
-      }
-      return BlockAndGet(tsl::MakeAsyncValueRef(*executor_, f));
+      return executor_ ? Future<>::MakeOn(*executor_, f).Await() : f();
 #else
       return Unimplemented(
           "[%d] NCCL version does not support ncclCommDeregister",
@@ -234,10 +202,7 @@ class NcclCommunicator::NcclRegisteredBufferHandle
             ncclCommWindowDeregister(comm_.comm(), *(ncclWindow_t*)(handle_)));
         return comm_.PollUntilDone();
       };
-      if (!executor_) {
-        return f();
-      }
-      return BlockAndGet(tsl::MakeAsyncValueRef(*executor_, f));
+      return executor_ ? Future<>::MakeOn(*executor_, f).Await() : f();
 #else
       return Unimplemented(
           "[%d] NCCL version does not support ncclCommWindowDeregister",
@@ -249,7 +214,7 @@ class NcclCommunicator::NcclRegisteredBufferHandle
  private:
   NcclCommunicator& comm_;
   void* handle_;
-  tsl::AsyncValue::Executor* executor_;
+  tsl::Executor* executor_;
   bool symmetric_handle_;
   int device_ordinal_;
 };
@@ -260,11 +225,15 @@ class NcclCommunicator::NcclRegisteredBufferHandle
 
 absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
     absl::AnyInvocable<absl::StatusOr<ncclComm_t>()> make_comm, bool is_async,
-    tsl::Env& env) {
-  // TODO(mwhittaker): There is currently no way to abort these operations.
-  auto f = [&make_comm]() -> absl::StatusOr<ncclComm_t> {
+    std::atomic_bool* cancel, tsl::Env& env) {
+  auto f = [cancel, &make_comm]() -> absl::StatusOr<ncclComm_t> {
     TF_ASSIGN_OR_RETURN(ncclComm_t comm, make_comm());
-    TF_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, std::atomic_bool{}));
+    if (cancel) {
+      TF_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, *cancel));
+    } else {
+      std::atomic_bool never_cancelled;
+      TF_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, never_cancelled));
+    }
     return comm;
   };
 
@@ -280,7 +249,7 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
   // single threaded executor.
   auto executor = std::make_unique<SingleThreadedExecutor>(env);
   TF_ASSIGN_OR_RETURN(ncclComm_t comm,
-                      BlockAndGet(tsl::TryMakeAsyncValueRef(*executor, f)));
+                      Future<ncclComm_t>::MakeOn(*executor, f).Await());
   return absl::WrapUnique(new NcclCommunicator(comm, std::move(executor)));
 }
 
@@ -302,7 +271,7 @@ NcclCommunicator::~NcclCommunicator() {
     return XLA_NCCL_STATUS(ncclCommDestroy(comm_));
   };
 
-  if (absl::Status s = BlockAndGet(Execute(f)); !s.ok()) {
+  if (absl::Status s = Execute(f).Await(); !s.ok()) {
     LOG(ERROR) << "NcclCommunicator::~NcclCommunicator: " << s;
   }
 }
@@ -312,20 +281,20 @@ absl::Status NcclCommunicator::Abort() {
   // executor_ will cancel. This will allow the aborting lambda below to run.
   canceling_.store(true);
 
-  return BlockAndGet(Execute([this]() -> absl::Status {
+  return ExecuteAwait([this]() -> absl::Status {
     VLOG(1) << "Abort NCCL communicator: " << *this;
     if (aborted_) {
       return FailedPrecondition("NcclCommunicator already aborted");
     }
     aborted_ = true;
-    // Note that we intentionally don't call PollUntilDone. Once comm_ has been
-    // aborted, we can no longer safely touch it.
+    // Note that we intentionally don't call PollUntilDone. Once comm_
+    // has been aborted, we can no longer safely touch it.
     return XLA_NCCL_STATUS(ncclCommAbort(comm_));
-  }));
+  });
 }
 
 absl::Status NcclCommunicator::HealthCheck() const {
-  return BlockAndGet(Execute([this]() -> absl::Status {
+  return ExecuteAwait([this]() -> absl::Status {
     VLOG(5) << "Get last async error for NCCL communicator: " << *this;
     if (canceling_.load()) {
       return absl::FailedPreconditionError("NcclCommunicator aborted");
@@ -339,51 +308,50 @@ absl::Status NcclCommunicator::HealthCheck() const {
 
     return Internal("%s. Last NCCL error (maybe unrelated): %s",
                     ncclGetLastError(comm_), ncclGetErrorString(async_err));
-  }));
+  });
 }
 
 absl::StatusOr<size_t> NcclCommunicator::NumRanks() const {
-  return BlockAndGet(Execute<size_t>([this]() -> absl::StatusOr<size_t> {
+  return ExecuteAwait<size_t>([this]() -> absl::StatusOr<size_t> {
     VLOG(5) << "Get the number of ranks in NCCL communicator: " << *this;
     if (canceling_.load()) {
       return absl::FailedPreconditionError("NcclCommunicator aborted");
     }
 
-    // We intentionally don't call PollUntilDone. ncclCommCount is blocking.
+    // We intentionally don't call PollUntilDone. ncclCommCount is
+    // blocking.
     int32_t count = 0;
     XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm_, &count));
     return count;
-  }));
+  });
 }
 
 absl::Status NcclCommunicator::RegisterBufferOnce(
-    se::DeviceMemoryBase buffer, se::DeviceMemoryBase buffer_range,
-    int device_ordinal, bool use_symmetric_buffer) {
+    se::DeviceMemoryBase buffer_range, int device_ordinal,
+    bool use_symmetric_buffer) {
   bool need_reg = false;
   {
-    absl::MutexLock lock(&registered_buffers_.mu);
-    if (!registered_buffers_.records_to_handles.contains(
-            {buffer.size(), buffer.opaque()})) {
+    absl::MutexLock lock(registered_buffers_.mu);
+    if (!registered_buffers_.range_to_handle.contains(buffer_range.opaque())) {
       need_reg = true;
     } else {
-      VLOG(5) << "[" << device_ordinal << "] Buffer: " << buffer.opaque()
-              << " with size: " << buffer.size()
-              << " with range: " << buffer_range.opaque()
+      VLOG(5) << "[" << device_ordinal
+              << "] Buffer range: " << buffer_range.opaque()
+              << " with size: " << buffer_range.size()
               << " is already registered.";
     }
   }
   if (need_reg) {
-    VLOG(5) << "[" << device_ordinal << "] Registering " << buffer.opaque()
-            << " with size: " << buffer.size()
-            << " and with range: " << buffer_range.opaque()
+    VLOG(5) << "[" << device_ordinal << "] Registering "
+            << buffer_range.opaque() << " with size: " << buffer_range.size()
             << ", is symmetric: " << (use_symmetric_buffer ? "true" : "false");
     // Symmetric buffer registration is a collective operation,
     // we need to do that before locking on a global.
-    TF_ASSIGN_OR_RETURN(auto handle, RegisterBuffer(buffer, device_ordinal,
-                                                    use_symmetric_buffer));
-    absl::MutexLock lock(&registered_buffers_.mu);
-    registered_buffers_
-        .records_to_handles[std::make_tuple(buffer.size(), buffer.opaque())] =
+    TF_ASSIGN_OR_RETURN(
+        auto handle,
+        RegisterBuffer(buffer_range, device_ordinal, use_symmetric_buffer));
+    absl::MutexLock lock(registered_buffers_.mu);
+    registered_buffers_.range_to_handle[buffer_range.opaque()] =
         std::move(handle);
   }
   return absl::OkStatus();
@@ -397,10 +365,11 @@ NcclCommunicator::RegisterBuffer(stream_executor::DeviceMemoryBase buffer,
   using Handle = std::unique_ptr<Communicator::RegisteredBufferHandle>;
 
   if (!use_symmetric_buffer) {
-    return BlockAndGet(Execute<Handle>(
+    return ExecuteAwait<Handle>(
         [&buffer, device_ordinal, this]() -> absl::StatusOr<Handle> {
           VLOG(3) << absl::StreamFormat(
-              "[%d] Register buffer for NCCL communicator; buffer=%p; size=%d; "
+              "[%d] Register buffer for NCCL communicator; buffer=%p; "
+              "size=%d; "
               "comm=%p",
               device_ordinal, buffer.opaque(), buffer.size(), comm_);
           if (canceling_.load()) {
@@ -415,33 +384,32 @@ NcclCommunicator::RegisterBuffer(stream_executor::DeviceMemoryBase buffer,
           return std::make_unique<NcclRegisteredBufferHandle>(
               *this, handle, executor_.get(), /*symmetric_buffer= */ false,
               device_ordinal);
-        }));
+        });
 #else
   return Unimplemented("[%d] NCCL version does not support ncclCommRegister",
                        device_ordinal);
 #endif  // NCCL_VERSION_CODE >= 21901
   } else {
 #if (NCCL_VERSION_CODE >= 22700)
-    return BlockAndGet(Execute<Handle>([&buffer, device_ordinal,
-                                        this]() -> absl::StatusOr<Handle> {
-      VLOG(3) << absl::StreamFormat(
-          "[%d] Register symmetric buffer for NCCL communicator; buffer=%p; "
-          "size=%d; "
-          "comm=%p",
-          device_ordinal, buffer.opaque(), buffer.size(), comm_);
-      void* handle = nullptr;
-      XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
-      XLA_NCCL_RETURN_IF_ERROR(ncclCommWindowRegister(
-          comm_, buffer.opaque(), buffer.size(), (ncclWindow_t*)&handle,
-          NCCL_WIN_COLL_SYMMETRIC));
-      XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
-      if (group_nesting_level_ == 0) {
-        TF_RETURN_IF_ERROR(PollUntilDone());
-      }
-      return std::make_unique<NcclRegisteredBufferHandle>(
-          *this, handle, executor_.get(), /*symmetric_buffer= */ true,
-          device_ordinal);
-    }));
+    return ExecuteAwait<Handle>(
+        [&buffer, device_ordinal, this]() -> absl::StatusOr<Handle> {
+          VLOG(3) << absl::StreamFormat(
+              "[%d] Register symmetric buffer for NCCL communicator; "
+              "buffer=%p; size=%d; comm=%p",
+              device_ordinal, buffer.opaque(), buffer.size(), comm_);
+          void* handle = nullptr;
+          XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
+          XLA_NCCL_RETURN_IF_ERROR(ncclCommWindowRegister(
+              comm_, buffer.opaque(), buffer.size(), (ncclWindow_t*)&handle,
+              NCCL_WIN_COLL_SYMMETRIC));
+          XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+          if (group_nesting_level_ == 0) {
+            TF_RETURN_IF_ERROR(PollUntilDone());
+          }
+          return std::make_unique<NcclRegisteredBufferHandle>(
+              *this, handle, executor_.get(),
+              /*symmetric_buffer= */ true, device_ordinal);
+        });
 #else
   return Unimplemented(
       "[%d] NCCL version does not support ncclCommWindowRegister",
@@ -450,7 +418,7 @@ NcclCommunicator::RegisterBuffer(stream_executor::DeviceMemoryBase buffer,
   }
 }
 
-tsl::AsyncValueRef<Communicator::Event> NcclCommunicator::GroupExecute(
+Future<> NcclCommunicator::GroupExecute(
     absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) {
   return Execute([f = std::move(f), this]() mutable -> absl::Status {
     TF_RETURN_IF_ERROR(GroupStart());
@@ -460,10 +428,11 @@ tsl::AsyncValueRef<Communicator::Event> NcclCommunicator::GroupExecute(
   });
 }
 
-tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::AllReduce(
-    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
-    PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
-    const Communicator::Executor& executor) {
+Future<> NcclCommunicator::AllReduce(se::DeviceMemoryBase send_buffer,
+                                     se::DeviceMemoryBase recv_buffer,
+                                     PrimitiveType dtype, size_t count,
+                                     ReductionKind reduction_kind,
+                                     const Communicator::Executor& executor) {
   return Execute([send_buffer, recv_buffer, dtype, count, reduction_kind,
                   &executor, this]() -> absl::Status {
     return LaunchAllReduce(send_buffer, recv_buffer, dtype, count,
@@ -471,9 +440,10 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::AllReduce(
   });
 }
 
-tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::Broadcast(
-    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
-    PrimitiveType dtype, size_t count, RankId root, const Executor& executor) {
+Future<> NcclCommunicator::Broadcast(se::DeviceMemoryBase send_buffer,
+                                     se::DeviceMemoryBase recv_buffer,
+                                     PrimitiveType dtype, size_t count,
+                                     RankId root, const Executor& executor) {
   return Execute(
       [send_buffer, recv_buffer, dtype, count, root, &executor, this]() {
         return LaunchBroadcast(send_buffer, recv_buffer, dtype, count, root,
@@ -481,10 +451,11 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::Broadcast(
       });
 }
 
-tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::ReduceScatter(
-    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
-    PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
-    const Executor& executor) {
+Future<> NcclCommunicator::ReduceScatter(se::DeviceMemoryBase send_buffer,
+                                         se::DeviceMemoryBase recv_buffer,
+                                         PrimitiveType dtype, size_t count,
+                                         ReductionKind reduction_kind,
+                                         const Executor& executor) {
   return Execute([send_buffer, recv_buffer, dtype, count, reduction_kind,
                   &executor, this]() {
     return LaunchReduceScatter(send_buffer, recv_buffer, dtype, count,
@@ -492,15 +463,16 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::ReduceScatter(
   });
 }
 
-tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::AllGather(
-    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
-    PrimitiveType dtype, size_t count, const Executor& executor) {
+Future<> NcclCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
+                                     se::DeviceMemoryBase recv_buffer,
+                                     PrimitiveType dtype, size_t count,
+                                     const Executor& executor) {
   return Execute([send_buffer, recv_buffer, dtype, count, &executor, this]() {
     return LaunchAllGather(send_buffer, recv_buffer, dtype, count, executor);
   });
 }
 
-tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::AllToAll(
+Future<> NcclCommunicator::AllToAll(
     absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
     absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
     PrimitiveType dtype, size_t count, const Executor& executor) {
@@ -509,7 +481,7 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::AllToAll(
   });
 }
 
-tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::CollectivePermute(
+Future<> NcclCommunicator::CollectivePermute(
     se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
     PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
     absl::Span<const RankId> target_ranks, const Executor& executor) {
@@ -523,17 +495,17 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::CollectivePermute(
   });
 }
 
-tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::Send(
-    se::DeviceMemoryBase send_buffer, PrimitiveType dtype, size_t count,
-    RankId peer, const Executor& executor) {
+Future<> NcclCommunicator::Send(se::DeviceMemoryBase send_buffer,
+                                PrimitiveType dtype, size_t count, RankId peer,
+                                const Executor& executor) {
   return Execute([send_buffer, dtype, count, peer, &executor, this]() {
     return LaunchSend(send_buffer, dtype, count, peer, executor);
   });
 }
 
-tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::Recv(
-    se::DeviceMemoryBase recv_buffer, PrimitiveType dtype, size_t count,
-    RankId peer, const Executor& executor) {
+Future<> NcclCommunicator::Recv(se::DeviceMemoryBase recv_buffer,
+                                PrimitiveType dtype, size_t count, RankId peer,
+                                const Executor& executor) {
   return Execute([recv_buffer, dtype, count, peer, &executor, this]() {
     return LaunchRecv(recv_buffer, dtype, count, peer, executor);
   });
@@ -847,35 +819,17 @@ absl::Status NcclCommunicator::PollUntilDone() const {
   return ::xla::gpu::PollUntilDone(comm_, canceling_);
 }
 
-tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::Execute(
-    absl::AnyInvocable<absl::Status()> f) const {
-  if (!executor_) {
-    // Execute on the calling thread.
-    TF_RETURN_IF_ERROR(std::move(f)());
-    return OkEvent();
-  }
-
-  // Execute on executor_.
-  return tsl::TryMakeAsyncValueRef(
-      *executor_,
-      [f = std::move(f)]() mutable -> absl::StatusOr<NcclCommunicator::Event> {
-        TF_RETURN_IF_ERROR(std::move(f)());
-        return NcclCommunicator::Event{};
-      });
+Future<> NcclCommunicator::Execute(
+    absl::AnyInvocable<absl::Status() &&> f) const {
+  return executor_ ? Future<>::MakeOn(*executor_, std::move(f))
+                   : Future<>(std::move(f)());
 }
 
 template <typename T>
-tsl::AsyncValueRef<T> NcclCommunicator::Execute(
-    absl::AnyInvocable<absl::StatusOr<T>()> f) const {
-  if (!executor_) {
-    // Execute on the calling thread.
-    auto ref = tsl::MakeUnconstructedAsyncValueRef<T>();
-    ref.emplace(std::move(f)());
-    return ref;
-  }
-
-  // Execute on executor_.
-  return tsl::TryMakeAsyncValueRef(*executor_, std::move(f));
+Future<T> NcclCommunicator::Execute(
+    absl::AnyInvocable<absl::StatusOr<T>() &&> f) const {
+  return executor_ ? Future<T>::MakeOn(*executor_, std::move(f))
+                   : Future<T>(std::move(f)());
 }
 
 }  // namespace xla::gpu

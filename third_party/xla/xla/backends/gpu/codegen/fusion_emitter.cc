@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -100,10 +101,11 @@ absl::Status AnnotateKernelLaunchDimensions(
 
 IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
     const LaunchDimensions& launch_dims, int unroll_factor, const Shape& shape,
-    mlir::MLIRContext* ctx) {
+    SymbolicExprContext* symbolic_expr_context) {
   WorkDimensions work_dimensions = launch_dims.AsWorkDimensions();
   work_dimensions.work_tile_size.dimensions.push_back(unroll_factor);
-  return emitters::GetDefaultWorkItemIndexingMap(work_dimensions, shape, ctx);
+  return emitters::GetDefaultWorkItemIndexingMap(work_dimensions, shape,
+                                                 symbolic_expr_context);
 }
 
 std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
@@ -186,8 +188,11 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
                            llvm::Attribute::get(llvm_arg.getContext(),
                                                 llvm::Attribute::NoAlias));
     }
+    if (impl_arg && impl_arg->hasAttribute("nvvm.grid_constant")) {
+      kernel->addParamAttr(arg_idx, llvm::Attribute::get(llvm_arg.getContext(),
+                                                         "nvvm.grid_constant"));
+    }
   }
-
   return kernel;
 }
 

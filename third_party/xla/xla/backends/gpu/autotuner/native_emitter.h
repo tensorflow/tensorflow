@@ -38,12 +38,11 @@ namespace gpu {
 // backends.
 class NativeEmitterBackend : public GpuCodegenBackend {
  public:
-  explicit NativeEmitterBackend(
-      stream_executor::StreamExecutor* absl_nonnull stream_executor,
-      const DebugOptions* absl_nonnull debug_options,
-      Compiler* absl_nonnull compiler)
-      : GpuCodegenBackend("NativeEmitter", stream_executor, debug_options,
-                          compiler) {}
+  explicit NativeEmitterBackend(const DebugOptions* absl_nonnull debug_options,
+                                Compiler* absl_nonnull compiler,
+                                const Compiler::TargetConfig* target_config)
+      : GpuCodegenBackend("NativeEmitter", debug_options, compiler,
+                          target_config) {}
 
   // Returns all supported configurations for the given instruction.
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
@@ -56,6 +55,9 @@ class NativeEmitterBackend : public GpuCodegenBackend {
   // Applies a given fusion config to the instruction.
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
+
+ private:
+  bool IsSupported(const HloInstruction& instr) override;
 };
 
 }  // namespace gpu

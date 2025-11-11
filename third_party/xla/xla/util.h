@@ -756,6 +756,11 @@ std::unique_ptr<Derived> unique_ptr_down_cast(std::unique_ptr<Base> ptr) {
   return absl::WrapUnique(tensorflow::down_cast<Derived*>(ptr.release()));
 }
 
+template <typename T>
+T Product(absl::Span<const T> xs) {
+  return absl::c_accumulate(xs, static_cast<T>(1), std::multiplies<T>());
+}
+
 int64_t Product(absl::Span<const int64_t> xs);
 
 // Returns an array of results after performing elementwise product of a and b.

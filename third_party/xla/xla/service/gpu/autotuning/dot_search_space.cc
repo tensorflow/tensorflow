@@ -23,11 +23,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/STLExtras.h"
+#include "google/protobuf/repeated_field.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -121,7 +123,8 @@ TritonDotFusionSearchSpace::TritonDotFusionSearchSpace(
 }
 
 std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
-    std::optional<int64_t> force_contracting_split, bool autotune_tma) const {
+    std::optional<int64_t> force_contracting_split, bool autotune_tma,
+    bool autotune_warp_specialization) const {
   std::vector<ConfigWithNotes> configs;
   if (force_contracting_split.has_value()) {
     ConfigWithNotes config;
@@ -149,8 +152,22 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddCtaSizeParameter);
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddContractingTiling);
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddPipeliningParameter);
+
+  if (autotune_warp_specialization && !autotune_tma) {
+    LOG(WARNING)
+        << "Warp specialization is requested, but TMA is not enabled, hence "
+           "warp specialization will be ignored. Set both "
+           "`is_warp_specialization_allowed` and `is_tma_allowed` "
+           "to true on the configuration to enable warp specialization.";
+  }
   if (autotune_tma) {
+    VLOG(10) << "Parameterizing all currently constructed configs with "
+                "TMA.";
     ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddTmaParameter);
+    if (autotune_warp_specialization) {
+      ExtendConfigs(
+          configs, &TritonDotFusionSearchSpace::AddWarpSpecializationParameter);
+    }
   }
 
   std::vector<TritonGemmConfig> result;
@@ -171,9 +188,31 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
     return configs;
   }
 
-  auto split_limits = std::minmax_element(
-      configs.begin(), configs.end(),
-      [](const auto& a, const auto& b) { return a.split_k < b.split_k; });
+  absl::flat_hash_map<std::pair<int, int>, std::pair<int, int>>
+      m_n_to_split_limits;
+  // Init with first config vals, otherwise they would be 0 and min comparison
+  // won't update properly.
+  std::pair<int, int> global_split_limits{configs.front().split_k,
+                                          configs.front().split_k};
+  auto update_split_limits = [](auto& limits, int value) {
+    limits = std::minmax({limits.first, limits.second, value});
+  };
+  for (const TritonGemmConfig& config : configs) {
+    auto m_n_key = std::make_pair(config.block_m, config.block_n);
+    auto& split_limits =
+        m_n_to_split_limits.try_emplace(m_n_key, config.split_k, config.split_k)
+            .first->second;
+    update_split_limits(split_limits, config.split_k);
+    update_split_limits(global_split_limits, config.split_k);
+  }
+
+  auto get_split_limits = [&](int block_m, int block_n) {
+    auto m_n_key = std::make_pair(block_m, block_n);
+    auto split_limits_it = m_n_to_split_limits.find(m_n_key);
+    return split_limits_it == m_n_to_split_limits.end()
+               ? global_split_limits
+               : split_limits_it->second;
+  };
   absl::flat_hash_set<TritonGemmConfig> filter;
   for (TritonGemmConfig config : hints) {
     // Our default config set does not take problem size into account, so we
@@ -188,8 +227,9 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
         std::clamp(config.block_k, min_contracting_tile_size_,
                    GetMaxContractingTileSize({config.block_m, config.block_n},
                                              /*contracting_split=*/1));
-    config.split_k = std::clamp(config.split_k, split_limits.first->split_k,
-                                split_limits.second->split_k);
+    const auto& split_limits = get_split_limits(config.block_m, config.block_n);
+    config.split_k =
+        std::clamp(config.split_k, split_limits.first, split_limits.second);
     VLOG(10) << "Adding config to hint filter: " << config.ToString();
     filter.insert(config);
   }
@@ -307,12 +347,11 @@ bool TritonDotFusionSearchSpace::ShouldOptimizeForOccupancy() const {
 
 TritonDotFusionSearchSpace::OutputTile
 TritonDotFusionSearchSpace::GetMinOutputTile() const {
-  // Triton currently doesn't support tiles smaller than 16x16.
-  // TODO: b/395572776 - Lift this restriction, and calculate a smaller tile
-  // based on the requested algorithm (e.g., if we want to use wgmma vs mma
-  // vs fma, the minimal reasonable tile size is different).
-  constexpr OutputTile kMinSupportedTile = {16, 16};
-  constexpr OutputTile kMinWgmmaTile = {64, 16};
+  // TODO: b/395572776 - Calculate tile sizes based on the requested algorithm
+  // (e.g., if we want to use wgmma vs mma vs fma, the minimal reasonable tile
+  // size is different).
+  constexpr OutputTile kMinSupportedTile = {16, 8};
+  constexpr OutputTile kMinWgmmaTile = {64, 8};
   if (device_description_.cuda_compute_capability().IsAtLeastHopper() &&
       !should_optimize_for_occupancy_) {
     VLOG(5) << "Computing output_tile: Want to use wgmma, so output_tile >= "
@@ -605,13 +644,32 @@ void TritonDotFusionSearchSpace::AddTmaParameter(
     std::vector<ConfigWithNotes>& updated_configs) const {
   ConfigWithNotes new_config = config;
   new_config.config.is_tma_allowed = false;
-  VLOG(10) << "Adding TMA (disabled) parameter: config = "
-           << new_config.ToString();
   updated_configs.push_back(new_config);
   new_config.config.is_tma_allowed = true;
-  VLOG(10) << "Adding TMA (enabled) parameter: config = "
-           << new_config.ToString();
   updated_configs.push_back(new_config);
+}
+
+void TritonDotFusionSearchSpace::AddWarpSpecializationParameter(
+    const ConfigWithNotes& config,
+    std::vector<ConfigWithNotes>& updated_configs) const {
+  ConfigWithNotes new_config = config;
+  new_config.config.is_warp_specialization_allowed = false;
+  updated_configs.push_back(new_config);
+
+  // Warp specialization probably only makes sense if TMA is enabled. Other
+  // restrictions are required for compatibility with Triton, including:
+  // - num_warps must be a multiple of 4.
+  // - num_warps must be <= 16. This is because the next step for num_warps is
+  // 32, which would break with auto warp specialization, because the feature
+  // will employ `worker warps` that will mean we exceed the maximum block size
+  // of 1024 threads.
+  if (config.config.is_tma_allowed && config.config.num_warps <= 16 &&
+      config.config.num_warps % 4 == 0) {
+    new_config.config.is_warp_specialization_allowed = true;
+    VLOG(10) << "Adding warp specialization parameter: config = "
+             << new_config.ToString();
+    updated_configs.push_back(new_config);
+  }
 }
 
 void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
@@ -634,6 +692,14 @@ void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
 
   ConfigWithNotes last_config = configs.back();  // Largest split.
   auto has_too_few_tiles = [](const ConfigWithNotes& config) {
+    // Small dots frequently lead to large split_k values that are not
+    // compatible with codegen. We skip occupancy optimization for them to be
+    // able to consider smaller splits in non-exhaustive mode.
+    // The value of 4 was found by running exhaustive autotuning and noting that
+    // the majority of optimal configs with block_n == 8 had split_k <= 4.
+    if (config.config.block_n == 8 && config.config.split_k <= 4) {
+      return false;
+    }
     if (config.not_enough_tiles) {
       VLOG(10) << "Skipping due to fewer tiles than cores, config = "
                << config.ToString();

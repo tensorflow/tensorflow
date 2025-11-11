@@ -40,6 +40,14 @@ class ComplexUnaryOpTest
     : public ClientLibraryTestRunnerMixin<
           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
+  // Disable constant folding to ensure we test the actual backend
+  // implementation. Otherwise, constant folding pre-computes results using
+  // HloEvaluator's reference implementation (std c++), not the backend under
+  // test.
+  void SetUp() override {
+    ClientLibraryTestRunnerMixin::SetUp();
+    mutable_debug_options()->add_xla_disable_hlo_passes("constant_folding");
+  }
   template <typename T, size_t index, typename... Types>
   std::vector<T> get_column(const std::vector<std::tuple<Types...>>& table) {
     std::vector<T> column;
@@ -116,13 +124,17 @@ TEST_F(ComplexUnaryOpTest, TanTest) {
 }
 
 TEST_F(ComplexUnaryOpTest, AsinTest) {
-  UnaryTestHelper<complex_unary_op_samples::Asin<float>>(Asin);
-  UnaryTestHelper<complex_unary_op_samples::Asin<double>>(Asin);
+  UnaryTestHelper<complex_unary_op_samples::Asin<float>>(
+      [](XlaOp x) { return Asin(x); });
+  UnaryTestHelper<complex_unary_op_samples::Asin<double>>(
+      [](XlaOp x) { return Asin(x); });
 }
 
 TEST_F(ComplexUnaryOpTest, AsinhTest) {
-  UnaryTestHelper<complex_unary_op_samples::Asinh<float>>(Asinh);
-  UnaryTestHelper<complex_unary_op_samples::Asinh<double>>(Asinh);
+  UnaryTestHelper<complex_unary_op_samples::Asinh<float>>(
+      [](XlaOp x) { return Asinh(x); });
+  UnaryTestHelper<complex_unary_op_samples::Asinh<double>>(
+      [](XlaOp x) { return Asinh(x); });
 }
 
 }  // namespace

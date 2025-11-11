@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
@@ -86,44 +85,18 @@ namespace cpu {
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<FunctionLibrary> function_library,
     std::unique_ptr<BufferAssignment> assignment,
-    std::unique_ptr<HloModule> hlo_module,
-    const std::string& entry_function_name,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map) {
-  VLOG(2) << "Create CpuExecutable from a jit compiled function: "
-          << entry_function_name << ", module=" << hlo_module->name();
-
-  std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
-      std::move(hlo_module), std::move(hlo_profile_printer_data),
-      std::move(hlo_profile_index_map), std::move(assignment)));
-  executable->function_library_ = std::move(function_library);
-  executable->module_name_ = entry_function_name;
-
-  TF_ASSIGN_OR_RETURN(
-      executable->compute_function_,
-      executable->function_library_
-          ->ResolveFunction<std::remove_pointer_t<ComputeFunctionType>>(
-              entry_function_name));
-
-  VLOG(1) << "compute_function_ at address "
-          << reinterpret_cast<void*>(executable->compute_function_);
-
-  return executable;
-}
-
-absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
-    std::unique_ptr<FunctionLibrary> function_library,
-    std::unique_ptr<BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
     std::vector<ConstantAllocation> constants,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map) {
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+    TargetMachineOptionsProto target_machine_options) {
   VLOG(2) << "Create CpuExecutable from a thunk sequence; module="
           << hlo_module->name() << ", constants=" << constants.size();
 
   std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
-      std::move(hlo_profile_index_map), std::move(assignment)));
+      std::move(hlo_profile_index_map), std::move(assignment),
+      std::move(target_machine_options)));
   executable->function_library_ = std::move(function_library);
 
   ThunkExecutor::Options thunk_executor_options;
@@ -136,6 +109,12 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
   // any, we will prepare the XNNPACK thread pool for them at run time.
   executable->thunks_->thunk_sequence().ForEach([&](const Thunk& thunk) {
     executable->has_xnn_fusions_ |= thunk.kind() == Thunk::Kind::kXnnFusion;
+  });
+
+  // Find if the thunk sequence contains any YNN fusion thunks. If we do have
+  // any, we will prepare the YNNPACK thread pool for them at run time.
+  executable->thunks_->thunk_sequence().ForEach([&](const Thunk& thunk) {
+    executable->has_ynn_fusions_ |= thunk.kind() == Thunk::Kind::kYnnFusion;
   });
 
   // Re-index constants by their allocation index to allow efficient lookup.
@@ -153,12 +132,21 @@ CpuExecutable::CpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-    std::unique_ptr<BufferAssignment> assignment)
+    std::unique_ptr<BufferAssignment> assignment,
+    TargetMachineOptionsProto target_machine_options)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
-      assignment_(std::move(assignment)) {
+      assignment_(std::move(assignment)),
+      target_machine_options_(std::move(target_machine_options)) {
   if (assignment_ && has_module()) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(), assignment_);
+  }
+
+  if (assignment_) {
+    alloc_ptrs_.reserve(assignment_->Allocations().size());
+    for (const BufferAllocation& alloc : assignment_->Allocations()) {
+      alloc_ptrs_.push_back(&alloc);
+    }
   }
 
   // Once we compiled HLO module to CPU executable, we don't need to keep the
@@ -239,58 +227,14 @@ CpuExecutable::CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
   return std::move(buffers);
 }
 
-absl::Status CpuExecutable::ExecuteComputeFunction(
-    const ExecutableRunOptions* run_options,
-    absl::Span<MaybeOwningDeviceMemory const> buffers) {
-  uint64_t start_micros = tsl::Env::Default()->NowMicros();
-
-  size_t profile_counters_size = 0;
-  int64_t* profile_counters = nullptr;
-
-  // Call the computation function following the calling convention. See the
-  // definition of 'ComputeFunctionType' for the details of the calling
-  // convention of JITed functions.
-  std::vector<void*> buffer_pointers;
-  for (auto& buffer : buffers) {
-    buffer_pointers.push_back(
-        const_cast<void*>(buffer.AsDeviceMemoryBase().opaque()));
+static int32_t GetDeviceOrdinal(const ExecutableRunOptions* run_options) {
+  if (!run_options) {
+    return 0;
   }
-
-  VLOG(3) << "Executing compute function:";
-  VLOG(3) << absl::StrFormat("  Number of buffer table entries: %u",
-                             buffer_pointers.size());
-  auto ptr_printer = [](std::string* out, const void* p) {
-    absl::StrAppend(out, absl::StrFormat("%p", p));
-  };
-  VLOG(3) << absl::StrFormat("  Buffer table: [%s]",
-                             absl::StrJoin(buffer_pointers, ", ", ptr_printer));
-  VLOG(3) << absl::StrFormat("  Number of profile counters: %u",
-                             profile_counters_size);
-  VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
-
-  auto record_profile = [&]() {
-    uint64_t end_micros = tsl::Env::Default()->NowMicros();
-    if (run_options->execution_profile()) {
-      const double nanoseconds = (end_micros - start_micros) * 1000.0;
-      run_options->execution_profile()->set_compute_time_ns(
-          std::max(nanoseconds, 1.0));
-    }
-  };
-
-  XlaCustomCallStatus status;
-  // For the entry computation (like all global computations), all inputs and
-  // outputs are in the buffer table, and both the result pointer and args
-  // array pointers are unused (so we set them to 'nullptr').
-  compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
-                    &status, profile_counters);
-  record_profile();
-  std::optional<absl::string_view> error_message =
-      CustomCallStatusGetMessage(&status);
-  if (error_message) {
-    return Internal("CustomCall failed: %s", *error_message);
+  if (run_options->device_ordinal() != -1) {
+    return run_options->device_ordinal();
   }
-
-  return absl::OkStatus();
+  return run_options->stream()->parent()->device_ordinal();
 }
 
 absl::Status CpuExecutable::ExecuteThunks(
@@ -338,7 +282,7 @@ absl::Status CpuExecutable::ExecuteThunks(
   Thunk::ExecuteParams execute_params = {
       &*function_library_,
       &allocations,
-      GetXfeedManager(runtime::GetDeviceOrdinal(run_options)),
+      GetXfeedManager(GetDeviceOrdinal(run_options)),
       intra_op_thread_pool,
       &task_runner,
       &collective_execute_params,
@@ -525,14 +469,8 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   tsl::port::ScopedFlushDenormal flush;
   tsl::port::ScopedSetRound round(FE_TONEAREST);
 
-  if (has_compute_function()) {
-    TF_RETURN_IF_ERROR(
-        ExecuteComputeFunction(&run_options->run_options(), buffers));
-  } else if (has_thunks()) {
-    TF_RETURN_IF_ERROR(ExecuteThunks(&run_options->run_options(), buffers));
-  } else {
-    return Internal("No compute function or thunks found.");
-  }
+  DCHECK(has_thunks());
+  TF_RETURN_IF_ERROR(ExecuteThunks(&run_options->run_options(), buffers));
 
   MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
   return std::move(result);

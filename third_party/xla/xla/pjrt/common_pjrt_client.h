@@ -16,17 +16,35 @@ limitations under the License.
 #ifndef XLA_PJRT_COMMON_PJRT_CLIENT_H_
 #define XLA_PJRT_COMMON_PJRT_CLIENT_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+#include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/future.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/shape.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -73,7 +91,8 @@ class CommonPjRtClient : public PjRtClient {
   // Linearizes a literal into a raw buffer and returns a DeviceEvent
   // for when the linearization is complete.
   virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> LinearizeInto(
-      const LiteralSlice& literal, const xla::Layout& layout,
+      const LiteralSlice& literal, const xla::Shape& device_shape,
+      HostBufferSemantics host_buffer_semantics,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) {
     return absl::UnimplementedError("LinearizeInto is not supported");
   }
@@ -102,21 +121,26 @@ class CommonPjRtClient : public PjRtClient {
         "CreateLinkedEventPromise is not supported");
   }
 
-  // Create a promise with potentially attached debug_info (if
+  // Track a user-provided future with attached debug_info (if
   // event_tracking_enabled()).
-  virtual PjRtFuture<>::Promise CreateUserPromise(PjRtMemorySpace* memory_space,
-                                                  absl::string_view debug_info);
-  // Creates a future from a promise PjRtFuture<>(promise) but with event
-  // tracking and traceme scopes.
-  virtual PjRtFuture<> CreateFutureFromUserPromise(
-      PjRtMemorySpace* memory_space, const char* callee_type,
-      const char* callee_method, PjRtFuture<>::Promise promise);
-  // Create a linked PjRtFuture<> and ::Promise pair for operations on
+  virtual void TrackFuture(PjRtMemorySpace* memory_space,
+                           absl::string_view debug_info,
+                           const Future<>& future);
+
+  // Creates a future from a user-provided future with profiling and
+  // traceme scopes.
+  virtual Future<> CreateProfiledFuture(PjRtMemorySpace* memory_space,
+                                        const char* callee_type,
+                                        const char* callee_method,
+                                        Future<> future);
+
+  // Create a linked Future<> and Promise<> pair for operations on
   // buffers in memory_space which populates debug information like linked
   // tracmes.
-  std::pair<PjRtFuture<>::Promise, PjRtFuture<>> CreateLinkedUserPromise(
+  std::pair<Promise<>, Future<>> CreateLinkedUserPromise(
       PjRtMemorySpace* memory_space, const char* callee_type,
       const char* callee_method, absl::string_view debug_info);
+
   template <typename T, std::enable_if_t<std::is_invocable_v<T>, bool> = true>
   absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
                            tsl::RCReference<PjRtDeviceEvent>>>
@@ -154,6 +178,22 @@ class CommonPjRtClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) override;
+
+  absl::StatusOr<
+      std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
+  CreateAliasBuffer(const Shape& shape, PjRtMemorySpace* memory_space) override;
+
+  // Creates a raw buffer channel. Returns a tuple containing:
+  // 1.  A tsl::RCReference<CommonPjRtRawBuffer> which is an alias for a future
+  //     raw buffer.
+  // 3.  A PjRtFulfillAliasRawBufferCallback to fulfill the alias.
+  using PjRtFulfillAliasRawBufferCallback = absl::AnyInvocable<absl::Status(
+      absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>) &&>;
+  virtual absl::StatusOr<std::pair<tsl::RCReference<CommonPjRtRawBuffer>,
+                                   PjRtFulfillAliasRawBufferCallback>>
+  CreateRawBufferChannel(PjRtMemorySpace* memory_space) {
+    return absl::UnimplementedError("CreateRawBufferChannel is not supported");
+  }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtMemorySpace* memory_space) override;
@@ -193,7 +233,7 @@ class CommonPjRtClient : public PjRtClient {
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
       std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events,
       tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise,
-      PjRtFuture<std::string> serialized_descriptor,
+      Future<std::string> serialized_descriptor,
       PjRtBuffer::RemoteSendCallback on_done);
 };
 
@@ -201,7 +241,7 @@ class CommonPjRtClient : public PjRtClient {
 class CommonPjRtBufferImpl : public CommonPjRtBuffer {
  public:
   CommonPjRtBufferImpl(
-      Shape on_device_shape,
+      const Shape& on_device_shape,
       std::unique_ptr<AbstractTrackedDeviceBuffer> tracked_device_buffer,
       PjRtMemorySpace* memory_space);
 
@@ -226,15 +266,15 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
-      PjRtFuture<> dependency) override;
+      Future<> dependency) override;
 
-  PjRtFuture<> GetReadyFuture() override;
+  Future<> GetReadyFuture() override;
 
   // The implementation of logical_on_device_shape may involve a blocking
   // device to host transfer to read the metadata of dynamic shape.
   absl::StatusOr<Shape> logical_on_device_shape() override;
 
-  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+  void CopyToRemoteDevice(Future<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
@@ -258,21 +298,20 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   CopyToMemorySpaceSyncThroughLiteral(PjRtMemorySpace* dst_memory_space);
 
   using PjRtBuffer::ToLiteralSync;
-  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
-  PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
-      override;
+  Future<> ToLiteral(MutableLiteralBase* literal) override;
+  Future<> LazyToLiteral(
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override;
 
   absl::StatusOr<tsl::RCReference<PjRtRawBuffer>> CreateRawAliasOfBuffer();
 
   absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 
-  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
-                             int64_t transfer_size) override;
+  Future<> CopyRawToHost(void* dst, int64_t offset,
+                         int64_t transfer_size) override;
 
-  PjRtFuture<> CopyRawToHostFuture(PjRtFuture<void*> dst, int64_t offset,
-                                   int64_t transfer_size) override;
+  Future<> CopyRawToHostFuture(Future<void*> dst, int64_t offset,
+                               int64_t transfer_size) override;
 
   void Delete() override;
 
@@ -281,9 +320,9 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
  protected:
   // Shared implementation for ToLiteral and LazyToLiteral. If `literal` is
   // null, will call the function in the generator.
-  PjRtFuture<> ToLiteralImpl(
+  Future<> ToLiteralImpl(
       MutableLiteralBase* literal,
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator);
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator);
 
  private:
   const Shape on_device_shape_;

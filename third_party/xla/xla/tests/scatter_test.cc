@@ -88,6 +88,44 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
+TEST_F(ScatterTest, TensorFlowScatterV1_UpdateTwice) {
+  const std::string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,3] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  Literal operand =
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32_t>({0, 0});
+  Literal updates =
+      LiteralUtil::CreateR2<int32_t>({{10, 20, 30}, {70, 80, 90}});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      Execute(std::move(module), {&operand, &scatter_indices, &updates}));
+  Literal expected_option_one =
+      LiteralUtil::CreateR2<int32_t>({{10, 20, 30}, {4, 5, 6}, {7, 8, 9}});
+  Literal expected_option_two =
+      LiteralUtil::CreateR2<int32_t>({{70, 80, 90}, {4, 5, 6}, {7, 8, 9}});
+  EXPECT_TRUE(result == expected_option_one || result == expected_option_two);
+}
+
 TEST_F(ScatterTest, TensorFlowScatterV1_WithFusedAdds) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
@@ -1009,6 +1047,43 @@ ENTRY main {
   Literal updates =
       LiteralUtil::CreateR2<float>({{0.4, 1.1, 0.7}, {2.3, 3.1, 1.6}});
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
+}
+
+TEST_F(ScatterTest, Scatter_Add_F32) {
+  if (GetDebugOptionsForTest().xla_gpu_enable_scatter_determinism_expander() &&
+      GetDebugOptionsForTest().xla_gpu_deterministic_ops()) {
+    // TODO(b/443204632): Re-enable this test.
+    GTEST_SKIP() << "Currently fails";
+  }
+  const std::string hlo_text = R"(
+HloModule scatter_add
+
+region_0.1 {
+  scatter-add.2 = f32[] parameter(0)
+  scatter-add.3 = f32[] parameter(1)
+  ROOT add.2 = f32[] add(scatter-add.2, scatter-add.3)
+}
+
+ENTRY main.2 {
+  constant.4 = f32[] constant(0)
+  broadcast.4 = f32[2,2,4]{2,1,0} broadcast(constant.4), dimensions={}
+  channel_idxs.1 = s32[2,2]{1,0} constant({{0,3}, {1,2}})
+  constant.5 = s32[] constant(0)
+  broadcast.5 = s32[2,2]{1,0} broadcast(constant.5), dimensions={}
+  lt.1 = pred[2,2]{1,0} compare(channel_idxs.1, broadcast.5), direction=LT
+  constant.3 = s32[] constant(4)
+  broadcast.3 = s32[2,2]{1,0} broadcast(constant.3), dimensions={}
+  add.3 = s32[2,2]{1,0} add(channel_idxs.1, broadcast.3)
+  select_n.1 = s32[2,2]{1,0} select(lt.1, add.3, channel_idxs.1)
+  broadcast_in_dim.1 = s32[2,2,1]{2,1,0} reshape(select_n.1)
+  arr.1 = f32[2,2,2]{2,1,0} parameter(0)
+  ROOT scatter-add.5 = f32[2,2,4]{2,1,0} scatter(broadcast.4, broadcast_in_dim.1, arr.1), update_window_dims={1}, inserted_window_dims={2}, scatter_dims_to_operand_dims={2}, input_batching_dims={0}, scatter_indices_batching_dims={0}, index_vector_dim=2, to_apply=region_0.1
+}
+)";
+  Literal updates = LiteralUtil::CreateR3<float>(
+      {{{1.0, 1.1}, {2.0, 2.1}}, {{3.0, 3.1}, {4.0, 4.1}}});
+
+  RunTest(hlo_text, {&updates});
 }
 
 // Test min/max/add scatters with edge-case values.

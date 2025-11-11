@@ -40,6 +40,8 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/future.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -50,7 +52,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -191,8 +192,7 @@ absl::StatusOr<int32_t> CollectiveThunk::RankInGlobalDevices(
   return std::distance(key.global_devices.begin(), it);
 }
 
-tsl::AsyncValueRef<CollectiveThunk::ExecuteEvent>
-CollectiveThunk::ExecuteWithCommunicator(
+Future<> CollectiveThunk::ExecuteWithCommunicator(
     const Thunk::CollectiveExecuteParams* params, Callback callback) {
   // Check that we have access to collectives interface implementation and
   // parameters that define our "position" in a collective clique.
