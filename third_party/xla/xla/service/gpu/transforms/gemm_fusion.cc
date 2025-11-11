@@ -408,6 +408,16 @@ FusionPlanAndRequirements BuildFusionPlanTowardOperands(
       continue;
     }
 
+    if (auto codegen_decision =
+            IsTritonSupportedInstruction(original_hlo, gpu_version);
+        !codegen_decision) {
+      VLOG(3) << "Not fusing " << original_hlo.ToString()
+              << " as it is not supported by Triton: "
+              << codegen_decision.Explain();
+      fusion_builder.SetShouldFuseNode(node_id, false);
+      continue;
+    }
+
     auto opt_result = GetOperandDimOrdersAndCombinedReqsIfProfitable(
         original_hlo, dim_order, properties, gpu_version, combined_reqs);
     if (!opt_result.has_value()) {
@@ -704,8 +714,10 @@ absl::StatusOr<Decision> CreateDotFusion(
     std::vector<HloInstruction*>& fusion_inputs,
     HloInstruction** fusion_output_ptr) {
   VLOG(5) << dot.ToString();
+  // We can't use IsTritonSupportedInstruction here as dot op will not match
+  // the pattern expected by the emitter.
   if (CodegenDecision is_supported =
-          legacy_triton::IsTritonSupportedInstruction(dot, gpu_version);
+          IsTritonSupportedDotParameters(dot, gpu_version);
       !is_supported) {
     VLOG(3) << is_supported.Explain();
     return Decision::Deny(is_supported.Explain());
