@@ -19,9 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <type_traits>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gtest/gtest.h>

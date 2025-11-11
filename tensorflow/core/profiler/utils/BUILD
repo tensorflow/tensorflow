@@ -58,8 +58,6 @@ cc_library(
     hdrs = ["math_utils.h"],
     visibility = [
         "//perftools/accelerators/xprof/convert:__pkg__",
-        "//perftools/accelerators/xprof/service:__pkg__",
-        "//perftools/accelerators/xprof/xplane:__pkg__",
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
         "//perftools/gputools/profiler/collector:__pkg__",
         "//tensorflow/core/profiler/rpc:__pkg__",
@@ -85,7 +83,6 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [
         "//perftools/accelerators/xprof/convert:__pkg__",
-        "//perftools/accelerators/xprof/xplane:__pkg__",
         "//perftools/gputools/profiler/collector:__pkg__",
     ],
     deps = [
