@@ -48,6 +48,18 @@ BufferDebugLogEntryMetadataStore::GetEntryMetadata(
   return GetEntryMetadataLocked(entry_id);
 }
 
+std::vector<std::optional<BufferDebugLogEntryMetadataStore::Metadata>>
+BufferDebugLogEntryMetadataStore::GetEntryMetadataBatch(
+    absl::Span<const BufferDebugLogEntryId> entry_ids) {
+  absl::MutexLock lock{mutex_};
+  std::vector<std::optional<Metadata>> result;
+  result.reserve(entry_ids.size());
+  for (BufferDebugLogEntryId entry_id : entry_ids) {
+    result.push_back(GetEntryMetadataLocked(entry_id));
+  }
+  return result;
+}
+
 std::optional<BufferDebugLogEntryMetadataStore::Metadata>
 BufferDebugLogEntryMetadataStore::GetEntryMetadataLocked(
     BufferDebugLogEntryId entry_id) {

@@ -80,6 +80,12 @@ class BufferDebugLogEntryMetadataStore {
   std::optional<Metadata> GetEntryMetadata(BufferDebugLogEntryId entry_id)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Returns the metadata for the entries with `entry_ids` previously
+  // returned by `AssignId`, or `std::nullopt` if the ID is invalid.
+  std::vector<std::optional<Metadata>> GetEntryMetadataBatch(
+      absl::Span<const BufferDebugLogEntryId> entry_ids)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Converts a list of `entries` with IDs assigned by this store to a
   // `BufferDebugLogProto` with additional metadata.
   BufferDebugLogProto EntriesToProto(

@@ -108,8 +108,9 @@ __device__ void ReduceSum(const T* input, uint64_t input_size,
   if (tid == 0) *output = scratch[0];
 }
 
-// Attempts to append the NaN count of the `input` buffer to the `log_entries`,
-// using `log_header` to track available capacity and used space.
+// Attempts to append the NaN count of the `input` buffer to the
+// `float_check_entries`, using `log_header` to track available capacity and
+// used space.
 //
 // The log entry is tagged with `entry_id`. The NaN count is parallelized as
 // much as block dimensions allow it.
@@ -123,10 +124,10 @@ __device__ void ReduceSum(const T* input, uint64_t input_size,
 // - Only a single thread block is supported.
 // - Block dimensions must be a power of 2.
 template <typename T>
-__global__ void AppendFloatCheck(xla::gpu::BufferDebugLogEntryId entry_id,
-                                 const T* input, uint64_t input_size_in_bytes,
-                                 xla::gpu::BufferDebugLogHeader* log_header,
-                                 xla::gpu::BufferDebugLogEntry* log_entries) {
+__global__ void AppendFloatCheck(
+    xla::gpu::BufferDebugLogEntryId entry_id, const T* input,
+    uint64_t input_size_in_bytes, xla::gpu::BufferDebugLogHeader* log_header,
+    xla::gpu::BufferDebugFloatCheckEntry* float_check_entries) {
   const uint32_t block_size = blockDim.x * blockDim.y * blockDim.z;
   const uint64_t input_size = input_size_in_bytes / sizeof(T);
   uint32_t nan_count = 0;
@@ -185,7 +186,8 @@ __global__ void AppendFloatCheck(xla::gpu::BufferDebugLogEntryId entry_id,
 #if __CUDA_ARCH__ >= 600
     const uint32_t write_idx = nan_count_log_write_idx.fetch_add(1);
     if (nan_count_log_write_idx.load() < log_header->capacity) {
-      log_entries[write_idx] = {entry_id, nan_count};
+      float_check_entries[write_idx] =
+          xla::gpu::BufferDebugFloatCheckEntry{entry_id, nan_count};
     }
 #else
     // Our toolchains generate a fetch_add PTX instructions with system scope,

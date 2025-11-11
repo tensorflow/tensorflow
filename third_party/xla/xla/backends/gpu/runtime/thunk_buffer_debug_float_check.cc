@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/dump.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/stream.h"
@@ -57,7 +57,8 @@ namespace xla::gpu {
 
 namespace se = stream_executor;
 
-// With BufferDebugLogEntry size of 8 bytes, this is enough to hold ~8K entries.
+// With BufferDebugFloatCheckEntry size of 8 bytes, this is enough to hold ~8K
+// entries.
 constexpr size_t kLogSizeBytes = 64 * 1024;
 
 namespace {
@@ -144,28 +145,39 @@ absl::Status BufferDebugFloatCheck(
   VLOG(1) << "HLO module ptr: " << hlo_module;
   VLOG(1) << "HLO module name: " << hlo_module->name();
   CHECK(hlo_module != nullptr);
-  const DebugOptions& debug_options = hlo_module->config().debug_options();
 
   se::gpu::BufferDebugLog buffer_debug_log =
       se::gpu::BufferDebugLog::FromDeviceMemoryUnchecked(
           log_buffer.device_memory());
   TF_ASSIGN_OR_RETURN(
-      std::vector<BufferDebugLogEntry> log_entries,
-      buffer_debug_log.ReadFromDevice<BufferDebugLogEntry>(*stream));
-  BufferDebugLogProto buffer_debug_log_proto =
-      metadata_store->EntriesToProto(log_entries);
+      std::vector<BufferDebugFloatCheckEntry> entries,
+      buffer_debug_log.ReadFromDevice<BufferDebugFloatCheckEntry>(*stream));
 
-  VLOG(1) << "read " << buffer_debug_log_proto.entries_size() << " entries";
-  DumpPerExecutionProtobufToFile(*hlo_module, buffer_debug_log_proto,
-                                 debug_options, "buffer_debug_log", nullptr);
+  std::vector<BufferDebugLogEntryId> entry_ids;
+  entry_ids.reserve(entries.size());
+  for (const auto& entry : entries) {
+    entry_ids.push_back(entry.entry_id);
+  }
+
+  VLOG(1) << "read " << entries.size() << " entries";
+  auto entries_metadata = metadata_store->GetEntryMetadataBatch(entry_ids);
   int non_zero_float_check_modules_count = 0;
-  for (const auto& entry : buffer_debug_log_proto.entries()) {
-    if (entry.check_type() ==
+  CHECK_EQ(entries.size(), entries_metadata.size());
+
+  for (int i = 0; i < entries.size(); ++i) {
+    const auto& entry = entries[i];
+    const auto& metadata = entries_metadata[i];
+    if (!metadata.has_value()) {
+      LOG(WARNING) << "Entry ID " << entry.entry_id
+                   << " for float check not found in metadata";
+      continue;
+    }
+    if (metadata->check_type ==
             BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS &&
-        entry.checksum() > 0) {
+        entry.nan_count > 0) {
       LOG(ERROR) << "Found entry with non zero float check count "
-                 << entry.checksum() << " for thunk " << entry.thunk_id()
-                 << " and execution " << entry.execution_id()
+                 << entry.nan_count << " for thunk " << entry.entry_id
+                 << " and execution " << metadata->execution_id
                  << " for module: \n"
                  << hlo_module->ToString();
       non_zero_float_check_modules_count++;
@@ -183,7 +195,8 @@ absl::Status BufferDebugFloatCheck(
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     kBufferDebugFloatCheckLogInitHandler,
     [](se::Stream* absl_nonnull stream, xla::ffi::Buffer<U8> log_buffer) {
-      return se::gpu::BufferDebugLog::CreateOnDevice<BufferDebugLogEntry>(
+      return se::gpu::BufferDebugLog::CreateOnDevice<
+                 xla::gpu::BufferDebugFloatCheckEntry>(
                  *stream, log_buffer.device_memory())
           .status();
     },
@@ -200,12 +213,13 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateDebugInitThunk(
   XLA_FFI_Handler_Bundle buffer_debug_init_bundle{};
   buffer_debug_init_bundle.execute = kBufferDebugFloatCheckLogInitHandler;
   return CustomCallThunk::Create(
-      Thunk::ThunkInfo(), "xla_gpu_buffer_debug_log_init",
+      Thunk::ThunkInfo(), "xla_gpu_buffer_debug_float_check_init",
       buffer_debug_init_bundle, /*operands=*/{shaped_log_slice},
       /*results=*/{}, /*attributes=*/{}, hlo_module->entry_computation());
 }
 
-absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateBufferDebugDumpThunk(
+absl::StatusOr<std::unique_ptr<CustomCallThunk>>
+CreateBufferDebugFloatCheckThunk(
     std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
     BufferAllocation::Slice log_slice,
     const HloModule* absl_nonnull hlo_module) {
@@ -222,7 +236,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateBufferDebugDumpThunk(
           .Arg<xla::ffi::Buffer<U8>>()
           .To(absl::bind_front(BufferDebugFloatCheck, metadata_store));
   return CustomCallThunk::Create(
-      Thunk::ThunkInfo(), "xla_gpu_buffer_debug_log_dump",
+      Thunk::ThunkInfo(), "xla_gpu_buffer_debug_float_check",
       std::move(float_check_bundle),
       /*operands=*/{shaped_log_slice},
       /*results=*/{}, /*attributes=*/{}, hlo_module->entry_computation());
@@ -246,7 +260,7 @@ absl::Status RunFloatCheckPassInternal(SequentialThunk* root_thunk,
 
   TF_ASSIGN_OR_RETURN(
       auto buffer_debug_dump_thunk,
-      CreateBufferDebugDumpThunk(metadata_store, log_slice, hlo_module));
+      CreateBufferDebugFloatCheckThunk(metadata_store, log_slice, hlo_module));
 
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
   root_thunk->TransformAllNestedThunks([&](std::unique_ptr<Thunk> thunk) {

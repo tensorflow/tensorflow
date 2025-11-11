@@ -33,14 +33,15 @@ struct BufferDebugFloatCheckF32Kernel {
   using KernelType =
       TypedKernel<xla::gpu::BufferDebugLogEntryId, DeviceMemory<float>,
                   uint64_t, DeviceMemory<xla::gpu::BufferDebugLogHeader>,
-                  DeviceMemory<xla::gpu::BufferDebugLogEntry>>;
+                  DeviceMemory<xla::gpu::BufferDebugFloatCheckEntry>>;
 };
 
 struct BufferDebugFloatCheckBf16Kernel {
-  using KernelType = TypedKernel<xla::gpu::BufferDebugLogEntryId,
-                                 DeviceMemory<Eigen::bfloat16>, uint64_t,
-                                 DeviceMemory<xla::gpu::BufferDebugLogHeader>,
-                                 DeviceMemory<xla::gpu::BufferDebugLogEntry>>;
+  using KernelType =
+      TypedKernel<xla::gpu::BufferDebugLogEntryId,
+                  DeviceMemory<Eigen::bfloat16>, uint64_t,
+                  DeviceMemory<xla::gpu::BufferDebugLogHeader>,
+                  DeviceMemory<xla::gpu::BufferDebugFloatCheckEntry>>;
 };
 
 }  // namespace stream_executor::gpu
