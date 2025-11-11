@@ -91,3 +91,13 @@ def RewriteDynamicVectorExtractPass : Pass<"xtile-cpu-rewrite-dynamic-vector-ext
     "::mlir::memref::MemRefDialect",
   ];
 }
+
+def MemrefCopyToLoopsPass : Pass<"xtile-cpu-memref-copy-to-loops",
+                                 "mlir::ModuleOp"> {
+  let summary = "Rewrite mmeref.copy to loops.";
+
+  let dependentDialects = [
+    "::mlir::scf::SCFDialect",
+    "::mlir::memref::MemRefDialect",
+  ];
+}

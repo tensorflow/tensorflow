@@ -203,14 +203,13 @@ TEST_F(SymbolicExprTest, ReplaceWithMap) {
   SymbolicExpr d1 = ctx.CreateVariable(1);
   SymbolicExpr c2 = ctx.CreateConstant(2);
   SymbolicExpr c5 = ctx.CreateConstant(5);
-  SymbolicExpr c10 = ctx.CreateConstant(10);
 
   SymbolicExpr expr = (d0 + c2) * (d1 + c2);
 
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> replace_expression;
   replace_expression[d0 + c2] = c5;
-  replace_expression[d1] = c10;
-  EXPECT_EQ(expr.Replace(replace_expression), c5 * (c10 + c2));
+  replace_expression[d1] = d0;
+  EXPECT_EQ(expr.Replace(replace_expression), c5 * (d0 + c2));
 
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> replace_constant;
   replace_constant[c2] = d0;
@@ -224,6 +223,39 @@ TEST_F(SymbolicExprTest, ReplaceWithMap) {
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> no_change;
   no_change[ctx.CreateVariable(99)] = c5;
   EXPECT_EQ(expr.Replace(no_change), expr);
+}
+
+TEST_F(SymbolicExprTest, BasicSimplificationsAtCreationTime) {
+  auto c0 = ctx.CreateConstant(0);
+  auto c1 = ctx.CreateConstant(1);
+  auto c3 = ctx.CreateConstant(3);
+
+  // x + 0 = x
+  EXPECT_EQ(v0 + c0, v0);
+  EXPECT_EQ(c0 + v0, v0);
+  EXPECT_EQ(c2 + c1, c3);
+
+  // TODO(b/459357586): This will be canonicalized to (v0 + 2) in the future.
+  EXPECT_NE(v0 + c2, c2 + v0);
+
+  // x * 0 = 0
+  EXPECT_EQ(v0 * c0, c0);
+  EXPECT_EQ(c0 * v0, c0);
+  EXPECT_EQ(c2 * c0, c0);
+
+  // x * 1 = x
+  EXPECT_EQ(v0 * c1, v0);
+  EXPECT_EQ(c1 * v0, v0);
+  EXPECT_EQ(c2 * c1, c2);
+
+  // Associativity: (X * C1) * C2 = X * (C1 * C2)
+  EXPECT_EQ(((v0 * 2) * 3), v0 * 6);
+
+  // No associativity if constant is on LHS of outer mul.
+  // TODO(b/459357586): This will be canonicalized to (v0 * 6) in the future.
+  SymbolicExpr mul_2_v0 = ctx.CreateConstant(2) * v0;
+  SymbolicExpr mul_2_v0_3 = mul_2_v0 * 3;
+  EXPECT_EQ(mul_2_v0_3.ToString(), "((2 * v0) * 3)");
 }
 
 TEST_F(SymbolicExprTest, Canonicalization_Basic) {
