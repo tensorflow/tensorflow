@@ -15,26 +15,19 @@ limitations under the License.
 
 #include "xla/pjrt/tracked_device_buffer.h"
 
-#include <algorithm>
-#include <atomic>
 #include <cstddef>
-#include <cstdint>
-#include <functional>
 #include <iterator>
 #include <limits>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"

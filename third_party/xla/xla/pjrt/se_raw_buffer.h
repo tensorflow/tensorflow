@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"

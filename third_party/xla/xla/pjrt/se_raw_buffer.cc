@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
-#include <optional>
 #include <utility>
 
 #include "absl/algorithm/container.h"
