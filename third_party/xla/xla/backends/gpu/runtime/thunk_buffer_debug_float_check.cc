@@ -146,12 +146,10 @@ absl::Status BufferDebugFloatCheck(
   VLOG(1) << "HLO module name: " << hlo_module->name();
   CHECK(hlo_module != nullptr);
 
-  se::gpu::BufferDebugLog buffer_debug_log =
-      se::gpu::BufferDebugLog::FromDeviceMemoryUnchecked(
-          log_buffer.device_memory());
-  TF_ASSIGN_OR_RETURN(
-      std::vector<BufferDebugFloatCheckEntry> entries,
-      buffer_debug_log.ReadFromDevice<BufferDebugFloatCheckEntry>(*stream));
+  auto buffer_debug_log = se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::
+      FromDeviceMemoryUnchecked(log_buffer.device_memory());
+  TF_ASSIGN_OR_RETURN(std::vector<BufferDebugFloatCheckEntry> entries,
+                      buffer_debug_log.ReadFromDevice(*stream));
 
   std::vector<BufferDebugLogEntryId> entry_ids;
   entry_ids.reserve(entries.size());
@@ -195,10 +193,9 @@ absl::Status BufferDebugFloatCheck(
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     kBufferDebugFloatCheckLogInitHandler,
     [](se::Stream* absl_nonnull stream, xla::ffi::Buffer<U8> log_buffer) {
-      return se::gpu::BufferDebugLog::CreateOnDevice<
-                 xla::gpu::BufferDebugFloatCheckEntry>(
-                 *stream, log_buffer.device_memory())
-          .status();
+      return se::gpu::BufferDebugLog<xla::gpu::BufferDebugFloatCheckEntry>::
+          CreateOnDevice(*stream, log_buffer.device_memory())
+              .status();
     },
     xla::ffi::Ffi::Bind().Ctx<xla::ffi::Stream>().Arg<xla::ffi::Buffer<U8>>());
 

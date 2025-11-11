@@ -34,50 +34,51 @@ namespace stream_executor::gpu {
 
 using ::xla::gpu::BufferDebugLogHeader;
 
-absl::StatusOr<BufferDebugLog> BufferDebugLog::CreateOnDevice(
-    Stream& stream, DeviceMemory<uint8_t> log_buffer, size_t entry_size) {
-  if (log_buffer.is_null()) {
+absl::StatusOr<DeviceMemory<uint8_t>> BufferDebugLogBase::CreateOnDevice(
+    Stream& stream, DeviceMemory<uint8_t> memory, size_t entry_size) {
+  if (memory.is_null()) {
     return absl::InvalidArgumentError("Log buffer must be non-null");
   }
 
   size_t kMinBufferSize = sizeof(BufferDebugLogHeader) + entry_size;
-  if (log_buffer.size() < kMinBufferSize) {
+  if (memory.size() < kMinBufferSize) {
     return absl::InvalidArgumentError(
         absl::StrFormat("Log buffer size %u is too small to hold any log "
                         "entries (required: %u bytes)",
-                        log_buffer.size(), kMinBufferSize));
+                        memory.size(), kMinBufferSize));
   }
 
   const uint32_t max_entries =
-      (log_buffer.size() - sizeof(BufferDebugLogHeader)) / entry_size;
+      (memory.size() - sizeof(BufferDebugLogHeader)) / entry_size;
   const BufferDebugLogHeader empty_header{
       /*write_idx=*/0,
       /*capacity=*/max_entries,
   };
   TF_RETURN_IF_ERROR(
-      stream.Memcpy(&log_buffer, &empty_header, sizeof(empty_header)));
-  return BufferDebugLog(log_buffer);
+      stream.Memcpy(&memory, &empty_header, sizeof(empty_header)));
+  return memory;
 }
 
-absl::StatusOr<BufferDebugLogHeader> BufferDebugLog::ReadHeaderFromDevice(
-    Stream& stream) const {
+absl::StatusOr<BufferDebugLogHeader> BufferDebugLogBase::ReadHeaderFromDevice(
+    Stream& stream, DeviceMemory<uint8_t> memory) const {
   BufferDebugLogHeader header;
-  TF_RETURN_IF_ERROR(stream.Memcpy(&header, memory_, sizeof(header)));
+  TF_RETURN_IF_ERROR(stream.Memcpy(&header, memory, sizeof(header)));
   TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
   return header;
 }
 
-absl::StatusOr<size_t> BufferDebugLog::ReadFromDevice(
-    Stream& stream, size_t entry_size, void* entries_data) const {
-  std::vector<uint8_t> buffer(memory_.size());
-  TF_RETURN_IF_ERROR(stream.Memcpy(buffer.data(), memory_, memory_.size()));
+absl::StatusOr<size_t> BufferDebugLogBase::ReadFromDevice(
+    Stream& stream, DeviceMemory<uint8_t> memory, size_t entry_size,
+    void* entries_data) const {
+  std::vector<uint8_t> buffer(memory.size());
+  TF_RETURN_IF_ERROR(stream.Memcpy(buffer.data(), memory, memory.size()));
   TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
   BufferDebugLogHeader header;
   memcpy(&header, buffer.data(), sizeof(header));
 
   const uint32_t max_entries =
-      (memory_.size() - sizeof(BufferDebugLogHeader)) / entry_size;
+      (memory.size() - sizeof(BufferDebugLogHeader)) / entry_size;
   const size_t initialized_entries =
       std::min(max_entries, std::min(header.capacity, header.write_idx));
   memcpy(entries_data, buffer.data() + sizeof(header),

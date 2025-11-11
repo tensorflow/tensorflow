@@ -146,12 +146,11 @@ absl::Status DumpBufferDebugChecksumLog(
   CHECK(hlo_module != nullptr);
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
-  se::gpu::BufferDebugLog buffer_debug_log =
-      se::gpu::BufferDebugLog::FromDeviceMemoryUnchecked(
+  auto buffer_debug_log =
+      se::gpu::BufferDebugLog<BufferDebugLogEntry>::FromDeviceMemoryUnchecked(
           log_buffer.device_memory());
-  TF_ASSIGN_OR_RETURN(
-      std::vector<BufferDebugLogEntry> log_entries,
-      buffer_debug_log.ReadFromDevice<BufferDebugLogEntry>(*stream));
+  TF_ASSIGN_OR_RETURN(std::vector<BufferDebugLogEntry> log_entries,
+                      buffer_debug_log.ReadFromDevice(*stream));
   BufferDebugLogProto buffer_debug_log_proto =
       metadata_store->EntriesToProto(log_entries);
 
@@ -183,7 +182,7 @@ absl::Status DumpBufferDebugChecksumLog(
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     kBufferDebugChecksumLogInitHandler,
     [](se::Stream* absl_nonnull stream, xla::ffi::Buffer<U8> log_buffer) {
-      return se::gpu::BufferDebugLog::CreateOnDevice<BufferDebugLogEntry>(
+      return se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
                  *stream, log_buffer.device_memory())
           .status();
     },

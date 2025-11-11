@@ -107,8 +107,9 @@ absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
 
   se::DeviceMemory<uint8_t> log_ptr(
       params.buffer_allocations->GetDeviceAddress(log_slice_));
-  se::gpu::BufferDebugLog buffer_debug_log =
-      se::gpu::BufferDebugLog::FromDeviceMemoryUnchecked(log_ptr);
+  auto buffer_debug_log =
+      se::gpu::BufferDebugLog<BufferDebugLogEntry>::FromDeviceMemoryUnchecked(
+          log_ptr);
 
   for (const auto& [buffer_idx, buffer] : checked_thunk_buffers_) {
     BufferDebugLogEntryMetadataStore::Metadata metadata{
@@ -127,7 +128,7 @@ absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
     TF_RETURN_IF_ERROR(kernel->Launch(
         thread_dim, se::BlockDim(1, 1, 1), params.stream, log_entry_id,
         device_buffer, device_buffer.size(), buffer_debug_log.GetDeviceHeader(),
-        buffer_debug_log.GetDeviceEntries<BufferDebugLogEntry>()));
+        buffer_debug_log.GetDeviceEntries()));
   }
 
   return absl::OkStatus();
