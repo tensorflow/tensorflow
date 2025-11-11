@@ -75,12 +75,14 @@ message ProfileOptions {
   TraceOptions trace_options = 11;
 
   // AdvancedConfigValue represents the configuration value, it can be one of
-  // the following types: string, bool, int64, depending upon the config type.
+  // the following types: string, bool, int64, int32, depending upon the config
+  // type.
   message AdvancedConfigValue {
     oneof value {
       string string_value = 1;
       bool bool_value = 2;
       int64 int64_value = 3;
+      int32 int32_value = 4;
     }
   }
 
