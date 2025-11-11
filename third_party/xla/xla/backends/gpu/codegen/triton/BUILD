@@ -1146,6 +1146,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:triton_fusion_analysis",
+        "//xla/service/gpu/model:block_level_parameters",
         "//xla/stream_executor:device_description",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/log:check",
