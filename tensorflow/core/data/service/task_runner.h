@@ -291,7 +291,7 @@ class RoundRobinTaskRunner : public TaskRunner {
       requests_ TF_GUARDED_BY(mu_);
   // Index of the first round we plan to serve. At startup, this is the minimum
   // of all requested element indices.
-  int64_t first_round_ TF_GUARDED_BY(mu_) = kint64max;
+  int64_t first_round_ TF_GUARDED_BY(mu_) = std::numeric_limits<int64_t>::max();
   int64_t current_round_ TF_GUARDED_BY(mu_) = -1;
   bool round_skipped_ TF_GUARDED_BY(mu_) = false;
   // Buffered results for the current round.

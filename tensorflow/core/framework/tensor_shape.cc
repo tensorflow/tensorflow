@@ -229,8 +229,8 @@ absl::Status TensorShapeBase<Shape>::InitDims(
     absl::Span<const int64_t> dim_sizes) {
   DCHECK_EQ(tag(), REP16);
 
-  // Allow sizes that are under kint64max^0.25 so that 4-way multiplication
-  // below cannot overflow.
+  // Allow sizes that are under std::numeric_limits<int64_t>::max()^0.25 so that
+  // 4-way multiplication below cannot overflow.
   static const int64_t kMaxSmall = 0xd744;
   static_assert(kMaxSmall * kMaxSmall * kMaxSmall * kMaxSmall <=
                     std::numeric_limits<int64_t>::max(),

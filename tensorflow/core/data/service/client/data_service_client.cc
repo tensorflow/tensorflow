@@ -119,7 +119,7 @@ absl::Status DataServiceClient::Initialize(
           << " in tf.data service client.";
   dispatcher_ = std::make_unique<DataServiceDispatcherClient>(params_.address,
                                                               params_.protocol);
-  int64_t deadline_micros = kint64max;
+  int64_t deadline_micros = std::numeric_limits<int64_t>::max();
   std::optional<std::string> job_name;
   if (!params_.job_name.empty()) {
     job_name = params_.job_name;
@@ -668,7 +668,7 @@ void DataServiceClient::RunWorkerThread(std::function<void()> done)
       }
       VLOG(3) << "Processing task " << task_to_process->info.task_id();
     }
-    int64_t deadline_micros = kint64max;
+    int64_t deadline_micros = std::numeric_limits<int64_t>::max();
     absl::Status s = GetElementTraced(task_to_process.get(), deadline_micros,
                                       /*enqueue_result=*/!IsCoordinatedRead(),
                                       allow_skip, result);
