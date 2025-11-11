@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -145,16 +146,33 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     const SymbolicTileAnalysis& symbolic_tile_analysis,
     const BlockLevelParameters& block_level_parameters);
 
+// TODO(basioli): Remove this class once the legacy matmul
+// emitter no longer exists.
+class LegacyMatmulEmitter {
+ public:
+  explicit LegacyMatmulEmitter(const se::DeviceDescription& device_info)
+      : device_info_(device_info) {}
+
+  absl::Status Emit(EmitterLocOpBuilder& b, const HloFusionInstruction* fusion,
+                    xtile::EntryFuncOp& fn,
+                    const BlockLevelParameters& block_level_parameters);
+
+ private:
+  const se::DeviceDescription& device_info_;
+};
+
 // This function (or its future equivalent) should emit the MLIR module in the
 // shared dialect between XLA:CPU and XLA:GPU. At the moment it is still
 // emitting GPU specific modules. It is currently exposed only for testing
 // purposes and will only be used to make sure we are properly emitting the
 // shared dialect.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
-    absl::string_view fn_name, const HloFusionInstruction* fusion,
-    const se::DeviceDescription& device_info,
+    absl::string_view fn_name,
+    EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
+    const HloFusionInstruction* fusion,
     const BlockLevelParameters& block_level_parameters,
-    SymbolicExprContext& symbolic_expr_context);
+    SymbolicExprContext& symbolic_expr_context,
+    std::optional<LegacyMatmulEmitter> legacy_matmul_emitter = std::nullopt);
 
 // This function lowers the shared dialect module to Triton. It is exposed for
 // testing with the same motivation as EmitXTileModule.

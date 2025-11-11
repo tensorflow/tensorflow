@@ -165,9 +165,9 @@ absl::StatusOr<mlir::Value> EmitElementwiseLibdeviceFunction(
     const se::DeviceDescription& device_info, const HloInstruction& hlo,
     mlir::ValueRange inputs);
 
-absl::StatusOr<mlir::Value> EmitElementwise(
-    EmitterLocOpBuilder& b, const se::DeviceDescription& device_info,
-    const HloInstruction& hlo, mlir::ValueRange inputs);
+absl::StatusOr<mlir::Value> EmitElementwise(EmitterLocOpBuilder& b,
+                                            const HloInstruction& hlo,
+                                            mlir::ValueRange inputs);
 
 mlir::Value Bitcast(EmitterLocOpBuilder& b, mlir::Value value, mlir::Type type);
 
