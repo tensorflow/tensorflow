@@ -205,7 +205,7 @@ class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
     SmallVector<Value> return_operands;
     for (Value operand : old_block.getTerminator()->getOperands()) {
       return_operands.push_back(mlir::tensor::ExtractOp::create(
-          rewriter, op->getLoc(), mapping.lookup(operand)));
+          rewriter, op->getLoc(), mapping.lookupOrDefault(operand)));
     }
     ttir::ReduceReturnOp::create(rewriter, op.getLoc(), return_operands);
 
