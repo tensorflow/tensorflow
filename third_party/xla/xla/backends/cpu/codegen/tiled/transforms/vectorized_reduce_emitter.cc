@@ -143,32 +143,74 @@ mlir::Value VectorizeBody(mlir::OpBuilder& builder, mlir::Location loc,
   return mapping.lookup(old_body.getTerminator()->getOperand(0));
 }
 
-mlir::TypedValue<mlir::MemRefType> EmitNonMinorReduction(
+// Reduce a 1D vector to a scalar with the given body.
+mlir::Value EmitMinorReduction(mlir::OpBuilder& builder, mlir::Location loc,
+                               mlir::RankedTensorType result_type,
+                               mlir::TypedValue<mlir::VectorType> input,
+                               mlir::Value init_value, mlir::Block& body) {
+  absl::StatusOr<mlir::vector::CombiningKind> kind_or = GetCombiningKind(body);
+  if (!kind_or.ok()) {
+    body.getParentOp()->emitRemark() << kind_or.status().ToString();
+  }
+
+  auto input_type = input.getType();
+  int64_t minor_dim_size = input_type.getShape().back();
+
+  if (kind_or.ok()) {
+    // TODO(willfroom): Investigate tree-reduction to split the reduction
+    // op into natural sizes (2, 4, 8, 16, ...) and then remove the
+    // reassociation flag.
+    mlir::Value reduced_scalar = mlir::vector::ReductionOp::create(
+        builder, loc, *kind_or, input, init_value,
+        mlir::arith::FastMathFlags::reassoc);
+
+    return reduced_scalar;
+  }
+
+  mlir::Value lbs = mlir::arith::ConstantIndexOp::create(builder, loc, 0);
+  mlir::Value ubs =
+      mlir::arith::ConstantIndexOp::create(builder, loc, minor_dim_size);
+  mlir::Value step = mlir::arith::ConstantIndexOp::create(builder, loc, 1);
+  auto loop = mlir::scf::ForOp::create(
+      builder, loc, lbs, ubs, step, {init_value},
+      [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::Value index,
+          mlir::ValueRange carry_value) {
+        mlir::TypedValue<mlir::VectorType> element_vector =
+            ExtractVector(builder, loc, input, index);
+        mlir::Value element =
+            mlir::vector::ExtractOp::create(builder, loc, element_vector);
+
+        mlir::Value result =
+            VectorizeBody(builder, loc, body, element, carry_value.front());
+
+        mlir::scf::YieldOp::create(builder, loc, result);
+      });
+
+  return loop.getResult(0);
+}
+
+mlir::TypedValue<mlir::MemRefType> EmitReductionLoop(
     mlir::OpBuilder& builder, mlir::Location loc,
     mlir::RankedTensorType result_type,
     mlir::TypedValue<mlir::RankedTensorType> source_tensor,
     llvm::ArrayRef<int64_t> reduction_dims, mlir::Block& body,
-    bool minor_dim_reduced) {
+    mlir::Value init_value) {
   mlir::RankedTensorType source_tensor_type = source_tensor.getType();
   int64_t rank = source_tensor_type.getRank();
   int64_t minor_dim = rank - 1;
-  int64_t minor_dim_size = source_tensor_type.getDimSize(minor_dim);
-  llvm::SmallVector<int64_t> non_reduced_dims(rank);
-  absl::c_iota(non_reduced_dims, 0);
-  non_reduced_dims.erase(
-      std::remove_if(non_reduced_dims.begin(), non_reduced_dims.end(),
-                     [&](int64_t dim) {
-                       return absl::c_find(reduction_dims, dim) !=
-                              reduction_dims.end();
-                     }),
-      non_reduced_dims.end());
+  bool minor_dim_reduced = reduction_dims.back() == minor_dim;
 
   // The set of non-reduced dimensions that are not the minor dimension.
-  llvm::SmallVector<int64_t> non_reduced_non_minor_dims(non_reduced_dims);
-  if (auto itr = absl::c_find(non_reduced_non_minor_dims, minor_dim);
-      itr != non_reduced_non_minor_dims.end()) {
-    non_reduced_non_minor_dims.erase(itr);
-  }
+  llvm::SmallVector<int64_t> non_reduced_non_minor_dims(rank);
+  absl::c_iota(non_reduced_non_minor_dims, 0);
+  non_reduced_non_minor_dims.erase(
+      std::remove_if(
+          non_reduced_non_minor_dims.begin(), non_reduced_non_minor_dims.end(),
+          [&](int64_t dim) {
+            return absl::c_find(reduction_dims, dim) != reduction_dims.end() ||
+                   dim == minor_dim;
+          }),
+      non_reduced_non_minor_dims.end());
 
   // The set of reduced dimensions that are not the minor dimension.
   llvm::SmallVector<int64_t> non_minor_reduced_dims(reduction_dims);
@@ -177,15 +219,7 @@ mlir::TypedValue<mlir::MemRefType> EmitNonMinorReduction(
     non_minor_reduced_dims.erase(itr);
   }
 
-  // The shape of the of the non-minor-reduced output.
-  llvm::SmallVector<int64_t> output_shape(result_type.getShape());
-  if (minor_dim_reduced) {
-    output_shape.push_back(minor_dim_size);
-  }
-
-  auto output_buffer_shape =
-      mlir::MemRefType::get(output_shape, result_type.getElementType());
-  auto buffer = CreateBufferOfShape(builder, loc, output_buffer_shape);
+  auto buffer = CreateBufferOfShape(builder, loc, result_type);
 
   auto get_source_vector_dim_size = [&](llvm::ArrayRef<int64_t> dims) {
     return llvm::map_to_vector(
@@ -220,11 +254,12 @@ mlir::TypedValue<mlir::MemRefType> EmitNonMinorReduction(
                 mlir::ValueRange inner_induction_vars,
                 mlir::ValueRange minor_accumilator)
                 -> mlir::SmallVector<mlir::Value> {
-              llvm::SmallVector<mlir::Value> indices(rank - 1);
-              for (auto [idx, var] : llvm::zip(non_reduced_non_minor_dims,
-                                               outer_induction_vars)) {
-                indices[idx] = var;
+              // Handle the case when there are no non-minor reduced dimensions.
+              if (inner_induction_vars.empty()) {
+                return {minor_accumilator.front()};
               }
+
+              llvm::SmallVector<mlir::Value> indices = zeroth_step_indices;
               for (auto [idx, var] :
                    llvm::zip(non_minor_reduced_dims, inner_induction_vars)) {
                 indices[idx] = var;
@@ -237,67 +272,21 @@ mlir::TypedValue<mlir::MemRefType> EmitNonMinorReduction(
                                     minor_accumilator.front())};
             });
 
-        InsertValue(builder, loc, loop_nest.results.front(), buffer,
-                    outer_induction_vars);
-      });
+        auto non_minor_reduced_result =
+            mlir::cast<mlir::TypedValue<mlir::VectorType>>(
+                loop_nest.results.front());
 
-  return buffer;
-}
-
-mlir::TypedValue<mlir::MemRefType> EmitMinorReduction(
-    mlir::OpBuilder& builder, mlir::Location loc,
-    mlir::RankedTensorType result_type,
-    mlir::TypedValue<mlir::ShapedType> input, mlir::Value init_value,
-    mlir::Block& body) {
-  absl::StatusOr<mlir::vector::CombiningKind> kind_or = GetCombiningKind(body);
-  if (!kind_or.ok()) {
-    body.getParentOp()->emitRemark() << kind_or.status().ToString();
-  }
-
-  auto input_type = input.getType();
-  int64_t minor_dim_size = input_type.getShape().back();
-
-  auto [lbs, ubs, step] = GetLoopBounds(builder, loc, result_type.getShape());
-
-  auto buffer = CreateBufferOfShape(builder, loc, result_type);
-
-  mlir::scf::buildLoopNest(
-      builder, loc, lbs, ubs, step,
-      [&](mlir::OpBuilder& builder, mlir::Location loc,
-          mlir::ValueRange induction_vars) {
-        if (kind_or.ok()) {
-          // TODO(willfroom): Investigate tree-reduction to split the reduction
-          // op into natural sizes (2, 4, 8, 16, ...) and then remove the
-          // reassociation flag.
-          mlir::Value vector_slice =
-              ExtractVector(builder, loc, input, induction_vars);
+        if (minor_dim_reduced) {
           mlir::Value reduced_scalar =
-              builder.create<mlir::vector::ReductionOp>(
-                  loc, *kind_or, vector_slice, init_value,
-                  mlir::arith::FastMathFlags::reassoc);
+              EmitMinorReduction(builder, loc, result_type,
+                                 non_minor_reduced_result, init_value, body);
 
-          InsertValue(builder, loc, reduced_scalar, buffer, induction_vars);
-          return;
+          InsertValue(builder, loc, reduced_scalar, buffer,
+                      outer_induction_vars);
+        } else {
+          InsertValue(builder, loc, non_minor_reduced_result, buffer,
+                      outer_induction_vars);
         }
-
-        auto [lbs, ubs, step] = GetLoopBounds(builder, loc, {minor_dim_size});
-        mlir::scf::LoopNest minor_reduction_loop = mlir::scf::buildLoopNest(
-            builder, loc, lbs, ubs, step, {init_value},
-            [&](mlir::OpBuilder& builder, mlir::Location loc,
-                mlir::ValueRange index, mlir::ValueRange carry_value)
-                -> mlir::SmallVector<mlir::Value> {
-              auto full_index = llvm::to_vector(
-                  llvm::concat<mlir::Value>(induction_vars, index));
-              mlir::TypedValue<mlir::VectorType> element_vector =
-                  ExtractVector(builder, loc, input, full_index);
-              mlir::Value element =
-                  mlir::vector::ExtractOp::create(builder, loc, element_vector);
-              return {VectorizeBody(builder, loc, body, element,
-                                    carry_value.front())};
-            });
-
-        InsertValue(builder, loc, minor_reduction_loop.results.front(), buffer,
-                    induction_vars);
       });
 
   return buffer;
@@ -308,22 +297,9 @@ mlir::Value EmitVectorizedReduction(
     mlir::RankedTensorType result_type,
     mlir::TypedValue<mlir::RankedTensorType> source, mlir::Value init_value,
     llvm::ArrayRef<int64_t> reduction_dims, mlir::Block& body) {
-  int64_t rank = source.getType().getRank();
-  int64_t minor_dim = rank - 1;
-
-  bool minor_dim_reduced = reduction_dims.back() == minor_dim;
-  bool non_minor_dim_reduced = reduction_dims.size() > 1 || !minor_dim_reduced;
-
   mlir::TypedValue<mlir::ShapedType> result;
-  if (non_minor_dim_reduced) {
-    result = EmitNonMinorReduction(builder, loc, result_type, source,
-                                   reduction_dims, body, minor_dim_reduced);
-  }
-
-  if (minor_dim_reduced) {
-    result = EmitMinorReduction(builder, loc, result_type,
-                                result ? result : source, init_value, body);
-  }
+  result = EmitReductionLoop(builder, loc, result_type, source, reduction_dims,
+                             body, init_value);
 
   auto to_tensor = mlir::bufferization::ToTensorOp::create(builder, loc,
                                                            result_type, result);
