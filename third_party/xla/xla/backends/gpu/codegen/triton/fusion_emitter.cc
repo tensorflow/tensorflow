@@ -1601,6 +1601,11 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
       dot_tiling_parameters.reserve(num_tiling_parameters);
       for (int64_t contracting_dim_id :
            hlo->dot_dimension_numbers().lhs_contracting_dimensions()) {
+        if (contracting_dim_id >= lhs_output_tile_sizes.size()) {
+          return absl::FailedPreconditionError(
+              absl::StrCat("Output tile sizes index ", contracting_dim_id,
+                           " is out of bounds for ", lhs->ToString()));
+        }
         dot_tiling_parameters.push_back(
             lhs_output_tile_sizes[contracting_dim_id]);
       }
@@ -1611,6 +1616,12 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     // TODO(b/390559452): this should change for generalized multi-output
     // fusions.
     if (hlo == real_root) {
+      if (real_root_index >= block_level_parameters.output_tile_sizes.size()) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Output tile sizes index ", real_root_index,
+            " is out of bounds for block level fusion config: ",
+            block_level_parameters.ToBlockLevelFusionConfig().DebugString()));
+      }
       absl::Span<const int64_t> output_tile_sizes =
           block_level_parameters.output_tile_sizes[real_root_index];
       tile_mapping[hlo].insert(tile_mapping[hlo].end(),
