@@ -913,6 +913,7 @@ xla_cc_test(
     name = "hlo_sharding_test",
     srcs = ["hlo_sharding_test.cc"],
     deps = [
+        "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:tile_assignment",

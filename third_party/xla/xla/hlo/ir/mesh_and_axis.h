@@ -36,17 +36,28 @@ namespace xla {
 
 class AxisRef;
 
-// C++ representation for corresponding `OpSharding::Mesh` proto so same
+// C++ representation for corresponding OpSharding::Mesh proto so same
 // documentation applies, except device assignment is represented in the array
 // format instead of list of device ids to align with various array specific
-// queries. Note that `TileAssignment` is used instead of `xla::Array` for
-// optimized array representation in iota based cases which is the most common
-// case.
+// queries. `TileAssignment` is used instead of `xla::Array` for optimized array
+// representation in the most common iota-based cases.
 //
-// Example: device_assignment {{3, 0, 2}, {1, 4, 5}} with axes names {"data",
-// "model"} represents the mesh ["data"=2, "model"=3].
+// - device_assignment_.dimensions() represents the axis sizes.
+// - device_assignment_.array() represents the list of device IDs.
+//
+// For maximal mesh, axes_names is empty and device_assignment_ contains the
+// single device id.
+//
+// Example: device_assignment {{3, 0, 2}, {1, 4, 5}} with axes names
+// {"data", "model"} represents the mesh ["data"=2, "model"=3].
 class Mesh {
  public:
+  // Empty mesh
+  explicit Mesh() = default;
+
+  // Maximal Mesh
+  explicit Mesh(int64_t device_id) : device_assignment_(device_id) {}
+
   // Constructs an iota device assignment mesh with given axes sizes and names.
   //
   // Example: axes_sizes {2, 3} and axes_names {"data", "model"} represent the
@@ -66,6 +77,13 @@ class Mesh {
 
   explicit Mesh(TileAssignment device_assignment,
                 absl::Span<const absl::string_view> axes_names);
+
+  // Returns whether this mesh is a maximal-sharding mesh.
+  //
+  // A maximal-sharding mesh contains an empty axis list and a single device id.
+  bool IsMaximal() const {
+    return axes_names_.empty() && device_assignment_.num_elements() == 1;
+  }
 
   bool operator==(const Mesh& other) const {
     return device_assignment_ == other.device_assignment_ &&
@@ -104,7 +122,7 @@ class Mesh {
 
   static Mesh FromProto(const MeshProto& proto);
 
-  TileAssignment device_assignment() const { return device_assignment_; }
+  const TileAssignment& device_assignment() const { return device_assignment_; }
   std::vector<std::string> axis_names() const { return axes_names_; }
   absl::Span<const int64_t> axis_sizes() const {
     return device_assignment_.dimensions();

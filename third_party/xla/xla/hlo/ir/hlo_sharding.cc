@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
+#include "xla/hlo/ir/named_sharding.h"
 #include "xla/overflow_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
@@ -139,7 +140,11 @@ bool NextIndex(absl::InlinedVector<int64_t, 6>* index,
 }  // namespace
 
 HloSharding HloSharding::AssignDevice(int64_t device_id,
-                                      absl::Span<const OpMetadata> metadata) {
+                                      absl::Span<const OpMetadata> metadata,
+                                      bool use_named_sharding) {
+  if (use_named_sharding) {
+    return HloSharding(NamedSharding::MaximalSharding(device_id, metadata));
+  }
   return HloSharding(device_id, metadata);
 }
 
@@ -522,7 +527,9 @@ bool HloSharding::UsesDevice(int64_t device) const {
       return s.UsesDevice(device);
     });
   }
-  return replicated_ || manual_ || tile_assignment_.UsesDevice(device);
+
+  return IsReplicatedLeaf() || IsManualLeaf() ||
+         TileAgnosticDeviceAssignment().UsesDevice(device);
 }
 
 std::map<int64_t, int64_t> HloSharding::UsedDevices(int64_t* count) const {
@@ -761,8 +768,10 @@ std::optional<int64_t> HloSharding::UniqueDevice() const {
     }
     return unique_device;
   }
-  if (!replicated_ && maximal_) {
-    return static_cast<int64_t>(*tile_assignment_.array().begin());
+
+  if (!IsReplicatedLeaf() && IsTileMaximalLeaf()) {
+    return static_cast<int64_t>(
+        *TileAgnosticDeviceAssignment().array().begin());
   }
   return std::nullopt;
 }
@@ -838,21 +847,22 @@ absl::Status HloSharding::ValidateNonTuple(
     return absl::InvalidArgumentError(
         "Validation shape is a tuple but sharding is not.");
   }
-  if (replicated_ || manual_ || unreduced_ || unknown_) {
+  if (IsReplicatedLeaf() || IsManualLeaf() || IsUnreducedLeaf() ||
+      IsUnknownLeaf()) {
     return absl::OkStatus();
   }
 
-  if (maximal_) {
-    CHECK(!tile_assignment_.iota_);
-    if (tile_assignment_.array().num_elements() != 1) {
+  if (IsTileMaximalLeaf()) {
+    CHECK(!TileAgnosticDeviceAssignment().iota_);
+    if (TileAgnosticDeviceAssignment().array().num_elements() != 1) {
       return absl::InvalidArgumentError(
           "Tile maximal sharding must have a single device assignment.");
     }
-    return DeviceInRange(tile_assignment_.first(), num_devices);
+    return DeviceInRange(TileAgnosticDeviceAssignment().first(), num_devices);
   }
 
   // The correct constructor has to be used to create tile maximal shardings.
-  if (tile_assignment_.num_elements() == 1) {
+  if (TileAgnosticDeviceAssignment().num_elements() == 1) {
     return absl::InvalidArgumentError(
         "Tile assignment only contains a single device. If a replicated "
         "sharding was intended, use HloSharding::Replicated(). If a device "
@@ -896,6 +906,21 @@ absl::Status HloSharding::ValidateNonTuple(
   }
 
   return absl::OkStatus();
+}
+
+const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
+  // Returns device assignment regardless of sharding tiling.
+  //  - named_sharding_->device_assignment() only contains the information of
+  //    the mesh without information of how axes are used.
+  //  - tile_assignment_ keeps the information of mesh and how axes are used.
+  //
+  // For example, a NamedSharding [mesh= ['a'=2, 'b'=2] {'a'}, {}] and
+  // HloSharding [2,1,2]<=4 last_tile_dim_replicate would have the same
+  // underlying device order as: {{0, 1}, {2, 3}}.
+  if (UseNamedShardingLeaf()) {
+    return named_sharding_->device_assignment();
+  }
+  return tile_assignment_;
 }
 
 /*static*/ absl::StatusOr<HloSharding> HloSharding::FromProto(

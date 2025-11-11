@@ -96,8 +96,20 @@ Mesh::Mesh(TileAssignment device_assignment,
 
 MeshProto Mesh::ToProto() const {
   MeshProto proto;
+  int64_t num_axes = axes_names_.size();
+
+  if (num_axes == 0) {
+    if (device_assignment_.num_elements() == 0) {
+      return MeshProto();
+    }
+    // Maximal mesh
+    // TODO(b/454008727): Validate device_ids_size is 1.
+    proto.add_device_ids(*device_assignment_.array().begin());
+    return proto;
+  }
+
   std::vector<MeshProto::MeshAxis> axes;
-  axes.reserve(axes_names_.size());
+  axes.reserve(num_axes);
 
   for (auto [name, size] :
        llvm::zip_equal(axes_names_, device_assignment_.dimensions())) {
@@ -118,6 +130,16 @@ MeshProto Mesh::ToProto() const {
 }
 
 Mesh Mesh::FromProto(const MeshProto& proto) {
+  // TODO(b/454008727): Add validators for Mesh and AxisRef FromProto methods.
+  if (proto.axes_size() == 0) {
+    if (proto.device_ids_size() == 0) {
+      return Mesh();
+    }
+    // Maximal mesh
+    // TODO(b/454008727): Validate device_ids_size is 1.
+    return Mesh(proto.device_ids(0));
+  }
+
   std::vector<int64_t> mesh_axis_sizes;
   std::vector<absl::string_view> mesh_axis_names;
   mesh_axis_sizes.reserve(proto.axes_size());
