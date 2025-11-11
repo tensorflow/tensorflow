@@ -133,8 +133,8 @@ TEST_F(SymbolicMapTest, ReplaceDimsAndSymbols) {
   SymbolicExpr c3 = ctx.CreateConstant(30);
 
   SymbolicMap replaced_basic = sample_map.ReplaceDimsAndSymbols(
-      {c10, c2}, {c3, d0}, sample_map.GetNumDims(), sample_map.GetNumSymbols());
-  EXPECT_THAT(replaced_basic.GetResults(), ElementsAre(c10 + c3, c2 * d0));
+      {s0, c2}, {c3, d0}, sample_map.GetNumDims(), sample_map.GetNumSymbols());
+  EXPECT_THAT(replaced_basic.GetResults(), ElementsAre(s0 + c3, c2 * d0));
 
   SymbolicMap map_empty = SymbolicMap::Get(&ctx, 0, 0, {});
   SymbolicMap replaced_empty = map_empty.ReplaceDimsAndSymbols({}, {}, 0, 0);
@@ -155,9 +155,9 @@ TEST_F(SymbolicMapTest, ReplaceDimsAndSymbols) {
 
 TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsOnlyDims) {
   SymbolicMap replaced = sample_map.ReplaceDimsAndSymbols(
-      /*dim_replacements=*/{c10, c2}, /*sym_replacements=*/{},
+      /*dim_replacements=*/{d1, c2}, /*sym_replacements=*/{},
       sample_map.GetNumDims(), sample_map.GetNumSymbols());
-  EXPECT_THAT(replaced.GetResults(), ElementsAre(c10 + s0, c2 * s1));
+  EXPECT_THAT(replaced.GetResults(), ElementsAre(d1 + s0, c2 * s1));
 }
 
 TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsOnlySymbols) {
@@ -182,7 +182,7 @@ TEST_F(SymbolicMapTest, Compose) {
   SymbolicMap map1_symbols =
       SymbolicMap::Get(&ctx, 2, 1, {d0 + s0_map1, d1 * 2});
   SymbolicMap map2_symbols =
-      SymbolicMap::Get(&ctx, 1, 1, {d0 - 10, d0 + s0_map2});
+      SymbolicMap::Get(&ctx, 1, 1, {d0 * 2, d0 + s0_map2});
   SymbolicMap compose_with_symbols = map1_symbols.Compose(map2_symbols);
   EXPECT_EQ(compose_with_symbols.GetNumDims(), 1);
   EXPECT_EQ(compose_with_symbols.GetNumSymbols(), 2);
@@ -193,7 +193,7 @@ TEST_F(SymbolicMapTest, Compose) {
       CreateSymbolExpr(&ctx, /*symbol_id=*/1, /*num_dims=*/1);
   EXPECT_THAT(
       compose_with_symbols.GetResults(),
-      ElementsAre((new_d0 - 10) + new_s0_map1, (new_d0 + new_s0_map2) * 2));
+      ElementsAre((new_d0 * 2) + new_s0_map1, (new_d0 + new_s0_map2) * 2));
 
   // Composition with identity
   SymbolicMap id_2dim = SymbolicMap::Get(&ctx, 2, 0, {d0, d1});
@@ -227,9 +227,9 @@ TEST_F(SymbolicMapTest, Replace) {
   SymbolicExpr expr1 = d1 + c2;
   SymbolicMap map = SymbolicMap::Get(&ctx, 2, 0, {expr0, expr1});
 
-  SymbolicMap replaced_both_exprs = map.Replace(c2, d0);
+  SymbolicMap replaced_both_exprs = map.Replace(c2, c5);
   EXPECT_THAT(replaced_both_exprs.GetResults(),
-              ElementsAre((d0 + d0) * d1, d1 + d0));
+              ElementsAre((d0 + c5) * d1, d1 + c5));
 
   SymbolicMap replaced_just_one = map.Replace(d1 + c2, c5);
   EXPECT_THAT(replaced_just_one.GetResults(), ElementsAre(expr0, c5));

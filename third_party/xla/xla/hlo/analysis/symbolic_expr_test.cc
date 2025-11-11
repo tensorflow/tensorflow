@@ -40,6 +40,7 @@ struct SymbolicExprTest : public ::testing::Test {
   SymbolicExprContext ctx{&mlir_context};
   SymbolicExpr v0 = ctx.CreateVariable(0);
   SymbolicExpr v1 = ctx.CreateVariable(1);
+  SymbolicExpr v2 = ctx.CreateVariable(2);
   SymbolicExpr c2 = ctx.CreateConstant(2);
 };
 
@@ -130,29 +131,31 @@ TEST_F(SymbolicExprTest, ReplaceSymbols) {
   SymbolicExpr d0 = ctx.CreateVariable(0);
   SymbolicExpr s0 = ctx.CreateVariable(1);
   SymbolicExpr s1 = ctx.CreateVariable(2);
+  SymbolicExpr s2 = ctx.CreateVariable(3);
   SymbolicExpr c7 = ctx.CreateConstant(7);
   SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
-  SymbolicExpr result = expr_to_sub.ReplaceSymbols({d0, c7}, /*num_dims=*/1);
-  EXPECT_EQ(result, ((d0 + (d0 * 2)) * c7));
+  SymbolicExpr result = expr_to_sub.ReplaceSymbols({s2, c7}, /*num_dims=*/1);
+  EXPECT_EQ(result, ((d0 + (s2 * 2)) * c7));
 }
 
 TEST_F(SymbolicExprTest, ReplaceDimsAndSymbols) {
   SymbolicExpr d0 = ctx.CreateVariable(0);
   SymbolicExpr s0 = ctx.CreateVariable(1);
   SymbolicExpr s1 = ctx.CreateVariable(2);
+  SymbolicExpr s2 = ctx.CreateVariable(3);
   SymbolicExpr c7 = ctx.CreateConstant(7);
   SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
   SymbolicExpr result =
-      expr_to_sub.ReplaceDimsAndSymbols({s0}, {d0, c7}, /*num_dims=*/1);
-  EXPECT_EQ(result, ((s0 + (d0 * 2)) * c7));
+      expr_to_sub.ReplaceDimsAndSymbols({s0}, {s2, c7}, /*num_dims=*/1);
+  EXPECT_EQ(result, ((s0 + (s2 * 2)) * c7));
 
   SymbolicExpr replace_only_dims =
-      expr_to_sub.ReplaceDimsAndSymbols({s0}, {}, /*num_dims=*/1);
-  EXPECT_EQ(replace_only_dims, ((s0 + (s0 * 2)) * s1));
+      expr_to_sub.ReplaceDimsAndSymbols({d0 * 3}, {}, /*num_dims=*/1);
+  EXPECT_EQ(replace_only_dims, (((d0 * 3) + (s0 * 2)) * s1));
 
   SymbolicExpr replace_only_symbols =
-      expr_to_sub.ReplaceDimsAndSymbols({}, {d0, c7}, /*num_dims=*/1);
-  EXPECT_EQ(replace_only_symbols, ((d0 + (d0 * 2)) * c7));
+      expr_to_sub.ReplaceDimsAndSymbols({}, {s2, c7}, /*num_dims=*/1);
+  EXPECT_EQ(replace_only_symbols, ((d0 + (s2 * 2)) * c7));
 }
 
 TEST_F(SymbolicExprTest, UniquingWorks) {
@@ -201,20 +204,21 @@ TEST_F(SymbolicExprTest, Replace) {
 TEST_F(SymbolicExprTest, ReplaceWithMap) {
   SymbolicExpr d0 = ctx.CreateVariable(0);
   SymbolicExpr d1 = ctx.CreateVariable(1);
+  SymbolicExpr d2 = ctx.CreateVariable(2);
   SymbolicExpr c2 = ctx.CreateConstant(2);
   SymbolicExpr c5 = ctx.CreateConstant(5);
-  SymbolicExpr c10 = ctx.CreateConstant(10);
 
   SymbolicExpr expr = (d0 + c2) * (d1 + c2);
 
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> replace_expression;
   replace_expression[d0 + c2] = c5;
-  replace_expression[d1] = c10;
-  EXPECT_EQ(expr.Replace(replace_expression), c5 * (c10 + c2));
+  replace_expression[d1] = d0;
+  EXPECT_EQ(expr.Replace(replace_expression), c5 * (d0 + c2));
 
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> replace_constant;
-  replace_constant[c2] = d0;
-  EXPECT_EQ(expr.Replace(replace_constant), (d0 + d0) * (d1 + d0));
+  replace_constant[c2] = d2 * c5;
+  EXPECT_EQ(expr.Replace(replace_constant),
+            (d0 + (d2 * c5)) * (d1 + (d2 * c5)));
 
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> swap_variables;
   swap_variables[d0] = d1;
@@ -224,6 +228,12 @@ TEST_F(SymbolicExprTest, ReplaceWithMap) {
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> no_change;
   no_change[ctx.CreateVariable(99)] = c5;
   EXPECT_EQ(expr.Replace(no_change), expr);
+}
+
+// Requirement from AffineMap use in IndexingMap.
+TEST_F(SymbolicExprTest, AddOperatorShouldBeSimplified) {
+  SymbolicExpr expr = v0 + 0;
+  EXPECT_EQ(expr.ToString(), "v0");
 }
 
 TEST_F(SymbolicExprTest, Canonicalization_Basic) {
@@ -258,8 +268,9 @@ TEST_F(SymbolicExprTest, Canonicalization_Basic) {
   EXPECT_EQ(distribute_mul_over_add.Canonicalize().ToString(),
             "((v0 * 3) + 6)");
 
-  SymbolicExpr term_sorting = (v1 * 3) + (v0 * 2);
-  EXPECT_EQ(term_sorting.Canonicalize().ToString(), "((v0 * 2) + (v1 * 3))");
+  SymbolicExpr variable_ordering = v2 * 3 + 5 + v1 + (v0 * 2);
+  EXPECT_EQ(variable_ordering.Canonicalize().ToString(),
+            "((((v0 * 2) + v1) + (v2 * 3)) + 5)");
 
   SymbolicExpr add_associativity_and_commutativity = v0 + v1 + v0 + v1;
   EXPECT_EQ(add_associativity_and_commutativity.Canonicalize().ToString(),
