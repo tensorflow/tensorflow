@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu_solver_context.h"
-#include "xla/stream_executor/platform.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -47,7 +47,7 @@ class CholeskyThunk : public Thunk {
   static absl::StatusOr<std::unique_ptr<CholeskyThunk>> FromProto(
       ThunkInfo thunk_info, const CholeskyThunkProto& proto,
       absl::Span<const BufferAllocation> allocations,
-      const stream_executor::Platform& platform);
+      absl::string_view platform_name);
 
   CholeskyThunk(
       ThunkInfo thunk_info, const CholeskyOptions& options,

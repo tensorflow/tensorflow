@@ -26,10 +26,12 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/make_batch_pointers.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu_solver_context.h"
@@ -202,7 +204,9 @@ absl::StatusOr<ThunkProto> CholeskyThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<CholeskyThunk>> CholeskyThunk::FromProto(
     ThunkInfo thunk_info, const CholeskyThunkProto& proto,
     absl::Span<const BufferAllocation> allocations,
-    const stream_executor::Platform& platform) {
+    absl::string_view platform_name) {
+  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                      PlatformUtil::GetPlatform(platform_name));
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice a_buffer,
       BufferAllocation::Slice::FromProto(proto.a_buffer(), allocations));
@@ -217,7 +221,8 @@ absl::StatusOr<std::unique_ptr<CholeskyThunk>> CholeskyThunk::FromProto(
           absl::StatusOr<std::unique_ptr<stream_executor::GpuSolverContext>>()>
           solver_creator,
       stream_executor::PlatformObjectRegistry::GetGlobalRegistry()
-          .FindObject<stream_executor::GpuSolverContextFactory>(platform.id()));
+          .FindObject<stream_executor::GpuSolverContextFactory>(
+              platform->id()));
   return std::make_unique<CholeskyThunk>(
       thunk_info, proto.options(), a_buffer, workspace_buffer, info_buffer,
       proto.type(), proto.batch_size(), proto.n(), solver_creator);

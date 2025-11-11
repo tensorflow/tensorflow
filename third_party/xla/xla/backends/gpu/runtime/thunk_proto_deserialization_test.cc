@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -590,6 +591,63 @@ TEST(ThunkProtoDeserializationTest, EmptyThunkImplReturnsAnError) {
   EXPECT_THAT(DeserializeThunkProto(proto, /*buffer_allocations=*/{},
                                     /*hlo_module=*/nullptr, kTestPlatformName),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(ThunkProtoDeserializationTest, HostExecuteThunksRoundTrip) {
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
+      R"pb(
+        thunk_info { execution_stream_id: 7 }
+        sequential_thunk {
+          thunks {
+            thunk_info { execution_stream_id: 7 }
+            host_execute_start_thunk {
+              executable_proto { executable_type: EXECUTABLE_TYPE_NANORT }
+              async_events_unique_id: 123
+            }
+          }
+          thunks {
+            thunk_info { execution_stream_id: 7 }
+            host_execute_done_thunk { async_events_unique_id: 123 }
+          }
+        }
+      )pb");
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> thunk,
+      DeserializeThunkProto(proto, /*buffer_allocations=*/{},
+                            /*hlo_module=*/nullptr, kTestPlatformName));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+
+  // Check that start and done thunks share the same async event id.
+  const auto* sequential_thunk = dynamic_cast<SequentialThunk*>(thunk.get());
+  ASSERT_NE(sequential_thunk, nullptr);
+  ASSERT_EQ(sequential_thunk->thunks().size(), 2);
+
+  const auto* start_thunk =
+      dynamic_cast<HostExecuteStartThunk*>(sequential_thunk->thunks()[0].get());
+  ASSERT_NE(start_thunk, nullptr);
+
+  const auto* done_thunk =
+      dynamic_cast<HostExecuteDoneThunk*>(sequential_thunk->thunks()[1].get());
+  ASSERT_NE(done_thunk, nullptr);
+
+  EXPECT_TRUE(start_thunk->GetAsyncEventsUniqueId().has_value());
+  EXPECT_TRUE(done_thunk->GetAsyncEventsUniqueId().has_value());
+  EXPECT_EQ(start_thunk->GetAsyncEventsUniqueId(),
+            done_thunk->GetAsyncEventsUniqueId());
+
+  // The unique id is regenerated on deserialization. Overwrite it with the
+  // original value for the purpose of the roundtrip test.
+  round_trip_proto.mutable_sequential_thunk()
+      ->mutable_thunks(0)
+      ->mutable_host_execute_start_thunk()
+      ->set_async_events_unique_id(123);
+  round_trip_proto.mutable_sequential_thunk()
+      ->mutable_thunks(1)
+      ->mutable_host_execute_done_thunk()
+      ->set_async_events_unique_id(123);
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
 }  // namespace

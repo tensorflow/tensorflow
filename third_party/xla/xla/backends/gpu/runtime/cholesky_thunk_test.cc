@@ -69,7 +69,8 @@ TEST_F(CholeskyThunkTest, ProtoRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CholeskyThunk> round_trip_thunk,
       CholeskyThunk::FromProto(thunk.thunk_info(), proto.cholesky_thunk(),
-                               buffer_allocations, *backend().platform()));
+                               buffer_allocations,
+                               backend().platform()->Name()));
 
   EXPECT_THAT(round_trip_thunk->ToProto(), IsOkAndHolds(EqualsProto(proto)));
 }
