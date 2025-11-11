@@ -704,7 +704,8 @@ using DeviceTopologyPair =
 
 absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     absl::string_view platform_name, LocalClient* xla_client, int node_id,
-    int num_nodes, gpu::GpuExecutableRunOptions* gpu_executable_run_options,
+    int max_inflight_computations, int num_nodes,
+    gpu::GpuExecutableRunOptions* gpu_executable_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
     std::optional<absl::string_view> mock_gpu_topology,
     std::optional<int> partition_index,
@@ -854,7 +855,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       options.process_index = node.node_id();
       options.process_index_in_partition = curr_process_index_in_partition;
       options.partition_index = device_proto.partition_index();
-      options.max_inflight_computations = 8;
+      options.max_inflight_computations = max_inflight_computations;
       options.platform_version = device_proto.name();
       options.device_vendor = device_proto.vendor();
       options.compute_capability = device_proto.compute_capability();
