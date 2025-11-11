@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tsl/platform/base64.h"
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
 

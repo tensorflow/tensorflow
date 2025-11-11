@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tsl/platform/hash.h"
 
-#include <map>
+#include <cstddef>
+#include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
