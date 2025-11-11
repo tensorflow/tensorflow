@@ -89,10 +89,6 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
     return 1;
   }
 
-  absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override {
-    return 1;
-  }
-
   absl::StatusOr<std::string> Serialize() const override;
 
   absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
