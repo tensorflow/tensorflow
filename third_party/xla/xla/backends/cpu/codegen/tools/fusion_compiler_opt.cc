@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/InitAllPasses.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "stablehlo/conversions/linalg/transforms/Passes.h"
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h"
@@ -35,6 +36,7 @@ int main(int argc, char** argv) {
   xla::cpu::registerXlaCpuTransformsPasses();
   xla::cpu::registerXTileCpuTransformsPasses();
   xla::xtile::registerXTileTransformsPasses();
+  mlir::stablehlo::registerStablehloLinalgTransformsPasses();
 
   return mlir::failed(MlirOptMain(
       argc, argv, "XLA:CPU Fusion compiler pass driver\n", registry));
