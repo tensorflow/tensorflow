@@ -2929,7 +2929,9 @@ xla_cc_test(
         "nomsan",
     ],
     deps = [
+        ":gpu_device_info_for_tests",
         ":gpu_fusible",
+        ":hlo_fusion_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
