@@ -39,6 +39,7 @@ limitations under the License.
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
@@ -125,6 +126,7 @@ namespace gpu {
 namespace {
 
 using llvm::SmallVector;
+using mlir::MLIRContext;
 using mlir::Value;
 using mlir::ValueRange;
 using mlir::func::FuncOp;
@@ -267,6 +269,7 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
                                      ir_emitter_context.buffer_assignment(),
                                      GetDefaultBufferAlignment(), &fusion));
   auto launch_dims = launch_dimensions();
+  mlir::MLIRContext& mlir_context = *ir_emitter_context.mlir_context();
   auto [status_or_entry, cached] =
       ir_emitter_context.kernel_cache().GetWithStatus(
           fusion.fused_instructions_computation(), args.args(),
@@ -276,10 +279,12 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
                 ir_emitter_context.name_uniquer()->GetUniqueName(
                     llvm_ir::SanitizeFunctionName(std::string(fusion.name())));
             if (ir_emitter_context.emit_kernels()) {
+              mlir_context.appendDialectRegistry(GetDialectRegistry());
+              mlir_context.loadAllAvailableDialects();
               TF_ASSIGN_OR_RETURN(
                   auto module,
                   CreateLLVMModule(
-                      *ir_emitter_context.symbolic_expr_context(),
+                      mlir_context,
                       ir_emitter_context.llvm_module()->getContext(),
                       ir_emitter_context.gpu_device_info(), fusion, kernel_name,
                       &ir_emitter_context.buffer_assignment()));
@@ -326,16 +331,13 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
 }
 
 absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
-    SymbolicExprContext& symbolic_expr_context, llvm::LLVMContext& llvm_context,
+    mlir::MLIRContext& mlir_context, llvm::LLVMContext& llvm_context,
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  mlir::MLIRContext& mlir_context = *symbolic_expr_context.GetMLIRContext();
-  mlir_context.appendDialectRegistry(GetDialectRegistry());
-  mlir_context.loadAllAvailableDialects();
-  TF_ASSIGN_OR_RETURN(auto module,
-                      CreateMLIRModule(symbolic_expr_context, fusion,
-                                       entry_function_name, buffer_assignment));
+  TF_ASSIGN_OR_RETURN(
+      auto module, CreateMLIRModule(mlir_context, fusion, entry_function_name,
+                                    buffer_assignment));
 
   mlir::PassManager pm(&mlir_context);
   emitters::RegisterOptimizationPasses(pm);
@@ -353,10 +355,9 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
-    SymbolicExprContext& symbolic_expr_context,
-    const HloFusionInstruction& fusion, const std::string& entry_function_name,
+    MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+    const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  mlir::MLIRContext& mlir_context = *symbolic_expr_context.GetMLIRContext();
   mlir::OpBuilder builder(&mlir_context);
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
@@ -367,6 +368,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
                           GetDefaultBufferAlignment(), entry_function_name));
   SetBackendKind(&mlir_context, entry_func, BackendKind::kGpu);
 
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
   TF_RETURN_IF_ERROR(
       EmitMlir(module.get(), entry_func, fusion, symbolic_expr_context));
   return module;

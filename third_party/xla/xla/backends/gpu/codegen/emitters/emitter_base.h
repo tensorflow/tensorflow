@@ -59,17 +59,15 @@ class EmitterBase : public KernelFusionInterface {
   // Visible for testing. `buffer_assignment` is optional for testing (assigns
   // a different buffer to each tensor).
   absl::StatusOr<std::unique_ptr<llvm::Module>> CreateLLVMModule(
-      SymbolicExprContext& symbolic_expr_context,
-      llvm::LLVMContext& llvm_context, const se::DeviceDescription& device,
-      const HloFusionInstruction& fusion,
+      mlir::MLIRContext& mlir_context, llvm::LLVMContext& llvm_context,
+      const se::DeviceDescription& device, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
       const BufferAssignment* buffer_assignment) const;
 
   // Visible for testing. `buffer_assignment` is optional for testing (assigns
   // a different buffer to each tensor).
   virtual absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
-      SymbolicExprContext& symbolic_expr_context,
-      const HloFusionInstruction& fusion,
+      mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
       const BufferAssignment* buffer_assignment) const;
 

@@ -52,7 +52,7 @@ class LoopFusion final : public EmitterBase {
 
  private:
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
-      SymbolicExprContext& context, const HloFusionInstruction& fusion,
+      mlir::MLIRContext& context, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
       const BufferAssignment* buffer_assignment) const override;
 

@@ -54,7 +54,7 @@ class ConcatenateFusion final : public EmitterBase {
 
  protected:
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
-      SymbolicExprContext& context, const HloFusionInstruction& fusion,
+      mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
       const BufferAssignment* buffer_assignment) const override;
 

@@ -92,7 +92,6 @@ class EmitterBaseTest : public HloHardwareIndependentTestBase {
   }
 
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
 };
@@ -113,7 +112,7 @@ TEST_F(EmitterBaseTest, CreateMlirModule) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto mlir_module,
       emitter.CreateMLIRModule(
-          symbolic_expr_context_,
+          mlir_context_,
           *Cast<HloFusionInstruction>(
               module->entry_computation()->root_instruction()),
           "fusion",
@@ -144,7 +143,7 @@ TEST_F(EmitterBaseTest, CreateLLVMModule) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto llvm_module,
       emitter.CreateLLVMModule(
-          symbolic_expr_context_, llvm_context, device_info_,
+          mlir_context_, llvm_context, device_info_,
           *Cast<HloFusionInstruction>(
               module->entry_computation()->root_instruction()),
           "fusion",

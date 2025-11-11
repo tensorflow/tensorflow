@@ -2997,10 +2997,8 @@ GpuCompiler::LoadExecutableFromAotResult(
 
   IrEmitterContext ir_emitter_context(
       hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
-      platform_name, gpu_device_info, symbolic_expr_context(),
-      llvm_module.get(),
-      /*llvm_module_constants=*/nullptr,
-      /*emit_kernels=*/false);
+      platform_name, gpu_device_info, mlir_context(), llvm_module.get(),
+      /*llvm_module_constants=*/nullptr, /*emit_kernels=*/false);
 
   absl::string_view cache_file_path =
       hlo_module->config().debug_options().xla_gpu_kernel_cache_file();

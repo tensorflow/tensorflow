@@ -166,10 +166,10 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 
     TF_ASSIGN_OR_RETURN(
         TritonWrapperResult triton_wrapper_result,
-        GenerateTritonKernelAndWrapper(
-            fusion, impl_fn_name, ir_emitter_context.gpu_device_info(),
-            ir_emitter_context.llvm_module(),
-            ir_emitter_context.symbolic_expr_context()));
+        GenerateTritonKernelAndWrapper(fusion, impl_fn_name,
+                                       ir_emitter_context.gpu_device_info(),
+                                       ir_emitter_context.llvm_module(),
+                                       ir_emitter_context.expr_context()));
 
     auto backend_config =
         fusion.backend_config<GpuBackendConfig>()->fusion_backend_config();

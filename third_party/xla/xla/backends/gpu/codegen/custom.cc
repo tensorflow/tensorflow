@@ -933,7 +933,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
       mlir::Attribute attr = mlir::parseAttribute(
           backend_config_str,
           // TODO: b/451959933 - Use reference or check pointer.
-          ir_emitter_context.symbolic_expr_context()->GetMLIRContext());
+          ir_emitter_context.expr_context()->GetMLIRContext());
       auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr);
       if (dict == nullptr) {
         return absl::InternalError(

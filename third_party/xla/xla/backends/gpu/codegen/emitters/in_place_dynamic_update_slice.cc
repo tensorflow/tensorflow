@@ -96,9 +96,10 @@ WorkDimensions InPlaceDynamicUpdateSliceFusion::GetWorkDimensions() const {
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 InPlaceDynamicUpdateSliceFusion::CreateMLIRModule(
-    SymbolicExprContext& symbolic_expr_context,
-    const HloFusionInstruction& fusion, const std::string& entry_function_name,
+    mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+    const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
   emitters::DynamicUpdateSliceKernelEmitter emitter(
       symbolic_expr_context, fusion, analysis_.fusion_spec(), buffer_assignment,
       GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,

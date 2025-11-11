@@ -1,4 +1,3 @@
-#include "xla/hlo/analysis/symbolic_expr.h"
 /* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,10 +27,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -69,15 +70,15 @@ class IrEmitterContext {
                    const ExecutionStreamAssignment* execution_stream_assignment,
                    std::string platform_name,
                    const se::DeviceDescription& gpu_device_info,
-                   SymbolicExprContext* symbolic_expr_context,
-                   llvm::Module* llvm_module,
+                   mlir::MLIRContext* mlir_context, llvm::Module* llvm_module,
                    llvm::Module* llvm_module_constants, bool emit_kernels)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         execution_stream_assignment_(execution_stream_assignment),
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
-        symbolic_expr_context_(symbolic_expr_context),
+        mlir_context_(mlir_context),
+        expr_context_(mlir_context_),
         llvm_module_(llvm_module),
         llvm_module_constants_(llvm_module_constants),
         emit_kernels_(emit_kernels) {}
@@ -101,12 +102,12 @@ class IrEmitterContext {
     return gpu_device_info_.gpu_compute_capability();
   }
 
+  mlir::MLIRContext* mlir_context() { return mlir_context_; }
+
   // TODO: b/451959933 - Add nullability annotation to be explicit about this
   // pointer: go/totw/230. Alternatively, return by reference instead of pointer
   // (and require reference in ctor) to signal that it is always present.
-  SymbolicExprContext* symbolic_expr_context() {
-    return symbolic_expr_context_;
-  }
+  SymbolicExprContext* expr_context() { return &expr_context_; }
 
   llvm::Module* llvm_module() { return llvm_module_; }
   // A separate module can optionally be used to emit constants.
@@ -158,7 +159,8 @@ class IrEmitterContext {
   const ExecutionStreamAssignment* execution_stream_assignment_;
   std::string platform_name_;
   const se::DeviceDescription& gpu_device_info_;
-  SymbolicExprContext* symbolic_expr_context_;
+  mlir::MLIRContext* mlir_context_;
+  SymbolicExprContext expr_context_;
   llvm::Module* llvm_module_;
   llvm::Module* llvm_module_constants_;
   NameUniquer name_uniquer_;

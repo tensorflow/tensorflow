@@ -42,7 +42,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> EmitPtxCustomKernelThunk(
 
   TF_ASSIGN_OR_RETURN(
       KernelCall call,
-      KernelCall::Parse(backend_config_str, context->symbolic_expr_context()));
+      KernelCall::Parse(backend_config_str, context->expr_context()));
   if (call.kernel_type != KernelCall::KernelType::kPtxSource) {
     return absl::InvalidArgumentError(
         "PTX custom call backend config is not a PTX source");

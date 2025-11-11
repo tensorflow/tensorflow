@@ -35,7 +35,7 @@ absl::Status Run(const std::string& filename) {
                       GetEmitter(*module, symbolic_expr_context));
   TF_ASSIGN_OR_RETURN(auto mlir_module,
                       emitter_data->emitter->CreateMLIRModule(
-                          symbolic_expr_context, *emitter_data->fusion, "main",
+                          mlir_context, *emitter_data->fusion, "main",
                           /*buffer_assignment=*/nullptr));
   llvm::outs() << *mlir_module;
   return absl::OkStatus();
