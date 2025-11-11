@@ -544,6 +544,41 @@ cc_library(
 )
 
 cc_library(
+    name = "kernel_symbol_registry",
+    srcs = ["kernel_symbol_registry.cc"],
+    hdrs = ["kernel_symbol_registry.h"],
+    deps = [
+        ":platform",
+        ":platform_manager",
+        "//xla/stream_executor/platform:initialize",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "kernel_symbol_registry_test",
+    srcs = ["kernel_symbol_registry_test.cc"],
+    deps = [
+        ":kernel_symbol_registry",
+        "//xla/stream_executor/cuda:cuda_platform_id",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
     name = "kernel_spec",
     srcs = ["kernel_spec.cc"],
     hdrs = ["kernel_spec.h"],
@@ -552,7 +587,10 @@ cc_library(
         ":kernel_args",
         ":kernel_argument_packing_spec",
         ":kernel_spec_proto_cc",
+        ":kernel_symbol_registry",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
