@@ -63,7 +63,7 @@ class SymbolicExpr {
   bool operator!=(SymbolicExpr other) const { return !(*this == other); }
   bool operator<(const SymbolicExpr& other) const;
 
-  SymbolicExprContext* GetContext() const;
+  mlir::MLIRContext* GetContext() const;
   SymbolicExprType GetType() const;
   bool IsBinaryOp() const;
   SymbolicExpr GetLHS() const;
