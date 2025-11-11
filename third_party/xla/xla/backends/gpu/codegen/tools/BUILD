@@ -109,7 +109,7 @@ xla_cc_binary(
     name = "fusion_wrapper",
     testonly = 1,
     srcs = ["fusion_wrapper.cc"],
-    visibility = [":codegen_tests"],
+    visibility = ["//visibility:private"],
     deps = [
         "//xla/codegen/tools:test_lib",
         "//xla/tsl/platform:statusor",
