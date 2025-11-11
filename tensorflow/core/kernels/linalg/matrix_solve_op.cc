@@ -18,6 +18,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include <algorithm>
+#include <limits>
 #include <numeric>
 
 #include "Eigen/Core"  // from @eigen_archive
@@ -364,9 +366,10 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     // temporary Tensors/ScratchSpace so they don't get deallocated before the
     // kernels run. TODO(rmlarsen): Use move capture once C++14 becomes
     // available.
-    auto info_checker = [context, done, dev_info](
-                            const Status& status,
-                            const std::vector<HostLapackInfo>& host_infos) {
+    auto info_checker =
+        [context, done, input_copy, batch_size, n](
+            const Status& status,
+            const std::vector<HostLapackInfo>& host_infos) {
       if (!status.ok() && absl::IsInvalidArgument(status) &&
           !host_infos.empty()) {
         for (int i = 0; i < host_infos[0].size(); ++i) {
@@ -377,6 +380,46 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
         }
       }
       OP_REQUIRES_OK_ASYNC(context, status, done);
+      if (n > 0) {
+        Tensor lu_factor_host;
+        AllocatorAttributes host_attrs;
+        host_attrs.set_on_host(true);
+        host_attrs.set_gpu_compatible(true);
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            context->allocate_temp(input_copy.dtype(), input_copy.shape(),
+                                   &lu_factor_host, host_attrs),
+            done);
+        absl::Status copy_status =
+            context->op_device_context()->CopyDeviceTensorToCPUSync(
+                &input_copy, "matrix_solve_lu_factor", context->device(),
+                &lu_factor_host);
+        OP_REQUIRES_ASYNC(context, copy_status.ok(),
+                          errors::Internal(copy_status.message()), done);
+        auto lu_factor_host_flat = lu_factor_host.template flat<Scalar>();
+        const Scalar* lu_factor_ptr = lu_factor_host_flat.data();
+        using RealScalar = typename Eigen::NumTraits<Scalar>::Real;
+        const RealScalar eps = Eigen::NumTraits<RealScalar>::epsilon();
+        const RealScalar threshold =
+            static_cast<RealScalar>(n) / eps;
+        const int64_t matrix_size = n * n;
+        for (int64_t batch = 0; batch < batch_size; ++batch) {
+          RealScalar min_abs = std::numeric_limits<RealScalar>::infinity();
+          RealScalar max_abs = RealScalar(0);
+          for (int64_t i = 0; i < n; ++i) {
+            const RealScalar abs_val =
+                static_cast<RealScalar>(Eigen::numext::abs(
+                    lu_factor_ptr[batch * matrix_size + i * n + i]));
+            min_abs = std::min(min_abs, abs_val);
+            max_abs = std::max(max_abs, abs_val);
+          }
+          OP_REQUIRES_ASYNC(context, min_abs > RealScalar(0),
+                            errors::InvalidArgument(kErrMsg), done);
+          const RealScalar cond_est = max_abs / min_abs;
+          OP_REQUIRES_ASYNC(context, cond_est < threshold,
+                            errors::InvalidArgument(kErrMsg), done);
+        }
+      }
       done();
     };
     GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
