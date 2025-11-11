@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 
 #include <cstdint>
 #include <memory>
@@ -26,9 +26,6 @@ limitations under the License.
 #include "benchmark/benchmark.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel_metadata.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -66,11 +63,6 @@ static_assert(std::is_same_v<
 static_assert(
     std::is_same_v<ArgsStorage<DeviceMemoryBase*, const DeviceMemoryBase*>,
                    std::tuple<const void*, const void*>>);
-
-static StreamExecutor* NewStreamExecutor() {
-  Platform* platform = PlatformManager::PlatformWithName("Host").value();
-  return platform->ExecutorForDevice(/*ordinal=*/0).value();
-}
 
 TEST(KernelTest, PackDeviceMemoryArguments) {
   DeviceMemoryBase a(reinterpret_cast<void*>(0x12345678));

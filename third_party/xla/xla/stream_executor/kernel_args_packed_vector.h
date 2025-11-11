@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 
 namespace stream_executor {
 
