@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/executable.pb.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -46,7 +46,7 @@ LegacyGpuAotCompilationResult::FromModule(
     absl::string_view asm_text, absl::Span<const uint8_t> binary,
     const BinaryMap& dnn_compiled_graphs, int pointer_size) {
   tsl::profiler::TraceMe traceme("ResultFromModule");
-  CompilationResultProto proto;
+  GpuExecutableProto proto;
   *proto.mutable_hlo_module_with_config() = hlo_module->ToProtoWithConfig();
   *proto.mutable_buffer_assignment() = buffer_assignment->ToProto();
   proto.set_asm_text(asm_text);
@@ -62,7 +62,7 @@ absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
 LegacyGpuAotCompilationResult::FromString(const std::string& serialized,
                                           int pointer_size) {
   tsl::profiler::TraceMe traceme("ResultFromString");
-  CompilationResultProto proto;
+  GpuExecutableProto proto;
   if (!proto.ParseFromString(serialized)) {
     return Internal("Failed to parse serialized GpuThunkAotCompilationResult.");
   }

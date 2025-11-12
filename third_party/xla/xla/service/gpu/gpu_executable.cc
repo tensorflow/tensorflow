@@ -1198,13 +1198,15 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
   *proto.mutable_program_shape() = program_shape_.ToProto();
 
   absl::Span<const BufferAllocation* const> allocations = GetAllocations();
-  proto.mutable_buffer_allocations()->Reserve(allocations.size());
+  proto.mutable_buffer_allocations()->mutable_values()->Reserve(
+      allocations.size());
   for (const auto& allocation : allocations) {
-    proto.mutable_buffer_allocations()->Add(allocation->ToProto());
+    proto.mutable_buffer_allocations()->mutable_values()->Add(
+        allocation->ToProto());
   }
 
   if (hlo_module_ != nullptr) {
-    *proto.mutable_hlo_module() = hlo_module_->ToProtoWithConfig();
+    *proto.mutable_hlo_module_with_config() = hlo_module_->ToProtoWithConfig();
   }
 
   proto.mutable_output_info_map()->Reserve(output_info_.size());
@@ -1232,16 +1234,16 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
   const std::string& binary = proto.binary();
   params.binary.assign(binary.begin(), binary.end());
   params.buffer_assignment = nullptr;
-  if (proto.has_hlo_module()) {
+  if (proto.has_hlo_module_with_config()) {
     TF_ASSIGN_OR_RETURN(
         params.debug_module,
-        HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
+        HloModule::CreateFromProtoWithConfig(proto.hlo_module_with_config()));
   }
 
   params.mlir_allocations.emplace();
-  params.mlir_allocations->reserve(proto.buffer_allocations().size());
+  params.mlir_allocations->reserve(proto.buffer_allocations().values_size());
   for (const BufferAllocationProto& allocation_proto :
-       proto.buffer_allocations()) {
+       proto.buffer_allocations().values()) {
     params.mlir_allocations->push_back(
         BufferAllocation::FromProto(allocation_proto));
   }

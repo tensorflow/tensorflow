@@ -102,7 +102,6 @@ cc_library(
         "//xla/service:platform_util",
         "//xla/service/gpu:alias_info",
         "//xla/service/gpu:compile_module_to_llvm_ir",
-        "//xla/service/gpu:executable_proto_cc",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_hlo_schedule",
         "//xla/service/gpu:gpu_spmd_pipeline",

@@ -263,6 +263,12 @@ enum class CudnnMxType {
 
 CudnnMxType GetCudnnMxType(const Shape& input_shape, const Shape& scale_shape,
                            std::optional<int64_t> block_size) {
+  // Non-default layout is not supported.
+  if (!LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) ||
+      !LayoutUtil::IsMonotonicWithDim0Major(scale_shape.layout())) {
+    return CudnnMxType::UNSUPPORTED_TYPE;
+  }
+
   // Determine the block size from shapes, unless explicitly given.
   int64_t actual_block_size =
       block_size.has_value()
@@ -307,7 +313,8 @@ bool IsSupportedByCudnn(CudnnMxType lhs, CudnnMxType rhs) {
 
 // Reshape inputs to shapes compatible with cuDNN.
 absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildCudnnScaledDotInput(
-    XlaOp input_op, XlaOp scale_op, std::optional<int64_t> block_size) {
+    XlaOp input_op, XlaOp scale_op, std::optional<int64_t> block_size,
+    bool pad_input) {
   // Get shapes from the inputs.
   XlaBuilder& builder = *input_op.builder();
   TF_ASSIGN_OR_RETURN(Shape input_shape, builder.GetShape(input_op));
@@ -330,12 +337,6 @@ absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildCudnnScaledDotInput(
   TF_RET_CHECK(size_noncontracting <= scale_noncontracting);
   TF_RET_CHECK(rank == 2 || scale_shape.dimensions(0) == batch_size);
 
-  // Reshape inputs, if necessary.
-  if (rank != 3) {
-    input_op = Reshape(input_op, {1, size_noncontracting, size_contracting});
-    scale_op = Reshape(scale_op, {1, scale_noncontracting, scale_contracting});
-  }
-
   // cuDNN kernel imposes constraints on the input shape sizes.
   const int64_t kInputNonContractingTileSize = 128;
   const int64_t kScaleContractingTileSize = 4;
@@ -350,9 +351,9 @@ absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildCudnnScaledDotInput(
         RoundUpTo(scale_contracting, kScaleContractingTileSize);
 
     // Pad input tensor, if necessary.
-    if (size_noncontracting != padded_noncontracting) {
-      PaddingConfig input_padding_config = MakeNoPaddingConfig(/*rank=*/3);
-      input_padding_config.mutable_dimensions(1)->set_edge_padding_high(
+    if (size_noncontracting != padded_noncontracting && pad_input) {
+      PaddingConfig input_padding_config = MakeNoPaddingConfig(rank);
+      input_padding_config.mutable_dimensions(rank - 2)->set_edge_padding_high(
           padded_noncontracting - size_noncontracting);
       input_op = Pad(input_op, Zero(&builder, input_shape.element_type()),
                      input_padding_config);
@@ -361,10 +362,10 @@ absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildCudnnScaledDotInput(
     // Pad scale tensor, if necessary.
     if (scale_noncontracting != padded_noncontracting ||
         scale_contracting != padded_contracting) {
-      PaddingConfig scale_padding_config = MakeNoPaddingConfig(/*rank=*/3);
-      scale_padding_config.mutable_dimensions(1)->set_edge_padding_high(
+      PaddingConfig scale_padding_config = MakeNoPaddingConfig(rank);
+      scale_padding_config.mutable_dimensions(rank - 2)->set_edge_padding_high(
           padded_noncontracting - scale_noncontracting);
-      scale_padding_config.mutable_dimensions(2)->set_edge_padding_high(
+      scale_padding_config.mutable_dimensions(rank - 1)->set_edge_padding_high(
           padded_contracting - scale_contracting);
       scale_op = Pad(scale_op, Zero(&builder, scale_shape.element_type()),
                      scale_padding_config);
@@ -378,8 +379,8 @@ absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildCudnnScaledDotInput(
   // using non-vectorized loads or using an extra shared memory buffer).
   // https://docs.nvidia.com/cuda/parallel-thread-execution/#tcgen05-mma-scale-factor-a-layout-1x
   TF_ASSIGN_OR_RETURN(Shape scale_valid_shape, builder.GetShape(scale_op));
-  int64_t scale_rows = scale_valid_shape.dimensions(1);
-  int64_t scale_cols = scale_valid_shape.dimensions(2);
+  int64_t scale_rows = scale_valid_shape.dimensions(rank - 2);
+  int64_t scale_cols = scale_valid_shape.dimensions(rank - 1);
   scale_op =
       Reshape(scale_op, {batch_size, scale_rows / kInputNonContractingTileSize,
                          4, 32, scale_cols / kScaleContractingTileSize,
@@ -402,23 +403,27 @@ absl::StatusOr<XlaOp> BuildCudnnScaledDot(XlaOp lhs_input, XlaOp rhs_input,
       cudnn_version >= kCudnnSupportsBlockScaledDotWithGlobalScale;
 
   // Get inputs from parameters.
-  TF_ASSIGN_OR_RETURN(
-      auto lhs_ops_and_size,
-      BuildCudnnScaledDotInput(lhs_input, lhs_scale, block_size));
+  TF_ASSIGN_OR_RETURN(auto lhs_ops_and_size,
+                      BuildCudnnScaledDotInput(lhs_input, lhs_scale, block_size,
+                                               /*pad_input=*/true));
   auto [lhs_input_op, lhs_scale_op, lhs_size] = lhs_ops_and_size;
 
-  TF_ASSIGN_OR_RETURN(
-      auto rhs_ops_and_size,
-      BuildCudnnScaledDotInput(rhs_input, rhs_scale, block_size));
+  TF_ASSIGN_OR_RETURN(auto rhs_ops_and_size,
+                      BuildCudnnScaledDotInput(rhs_input, rhs_scale, block_size,
+                                               /*pad_input=*/true));
   auto [rhs_input_op, rhs_scale_op, rhs_size] = rhs_ops_and_size;
 
   // Calculate output shape.
   XlaBuilder& builder = *lhs_input.builder();
   TF_ASSIGN_OR_RETURN(Shape lhs_shape, builder.GetShape(lhs_input_op));
   TF_ASSIGN_OR_RETURN(Shape rhs_shape, builder.GetShape(rhs_input_op));
-  Shape result_shape = ShapeUtil::MakeShape(
-      result_type, {lhs_shape.dimensions(0), lhs_shape.dimensions(1),
-                    rhs_shape.dimensions(1)});
+  int rank = lhs_shape.dimensions().size();
+  std::vector<int64_t> result_dims{lhs_shape.dimensions(rank - 2),
+                                   rhs_shape.dimensions(rank - 2)};
+  if (rank == 3) {
+    result_dims.insert(result_dims.begin(), lhs_shape.dimensions(0));
+  }
+  Shape result_shape = ShapeUtil::MakeShape(result_type, result_dims);
   Shape scratch_shape = ShapeUtil::MakeShape(PrimitiveType::U8, {0});
   Shape output_shape = ShapeUtil::MakeTupleShape({result_shape, scratch_shape});
 
@@ -440,10 +445,13 @@ absl::StatusOr<XlaOp> BuildCudnnScaledDot(XlaOp lhs_input, XlaOp rhs_input,
   }
 
   // Slice the result, if necessary.
-  if (lhs_size != lhs_shape.dimensions(1) ||
-      rhs_size != rhs_shape.dimensions(1)) {
-    std::vector<int64_t> limit{lhs_shape.dimensions(0), lhs_size, rhs_size};
-    result = Slice(result, {0, 0, 0}, limit, {1, 1, 1});
+  if (lhs_size != lhs_shape.dimensions(rank - 2) ||
+      rhs_size != rhs_shape.dimensions(rank - 2)) {
+    std::vector<int64_t> start(rank, 0);
+    std::vector<int64_t> strides(rank, 1);
+    result_dims[rank - 2] = lhs_size;
+    result_dims[rank - 1] = rhs_size;
+    result = Slice(result, start, result_dims, strides);
   }
   return result;
 }
@@ -609,22 +617,82 @@ absl::StatusOr<HloInstruction*> ExpandBlockScaledDotCustomCall(
   // Build replacement instruction sequence.
   XlaBuilder builder(std::string(instruction->name()));
   auto operands = absl::MakeSpan(instruction->operands());
-  TF_ASSIGN_OR_RETURN(
-      XlaOp block_scaled_dot,
+  TF_RETURN_IF_ERROR(
       BuildBlockScaledDot(builder, operands[0], operands[1], operands[2],
                           operands.size() >= 4 ? operands[3] : nullptr,
                           operands.size() == 5 ? operands[4] : nullptr, dnums,
-                          result_type, block_size, std::move(cudnn_version)));
-
-  // Reshape to the expected output shape.
-  // This should only happen when a unit-sized dimension is added by the pass.
-  TF_ASSIGN_OR_RETURN(Shape result_shape, builder.GetShape(block_scaled_dot));
-  if (result_shape != instruction->shape()) {
-    CHECK_EQ(ShapeUtil::ElementsIn(instruction->shape()),
-             ShapeUtil::ElementsIn(result_shape));
-    Reshape(instruction->shape(), block_scaled_dot);
-  }
+                          result_type, block_size, std::move(cudnn_version))
+          .status());
   return ExpandInstructionUsingBuilder(builder, instruction);
+}
+
+// ----- cuDNN scale swizzling
+
+absl::StatusOr<HloComputation*> CreateScaleSwizzleComputation(
+    const HloInstruction* input, const HloInstruction* scale) {
+  // Create XLA builder and parameters.
+  std::string name = absl::StrCat(scale->name(), "_swizzle");
+  XlaBuilder builder(name);
+  XlaOp input_op = Parameter(&builder, 0, input->shape(), "input");
+  XlaOp scale_op = Parameter(&builder, 1, scale->shape(), "scale");
+
+  // Build swizzle computation.
+  TF_ASSIGN_OR_RETURN(
+      auto ops_and_size,
+      BuildCudnnScaledDotInput(input_op, scale_op, /*block_size=*/std::nullopt,
+                               /*pad_input=*/false));
+  auto [result_input_op, result_scale_op, _] = ops_and_size;
+  Tuple(&builder, {result_input_op, result_scale_op});
+
+  TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
+  TF_ASSIGN_OR_RETURN(
+      HloComputation * computation,
+      XlaComputationToHloComputation(xla_computation, input->GetModule()));
+
+  for (HloInstruction* instr : computation->instructions()) {
+    // Replace reshapes with bitcasts (post layout assignment).
+    if (instr->opcode() == HloOpcode::kReshape) {
+      TF_RETURN_IF_ERROR(computation->ReplaceInstruction(
+          instr, computation->AddInstruction(HloInstruction::CreateBitcast(
+                     instr->shape(), instr->mutable_operand(0)))));
+    }
+    // Fix transpose layouts (generated as no-ops).
+    if (instr->opcode() == HloOpcode::kTranspose) {
+      *instr->mutable_shape()->mutable_layout() =
+          LayoutUtil::GetDefaultLayoutForShape(instr->shape());
+    }
+  }
+  return computation;
+}
+
+absl::Status SliceScaledDotOperands(HloInstruction* scaled_dot) {
+  // Create scaled dot operation with noncontracting dimensions sliced.
+  int rank = scaled_dot->shape().dimensions().size();
+  HloComputation* computation = scaled_dot->parent();
+
+  // Create slice operations for LHS/RHS.
+  std::vector<HloInstruction*> new_operands(scaled_dot->operands().begin(),
+                                            scaled_dot->operands().end());
+  for (int i = 0; i < 2; ++i) {
+    const Shape& input_shape = scaled_dot->operand(i)->shape();
+    const Shape& scale_shape = scaled_dot->operand(i + 2)->shape();
+    if (input_shape.dimensions(rank - 2) != scale_shape.dimensions(rank - 2)) {
+      std::vector<int64_t> start(rank, 0);
+      std::vector<int64_t> strides(rank, 1);
+      std::vector<int64_t> limit(input_shape.dimensions().begin(),
+                                 input_shape.dimensions().end());
+      limit[rank - 1] = scale_shape.dimensions(rank - 1);
+      new_operands[i + 2] =
+          computation->AddInstruction(HloInstruction::CreateSlice(
+              ShapeUtil::MakeShape(scale_shape.element_type(), limit),
+              scaled_dot->mutable_operand(i + 2), start, limit, strides));
+    }
+  }
+
+  // Replace scaled dot instruction operands.
+  HloInstruction* new_scaled_dot = computation->AddInstruction(
+      scaled_dot->CloneWithNewOperands(scaled_dot->shape(), new_operands));
+  return computation->ReplaceInstruction(scaled_dot, new_scaled_dot);
 }
 
 }  // namespace
@@ -650,6 +718,92 @@ absl::StatusOr<HloInstruction*> BlockScalingRewriter::ExpandInstruction(
   }
   LOG(FATAL) << "Unexpected custom call target: "
              << instruction->custom_call_target();
+}
+
+bool CudnnScaledDotHelper::IsSupported(
+    const HloScaledDotInstruction* scaled_dot) {
+  const HloInstruction* lhs_input = scaled_dot->operand(0);
+  const HloInstruction* rhs_input = scaled_dot->operand(1);
+  const HloInstruction* lhs_scale = scaled_dot->operand(2);
+  const HloInstruction* rhs_scale = scaled_dot->operand(3);
+
+  // Input fusion is not supported, as the underlying kernel reads from HBM.
+  auto is_parameter = [](const HloInstruction* instr, int index) {
+    return instr->opcode() == HloOpcode::kParameter &&
+           instr->parameter_number() == index && instr->user_count() == 1;
+  };
+  if (!is_parameter(lhs_input, 0) || !is_parameter(rhs_input, 1) ||
+      !is_parameter(lhs_scale, 2) || !is_parameter(rhs_scale, 3)) {
+    return false;
+  }
+
+  // The dot dimension numbers must have fixed order: batch dimension first
+  // (if present) and contracting dimension last.
+  const DotDimensionNumbers& dnums = scaled_dot->dot_dimension_numbers();
+  int rank = lhs_input->shape().dimensions().size();
+  if (dnums.lhs_contracting_dimensions()[0] != rank - 1 ||
+      dnums.rhs_contracting_dimensions()[0] != rank - 1 ||
+      (rank == 3 && (dnums.lhs_batch_dimensions()[0] != 0 ||
+                     dnums.rhs_batch_dimensions()[0] != 0))) {
+    return false;
+  }
+
+  // cuDNN kernel supports a subset of block scaled types.
+  return IsSupportedByCudnn(
+      GetCudnnMxType(lhs_input->shape(), lhs_scale->shape(), std::nullopt),
+      GetCudnnMxType(rhs_input->shape(), rhs_scale->shape(), std::nullopt));
+}
+
+absl::StatusOr<HloInstruction*> CudnnScaledDotHelper::AddScaleSwizzle(
+    HloFusionInstruction* fusion) {
+  HloComputation* parent = fusion->parent();
+  int rank = fusion->shape().dimensions().size();
+
+  // Add swizzling to LHS/RHS.
+  std::vector<HloInstruction*> swizzled_operands(4);
+  for (int i = 0; i < 2; ++i) {
+    TF_ASSIGN_OR_RETURN(HloComputation * swizzle_computation,
+                        CreateScaleSwizzleComputation(fusion->operand(i),
+                                                      fusion->operand(i + 2)));
+    HloInstruction* call = parent->AddInstruction(HloInstruction::CreateCall(
+        swizzle_computation->root_instruction()->shape(),
+        {fusion->mutable_operand(i), fusion->mutable_operand(i + 2)},
+        swizzle_computation));
+    for (int j = 0; j < 2; ++j) {
+      swizzled_operands[i + j * 2] =
+          parent->AddInstruction(HloInstruction::CreateGetTupleElement(
+              call->shape().tuple_shapes(j), call, j));
+    }
+  }
+
+  // Update fusion computation parameter shapes, if needed.
+  HloComputation* computation = fusion->fused_instructions_computation();
+  bool need_slicing = false;
+  for (int i = 0; i < 4; ++i) {
+    HloInstruction* param = computation->parameter_instruction(i);
+    const Shape& swizzled_shape = swizzled_operands[i]->shape();
+    Shape* param_shape = param->mutable_shape();
+    if (*param_shape != swizzled_shape) {
+      need_slicing |= param_shape->dimensions(rank - 2) !=
+                      swizzled_shape.dimensions(rank - 2);
+      *param_shape = swizzled_shape;
+    }
+  }
+
+  // Replace scaled dot if any inputs need slicing.
+  if (need_slicing) {
+    HloInstruction* scaled_dot =
+        computation->parameter_instruction(0)->users()[0];
+    TF_RETURN_IF_ERROR(SliceScaledDotOperands(scaled_dot));
+  }
+
+  // Create new fusion with the swizzled operands.
+  HloInstruction* new_fusion =
+      parent->AddInstruction(HloInstruction::CreateFusion(
+          computation->root_instruction()->shape(), fusion->fusion_kind(),
+          swizzled_operands, fusion->fused_instructions_computation()));
+  TF_RETURN_IF_ERROR(parent->ReplaceInstruction(fusion, new_fusion));
+  return new_fusion;
 }
 
 }  // namespace xla::gpu

@@ -5740,7 +5740,6 @@ xla_cc_binary(
     ] + if_cuda_or_rocm_is_configured([
         # keep sorted
         ":gpu_plugin",
-        "//xla/service/gpu:executable_proto_cc",
         "//xla/service/gpu:gpu_compiler",
         "//xla/stream_executor/gpu:gpu_init",
     ]) + if_cuda_is_configured([
