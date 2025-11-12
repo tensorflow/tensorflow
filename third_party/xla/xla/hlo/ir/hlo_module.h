@@ -988,6 +988,43 @@ class HloModule {
             original_value_recovery_table);
 
     // Populates the original value recovery table for a transformation that
+    // replaces `old_original_array` with `new_original_array`.
+
+    //
+    // It invokes the `build_recovery_computation`
+    // callback to determine how to recover the original array. The callback
+    // has the following signature:
+    // `std::optional<std::unique_ptr<HloModule>>(
+    //     const ShapeIndex& index,
+    //     const OriginalArray& old_original_array,
+    //     const xla::Shape& old_shape,
+    //     const xla::Shape& new_shape)`
+    //
+    // It should return one of the following:
+    //
+    //  - A valid `std::unique_ptr<HloModule>`: This HLO module represents the
+    //    recovery computation. Its entry computation must take one parameter
+    //    (the value corresponding to the `new_original_array`)
+    //    and return the recovered value (which should produce the value of the
+    //    `old_original_arrayinst`). An entry will be added to the
+    //    recovery table.
+    //
+    //  - `nullptr` (as a `std::unique_ptr<HloModule>`): This indicates that the
+    //    original array should be passed through unchanged.
+    //
+    //  - `std::nullopt`: This indicates that the original array cannot be
+    //    recovered and should be dropped.
+    void AddRecoveryComputation(
+        const OriginalArray& old_original_array,
+        const OriginalArray& new_original_array,
+        const std::function<std::optional<std::unique_ptr<HloModule>>(
+            const ShapeIndex& index, const OriginalArray& old_original_array,
+            const xla::Shape& old_shape, const xla::Shape& new_shape)>&
+            build_recovery_computation,
+        const ShapeIndex& index, const Shape& old_shape,
+        const Shape& new_shape);
+
+    // Populates the original value recovery table for a transformation that
     // replaces `old_inst` with `new_inst`.
     //
     // This method facilitates tracking of "original values" across HLO passes.
@@ -1001,50 +1038,20 @@ class HloModule {
     // the original value can be directly propagated, or that it cannot be
     // recovered. If the callback is not provided, the original value is
     // passed through unchanged. This is the same as if the callback always
-    // returns `nullptr` (see below).
+    // returns `nullptr`.
     //
     // Precondition: `old_inst` and `new_inst` must have shapes with
     // identical tuple structures.
-    //
-    // The `build_recovery_computation` callback has the following signature:
-    // `std::optional<std::unique_ptr<HloModule>>(
-    //     const ShapeIndex& index,
-    //     const OriginalArray& old_original_array,
-    //     const xla::Shape& old_array_shape,
-    //     const xla::Shape& new_array_shape)`
-    //
-    // It is called for each `OriginalArray` in `old_inst` and should
-    // return one of the following:
-    //
-    //  - A valid `std::unique_ptr<HloModule>`: This HLO module represents the
-    //    recovery computation. Its entry computation must take one parameter
-    //    (the value corresponding to the `OriginalArray` in `new_inst`)
-    //    and return the recovered value (which should produce the value of the
-    //    `OriginalArray` in `old_inst`). An entry will be added to the
-    //    recovery table.
-    //
-    //  - `nullptr` (as a `std::unique_ptr<HloModule>`): This indicates that the
-    //    original value should be passed through unchanged.
-    //    - If `new_inst` does not have an `OriginalArray` at this
-    //      `ShapeIndex`, the `OriginalArray` from `old_inst` is directly
-    //      propagated to it. No entry is added to the recovery table.
-    //    - If `new_inst` already has an `OriginalArray`, an entry is
-    //      added to the table mapping the old `OriginalArray` to the new one
-    //      with a `nullptr` recovery module, signifying they are equivalent.
-    //
-    //  - `std::nullopt`: This indicates that the original value cannot be
-    //    recovered and should be dropped.
     //
     // This method will create `OriginalValue` and placeholder `OriginalArray`s
     // for `new_inst` if they don't already exist and a recovery is
     // established.
     void AddRecoveryComputation(
         const HloInstruction* old_inst, HloInstruction* new_inst,
-        std::function<std::optional<std::unique_ptr<HloModule>>(
+        const std::function<std::optional<std::unique_ptr<HloModule>>(
             const ShapeIndex& index, const OriginalArray& old_original_array,
-            const xla::Shape& old_array_shape,
-            const xla::Shape& new_array_shape)>&& build_recovery_computation =
-            nullptr);
+            const xla::Shape& old_shape, const xla::Shape& new_shape)>&
+            build_recovery_computation = nullptr);
 
     // Similar to `AddRecoveryComputation`, but the callback is provided an
     // HLO module builder so that caller can directly build the recovery
@@ -1054,8 +1061,8 @@ class HloModule {
         std::function<std::optional<HloInstruction*>(
             xla::HloComputation::Builder& builder, const ShapeIndex& index,
             const OriginalArray& old_original_array,
-            const xla::Shape& old_array_shape,
-            const xla::Shape& new_array_shape)>&& build_recovery_computation);
+            const xla::Shape& old_shape, const xla::Shape& new_shape)>&&
+            build_recovery_computation);
 
     bool empty() const { return table_.empty(); }
 

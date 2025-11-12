@@ -27,8 +27,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -247,6 +250,41 @@ std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
   return original_value;
 }
 
+/* static */
+TupleTree<std::optional<OriginalArray>>&
+OriginalValue::EmptyOriginalValueTupleTree() {
+  static absl::NoDestructor<TupleTree<std::optional<OriginalArray>>>
+      kEmptyTupleTree;
+  return *kEmptyTupleTree;
+}
+
+bool OriginalValue::IsCompatibleWith(const Shape& shape) const {
+  if (is_synthetic_call()) {
+    return true;
+  }
+  return tree().IsStructurallyCompatible(shape);
+}
+
+std::optional<std::string> OriginalValue::GetOriginalCallLikeInstructions()
+    const {
+  if (is_synthetic_call()) {
+    // Synthetic call are transparent and hence resulting in empty call
+    // instructions.
+    return "";
+  }
+  if (IsEmpty()) {
+    // Currently we don't track original call information separately and rely
+    // on the first leaf to find the original call information. So if there are
+    // no leaves we return std::nullopt.
+    return std::nullopt;
+  }
+  auto original_array = original_arrays().begin()->second;
+  if (!original_array.has_value()) {
+    return std::nullopt;
+  }
+  return original_array->instruction_name;
+}
+
 void CopyOriginalValue(const HloInstruction* src_instruction,
                        HloInstruction* dest_instruction, bool clone,
                        bool issue_warning) {
@@ -296,39 +334,24 @@ void DeduplicateOriginalValues(HloModule* module) {
   }
 }
 
-/* static */
-TupleTree<std::optional<OriginalArray>>&
-OriginalValue::EmptyOriginalValueTupleTree() {
-  static absl::NoDestructor<TupleTree<std::optional<OriginalArray>>>
-      kEmptyTupleTree;
-  return *kEmptyTupleTree;
-}
-
-bool OriginalValue::IsCompatibleWith(const Shape& shape) const {
-  if (is_synthetic_call()) {
-    return true;
+std::string GetPlaceholderOriginalArrayName(absl::string_view old_array_name) {
+  std::string base_name = std::string(old_array_name);
+  int64_t placeholder_index = 0;
+  if (absl::StrContains(old_array_name, kOriginalValuePlaceholderDelimiter)) {
+    // split by the delimiter and update the base and index
+    std::vector<std::string> parts =
+        absl::StrSplit(old_array_name, kOriginalValuePlaceholderDelimiter);
+    CHECK_EQ(parts.size(), 2)
+        << "Original value instruction name does not have the expected format: "
+        << old_array_name;
+    base_name = parts[0];
+    CHECK(absl::SimpleAtoi(parts[1], &placeholder_index))
+        << "Invalid placeholder index in original value name: "
+        << old_array_name;
+    ++placeholder_index;
   }
-  return tree().IsStructurallyCompatible(shape);
-}
-
-std::optional<std::string> OriginalValue::GetOriginalCallLikeInstructions()
-    const {
-  if (is_synthetic_call()) {
-    // Synthetic call are transparent and hence resulting in empty call
-    // instructions.
-    return "";
-  }
-  if (IsEmpty()) {
-    // Currently we don't track original call information separately and rely
-    // on the first leaf to find the original call information. So if there are
-    // no leaves we return std::nullopt.
-    return std::nullopt;
-  }
-  auto original_array = original_arrays().begin()->second;
-  if (!original_array.has_value()) {
-    return std::nullopt;
-  }
-  return original_array->instruction_name;
+  return absl::StrCat(base_name, kOriginalValuePlaceholderDelimiter,
+                      placeholder_index);
 }
 
 }  // namespace xla

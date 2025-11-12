@@ -178,6 +178,8 @@ void CopyOriginalValue(const HloInstruction* src_instruction,
 // Removes duplicates of original value objects referenced in the module to save
 // memory storage.
 void DeduplicateOriginalValues(HloModule* module);
+
+std::string GetPlaceholderOriginalArrayName(absl::string_view old_array_name);
 }  // namespace xla
 
 #endif  // XLA_HLO_IR_HLO_ORIGINAL_VALUE_H_
