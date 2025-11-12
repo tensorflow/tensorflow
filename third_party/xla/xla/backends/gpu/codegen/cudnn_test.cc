@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
@@ -58,8 +57,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
-
-using ::tsl::testing::IsOkAndHolds;
 
 class CuDnnFusionTest : public GpuCodegenTest {
  public:
@@ -80,12 +77,14 @@ class CuDnnFusionTest : public GpuCodegenTest {
     return get_cuda_cc().IsAtLeastAmpere() &&
            GetDnnVersionInfoOrDefault(executor).major_version() >= 9;
   }
-  bool IsAtLeastCuDnn91() {
+  bool IsAtLeastCuDnnVersion(int major, int minor) {
     se::StreamExecutor* executor = backend().default_stream_executor();
     const se::dnn::VersionInfo version = GetDnnVersionInfoOrDefault(executor);
-    return (version.major_version() == 9 && version.minor_version() >= 1) ||
-           version.major_version() > 9;
+    return (version.major_version() == major &&
+            version.minor_version() >= minor) ||
+           version.major_version() > major;
   }
+  bool IsAtLeastCuDnn91() { return IsAtLeastCuDnnVersion(9, 1); }
 
  protected:
   void SetUp() override {
@@ -452,6 +451,29 @@ ENTRY e {
   p0 = bf16[16,32,128] parameter(0)
   p1 = bf16[16,128,64] parameter(1)
   ROOT _ = f32[16,32,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
+}
+
+TEST_F(CuDnnFusionExecutionTest, DotS4BF16ExecutesCorrectly) {
+  if (!IsAtLeastCuDnnVersion(9, 12)) {
+    GTEST_SKIP() << "This test case requires cuDNN 9.12+.";
+  }
+  EXPECT_TRUE(RunAndCompare(R"(
+f {
+  a = s4[3,128,128] parameter(0)
+  c = bf16[3,128,128] convert(a)
+  b = bf16[3,128,128] parameter(1)
+  d = bf16[3,128,128] dot(c, b),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+e {
+  a = s4[3,128,128] parameter(0)
+  b = bf16[3,128,128] parameter(1)
+  f = bf16[3,128,128] fusion(a, b), kind=kCustom, calls=f,
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
                             ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));

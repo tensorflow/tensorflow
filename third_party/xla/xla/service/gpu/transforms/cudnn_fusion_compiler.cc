@@ -149,6 +149,8 @@ inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
       return t::BFLOAT16;
     case PrimitiveType::S32:
       return t::INT32;
+    case PrimitiveType::S4:
+      return t::INT4;
     case PrimitiveType::S8:
       return t::INT8;
     case PrimitiveType::PRED:
