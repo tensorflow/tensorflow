@@ -793,6 +793,25 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, cp_start->name()));
 }
 
+TEST_F(LatencyHidingSchedulerTest, ForceDelayCustomCall) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY %module {
+  %p0 = f32[100] parameter(0)
+  %custom-call = f32[100] custom-call(%p0), custom_call_target="foo", frontend_attributes={scheduler_hint="force_delay"}
+  ROOT %copy = f32[100] copy(%custom-call)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  // We expect RunScheduler to return true because of the force_delay attribute,
+  // even though there are no async collectives.
+  auto result = RunScheduler(hlo_module.get());
+  TF_ASSERT_OK(result);
+  EXPECT_TRUE(result.value());
+}
+
 TEST_F(LatencyHidingSchedulerTest, WhileLoopAliasingBug2) {
   // Like WhileLoopAliasingBug above, but this time the input buffer of the
   // first collective permute aliases with the output buffer of the second

@@ -3639,7 +3639,8 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
       if (scheduling_context_->GetAsyncTracker()->IsSupportedAsyncStart(
               *instr) ||
           scheduling_context_->GetAsyncTracker()->IsSupportedAsyncDone(
-              *instr)) {
+              *instr) ||
+          IsCustomCallWithForceDelayAttribute(instr)) {
         computations_to_schedule_.push_back(computation);
         break;
       }
