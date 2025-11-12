@@ -16,15 +16,16 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 
 #include <cstdint>
-#include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Metadata.h"
@@ -49,19 +50,29 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
+#include "xla/codegen/tiling/tiled_hlo_instruction.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/mlir_hlo/mhlo/transforms/transformation_helpers.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/target_util.h"
+#include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -82,6 +93,84 @@ namespace ma = ::mlir::arith;
 namespace mh = ::mlir::mhlo;
 namespace mm = ::mlir::math;
 namespace mt = ::mlir::triton;
+
+namespace {
+using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
+
+// Emit a value as Index clamped to [lower, upper].
+Value EmitClampedIndex(EmitterLocOpBuilder b, Value value, int64_t lower,
+                       int64_t upper) {
+  Value clamped_index =
+      b.create<ma::MaxSIOp>(value, CreateConst(b, value.getType(), lower));
+  clamped_index = b.create<ma::MinSIOp>(clamped_index,
+                                        CreateConst(b, value.getType(), upper));
+  return b.create<ma::IndexCastOp>(b.getIndexType(), clamped_index);
+}
+
+absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
+    EmitterLocOpBuilder b, Value pid, ValueRange runtime_values,
+    const TiledHloInstruction& tiled_hlo) {
+  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+                      tiled_hlo.tile_offsets_indexing());
+  const std::vector<IndexingMap::Variable>& rt_vars =
+      tile_offsets_indexing.GetRTVars();
+  CHECK_EQ(rt_vars.size(), runtime_values.size())
+      << absl::StrCat(tiled_hlo.ToString(), " has ", rt_vars.size(),
+                      " runtime variables in tile_offsets_indexing but only ",
+                      runtime_values.size(), " runtime values were provided");
+  CHECK_EQ(tile_offsets_indexing.GetRangeVars().size(), 0)
+      << "Range variables must be converted to dimensions. Instruction: "
+      << tiled_hlo.ToString();
+  // emitters::ApplyIndexing does not support symbols at the moment. As a
+  // workaround we convert them to dimensions.
+  IndexingMap dim_only_tiling =
+      tile_offsets_indexing.ConvertSymbolsToDimensions();
+  SmallVector<Value> dims;
+  dims.reserve(1 /* pid */ + runtime_values.size());
+  dims.push_back(pid);
+  for (const auto& [rt_var, value] : llvm::zip(rt_vars, runtime_values)) {
+    Value clamped_index =
+        EmitClampedIndex(b, value, rt_var.bounds.lower, rt_var.bounds.upper);
+    dims.push_back(triton::Cast(b, clamped_index, pid.getType()));
+  }
+  return emitters::ApplyIndexing(dim_only_tiling, /*dims=*/dims,
+                                 /*symbols=*/{}, b);
+}
+
+// Emit code corresponding to a fusion instruction somehow nested within the
+// initial Triton fusion. This can happen when we carry around auxiliary
+// computations, e.g. with reduces. Since we are emitting a single Triton
+// fusion, we simply flatten the fusion inside the computation.
+//
+// TODO(b/331413981): get rid of this special handling once this is solved.
+absl::StatusOr<TensorValue> EmitNestedFusion(
+    EmitterLocOpBuilder b, const HloFusionInstruction& fusion_instruction,
+    absl::flat_hash_map<const HloInstruction*, TensorValue>& values) {
+  // TODO(b/331402498): revisit the order of scope once we completely
+  // deprecate Triton fusion analysis.
+  const HloComputation* fusion_computation =
+      fusion_instruction.fused_instructions_computation();
+
+  absl::flat_hash_map<const HloInstruction*, TensorValue> region_values;
+
+  std::vector<const HloInstruction*> to_emit;
+  for (const HloInstruction* instr :
+       fusion_computation->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      int64_t parameter_number = instr->parameter_number();
+      auto it = values.find(fusion_instruction.operand(parameter_number));
+      TF_RET_CHECK(it != values.end());
+      TF_RET_CHECK(region_values.insert({instr, it->second}).second);
+    } else {
+      to_emit.push_back(instr);
+    }
+  }
+
+  TF_RET_CHECK(to_emit.back() == fusion_computation->root_instruction());
+
+  return EmitScope(b, /*analysis=*/nullptr, to_emit, region_values);
+}
+}  // namespace
 
 SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
   SmallVector<int64_t> result;
@@ -653,6 +742,100 @@ absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
 
 mt::PointerType GetGlobalPointerType(mlir::Type element_type) {
   return mlir::cast<mt::PointerType>(mt::getPointerTypeToElement(element_type));
+}
+
+/*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
+    EmitterLocOpBuilder b, Value pid, ValueRange runtime_values,
+    const TiledHloInstruction& tiled_hlo) {
+  TF_ASSIGN_OR_RETURN(SmallVector<Value> offsets,
+                      ComputeOffsetsForTile(b, pid, runtime_values, tiled_hlo));
+
+  // Triton requires that all block dimensions are a power of 2.
+  auto padded_tile_sizes = GetPaddedTileSizes(tiled_hlo.tile_sizes());
+  SmallVector<int64_t> original_shape;
+  original_shape.assign(tiled_hlo.hlo()->shape().dimensions().begin(),
+                        tiled_hlo.hlo()->shape().dimensions().end());
+
+  const Shape& shape = tiled_hlo.hlo()->shape();
+  TF_ASSIGN_OR_RETURN(Type expected_element_type,
+                      TritonType(b, shape.element_type()));
+  auto storage_type = StorageType(expected_element_type);
+
+  auto tile_strides = tiled_hlo.tile_strides();
+  auto minor_to_major_layout = llvm::to_vector(LayoutUtil::MinorToMajor(shape));
+
+  return TileInfo(offsets, tile_strides, original_shape, padded_tile_sizes,
+                  minor_to_major_layout, storage_type);
+}
+
+TensorValue EmitParameterExtract(EmitterLocOpBuilder b,
+                                 const TileInfo& tile_info, Value arg) {
+  auto tensor_type = mlir::RankedTensorType::get(tile_info.padded_tile_sizes(),
+                                                 tile_info.storage_type());
+
+  return b.create<xla::xtile::ExtractTileOp>(
+      tensor_type, arg, tile_info.offsets(), tile_info.padded_tile_sizes(),
+      tile_info.tile_strides());
+}
+
+absl::StatusOr<TensorValue> EmitScope(
+    EmitterLocOpBuilder b, const TritonFusionAnalysis* analysis,
+    absl::Span<const HloInstruction* const> instructions,
+    absl::flat_hash_map<const HloInstruction*, TensorValue>& values) {
+  for (const HloInstruction* hlo : instructions) {
+    TensorValue result;
+    if (hlo->opcode() == HloOpcode::kConcatenate ||
+        hlo->opcode() == HloOpcode::kDynamicSlice) {
+      // Parameter loads and their concatenations are handled outside EmitScope.
+      TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
+      continue;
+    }
+    if (hlo->opcode() == HloOpcode::kParameter) {
+      if (hlo->users()[0]->opcode() == HloOpcode::kConcatenate ||
+          hlo->users()[0]->opcode() == HloOpcode::kDynamicSlice) {
+        continue;
+      }
+      TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
+      continue;
+    }
+    if (hlo->opcode() == HloOpcode::kBroadcast) {
+      return absl::InvalidArgumentError(
+          "Broadcast is not yet supported in EmitScope().");
+    }
+    if (hlo->opcode() == HloOpcode::kConstant) {
+      TF_ASSIGN_OR_RETURN(result, EmitConstant(b, *hlo));
+    } else if (HloInstruction::IsOpElementwise(hlo->opcode())) {
+      std::vector<Value> operands;
+      operands.reserve(hlo->operands().size());
+      for (const HloInstruction* operand : hlo->operands()) {
+        operands.push_back(values[operand]);
+      }
+      TF_ASSIGN_OR_RETURN(Value elementwise_result,
+                          EmitElementwise(b, *hlo, operands));
+      result = mlir::cast<TensorValue>(elementwise_result);
+    } else if (hlo->opcode() == HloOpcode::kTuple) {
+      TF_RET_CHECK(hlo->IsRoot()) << hlo->ToString();
+    } else if (hlo->opcode() == HloOpcode::kBitcast ||
+               hlo->opcode() == HloOpcode::kTranspose ||
+               hlo->opcode() == HloOpcode::kSlice ||
+               hlo->opcode() == HloOpcode::kReshape ||
+               hlo->opcode() == HloOpcode::kPad) {
+      // All these are currently supported only as operations on indices
+      // which are pushed to loads and stores. No operations on tiles are
+      // performed here.
+      result = values[hlo->operand(0)];
+    } else if (hlo->opcode() == HloOpcode::kFusion) {
+      const auto* fusion_instruction = ::xla::Cast<HloFusionInstruction>(hlo);
+      TF_ASSIGN_OR_RETURN(result,
+                          EmitNestedFusion(b, *fusion_instruction, values));
+    } else {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported operation ", hlo->ToString()));
+    }
+    TF_RET_CHECK(values.insert({hlo, result}).second) << hlo->ToString();
+    VLOG(8) << "Emitted " << hlo->ToString(HloPrintOptions::ShortParsable());
+  }
+  return values[instructions.back()];
 }
 
 }  // namespace xla::gpu::triton

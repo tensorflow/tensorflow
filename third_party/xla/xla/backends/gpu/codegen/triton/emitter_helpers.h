@@ -18,12 +18,15 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
@@ -39,9 +42,11 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
+#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -54,6 +59,8 @@ limitations under the License.
 
 namespace xla::gpu::triton {
 
+using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
+
 // Returns a string representation of the given MLIR entity.
 template <typename T>
 std::string MlirToString(T&& value) {
@@ -62,6 +69,62 @@ std::string MlirToString(T&& value) {
   value.print(os);
   return result;
 }
+
+// Constructs and holds information needed to construct a tile. This information
+// is propagated to Extract/Insert ops to use them to load and store the correct
+// tiles.
+class TileInfo {
+ public:
+  static absl::StatusOr<TileInfo> Construct(
+      EmitterLocOpBuilder b, mlir::Value pid, mlir::ValueRange runtime_values,
+      const TiledHloInstruction& tiled_hlo);
+
+  // Tile offsets. Its size is equal to the rank of the output shape.
+  inline mlir::ValueRange offsets() const { return offsets_; }
+
+  // Tile strides. Its size is equal to the rank of the output shape.
+  inline mlir::ArrayRef<int64_t> tile_strides() const { return tile_strides_; }
+
+  // The original shape of the tensor.
+  inline mlir::ArrayRef<int64_t> original_shape() const {
+    return original_shape_;
+  }
+
+  // Tile sizes after padding to a power of 2 (Triton requirement).
+  inline mlir::ArrayRef<int64_t> padded_tile_sizes() const {
+    return padded_tile_sizes_;
+  }
+
+  // The layout of the tensor in minor-to-major order.
+  inline const llvm::SmallVector<int64_t>& minor_to_major_layout() const {
+    return minor_to_major_layout_;
+  }
+
+  // The storage type of the tensor. This could be different from the element
+  // type. e.g. predicates are stored as i8 instead of i1.
+  mlir::Type storage_type() const { return storage_type_; }
+
+ private:
+  llvm::SmallVector<mlir::Value> offsets_;
+  llvm::SmallVector<int64_t> tile_strides_;
+  llvm::SmallVector<int64_t> original_shape_;
+  llvm::SmallVector<int64_t> padded_tile_sizes_;
+  llvm::SmallVector<int64_t> minor_to_major_layout_;
+  mlir::Type storage_type_;
+
+  inline TileInfo(llvm::SmallVector<mlir::Value> offsets,
+                  llvm::SmallVector<int64_t> tile_strides,
+                  llvm::SmallVector<int64_t> original_shape,
+                  llvm::SmallVector<int64_t> padded_tile_sizes,
+                  llvm::SmallVector<int64_t> minor_to_major_layout,
+                  mlir::Type storage_type)
+      : offsets_(std::move(offsets)),
+        tile_strides_(std::move(tile_strides)),
+        original_shape_(std::move(original_shape)),
+        padded_tile_sizes_(std::move(padded_tile_sizes)),
+        minor_to_major_layout_(std::move(minor_to_major_layout)),
+        storage_type_(std::move(storage_type)) {}
+};
 
 // Triton requires that all block dimensions are a power of 2.
 // TODO(b/353484968): Delete this function once we have constraints to only
@@ -187,6 +250,25 @@ absl::StatusOr<stream_executor::ThreadDim> ExtractThreadDims(
 // Returns the triton pointer type with global memory space and the given
 // element type.
 ::mlir::triton::PointerType GetGlobalPointerType(mlir::Type element_type);
+
+// Emits an xtile::ExtractTileOp for the given tile info and argument.
+TensorValue EmitParameterExtract(EmitterLocOpBuilder b,
+                                 const TileInfo& tile_info, mlir::Value arg);
+
+// Emits a sequence of HLO instructions within a specific scope.
+//
+// This function traverses the provided `hlo_instructions` in a
+// defined-before-use order and emits the corresponding MLIR operations using
+// the given `EmitterLocOpBuilder`. It uses `emitted_values` to look up already
+// emitted results for instructions, typically parameters or results from
+// outer scopes. New results are added to the `emitted_values` map.
+//
+// Example usage within [EmitReduce] includes using it to emit the body of the
+// `HloInstruction::to_apply` computation.
+absl::StatusOr<TensorValue> EmitScope(
+    EmitterLocOpBuilder b, const TritonFusionAnalysis* analysis,
+    absl::Span<const HloInstruction* const> instructions,
+    absl::flat_hash_map<const HloInstruction*, TensorValue>& values);
 
 }  // namespace xla::gpu::triton
 
