@@ -3575,6 +3575,8 @@ def TFL_TanhOp: TFL_Op<"tanh", [
         /*scale=*/1.0 / (1<<(bit_width-1)), /*zero_point=*/0);
   }
   }];
+
+  let hasFolder = 1;
 }
 
 def TFL_TileOp: TFL_Op<"tile", [

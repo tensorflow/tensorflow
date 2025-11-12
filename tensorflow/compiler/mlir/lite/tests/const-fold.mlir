@@ -261,7 +261,7 @@ func.func @mul_one_quant(%arg0: tensor<32x!quant.uniform<u8:f32, 1.0>>) -> tenso
 
 
 // CHECK-LABEL: @elementwise_unary_ops
-func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
+func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
   %0 = arith.constant dense<-1.0> : tensor<f32>
   %1 = arith.constant dense<1.0> : tensor<f32>
   %2 = arith.constant dense<1.0> : tensor<f32>
@@ -269,6 +269,7 @@ func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, te
   %4 = arith.constant dense<4.0> : tensor<f32>
   %5 = arith.constant dense<4.0> : tensor<f32>
   %6 = arith.constant dense<2.0> : tensor<f32>
+  %one = arith.constant dense<1.0> : tensor<f32>
 
   // CHECK-DAG: [[cst0:%.*]] = arith.constant dense<1.000000e+00> : tensor<f32>
   // CHECK-DAG: [[cst1:%.*]] = arith.constant dense<0.841470957> : tensor<f32>
@@ -277,7 +278,8 @@ func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, te
   // CHECK-DAG: [[cst4:%.*]] = arith.constant dense<2.000000e+00> : tensor<f32>
   // CHECK-DAG: [[cst5:%.*]] = arith.constant dense<5.000000e-01> : tensor<f32>
   // CHECK-DAG: [[cst6:%.*]] = arith.constant dense<4.000000e+00> : tensor<f32>
-  // CHECK: return [[cst0]], [[cst1]], [[cst2]], [[cst3]], [[cst4]], [[cst5]], [[cst6]]
+  // CHECK-DAG: [[cst7:%.*]] = arith.constant dense<0.761594176> : tensor<f32>
+  // CHECK: return [[cst0]], [[cst1]], [[cst2]], [[cst3]], [[cst4]], [[cst5]], [[cst6]], [[cst7]]
 
   %7 = "tfl.abs"(%0) : (tensor<f32>) -> tensor<f32>
   %8 = "tfl.sin"(%1) : (tensor<f32>) -> tensor<f32>
@@ -286,8 +288,9 @@ func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, te
   %11 = "tfl.sqrt"(%4) : (tensor<f32>) -> tensor<f32>
   %12 = "tfl.rsqrt"(%5) : (tensor<f32>) -> tensor<f32>
   %13 = "tfl.square"(%6) : (tensor<f32>) -> tensor<f32>
+  %14 = "tfl.tanh"(%one) : (tensor<f32>) -> tensor<f32>
 
-  func.return %7, %8, %9, %10, %11, %12, %13 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
+  func.return %7, %8, %9, %10, %11, %12, %13, %14 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: @max_with_neg_f32_max_val

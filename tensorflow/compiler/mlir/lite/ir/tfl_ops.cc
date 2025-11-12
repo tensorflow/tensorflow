@@ -5233,6 +5233,22 @@ int64_t SoftmaxOp::GetArithmeticCount(Operation* op) {
 // TanhOp
 //===----------------------------------------------------------------------===//
 
+OpFoldResult TanhOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
+  auto operands = adaptor.getOperands();
+  Type result_type = getType();
+  // Only constant fold for tensor of f32 is implemented.
+  if (!IsF32ShapedType(result_type)) return nullptr;
+
+  auto compute = [](APFloat value) -> APFloat {
+    float f = value.convertToFloat();
+    float result = std::tanh(f);
+    return APFloat(result);
+  };
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
 int64_t TanhOp::GetArithmeticCount(Operation* op) {
   int64_t count;
   // As a very rough ballpark, the cost of evaluating a math function
