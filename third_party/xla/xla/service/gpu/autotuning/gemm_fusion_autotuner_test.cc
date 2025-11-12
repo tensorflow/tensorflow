@@ -950,6 +950,41 @@ ENTRY e {
 )");
 }
 
+TEST_F(GemmFusionAutotunerTest, AutotuneScaledDotCuDnnFusion) {
+  if (GpuComputeComp().IsRocm() ||
+      GetDebugOptionsForTest()
+          .xla_gpu_experimental_disable_binary_libraries()) {
+    GTEST_SKIP() << "Not supported on ROCm or with binary libraries disabled.";
+  }
+  if (!GetCudaComputeCapability().IsAtLeastBlackwell()) {
+    GTEST_SKIP() << "Not supported on pre-Blackwell GPUs.";
+  }
+  const std::string kHlo = R"(
+fusion1 {
+  %lhs = f8e4m3fn[4,192,224] parameter(0)
+  %rhs = f8e4m3fn[4,256,224] parameter(1)
+  %lhs_scale = f8e8m0fnu[4,192,7] parameter(2)
+  %rhs_scale = f8e8m0fnu[4,256,7] parameter(3)
+  ROOT %result = f32[4,192,256] scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_batch_dims={0}, rhs_batch_dims={0},
+      lhs_contracting_dims={2}, rhs_contracting_dims={2}
+}
+
+ENTRY e {
+  %lhs = f8e4m3fn[4,192,224] parameter(0)
+  %rhs = f8e4m3fn[4,256,224] parameter(1)
+  %lhs_scale = f8e8m0fnu[4,192,7] parameter(2)
+  %rhs_scale = f8e8m0fnu[4,256,7] parameter(3)
+  ROOT _ = f32[4,192,256] fusion(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      kind=kCustom, calls=fusion1,
+      backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})";
+
+  CheckTritonAutotuning(kHlo, R"(
+// CHECK: "plan_id":
+)");
+}
+
 // TODO(b/281489442): Write a testcase called
 // `SkipConfigsProducingDeviantResults` or similar.
 
