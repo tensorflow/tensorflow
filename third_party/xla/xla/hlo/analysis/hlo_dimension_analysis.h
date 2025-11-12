@@ -41,8 +41,23 @@ limitations under the License.
 namespace xla {
 
 enum DimensionInfo : uint8_t {
+  // kDotDependent indicates there is a DOT that can reach an operand of the
+  // instruction. We want to use this information to distinguish between
+  // WeightGradient and ActivationGradient as follows to help decide whether
+  // we can overlap the all-gather/reduce-scatter with other dot operations
+  // outside the chain:
+  //
+  // ActivationGradient: a DOT, there is another DOT that can reach the operands
+  // of this DOT via def-use chain.
+  //
+  // WeightGradient: a DOT, no other DOT can reach the operand of this DOT via
+  // def-use chain.
+  //
+  // Because we don't schedule instructions across computation boundaries, we
+  // don't propagate kDotDependent across computation boundaries. On the other
+  // hand, we propagate kWeight across computation boundaries.
   kWeight,
-  kTuple,
+  kDotDependent,
   kUnknown,
 };
 
@@ -50,8 +65,8 @@ inline std::string DimensionInfoToString(DimensionInfo dim_info) {
   switch (dim_info) {
     case DimensionInfo::kWeight:
       return "weight";
-    case DimensionInfo::kTuple:
-      return "tuple";
+    case DimensionInfo::kDotDependent:
+      return "dot_dependent";
     case DimensionInfo::kUnknown:
       return "unknown";
   }
@@ -77,7 +92,11 @@ class HloDimensionAnalysis {
   }
 
   // Whether any leaf in the instruction shape is a weight.
-  bool IsInstructionWeight(const HloInstruction* instruction) const;
+  bool IsWeight(const HloInstruction* instruction) const;
+  // Whether any leaf in the instruction shape is dot dependent.
+  bool IsDotDependent(const HloInstruction* instruction) const;
+  // Whether any leaf in the instructon shape is a weight or dot dependent.
+  bool IsKnownDimensionInfo(const HloInstruction* instruction) const;
 
   // Returns map of HLO instructions to their dimension info.
   // If an instruction is not found in the map, it means that we have not
@@ -88,16 +107,19 @@ class HloDimensionAnalysis {
   std::optional<ShapeTree<DimensionInfo>> GetDimensionInfo(
       const HloInstruction* instruction) const;
 
+  bool IsDotOrHasDotDependent(const HloInstruction* op) const;
+
  protected:
   explicit HloDimensionAnalysis(
       const HloModule& module,
       const absl::flat_hash_set<absl::string_view>& execution_threads)
       : module_(module), execution_threads_(execution_threads) {}
 
-  // Sets the instruction as a weight. This is used to annotate the entry
-  // computation parameters and other instructions that are known to be
-  // weights.
-  absl::Status SetInstructionAsWeight(HloInstruction* instruction);
+  // Sets the instruction DimensionInfo to indicate it is a weight or
+  // dot-dependent. This is used to annotate the entry computation parameters
+  // and other instructions that are known to be weights or dot-dependents.
+  absl::Status SetDimensionInfo(const HloInstruction* instruction,
+                                DimensionInfo value);
 
   // Sets the dimension info for the given target instruction.
   absl::Status SetDimensionInfo(const HloInstruction* target,
