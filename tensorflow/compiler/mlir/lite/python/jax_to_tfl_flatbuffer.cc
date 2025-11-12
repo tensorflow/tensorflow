@@ -33,6 +33,8 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "third_party/protobuf/io/tokenizer.h"
+#include "google/protobuf/text_format.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
