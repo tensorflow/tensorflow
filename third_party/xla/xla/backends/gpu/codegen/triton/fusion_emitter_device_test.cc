@@ -972,15 +972,13 @@ ENTRY main {
       CreateXTileIrAndFileCheck(this, kHloText, "triton_reduction_computation",
                                 R"(
 
-        CHECK:  stablehlo.iota
-        CHECK:  stablehlo.broadcast_in_dim
+        CHECK:  xtile.mask
         CHECK:  stablehlo.reduce(%[[SELECT:.*]] init: %{{.*}}) across dimensions = [2] : (tensor<4x2x8x8x1xf32>, tensor<f32>) -> tensor<4x2x8x1xf32>
           )"));
 
   TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(
       this, xtile_module_and_hlo_module.first.get(), R"(
-CHECK:  tt.make_range
-CHECK-COUNT-4:  tt.expand_dims
+CHECK:  xtile.mask
 CHECK:  "tt.reduce"(%[[SELECT:.*]]) <{axis = 2 : i32}>
   )",
       GetFusionInstruction(*xtile_module_and_hlo_module.second,
@@ -1024,11 +1022,8 @@ ENTRY main {
                                 R"(
 ; Make sure input reduction tile is padded with a neutral value.
 CHECK:  %[[LOAD:.*]] = xtile.extract
-CHECK:  %[[RANGE:.*]] = stablehlo.iota
-CHECK:  %[[BROADCAST:.*]] = stablehlo.broadcast_in_dim %[[RANGE]]
-CHECK:  %[[CMPI:.*]] = arith.cmpi slt, %[[BROADCAST]]
-CHECK:  %[[SELECT:.*]] = arith.select %[[CMPI]], %[[LOAD]], %{{.*}}
-CHECK: %[[REDUCE:.*]] = stablehlo.reduce(%[[SELECT]] init: %{{.*}}) across dimensions = [0] : (tensor<8x4xf32>, tensor<f32>) -> tensor<4xf32>
+CHECK:  %[[MASKED:.*]] = xtile.mask %[[LOAD]]
+CHECK:  %[[REDUCE:.*]] = stablehlo.reduce(%[[MASKED]] init: %{{.*}}) across dimensions = [0] : (tensor<8x4xf32>, tensor<f32>) -> tensor<4xf32>
 CHECK:   reducer(%[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>)  {
 CHECK:   %[[MAX:.*]] = arith.maximumf %[[ARG0]], %[[ARG1]] : tensor<f32>
 CHECK:   stablehlo.return %[[MAX]] : tensor<f32>
@@ -1039,12 +1034,8 @@ CHECK: }
       this, xtile_module_and_hlo_module.first.get(), R"(
 ; Make sure input reduction tile is padded with a neutral value.
 CHECK:  %[[LOAD:.*]] = xtile.extract
-CHECK:  %[[RANGE:.*]] = tt.make_range
-CHECK:  %[[EXPAND:.*]] = tt.expand_dims %[[RANGE]]
-CHECK:  %[[BROADCAST:.*]] = tt.broadcast %[[EXPAND]]
-CHECK:  %[[CMPI:.*]] = arith.cmpi slt, %[[BROADCAST]]
-CHECK:  %[[SELECT:.*]] = arith.select %[[CMPI]], %[[LOAD]]
-CHECK:  "tt.reduce"(%[[SELECT]]) <{axis = 0 : i32}>
+CHECK:  %[[MASKED:.*]] = xtile.mask %[[LOAD]]
+CHECK:  "tt.reduce"(%[[MASKED]]) <{axis = 0 : i32}>
 CHECK:  ^bb0(%[[ARG2:.*]]: f32, %[[ARG3:.*]]: f32):
 CHECK:    %[[MAXIMUM:.*]] = arith.maximumf %[[ARG2]], %[[ARG3]] : f32
 CHECK:    tt.reduce.return %[[MAXIMUM]] : f32

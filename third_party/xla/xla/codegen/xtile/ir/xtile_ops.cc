@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -197,5 +198,50 @@ mlir::TypedValue<mlir::RankedTensorType> InsertTileOp::getTile() {
 }
 
 mlir::LogicalResult InsertTileOp::verify() { return VerifyBufferOp(*this); }
+
+llvm::SmallVector<int64_t> MaskOp::getMaskedDimensions() {
+  llvm::SmallVector<int64_t> masked_dimensions;
+
+  int64_t idx = 0;
+  for (const auto [bound_size, tensor_size] :
+       llvm::zip(getMaskBounds(), getType().getShape())) {
+    if (bound_size < tensor_size) {
+      masked_dimensions.push_back(idx);
+    }
+    ++idx;
+  }
+
+  return masked_dimensions;
+}
+
+mlir::LogicalResult MaskOp::verify() {
+  mlir::ArrayRef<int64_t> tensor_shape = getType().getShape();
+  mlir::ArrayRef<int64_t> mask_bounds = getMaskBounds();
+
+  if (tensor_shape.size() != mask_bounds.size()) {
+    return emitOpError() << "tensor rank: " << tensor_shape.size()
+                         << " does not match mask bounds rank: "
+                         << mask_bounds.size();
+  }
+
+  for (const auto [bound_size, tensor_size] :
+       llvm::zip(mask_bounds, tensor_shape)) {
+    if (bound_size > tensor_size) {
+      return emitOpError()
+             << "mask bound not less than or equal to the tensor size";
+    }
+  }
+
+  return mlir::success();
+}
+
+mlir::OpFoldResult MaskOp::fold(FoldAdaptor) {
+  if (getMaskedDimensions().empty()) {
+    // If none of the dimensions are masked then the op is a nop.
+    return getSource();
+  }
+
+  return {};
+}
 
 }  // namespace xla::xtile

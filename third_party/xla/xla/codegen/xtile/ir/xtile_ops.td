@@ -212,6 +212,42 @@ def InsertTileOp : XTile_Op<"insert", [TiledBufferInterface]> {
   let hasVerifier = 1;
 }
 
+def MaskOp : XTile_Op<"mask",
+                      [Pure,
+                       AllTypesMatch<["source", "result"]>,
+                       TypesMatchWith<"mask type matches source element type",
+                          "source", "mask_value", ElementType<"_self">.result>
+                      ]> {
+  let summary = "Mask the values of a tensor.";
+
+  let description = [{
+    Masks out the values of the input tensor that outside the range of the
+    given mask upper bound. Masked values are set to the mask value.
+  }];
+
+
+  let arguments = (ins
+    AnyRankedTensor:$source,
+    DenseI64ArrayAttr:$mask_bounds,
+    AnyType:$mask_value
+  );
+
+  let results = (outs AnyRankedTensor:$result);
+
+  let assemblyFormat = [{
+    $source $mask_bounds `,` $mask_value `:` type($source) `->` type($result) attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    // Get the dimensions where the mask bound is smaller than the dimension
+    // size. The returned array is sorted in increasing order.
+    llvm::SmallVector<int64_t> getMaskedDimensions();
+  }];
+
+  let hasVerifier = 1;
+  let hasFolder = 1;
+}
+
 
 #endif // XLA_CODEGEN_XTILE_IR_XTILE_OPS
 

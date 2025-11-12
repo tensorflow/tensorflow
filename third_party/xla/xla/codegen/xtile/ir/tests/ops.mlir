@@ -116,3 +116,28 @@ func.func @type_mismatch_insert(%src: tensor<24xf64>, %dst: memref<1024xf32>) {
   xtile.insert %src into %dst[%offset][24][1] : tensor<24xf64> -> memref<1024xf32>
   return
 }
+
+// -----
+
+func.func @legal_mask_op(%src: tensor<32xf64>, %mask: f64) -> tensor<32xf64> {
+  %masked = xtile.mask %src[10], %mask : tensor<32xf64> -> tensor<32xf64>
+  return %masked : tensor<32xf64>
+}
+
+// -----
+
+func.func @illegal_mask_bound_rank_mismatch(
+    %src: tensor<32xf64>, %mask: f64) -> tensor<32xf64> {
+  // expected-error@+1 {{tensor rank: 1 does not match mask bounds rank: 2}}
+  %masked = xtile.mask %src[10, 1], %mask : tensor<32xf64> -> tensor<32xf64>
+  return %masked : tensor<32xf64>
+}
+
+// -----
+
+func.func @illegal_mask_out_of_bounds(%src: tensor<32xf64>, %mask: f64) -> tensor<32xf64> {
+  // expected-error@+1 {{mask bound not less than or equal to the tensor size}}
+  %masked = xtile.mask %src[33], %mask : tensor<32xf64> -> tensor<32xf64>
+  return %masked : tensor<32xf64>
+}
+
