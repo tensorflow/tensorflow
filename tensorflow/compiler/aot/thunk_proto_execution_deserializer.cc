@@ -688,7 +688,7 @@ ThunkProtoExecutionDeserializer::GetTopKThunkRunImpl(
   absl::string_view topk_thunk_invocation_format = R"(
      // TopK Thunk
      {
-    __xla_cpu_runtime_TopKF32({{BATCH_SIZE}}, {{INPUT_SIZE}}, {{K}},
+    ::xla::cpu::internal::TopK({{BATCH_SIZE}}, {{INPUT_SIZE}}, {{K}},
                               reinterpret_cast<const float*>({{VALUES_PTR}}),
                               reinterpret_cast<float*>({{OUTPUT_PTR}}),
                               reinterpret_cast<int32_t*>({{INDICES_PTR}}));
