@@ -107,7 +107,7 @@ class PatternMatcherTest : public ::testing::Test {
     NodeConfig(string name, string op, std::vector<string> inputs)
         : name(std::move(name)), op(std::move(op)), inputs(std::move(inputs)) {}
 
-    string name;
+    std::string name;
     string op;
     std::vector<string> inputs;
   };
