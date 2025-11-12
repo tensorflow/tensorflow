@@ -133,8 +133,8 @@ TEST_F(SymbolicMapTest, ReplaceDimsAndSymbols) {
   SymbolicExpr c3 = ctx.CreateConstant(30);
 
   SymbolicMap replaced_basic = sample_map.ReplaceDimsAndSymbols(
-      {c10, c2}, {c3, d0}, sample_map.GetNumDims(), sample_map.GetNumSymbols());
-  EXPECT_THAT(replaced_basic.GetResults(), ElementsAre(c10 + c3, c2 * d0));
+      {d1, c2}, {c3, d0}, sample_map.GetNumDims(), sample_map.GetNumSymbols());
+  EXPECT_THAT(replaced_basic.GetResults(), ElementsAre(d1 + c3, c2 * d0));
 
   SymbolicMap map_empty = SymbolicMap::Get(&ctx, 0, 0, {});
   SymbolicMap replaced_empty = map_empty.ReplaceDimsAndSymbols({}, {}, 0, 0);

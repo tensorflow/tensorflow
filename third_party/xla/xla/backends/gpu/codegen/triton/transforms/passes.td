@@ -246,12 +246,4 @@ def TritonXLAMathToLibdevicePass
   ];
 }
 
-def TritonXLAConvert0DTensorToScalarPass
-    : Pass<"triton-xla-convert-0d-tensor-to-scalar", "mlir::ModuleOp"> {
-  let summary = "Lowers 0D tensors to scalars.";
-  let dependentDialects = [
-    "::xla::xtile::XTileDialect",
-  ];
-}
-
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

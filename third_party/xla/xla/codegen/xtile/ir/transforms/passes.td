@@ -24,3 +24,12 @@ def VerifyLegalXTileOpsPass : Pass<"xtile-verify-legal-ops", "mlir::ModuleOp"> {
   }];
 
 }
+
+def ConvertElementwise0DTensorToScalarPass
+    : Pass<"convert-elementwise-0d-tensor-to-scalar"> {
+  let summary = "Lowers 0D tensors of elementwise ops to scalars.";
+
+  let dependentDialects = [
+    "mlir::tensor::TensorDialect",
+  ];
+}
