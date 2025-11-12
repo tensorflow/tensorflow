@@ -182,8 +182,10 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
     pipeline.AddPass(std::make_unique<ThunkBufferDebugPass>(
         ThunkBufferDebugPass::Mode::kChecksum));
   }
-  if (debug_options.xla_gpu_detect_nan() !=
-      DebugOptions::NAN_CHECK_DETECTION_MODE_NONE) {
+  if ((debug_options.xla_gpu_detect_nan() !=
+       DebugOptions::DETECTION_MODE_NONE) ||
+      (debug_options.xla_gpu_detect_inf() !=
+       DebugOptions::DETECTION_MODE_NONE)) {
     pipeline.AddPass(std::make_unique<ThunkBufferDebugPass>(
         ThunkBufferDebugPass::Mode::kFloatChecker));
   }

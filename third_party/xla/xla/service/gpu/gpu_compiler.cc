@@ -556,7 +556,7 @@ absl::Status RunOptimizationPasses(
   HloPassPipeline pipeline("optimization");
   AddHloVerifier(&pipeline);
   if (debug_options.xla_detect_unstable_reductions() !=
-      DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_NONE) {
+      DebugOptions::DETECTION_MODE_NONE) {
     pipeline.AddPass<UnstableReductionDetector>();
   }
   pipeline.AddPass<RaggedDotRewriter>();

@@ -145,6 +145,12 @@ absl::Status BufferDebugFloatCheck(
   VLOG(1) << "HLO module ptr: " << hlo_module;
   VLOG(1) << "HLO module name: " << hlo_module->name();
   CHECK(hlo_module != nullptr);
+  bool nan_check_enabled =
+      hlo_module->config().debug_options().xla_gpu_detect_nan() !=
+      DebugOptions::DETECTION_MODE_NONE;
+  bool inf_check_enabled =
+      hlo_module->config().debug_options().xla_gpu_detect_inf() !=
+      DebugOptions::DETECTION_MODE_NONE;
 
   auto buffer_debug_log = se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::
       FromDeviceMemoryUnchecked(log_buffer.device_memory());
@@ -160,6 +166,7 @@ absl::Status BufferDebugFloatCheck(
   VLOG(1) << "read " << entries.size() << " entries";
   auto entries_metadata = metadata_store->GetEntryMetadataBatch(entry_ids);
   int non_zero_float_check_modules_count = 0;
+  int non_zero_inf_check_modules_count = 0;
   CHECK_EQ(entries.size(), entries_metadata.size());
 
   for (int i = 0; i < entries.size(); ++i) {
@@ -171,21 +178,36 @@ absl::Status BufferDebugFloatCheck(
       continue;
     }
     if (metadata->check_type ==
-            BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS &&
-        entry.nan_count > 0) {
-      LOG(ERROR) << "Found entry with non zero float check count "
-                 << entry.nan_count << " for thunk " << entry.entry_id
-                 << " and execution " << metadata->execution_id
-                 << " for module: \n"
-                 << hlo_module->ToString();
-      non_zero_float_check_modules_count++;
+        BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS) {
+      if (nan_check_enabled && entry.nan_count > 0) {
+        LOG(ERROR) << "Found entry with non zero float check count "
+                   << entry.nan_count << " for thunk " << entry.entry_id
+                   << " and execution " << metadata->execution_id
+                   << " for module: \n"
+                   << hlo_module->ToString();
+        non_zero_float_check_modules_count++;
+      }
+      if (inf_check_enabled && entry.inf_count > 0) {
+        LOG(ERROR) << "Found entry with non zero inf check count "
+                   << entry.inf_count << " for thunk " << entry.entry_id
+                   << " and execution " << metadata->execution_id
+                   << " for module: \n"
+                   << hlo_module->ToString();
+        non_zero_inf_check_modules_count++;
+      }
     }
   }
   if (non_zero_float_check_modules_count > 0 &&
       hlo_module->config().debug_options().xla_gpu_detect_nan() ==
-          DebugOptions::NAN_CHECK_DETECTION_MODE_FAIL) {
+          DebugOptions::DETECTION_MODE_FAIL) {
     LOG(FATAL) << "Found " << non_zero_float_check_modules_count
                << " modules with non zero float check count";
+  }
+  if (non_zero_inf_check_modules_count > 0 &&
+      hlo_module->config().debug_options().xla_gpu_detect_inf() ==
+          DebugOptions::DETECTION_MODE_FAIL) {
+    LOG(FATAL) << "Found " << non_zero_float_check_modules_count
+               << " modules with non zero inf check count";
   }
   return absl::OkStatus();
 }
