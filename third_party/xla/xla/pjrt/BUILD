@@ -893,6 +893,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tpu_constants",
+    hdrs = ["tpu_constants.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 # Transitional forwarding target. Use pjrt/plugin/xla_cpu:xla_cpu_pjrt_client instead.
 cc_library(
     name = "tfrt_cpu_pjrt_client",
