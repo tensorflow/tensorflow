@@ -102,6 +102,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
     pm->addPass(
         mt::gpu::createTritonGPUAutomaticWarpSpecialization({num_stages}));
     pm->addPass(mt::gpu::createTritonGPUPipeline({num_stages}));
+    pm->addPass(mt::gpu::createTritonGPUOptimizePartitionWarps());
     pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
     pm->addPass(mt::gpu::createTritonGPUHoistTMEMAlloc({true}));
     pm->addPass(ttng::createTritonNvidiaGPURemoveTMEMTokensPass());

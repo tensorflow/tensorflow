@@ -8,8 +8,5 @@ LLVM nor MLIR integrator, please do not add any patches to this list.
 """
 
 llvm_patch_list = [
-    "//third_party/triton:llvm_integration/cl823109577.patch",
-    "//third_party/triton:llvm_integration/cl825373861.patch",
-    "//third_party/triton:llvm_integration/cl828494580.patch",
     # Add new patches just above this line
 ]

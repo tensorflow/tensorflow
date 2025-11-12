@@ -81,10 +81,10 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createCanonicalizerPass());
 
   if (rocm_cc.has_amd_matrix_instr()) {
-    pm->addPass(mlir::createTritonAMDGPUStreamPipeline(
-        {num_stages, /*global_prefetch=*/0, /*local_prefetch=*/0,
-         /*use_async_copy=*/false, /*use_block_pingpong=*/false}));
     // TODO(ROCm) Modify when corresponding run time flags are introduced.
+    pm->addPass(mlir::createTritonAMDGPUScheduleLoops({num_stages}));
+    pm->addPass(mlir::createTritonAMDGPUPipeline(
+        {/*useAsyncCopy=*/false, /*usePingpong=*/false}));
     if (/*use_async_copy=*/false) {  // Not enabled by default.
       pm->addPass(mlir::createTritonAMDGPUCoalesceAsyncCopy());
     }
