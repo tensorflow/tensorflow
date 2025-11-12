@@ -3409,10 +3409,20 @@ ENTRY entry {
           "num_ctas":"1",
           "num_stages":"1"}}}
 })";
-  // We expect that for loop instruction will be optimized away.
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fdot", R"(
+
+  TF_ASSERT_OK_AND_ASSIGN(auto xtile_module_and_hlo_module,
+                          CreateXTileIrAndFileCheck(this, kHloText, "fdot",
+                                                    R"(
+CHECK:  stablehlo.dot_general
+CHECK:  arith.addf
+          )"));
+
+  TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(
+      this, xtile_module_and_hlo_module.first.get(), R"(
 CHECK: tt.dot {{.*}} -> tensor<16x16xf32>
-)"));
+  )",
+      GetFusionInstruction(*xtile_module_and_hlo_module.second, "fdot")));
+
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
@@ -3472,8 +3482,32 @@ ENTRY entry {
 
   const bool is_tma_allowed = GetParam();
   std::string hlo_text = absl::Substitute(kHloTextTemplate, is_tma_allowed);
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, hlo_text, "fdot", R"(
-CHECK:      xtile.entry_func @triton_fn(%[[ARG0:[A-Za-z0-9_]*]]: memref<32x123xf32>
+
+  TF_ASSERT_OK_AND_ASSIGN(auto xtile_module_and_hlo_module,
+                          CreateXTileIrAndFileCheck(this, hlo_text, "fdot",
+                                                    R"(
+CHECK:      xtile.entry_func @xtile_dialect_fn(%[[ARG0:[A-Za-z0-9_]*]]: memref<32x123xf32>
+CHECK-SAME:                             %[[ARG1:[A-Za-z0-9_]*]]: memref<123x512xf32>
+CHECK-SAME:                             %[[ARG2:[A-Za-z0-9_]*]]: memref<32x512xf32>
+CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+CHECK-DAG:  %[[C4:.*]] = arith.constant 4 : index
+CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+CHECK:      {{.*}} = scf.for %{{.*}} = %[[C0]] to %[[C4]] step %[[C1]]
+CHECK-SAME: iter_args({{.*}}) -> (tensor<16x64xf32>) {
+CHECK-DAG:  xtile.extract %[[ARG0]]
+CHECK-DAG:  xtile.extract %[[ARG1]]
+CHECK-DAG:  arith.subf {{.*}} : tensor<16x32xf32>
+CHECK-DAG:  math.absf {{.*}} : tensor<32x64xf32>
+CHECK:      stablehlo.dot_general {{.*}} (tensor<16x32xf32>, tensor<32x64xf32>) -> tensor<16x64xf32>
+CHECK:      arith.addf {{.*}}
+CHECK:      scf.yield {{.*}} : tensor<16x64xf32>
+CHECK-COUNT-1: xtile.insert
+
+          )"));
+
+  TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(
+      this, xtile_module_and_hlo_module.first.get(), R"(
+CHECK:      xtile.entry_func @xtile_dialect_fn(%[[ARG0:[A-Za-z0-9_]*]]: memref<32x123xf32>
 CHECK-SAME:                             %[[ARG1:[A-Za-z0-9_]*]]: memref<123x512xf32>
 CHECK-SAME:                             %[[ARG2:[A-Za-z0-9_]*]]: memref<32x512xf32>
 CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
@@ -3488,7 +3522,9 @@ CHECK-DAG:  math.absf {{.*}} : tensor<32x64xf32>
 CHECK:      tt.dot {{.*}} tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32>
 CHECK:      scf.yield {{.*}} : tensor<16x64xf32>
 CHECK-COUNT-1: xtile.insert
-)"));
+  )",
+      GetFusionInstruction(*xtile_module_and_hlo_module.second, "fdot")));
+
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
@@ -3610,7 +3646,21 @@ ENTRY entry {
           "num_stages":"1"}}}
 })";
 
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fdot", R"(
+  TF_ASSERT_OK_AND_ASSIGN(auto xtile_module_and_hlo_module,
+                          CreateXTileIrAndFileCheck(this, kHloText, "fdot", R"(
+  // Ensure that masking is applied only conditionally to both operands.
+  CHECK:      %[[MASKED_OPERAND0:.*]] = scf.if
+  CHECK:        %[[SELECT0:.*]] = arith.select
+  CHECK-NEXT:   scf.yield %[[SELECT0]]
+  CHECK:      %[[MASKED_OPERAND1:.*]] = scf.if
+  CHECK:        %[[SELECT1:.*]] = arith.select
+  CHECK-NEXT:   scf.yield %[[SELECT1]]
+  CHECK:      stablehlo.dot_general %[[MASKED_OPERAND0]], %[[MASKED_OPERAND1]]
+  CHECK:      arith.addf %{{.*}}
+  )"));
+
+  TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(
+      this, xtile_module_and_hlo_module.first.get(), R"(
   // Ensure that masking is applied only conditionally to both operands.
   CHECK:      %[[MASKED_OPERAND0:.*]] = scf.if
   CHECK:        %[[SELECT0:.*]] = arith.select
@@ -3619,7 +3669,8 @@ ENTRY entry {
   CHECK:        %[[SELECT1:.*]] = arith.select
   CHECK-NEXT:   scf.yield %[[SELECT1]]
   CHECK:      tt.dot %[[MASKED_OPERAND0]], %[[MASKED_OPERAND1]]
-)"));
+  )",
+      GetFusionInstruction(*xtile_module_and_hlo_module.second, "fdot")));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
@@ -4157,13 +4208,26 @@ TEST_P(BasicDotAlgorithmEmitterTest, BasicAlgorithmIsEmittedCorrectly) {
                           algorithm_util::GetDotAccumulatorType(algorithm));
   const std::string kHloText = GetDotAlgorithmHlo(in_ty, out_ty, algorithm);
 
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
-      this, kHloText, "dot",
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto xtile_module_and_hlo_module,
+      CreateXTileIrAndFileCheck(
+          this, kHloText, "dot",
+          absl::Substitute(
+              R"(
+  CHECK:  stablehlo.dot_general{{.*}} : (tensor<16x32x$0>, tensor<32x64x$0>) -> tensor<16x64x$1>
+  CHECK:  arith.addf
+  )",
+              primitive_util::LowercasePrimitiveTypeName(in_ty),
+              primitive_util::LowercasePrimitiveTypeName(out_ty))));
+
+  TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(
+      this, xtile_module_and_hlo_module.first.get(),
       absl::Substitute(R"(
   CHECK:  tt.dot{{.*}} : tensor<16x32x$0> * tensor<32x64x$0> -> tensor<16x64x$1>
   )",
                        primitive_util::LowercasePrimitiveTypeName(in_ty),
-                       primitive_util::LowercasePrimitiveTypeName(out_ty))));
+                       primitive_util::LowercasePrimitiveTypeName(out_ty)),
+      GetFusionInstruction(*xtile_module_and_hlo_module.second, "dot")));
 
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(kHloText, ErrorSpecForDotAlgorithm(algorithm)));
@@ -4197,21 +4261,26 @@ TEST_P(MultiDotAlgorithmEmitterTest, MultiDotAlgorithmIsEmittedCorrectly) {
       algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3 ? F32 : BF16;
   // Dummy value to ensure that the dot count is explicitly set.
   int dot_count_for_algorithm = 0x1337;
+  int stablehlo_dot_count_for_algorithm = 0x1337;
   std::string input_precision_string = "";
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
       dot_count_for_algorithm = 3;
+      stablehlo_dot_count_for_algorithm = 3;
       break;
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
       dot_count_for_algorithm = 6;
+      stablehlo_dot_count_for_algorithm = 6;
       break;
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
       dot_count_for_algorithm = 9;
+      stablehlo_dot_count_for_algorithm = 9;
       break;
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
       // Triton implements TF32x3 as a specific precision mode.
       input_precision_string = "tf32x3";
       dot_count_for_algorithm = 1;
+      stablehlo_dot_count_for_algorithm = 3;
       break;
     default:
       // Unreachable.
@@ -4220,14 +4289,24 @@ TEST_P(MultiDotAlgorithmEmitterTest, MultiDotAlgorithmIsEmittedCorrectly) {
 
   const std::string kHloText = GetDotAlgorithmHlo(in_ty, out_ty, algorithm);
 
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
-      this, kHloText, "dot",
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto xtile_module_and_hlo_module,
+      CreateXTileIrAndFileCheck(this, kHloText, "dot",
+                                absl::Substitute(
+                                    R"(
+  CHECK:  stablehlo.dot_general{{.*}} num_primitive_operations = $0, {{.*}}
+  )",
+                                    stablehlo_dot_count_for_algorithm)));
+
+  TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(
+      this, xtile_module_and_hlo_module.first.get(),
       absl::Substitute(R"(
   CHECK-COUNT-$2:  tt.dot{{.*}}$3{{.*}} : tensor<16x32x$0> * tensor<32x64x$0> -> tensor<16x64x$1>
   )",
                        primitive_util::LowercasePrimitiveTypeName(in_ty),
                        primitive_util::LowercasePrimitiveTypeName(out_ty),
-                       dot_count_for_algorithm, input_precision_string)));
+                       dot_count_for_algorithm, input_precision_string),
+      GetFusionInstruction(*xtile_module_and_hlo_module.second, "dot")));
 
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(kHloText, ErrorSpecForDotAlgorithm(algorithm)));
@@ -4260,14 +4339,32 @@ TEST_P(TF32DotAlgorithmEmitterTest, TF32AlgorithmsUseTF32InputPrecision) {
       algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3 ? "tf32x3"
                                                              : "tf32";
 
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
-      this, kHloText, "dot",
+  std::string num_primitive_operations_string =
+      algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3 ? "3" : "1";
+
+  // TODO(basioli): maybe algorithm string?
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto xtile_module_and_hlo_module,
+      CreateXTileIrAndFileCheck(
+          this, kHloText, "dot",
+          absl::Substitute(
+              R"(
+  CHECK:  stablehlo.dot_general{{.*}}, contracting_dims = [1] x [0], {{.*}} algorithm = <lhs_precision_type = tf32, rhs_precision_type = tf32, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = $2, allow_imprecise_accumulation = false> : (tensor<16x32x$0>, tensor<32x64x$0>) -> tensor<16x64x$1>
+  )",
+              primitive_util::LowercasePrimitiveTypeName(in_ty),
+              primitive_util::LowercasePrimitiveTypeName(out_ty),
+              num_primitive_operations_string)));
+
+  TF_ASSERT_OK(LowerXTileIrToTritonAndFileCheck(
+      this, xtile_module_and_hlo_module.first.get(),
       absl::Substitute(R"(
   CHECK:  tt.dot{{.*}} inputPrecision = $2 : tensor<16x32x$0> * tensor<32x64x$0> -> tensor<16x64x$1>
   )",
                        primitive_util::LowercasePrimitiveTypeName(in_ty),
                        primitive_util::LowercasePrimitiveTypeName(out_ty),
-                       input_precision_string)));
+                       input_precision_string),
+      GetFusionInstruction(*xtile_module_and_hlo_module.second, "dot")));
+
   // No need to `RunAndCompare` here, these algorithms are already covered by
   // other tests.
 }

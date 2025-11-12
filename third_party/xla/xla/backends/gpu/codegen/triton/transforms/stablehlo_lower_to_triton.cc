@@ -14,22 +14,32 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <iterator>
+#include <limits>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
@@ -37,8 +47,14 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
+#include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "xla/service/algorithm_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace mlir::triton::xla {
@@ -327,6 +343,451 @@ class LowerReshape : public mlir::OpRewritePattern<stablehlo::ReshapeOp> {
   }
 };
 
+namespace {
+
+LogicalResult PopulateOperandPrecision(PatternRewriter& rewriter,
+                                       stablehlo::DotGeneralOp op,
+                                       stablehlo::Precision& lhs_precision,
+                                       stablehlo::Precision& rhs_precision) {
+  auto precision_config = op.getPrecisionConfig();
+
+  if (!precision_config.has_value()) {
+    return rewriter.notifyMatchFailure(op->getLoc(),
+                                       "Dot op must have precision config.");
+  }
+
+  if (precision_config.value().size() != 2) {
+    return rewriter.notifyMatchFailure(
+        op->getLoc(),
+        "Dot op must have exactly two precisions. One for lhs and one for "
+        "rhs.");
+  }
+
+  auto lhs_precision_attr =
+      mlir::cast<stablehlo::PrecisionAttr>(precision_config.value()[0]);
+  auto rhs_precision_attr =
+      mlir::cast<stablehlo::PrecisionAttr>(precision_config.value()[1]);
+
+  lhs_precision = lhs_precision_attr.getValue();
+  rhs_precision = rhs_precision_attr.getValue();
+
+  return mlir::success();
+}
+
+::xla::PrecisionConfig::Precision StableHloPrecisionToXlaPrecision(
+    stablehlo::Precision precision) {
+  switch (precision) {
+    case stablehlo::Precision::DEFAULT:
+      return ::xla::PrecisionConfig::DEFAULT;
+    case stablehlo::Precision::HIGH:
+      return ::xla::PrecisionConfig::HIGH;
+    case stablehlo::Precision::HIGHEST:
+      return ::xla::PrecisionConfig::HIGHEST;
+    default:
+      LOG(FATAL) << "Unsupported precision";
+  }
+}
+
+// Triton implementations of dot algorithms.
+
+struct TritonPrecisionSpec {
+  ::xla::PrecisionConfig::Algorithm algorithm;
+  // Encodes `tt.dot`'s `inputPrecision` attribute.
+  ttir::InputPrecision ttir_input_precision;
+};
+
+mlir::Type ElementType(mlir::Value v) { return mlir::getElementTypeOrSelf(v); }
+
+using AlgorithmEmitter = absl::StatusOr<Value> (*)(
+    ::xla::EmitterLocOpBuilder, const ::xla::gpu::triton::DotOperands&,
+    const TritonPrecisionSpec&);
+
+absl::StatusOr<Value> EmitDotAlgUnset(
+    ::xla::EmitterLocOpBuilder b,
+    const ::xla::gpu::triton::DotOperands& dot_operands,
+    const TritonPrecisionSpec& precision_spec) {
+  // Execute matrix multiplication of input tiles and pass the accumulator.
+  // TODO(manany): Should be looked into once we enable Hopper workloads.
+  // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
+  // lower precision than the output type. The change was introduced here:
+  // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
+  Value lhs = dot_operands.lhs;
+  Value rhs = dot_operands.rhs;
+  Value acc = dot_operands.accumulator;
+
+  int max_num_imprecise_acc = 0;
+  if (ElementType(lhs).isFloat(8) || ElementType(rhs).isFloat(8)) {
+    // For fp8 dots, disable accumulator promotion to mimick cuBLAS. It may make
+    // sense to enable frequent accumulator promotion at higher matmul
+    // precisions set in the config.
+    max_num_imprecise_acc = std::numeric_limits<int>::max();
+  }
+
+  return b.create<ttir::DotOp>(
+      lhs, rhs, acc,
+      /*inputPrecision=*/precision_spec.ttir_input_precision,
+      /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
+}
+
+absl::StatusOr<Value> EmitRegularDot(
+    ::xla::EmitterLocOpBuilder b,
+    const ::xla::gpu::triton::DotOperands& dot_operands,
+    const TritonPrecisionSpec& precision_spec) {
+  Value lhs = dot_operands.lhs;
+  Value rhs = dot_operands.rhs;
+
+  int max_num_imprecise_acc = 0;
+  if (ElementType(lhs).isFloat(8) || ElementType(rhs).isFloat(8)) {
+    // For fp8 dots, disable accumulator promotion to mimick cuBLAS. It may make
+    // sense to enable frequent accumulator promotion at higher matmul
+    // precisions set in the config.
+    max_num_imprecise_acc = std::numeric_limits<int>::max();
+  }
+
+  // Cast F32 inputs to BF16 if the algorithm is BF16_BF16_F32.
+  // TODO(bchetioui): abstract this.
+  if (precision_spec.algorithm ==
+      ::xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32) {
+    if (ElementType(lhs).isF32()) {
+      lhs = ::xla::gpu::triton::Cast(b, lhs, b.getBF16Type());
+    }
+
+    if (ElementType(rhs).isF32()) {
+      rhs = ::xla::gpu::triton::Cast(b, rhs, b.getBF16Type());
+    }
+  }
+
+  return b.create<ttir::DotOp>(
+      dot_operands.lhs, dot_operands.rhs, dot_operands.accumulator,
+      /*inputPrecision=*/precision_spec.ttir_input_precision,
+      /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
+}
+
+// If lhs is 1.0, we will have lhs_high = 1.0 and lhs_low = 0.0.
+// If rhs is +infinity, we will have:
+// +infinity * 1.0 = +infinity
+// +infinity * 0.0 = NaN
+// We would get the wrong result if we sum these partial products. Instead, we
+// must override any accumulated result if the last partial product is
+// non-finite. See b/115844437.
+Value ZeroNaNs(::xla::EmitterLocOpBuilder b, Value input) {
+  Value positive_inf = ::xla::gpu::triton::CreateConst<float>(
+      b, b.getF32Type(), std::numeric_limits<float>::infinity(),
+      mlir::cast<ShapedType>(input.getType()).getShape());
+  Value abs_input = b.create<math::AbsFOp>(input);
+  Value is_finite = b.create<arith::CmpFOp>(arith::CmpFPredicate::OGT,
+                                            positive_inf, abs_input);
+  return b.create<arith::SelectOp>(is_finite, input,
+                                   ::xla::gpu::triton::ZerosLike(b, input));
+}
+
+absl::Status ExpectType(Value v, Type expected_type) {
+  if (ElementType(v) != expected_type) {
+    std::string expected_type_str, actual_type_str;
+    {
+      llvm::raw_string_ostream os_expected(expected_type_str);
+      llvm::raw_string_ostream os_actual(actual_type_str);
+      expected_type.print(os_expected);
+      ElementType(v).print(os_actual);
+    }
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Expected type ", expected_type_str, " but got ", actual_type_str));
+  }
+  return absl::OkStatus();
+}
+
+std::vector<Value> SplitF32(::xla::EmitterLocOpBuilder b, Value input,
+                            int split_count) {
+  std::vector<Value> split_inputs;
+  split_inputs.reserve(split_count);
+  for (int i = 0; i < split_count; ++i) {
+    Value input_as_bf16 = ::xla::gpu::triton::Cast(b, input, b.getBF16Type());
+    if (i != split_count - 1) {
+      Value input_as_f32 =
+          ::xla::gpu::triton::Cast(b, input_as_bf16, b.getF32Type());
+      input = b.create<arith::SubFOp>(input, input_as_f32);
+    }
+    split_inputs.push_back(input_as_bf16);
+  }
+  return split_inputs;
+}
+
+Value IEEEDot(::xla::EmitterLocOpBuilder b, Value lhs, Value rhs, Value acc) {
+  return b.create<ttir::DotOp>(lhs, rhs, acc,
+                               /*inputPrecision=*/ttir::InputPrecision::IEEE,
+                               /*maxNumImpreciseAcc=*/0);
+}
+
+// Leverages BF16 datatype for F32 matmul computation. It follows the guidance
+// from https://arxiv.org/pdf/1904.06376.pdf.
+absl::StatusOr<Value> EmitBF16x9Matmul(
+    ::xla::EmitterLocOpBuilder b,
+    const ::xla::gpu::triton::DotOperands& dot_operands,
+    const TritonPrecisionSpec& precision_spec) {
+  constexpr int kNumParts = 3;
+  constexpr int kHigh = 0;
+  constexpr int kMid = 1;
+  constexpr int kLow = 2;
+
+  Type f32 = b.getF32Type();
+  TF_RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
+  TF_RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
+  TF_RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
+
+  std::vector<Value> lhs_parts = SplitF32(b, dot_operands.lhs, kNumParts);
+  std::vector<Value> rhs_parts = SplitF32(b, dot_operands.rhs, kNumParts);
+
+  Value result = ::xla::gpu::triton::ZerosLike(b, dot_operands.accumulator);
+
+  result = IEEEDot(b, lhs_parts[kLow], rhs_parts[kLow], result);
+  result = IEEEDot(b, lhs_parts[kMid], rhs_parts[kLow], result);
+  result = IEEEDot(b, lhs_parts[kLow], rhs_parts[kMid], result);
+
+  result = IEEEDot(b, lhs_parts[kMid], rhs_parts[kMid], result);
+
+  result = IEEEDot(b, lhs_parts[kLow], rhs_parts[kHigh], result);
+  result = IEEEDot(b, lhs_parts[kHigh], rhs_parts[kLow], result);
+
+  result = IEEEDot(b, lhs_parts[kMid], rhs_parts[kHigh], result);
+  result = IEEEDot(b, lhs_parts[kHigh], rhs_parts[kMid], result);
+
+  result = ZeroNaNs(b, result);
+  result = IEEEDot(b, lhs_parts[kHigh], rhs_parts[kHigh], result);
+  result = b.create<arith::AddFOp>(dot_operands.accumulator, result);
+  return result;
+}
+
+// Leverages BF16 datatype for F32 matmul computation. It follows the guidance
+// from https://arxiv.org/pdf/1904.06376.pdf.
+absl::StatusOr<Value> EmitBF16x6Matmul(
+    ::xla::EmitterLocOpBuilder b,
+    const ::xla::gpu::triton::DotOperands& dot_operands,
+    const TritonPrecisionSpec& precision_spec) {
+  constexpr int kNumParts = 3;
+  constexpr int kHigh = 0;
+  constexpr int kMid = 1;
+  constexpr int kLow = 2;
+
+  Type f32 = b.getF32Type();
+  TF_RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
+  TF_RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
+  TF_RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
+
+  std::vector<Value> lhs_parts = SplitF32(b, dot_operands.lhs, kNumParts);
+  std::vector<Value> rhs_parts = SplitF32(b, dot_operands.rhs, kNumParts);
+
+  Value result = ::xla::gpu::triton::ZerosLike(b, dot_operands.accumulator);
+
+  result = IEEEDot(b, lhs_parts[kMid], rhs_parts[kMid], result);
+
+  result = IEEEDot(b, lhs_parts[kLow], rhs_parts[kHigh], result);
+  result = IEEEDot(b, lhs_parts[kHigh], rhs_parts[kLow], result);
+
+  result = IEEEDot(b, lhs_parts[kMid], rhs_parts[kHigh], result);
+  result = IEEEDot(b, lhs_parts[kHigh], rhs_parts[kMid], result);
+
+  result = ZeroNaNs(b, result);
+  result = IEEEDot(b, lhs_parts[kHigh], rhs_parts[kHigh], result);
+  result = b.create<arith::AddFOp>(dot_operands.accumulator, result);
+  return result;
+}
+
+// Compute F32 matmul with 3 BF16 dots. It is less accurate than
+// EmitBF16x6Matmul.
+absl::StatusOr<Value> EmitBF16x3Matmul(
+    ::xla::EmitterLocOpBuilder b,
+    const ::xla::gpu::triton::DotOperands& dot_operands,
+    const TritonPrecisionSpec& precision_spec) {
+  constexpr int kNumParts = 2;
+  constexpr int kHigh = 0;
+  constexpr int kLow = 1;
+
+  Type f32 = b.getF32Type();
+  TF_RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
+  TF_RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
+  TF_RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
+
+  std::vector<Value> lhs_bf16 = SplitF32(b, dot_operands.lhs, kNumParts);
+  std::vector<Value> rhs_bf16 = SplitF32(b, dot_operands.rhs, kNumParts);
+
+  Value result = ::xla::gpu::triton::ZerosLike(b, dot_operands.accumulator);
+  result = IEEEDot(b, lhs_bf16[kLow], rhs_bf16[kHigh], result);
+  result = IEEEDot(b, lhs_bf16[kHigh], rhs_bf16[kLow], result);
+  result = ZeroNaNs(b, result);
+  result = IEEEDot(b, lhs_bf16[kHigh], rhs_bf16[kHigh], result);
+  result = b.create<arith::AddFOp>(dot_operands.accumulator, result);
+  return result;
+}
+
+// Returns an emitter for the given dot algorithm. Raises an
+// `UnimplementedError` if the algorithm is not supported.
+absl::StatusOr<AlgorithmEmitter> GetAlgorithmEmitter(
+    const ::xla::PrecisionConfig::Algorithm algorithm) {
+  switch (algorithm) {
+    case ::xla::PrecisionConfig::ALG_UNSET:
+      return EmitDotAlgUnset;
+    case ::xla::PrecisionConfig::ALG_DOT_F16_F16_F16:
+    case ::xla::PrecisionConfig::ALG_DOT_F32_F32_F32:
+    case ::xla::PrecisionConfig::ALG_DOT_F64_F64_F64:
+    case ::xla::PrecisionConfig::ALG_DOT_F16_F16_F32:
+    case ::xla::PrecisionConfig::ALG_DOT_BF16_BF16_BF16:
+    case ::xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+      return EmitRegularDot;
+    case ::xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
+      return EmitBF16x3Matmul;
+    case ::xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+      return EmitBF16x6Matmul;
+    case ::xla::PrecisionConfig::ALG_DOT_TF32_TF32_F32:
+      // TODO(bchetioui): this should be factored out of EmitRegularDot.
+      return EmitRegularDot;
+    case ::xla::PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
+      // TODO(bchetioui): this should be factored out of EmitRegularDot.
+      return EmitRegularDot;
+    case ::xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+      return EmitBF16x9Matmul;
+    case ::xla::PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
+    case ::xla::PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
+    default:
+      break;
+  }
+
+  // Couldn't find an algorithm emitter for this algorithm. Raise an error.
+  return absl::UnimplementedError(
+      absl::StrCat("This algorithm is not supported yet: ",
+                   ::xla::PrecisionConfig::Algorithm_Name(algorithm)));
+}
+
+bool IsTf32Allowed(const ::xla::gpu::triton::PrecisionSpec& precision_spec) {
+  if (precision_spec.algorithm == ::xla::PrecisionConfig::ALG_UNSET) {
+    return tsl::tensor_float_32_execution_enabled() &&
+           StableHloPrecisionToXlaPrecision(
+               precision_spec.lhs_operand_precision) ==
+               ::xla::PrecisionConfig::DEFAULT &&
+           StableHloPrecisionToXlaPrecision(
+               precision_spec.rhs_operand_precision) ==
+               ::xla::PrecisionConfig::DEFAULT;
+  }
+  return ::xla::algorithm_util::HasTf32InputType(precision_spec.algorithm);
+}
+
+ttir::InputPrecision InferDotPrecision(
+    const ::xla::gpu::triton::PrecisionSpec& precision_spec) {
+  if (precision_spec.algorithm ==
+      ::xla::PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3) {
+    return ttir::InputPrecision::TF32x3;
+  }
+
+  return IsTf32Allowed(precision_spec) ? ttir::InputPrecision::TF32
+                                       : ttir::InputPrecision::IEEE;
+}
+
+LogicalResult RewriteDotGeneralToTritonDot(mlir::PatternRewriter& rewriter,
+                                           stablehlo::DotGeneralOp op,
+                                           mlir::Operation* add_op,
+                                           Value accumulator) {
+  auto dot_algorithm = op.getAlgorithm();
+
+  auto hlo_algorithm_or_status =
+      dot_algorithm.has_value()
+          ? ::xla::ConvertDotAlgorithm(dot_algorithm.value())
+          : ::xla::PrecisionConfig::ALG_UNSET;
+
+  if (!hlo_algorithm_or_status.ok()) {
+    return rewriter.notifyMatchFailure(
+        op->getLoc(),
+        "Dot op must have algorithm set to be converted to "
+        "triton dot.");
+  }
+
+  auto hlo_algorithm = hlo_algorithm_or_status.value();
+  auto algorithm_emitter_or_status = GetAlgorithmEmitter(hlo_algorithm);
+
+  if (!algorithm_emitter_or_status.ok()) {
+    return rewriter.notifyMatchFailure(
+        op->getLoc(),
+        absl::StrCat("Algorithm emitter not found with error: ",
+                     algorithm_emitter_or_status.status().message()));
+  }
+
+  auto algorithm_emitter = algorithm_emitter_or_status.value();
+
+  ::xla::EmitterLocOpBuilder builder(op->getLoc(), rewriter);
+
+  ::xla::gpu::triton::DotOperands dot_operands{op.getLhs(), op.getRhs(),
+                                               accumulator};
+
+  stablehlo::Precision lhs_precision;
+  stablehlo::Precision rhs_precision;
+
+  if (mlir::failed(PopulateOperandPrecision(rewriter, op, lhs_precision,
+                                            rhs_precision))) {
+    return mlir::failure();
+  }
+
+  ::xla::gpu::triton::PrecisionSpec precision_spec{hlo_algorithm, lhs_precision,
+                                                   rhs_precision};
+
+  TritonPrecisionSpec triton_precision_spec{hlo_algorithm,
+                                            InferDotPrecision(precision_spec)};
+
+  auto triton_dot_op_or_result =
+      algorithm_emitter(builder, dot_operands, triton_precision_spec);
+
+  if (!triton_dot_op_or_result.ok()) {
+    return rewriter.notifyMatchFailure(
+        op->getLoc(), absl::StrCat("Algorithm emitter failed with error: ",
+                                   triton_dot_op_or_result.status().message()));
+  }
+
+  auto triton_dot_op = triton_dot_op_or_result.value();
+
+  rewriter.replaceAllOpUsesWith(add_op, op.getResult());
+  rewriter.replaceOp(op, triton_dot_op);
+
+  return mlir::success();
+}
+
+}  // namespace
+
+class LowerDotGeneral : public mlir::OpRewritePattern<stablehlo::DotGeneralOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::DotGeneralOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    if (std::distance(op->getUsers().begin(), op->getUsers().end()) != 1) {
+      return rewriter.notifyMatchFailure(
+          op->getLoc(),
+          "Dot op must have exactly one user in order to be lowered to "
+          "triton.");
+    }
+
+    mlir::Operation* add_op = dyn_cast<arith::AddFOp>(*op->getUsers().begin());
+    if (!add_op) {
+      add_op = dyn_cast<arith::AddIOp>(*op->getUsers().begin());
+    }
+
+    if (!add_op) {
+      return rewriter.notifyMatchFailure(
+          op->getLoc(),
+          "Dot op must be consumed by an AddOp in order to be convertible to "
+          "triton dot.");
+    }
+
+    // Accumulator is the operand of add that is not the dot operation.
+    auto accumulator = add_op->getOperand(1) == op ? add_op->getOperand(0)
+                                                   : add_op->getOperand(1);
+
+    if (mlir::failed(
+            RewriteDotGeneralToTritonDot(rewriter, op, add_op, accumulator))) {
+      return mlir::failure();
+    }
+    return mlir::success();
+  }
+};
+
 class StableHLOLowerToTritonPass
     : public impl::StableHLOLowerToTritonPassBase<StableHLOLowerToTritonPass> {
  public:
@@ -334,7 +795,7 @@ class StableHLOLowerToTritonPass
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
     patterns.add<LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim,
-                 LowerReduce, LowerReshape>(mlir_context);
+                 LowerReduce, LowerReshape, LowerDotGeneral>(mlir_context);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {

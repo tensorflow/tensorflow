@@ -254,6 +254,61 @@ CHECK: %[[RES:.*]] = stablehlo.reshape %[[ARG:.*]] : (tensor<16xi32>) -> tensor<
 )"));
 }
 
+TEST_F(XTileDialectTest, HloDotIsLoweredToStableHloDot) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+flhs {
+  ROOT flhs.p0 = f32[150,160] parameter(0)
+}
+
+frhs {
+  ROOT frhs.p0 = f32[160,31] parameter(0)
+}
+
+dot_fusion {
+  fdot.p0 = f32[150,160] parameter(0)
+  fdot.p1 = f32[160,31] parameter(1)
+  fdot.lhs = f32[150,160] fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32", "8"]}]
+      }
+    }
+  }
+  fdot.rhs = f32[160,31]{1,0} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32", "8"]}]
+      }
+    }
+  }
+
+  ROOT dot = f32[150,31] dot(fdot.lhs, fdot.rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[150, 160] parameter(0)
+  p1 = f32[160, 31] parameter(1)
+  ROOT custom-call = f32[150,31] fusion(p0, p1), kind=kCustom,
+    calls=dot_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{32, 8}};
+
+  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+      this, *module->GetComputationWithName("dot_fusion"),
+      block_level_parameters,
+      R"(
+CHECK: %[[RES:.*]] = stablehlo.dot_general %[[ARG0:.*]], %[[ARG1:.*]], contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<32x8xf32>, tensor<8x8xf32>) -> tensor<32x8xf32>
+CHECK: %[[ADD_RES:.*]] = arith.addf %[[ARG2:.*]], %[[RES]] : tensor<32x8xf32>
+)"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
