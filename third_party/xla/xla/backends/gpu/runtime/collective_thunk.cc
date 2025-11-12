@@ -255,10 +255,14 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
         "using a tool designed for only one device like run_hlo_module.");
   }
 
+  // Get the list of all devices that are participating in the collective
+  // operation.
   TF_ASSIGN_OR_RETURN(
       std::vector<GlobalDeviceId> participants,
       GetParticipatingDevices(global_device_id, *params.device_assn,
                               replica_groups, group_mode));
+
+  // Get grouping of participating devices.
   std::vector<std::vector<GlobalDeviceId>> participant_groups;
   if (use_nccl) {
     // If splitting is enabled, participating groups must match in order for a
@@ -279,6 +283,13 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
           "environment configuration.");
     }
   }
+
+  // Remove trivial group that contains all participants, as we do not want to
+  // create two sets of communicator handles for these cases.
+  if (participant_groups.size() == 1 && participant_groups[0] == participants) {
+    participant_groups.clear();
+  }
+
   int64_t num_local_participants =
       GetNumLocalParticipants(params, participants);
 
