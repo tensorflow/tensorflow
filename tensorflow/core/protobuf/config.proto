@@ -791,7 +791,14 @@ message ConfigProto {
     // directory.
     string tf2xla_dump_dir = 35;
 
-    // Next: 36
+    // When set to true, the online op cost analysis will be enabled. This
+    // will run the cost analysis once for the first model execution and
+    // use the obtained cost to optimize subsequent executions.
+    // Typically `stream_merge_threshold` should be tuned to set to a non-zero
+    // value when this option is enabled.
+    bool online_cost_analysis = 36;
+
+    // Next: 37
   }
 
   Experimental experimental = 16;
