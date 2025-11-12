@@ -15,13 +15,23 @@ limitations under the License.
 
 #include "xla/tools/hlo_bisect/hlo_bisect_utils.h"
 
+#include <cstdint>
 #include <memory>
 #include <random>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -36,6 +46,7 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/tools/prepare_reference_module.h"
 #include "xla/tsl/platform/subprocess.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
 #include "tsl/platform/path.h"
 
