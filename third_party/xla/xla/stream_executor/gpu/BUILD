@@ -138,6 +138,7 @@ cc_library(
     ],
     deps = [
         "//xla:debug_options_flags",
+        "//xla:xla_proto_cc",
         "//xla/service:dump",
         "//xla/stream_executor:bit_pattern",
         "//xla/stream_executor:command_buffer",
