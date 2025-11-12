@@ -120,6 +120,11 @@ exec > >(tee "$TFCI_OUTPUT_DIR/script.log") 2>&1
 tfrun() { "$@"; }
 
 if [[ $(uname -s) = MSYS_NT* ]]; then
+  powershell -command "Get-ComputerInfo" || true
+  powershell -Command '$PSVersionTable.PSVersion' || true
+  powershell -command 'Get-Service -Name WinDefend' || true
+  powershell -command 'Get-MpPreference' || true
+
   source ./ci/official/utilities/windows.sh
   echo 'Converting MSYS Linux-like paths to Windows paths (for Docker, Python, etc.)'
   source <(python ./ci/official/utilities/convert_msys_paths_to_win_paths.py --whitelist-prefix TFCI_)
