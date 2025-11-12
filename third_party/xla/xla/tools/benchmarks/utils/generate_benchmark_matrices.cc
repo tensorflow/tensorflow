@@ -108,24 +108,24 @@ GetHardwareToRunnerLabelMap() {
 
 const absl::flat_hash_map<std::string, std::string>&
 GetHardwareToContainerImage() {
-  static const auto* kHardwareToContainerImage = new absl::flat_hash_map<
-      std::string, std::string>{
-      {"CPU_X86",
-       "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
-       "ml-build:infrastructure-public-image-530371eedb7e"},
-      {"CPU_ARM64",
-       "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
-       "ml-build-arm64:latest"},
-      {"GPU_L4",
-       "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
-       "ml-build-cuda12.8-cudnn9.8:infrastructure-public-image-46c0fc3324bc"},
-      {"GPU_B200",
-       "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
-       "ml-build-cuda12.8-cudnn9.8:infrastructure-public-image-46c0fc3324bc"},
-      {"GPU_L4_1H_4D",
-       "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
-       "ml-build-cuda12.8-cudnn9.8:infrastructure-public-image-46c0fc3324bc"},
-  };
+  static const auto* kHardwareToContainerImage =
+      new absl::flat_hash_map<std::string, std::string>{
+          {"CPU_X86",
+           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
+           "ml-build:latest"},
+          {"CPU_ARM64",
+           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
+           "ml-build-arm64:latest"},
+          {"GPU_L4",
+           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
+           "ml-build-cuda12.8-cudnn9.8:latest"},
+          {"GPU_B200",
+           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
+           "ml-build-cuda12.8-cudnn9.8:latest"},
+          {"GPU_L4_1H_4D",
+           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
+           "ml-build-cuda12.8-cudnn9.8:latest"},
+      };
   return *kHardwareToContainerImage;
 }
 
