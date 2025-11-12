@@ -1010,8 +1010,8 @@ class HloModule {
     // `std::optional<std::unique_ptr<HloModule>>(
     //     const ShapeIndex& index,
     //     const OriginalArray& old_original_array,
-    //     const xla::Shape& old_array_shape,
-    //     const xla::Shape& new_array_shape)`
+    //     const xla::Shape& old_shape,
+    //     const xla::Shape& new_shape)`
     //
     // It is called for each `OriginalArray` in `old_inst` and should
     // return one of the following:
@@ -1042,9 +1042,8 @@ class HloModule {
         const HloInstruction* old_inst, HloInstruction* new_inst,
         std::function<std::optional<std::unique_ptr<HloModule>>(
             const ShapeIndex& index, const OriginalArray& old_original_array,
-            const xla::Shape& old_array_shape,
-            const xla::Shape& new_array_shape)>&& build_recovery_computation =
-            nullptr);
+            const xla::Shape& old_shape, const xla::Shape& new_shape)>&&
+            build_recovery_computation = nullptr);
 
     // Similar to `AddRecoveryComputation`, but the callback is provided an
     // HLO module builder so that caller can directly build the recovery
@@ -1054,8 +1053,8 @@ class HloModule {
         std::function<std::optional<HloInstruction*>(
             xla::HloComputation::Builder& builder, const ShapeIndex& index,
             const OriginalArray& old_original_array,
-            const xla::Shape& old_array_shape,
-            const xla::Shape& new_array_shape)>&& build_recovery_computation);
+            const xla::Shape& old_shape, const xla::Shape& new_shape)>&&
+            build_recovery_computation);
 
     bool empty() const { return table_.empty(); }
 
@@ -1069,6 +1068,8 @@ class HloModule {
     iterator end() { return table_.end(); }
     const_iterator begin() const { return table_.begin(); }
     const_iterator end() const { return table_.end(); }
+
+    size_t size() const { return table_.size(); }
 
    private:
     friend class HloModule;

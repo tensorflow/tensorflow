@@ -16599,6 +16599,27 @@ ENTRY entry {
               ::testing::ElementsAre(8, 10, 12, 14, 9, 11, 13, 15))));
 }
 
+TEST_P(SpmdPartitioningTest, OriginalValueWithTupleTypeShardingAnnotation) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  token0 = token[] after-all(), sharding={maximal device=0}
+  infeed = ((f32[9,2]{1,0}, f32[2]{0}), token[]) infeed(token0),
+    sharding={{devices=[2,1]0,1}, {replicated}, {maximal device=0}}
+  ROOT infeed.data = (f32[9,2]{1,0}, f32[2]{0}) get-tuple-element(infeed),
+    index=0, sharding={{devices=[2,1]0,1}, {replicated}}, origin={({"a"}, {"b"})}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  EXPECT_EQ(module->original_value_recovery_table().size(), 1);
+  EXPECT_EQ(module->original_value_recovery_table().begin()->first.ToString(),
+            R"("a")");
+  EXPECT_EQ(
+      module->original_value_recovery_table().begin()->second.first.ToString(),
+      R"("a)" + std::string(kOriginalValuePlaceholderDelimiter) + R"(0")");
+}
+
 TEST_P(SpmdPartitioningTest, ShardingPreprocessOrderWhile) {
   absl::string_view hlo_string = R"(
 HloModule module
