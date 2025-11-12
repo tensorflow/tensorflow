@@ -462,6 +462,11 @@ message DebugOptions {
   optional string xla_gpu_cuda_data_dir = 61;
 
   // Let GEMM fusion autotuning probe cuDNN as a backend.
+  //
+  // CAUTION:
+  // * HLO dot precision (e.g. `algorithm=dot_bf16_bf16_f32`) is ignored.
+  // * `tf32` matmuls are enabled unconditionally.
+  //
   // Current levels:
   // 0: Disabled.
   // 1: Enabled on Blackwell+ GPUs.
