@@ -3844,13 +3844,13 @@ nest1 {
 }
 
 nest2 {
-  ROOT p0 = s32[128] parameter(0)
+  ROOT p0 = s32[25] parameter(0)
 }
 
 concatenate_fusion {
   p0 = s32[128] parameter(0)
   p1 = s32[128] parameter(1)
-  p2 = s32[128] parameter(2)
+  p2 = s32[25] parameter(2)
 
   fusion0 = s32[128] fusion(p0), kind=kCustom, calls=nest0, backend_config={
     "fusion_backend_config":{
@@ -3868,7 +3868,7 @@ concatenate_fusion {
         "num_warps":"1",
         "num_ctas":"1",
         "num_stages":"1"}}}
-  fusion2 = s32[128] fusion(p2), kind=kCustom, calls=nest2, backend_config={
+  fusion2 = s32[25] fusion(p2), kind=kCustom, calls=nest2, backend_config={
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{
@@ -3877,14 +3877,15 @@ concatenate_fusion {
         "num_ctas":"1",
         "num_stages":"1"}}}
 
-  ROOT concatenate = s32[384] concatenate(fusion0, fusion1, fusion2), dimensions={0}
+  ROOT concatenate = s32[281] concatenate(fusion0, fusion1, fusion2),
+    dimensions={0}
 }
 
 ENTRY main {
   p0 = s32[128] parameter(0)
   p1 = s32[128] parameter(1)
-  p2 = s32[128] parameter(2)
-  ROOT fusion = s32[384] fusion(p0, p1, p2), kind=kCustom,
+  p2 = s32[25] parameter(2)
+  ROOT fusion = s32[281] fusion(p0, p1, p2), kind=kCustom,
     calls=concatenate_fusion, backend_config={
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion",

@@ -162,7 +162,11 @@ TritonEmitterConstraints::DeriveCustomConstraints(
       ConstraintExpression divisibility_constraints =
           ConstraintExpression::GetAlwaysSatisfied();
 
-      for (const HloInstruction* operand : hlo->operands()) {
+      // The last operand of the concat does not require the divisibility
+      // constraint.
+      for (int operand_id = 0; operand_id < hlo->operand_count() - 1;
+           ++operand_id) {
+        const HloInstruction* operand = hlo->operand(operand_id);
         AffineExpr operand_concat_dimension = mlir::getAffineConstantExpr(
             operand->shape().dimensions(concatenate_dimension_index), ctx);
         ConstraintExpression::Constraint divisibility_constraint{

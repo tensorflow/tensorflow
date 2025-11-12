@@ -1007,21 +1007,22 @@ absl::StatusOr<TensorValue> EmitConcatenate(
   // prologue of reductions.
   SmallVector<int64_t> padded_tile_sizes =
       GetPaddedTileSizes(tiled_concatenate.tile_sizes());
-  int64_t concatenate_dimension_tile_size =
-      padded_tile_sizes[concatenate_dimension];
+  int64_t concat_dim_tile_size = padded_tile_sizes[concatenate_dimension];
 
-  for (const TiledHloInstruction* operand : tiled_concatenate.operands()) {
+  int64_t num_operands = tiled_concatenate.operands().size();
+  for (const auto [index, operand] :
+       llvm::enumerate(tiled_concatenate.operands())) {
     if (operand->hlo()->opcode() != HloOpcode::kFusion) {
       // Sanity check: all operands should be nested fusions.
       return absl::FailedPreconditionError(
           "Expected concatenate operands to be nested fusions.");
     }
 
-    int64_t operand_concatenate_dimension_size =
-        tiled_concatenate.hlo()->shape().dimensions(concatenate_dimension);
+    int64_t operand_concat_dim_size =
+        operand->hlo()->shape().dimensions(concatenate_dimension);
 
-    if (operand_concatenate_dimension_size % concatenate_dimension_tile_size !=
-        0) {
+    if (index != num_operands - 1 &&
+        operand_concat_dim_size % concat_dim_tile_size != 0) {
       // Sanity check: concatenation dimension should be divisible by the tile
       // size for each operand. This is not a fundamental limitation, but this
       // lowering will emit incorrect code if this does not hold---so we gate
@@ -1029,8 +1030,7 @@ absl::StatusOr<TensorValue> EmitConcatenate(
       return absl::FailedPreconditionError(absl::StrCat(
           "Expected the tile size of the concatenation dimension of operand ",
           operand->ToString(), "to divide the dimension size exactly, but got",
-          operand_concatenate_dimension_size, " % ",
-          concatenate_dimension_tile_size, " != 0"));
+          operand_concat_dim_size, " % ", concat_dim_tile_size, " != 0"));
     }
   }
   TF_ASSIGN_OR_RETURN(
