@@ -12,7 +12,7 @@ load(
     "if_google",
     "internal_visibility",
 )
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable", "tsl_pybind_extension")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable", "get_compatible_with_portable", "tsl_pybind_extension")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -89,6 +89,25 @@ py_strict_test(
 )
 
 cc_library(
+    name = "dlpack_types",
+    srcs = ["dlpack_types.cc"],
+    hdrs = ["dlpack_types.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/status:statusor",
+        "@dlpack",
+    ],
+)
+
+cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = [
@@ -123,6 +142,20 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@nanobind",
         "@rules_python//python/cc:current_py_cc_headers",  # buildcleaner: keep
+    ],
+)
+
+cc_library(
+    name = "strides",
+    srcs = ["strides.cc"],
+    hdrs = ["strides.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
