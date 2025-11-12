@@ -111,6 +111,7 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_fusion_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
+#include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -2256,8 +2257,7 @@ absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
     // The legacy emitter supports 0D tensors so we would get inconsistent
     // results if we try to rewrite them.
     if (fusion_kind != kTritonGemmFusionKind) {
-      pm.addPass(
-          mlir::triton::xla::CreateTritonXLAConvert0DTensorToScalarPass());
+      pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
     }
     pm.addPass(mlir::triton::xla::CreateTensorLowerToTritonPass());
     pm.addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass());
