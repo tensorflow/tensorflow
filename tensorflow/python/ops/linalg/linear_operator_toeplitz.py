@@ -140,7 +140,8 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
 
     Raises:
       ValueError:  If `is_square` is `False`.
-      ValueError:  If `is_positive_definite` is `True` and `is_non_singular` is `False`.
+      ValueError:  If `is_positive_definite` is `True` and
+        `is_non_singular` is `False`.
     """
     parameters = dict(
         col=col,
