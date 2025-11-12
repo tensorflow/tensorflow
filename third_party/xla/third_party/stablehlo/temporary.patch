@@ -585,6 +585,51 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.ml
  }
  
  // -----
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+@@ -27,6 +27,14 @@
+   // CHECK-NOT: stablehlo.constant
+   // CHECK: return %arg0
+   return %1 : tensor<f32>
++}
++
++// CHECK-LABEL: @add_cst_on_rhs_with_attrs
++func.func @add_cst_on_rhs_with_attrs(%arg0: tensor<f32>) -> tensor<f32> {
++  %cst = stablehlo.constant dense<1.0> : tensor<f32>
++  // CHECK: stablehlo.add %arg0, %cst {mhlo.frontend_attributes = {foo = "1"}} : tensor<f32>
++  %0 = stablehlo.add %cst, %arg0 {mhlo.frontend_attributes = {foo = "1"}} : tensor<f32>
++  return %0 : tensor<f32>
+ }
+ 
+ // -----
+@@ -976,6 +984,26 @@
+   // CHECK-NOT: stablehlo.constant
+   // CHECK: return %arg0 : tensor<f32>
+   return %0 : tensor<f32>
++}
++
++// CHECK-LABEL: @multiply_by_one_merge_attrs
++func.func @multiply_by_one_merge_attrs(%arg0: tensor<f32>) -> tensor<f32> {
++  %cst = stablehlo.constant dense<1.0> : tensor<f32>
++  %0 = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1"}} : tensor<f32>
++  %1 = stablehlo.multiply %0, %cst {mhlo.frontend_attributes = {foo = "1"}} : tensor<f32>
++  // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1", foo = "1"}} : tensor<f32>
++  // CHECK: return %[[ADD]] : tensor<f32>
++  return %1 : tensor<f32>
++}
++
++// CHECK-LABEL: @multiply_by_one_merge_attrs_conflict
++func.func @multiply_by_one_merge_attrs_conflict(%arg0: tensor<f32>) -> tensor<f32> {
++  %cst = stablehlo.constant dense<1.0> : tensor<f32>
++  %0 = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1", foo = "0"}} : tensor<f32>
++  %1 = stablehlo.multiply %0, %cst {mhlo.frontend_attributes = {foo = "1"}} : tensor<f32>
++  // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1", foo = "1"}} : tensor<f32>
++  // CHECK: return %[[ADD]] : tensor<f32>
++  return %1 : tensor<f32>
+ }
+ 
+ // -----
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_target_independent_optimization.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_target_independent_optimization.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_target_independent_optimization.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_target_independent_optimization.mlir
@@ -1074,4 +1119,190 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
    patterns->add<FoldConvertOpPattern>(context, options, benefit);
    patterns->add<FoldDivOpPattern>(context, options, benefit);
    patterns->add<FoldDynamicSliceOpPattern>(context, options, benefit);
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+@@ -69,6 +69,54 @@
+   });
+ }
+ 
++bool mergeDiscardableAttributes(ValueRange sourceValues,
++                                ValueRange destValues) {
++  if (sourceValues.size() != destValues.size()) return false;
++  bool changed = false;
++  for (auto [source, dest] : llvm::zip(sourceValues, destValues)) {
++    if (mergeDiscardableAttributes(source, dest)) changed = true;
++  }
++  return changed;
++}
++
++bool mergeDiscardableAttributes(Value sourceValue, Value destValue) {
++  Operation* sourceOp = sourceValue.getDefiningOp();
++  Operation* destOp = destValue.getDefiningOp();
++  if (!sourceOp || !destOp) return false;
++
++  auto sourceAttrs = sourceOp->getDiscardableAttrDictionary();
++  if (!sourceAttrs) return true;
++
++  auto destAttrs = destOp->getDiscardableAttrDictionary();
++  if (!destAttrs) {
++    destOp->setDiscardableAttrs(sourceAttrs);
++    return true;
++  }
++
++  NamedAttrList mergedAttrs(destAttrs);
++  for (auto attr : sourceAttrs.getValue()) {
++    if (attr.getName() == "mhlo.frontend_attributes" &&
++        mergedAttrs.get("mhlo.frontend_attributes")) {
++      // Merge frontend attributes, prioritizing source attributes.
++      auto destFrontendAttrs =
++          cast<DictionaryAttr>(mergedAttrs.get("mhlo.frontend_attributes"));
++      auto sourceFrontendAttrs = cast<DictionaryAttr>(attr.getValue());
++      NamedAttrList frontendAttrs(destFrontendAttrs);
++      for (auto sourceAttr : sourceFrontendAttrs) {
++        frontendAttrs.set(sourceAttr.getName(), sourceAttr.getValue());
++      }
++      mergedAttrs.set("mhlo.frontend_attributes",
++                      frontendAttrs.getDictionary(destOp->getContext()));
++    } else {
++      // Otherwise prioritize source attributes
++      mergedAttrs.set(attr.getName(), attr.getValue());
++    }
++  }
++
++  destOp->setDiscardableAttrs(mergedAttrs.getDictionary(destOp->getContext()));
++  return true;
++}
++
+ template <typename OpType>
+ struct SimplifyOpRewritePattern : OpRewritePattern<OpType> {
+   SimplifyOpRewritePattern(
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+@@ -134,6 +134,8 @@
+ 
+ def MergePermutations : NativeCodeCall<"getMergedTransposePermutation($_builder, $0, $1)">;
+ 
++def MergeDiscardableAttributes : NativeCodeCall<"mergeDiscardableAttributes($0, $1)">;
++
+ def StableHLO_ConvertOpWithShape : NativeCodeCall<
+     "stablehlo::ConvertOp::create($_builder, $_loc, $0.getType(), $1)">;
+ 
+@@ -149,8 +151,9 @@
+ // op(cst, X) -> op(X, cst)
+ class CanonicalizeConstantToRhs<Op StableHLO_OpType>
+   : Pat<(StableHLO_OpType:$op (StableHLO_ConstantOp:$lhs $value), $rhs),
+-        (StableHLO_OpType $rhs, $lhs),
+-        [(NotConstantOp $rhs), (CommutativeOp $op)]>;
++        (StableHLO_OpType:$new_op $rhs, $lhs),
++        [(NotConstantOp $rhs), (CommutativeOp $op)],
++        [(MergeDiscardableAttributes $op, $new_op)]>;
+ 
+ ////////
+ // AddOp
+@@ -161,8 +164,9 @@
+ 
+ // Pattern: add(X, 0) -> X
+ def AddOp_RemoveNoop
+-  : Pat<(StableHLO_AddOp $lhs, (ConstantLikeMatcher AnyZero:$value)),
+-        (replaceWithValue $lhs)>;
++  : Pat<(StableHLO_AddOp:$op $lhs, (ConstantLikeMatcher AnyZero:$value)),
++        (replaceWithValue $lhs), [],
++        [(MergeDiscardableAttributes $op, $lhs)]>;
+ 
+ ////////
+ // AndOp
+@@ -173,13 +177,15 @@
+ 
+ // Pattern: and(X, 0) -> 0
+ def AndOp_FoldToZero
+-  : Pat<(StableHLO_AndOp $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
+-        (replaceWithValue $zero)>;
++  : Pat<(StableHLO_AndOp:$op $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
++        (replaceWithValue $zero), [],
++        [(MergeDiscardableAttributes $op, $zero)]>;
+ 
+ // Pattern: and(X, 1) -> X
+ def AndOp_RemoveNoop
+-  : Pat<(StableHLO_AndOp $lhs, (StableHLO_ConstantOp:$one IntAllOnes:$value)),
+-        (replaceWithValue $lhs)>;
++  : Pat<(StableHLO_AndOp:$op $lhs, (StableHLO_ConstantOp:$one IntAllOnes:$value)),
++        (replaceWithValue $lhs), [],
++        [(MergeDiscardableAttributes $op, $lhs)]>;
+ 
+ ////////
+ // BroadcastInDimOp
+@@ -188,7 +194,8 @@
+ def BroadcastInDimOp_RemoveNoop
+   : Pat<(StableHLO_BroadcastInDimOp:$op $operand, IotaDims:$dims),
+         (replaceWithValue $operand),
+-        [(TypesEqual $op, $operand)]>;
++        [(TypesEqual $op, $operand)],
++        [(MergeDiscardableAttributes $op, $operand)]>;
+ 
+ // Pattern: broadcast_in_dim(broadcast_in_dim(X, [dimsA...]), [dimsB...])
+ //       -> broadcast_in_dim(X, merge(dimsA, dimsB))
+@@ -254,7 +261,8 @@
+ def ConvertOp_RemoveNoop
+   : Pat<(StableHLO_ConvertOp:$convert $operand),
+         (replaceWithValue $operand),
+-        [(TypesEqual $convert, $operand)]>;
++        [(TypesEqual $convert, $operand)],
++        [(MergeDiscardableAttributes $convert, $operand)]>;
+ 
+ ////////
+ // DynamicBroadcastInDimOp
+@@ -441,13 +449,15 @@
+ // Multiplication by 0. This fold is not trivial for floats in presence of NaNs,
+ // so we currently only enable it for ints.
+ def MulOp_FoldToZero
+-  : Pat<(StableHLO_MulOp $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
+-        (replaceWithValue $zero)>;
++  : Pat<(StableHLO_MulOp:$mul_op $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
++        (replaceWithValue $zero), [],
++        [(MergeDiscardableAttributes $mul_op, $zero)]>;
+ 
+ // Pattern: multiply(X, 1i) -> X
+ def MulOp_RemoveNoop
+-  : Pat<(StableHLO_MulOp $lhs, (StableHLO_ConstantOp AnyOne:$value)),
+-        (replaceWithValue $lhs)>;
++  : Pat<(StableHLO_MulOp:$mul_op $lhs, (StableHLO_ConstantOp AnyOne:$value)),
++        (replaceWithValue $lhs), [],
++        [(MergeDiscardableAttributes $mul_op, $lhs)]>;
+ 
+ ////////
+ // OrOp
+@@ -457,13 +467,15 @@
+ 
+ // Pattern: or(X, 1) -> 1
+ def OrOp_FoldToOne
+-  : Pat<(StableHLO_OrOp $lhs, (StableHLO_ConstantOp:$one IntAllOnes:$value)),
+-        (replaceWithValue $one)>;
++  : Pat<(StableHLO_OrOp:$op $lhs, (StableHLO_ConstantOp:$one IntAllOnes:$value)),
++        (replaceWithValue $one), [],
++        [(MergeDiscardableAttributes $op, $one)]>;
+ 
+ // Pattern: or(X, 0) -> X
+ def OrOp_RemoveNoop
+-  : Pat<(StableHLO_OrOp $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
+-        (replaceWithValue $lhs)>;
++  : Pat<(StableHLO_OrOp:$op $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
++        (replaceWithValue $lhs), [],
++        [(MergeDiscardableAttributes $op, $lhs)]>;
+ 
+ ////////
+ // PadOp
+@@ -564,8 +576,9 @@
+ 
+ // Pattern: subtract(X, 0) -> X
+ def SubtractOp_RemoveNoop
+-  : Pat<(StableHLO_SubtractOp $lhs, (StableHLO_ConstantOp AnyZero:$value)),
+-        (replaceWithValue $lhs)>;
++  : Pat<(StableHLO_SubtractOp:$op $lhs, (StableHLO_ConstantOp AnyZero:$value)),
++        (replaceWithValue $lhs), [],
++        [(MergeDiscardableAttributes $op, $lhs)]>;
+ 
+ ////////
+ // SliceOp
 
