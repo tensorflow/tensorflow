@@ -381,11 +381,16 @@ absl::Status EnablePeerAccess(Context* from, Context* to) {
   hipError_t result =
       wrap::hipDeviceEnablePeerAccess(to->device_ordinal(), 0 /* = flags */);
 
-  if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
+  if (result == hipErrorPeerAccessAlreadyEnabled) {
+    // hipGetLastError is used to reset per thread error state,
+    // as hipGetLastError would get the recent error code since rocm7 even the
+    // last call is successful.
+    (void)wrap::hipGetLastError();
+  } else if (result != hipSuccess) {
     return absl::InternalError(
         absl::StrFormat("failed to enable peer access from %d to %d: %s",
                         from->device_ordinal(), to->device_ordinal(),
-                        ToString(result).c_str()));
+                        wrap::hipGetErrorString(result)));
   }
 
   return absl::OkStatus();
