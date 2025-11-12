@@ -101,7 +101,7 @@ TEST_F(IndexingMapTest, VerifyDimensions) {
   EXPECT_FALSE(indexing_map.Verify(ss));
   EXPECT_EQ(ss.str(),
             "number of dim vars (2) must match the number of dimensions in the "
-            "affine map (1)");
+            "symbolic map (1)");
 }
 
 TEST_F(IndexingMapTest, VerifySymbols) {
@@ -113,7 +113,7 @@ TEST_F(IndexingMapTest, VerifySymbols) {
   EXPECT_FALSE(indexing_map.Verify(ss));
   EXPECT_EQ(ss.str(),
             "number of range (1) + runtime (0) variables must match the number "
-            "of symbols in the affine map (0)");
+            "of symbols in the symbolic map (0)");
 }
 
 TEST_F(IndexingMapTest, RTVar) {

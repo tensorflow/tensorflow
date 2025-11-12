@@ -69,67 +69,66 @@ mlir::AffineExpr SymbolicExprToAffineExpr(SymbolicExpr symbolic_expr,
 }
 
 llvm::SmallVector<SymbolicExpr> AffineExprsToSymbolicExprs(
-    llvm::ArrayRef<mlir::AffineExpr> affine_exprs, SymbolicExprContext* context,
-    int num_dims) {
+    llvm::ArrayRef<mlir::AffineExpr> affine_exprs, int num_dims) {
   llvm::SmallVector<SymbolicExpr> symbolic_exprs;
   symbolic_exprs.reserve(affine_exprs.size());
   for (mlir::AffineExpr expr : affine_exprs) {
-    symbolic_exprs.push_back(AffineExprToSymbolicExpr(expr, context, num_dims));
+    symbolic_exprs.push_back(AffineExprToSymbolicExpr(expr, num_dims));
   }
   return symbolic_exprs;
 }
 
 SymbolicExpr AffineExprToSymbolicExpr(mlir::AffineExpr affine_expr,
-                                      SymbolicExprContext* context,
                                       int num_dims) {
+  mlir::MLIRContext* context = affine_expr.getContext();
   switch (affine_expr.getKind()) {
     case mlir::AffineExprKind::Constant:
-      return context->CreateConstant(
-          mlir::cast<mlir::AffineConstantExpr>(affine_expr).getValue());
+      return CreateSymbolicConstant(
+          mlir::cast<mlir::AffineConstantExpr>(affine_expr).getValue(),
+          context);
     case mlir::AffineExprKind::DimId:
-      return context->CreateVariable(
-          mlir::cast<mlir::AffineDimExpr>(affine_expr).getPosition());
+      return CreateSymbolicVariable(
+          mlir::cast<mlir::AffineDimExpr>(affine_expr).getPosition(), context);
     case mlir::AffineExprKind::SymbolId:
-      return context->CreateVariable(
+      return CreateSymbolicVariable(
           mlir::cast<mlir::AffineSymbolExpr>(affine_expr).getPosition() +
-          num_dims);
+              num_dims,
+          context);
     case mlir::AffineExprKind::Add: {
       auto bin_op = mlir::cast<mlir::AffineBinaryOpExpr>(affine_expr);
-      return AffineExprToSymbolicExpr(bin_op.getLHS(), context, num_dims) +
-             AffineExprToSymbolicExpr(bin_op.getRHS(), context, num_dims);
+      return AffineExprToSymbolicExpr(bin_op.getLHS(), num_dims) +
+             AffineExprToSymbolicExpr(bin_op.getRHS(), num_dims);
     }
     case mlir::AffineExprKind::Mul: {
       auto bin_op = mlir::cast<mlir::AffineBinaryOpExpr>(affine_expr);
-      return AffineExprToSymbolicExpr(bin_op.getLHS(), context, num_dims) *
-             AffineExprToSymbolicExpr(bin_op.getRHS(), context, num_dims);
+      return AffineExprToSymbolicExpr(bin_op.getLHS(), num_dims) *
+             AffineExprToSymbolicExpr(bin_op.getRHS(), num_dims);
     }
     case mlir::AffineExprKind::FloorDiv: {
       auto bin_op = mlir::cast<mlir::AffineBinaryOpExpr>(affine_expr);
-      return AffineExprToSymbolicExpr(bin_op.getLHS(), context, num_dims)
-          .floorDiv(
-              AffineExprToSymbolicExpr(bin_op.getRHS(), context, num_dims));
+      return AffineExprToSymbolicExpr(bin_op.getLHS(), num_dims)
+          .floorDiv(AffineExprToSymbolicExpr(bin_op.getRHS(), num_dims));
     }
     case mlir::AffineExprKind::CeilDiv: {
       auto bin_op = mlir::cast<mlir::AffineBinaryOpExpr>(affine_expr);
-      return AffineExprToSymbolicExpr(bin_op.getLHS(), context, num_dims)
-          .ceilDiv(
-              AffineExprToSymbolicExpr(bin_op.getRHS(), context, num_dims));
+      return AffineExprToSymbolicExpr(bin_op.getLHS(), num_dims)
+          .ceilDiv(AffineExprToSymbolicExpr(bin_op.getRHS(), num_dims));
     }
     case mlir::AffineExprKind::Mod: {
       auto bin_op = mlir::cast<mlir::AffineBinaryOpExpr>(affine_expr);
-      return AffineExprToSymbolicExpr(bin_op.getLHS(), context, num_dims) %
-             AffineExprToSymbolicExpr(bin_op.getRHS(), context, num_dims);
+      return AffineExprToSymbolicExpr(bin_op.getLHS(), num_dims) %
+             AffineExprToSymbolicExpr(bin_op.getRHS(), num_dims);
     }
   }
 }
 
-SymbolicMap AffineMapToSymbolicMap(const mlir::AffineMap& affine_map,
-                                   SymbolicExprContext* context) {
+SymbolicMap AffineMapToSymbolicMap(const mlir::AffineMap& affine_map) {
+  mlir::MLIRContext* context = affine_map.getContext();
   llvm::SmallVector<SymbolicExpr> results;
   results.reserve(affine_map.getNumResults());
   int num_dims = affine_map.getNumDims();
   for (mlir::AffineExpr expr : affine_map.getResults()) {
-    results.push_back(AffineExprToSymbolicExpr(expr, context, num_dims));
+    results.push_back(AffineExprToSymbolicExpr(expr, num_dims));
   }
   return SymbolicMap::Get(context, num_dims, affine_map.getNumSymbols(),
                           results);
@@ -157,11 +156,10 @@ mlir::AffineMap SymbolicMapToAffineMap(SymbolicMap symbolic_map,
 llvm::MapVector<SymbolicExpr, Interval>
 ConvertAffineConstraintsToSymbolicConstraints(
     const llvm::MapVector<mlir::AffineExpr, Interval>& affine_constraints,
-    SymbolicExprContext* context, int num_dims) {
+    int num_dims) {
   llvm::MapVector<SymbolicExpr, Interval> symbolic_constraints;
   for (const auto& [affine_expr, interval] : affine_constraints) {
-    SymbolicExpr expr =
-        AffineExprToSymbolicExpr(affine_expr, context, num_dims);
+    SymbolicExpr expr = AffineExprToSymbolicExpr(affine_expr, num_dims);
     symbolic_constraints[expr] = interval;
   }
   return symbolic_constraints;

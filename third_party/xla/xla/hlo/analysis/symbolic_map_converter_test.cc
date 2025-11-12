@@ -53,74 +53,67 @@ AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
 
 class SymbolicMapConverterTest : public ::testing::Test {
  public:
-  SymbolicMapConverterTest() : symbolic_expr_context_(&mlir_context_) {}
-
-  MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_;
+  MLIRContext context_;
 };
 
 TEST_F(SymbolicMapConverterTest, AffineToSymbolicRoundTrip) {
   AffineMap affine_map = ParseAffineMap(
       "(d0, d1)[s0, s1] -> (d0 + s1 * 2, d1 - s0, d0 floordiv 3, d1 mod 4)",
-      &mlir_context_);
+      &context_);
 
-  SymbolicMap symbolic_map =
-      AffineMapToSymbolicMap(affine_map, &symbolic_expr_context_);
+  SymbolicMap symbolic_map = AffineMapToSymbolicMap(affine_map);
 
   EXPECT_EQ(symbolic_map.GetNumResults(), 4);
 
-  AffineMap round_trip_map =
-      SymbolicMapToAffineMap(symbolic_map, &mlir_context_);
+  AffineMap round_trip_map = SymbolicMapToAffineMap(symbolic_map, &context_);
   EXPECT_EQ(affine_map, round_trip_map);
 }
 
 TEST_F(SymbolicMapConverterTest, SymbolicToAffineFailure) {
-  SymbolicExpr d0 = symbolic_expr_context_.CreateVariable(0);
-  SymbolicExpr c1 = symbolic_expr_context_.CreateConstant(1);
+  SymbolicExpr d0 = CreateSymbolicVariable(0, &context_);
+  SymbolicExpr c1 = CreateSymbolicConstant(1, &context_);
   // kMax is not representable in AffineExpr.
   SymbolicExpr max_expr = d0.max(c1);
 
   AffineMap affine_map = SymbolicMapToAffineMap(
-      SymbolicMap::Get(&symbolic_expr_context_, 1, 0, {max_expr}),
-      &mlir_context_);
+      SymbolicMap::Get(&context_, 1, 0, {max_expr}), &context_);
   EXPECT_FALSE(affine_map);
 }
 
 TEST_F(SymbolicMapConverterTest, SymbolicToAffineNestedFailure) {
-  SymbolicExpr d0 = symbolic_expr_context_.CreateVariable(0);
-  SymbolicExpr c1 = symbolic_expr_context_.CreateConstant(1);
-  SymbolicExpr c2 = symbolic_expr_context_.CreateConstant(2);
+  SymbolicExpr d0 = CreateSymbolicVariable(0, &context_);
+  SymbolicExpr c1 = CreateSymbolicConstant(1, &context_);
+  SymbolicExpr c2 = CreateSymbolicConstant(2, &context_);
 
   // d0 + max(c1, c2). max is not representable in AffineExpr.
   SymbolicExpr nested_max_expr = d0 + c1.max(c2);
 
   // This should not crash and should return a null AffineMap.
   AffineMap affine_map = SymbolicMapToAffineMap(
-      SymbolicMap::Get(&symbolic_expr_context_, 1, 0, {nested_max_expr}),
-      &mlir_context_);
+      SymbolicMap::Get(&context_, 1, 0, {nested_max_expr}), &context_);
   EXPECT_FALSE(affine_map);
 }
 
 TEST_F(SymbolicMapConverterTest, AffineExprsToSymbolicExprs) {
-  mlir::AffineExpr d0 = mlir::getAffineDimExpr(0, &mlir_context_);
-  mlir::AffineExpr d1 = mlir::getAffineDimExpr(1, &mlir_context_);
-  mlir::AffineExpr s0 = mlir::getAffineSymbolExpr(0, &mlir_context_);
-  mlir::AffineExpr c1 = mlir::getAffineConstantExpr(1, &mlir_context_);
+  mlir::AffineExpr d0 = mlir::getAffineDimExpr(0, &context_);
+  mlir::AffineExpr d1 = mlir::getAffineDimExpr(1, &context_);
+  mlir::AffineExpr s0 = mlir::getAffineSymbolExpr(0, &context_);
+  mlir::AffineExpr c1 = mlir::getAffineConstantExpr(1, &context_);
   llvm::SmallVector<mlir::AffineExpr> affine_exprs = {d0, d1, s0, c1};
-  llvm::SmallVector<SymbolicExpr> symbolic_exprs = AffineExprsToSymbolicExprs(
-      affine_exprs, &symbolic_expr_context_, /*num_dims=*/2);
+  llvm::SmallVector<SymbolicExpr> symbolic_exprs =
+      AffineExprsToSymbolicExprs(affine_exprs, /*num_dims=*/2);
   EXPECT_EQ(symbolic_exprs.size(), 4);
-  EXPECT_EQ(symbolic_exprs[0], symbolic_expr_context_.CreateVariable(0));
-  EXPECT_EQ(symbolic_exprs[1], symbolic_expr_context_.CreateVariable(1));
-  EXPECT_EQ(symbolic_exprs[2], symbolic_expr_context_.CreateVariable(2));
-  EXPECT_EQ(symbolic_exprs[3], symbolic_expr_context_.CreateConstant(1));
+  EXPECT_EQ(symbolic_exprs[0], CreateSymbolicVariable(0, &context_));
+  EXPECT_EQ(symbolic_exprs[1], CreateSymbolicVariable(1, &context_));
+  EXPECT_EQ(symbolic_exprs[2], CreateSymbolicVariable(2, &context_));
+  EXPECT_EQ(symbolic_exprs[3], CreateSymbolicConstant(1, &context_));
 }
 
 TEST_F(SymbolicMapConverterTest,
        ConvertAffineConstraintsToSymbolicConstraints) {
-  mlir::AffineExpr d0 = mlir::getAffineDimExpr(0, &mlir_context_);
-  mlir::AffineExpr s0 = mlir::getAffineSymbolExpr(0, &mlir_context_);
-  mlir::AffineExpr c1 = mlir::getAffineConstantExpr(1, &mlir_context_);
+  mlir::AffineExpr d0 = mlir::getAffineDimExpr(0, &context_);
+  mlir::AffineExpr s0 = mlir::getAffineSymbolExpr(0, &context_);
+  mlir::AffineExpr c1 = mlir::getAffineConstantExpr(1, &context_);
 
   llvm::MapVector<mlir::AffineExpr, Interval> affine_constraints;
   affine_constraints[d0 + s0] = {0, 127};
@@ -128,12 +121,12 @@ TEST_F(SymbolicMapConverterTest,
   affine_constraints[d0 - c1] = {10, 20};
 
   llvm::MapVector<SymbolicExpr, Interval> symbolic_constraints =
-      ConvertAffineConstraintsToSymbolicConstraints(
-          affine_constraints, &symbolic_expr_context_, /*num_dims=*/1);
+      ConvertAffineConstraintsToSymbolicConstraints(affine_constraints,
+                                                    /*num_dims=*/1);
 
-  SymbolicExpr sym_d0 = symbolic_expr_context_.CreateVariable(0);
-  SymbolicExpr sym_s0 = symbolic_expr_context_.CreateVariable(1);
-  SymbolicExpr sym_c1 = symbolic_expr_context_.CreateConstant(1);
+  SymbolicExpr sym_d0 = CreateSymbolicVariable(0, &context_);
+  SymbolicExpr sym_s0 = CreateSymbolicVariable(1, &context_);
+  SymbolicExpr sym_c1 = CreateSymbolicConstant(1, &context_);
 
   EXPECT_EQ(symbolic_constraints.size(), 3);
   EXPECT_EQ(symbolic_constraints[sym_d0 + sym_s0], (Interval{0, 127}));
@@ -142,12 +135,12 @@ TEST_F(SymbolicMapConverterTest,
 }
 
 TEST_F(SymbolicMapConverterTest, ConvertAffineToSymbolicExpr) {
-  mlir::AffineExpr d0 = mlir::getAffineDimExpr(0, &mlir_context_);
-  mlir::AffineExpr d1 = mlir::getAffineDimExpr(1, &mlir_context_);
-  mlir::AffineExpr s0 = mlir::getAffineSymbolExpr(0, &mlir_context_);
-  mlir::AffineExpr c1 = mlir::getAffineConstantExpr(1, &mlir_context_);
-  mlir::AffineExpr c2 = mlir::getAffineConstantExpr(2, &mlir_context_);
-  mlir::AffineExpr c3 = mlir::getAffineConstantExpr(3, &mlir_context_);
+  mlir::AffineExpr d0 = mlir::getAffineDimExpr(0, &context_);
+  mlir::AffineExpr d1 = mlir::getAffineDimExpr(1, &context_);
+  mlir::AffineExpr s0 = mlir::getAffineSymbolExpr(0, &context_);
+  mlir::AffineExpr c1 = mlir::getAffineConstantExpr(1, &context_);
+  mlir::AffineExpr c2 = mlir::getAffineConstantExpr(2, &context_);
+  mlir::AffineExpr c3 = mlir::getAffineConstantExpr(3, &context_);
 
   mlir::AffineExpr affine_expr =
       mlir::getAffineBinaryOpExpr(
@@ -157,18 +150,17 @@ TEST_F(SymbolicMapConverterTest, ConvertAffineToSymbolicExpr) {
           c3) +
       d1;  // ((d0 * 2 + s0 - 1) floordiv 2) mod 3 + d1
 
-  SymbolicExpr exp_d0 = symbolic_expr_context_.CreateVariable(0);
-  SymbolicExpr exp_d1 = symbolic_expr_context_.CreateVariable(1);
-  SymbolicExpr exp_s0 = symbolic_expr_context_.CreateVariable(2);
-  SymbolicExpr exp_c1 = symbolic_expr_context_.CreateConstant(1);
-  SymbolicExpr exp_c2 = symbolic_expr_context_.CreateConstant(2);
-  SymbolicExpr exp_c3 = symbolic_expr_context_.CreateConstant(3);
+  SymbolicExpr exp_d0 = CreateSymbolicVariable(0, &context_);
+  SymbolicExpr exp_d1 = CreateSymbolicVariable(1, &context_);
+  SymbolicExpr exp_s0 = CreateSymbolicVariable(2, &context_);
+  SymbolicExpr exp_c1 = CreateSymbolicConstant(1, &context_);
+  SymbolicExpr exp_c2 = CreateSymbolicConstant(2, &context_);
+  SymbolicExpr exp_c3 = CreateSymbolicConstant(3, &context_);
 
   SymbolicExpr expected_symbolic_expr =
       ((exp_d0 * exp_c2 + exp_s0 - exp_c1) / exp_c2) % exp_c3 + exp_d1;
 
-  EXPECT_EQ(AffineExprToSymbolicExpr(affine_expr, &symbolic_expr_context_,
-                                     /*num_dims=*/2),
+  EXPECT_EQ(AffineExprToSymbolicExpr(affine_expr, /*num_dims=*/2),
             expected_symbolic_expr);
 }
 
