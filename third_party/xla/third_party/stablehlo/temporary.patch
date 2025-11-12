@@ -101,6 +101,17 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.c
  #include "mlir/IR/BuiltinAttributes.h"
  #include "mlir/IR/BuiltinOps.h"
  #include "mlir/IR/DialectRegistry.h"
+diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td b/stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td
+--- stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td
++++ stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td
+@@ -17,6 +17,6 @@
+ #ifndef STABLEHLO_INTEGRATIONS_PYTHON_INTERPRETER_OPS
+ #define STABLEHLO_INTEGRATIONS_PYTHON_INTERPRETER_OPS
+ 
+-include "third_party/stablehlo/stablehlo/reference/InterpreterOps.h"
++include "stablehlo/reference/InterpreterOps.h"
+ 
+ #endif
 diff --ruN a/stablehlo/stablehlo/tests/BUILD.bazel b/stablehlo/stablehlo/tests/BUILD.bazel
 --- stablehlo/stablehlo/tests/BUILD.bazel
 +++ stablehlo/stablehlo/tests/BUILD.bazel
@@ -124,13 +135,20 @@ diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests
  #include "llvm/Support/Casting.h"
  #include "mlir/Dialect/Func/IR/FuncOps.h"
  #include "mlir/Dialect/Shape/IR/Shape.h"
-@@ -35,11 +36,35 @@
+@@ -28,6 +29,7 @@
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/OperationSupport.h"
+ #include "mlir/IR/PatternMatch.h"
++#include "mlir/IR/TypeRange.h"
+ #include "mlir/Interfaces/InferTypeOpInterface.h"
+ #include "mlir/Interfaces/SideEffectInterfaces.h"
+ #include "mlir/Pass/Pass.h"
+@@ -35,11 +37,34 @@
  #include "mlir/Support/LLVM.h"
  #include "mlir/Support/LogicalResult.h"
  #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 +#include "stablehlo/dialect/StablehloOps.h"
 +#include "stablehlo/transforms/StablehloBroadcastLowering.h"
-+#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/TypeRange.h"
  
  namespace mlir {
  namespace hlo {
@@ -695,6 +713,8 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp b/sta
 +#include <utility>
 +
 +#include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/Sequence.h"
++#include "llvm/ADT/SmallVector.h"
 +#include "llvm/Support/Debug.h"
 +#include "llvm/Support/raw_ostream.h"
 +#include "mlir/IR/Builders.h"
@@ -706,8 +726,6 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp b/sta
 +#include "mlir/IR/Value.h"
 +#include "mlir/Support/LLVM.h"
 +#include "stablehlo/dialect/StablehloOps.h"
-+#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/Sequence.h"
-+#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/SmallVector.h"
 +
 +#define DEBUG_TYPE "stablehlo-broadcast-lowering"
 +
