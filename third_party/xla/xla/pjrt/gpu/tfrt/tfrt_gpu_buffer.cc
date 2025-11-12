@@ -460,6 +460,13 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
 
             auto d2h_stream = device->d2h_stream();
 
+            // If we do not have a CudaEvent, we need to fall back to the host
+            // event to check readiness.
+            // TODO: Remove this once cuda events are always set/not nullptr.
+            if (device_buffer->GetCudaEvent() == nullptr) {
+              tsl::BlockUntilReady(device_buffer->ready_event());
+            }
+
             absl::Status cuda_event_wait_status =
                 WaitForEventOnStream(d2h_stream, device_buffer->GetCudaEvent());
             if (!cuda_event_wait_status.ok()) {
