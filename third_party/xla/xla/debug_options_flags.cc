@@ -1779,6 +1779,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_experimental_enable_nccl_symmetric_buffers),
       debug_options->xla_gpu_experimental_enable_nccl_symmetric_buffers(),
       "Enables NCCL symmetric buffer registration."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_new_aot_flow",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_enable_new_aot_flow),
+      debug_options->xla_gpu_experimental_enable_new_aot_flow(),
+      "Enables the new Ahead-of-Time (AOT) compilation flow. In this flow, "
+      "the GPU compiler generates and consumes a binary format that includes "
+      "the generated Thunks. In contrast, the legacy flow only compiles up to "
+      "the HLO optimization stage, before Thunk generation."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_enable_nvshmem",

@@ -28,6 +28,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
@@ -47,6 +50,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
@@ -55,6 +59,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
+#include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
@@ -135,6 +140,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/zero_sized_hlo_elimination.h"
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/maybe_owning.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/all_reduce_promotion.h"
@@ -145,6 +151,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_permute_decomposer.h"
 #include "xla/service/collective_pipeliner.h"
 #include "xla/service/collective_pipeliner_utils.h"
@@ -172,6 +179,7 @@ limitations under the License.
 #include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/fusion_dispatch_pipeline.h"
 #include "xla/service/gpu/fusion_pipeline.h"
+#include "xla/service/gpu/gpu_aot_compilation_result.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_float_support.h"
@@ -2657,6 +2665,22 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   // compilation.
   CHECK_EQ(options.PlatformId(), PlatformId());
 
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_new_aot_flow()) {
+    CompileOptions compile_options;
+    compile_options.device_allocator = options.device_allocator();
+    compile_options.target_config = options.target_config();
+
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Executable> executable,
+        RunBackend(std::move(hlo_module), options.executor(), compile_options));
+
+    std::vector<std::unique_ptr<AotCompilationResult>> results;
+    TF_ASSIGN_OR_RETURN(results.emplace_back(), Export(executable.get()));
+    return results;
+  }
+
   std::unique_ptr<HloModule> optimized_module;
 
   if (!hlo_module->has_schedule()) {
@@ -2710,6 +2734,14 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
   auto* gpu_executable = tensorflow::down_cast<GpuExecutable*>(executable);
   if (!gpu_executable) {
     return Internal("GpuExecutable is null");
+  }
+
+  if (gpu_executable->module()
+          .config()
+          .debug_options()
+          .xla_gpu_experimental_enable_new_aot_flow()) {
+    TF_ASSIGN_OR_RETURN(GpuExecutableProto proto, gpu_executable->ToProto());
+    return GpuAotCompilationResult::Create(std::move(proto));
   }
 
   return LegacyGpuAotCompilationResult::FromModule(
@@ -2949,10 +2981,21 @@ absl::Status GpuCompiler::SerializeAutotuneResultsToFile(
 }
 
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-GpuCompiler::LoadAotCompilationResult(
-    const std::string& serialized_aot_result) {
-  return LegacyGpuAotCompilationResult::FromString(serialized_aot_result,
-                                                   pointer_size_);
+GpuCompiler::LoadAotCompilationResult(const std::string& serialized_aot_result,
+                                      const DebugOptions* debug_options) {
+  if (debug_options == nullptr ||
+      !debug_options->xla_gpu_experimental_enable_new_aot_flow()) {
+    return LegacyGpuAotCompilationResult::FromString(serialized_aot_result,
+                                                     pointer_size_);
+  }
+
+  GpuExecutableProto gpu_executable_proto;
+  if (gpu_executable_proto.ParseFromString(serialized_aot_result)) {
+    return GpuAotCompilationResult::Create(std::move(gpu_executable_proto));
+  }
+
+  return InvalidArgument(
+      "Failed to parse serialized AOT result as GpuExecutableProto.");
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>

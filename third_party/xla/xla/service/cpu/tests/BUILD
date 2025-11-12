@@ -47,7 +47,6 @@ xla_cc_test(
     srcs = ["cpu_aot_export_test.cc"],
     deps = [
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_module_group",
         "//xla/service:compiler",
         "//xla/service:cpu_plugin",
         "//xla/service:executable",

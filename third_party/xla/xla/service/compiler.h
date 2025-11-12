@@ -247,7 +247,8 @@ class Compiler {
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.
   virtual absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-  LoadAotCompilationResult(const std::string& serialized_aot_result) {
+  LoadAotCompilationResult(const std::string& serialized_aot_result,
+                           const DebugOptions* debug_options) {
     return Unimplemented("LoadAotCompilationResult unimplemented.");
   }
 

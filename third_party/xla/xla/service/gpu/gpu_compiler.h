@@ -86,8 +86,10 @@ class GpuCompiler : public LLVMCompiler {
 
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.
+  // `debug_options` may optionally be passed to enable experimental features.
   absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-  LoadAotCompilationResult(const std::string& serialized_aot_result) override;
+  LoadAotCompilationResult(const std::string& serialized_aot_result,
+                           const DebugOptions* debug_options) override;
 
   absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
       Executable* executable) const override;

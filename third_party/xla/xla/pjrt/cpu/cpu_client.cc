@@ -62,7 +62,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -455,8 +454,9 @@ PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
   // Load a CpuExecutable
   cpu::CpuCompiler compiler;
   std::string str = std::move(*proto.mutable_serialized_executable());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
-                      compiler.LoadAotCompilationResult(str));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<AotCompilationResult> aot_result,
+      compiler.LoadAotCompilationResult(str, /*debug_options=*/nullptr));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       std::move(*aot_result).LoadExecutable(&compiler, /*executor=*/nullptr));
@@ -631,8 +631,10 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
   // and deserialization works.
   TF_ASSIGN_OR_RETURN(std::string serialized_aot_result,
                       aot_results[0]->SerializeAsString());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
-                      compiler.LoadAotCompilationResult(serialized_aot_result));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<AotCompilationResult> aot_result,
+      compiler.LoadAotCompilationResult(serialized_aot_result,
+                                        /*debug_options=*/nullptr));
 
   return std::move(*aot_result).LoadExecutable(&compiler, /*executor=*/nullptr);
 }

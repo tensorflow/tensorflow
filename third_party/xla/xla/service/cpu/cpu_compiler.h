@@ -87,7 +87,8 @@ class CpuCompiler : public LLVMCompiler {
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.
   absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-  LoadAotCompilationResult(const std::string& serialized_aot_result) override;
+  LoadAotCompilationResult(const std::string& serialized_aot_result,
+                           const DebugOptions* debug_options) override;
 
   absl::StatusOr<HloSchedule> CreateHloSchedule(
       const HloModule& hlo_module) const;

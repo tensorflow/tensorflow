@@ -64,7 +64,8 @@ LegacyGpuAotCompilationResult::FromString(const std::string& serialized,
   tsl::profiler::TraceMe traceme("ResultFromString");
   CompilationResultProto proto;
   if (!proto.ParseFromString(serialized)) {
-    return Internal("Failed to parse serialized GpuThunkAotCompilationResult.");
+    return Internal(
+        "Failed to parse serialized LegacyGpuAotCompilationResult.");
   }
 
   TF_ASSIGN_OR_RETURN(

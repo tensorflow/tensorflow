@@ -26,7 +26,6 @@ limitations under the License.
 #include <stack>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -35,7 +34,6 @@ limitations under the License.
 // IWYU pragma: no_include "llvm/Config/Disassemblers.def.inc"
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
 
-#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -93,13 +91,11 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
-#include "xla/backends/cpu/codegen/object_loader.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/constant_allocation.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
-#include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/backends/cpu/transforms/collectives/all_reduce_combiner.h"
 #include "xla/backends/cpu/transforms/library_rewriter.h"
 #include "xla/backends/cpu/transforms/xnn_graph_fusion.h"
@@ -2313,8 +2309,8 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
 }
 
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-CpuCompiler::LoadAotCompilationResult(
-    const std::string& serialized_aot_result) {
+CpuCompiler::LoadAotCompilationResult(const std::string& serialized_aot_result,
+                                      const DebugOptions* debug_options) {
   return CpuAotLoader::LoadAotCompilationResult(serialized_aot_result);
 }
 

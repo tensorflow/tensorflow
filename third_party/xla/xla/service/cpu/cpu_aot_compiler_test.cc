@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringMap.h"  // IWYU pragma: keep
 #include "llvm/TargetParser/Host.h"
@@ -103,7 +104,8 @@ ENTRY e {
                             aot_results[0]->SerializeAsString());
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<AotCompilationResult> aot_result,
-        compiler->LoadAotCompilationResult(serialized_aot_result));
+        compiler->LoadAotCompilationResult(serialized_aot_result,
+                                           /*debug_options=*/nullptr));
 
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
