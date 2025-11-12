@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
@@ -35,6 +36,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
@@ -131,4 +134,23 @@ GetCollectiveBlockLevelFusionConfig(const se::DeviceDescription& device_info,
   }
 }
 
+absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
+    const se::DeviceDescription& device_info,
+    HloFusionInstruction* fusion_instr) {
+  TF_ASSIGN_OR_RETURN(
+      const std::optional<BlockLevelFusionConfig> block_config,
+      GetCollectiveBlockLevelFusionConfig(device_info, fusion_instr));
+  if (!block_config.has_value()) {
+    return false;
+  }
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                      fusion_instr->backend_config<GpuBackendConfig>());
+  gpu_backend_config.mutable_fusion_backend_config()->set_kind(
+      kTritonCollectiveFusionKind);
+  *gpu_backend_config.mutable_fusion_backend_config()
+       ->mutable_block_level_fusion_config() = *std::move(block_config);
+  TF_RETURN_IF_ERROR(
+      fusion_instr->set_backend_config(std::move(gpu_backend_config)));
+  return true;
+}
 }  // namespace xla::gpu

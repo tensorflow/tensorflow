@@ -86,6 +86,10 @@ inline constexpr absl::string_view kCustomFusionKind = "__custom_fusion";
 // kTritonGemmFusionKind.
 inline constexpr absl::string_view kTritonFusionKind = "__triton";
 
+// Used for fusions that codegen a collective.
+inline constexpr absl::string_view kTritonCollectiveFusionKind =
+    "__triton_collective";
+
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 

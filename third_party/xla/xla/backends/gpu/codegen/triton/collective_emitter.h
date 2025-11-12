@@ -34,5 +34,15 @@ absl::StatusOr<std::optional<xla::gpu::BlockLevelFusionConfig>>
 GetCollectiveBlockLevelFusionConfig(const se::DeviceDescription& device_info,
                                     const HloFusionInstruction* fusion_instr);
 
+// Sets the BlockLevelFusionConfig for a collective op inside the
+// GpuBackendConfig for the fusion instruction.
+// Returns true if the collective op is supported and the config is set.
+// Returns false if the collective op is not supported. No backend config is set
+// in this case.
+// Returns an error in case of an internal error or invalid arguments.
+absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
+    const se::DeviceDescription& device_info,
+    HloFusionInstruction* fusion_instr);
+
 }  // namespace xla::gpu
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_

@@ -178,7 +178,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     LaunchDimensions launch_dimensions;
     if (fusion_kind == kTritonFusionKind ||
         fusion_kind == kTritonNestedGemmFusionKind ||
-        fusion_kind == kTritonScaledDotFusionKind) {
+        fusion_kind == kTritonScaledDotFusionKind ||
+        fusion_kind == kTritonCollectiveFusionKind) {
       std::optional<LaunchConfig> launch_config;
       // Currently GetLaunchConfig will compute the same value as the extracted
       // one. They are different only when warp specialization is enabled.

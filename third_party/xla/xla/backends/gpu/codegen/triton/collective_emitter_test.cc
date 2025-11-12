@@ -15,14 +15,23 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/collective_emitter.h"
 
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/backends/gpu/codegen/triton/fusion.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -30,9 +39,11 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -50,6 +61,20 @@ struct ModuleWithFusion {
     return Cast<HloFusionInstruction>(
         module->entry_computation()->root_instruction());
   }
+  HloFusionInstruction* MutableFusionInstr() {
+    return Cast<HloFusionInstruction>(
+        module->entry_computation()->root_instruction());
+  }
+};
+
+struct ModuleWithEmitter : public ModuleWithFusion {
+  mlir::MLIRContext mlir_context;
+  SymbolicExprContext symbolic_expr_context{&mlir_context};
+  std::optional<HloFusionAnalysis> analysis;
+  std::unique_ptr<TritonFusion> emitter;
+
+  explicit ModuleWithEmitter(std::unique_ptr<HloModule> module_arg)
+      : ModuleWithFusion{std::move(module_arg)} {}
 };
 
 class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
@@ -92,6 +117,37 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
   }
 
   const se::DeviceDescription device_info_;
+};
+
+class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
+ public:
+  absl::StatusOr<std::unique_ptr<ModuleWithEmitter>> BuildModuleWithEmitter(
+      const Shape& shape, const se::DeviceDescription& device_info) const {
+    TF_ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
+                        BuildModuleWithFusion(shape));
+    TF_ASSIGN_OR_RETURN(
+        bool collective_fusion_config_set,
+        TrySetGpuBackendConfigForCollective(
+            device_info_, module_with_fusion.MutableFusionInstr()));
+    if (!collective_fusion_config_set) {
+      return absl::InternalError(
+          "Failed to set collective fusion config. "
+          "TrySetGpuBackendConfigForCollective returned false.");
+    }
+    auto result = std::make_unique<ModuleWithEmitter>(
+        std::move(module_with_fusion.module));
+    result->analysis =
+        HloFusionAnalysis::Create(*result->FusionInstr(), device_info);
+    std::unique_ptr<FusionInterface> fusion_emitter =
+        GetFusionEmitter(PreBufferAssignmentFusionInfo{*result->analysis},
+                         &result->symbolic_expr_context);
+    TritonFusion* triton_emitter =
+        dynamic_cast<TritonFusion*>(fusion_emitter.get());
+    TF_RET_CHECK(triton_emitter != nullptr);
+    fusion_emitter.release();
+    result->emitter = absl::WrapUnique(triton_emitter);
+    return std::move(result);
+  }
 };
 
 struct AllReduceBlockLevelConfigTestCase {
@@ -148,6 +204,20 @@ INSTANTIATE_TEST_SUITE_P(
         CollectiveEmitterParameterizedTest::ParamType>& info) {
       return info.param.test_name;
     });
+
+TEST_F(CollectiveEmitterTest, AllReduceWithTritonGetLaunchConfig) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ModuleWithEmitter> result_ptr,
+      BuildModuleWithEmitter(ShapeUtil::MakeShape(F32, {65536}), device_info_));
+  auto& result = *result_ptr;
+  const TritonFusion* triton_fusion = result.emitter.get();
+  ASSERT_NE(triton_fusion, nullptr);
+  auto const launch_config = triton_fusion->GetLaunchConfig();
+  ASSERT_NE(launch_config, std::nullopt);
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 16);
+  EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 512);
+}
+
 }  // namespace
 
 }  // namespace xla::gpu
