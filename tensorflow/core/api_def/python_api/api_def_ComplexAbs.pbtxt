@@ -1,10 +1,4 @@
 op {
   graph_op_name: "ComplexAbs"
-  attr {
-    name: "Tout"
-    description: <<END
-Need to be `tf.float32` when the type of `x` is `tf.complex64`.
-Need to be `tf.float64` when the type of `x` is `tf.complex128`.
-END
-  }
+  visibility: HIDDEN
 }
