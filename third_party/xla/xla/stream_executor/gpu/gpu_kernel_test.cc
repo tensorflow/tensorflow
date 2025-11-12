@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/gpu/tma_metadata.pb.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -45,10 +47,12 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/protobuf.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 
 namespace stream_executor::gpu {
 namespace {
+using ::testing::Each;
+using tsl::proto_testing::ParseTextProtoOrDie;
 
 using AddI32Kernel =
     TypedKernelFactory<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
@@ -119,6 +123,36 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromSymbol) {
   RunAddI32Kernel(spec);
 }
 
+TEST_F(GpuKernelTest, LoadAndRunKernelFromSymbolWithCustomArgsPacking) {
+  constexpr int64_t kArraySize = 4;
+  constexpr int64_t kArraySizeBytes = sizeof(int32_t) * kArraySize;
+
+  // Prepare arguments: in=10, out=0
+  DeviceMemory<int32_t> in =
+      executor_->AllocateArray<int32_t>(kArraySize, /*memory_space=*/0);
+  DeviceMemory<int32_t> out =
+      executor_->AllocateArray<int32_t>(kArraySize, /*memory_space=*/0);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                          executor_->CreateStream());
+  TF_ASSERT_OK(stream->Memset32(&in, 10, kArraySizeBytes));
+  TF_ASSERT_OK(stream->MemZero(&out, kArraySizeBytes));
+
+  TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec spec,
+                          GetIncrementBy5I32TestKernelSpecWithCustomArgsPacking(
+                              executor_->GetPlatform()->id()));
+  TF_ASSERT_OK_AND_ASSIGN(auto kernel, executor_->LoadKernel(spec));
+  TF_ASSERT_OK(kernel->Launch(
+      ThreadDim(), BlockDim(4),
+      /*cluster_dims=*/std::nullopt, stream.get(),
+      KernelArgsDeviceMemoryArray({in, out}, /*shared_memory_bytes=*/0)));
+
+  // Copy data back to host and verify that the output is 5 + 10 = 15.
+  std::vector<int32_t> dst(4, 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), out, kArraySizeBytes));
+  EXPECT_THAT(dst, Each(15));
+}
+
 TEST_F(GpuKernelTest, ArrayArgByValue) {
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
   TF_ASSERT_OK_AND_ASSIGN(auto kernel, LoadCopyTestKernel(executor_));
@@ -157,9 +191,8 @@ TEST_F(GpuKernelTest, TmaLoadAndRunKernelFromPtx) {
 
   auto get_tma_descriptor_from_proto =
       [](absl::string_view proto) -> absl::StatusOr<TmaDescriptor> {
-    TmaDescriptorProto tma_descriptor_proto;
-    tsl::protobuf::TextFormat::ParseFromString(proto, &tma_descriptor_proto);
-    return TmaDescriptor::FromProto(tma_descriptor_proto);
+    return TmaDescriptor::FromProto(
+        ParseTextProtoOrDie<TmaDescriptorProto>(proto));
   };
 
   TF_ASSERT_OK_AND_ASSIGN(TmaDescriptor arg0_desc,

@@ -167,6 +167,8 @@ cc_library(
         "//xla/stream_executor:generic_memory_allocation",
         "//xla/stream_executor:generic_memory_allocator",
         "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_args",
+        "//xla/stream_executor:kernel_argument_packing_spec",
         "//xla/stream_executor:kernel_metadata",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
@@ -202,9 +204,9 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:numbers",
+        "@local_tsl//tsl/platform:platform_port",
     ],
     alwayslink = True,
 )
@@ -1249,7 +1251,7 @@ rocm_library(
     ],
     deps = [
         ":rocm_platform_id",
-        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_argument_packing_spec",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:gpu_test_kernel_traits",

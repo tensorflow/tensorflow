@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -26,7 +27,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/kernel_argument_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.pb.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -66,9 +69,10 @@ KernelLoaderSpec KernelLoaderSpec::CreateOwningCudaPtxInMemorySpec(
 }
 
 absl::StatusOr<KernelLoaderSpecProto> KernelLoaderSpec::ToProto() const {
-  if (kernel_args_packing_ != nullptr) {
+  if (std::holds_alternative<KernelArgsPackingFunc>(kernel_args_packing_) &&
+      std::get<KernelArgsPackingFunc>(kernel_args_packing_) != nullptr) {
     return absl::UnimplementedError(
-        "KernelLoaderSpecs with KernelArgsPacking are not currently"
+        "KernelLoaderSpecs with a function for argument packing is not "
         "serializable.");
   }
 
@@ -93,21 +97,36 @@ absl::StatusOr<KernelLoaderSpecProto> KernelLoaderSpec::ToProto() const {
 
   CHECK(proto.has_cubin() || proto.has_ptx());
 
+  if (std::holds_alternative<KernelArgumentsPackingSpec>(
+          kernel_args_packing_)) {
+    TF_ASSIGN_OR_RETURN(
+        *proto.mutable_kernel_args_packing_spec(),
+        std::get<KernelArgumentsPackingSpec>(kernel_args_packing_).ToProto());
+  }
+
   return proto;
 }
 
 absl::StatusOr<KernelLoaderSpec> KernelLoaderSpec::FromProto(
     const KernelLoaderSpecProto& proto) {
+  KernelArgsPacking kernel_args_packing;
+  if (proto.has_kernel_args_packing_spec()) {
+    TF_ASSIGN_OR_RETURN(kernel_args_packing,
+                        KernelArgumentsPackingSpec::FromProto(
+                            proto.kernel_args_packing_spec()));
+  }
+
   if (proto.has_cubin()) {
     const std::string& data = proto.cubin().data();
     return KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
         std::vector<uint8_t>{data.begin(), data.end()}, proto.kernel_name(),
-        proto.arity());
+        proto.arity(), std::move(kernel_args_packing));
   }
 
   if (proto.has_ptx()) {
     return KernelLoaderSpec::CreateOwningCudaPtxInMemorySpec(
-        proto.ptx().data(), proto.kernel_name(), proto.arity());
+        proto.ptx().data(), proto.kernel_name(), proto.arity(),
+        std::move(kernel_args_packing));
   }
 
   return absl::InvalidArgumentError(

@@ -18,27 +18,30 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
+#include "xla/stream_executor/kernel_argument_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.pb.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"
 
 namespace stream_executor {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::testing::Field;
 using ::testing::Optional;
 using ::tsl::proto_testing::EqualsProto;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 TEST(KernelLoaderSpec, InProcessSymbol) {
   void* symbol = absl::bit_cast<void*>(0xDEADBEEFul);
@@ -174,6 +177,47 @@ TEST(KernelLoaderSpec, InProcessSymbolToProto) {
 
   EXPECT_THAT(spec.ToProto(),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(kernelLoaderSpec, StoresKernelArgsPackingSpec) {
+  auto kernel_args_packing_spec_proto =
+      ParseTextProtoOrDie<KernelArgumentsPackingSpecProto>(
+          R"pb(
+            kernel_arguments {
+              relocations {
+                type: TYPE_BITS64_ABSOLUTE
+                argument_index: 0
+                offset: 0
+              }
+              data: "\x00\x00\x00\x00\x00\x00\x00\x00"
+            }
+            kernel_arguments { data: "\x34\x12\x00\x00" }
+          )pb");
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      KernelArgumentsPackingSpec kernel_args_packing_spec,
+      KernelArgumentsPackingSpec::FromProto(kernel_args_packing_spec_proto));
+
+  auto spec = KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
+      std::vector<uint8_t>{'C', 'U', 'B', 'I', 'N'}, "kernel_name",
+      /*arity=*/42, std::move(kernel_args_packing_spec));
+
+  EXPECT_THAT(spec.ToProto(), IsOkAndHolds(EqualsProto(R"pb(
+                cubin { data: "CUBIN" }
+                kernel_name: "kernel_name"
+                arity: 42
+                kernel_args_packing_spec {
+                  kernel_arguments {
+                    relocations {
+                      type: TYPE_BITS64_ABSOLUTE
+                      argument_index: 0
+                      offset: 0
+                    }
+                    data: "\x00\x00\x00\x00\x00\x00\x00\x00"
+                  }
+                  kernel_arguments { data: "\x34\x12\x00\x00" }
+                }
+              )pb")));
 }
 
 }  // namespace

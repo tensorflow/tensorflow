@@ -549,7 +549,10 @@ cc_library(
     hdrs = ["kernel_spec.h"],
     deps = [
         ":kernel",
+        ":kernel_args",
+        ":kernel_argument_packing_spec",
         ":kernel_spec_proto_cc",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -561,22 +564,25 @@ cc_library(
 tf_proto_library(
     name = "kernel_spec_proto",
     srcs = ["kernel_spec.proto"],
+    protodeps = [":kernel_argument_packing_spec_proto"],
 )
 
 xla_cc_test(
     name = "kernel_spec_test",
     srcs = ["kernel_spec_test.cc"],
     deps = [
+        ":kernel_argument_packing_spec",
         ":kernel_spec",
         ":kernel_spec_proto_cc",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -642,6 +648,7 @@ cc_library(
     deps = [
         ":device_memory",
         ":kernel_args",
+        ":kernel_argument_packing_spec",
         ":kernel_metadata",
         ":launch_dim",
         ":stream",
