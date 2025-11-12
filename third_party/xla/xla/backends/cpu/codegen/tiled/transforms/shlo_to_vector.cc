@@ -236,18 +236,14 @@ struct LowerReduce : mlir::OpRewritePattern<mlir::stablehlo::ReduceOp> {
           op, "reduce op with multiple results is not supported");
     }
 
-    mlir::TypedValue<mlir::VectorType> source_vector =
-        ReadTensorToVector(rewriter, op.getInputs().front());
-    mlir::VectorType source_vector_type = source_vector.getType();
+    auto source_tensor = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
+        op.getInputs().front());
+    mlir::Value result_tensor = op.getResult(0);
+    auto result_type =
+        mlir::cast<mlir::RankedTensorType>(result_tensor.getType());
 
     mlir::Value init_value = rewriter.create<mlir::tensor::ExtractOp>(
-        op->getLoc(), source_vector_type.getElementType(),
-        op.getInitValues().front());
-
-    mlir::Value result_tensor = op.getResult(0);
-    auto result_tensor_type =
-        mlir::cast<mlir::RankedTensorType>(result_tensor.getType());
-    auto result_vector_type = GetVectorType(result_tensor_type);
+        op->getLoc(), result_type.getElementType(), op.getInitValues().front());
 
     // Ensure the reduction dimensions are sorted so we can easily check if the
     // minor dimension is reduced.
@@ -255,10 +251,10 @@ struct LowerReduce : mlir::OpRewritePattern<mlir::stablehlo::ReduceOp> {
     absl::c_sort(reduction_dims);
 
     mlir::Value reduced_vector = EmitVectorizedReduction(
-        rewriter, op->getLoc(), result_vector_type, source_vector, init_value,
+        rewriter, op->getLoc(), result_type, source_tensor, init_value,
         reduction_dims, op.getBody().front());
 
-    rewriter.replaceOp(op, WriteVectorToTensor(rewriter, reduced_vector));
+    rewriter.replaceOp(op, reduced_vector);
 
     return mlir::success();
   }

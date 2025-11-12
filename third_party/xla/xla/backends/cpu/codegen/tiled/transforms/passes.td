@@ -47,6 +47,7 @@ def ShloToVectorPass : Pass<"xtile-cpu-shlo-to-vector", "mlir::ModuleOp"> {
 
   let dependentDialects = [
     "mlir::arith::ArithDialect",
+    "mlir::bufferization::BufferizationDialect",
     "mlir::memref::MemRefDialect",
     "mlir::scf::SCFDialect",
     "mlir::stablehlo::StablehloDialect",
@@ -80,17 +81,6 @@ def TensorOpsToVectorPass : Pass<"xtile-cpu-tensor-ops-to-vector",
   ];
 }
 
-def RewriteDynamicVectorExtractPass : Pass<"xtile-cpu-rewrite-dynamic-vector-extract",
-                                 "mlir::ModuleOp"> {
-  let summary = "Rewrite vector.extracts with dynamic indices.";
-
-  let constructor = "CreateRewriteDynamicVectorExtractPass()";
-
-  let dependentDialects = [
-    "::mlir::vector::VectorDialect",
-    "::mlir::memref::MemRefDialect",
-  ];
-}
 
 def MemrefCopyToLoopsPass : Pass<"xtile-cpu-memref-copy-to-loops",
                                  "mlir::ModuleOp"> {

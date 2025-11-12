@@ -52,16 +52,13 @@ func.func @reduce_outer(%input : tensor<1024x32xf32>, %init : tensor<f32>) -> te
 
 // CHECK: func.func @reduce_outer
 // CHECK:   memref.alloca() : memref<32xf32>
-// CHECK:   vector.extract %{{.*}} : vector<32xf32> from vector<1024x32xf32>
+// CHECK:   vector.transfer_read %{{.*}} : tensor<1024x32xf32>, vector<32xf32>
 // CHECK:   scf.for
-// CHECK:     vector.extract %{{.*}} : vector<32xf32> from vector<1024x32xf32>
+// CHECK:     vector.transfer_read %{{.*}} : tensor<1024x32xf32>, vector<32xf32>
 // CHECK:     arith.addf {{.*}} : vector<32xf32>
 // CHECK:     scf.yield %{{.*}} : vector<32xf32>
 // CHECK:   }
 // CHECK:   vector.transfer_write %{{.*}} : vector<32xf32>, memref<32xf32>
-// CHECK:   vector.transfer_read %{{.*}} : memref<32xf32>, vector<32xf32>
-// CHECK:   vector.broadcast %{{.*}} : f32 to vector<32xf32>
-// CHECK:   arith.addf {{.*}} : vector<32xf32>
 
 // -----
 
@@ -78,11 +75,10 @@ func.func @reduce_inner(%input : tensor<1024x32xf32>, %init : tensor<f32>) -> te
 // CHECK: func.func @reduce_inner
 // CHECK:   memref.alloca() : memref<1024xf32>
 // CHECK:   scf.for
-// CHECK:     vector.extract {{.*}} : vector<32xf32> from vector<1024x32xf32>
+// CHECK:     vector.transfer_read {{.*}} : tensor<1024x32xf32>, vector<32xf32>
 // CHECK:     vector.reduction <add>, {{.*}} : vector<32xf32> into f32
 // CHECK:     memref.store {{.*}} : memref<1024xf32>
 // CHECK:   }
-// CHECK:   vector.transfer_read {{.*}} : memref<1024xf32>, vector<1024xf32>
 
 // -----
 
@@ -98,17 +94,14 @@ func.func @reduce_middle(%input : tensor<1024x32x8xf32>, %init : tensor<f32>) ->
 // CHECK: func.func @reduce_middle
 // CHECK:   memref.alloca() : memref<1024x8xf32>
 // CHECK:   scf.for
-// CHECK:     vector.extract {{.*}} : vector<8xf32> from vector<1024x32x8xf32>
+// CHECK:     vector.transfer_read {{.*}} : tensor<1024x32x8xf32>, vector<8xf32>
 // CHECK:     scf.for
-// CHECK:       vector.extract %{{.*}} : vector<8xf32> from vector<1024x32x8xf32>
+// CHECK:       vector.transfer_read %{{.*}} : tensor<1024x32x8xf32>, vector<8xf32>
 // CHECK:       arith.addf {{.*}} : vector<8xf32>
 // CHECK:       scf.yield {{.*}} : vector<8xf32>
 // CHECK:     }
 // CHECK:     vector.transfer_write {{.*}} : vector<8xf32>, memref<1024x8xf32>
 // CHECK:   }
-// CHECK:   vector.transfer_read {{.*}} : memref<1024x8xf32>, vector<1024x8xf32>
-// CHECK:   vector.broadcast {{.*}} : f32 to vector<1024x8xf32>
-// CHECK:   arith.addf {{.*}} : vector<1024x8xf32>
 // CHECK: }
 
 // -----
@@ -125,21 +118,20 @@ func.func @reduce_outer_and_inner(%input : tensor<1024x32x8xf32>, %init : tensor
 // CHECK: func.func @reduce_outer_and_inner
 // CHECK:   %[[BUFFER0:.*]] = memref.alloca() : memref<32x8xf32>
 // CHECK:   scf.for
-// CHECK:     vector.extract %{{.*}} : vector<8xf32> from vector<1024x32x8xf32>
+// CHECK:     vector.transfer_read {{.*}} : tensor<1024x32x8xf32>, vector<8xf32>
 // CHECK:     scf.for
-// CHECK:       vector.extract %{{.*}} : vector<8xf32> from vector<1024x32x8xf32>
+// CHECK:       vector.transfer_read %{{.*}} : tensor<1024x32x8xf32>, vector<8xf32>
 // CHECK:       arith.addf %{{.*}} : vector<8xf32>
 // CHECK:       scf.yield {{.*}} : vector<8xf32>
 // CHECK:     }
-// CHECK:     vector.transfer_write {{.*}} : vector<8xf32>, memref<32x8xf32>
+// CHECK:     vector.transfer_write {{.*}}, %[[BUFFER0]]{{.*}} : vector<8xf32>, memref<32x8xf32>
 // CHECK:   }
 // CHECK:   %[[BUFFER1:.*]] = memref.alloca() : memref<32xf32>
 // CHECK:   scf.for
 // CHECK:     vector.transfer_read %[[BUFFER0]]{{.*}} : memref<32x8xf32>, vector<8xf32>
 // CHECK:     vector.reduction <add>, {{.*}} : vector<8xf32> into f32
-// CHECK:     memref.store %{{.*}}, %[[BUFFER1]]{{.*}} : memref<32xf32>
+// CHECK:     memref.store {{.*}} %[[BUFFER1]]{{.*}} : memref<32xf32>
 // CHECK:   }
-// CHECK:   vector.transfer_read %[[BUFFER1]]{{.*}} : memref<32xf32>, vector<32xf32>
 // CHECK: }
 
 // -----

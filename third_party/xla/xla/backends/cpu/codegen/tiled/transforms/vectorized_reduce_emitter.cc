@@ -28,12 +28,14 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Value.h"
@@ -64,18 +66,10 @@ static absl::StatusOr<mlir::vector::CombiningKind> GetCombiningKind(
   return absl::InternalError("Unsupported reduction combiner");
 }
 
-static mlir::Value ExtractVector(mlir::OpBuilder& builder, mlir::Location loc,
-                                 mlir::Value source, mlir::ValueRange indices) {
-  return mlir::vector::ExtractOp::create(
-      builder, loc, source, llvm::map_to_vector(indices, [](mlir::Value idx) {
-        return mlir::OpFoldResult(idx);
-      }));
-}
-
-static void InsertVectorIntoBuffer(mlir::OpBuilder& builder, mlir::Location loc,
-                                   mlir::Value value,
-                                   mlir::TypedValue<mlir::MemRefType> buffer,
-                                   mlir::ValueRange indices) {
+static void InsertValue(mlir::OpBuilder& builder, mlir::Location loc,
+                        mlir::Value value,
+                        mlir::TypedValue<mlir::MemRefType> buffer,
+                        mlir::ValueRange indices) {
   llvm::SmallVector<mlir::Value> padded_indices(indices);
   while (padded_indices.size() < buffer.getType().getRank()) {
     padded_indices.push_back(
@@ -90,18 +84,18 @@ static void InsertVectorIntoBuffer(mlir::OpBuilder& builder, mlir::Location loc,
   }
 }
 
-static mlir::TypedValue<mlir::VectorType> ExtractVectorFromBuffer(
+static mlir::TypedValue<mlir::VectorType> ExtractVector(
     mlir::OpBuilder& builder, mlir::Location loc,
-    mlir::TypedValue<mlir::MemRefType> buffer, mlir::ValueRange indices = {}) {
+    mlir::TypedValue<mlir::ShapedType> input, mlir::ValueRange indices = {}) {
   llvm::SmallVector<mlir::Value> padded_indices(indices);
-  while (padded_indices.size() < buffer.getType().getRank()) {
+  while (padded_indices.size() < input.getType().getRank()) {
     padded_indices.push_back(
-        builder.create<mlir::arith::ConstantIndexOp>(loc, 0));
+        mlir::arith::ConstantIndexOp::create(builder, loc, 0));
   }
   mlir::VectorType vector_type = mlir::VectorType::get(
-      buffer.getType().getShape().drop_front(indices.size()),
-      buffer.getType().getElementType());
-  return mlir::vector::TransferReadOp::create(builder, loc, vector_type, buffer,
+      input.getType().getShape().drop_front(indices.size()),
+      input.getType().getElementType());
+  return mlir::vector::TransferReadOp::create(builder, loc, vector_type, input,
                                               padded_indices,
                                               /*padding=*/std::nullopt);
 }
@@ -149,15 +143,16 @@ mlir::Value VectorizeBody(mlir::OpBuilder& builder, mlir::Location loc,
   return mapping.lookup(old_body.getTerminator()->getOperand(0));
 }
 
-mlir::Value EmitNonMinorReduction(
-    mlir::OpBuilder& builder, mlir::Location loc, mlir::VectorType result_type,
-    mlir::TypedValue<mlir::VectorType> source_vector,
+mlir::TypedValue<mlir::MemRefType> EmitNonMinorReduction(
+    mlir::OpBuilder& builder, mlir::Location loc,
+    mlir::RankedTensorType result_type,
+    mlir::TypedValue<mlir::RankedTensorType> source_tensor,
     llvm::ArrayRef<int64_t> reduction_dims, mlir::Block& body,
     bool minor_dim_reduced) {
-  mlir::VectorType source_vector_type = source_vector.getType();
-  int64_t rank = source_vector_type.getRank();
+  mlir::RankedTensorType source_tensor_type = source_tensor.getType();
+  int64_t rank = source_tensor_type.getRank();
   int64_t minor_dim = rank - 1;
-  int64_t minor_dim_size = source_vector_type.getDimSize(minor_dim);
+  int64_t minor_dim_size = source_tensor_type.getDimSize(minor_dim);
   llvm::SmallVector<int64_t> non_reduced_dims(rank);
   absl::c_iota(non_reduced_dims, 0);
   non_reduced_dims.erase(
@@ -187,13 +182,14 @@ mlir::Value EmitNonMinorReduction(
   if (minor_dim_reduced) {
     output_shape.push_back(minor_dim_size);
   }
+
   auto output_buffer_shape =
       mlir::MemRefType::get(output_shape, result_type.getElementType());
   auto buffer = CreateBufferOfShape(builder, loc, output_buffer_shape);
 
   auto get_source_vector_dim_size = [&](llvm::ArrayRef<int64_t> dims) {
     return llvm::map_to_vector(
-        dims, [&](int64_t dim) { return source_vector_type.getDimSize(dim); });
+        dims, [&](int64_t dim) { return source_tensor_type.getDimSize(dim); });
   };
 
   // Outer loop is non-minor non-reduced dimensions.
@@ -216,7 +212,7 @@ mlir::Value EmitNonMinorReduction(
         }
         // Get the first iteration
         mlir::Value minor_accumilator =
-            ExtractVector(builder, loc, source_vector, zeroth_step_indices);
+            ExtractVector(builder, loc, source_tensor, zeroth_step_indices);
         // Inner loop is the non-minor reduced dimension.
         mlir::scf::LoopNest loop_nest = mlir::scf::buildLoopNest(
             builder, loc, lbs, ubs, step, minor_accumilator,
@@ -235,74 +231,52 @@ mlir::Value EmitNonMinorReduction(
               }
 
               mlir::Value vector_slice =
-                  ExtractVector(builder, loc, source_vector, indices);
+                  ExtractVector(builder, loc, source_tensor, indices);
 
               return {VectorizeBody(builder, loc, body, vector_slice,
                                     minor_accumilator.front())};
             });
 
-        InsertVectorIntoBuffer(builder, loc, loop_nest.results.front(), buffer,
-                               outer_induction_vars);
-        return;
+        InsertValue(builder, loc, loop_nest.results.front(), buffer,
+                    outer_induction_vars);
       });
 
-  // If the minor dimension is also reduced then it extracts directly from the
-  // buffer to avoid the additional vector -> subvector operation.
-  if (minor_dim_reduced) {
-    return buffer;
-  }
-
-  return ExtractVectorFromBuffer(builder, loc, buffer);
+  return buffer;
 }
 
-mlir::TypedValue<mlir::VectorType> EmitMinorReduction(
-    mlir::OpBuilder& builder, mlir::Location loc, mlir::VectorType result_type,
-    mlir::Value input, mlir::Value init_value, mlir::Block& body) {
+mlir::TypedValue<mlir::MemRefType> EmitMinorReduction(
+    mlir::OpBuilder& builder, mlir::Location loc,
+    mlir::RankedTensorType result_type,
+    mlir::TypedValue<mlir::ShapedType> input, mlir::Value init_value,
+    mlir::Block& body) {
   absl::StatusOr<mlir::vector::CombiningKind> kind_or = GetCombiningKind(body);
   if (!kind_or.ok()) {
     body.getParentOp()->emitRemark() << kind_or.status().ToString();
   }
 
-  // TODO(willfroom): we could reuse the non minor result buffer.
-  auto minor_result_buffer = CreateBufferOfShape(builder, loc, result_type);
-  auto maybe_input_buffer =
-      mlir::dyn_cast<mlir::TypedValue<mlir::MemRefType>>(input);
-
-  auto maybe_input_type =
-      llvm::TypeSwitch<mlir::Type, std::optional<mlir::ShapedType>>(
-          input.getType())
-          .Case<mlir::MemRefType>([&](auto op) { return input.getType(); })
-          .Case<mlir::VectorType>([&](auto op) { return input.getType(); })
-          .Default([&](auto op) { return std::nullopt; });
-
-  if (!maybe_input_type.has_value()) {
-    return nullptr;
-  }
-
-  int64_t minor_dim_size = maybe_input_type->getShape().back();
+  auto input_type = input.getType();
+  int64_t minor_dim_size = input_type.getShape().back();
 
   auto [lbs, ubs, step] = GetLoopBounds(builder, loc, result_type.getShape());
+
+  auto buffer = CreateBufferOfShape(builder, loc, result_type);
 
   mlir::scf::buildLoopNest(
       builder, loc, lbs, ubs, step,
       [&](mlir::OpBuilder& builder, mlir::Location loc,
           mlir::ValueRange induction_vars) {
-        mlir::Value vector_slice =
-            maybe_input_buffer
-                ? ExtractVectorFromBuffer(builder, loc, maybe_input_buffer,
-                                          induction_vars)
-                : ExtractVector(builder, loc, input, induction_vars);
-
         if (kind_or.ok()) {
           // TODO(willfroom): Investigate tree-reduction to split the reduction
           // op into natural sizes (2, 4, 8, 16, ...) and then remove the
           // reassociation flag.
+          mlir::Value vector_slice =
+              ExtractVector(builder, loc, input, induction_vars);
           mlir::Value reduced_scalar =
               builder.create<mlir::vector::ReductionOp>(
                   loc, *kind_or, vector_slice, init_value,
                   mlir::arith::FastMathFlags::reassoc);
-          InsertVectorIntoBuffer(builder, loc, reduced_scalar,
-                                 minor_result_buffer, induction_vars);
+
+          InsertValue(builder, loc, reduced_scalar, buffer, induction_vars);
           return;
         }
 
@@ -312,24 +286,27 @@ mlir::TypedValue<mlir::VectorType> EmitMinorReduction(
             [&](mlir::OpBuilder& builder, mlir::Location loc,
                 mlir::ValueRange index, mlir::ValueRange carry_value)
                 -> mlir::SmallVector<mlir::Value> {
+              auto full_index = llvm::to_vector(
+                  llvm::concat<mlir::Value>(induction_vars, index));
+              mlir::TypedValue<mlir::VectorType> element_vector =
+                  ExtractVector(builder, loc, input, full_index);
               mlir::Value element =
-                  ExtractVector(builder, loc, vector_slice, index);
+                  mlir::vector::ExtractOp::create(builder, loc, element_vector);
               return {VectorizeBody(builder, loc, body, element,
                                     carry_value.front())};
             });
 
-        InsertVectorIntoBuffer(builder, loc,
-                               minor_reduction_loop.results.front(),
-                               minor_result_buffer, induction_vars);
-        return;
+        InsertValue(builder, loc, minor_reduction_loop.results.front(), buffer,
+                    induction_vars);
       });
 
-  return ExtractVectorFromBuffer(builder, loc, minor_result_buffer);
+  return buffer;
 }
 
 mlir::Value EmitVectorizedReduction(
-    mlir::OpBuilder& builder, mlir::Location loc, mlir::VectorType result_type,
-    mlir::TypedValue<mlir::VectorType> source, mlir::Value init_value,
+    mlir::OpBuilder& builder, mlir::Location loc,
+    mlir::RankedTensorType result_type,
+    mlir::TypedValue<mlir::RankedTensorType> source, mlir::Value init_value,
     llvm::ArrayRef<int64_t> reduction_dims, mlir::Block& body) {
   int64_t rank = source.getType().getRank();
   int64_t minor_dim = rank - 1;
@@ -337,25 +314,23 @@ mlir::Value EmitVectorizedReduction(
   bool minor_dim_reduced = reduction_dims.back() == minor_dim;
   bool non_minor_dim_reduced = reduction_dims.size() > 1 || !minor_dim_reduced;
 
-  mlir::Value non_minor_result;
+  mlir::TypedValue<mlir::ShapedType> result;
   if (non_minor_dim_reduced) {
-    non_minor_result =
-        EmitNonMinorReduction(builder, loc, result_type, source, reduction_dims,
-                              body, minor_dim_reduced);
-  }
-  if (!minor_dim_reduced) {
-    // We add the init value during the minor reduction loop, if that wasn't
-    // done then we must apply it here.
-    mlir::Value init_value_vector =
-        builder.create<mlir::vector::BroadcastOp>(loc, result_type, init_value);
-
-    return VectorizeBody(builder, loc, body, non_minor_result,
-                         init_value_vector);
+    result = EmitNonMinorReduction(builder, loc, result_type, source,
+                                   reduction_dims, body, minor_dim_reduced);
   }
 
-  return EmitMinorReduction(builder, loc, result_type,
-                            non_minor_result ? non_minor_result : source,
-                            init_value, body);
+  if (minor_dim_reduced) {
+    result = EmitMinorReduction(builder, loc, result_type,
+                                result ? result : source, init_value, body);
+  }
+
+  auto to_tensor = mlir::bufferization::ToTensorOp::create(builder, loc,
+                                                           result_type, result);
+  // This is a local allocation so we know it doesn't alias.
+  to_tensor.setRestrict(true);
+  to_tensor.setWritable(true);
+  return to_tensor;
 }
 
 }  // namespace xla::cpu

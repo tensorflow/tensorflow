@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // IWYU pragma: keep
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Math/IR/Math.h"  // IWYU pragma: keep
 #include "mlir/Dialect/SCF/IR/SCF.h"  // IWYU pragma: keep
@@ -38,7 +39,6 @@ std::unique_ptr<mlir::Pass> CreateLowerXTileEntryPass();
 std::unique_ptr<mlir::Pass> CreateShloToVectorPass();
 std::unique_ptr<mlir::Pass> CreateXTileToVectorPass();
 std::unique_ptr<mlir::Pass> CreateTensorOpsToVectorPass();
-std::unique_ptr<mlir::Pass> CreateRewriteDynamicVectorExtractPass();
 std::unique_ptr<mlir::Pass> CreateMemrefCopyToLoopsPass();
 
 #define GEN_PASS_REGISTRATION

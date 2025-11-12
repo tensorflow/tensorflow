@@ -38,8 +38,9 @@ namespace xla::cpu {
 // 3. If the dimensions are a combindation of minor & non-minor dimensions we
 //    simply apply strategy 2 followed by strategy 1.
 mlir::Value EmitVectorizedReduction(
-    mlir::OpBuilder& builder, mlir::Location loc, mlir::VectorType result_type,
-    mlir::TypedValue<mlir::VectorType> source, mlir::Value init_value,
+    mlir::OpBuilder& builder, mlir::Location loc,
+    mlir::RankedTensorType result_type,
+    mlir::TypedValue<mlir::RankedTensorType> source, mlir::Value init_value,
     llvm::ArrayRef<int64_t> reduction_dims, mlir::Block& body);
 
 }  // namespace xla::cpu
