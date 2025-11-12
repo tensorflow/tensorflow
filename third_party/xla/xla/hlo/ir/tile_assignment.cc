@@ -600,10 +600,8 @@ absl::Status TileAssignment::EachStatus(
     absl::Span<const int64_t> new_dimensions) const {
   if (iota_) {
     CHECK_EQ(Product(new_dimensions), iota_->num_elements());
-    return TileAssignment(
-        IotaTileAssignment(new_dimensions, iota_->reshape_dims(),
-                           iota_->transpose_perm()),
-        /*shared_array=*/nullptr);
+    return TileAssignment(new_dimensions, iota_->reshape_dims(),
+                          iota_->transpose_perm());
   }
   std::shared_ptr<Array<int64_t>> reshaped = shared_array_clone();
   reshaped->Reshape(new_dimensions);

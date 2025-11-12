@@ -171,14 +171,14 @@ Array<int64_t> ToArray(absl::Span<const int64_t> reshape_dims,
 class TileAssignment {
  public:
   TileAssignment() : array_(ReplicatedArray()) {}
+
   explicit TileAssignment(std::shared_ptr<const Array<int64_t>> array)
       : shared_array_(std::move(array)), array_(shared_array_.get()) {}
   explicit TileAssignment(int64_t device_id)
       : TileAssignment(std::make_shared<const Array<int64_t>>(
             std::initializer_list<int64_t>{1}, device_id)) {}
+
   explicit TileAssignment(IotaTileAssignment iota) : iota_(std::move(iota)) {}
-  explicit TileAssignment(std::initializer_list<int64_t> dims)
-      : iota_(IotaTileAssignment::Create(dims)) {}
   explicit TileAssignment(absl::Span<const int64_t> dims)
       : iota_(IotaTileAssignment::Create(dims)) {}
   explicit TileAssignment(absl::Span<const int64_t> dims,
@@ -268,13 +268,6 @@ class TileAssignment {
 
  private:
   friend class HloSharding;
-  // TODO(b/281892190): Consider changing int64_t to int32_t since it's unlikely
-  // to have so many devices to overflow int32_t in practice.
-  explicit TileAssignment(IotaTileAssignment iota,
-                          std::shared_ptr<const Array<int64_t>> shared_array)
-      : iota_(std::move(iota)),
-        shared_array_(std::move(shared_array)),
-        array_(shared_array_.get()) {}
 
   void MaybeMaterializeFullArray() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
