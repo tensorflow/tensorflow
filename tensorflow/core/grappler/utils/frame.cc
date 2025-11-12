@@ -49,12 +49,13 @@ inline absl::Status FrameView::InferFromGraphViewT(
 
   // We assign unique int id to each frame, and use this map to track what
   // frames we've already seen in the graph.
-  absl::flat_hash_map<string, int> frame_name_to_id;
+  absl::flat_hash_map<std::string, int> frame_name_to_id;
 
-  auto process_fanout = [this, graph](
-                            absl::flat_hash_map<string, int>* frame_name_to_id,
-                            std::deque<int>* ready_node_indices,
-                            const NodeDef* ready_node, int fanout_node_index) {
+  auto process_fanout = [this, graph](absl::flat_hash_map<std::string, int>*
+                                          frame_name_to_id,
+                                      std::deque<int>* ready_node_indices,
+                                      const NodeDef* ready_node,
+                                      int fanout_node_index) {
     const NodeDef* fanout_node = &graph->node(fanout_node_index);
     if (!node_to_frames_.contains(fanout_node)) {
       // If we have never seen this node before, we add all frames from the
@@ -75,7 +76,7 @@ inline absl::Status FrameView::InferFromGraphViewT(
               SummarizeNodeDef(*fanout_node));
         }
 
-        const string& frame_name = frame_name_attr->s();
+        const std::string& frame_name = frame_name_attr->s();
         int frame_id;
 
         if (frame_name_to_id->contains(frame_name)) {
