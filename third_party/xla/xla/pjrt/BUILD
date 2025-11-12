@@ -526,6 +526,7 @@ cc_library(
     deps = [
         "//xla/pjrt/proto:pjrt_value_type_proto_cc",
         "//xla/tsl/lib/gtl:int_type",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
