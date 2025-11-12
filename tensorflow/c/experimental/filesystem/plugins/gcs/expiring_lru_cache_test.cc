@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/expiring_lru_cache.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
