@@ -308,51 +308,6 @@ TEST(KernelThunkTest, BufferUsesReturnsBuffersInConsistentOrder) {
   ASSERT_THAT(buffers1, testing::ContainerEq(buffers2));
 }
 
-TEST(CustomKernelThunkTest, BufferUsesReturnsCorrectBuffers) {
-  CustomKernel kernel(
-      /*name=*/"",
-      se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
-          /*ptx=*/"", /*kernel_name=*/"", /*arity=*/0),
-      se::BlockDim(), se::ThreadDim(), /*shared_memory_bytes=*/0);
-  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
-  BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/512);
-  BufferAllocation::Slice slice1(&alloc, /*offset=*/512, /*size=*/512);
-  emitters::KernelArgument arg0(ShapeUtil::MakeShape(F32, {512}), slice0);
-  emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {512}), slice1);
-  arg0.set_written(false);
-  arg1.set_written(true);
-  emitters::KernelArguments kernel_arguments({arg0, arg1});
-  auto hlo = HloInstruction::CreateConstant(Literal());
-  CustomKernelThunk thunk(hlo.get(), kernel, kernel_arguments, ThunkId{0});
-
-  Thunk::BufferUses buffers = thunk.buffer_uses();
-
-  ASSERT_THAT(buffers, testing::UnorderedElementsAre(BufferUse::Read(slice0),
-                                                     BufferUse::Write(slice1)));
-}
-
-TEST(CustomKernelThunkTest, BufferUsesReturnsBuffersInConsistentOrder) {
-  CustomKernel kernel(
-      /*name=*/"",
-      se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
-          /*ptx=*/"", /*kernel_name=*/"", /*arity=*/0),
-      se::BlockDim(), se::ThreadDim(), /*shared_memory_bytes=*/0);
-  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
-  BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/512);
-  BufferAllocation::Slice slice1(&alloc, /*offset=*/512, /*size=*/512);
-  emitters::KernelArgument arg0(ShapeUtil::MakeShape(F32, {512}), slice0);
-  emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {512}), slice1);
-  arg0.set_written(false);
-  arg1.set_written(true);
-  emitters::KernelArguments kernel_arguments({arg0, arg1});
-  auto hlo = HloInstruction::CreateConstant(Literal());
-  CustomKernelThunk thunk(hlo.get(), kernel, kernel_arguments, ThunkId{0});
-
-  Thunk::BufferUses buffers1 = thunk.buffer_uses();
-  Thunk::BufferUses buffers2 = thunk.buffer_uses();
-
-  ASSERT_THAT(buffers1, testing::ContainerEq(buffers2));
-}
 
 class KernelThunkTmaPTXTest : public ::testing::TestWithParam<bool> {
  public:
