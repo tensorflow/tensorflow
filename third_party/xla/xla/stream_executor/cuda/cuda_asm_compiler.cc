@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
+#include "xla/stream_executor/cuda/subprocess_compilation_support.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -59,12 +61,19 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
     return std::move(assembly.cubin);
   }
 
-  VLOG(3) << "Compiling GPU ASM with PTXAS. Libnvptxcompiler compilation "
-             "not supported.";
-  TF_ASSIGN_OR_RETURN(auto assembly, CompileGpuAsmUsingPtxAs(
-                                         cc, ptx, options, cancel_if_reg_spill,
-                                         /*dump_compilation_log=*/false));
-  return std::move(assembly.cubin);
+  if (IsSubprocessCompilationSupported()) {
+    VLOG(3) << "Compiling GPU ASM with PTXAS. Libnvptxcompiler compilation "
+               "not supported.";
+    TF_ASSIGN_OR_RETURN(
+        auto assembly,
+        CompileGpuAsmUsingPtxAs(cc, ptx, options, cancel_if_reg_spill,
+                                /*dump_compilation_log=*/false));
+    return std::move(assembly.cubin);
+  }
+  VLOG(3) << "Neither libnvptxcompiler nor PTXAS compilation supported.";
+
+  return absl::UnavailableError(
+      "Neither libnvptxcompiler nor PTXAS compilation supported.");
 }
 
 absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(

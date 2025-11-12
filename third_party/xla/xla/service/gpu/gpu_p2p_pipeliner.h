@@ -29,7 +29,7 @@ class GpuP2PPipeliner : public HloModulePass {
 
   absl::string_view name() const override { return "gpu-p2p-pipeliner"; }
 
-  absl::StatusOr<bool> Run(
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
