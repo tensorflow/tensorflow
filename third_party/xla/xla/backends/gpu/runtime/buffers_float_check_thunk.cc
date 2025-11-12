@@ -55,8 +55,8 @@ absl::Status BuffersDebugFloatCheckThunk::Initialize(
            .IsAtLeastPascal()) {
     VLOG(1)
         << "Buffer float checking not supported on CUDA architectures older "
-           "than "
-           "Pascal due to missing atomic fetch_add with system scope, skipping";
+           "than Pascal due to missing atomic fetch_add with system scope, "
+           "skipping";
     return absl::OkStatus();
   }
 
@@ -114,11 +114,12 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
 
   for (const auto& [buffer_idx, buffer] : checked_thunk_buffers_) {
     BufferDebugLogEntryMetadataStore::Metadata metadata{
-        checked_thunk_id_,
+        checked_thunk_info_.thunk_id,
         buffer_idx,
         execution_id,
-        /*is_input=*/runs_before_checked_thunk_,
+        /*is_input=*/false,
         BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS,
+        checked_thunk_info_.profile_annotation,
     };
     const BufferDebugLogEntryId entry_id = metadata_store_->AssignId(metadata);
 

@@ -58,6 +58,12 @@ class BufferDebugLogEntryMetadataStore {
     // The type of check that produced this entry.
     BufferDebugLogEntryProto::CheckType check_type;
 
+    // Profile annotation of the HLO instruction that produced this entry.
+    // This is used to identify the HLO instruction in HloModule that was under
+    // the check. We need that to be able to log the HLO instruction when
+    // a non-zero number of infs or nans were found.
+    std::string profile_annotation;
+
     std::string ToString() const {
       return absl::StrCat(
           "thunk_id: ", thunk_id.value(), ", buffer_idx: ", buffer_idx,

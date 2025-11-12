@@ -43,8 +43,12 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/ffi.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
@@ -57,7 +61,7 @@ namespace xla::gpu {
 
 namespace se = stream_executor;
 
-// With BufferDebugFloatCheckEntry size of 8 bytes, this is enough to hold ~8K
+// With BufferDebugFloatCheckEntry size of 16 bytes, this is enough to hold ~4K
 // entries.
 constexpr size_t kLogSizeBytes = 64 * 1024;
 
@@ -119,9 +123,8 @@ std::unique_ptr<Thunk> WrapWithFloatCheckThunk(
   thunk_and_checks.push_back(std::move(thunk));
   auto buffer_debug_float_check_thunk =
       std::make_unique<BuffersDebugFloatCheckThunk>(
-          Thunk::ThunkInfo(), log_slice, thunk_ptr->thunk_info().thunk_id,
-          std::move(buffers_to_check),
-          /*runs_before_checked_thunk=*/false, std::move(metadata_store));
+          Thunk::ThunkInfo(), thunk_ptr->thunk_info(), log_slice,
+          std::move(buffers_to_check), std::move(metadata_store));
   buffer_debug_float_check_thunk->add_control_predecessor(thunk_ptr);
   thunk_and_checks.push_back(std::move(buffer_debug_float_check_thunk));
   auto wrapped_thunk = std::make_unique<SequentialThunk>(
@@ -131,11 +134,26 @@ std::unique_ptr<Thunk> WrapWithFloatCheckThunk(
   return wrapped_thunk;
 }
 
-// Saves the contents of the BufferDebugLog stored in `log_buffer` to a file..
-//
-// `metadata_store` is used to retrieve the metadata for the log entries.
-// The filename is derived from the HLO module name and the log dump path
-// configured in `debug_options`.
+void LogHloInstructionWithId(const HloModule* hlo_module,
+                             const std::string& id) {
+  for (const HloComputation* computation : hlo_module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->name() == id) {
+        LOG(ERROR) << "HLO instruction with id " << id << ":\n\n"
+                   << instruction->ToString() << "\n\n";
+        if (instruction->opcode() == HloOpcode::kFusion) {
+          auto fusion = xla::Cast<HloFusionInstruction>(instruction);
+          LOG(ERROR) << "HLO fusion instruction computation:\n\n"
+                     << fusion->fused_instructions_computation()->ToString()
+                     << "\n\n";
+        }
+        return;
+      }
+    }
+  }
+  LOG(ERROR) << "HLO instruction with id " << id << " was not found";
+}
+
 absl::Status BufferDebugFloatCheck(
     std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
     se::Stream* stream, const HloComputation* absl_nonnull hlo_computation,
@@ -165,7 +183,7 @@ absl::Status BufferDebugFloatCheck(
 
   VLOG(1) << "read " << entries.size() << " entries";
   auto entries_metadata = metadata_store->GetEntryMetadataBatch(entry_ids);
-  int non_zero_float_check_modules_count = 0;
+  int non_zero_nan_check_modules_count = 0;
   int non_zero_inf_check_modules_count = 0;
   CHECK_EQ(entries.size(), entries_metadata.size());
 
@@ -177,37 +195,41 @@ absl::Status BufferDebugFloatCheck(
                    << " for float check not found in metadata";
       continue;
     }
-    if (metadata->check_type ==
+    if (metadata->check_type !=
         BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS) {
-      if (nan_check_enabled && entry.nan_count > 0) {
-        LOG(ERROR) << "Found entry with non zero float check count "
-                   << entry.nan_count << " for thunk " << entry.entry_id
-                   << " and execution " << metadata->execution_id
-                   << " for module: \n"
-                   << hlo_module->ToString();
-        non_zero_float_check_modules_count++;
-      }
-      if (inf_check_enabled && entry.inf_count > 0) {
-        LOG(ERROR) << "Found entry with non zero inf check count "
-                   << entry.inf_count << " for thunk " << entry.entry_id
-                   << " and execution " << metadata->execution_id
-                   << " for module: \n"
-                   << hlo_module->ToString();
-        non_zero_inf_check_modules_count++;
-      }
+      continue;
+    }
+    if (nan_check_enabled && entry.nan_count > 0) {
+      LOG(ERROR) << "Found entry with non zero nan count " << entry.nan_count
+                 << " for thunk " << entry.entry_id << " and execution "
+                 << "with metadata: " << metadata->profile_annotation;
+      non_zero_nan_check_modules_count++;
+      LogHloInstructionWithId(hlo_module, metadata->profile_annotation);
+    }
+    if (inf_check_enabled && entry.inf_count > 0) {
+      LOG(ERROR) << "Found entry with non zero inf count " << entry.inf_count
+                 << " for thunk " << entry.entry_id << " and execution "
+                 << metadata->execution_id
+                 << "with metadata: " << metadata->profile_annotation;
+      non_zero_inf_check_modules_count++;
+      LogHloInstructionWithId(hlo_module, metadata->profile_annotation);
     }
   }
-  if (non_zero_float_check_modules_count > 0 &&
+  if (non_zero_nan_check_modules_count > 0 &&
       hlo_module->config().debug_options().xla_gpu_detect_nan() ==
           DebugOptions::DETECTION_MODE_FAIL) {
-    LOG(FATAL) << "Found " << non_zero_float_check_modules_count
-               << " modules with non zero float check count";
+    LOG(FATAL) << "Crash execution as requested by the xla_gpu_detect_nan flag "
+                  "because "
+               << non_zero_nan_check_modules_count
+               << " NaN values were found in buffers.";
   }
   if (non_zero_inf_check_modules_count > 0 &&
       hlo_module->config().debug_options().xla_gpu_detect_inf() ==
           DebugOptions::DETECTION_MODE_FAIL) {
-    LOG(FATAL) << "Found " << non_zero_float_check_modules_count
-               << " modules with non zero inf check count";
+    LOG(FATAL) << "Crash execution as requested by the xla_gpu_detect_inf flag "
+                  "because "
+               << non_zero_inf_check_modules_count
+               << " infinite values were found in buffers.";
   }
   return absl::OkStatus();
 }

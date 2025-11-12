@@ -3180,6 +3180,7 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

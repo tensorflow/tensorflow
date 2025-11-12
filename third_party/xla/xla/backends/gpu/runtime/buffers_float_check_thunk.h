@@ -19,34 +19,33 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/gpu/buffer_debug_float_check_kernel.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla::gpu {
 
 class BuffersDebugFloatCheckThunk : public Thunk {
  public:
   explicit BuffersDebugFloatCheckThunk(
-      ThunkInfo info, BufferAllocation::Slice log_slice,
-      ThunkId checked_thunk_id,
+      ThunkInfo info, const ThunkInfo& checked_thunk_info,
+      BufferAllocation::Slice log_slice,
       absl::flat_hash_map<size_t, BufferAllocation::Slice>
           checked_thunk_buffers,
-      bool runs_before_checked_thunk,
       std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store)
       : Thunk(Thunk::Kind::kBuffersDebugFloatCheck, std::move(info)),
         log_slice_(log_slice),
-        checked_thunk_id_(checked_thunk_id),
+        checked_thunk_info_(checked_thunk_info),
         checked_thunk_buffers_(std::move(checked_thunk_buffers)),
-        runs_before_checked_thunk_(runs_before_checked_thunk),
         metadata_store_(std::move(metadata_store)) {}
 
   absl::Status Initialize(const InitializeParams& params) override;
@@ -80,9 +79,8 @@ class BuffersDebugFloatCheckThunk : public Thunk {
       kernels_ ABSL_GUARDED_BY(kernels_mutex_);
 
   BufferAllocation::Slice log_slice_;
-  ThunkId checked_thunk_id_;
+  ThunkInfo checked_thunk_info_;
   absl::flat_hash_map<size_t, BufferAllocation::Slice> checked_thunk_buffers_;
-  bool runs_before_checked_thunk_;
   std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store_;
   std::atomic<size_t> execution_count_ = 0;
 };

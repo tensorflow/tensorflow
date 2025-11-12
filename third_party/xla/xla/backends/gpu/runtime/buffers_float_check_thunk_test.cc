@@ -158,11 +158,12 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
       /*collective_params=*/nullptr, /*collective_cliques=*/nullptr);
   auto metadata_store = std::make_shared<BufferDebugLogEntryMetadataStore>();
 
+  Thunk::ThunkInfo checked_thunk_info;
+  checked_thunk_info.thunk_id = ThunkId(123);
   BuffersDebugFloatCheckThunk thunk(
-      Thunk::ThunkInfo(), log_slice,
-      /*checked_thunk_id=*/ThunkId(123),
+      Thunk::ThunkInfo(), checked_thunk_info, log_slice,
       {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
-      /*runs_before_checked_thunk=*/true, metadata_store);
+      metadata_store);
   TF_ASSERT_OK(thunk.Initialize(init_params));
   TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}, resource_requests));
   TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));
@@ -179,7 +180,7 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
                           /*thunk_id=*/ThunkId(123),
                           /*buffer_idx=*/0,
                           /*execution_id=*/0,
-                          /*is_input=*/true,
+                          /*is_input=*/false,
                           BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS,
                       }),
                   IsEntryWithMetadata(
@@ -188,7 +189,7 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
                           /*thunk_id=*/ThunkId(123),
                           /*buffer_idx=*/1,
                           /*execution_id=*/0,
-                          /*is_input=*/true,
+                          /*is_input=*/false,
                           BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS,
                       })));
 }
@@ -234,11 +235,11 @@ TEST_F(BuffersDebugFloatCheckThunkTest,
                                     PrimitiveType::F32);
   BufferAllocation::Slice bf16_slice(&allocation, kLogSizeBytes,
                                      kInputSizeBytes, PrimitiveType::BF16);
+  Thunk::ThunkInfo checked_thunk_info;
+  checked_thunk_info.thunk_id = ThunkId(123);
   BuffersDebugFloatCheckThunk thunk(
-      Thunk::ThunkInfo(), log_slice,
-      /*checked_thunk_id=*/ThunkId(123),
+      Thunk::ThunkInfo(), checked_thunk_info, log_slice,
       {{/*buffer_idx=*/0, f32_slice}, {/*buffer_idx=*/1, bf16_slice}},
-      /*runs_before_checked_thunk=*/true,
       std::make_shared<BufferDebugLogEntryMetadataStore>());
 
   // Initialize the Thunk on both devices and run the kernel. An attempt to run
