@@ -87,28 +87,6 @@ absl::StatusOr<se::DeviceMemoryHandle> AllocateMemory(
   return local_buffer_alloc;
 };
 
-AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
-                                       bool is_multimem_enabled) {
-  if (input_size_bytes > kMaxOneShotAllReduceSizeBytes) {
-    return AllReduceStrategy::kTwoShot;
-  }
-  if (is_multimem_enabled) {
-    return AllReduceStrategy::kMultimem;
-  }
-  return AllReduceStrategy::kOneShot;
-}
-
-int64_t GetMaxSupportedAllReduceSizeBytes(AllReduceStrategy strategy) {
-  switch (strategy) {
-    case AllReduceStrategy::kOneShot:
-      return kMaxOneShotAllReduceSizeBytes;
-    case AllReduceStrategy::kTwoShot:
-      return kMaxTwoShotAllReduceSizeBytes;
-    case AllReduceStrategy::kMultimem:
-      return kMaxTwoShotAllReduceSizeBytes;
-  }
-}
-
 }  // namespace
 
 absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(

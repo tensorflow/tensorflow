@@ -42,7 +42,10 @@ namespace xla::gpu {
 
 namespace {
 
-using ::stream_executor::gpu::AllReduceStrategy;
+using se::gpu::AllReduceStrategy;
+static constexpr int64_t kMaxOneShotAllReduceSizeBytes = 256 * 1024;  // 256 KB
+static constexpr int64_t kMaxTwoShotAllReduceSizeBytes =
+    2 * 1024 * 1024;  // 2 MB
 
 template <typename T, ReductionKind kReductionKindV>
 class TagRegistry {
@@ -158,6 +161,28 @@ bool IsElementReductionSupported(PrimitiveType element_type,
 }
 
 }  // namespace
+
+AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
+                                       bool is_multimem_enabled) {
+  if (input_size_bytes > kMaxOneShotAllReduceSizeBytes) {
+    return AllReduceStrategy::kTwoShot;
+  }
+  if (is_multimem_enabled) {
+    return AllReduceStrategy::kMultimem;
+  }
+  return AllReduceStrategy::kOneShot;
+}
+
+int64_t GetMaxSupportedAllReduceSizeBytes(AllReduceStrategy strategy) {
+  switch (strategy) {
+    case AllReduceStrategy::kOneShot:
+      return kMaxOneShotAllReduceSizeBytes;
+    case AllReduceStrategy::kTwoShot:
+      return kMaxTwoShotAllReduceSizeBytes;
+    case AllReduceStrategy::kMultimem:
+      return kMaxTwoShotAllReduceSizeBytes;
+  }
+}
 
 LaunchDimensions AllReduceLaunchDimensions(int64_t elements, int64_t num_ranks,
                                            AllReduceStrategy strategy) {

@@ -30,6 +30,16 @@ limitations under the License.
 
 namespace xla::gpu {
 
+// Returns the all-reduce strategy for the given input size.
+// If `is_multimem_enabled` is true, then multimem strategies are also
+// considered.
+se::gpu::AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
+                                                bool is_multimem_enabled);
+
+// Returns the maximum supported all-reduce size in bytes for the given
+// strategy.
+int64_t GetMaxSupportedAllReduceSizeBytes(se::gpu::AllReduceStrategy strategy);
+
 // Returns the launch dimensions for the all-reduce kernel.
 // The launch dimensions are determined by the number of elements and the
 // the all-reduce strategy.

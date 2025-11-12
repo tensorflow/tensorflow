@@ -1183,6 +1183,49 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "collective_emitter",
+    srcs = ["collective_emitter.cc"],
+    hdrs = ["collective_emitter.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:util",
+        "//xla/backends/gpu/runtime:all_reduce",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:collective_ops_utils",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:all_reduce_kernel",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_emitter_test",
+    srcs = ["collective_emitter_test.cc"],
+    deps = [
+        ":collective_emitter",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service:hlo_creation_utils",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "tma_utils_test",
     srcs = ["tma_utils_test.cc"],
