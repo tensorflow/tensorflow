@@ -74,7 +74,7 @@ llvm::SmallVector<mlir::APInt> ReadAsHostEndian(ArrayRef<uint8_t> bytes) {
   ret.reserve(elem_count);
 
   const char* data_ptr = reinterpret_cast<const char*>(bytes.data());
-  for (int i = 0; i < elem_count; i++) {
+  for (size_t i = 0; i < elem_count; i++) {
     T val = llvm::support::endian::readNext<T, llvm::endianness::native,
                                             llvm::support::unaligned>(data_ptr);
     ret.push_back(mlir::APInt(sizeof(T) * 8, val));
@@ -362,7 +362,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       assert(bytes_len % 2 == 0);
       // Supports both BF16 and F16.
       assert(elem_type.isF16() || elem_type.isBF16());
-      int elem_count = bytes_len / 2;
+      size_t elem_count = bytes_len / 2;
 
       if (elem_type.isF16()) {
         std::vector<Eigen::half> values;
@@ -370,7 +370,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
 
         const char* data = reinterpret_cast<const char*>(buffer.data());
 
-        for (int i = 0; i < elem_count; i++) {
+        for (size_t i = 0; i < elem_count; i++) {
           uint16_t bit_repr = llvm::support::endian::readNext<
               uint16_t, llvm::endianness::native, llvm::support::unaligned>(
               data);
@@ -385,7 +385,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
 
         const char* data = reinterpret_cast<const char*>(buffer.data());
 
-        for (int i = 0; i < elem_count; i++) {
+        for (size_t i = 0; i < elem_count; i++) {
           uint16_t bit_repr = llvm::support::endian::readNext<
               uint16_t, llvm::endianness::native, llvm::support::unaligned>(
               data);
@@ -398,13 +398,13 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
     }
     case 32: {
       assert(bytes_len % 4 == 0);
-      int elem_count = bytes_len / 4;
+      size_t elem_count = bytes_len / 4;
       std::vector<float> values;
       values.reserve(elem_count);
 
       const char* data = reinterpret_cast<const char*>(buffer.data());
 
-      for (int i = 0; i < elem_count; i++) {
+      for (size_t i = 0; i < elem_count; i++) {
         uint32_t bit_repr =
             llvm::support::endian::readNext<uint32_t, llvm::endianness::native,
                                             llvm::support::unaligned>(data);
@@ -415,13 +415,13 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
     }
     case 64: {
       assert(bytes_len % 8 == 0);
-      int elem_count = bytes_len / 8;
+      size_t elem_count = bytes_len / 8;
       std::vector<double> values;
       values.reserve(elem_count);
 
       const char* data = reinterpret_cast<const char*>(buffer.data());
 
-      for (int i = 0; i < elem_count; i++) {
+      for (size_t i = 0; i < elem_count; i++) {
         uint64_t bit_repr =
             llvm::support::endian::readNext<uint64_t, llvm::endianness::native,
                                             llvm::support::unaligned>(data);
