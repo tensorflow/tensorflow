@@ -36,7 +36,7 @@ class FakeInputImpl {
   absl::Status AddInputToBuilder();
 
  private:
-  static string FakeNodeName(int in_index);
+  static std::string FakeNodeName(int in_index);
   absl::Status GetN(int* n) const;
   absl::Status GetDataType(DataType* dt) const;
   void NSources(int n, DataType dt) const;
@@ -44,7 +44,7 @@ class FakeInputImpl {
 
   const OpDef* const op_def_;
   const OpDef::ArgDef* const arg_;
-  const string in_node_;
+  const std::string in_node_;
   const NodeDef* const node_def_;
   NodeDefBuilder* const builder_;
 
@@ -120,9 +120,9 @@ absl::Status FakeInputImpl::AddInputToBuilder() {
 }
 
 // static
-string FakeInputImpl::FakeNodeName(int in_index) {
+std::string FakeInputImpl::FakeNodeName(int in_index) {
   char c = 'a' + (in_index % 26);
-  return string(&c, 1);
+  return std::string(&c, 1);
 }
 
 absl::Status FakeInputImpl::GetN(int* n) const {

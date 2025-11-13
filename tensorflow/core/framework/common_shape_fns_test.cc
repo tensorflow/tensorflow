@@ -220,7 +220,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
 
 TEST(CommonShapeFnsTest, Einsum_ShapeFn) {
   ShapeInferenceTestOp op("Einsum");
-  auto set_equation = [&op](int n, string equation) {
+  auto set_equation = [&op](int n, std::string equation) {
     std::vector<NodeDefBuilder::NodeOut> input_list;
     input_list.reserve(n);
     for (int i = 0; i < n; ++i) {
@@ -629,8 +629,9 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
 
 TEST(CommonShapeFnsTest, ConvTest) {
   ShapeInferenceTestOp op("Conv");
-  auto set_op = [&op](const std::vector<int32>& strides, const string& padding,
-                      string data_format, int batch_dims, int groups) {
+  auto set_op = [&op](const std::vector<int32_t>& strides,
+                      const std::string& padding, std::string data_format,
+                      int batch_dims, int groups) {
     TF_CHECK_OK(NodeDefBuilder("test", op.name)
                     .Input("input", 0, DT_FLOAT)
                     .Input("filter", 0, DT_FLOAT)
@@ -715,9 +716,11 @@ TEST(CommonShapeFnsTest, ConvTest) {
 
 TEST(CommonShapeFnsTest, Conv2DFormatsTest) {
   ShapeInferenceTestOp op("Conv2D");
-  auto set_op = [&op](const std::vector<int32>& strides, const string& padding,
-                      const string& data_format, const string& filter_format,
-                      const std::vector<int32>& explicit_paddings = {}) {
+  auto set_op = [&op](const std::vector<int32_t>& strides,
+                      const std::string& padding,
+                      const std::string& data_format,
+                      const std::string& filter_format,
+                      const std::vector<int32_t>& explicit_paddings = {}) {
     TF_CHECK_OK(NodeDefBuilder("test", op.name)
                     .Input("input", 0, DT_FLOAT)
                     .Input("filter", 0, DT_FLOAT)
@@ -761,15 +764,17 @@ TEST(CommonShapeFnsTest, Conv2DFormatsTest) {
   INFER_OK(op, "[1,1,4,4,32];[32,1,2,1,32]", "[d0_0,1,3,2,d0_4]");
 }
 
-class Conv2DShapeTest : public ::testing::TestWithParam<string> {};
+class Conv2DShapeTest : public ::testing::TestWithParam<std::string> {};
 
 TEST_P(Conv2DShapeTest, Conv2DShapeTest) {
-  const string op_name = GetParam();
+  const std::string op_name = GetParam();
   ShapeInferenceTestOp op(op_name);
-  auto set_op = [&op](const std::vector<int32>& strides, const string& padding,
-                      const string& data_format, const string& filter_format,
-                      const std::vector<int32>& explicit_paddings = {}) {
-    string format;
+  auto set_op = [&op](const std::vector<int32_t>& strides,
+                      const std::string& padding,
+                      const std::string& data_format,
+                      const std::string& filter_format,
+                      const std::vector<int32_t>& explicit_paddings = {}) {
+    std::string format;
     if (op.name == "Conv")
       format = (data_format == "NHWC") ? "CHANNELS_LAST" : "CHANNELS_FIRST";
     else
@@ -974,13 +979,14 @@ TEST_P(Conv2DShapeTest, Conv2DShapeTest) {
 }
 
 TEST_P(Conv2DShapeTest, Conv2DDilatedShapeTest) {
-  const string op_name = GetParam();
+  const std::string op_name = GetParam();
   ShapeInferenceTestOp op(op_name);
-  auto set_op = [&op](const std::vector<int32>& dilations,
-                      const std::vector<int32>& strides, const string& padding,
-                      const string& data_format,
-                      const std::vector<int32>& explicit_paddings = {}) {
-    string format;
+  auto set_op = [&op](const std::vector<int32_t>& dilations,
+                      const std::vector<int32_t>& strides,
+                      const std::string& padding,
+                      const std::string& data_format,
+                      const std::vector<int32_t>& explicit_paddings = {}) {
+    std::string format;
     if (op.name == "Conv")
       format = (data_format == "NHWC") ? "CHANNELS_LAST" : "CHANNELS_FIRST";
     else
@@ -1129,8 +1135,8 @@ TEST(CommonShapeFnsTest, Conv3DShapeRankTest) {
 
 TEST(CommonShapeFnsTest, Conv3DGroupsTest) {
   ShapeInferenceTestOp op("Conv3D");
-  auto set_op = [&op](const std::vector<int32>& strides,
-                      const string& padding) {
+  auto set_op = [&op](const std::vector<int32_t>& strides,
+                      const std::string& padding) {
     TF_CHECK_OK(NodeDefBuilder("test", "Conv3D")
                     .Input("input", 0, DT_FLOAT)
                     .Input("filter", 0, DT_FLOAT)
@@ -1166,13 +1172,13 @@ TEST(CommonShapeFnsTest, Conv3DGroupsTest) {
 INSTANTIATE_TEST_SUITE_P(CommonShapeFnsTest, Conv2DShapeTest,
                          ::testing::Values("Conv2D", "Conv"));
 
-class Conv3DShapeTest : public ::testing::TestWithParam<string> {};
+class Conv3DShapeTest : public ::testing::TestWithParam<std::string> {};
 
 TEST_P(Conv3DShapeTest, Conv3DShapeTest) {
-  const string op_name = GetParam();
+  const std::string op_name = GetParam();
   ShapeInferenceTestOp op(op_name);
-  auto set_op = [&op](const std::vector<int32>& strides,
-                      const string& padding) {
+  auto set_op = [&op](const std::vector<int32_t>& strides,
+                      const std::string& padding) {
     TF_CHECK_OK(NodeDefBuilder("test", op.name)
                     .Input("input", 0, DT_FLOAT)
                     .Input("filter", 0, DT_FLOAT)
@@ -1245,11 +1251,11 @@ TEST_P(Conv3DShapeTest, Conv3DShapeTest) {
 }
 
 TEST_P(Conv3DShapeTest, Conv3DDilatedShapeTest) {
-  const string op_name = GetParam();
+  const std::string op_name = GetParam();
   ShapeInferenceTestOp op(op_name);
-  auto set_op = [&op](const std::vector<int32>& dilations,
-                      const std::vector<int32>& strides,
-                      const string& padding) {
+  auto set_op = [&op](const std::vector<int32_t>& dilations,
+                      const std::vector<int32_t>& strides,
+                      const std::string& padding) {
     TF_CHECK_OK(NodeDefBuilder("test", op.name)
                     .Input("input", 0, DT_FLOAT)
                     .Input("filter", 0, DT_FLOAT)
@@ -1300,7 +1306,7 @@ INSTANTIATE_TEST_SUITE_P(CommonShapeFnsTest, Conv3DShapeTest,
 
 TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {
   ShapeInferenceTestOp op("DepthwiseConv2dNative");
-  std::vector<int32> strides = {{1, 1, 1, 1}};
+  std::vector<int32_t> strides = {{1, 1, 1, 1}};
   TF_CHECK_OK(NodeDefBuilder("test", "DepthwiseConv2dNative")
                   .Input("input", 0, DT_FLOAT)
                   .Input("filter", 0, DT_FLOAT)
@@ -1344,9 +1350,10 @@ TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {
 
 TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
   ShapeInferenceTestOp op("AvgPool");
-  auto set_op = [&op](const std::vector<int32>& strides,
-                      const std::vector<int32>& ksizes, const string& padding,
-                      const string& data_format) {
+  auto set_op = [&op](const std::vector<int32_t>& strides,
+                      const std::vector<int32_t>& ksizes,
+                      const std::string& padding,
+                      const std::string& data_format) {
     TF_CHECK_OK(NodeDefBuilder("test", "AvgPool")
                     .Input("input", 0, DT_FLOAT)
                     .Attr("strides", strides)
@@ -1390,9 +1397,10 @@ TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
 
 TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
   ShapeInferenceTestOp op("MaxPool");
-  auto set_op = [&op](const std::vector<int32>& strides,
-                      const std::vector<int32>& ksizes, const string& padding,
-                      const string& data_format) {
+  auto set_op = [&op](const std::vector<int32_t>& strides,
+                      const std::vector<int32_t>& ksizes,
+                      const std::string& padding,
+                      const std::string& data_format) {
     TF_CHECK_OK(NodeDefBuilder("test", "MaxPool")
                     .Input("input", 0, DT_FLOAT)
                     .Attr("strides", strides)
@@ -1426,9 +1434,10 @@ TEST(CommonShapeFnsTest, MaxPoolV22DShapeTest) {
   ShapeInferenceTestOp op("MaxPoolV2");
   Tensor ksizes_tensor, strides_tensor;
   auto set_op = [&op, &ksizes_tensor, &strides_tensor](
-                    const std::vector<int32>& strides,
-                    const std::vector<int32>& ksizes, const string& padding,
-                    const string& data_format) {
+                    const std::vector<int32_t>& strides,
+                    const std::vector<int32_t>& ksizes,
+                    const std::string& padding,
+                    const std::string& data_format) {
     TF_CHECK_OK(NodeDefBuilder("test", "MaxPoolV2")
                     .Input("input", 0, DT_FLOAT)
                     .Input("ksize", 1, DT_INT32)
@@ -1436,11 +1445,11 @@ TEST(CommonShapeFnsTest, MaxPoolV22DShapeTest) {
                     .Attr("padding", padding)
                     .Attr("data_format", data_format)
                     .Finalize(&op.node_def));
-    ksizes_tensor = test::AsTensor<int32>(ksizes);
+    ksizes_tensor = test::AsTensor<int32_t>(ksizes);
     op.input_tensors.resize(3);
     op.input_tensors[0] = nullptr;
     op.input_tensors[1] = &ksizes_tensor;
-    strides_tensor = test::AsTensor<int32>(strides);
+    strides_tensor = test::AsTensor<int32_t>(strides);
     op.input_tensors[2] = &strides_tensor;
   };
 
@@ -1466,8 +1475,9 @@ TEST(CommonShapeFnsTest, MaxPoolV22DShapeTest) {
 
 TEST(CommonShapeFnsTest, Pool3DShapeTest) {
   ShapeInferenceTestOp op("MaxPool3D");
-  auto set_op = [&op](const std::vector<int32>& strides,
-                      const std::vector<int32>& ksizes, const string& padding) {
+  auto set_op = [&op](const std::vector<int32_t>& strides,
+                      const std::vector<int32_t>& ksizes,
+                      const std::string& padding) {
     TF_CHECK_OK(NodeDefBuilder("test", "MaxPool3D")
                     .Input("input", 0, DT_FLOAT)
                     .Attr("strides", strides)
@@ -1524,28 +1534,28 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
   INFER_OK(op, "[2,4,5];[2]", "?");
   INFER_OK(op, "?;[2]", "?");
 
-  Tensor indices = test::AsTensor<int32>({1, 2});
+  Tensor indices = test::AsTensor<int32_t>({1, 2});
   op.input_tensors[1] = &indices;
 
   // Reduction indices available
   INFER_OK(op, "[2,4,5];[2]", "[d0_0]");
 
   // Wrapped indices
-  indices = test::AsTensor<int32>({-1, -2});
+  indices = test::AsTensor<int32_t>({-1, -2});
   op.input_tensors[1] = &indices;
   INFER_OK(op, "[2,4,5];[2]", "[d0_0]");
 
   // Scalar
-  indices = test::AsScalar<int32>(0);
+  indices = test::AsScalar<int32_t>(0);
   op.input_tensors[1] = &indices;
   INFER_OK(op, "[2,4,5];[]", "[d0_1,d0_2]");
 
-  indices = test::AsScalar<int32>(-4);
+  indices = test::AsScalar<int32_t>(-4);
   op.input_tensors[1] = &indices;
   INFER_ERROR("Invalid reduction dimension", op, "[2,4,5];[]");
 
   // Empty reduction indices
-  indices = test::AsTensor<int32>({});
+  indices = test::AsTensor<int32_t>({});
   op.input_tensors[1] = &indices;
   INFER_OK(op, "[2,4,5];[0]", "[d0_0,d0_1,d0_2]");
 
@@ -1555,7 +1565,7 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
                    .Input("reduction_indices", 1, DT_INT32)
                    .Attr("keep_dims", true)
                    .Finalize(&op.node_def));
-  indices = test::AsTensor<int32>({-1, -2});
+  indices = test::AsTensor<int32_t>({-1, -2});
   op.input_tensors[1] = &indices;
   INFER_OK(op, "[2,4,5];[2]", "[d0_0, 1, 1]");
 
@@ -1572,9 +1582,9 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
   INFER_OK(op, "[?,?,?];[?,?]", "[?,?,?]");
   // And when the tensor is specified, it's still allowed.
   op.input_tensors[1] = &indices;
-  indices = test::AsTensor<int32>({-1, -2}, TensorShape({2, 1}));
+  indices = test::AsTensor<int32_t>({-1, -2}, TensorShape({2, 1}));
   INFER_OK(op, "[2,4,5];[2,1]", "[d0_0, 1, 1]");
-  indices = test::AsTensor<int32>({-1, -2}, TensorShape({1, 2}));
+  indices = test::AsTensor<int32_t>({-1, -2}, TensorShape({1, 2}));
   INFER_OK(op, "[2,4,5];[1,2]", "[d0_0, 1, 1]");
 }
 

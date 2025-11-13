@@ -51,37 +51,37 @@ class NodeNameMapping {
 
   // Normalize the input name and make it unique. This is the same as the
   // function for output, expect that it adds a name mapping for the name.
-  string GetInputName(const string& name);
+  std::string GetInputName(const std::string& name);
 
   // Normalize the output name and make it unique.
-  string GetOutputName(const string& name);
+  std::string GetOutputName(const std::string& name);
 
   // Make the node name unique.
-  string Uniquify(const string& name);
+  std::string Uniquify(const std::string& name);
 
   // Records name as a used name. If this name is already used,
   // returns an error status.
-  absl::Status UseOutputName(const string& name);
+  absl::Status UseOutputName(const std::string& name);
 
   // Look up how a node name was previously normalized/uniquified.
   // Returns empty if name was never seen.
-  string Lookup(const string& name) const;
+  std::string Lookup(const std::string& name) const;
 
  private:
-  string UniquifyHelper(const string& name);
-  static string Normalize(string name);
+  std::string UniquifyHelper(const std::string& name);
+  static std::string Normalize(std::string name);
 
   // The normalized/uniquified names already used as
   // input names (in signature), output names (in signature), and node names
   // (in node_def).
   // This is a superset of values in name_mapping_.
-  absl::flat_hash_map<string, uint64> used_names_;
+  absl::flat_hash_map<std::string, uint64_t> used_names_;
   // Mapping from original node name from the graph to the normalized
   // and uniquified version of it.
-  absl::flat_hash_map<string, string> name_mapping_;
+  absl::flat_hash_map<std::string, std::string> name_mapping_;
 };
 
-string NodeNameMapping::Normalize(string name) {
+std::string NodeNameMapping::Normalize(std::string name) {
   // Convert letters to lowercase and non-alphanumeric characters to '_'.
   if (name.empty()) return "unknown";
   const int n = name.size();
@@ -106,38 +106,38 @@ string NodeNameMapping::Normalize(string name) {
   return i == n ? "unknown" : name.substr(i);
 }
 
-string NodeNameMapping::UniquifyHelper(const string& name) {
+std::string NodeNameMapping::UniquifyHelper(const std::string& name) {
   auto it = used_names_.emplace(name, 0);
   // If the name hasn't been used yet, use it as-is.
   if (it.second) return name;
 
   // Add a suffix to name to make it unique.
   while (true) {
-    const string candidate = absl::StrCat(name, "_", it.first->second);
+    const std::string candidate = absl::StrCat(name, "_", it.first->second);
     it.first->second++;
     if (used_names_.emplace(candidate, 0).second) return candidate;
   }
 }
 
-string NodeNameMapping::GetInputName(const string& name) {
-  const string& input_name = UniquifyHelper(Normalize(name));
+std::string NodeNameMapping::GetInputName(const std::string& name) {
+  const std::string& input_name = UniquifyHelper(Normalize(name));
   name_mapping_[name] = input_name;
   return input_name;
 }
 
-string NodeNameMapping::GetOutputName(const string& name) {
-  const string& input_name = UniquifyHelper(Normalize(name));
+std::string NodeNameMapping::GetOutputName(const std::string& name) {
+  const std::string& input_name = UniquifyHelper(Normalize(name));
   // Don't add it to name_mapping_ since this name is not for a node.
   return input_name;
 }
 
-string NodeNameMapping::Uniquify(const string& name) {
-  const string uniqued = UniquifyHelper(name);
+std::string NodeNameMapping::Uniquify(const std::string& name) {
+  const std::string uniqued = UniquifyHelper(name);
   name_mapping_[name] = uniqued;
   return uniqued;
 }
 
-absl::Status NodeNameMapping::UseOutputName(const string& name) {
+absl::Status NodeNameMapping::UseOutputName(const std::string& name) {
   const auto& iter = used_names_.find(name);
   if (iter != used_names_.end()) {
     return errors::InvalidArgument(
@@ -148,19 +148,19 @@ absl::Status NodeNameMapping::UseOutputName(const string& name) {
   return absl::OkStatus();
 }
 
-string NodeNameMapping::Lookup(const string& name) const {
+std::string NodeNameMapping::Lookup(const std::string& name) const {
   const auto iter = name_mapping_.find(name);
-  if (iter == name_mapping_.end()) return string();
+  if (iter == name_mapping_.end()) return std::string();
   return iter->second;
 }
 
 absl::Status FillFunctionBody(
-    const string& fn_name, const NodeNameMapping& node_names,
+    const std::string& fn_name, const NodeNameMapping& node_names,
     const std::vector<const Node*>& body_nodes,
-    const absl::flat_hash_map<string, string>& tensor_renaming,
+    const absl::flat_hash_map<std::string, std::string>& tensor_renaming,
     bool set_stateful_from_nodes, bool copy_placeholder_attrs_from_nodes,
     bool allow_destructive_reads, FunctionDef* fdef) {
-  absl::flat_hash_set<string> func_attr_names;
+  absl::flat_hash_set<std::string> func_attr_names;
   for (const auto& func_attr : fdef->signature().attr()) {
     func_attr_names.insert(func_attr.name());
   }
@@ -263,7 +263,7 @@ absl::Status FillFunctionBody(
     for (const Edge* edge : control_edges) {
       // Add this control input only if the src node is in the body or a part of
       // the inputs.
-      const string normalized = node_names.Lookup(edge->src()->name());
+      const std::string normalized = node_names.Lookup(edge->src()->name());
       // If we did not find a name for the source of control edge, this
       // source must be outside of the body, and not an input. Raise an error.
       if (normalized.empty()) {
@@ -322,15 +322,16 @@ absl::Status FillFunctionBody(
 }
 
 absl::Status GraphToFunctionDefHelper(
-    const Graph& fn_body, const string& fn_name, bool append_hash_to_fn_name,
-    bool set_stateful_from_nodes, bool copy_placeholder_attrs_from_nodes,
+    const Graph& fn_body, const std::string& fn_name,
+    bool append_hash_to_fn_name, bool set_stateful_from_nodes,
+    bool copy_placeholder_attrs_from_nodes,
     const std::vector<const Node*>& body_nodes,
     const std::vector<OutputTensor>& inputs,
     const std::vector<OutputTensor>& outputs,
-    const std::vector<string>& output_names,
+    const std::vector<std::string>& output_names,
     const std::vector<const Node*>& control_outputs,
-    const std::vector<string>& control_output_names, const char* description,
-    bool allow_destructive_reads, FunctionDef* fdef) {
+    const std::vector<std::string>& control_output_names,
+    const char* description, bool allow_destructive_reads, FunctionDef* fdef) {
   if (!output_names.empty()) {
     DCHECK_EQ(output_names.size(), outputs.size());
   }
@@ -350,7 +351,7 @@ absl::Status GraphToFunctionDefHelper(
   //  - For tensors produced by nodes in function's body:
   //    {flat_tensor_name -> nested_tensor_name}
   //    e.g. {Add:3 -> add_0:z:1}
-  absl::flat_hash_map<string, string> tensor_renaming;
+  absl::flat_hash_map<std::string, std::string> tensor_renaming;
 
   // Fill outputs in function's signature.
   // We fill the outputs first to prevent output_names from colliding
@@ -380,7 +381,7 @@ absl::Status GraphToFunctionDefHelper(
     int idx = inputs[i].index;
     OpDef::ArgDef* argdef = fdef->mutable_signature()->add_input_arg();
     argdef->set_type(node->output_type(idx));
-    const string& input_name = node_names.GetInputName(node->name());
+    const std::string& input_name = node_names.GetInputName(node->name());
     argdef->set_name(input_name);
     FunctionDef::ArgAttrs arg_attrs;
     int64_t resource_arg_unique_id = -1;
@@ -431,7 +432,7 @@ absl::Status GraphToFunctionDefHelper(
   // in tensor_renaming.
   for (const Node* node : body_nodes) {
     // Make sure node_name does not collide with an input or output name.
-    const string& node_name = node_names.Uniquify(node->name());
+    const std::string& node_name = node_names.Uniquify(node->name());
     // For each output_arg in the op_def, the output_ranges
     // map will have [start, end] range of indices that this arg produces
     // among all the output tensors of this op.
@@ -443,8 +444,8 @@ absl::Status GraphToFunctionDefHelper(
       int index_start = output.second.first;
       int index_end = output.second.second;
       for (int i = index_start; i < index_end; ++i) {
-        const string& original_name = absl::StrCat(node->name(), ":", i);
-        const string& new_name =
+        const std::string& original_name = absl::StrCat(node->name(), ":", i);
+        const std::string& new_name =
             strings::StrCat(node_name, ":", output_name, ":", i - index_start);
         // Record the mapping if this tensor is not already mapped.
         // Tensor can be already mapped if it is used as an input.
@@ -461,10 +462,10 @@ absl::Status GraphToFunctionDefHelper(
 
   // Remap return values.
   for (int r = 0; r < fdef->signature().output_arg_size(); ++r) {
-    const string& ret_name = fdef->signature().output_arg(r).name();
+    const std::string& ret_name = fdef->signature().output_arg(r).name();
     // We convert this flat tensor name to the nested value
     // (e.g. `add:z:1`) that we stored in tensor_renaming.
-    string return_value;
+    std::string return_value;
     if (outputs[r].node->IsRetval()) {
       Edge const* edge;
       TF_RETURN_IF_ERROR(outputs[r].node->input_edge(0, &edge));
@@ -484,8 +485,8 @@ absl::Status GraphToFunctionDefHelper(
   }
 
   if (append_hash_to_fn_name) {
-    const uint64 hash = FunctionDefHash(*fdef);
-    string encoded;
+    const uint64_t hash = FunctionDefHash(*fdef);
+    std::string encoded;
     TF_RETURN_IF_ERROR(Base64Encode(
         absl::string_view(reinterpret_cast<const char*>(&hash), sizeof(hash)),
         &encoded));
@@ -508,9 +509,9 @@ absl::Status GraphToFunctionDefHelper(
         ") and the number of control output names (",
         control_output_names.size(), ") to match but they do not.");
   }
-  std::set<string> control_output_names_set;
+  std::set<std::string> control_output_names_set;
   for (int i = 0; i < control_outputs.size(); ++i) {
-    string signature_name;
+    std::string signature_name;
     if (!control_output_names.empty()) {
       signature_name = control_output_names[i];
     } else {
@@ -523,7 +524,7 @@ absl::Status GraphToFunctionDefHelper(
       return errors::InvalidArgument("Repeated control output name: ",
                                      signature_name);
     }
-    const string control_output_node =
+    const std::string control_output_node =
         node_names.Lookup(control_outputs[i]->name());
     if (control_output_node.empty()) {
       return errors::InvalidArgument(
@@ -531,7 +532,7 @@ absl::Status GraphToFunctionDefHelper(
     }
     (*fdef->mutable_control_ret())[signature_name] = control_output_node;
   }
-  for (const string& control_output : control_output_names_set) {
+  for (const std::string& control_output : control_output_names_set) {
     fdef->mutable_signature()->add_control_output(control_output);
   }
 
@@ -539,9 +540,9 @@ absl::Status GraphToFunctionDefHelper(
 }
 
 absl::Status GraphToFunctionDefHelper(
-    const Graph& graph, const string& name,
-    const std::function<absl::optional<string>(const Node*)>& control_ret,
-    const std::vector<string>& output_names, bool allow_destructive_reads,
+    const Graph& graph, const std::string& name,
+    const std::function<absl::optional<std::string>(const Node*)>& control_ret,
+    const std::vector<std::string>& output_names, bool allow_destructive_reads,
     FunctionDef* fdef) {
   auto add_arg_or_retval = [](Node* node,
                               std::vector<OutputTensor>* args_or_retvals) {
@@ -566,7 +567,7 @@ absl::Status GraphToFunctionDefHelper(
   std::vector<OutputTensor> inputs;
   std::vector<OutputTensor> outputs;
   std::vector<const Node*> control_outputs;
-  std::vector<string> control_output_names;
+  std::vector<std::string> control_output_names;
   for (Node* node : graph.op_nodes()) {
     if (node->IsArg()) {
       TF_RETURN_IF_ERROR(add_arg_or_retval(node, &inputs));
@@ -591,7 +592,7 @@ absl::Status GraphToFunctionDefHelper(
 
   auto validate_args_retvals =
       [](const std::vector<OutputTensor>& args_or_retvals,
-         const string& op_type) {
+         const std::string& op_type) {
         for (int i = 0, e = args_or_retvals.size(); i < e; ++i) {
           if (args_or_retvals[i].node == nullptr) {
             return errors::InvalidArgument("Missing '", op_type,
@@ -614,17 +615,17 @@ absl::Status GraphToFunctionDefHelper(
 
 }  // anonymous namespace
 
-absl::Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
-                                bool append_hash_to_fn_name,
-                                bool set_stateful_from_nodes,
-                                bool copy_placeholder_attrs_from_nodes,
-                                const std::vector<const Node*>& body_nodes,
-                                const std::vector<OutputTensor>& inputs,
-                                const std::vector<OutputTensor>& outputs,
-                                const std::vector<string>& output_names,
-                                const std::vector<const Node*>& control_outputs,
-                                const std::vector<string>& control_output_names,
-                                const char* description, FunctionDef* fdef) {
+absl::Status GraphToFunctionDef(
+    const Graph& fn_body, const std::string& fn_name,
+    bool append_hash_to_fn_name, bool set_stateful_from_nodes,
+    bool copy_placeholder_attrs_from_nodes,
+    const std::vector<const Node*>& body_nodes,
+    const std::vector<OutputTensor>& inputs,
+    const std::vector<OutputTensor>& outputs,
+    const std::vector<std::string>& output_names,
+    const std::vector<const Node*>& control_outputs,
+    const std::vector<std::string>& control_output_names,
+    const char* description, FunctionDef* fdef) {
   return GraphToFunctionDefHelper(
       fn_body, fn_name, append_hash_to_fn_name, set_stateful_from_nodes,
       copy_placeholder_attrs_from_nodes, body_nodes, inputs, outputs,
@@ -634,20 +635,20 @@ absl::Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
 }
 
 absl::Status GraphToFunctionDef(
-    const Graph& graph, const string& name,
-    const std::function<absl::optional<string>(const Node*)>& control_ret,
+    const Graph& graph, const std::string& name,
+    const std::function<absl::optional<std::string>(const Node*)>& control_ret,
     FunctionDef* fdef) {
   return GraphToFunctionDefHelper(graph, name, control_ret,
                                   /*output_names=*/{},
                                   /*allow_destructive_reads=*/false, fdef);
 }
 
-absl::Status GraphToFunctionDef(const Graph& graph, const string& name,
+absl::Status GraphToFunctionDef(const Graph& graph, const std::string& name,
                                 FunctionDef* fdef) {
   return GraphToFunctionDef(graph, name, /*control_ret=*/nullptr, fdef);
 }
 
-absl::Status GraphToFunctionDef(const Graph& graph, const string& name,
+absl::Status GraphToFunctionDef(const Graph& graph, const std::string& name,
                                 const std::vector<std::string>& output_names,
                                 FunctionDef* fdef) {
   return GraphToFunctionDefHelper(graph, name, /*control_ret=*/nullptr,
@@ -656,8 +657,8 @@ absl::Status GraphToFunctionDef(const Graph& graph, const string& name,
 }
 
 absl::Status GraphToFunctionDef(
-    std::unique_ptr<Graph> graph, const string& name,
-    const std::function<std::optional<string>(const Node*)>& control_ret,
+    std::unique_ptr<Graph> graph, const std::string& name,
+    const std::function<std::optional<std::string>(const Node*)>& control_ret,
     FunctionDef* fdef) {
   return GraphToFunctionDefHelper(*graph, name, control_ret,
                                   /*output_names=*/{},

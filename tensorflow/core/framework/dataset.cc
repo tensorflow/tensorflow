@@ -52,8 +52,9 @@ static mutex* get_dataset_op_registry_lock() {
   return &dataset_op_registry_lock;
 }
 
-static std::unordered_set<string>* get_dataset_op_registry() {
-  static std::unordered_set<string>* names = new std::unordered_set<string>;
+static std::unordered_set<std::string>* get_dataset_op_registry() {
+  static std::unordered_set<std::string>* names =
+      new std::unordered_set<std::string>;
   return names;
 }
 
@@ -97,8 +98,8 @@ class DatasetVariantWrapper {
 
   DatasetBase* get() const { return dataset_; }
 
-  string TypeName() const { return "tensorflow::DatasetVariantWrapper"; }
-  string DebugString() const {
+  std::string TypeName() const { return "tensorflow::DatasetVariantWrapper"; }
+  std::string DebugString() const {
     if (dataset_) {
       return dataset_->DebugString();
     } else {
@@ -131,9 +132,11 @@ class WrappedDatasetVariantWrapper {
 
   Tensor get() const { return ds_tensor_; }
 
-  string TypeName() const { return "tensorflow::WrappedDatasetVariantWrapper"; }
+  std::string TypeName() const {
+    return "tensorflow::WrappedDatasetVariantWrapper";
+  }
 
-  string DebugString() const {
+  std::string DebugString() const {
     return "tensorflow::WrappedDatasetVariantWrapper::DebugString";
   }
 
@@ -324,7 +327,7 @@ absl::Status GraphDefBuilderWrapper::AddDataset(
 }
 
 absl::Status GraphDefBuilderWrapper::AddFunction(
-    SerializationContext* ctx, const string& function_name,
+    SerializationContext* ctx, const std::string& function_name,
     const FunctionLibraryDefinition& lib_def) {
   if (b_->HasFunction(function_name)) {
     VLOG(1) << "Function with name " << function_name << "already exists in"
@@ -338,7 +341,7 @@ absl::Status GraphDefBuilderWrapper::AddFunction(
   }
   FunctionDefLibrary def;
   *def.add_function() = *f_def;
-  const string gradient_func = lib_def.FindGradient(function_name);
+  const std::string gradient_func = lib_def.FindGradient(function_name);
   if (!gradient_func.empty()) {
     GradientDef* g_def = def.add_gradient();
     g_def->set_function_name(function_name);
@@ -380,8 +383,8 @@ void GraphDefBuilderWrapper::AddTensorInternal(const Tensor& val,
       b_->opts().WithAttr("dtype", val.dtype()).WithAttr("value", val));
 }
 
-bool GraphDefBuilderWrapper::HasAttr(const string& name,
-                                     const string& attr_name) const {
+bool GraphDefBuilderWrapper::HasAttr(const std::string& name,
+                                     const std::string& attr_name) const {
   const OpDef* op_def = nullptr;
   absl::Status s = b_->opts().op_registry()->LookUpOpDef(name, &op_def);
   if (!s.ok() || op_def == nullptr) {
@@ -535,11 +538,11 @@ absl::Status MemoryCheckpoint::Save(IteratorStateWriter* writer) const {
 absl::Status IteratorBase::InitializeBase(IteratorContext* ctx,
                                           const IteratorBase* parent) {
   parent_ = parent;
-  id_ =
-      Hash64CombineUnordered(Hash64(prefix()), reinterpret_cast<uint64>(this));
+  id_ = Hash64CombineUnordered(Hash64(prefix()),
+                               reinterpret_cast<uint64_t>(this));
   if (parent_) {
     parent_id_ = Hash64CombineUnordered(Hash64(parent_->prefix()),
-                                        reinterpret_cast<uint64>(parent_));
+                                        reinterpret_cast<uint64_t>(parent_));
     // This block of code is executed only when `parent_` is not a `nullptr`
     // because we do not create a `Node` in the `Model` for `RootDataset`.
     if (const auto& model = ctx->model()) {
@@ -626,17 +629,17 @@ std::string FullName(const std::string& prefix, const std::string& name) {
   return strings::StrCat(kFullNameRandomHex, kPipe, prefix, kColon, name);
 }
 
-absl::Status ExtractIteratorPrefix(absl::string_view key, string* prefix) {
+absl::Status ExtractIteratorPrefix(absl::string_view key, std::string* prefix) {
   if (!absl::StartsWith(key, data::kFullNameRandomHex)) {
     return errors::InvalidArgument("Key: ", key,
                                    " was not generated using full_name.");
   }
-  std::vector<string> split_keys = str_util::Split(key, data::kPipe);
+  std::vector<std::string> split_keys = str_util::Split(key, data::kPipe);
   if (split_keys.size() != 2) {
     return errors::InvalidArgument("Key: ", key,
                                    " was not generated using full_name.");
   }
-  string real_key = split_keys[1];
+  std::string real_key = split_keys[1];
   const int pos = real_key.rfind(kColon);
   *prefix = real_key.substr(0, pos);
   return absl::OkStatus();
@@ -811,10 +814,11 @@ absl::Status DatasetBase::ComputeNumSources() {
   return absl::OkStatus();
 }
 
-absl::Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
+absl::Status DatasetBase::CheckRandomAccessCompatible(
+    const int64_t index) const {
   CardinalityOptions options;
   options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_MODERATE);
-  int64 cardinality = Cardinality(options);
+  int64_t cardinality = Cardinality(options);
   if (cardinality == kInfiniteCardinality ||
       cardinality == kUnknownCardinality) {
     return tensorflow::errors::FailedPrecondition(
@@ -829,13 +833,13 @@ absl::Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
   return absl::OkStatus();
 }
 
-absl::Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
+absl::Status DatasetBase::Get(OpKernelContext* ctx, int64_t index,
                               std::vector<Tensor>* out_tensors) const {
   return errors::Unimplemented("Random access is not implemented for dataset ",
                                DebugString());
 }
 
-absl::Status DatasetBase::Get(AnyContext ctx, int64 index,
+absl::Status DatasetBase::Get(AnyContext ctx, int64_t index,
                               std::vector<Tensor>* out_tensors) const {
   return errors::Unimplemented("Random access is not implemented for dataset ",
                                DebugString());
@@ -876,7 +880,7 @@ absl::Status DatasetBase::MergeOptionsFromInputs() {
 
 absl::Status DatasetBase::MakeIterator(
     IteratorContext* ctx, const IteratorBase* parent,
-    const string& output_prefix,
+    const std::string& output_prefix,
     std::unique_ptr<IteratorBase>* iterator) const {
   if (type_string() == "OptionsDataset" || type_string() == "FinalizeDataset") {
     std::vector<const DatasetBase*> inputs;
@@ -1103,8 +1107,8 @@ DatasetBaseIterator::~DatasetBaseIterator() {
   params_.dataset->Unref();
 }
 
-string DatasetBaseIterator::BuildTraceMeName() {
-  string result =
+std::string DatasetBaseIterator::BuildTraceMeName() {
+  std::string result =
       strings::StrCat(params_.prefix, "#", traceme_metadata_, ",id=", id_);
   if (parent_) {
     absl::StrAppend(&result, ",parent_id=", parent_id_);
@@ -1274,8 +1278,8 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
   }
 }
 
-string DatasetOpKernel::TraceString(const OpKernelContext& ctx,
-                                    bool verbose) const {
+std::string DatasetOpKernel::TraceString(const OpKernelContext& ctx,
+                                         bool verbose) const {
   return tsl::profiler::TraceMeOp(name_view(), type_string_view());
 }
 
