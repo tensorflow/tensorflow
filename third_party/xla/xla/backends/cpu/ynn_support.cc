@@ -248,6 +248,26 @@ bool IsReduceOpSupportedByYnn(const HloInstruction* hlo) {
                                                match::Parameter(1)));
 }
 
+bool IsReduceOpOffloadedToYnn(const HloInstruction* hlo) {
+  if (!IsReduceOpSupportedByYnn(hlo)) {
+    return false;
+  }
+  const HloInstruction* input = hlo->operand(0);
+  if (ShapeUtil::ElementsIn(input->shape()) < 32 * 1024) {
+    return false;
+  }
+  switch (input->opcode()) {
+    case HloOpcode::kMultiply:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kSlice:
+    case HloOpcode::kConcatenate:
+      return false;
+    default: {
+      return true;
+    }
+  }
+}
+
 uint32_t YnnFlags(const DebugOptions& debug_options) {
   uint32_t flags = 0;
   if (!debug_options.xla_cpu_enable_platform_dependent_math()) {
