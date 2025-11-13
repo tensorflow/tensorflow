@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/compiled_subgraph.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"

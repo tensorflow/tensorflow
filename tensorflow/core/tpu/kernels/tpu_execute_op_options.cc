@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_execute_op_options.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {

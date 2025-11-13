@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/shape.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
