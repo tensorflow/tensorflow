@@ -136,6 +136,9 @@ cc_library(
     deps = [":rocm_config"],
 )
 
+# workaround to bring data to the same fs layout as expected in the rocm libs
+# rocblas assumes that miopen db files are located in ../share/miopen/db directory
+# hibplatslt assumes that tensile files are located in ../hipblaslt/library directory
 cc_library(
     name = "rocm_rpath",
     linkopts = select({
@@ -220,15 +223,13 @@ cc_library(
     includes = [
         "%{rocm_root}/include",
     ],
-    # workaround to  bring tensile files to the same fs layout as expected in the lib
-    # rocblas assumes that tensile files are located in ../roblas/libraries directory
-    linkopts = ["-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [
         ":hipblaslt",
         ":rocm_config",
         ":roctracer",
+        ":rocm_rpath",
     ],
 )
 
@@ -242,7 +243,10 @@ cc_library(
     linkopts = ["-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
-    deps = [":rocm_config"],
+    deps = [
+        ":rocm_config",
+        ":rocm_rpath",
+    ],
 )
 
 cc_library(
@@ -255,7 +259,10 @@ cc_library(
     linkopts = ["-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
-    deps = [":rocm_config"],
+    deps = [
+        ":rocm_config",
+        ":rocm_rpath",
+    ],
 )
 
 cc_library(
@@ -284,14 +291,12 @@ cc_library(
     includes = [
         "%{rocm_root}/include",
     ],
-    # workaround to  bring miopen db files to the same fs layout as expected in the lib
-    # rocblas assumes that miopen db files are located in ../share/miopen/db directory
-    linkopts = ["-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [
         ":rocm-core",
         ":rocm_config",
+        ":rocm_rpath",
     ],
 )
 
@@ -393,10 +398,12 @@ cc_library(
     includes = [
         "%{rocm_root}/include/",
     ],
-    linkopts = ["-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
-    deps = [":rocm_config"],
+    deps = [
+        ":rocm_config",
+        ":rocm_rpath",
+    ],
 )
 
 cc_library(
@@ -432,12 +439,12 @@ cc_library(
     includes = [
         "%{rocm_root}/include/",
     ],
-    linkopts = ["-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [
         ":hipblas-common",
         ":rocm_config",
+        ":rocm_rpath",
     ],
 )
 
@@ -473,14 +480,12 @@ cc_library(
     includes = [
         "%{rocm_root}/include/hipblaslt",
     ],
-    # workaround to  bring tensile files to the same fs layout as expected in the lib
-    # hibplatslt assumes that tensile files are located in ../hipblaslt/library directory
-    linkopts = ["-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [
         ":hip_runtime",
         ":rocm_config",
+        ":rocm_rpath",
     ],
 )
 
