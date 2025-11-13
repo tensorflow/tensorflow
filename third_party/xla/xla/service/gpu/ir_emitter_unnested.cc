@@ -2991,6 +2991,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
         case HloOpcode::kCollectiveBroadcast:
           return EmitCollectiveAsyncDone(Thunk::kCollectiveBroadcastDone,
                                          instr);
+        case HloOpcode::kCollectivePermute:
+          return EmitCollectiveAsyncDone(Thunk::kCollectivePermuteDone, instr);
         case HloOpcode::kFusion: {
           auto collective_hero = GetCollectiveHeroForDynamicSliceFusion(
               Cast<HloFusionInstruction>(wrapped));
