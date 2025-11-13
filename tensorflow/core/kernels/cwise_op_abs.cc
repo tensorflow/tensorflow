@@ -18,7 +18,7 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER8(UnaryOp, CPU, "Abs", functor::abs, Eigen::half, bfloat16, float,
-          double, int8, int16, int32, int64_t);
+          double, int8_t, int16_t, int32_t, int64_t);
 
 REGISTER2(UnaryOp, CPU, "ComplexAbs", functor::abs, complex64, complex128);
 
@@ -44,7 +44,7 @@ REGISTER_KERNEL_BUILDER(Name("Abs")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("x")
                             .HostMemory("y")
-                            .TypeConstraint<int32>("T"),
-                        UnaryOp<CPUDevice, functor::abs<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        UnaryOp<CPUDevice, functor::abs<int32_t>>);
 
 }  // namespace tensorflow
