@@ -348,7 +348,7 @@ CheckStoreIntoSliceIsCompatible(
     if (direction ==
         collective_pipeliner_utils::PipeliningDirection::kForwardSink) {
       // TODO(maggioni): Support these ops in forward sink.
-      if (HloPredicateIsOp<HloOpcode::kConcatenate, HloOpcode::kGetTupleElement,
+      if (HloPredicateIsOp<HloOpcode::kGetTupleElement,
                            HloOpcode::kReduceScatter>(i)) {
         return false;
       }
@@ -819,13 +819,17 @@ class WhileLoopAnalysis {
       HloInstruction* while_instr, int64_t max_pipelining_per_loop,
       bool pipeline_use_tree, bool process_different_sized_options,
       TuplePointsToAnalysis* tuple_points_to_analysis,
-      std::optional<ConstantValue> known_start = std::nullopt)
+      std::optional<ConstantValue> known_start = std::nullopt,
+      bool delay_sinking_large_collectives = false,
+      int64_t collective_size_threshold = INT64_MAX)
       : while_(while_instr),
         loop_start_(known_start),
         max_pipelining_per_loop_(max_pipelining_per_loop),
         tuple_points_to_analysis_(tuple_points_to_analysis),
         pipeline_use_tree_(pipeline_use_tree),
-        process_different_sized_options_(process_different_sized_options) {}
+        process_different_sized_options_(process_different_sized_options),
+        delay_sinking_large_collectives_(delay_sinking_large_collectives),
+        collective_size_threshold_(collective_size_threshold) {}
   std::optional<ConstantValue> GetLoopIterationCount() const;
   std::optional<ConstantValue> GetLoopStart() const;
   std::optional<ConstantValue> GetLoopIncrement() const;
@@ -926,6 +930,8 @@ class WhileLoopAnalysis {
 
   bool pipeline_use_tree_;
   bool process_different_sized_options_;
+  bool delay_sinking_large_collectives_;
+  int64_t collective_size_threshold_;
 };
 
 int64_t WhileLoopAnalysis::GetDUSIndex(const HloInstruction* dus) const {
@@ -1368,6 +1374,17 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
     if (!should_process(instr)) {
       continue;
     }
+    if (delay_sinking_large_collectives_ &&
+        direction ==
+            collective_pipeliner_utils::PipeliningDirection::kForwardSink &&
+        ShapeUtil::ElementsIn(instr->shape()) >= collective_size_threshold_) {
+      VLOG(1) << "Delay sinking " << instr->name() << " because its size "
+              << ShapeUtil::ElementsIn(instr->shape())
+              << " is greater than the threshold "
+              << collective_size_threshold_;
+      continue;
+    }
+
     if (direction ==
             collective_pipeliner_utils::PipeliningDirection::kForward ||
         direction ==
@@ -2462,6 +2479,17 @@ absl::Status TransformFormattingOp(
     pipelined_map[formatting_op] = expanded_transpose;
     return absl::OkStatus();
   }
+  if (formatting_op->opcode() == HloOpcode::kConcatenate) {
+    HloConcatenateInstruction* concat =
+        Cast<HloConcatenateInstruction>(formatting_op);
+    HloInstruction* expanded_concat =
+        loop_computation->AddInstruction(HloInstruction::CreateConcatenate(
+            ComputeFullOutputShape(to_move, formatting_op->shape()),
+            collect_operands(formatting_op),
+            concat->concatenate_dimension() + 1));
+    pipelined_map[formatting_op] = expanded_concat;
+    return absl::OkStatus();
+  }
   return absl::InvalidArgumentError(
       absl::StrCat("Unsupported instruction ", formatting_op->ToString()));
 }
@@ -3233,24 +3261,6 @@ static absl::Status TransformLoopBackward(
   return absl::OkStatus();
 }
 
-bool IsForwardSinkIterationFeasible(HloInstruction* while_inst,
-                                    int64_t collective_size_threshold) {
-  for (HloInstruction* inst :
-       while_inst->while_body()->root_instruction()->operands()) {
-    if (inst->opcode() == HloOpcode::kDynamicUpdateSlice &&
-        inst->operand(1)->IsCustomCall(
-            CollectivePipeliner::kSunkByPreviousStep)) {
-      HloInstruction* cc = inst->mutable_operand(1);
-      if (ShapeUtil::ElementsIn(cc->shape()) >= collective_size_threshold) {
-        VLOG(1) << "Encountered a large collective which was sunk by the "
-                   "previous step, should stop the iteration.";
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -3280,7 +3290,9 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
       auto loop_analysis = std::make_unique<WhileLoopAnalysis>(
           instruction, config_.max_pipelining_per_loop,
           config_.pipeline_use_tree, config_.process_different_sized_ops,
-          tuple_points_to_analysis.get());
+          tuple_points_to_analysis.get(), /*known_start=*/std::nullopt,
+          config_.delay_sinking_large_collectives,
+          config_.collective_size_threshold_to_delay_sinking);
       loop_analysis->ComputeLoopStatistics();
       if (loop_analysis->GetLoopIterationCount() &&
           loop_analysis->GetLoopIterationCount()->GetUnsignedValue() > 1) {
@@ -3297,12 +3309,6 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
   for (auto& [instruction, loop_analysis] : loop_analyses) {
     VLOG(1) << "While iterations: "
             << loop_analysis->GetLoopIterationCount()->ToString();
-    if (config_.pipelining_direction ==
-            collective_pipeliner_utils::PipeliningDirection::kForwardSink &&
-        !IsForwardSinkIterationFeasible(
-            instruction, config_.collective_size_threshold_to_stop_sinking)) {
-      continue;
-    }
     loop_analysis->CollectCollectivesToMove(
         config_.level_to_operate_on, config_.pipelining_direction,
         config_.should_process, config_.acceptable_formatting,
@@ -3393,20 +3399,24 @@ absl::StatusOr<bool> CollectivePipeliner::RunImpl(
     return RunPipeliner(module, execution_threads);
   }
 
-  // If the pipelining direction is kForwardSink, run the pipeliner until it
-  // does not change the module anymore. The maximum number of iterations should
-  // be equal to the maximum number of pipelineable collectives in a chain of
-  // users plus one. In each iteration, we pipeline the last pipelineable
-  // collectives, which do not have any other pipelineable collectives in their
-  // user subtree.
+  // If the pipelining direction is kForwardSink, first run the pipeliner on
+  // small collectives iteratively until it does not change the module anymore.
+  // In each iteration, we pipeline the last pipelineable collectives, which do
+  // not have any other pipelineable collectives in their user subtrees. Then
+  // run the pipeliner one last time on the large collectives.
   bool changed = true;
   int64_t iter = 0;
   while (changed) {
     TF_ASSIGN_OR_RETURN(changed, RunPipeliner(module, execution_threads));
-    VLOG(1) << "Finished running pipeliner's iteration: " << iter;
+    VLOG(1) << "Finished running pipeliner's iteration for small collectives: "
+            << iter;
     iter++;
   }
-  return iter > 1;
+  config_.delay_sinking_large_collectives = false;
+  TF_ASSIGN_OR_RETURN(changed, RunPipeliner(module, execution_threads));
+  VLOG(1) << "Finished running pipeliner's iteration for large collectives: "
+          << iter;
+  return iter > 1 || changed;
 }
 
 }  // namespace xla
