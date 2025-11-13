@@ -278,19 +278,14 @@ common:rocm_base --define=xnn_enable_avxvnniint8=false
 common:rocm_base --define=xnn_enable_avx512fp16=false
 common:rocm_base --repo_env TF_NEED_ROCM=1
 
-# Depraceted, will be removed once all build/test scripts are migrated from --config=rocm.
-common:rocm --config=rocm_base 
-
-common:rocm_gcc --config=rocm_base
-common:rocm_gcc --copt=-Wno-stringop-truncation
-
 common:rocm_clang_official --config=rocm_base
 common:rocm_clang_official --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
 common:rocm_clang_official --action_env=TF_ROCM_CLANG="1"
 common:rocm_clang_official --linkopt="-fuse-ld=lld"
 common:rocm_clang_official --host_linkopt="-fuse-ld=lld"
 
-common:rocm_ci --config=rocm_clang_official
+common:rocm --config=rocm_clang_official
+common:rocm_ci --config=rocm
 
 common:rocm_ci_hermetic --config=rocm_clang_official
 common:rocm_ci_hermetic --repo_env="OS=ubuntu_22.04"
