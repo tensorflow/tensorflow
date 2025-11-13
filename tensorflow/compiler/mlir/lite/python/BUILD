@@ -185,6 +185,7 @@ filegroup(
     name = "converter_python_api_hdrs",
     srcs = [
         "converter_python_api.h",
+        "//tensorflow/compiler/mlir/lite/python/model_utils_core:api_hdrs",
     ],
     visibility = ["//visibility:private"],
 )
@@ -247,7 +248,8 @@ tf_python_pybind_extension(
     hdrs = [":converter_python_api_hdrs"],
     enable_stub_generation = True,
     pytype_srcs = [
-        "_pywrap_converter_api.pyi",
+        "_pywrap_converter_api/model_utils_core_api.pyi",
+        "_pywrap_converter_api/__init__.pyi",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -255,5 +257,8 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
-    ] + if_pywrap([":converter_python_api"]),
+    ] + if_pywrap([
+        ":converter_python_api",
+        "//tensorflow/compiler/mlir/lite/python/model_utils_core:pybind_api",
+    ]),
 )
