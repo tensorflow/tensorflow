@@ -304,6 +304,14 @@ CUptiResult CuptiErrorManager::SetThreadIdType(
   return error;
 }
 
+CUptiResult CuptiErrorManager::ActivityEnableHWTrace(bool enable) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->ActivityEnableHWTrace(enable);
+  // Don't disable cupti just because the gpu hardware or cuda don't support
+  // hardware event system.
+  return error;
+}
+
 // Profiler Host APIs
 CUptiResult CuptiErrorManager::ProfilerHostInitialize(
     CUpti_Profiler_Host_Initialize_Params* params) {
