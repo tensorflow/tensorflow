@@ -48,6 +48,11 @@ message JobInfo {
   optional int64 task_id = 5;
   // Task unique id, which may change across job restarts.
   optional int64 task_uid = 6;
+  // Process id -- track subprocesses.
+  optional int64 process_id = 7;
+  // Thread unique id for simultaneous events -- indicate dependencies
+  // and code flow for compilations within a task.
+  optional int64 thread_id = 8;
 }
 
 // Key-Value pair for metrics metadata tags.
