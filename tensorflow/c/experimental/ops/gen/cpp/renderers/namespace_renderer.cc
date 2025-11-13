@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/namespace_renderer.h"
 
+#include <string>
+
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer_context.h"
 #include "tensorflow/core/platform/types.h"
