@@ -36,8 +36,8 @@ absl::Status IfrtRestoreTensorRegistry::TryRegister(
   absl::MutexLock lock(mutex_);
   auto& info = restored_tensors_[name];
   if (info.tensor_future.IsValid()) {
-    return absl::AlreadyExistsError(
-        absl::StrCat("Variable '", name, "' already registered."));
+    LOG(WARNING) << "Variable '" << name << "' already registered.";
+    return absl::OkStatus();
   }
   info = std::move(restored_tensor_info);
   return absl::OkStatus();
