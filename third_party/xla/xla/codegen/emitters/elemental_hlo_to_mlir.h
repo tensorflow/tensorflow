@@ -115,7 +115,7 @@ mlir::ValueRange EmitXlaLoopOp(
         mlir::ImplicitLocOpBuilder& nested_b, mlir::ValueRange ivs,
         mlir::ValueRange map_results, mlir::ValueRange iter_args)>
         create_body,
-    bool vectorize = false);
+    bool vectorize = false, bool disable_unrolling = false);
 
 // Same as EmitLoopNest, but the body building function can return an error
 // which gets returned from EmitLoopNestWithStatus.
