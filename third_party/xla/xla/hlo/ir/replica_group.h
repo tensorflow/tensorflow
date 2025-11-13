@@ -38,6 +38,9 @@ limitations under the License.
 
 namespace xla {
 
+class IotaReplicaGroupList;
+class CollectiveDeviceList;
+
 class MeshAxesReplicaGroupList {
   struct ReshapeAndAggregateAxes {
     std::vector<int64_t> reshape_dims;
@@ -69,8 +72,13 @@ class MeshAxesReplicaGroupList {
   static MeshAxesReplicaGroupList FromProto(
       const MeshAxesReplicaGroupListProto& proto);
 
+  // Methods for converting to V2 and V1 representations.
+  IotaReplicaGroupList ToIotaReplicaGroupList();
+  CollectiveDeviceList ToCollectiveDeviceList();
+
  private:
   void InitializeDimToReshapeAndAggregateAxes();
+  std::pair<std::vector<int64_t>, std::vector<int64_t>> ComputeReindexedAxes();
   Mesh mesh_;
   std::vector<AxisRef> axes_;
   std::optional<absl::flat_hash_map<int64_t, ReshapeAndAggregateAxes>>
@@ -199,6 +207,7 @@ class CollectiveDeviceList {
 
   // Lazyly explands iota if applicable.
   const std::vector<ReplicaGroup>& replica_groups() const;
+  std::vector<std::vector<int64_t>> flattened_replica_groups() const;
   const std::optional<IotaReplicaGroupList>& iota_replica_group_list() const {
     return iota_replica_group_list_;
   }
