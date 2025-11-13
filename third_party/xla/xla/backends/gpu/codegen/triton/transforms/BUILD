@@ -48,6 +48,7 @@ cc_library(
         "triton_xla_math_to_libdevice.cc",
         "triton_xla_squeeze_dims_pass.cc",
         "triton_xla_unswitch_loops_pass.cc",
+        "xtile_lower_to_triton.cc",
     ],
     hdrs = ["passes.h"],
     deps = [

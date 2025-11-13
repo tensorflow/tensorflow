@@ -309,6 +309,128 @@ CHECK: %[[ADD_RES:.*]] = arith.addf %[[ARG2:.*]], %[[RES]] : tensor<32x8xf32>
 )"));
 }
 
+TEST_F(XTileDialectTest, HloScaledDotIsLoweredToXTileDotScaled) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+flhs (p0: f8e5m2[128,128]) -> f8e5m2[128,128] {
+  ROOT p0 = f8e5m2[128,128]{1,0} parameter(0)
+}
+frhs (p0: f8e5m2[128,256]) -> f8e5m2[128,256] {
+  ROOT p0 = f8e5m2[128,256]{1,0} parameter(0)
+}
+flhs_scale (p0: f8e8m0fnu[128,4]) -> f8e8m0fnu[128,4] {
+  ROOT p0 = f8e8m0fnu[128,4]{1,0} parameter(0)
+}
+frhs_scale (p0: f8e8m0fnu[4,256]) -> f8e8m0fnu[4,256] {
+  ROOT p0 = f8e8m0fnu[4,256]{1,0} parameter(0)
+}
+
+triton_dot {
+  lhs = f8e5m2[128,128] parameter(0)
+  lhs1 = f8e5m2[128,128]{1,0} fusion(lhs),
+    kind=kCustom,
+    calls=flhs,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["128","128"]}],
+          "num_warps":"4",
+          "num_stages":"1",
+          "num_ctas":"1",
+        }
+      }
+    }
+  rhs = f8e5m2[128,256] parameter(1)
+  rhs1 = f8e5m2[128,256]{1,0} fusion(rhs),
+    kind=kCustom,
+    calls=frhs,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["128","256"]}],
+          "num_warps":"4",
+          "num_stages":"1",
+          "num_ctas":"1",
+        }
+      }
+    }
+  lhs_scale = f8e8m0fnu[128,4] parameter(2)
+  lhs_scale1 = f8e8m0fnu[128,4]{1,0} fusion(lhs_scale),
+    kind=kCustom,
+    calls=flhs_scale,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["128","128"]}],
+          "num_warps":"4",
+          "num_stages":"1",
+          "num_ctas":"1",
+        }
+      }
+    }
+  rhs_scale = f8e8m0fnu[4,256] parameter(3)
+  rhs_scale1 = f8e8m0fnu[4,256]{1,0} fusion(rhs_scale),
+    kind=kCustom,
+    calls=frhs_scale,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["128", "256"]}],
+          "num_warps":"4",
+          "num_stages":"1",
+          "num_ctas":"1",
+        }
+      }
+    }
+  ROOT _ = bf16[128,256]{1,0} scaled-dot(lhs1, rhs1, lhs_scale1, rhs_scale1),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  lhs = f8e5m2[128,128]{1,0} parameter(0)
+  rhs = f8e5m2[128,256]{1,0} parameter(1)
+  lhs_scale = f8e8m0fnu[128,4]{1,0} parameter(2)
+  rhs_scale = f8e8m0fnu[4,256]{1,0} parameter(3)
+  ROOT _ = bf16[128,256]{1,0} fusion(lhs, rhs, lhs_scale, rhs_scale),
+    kind=kCustom,
+    calls=triton_dot,
+    backend_config={
+      "fusion_backend_config": {
+        kind: "__triton_scaled_dot_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["128", "256"]}],
+          "num_warps":"4",
+          "num_stages":"1",
+          "num_ctas":"1"
+        }
+      }
+    }
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  auto& debug_options = module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_experimental_scaled_dot_with_triton(true);
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{128, 256}};
+
+  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+      this, *module->GetComputationWithName("triton_dot"),
+      block_level_parameters,
+      R"(
+      CHECK: %[[DOT:.*]] = xtile.dot_scaled %[[LHS:.*]] scale %[[LHS_SCALE:.*]], %[[RHS:.*]] scale %[[RHS_SCALE:.*]] {fastMath = true} : tensor<128x128xf8E5M2>, tensor<128x4xi8> * tensor<128x256xf8E5M2>, tensor<256x4xi8> -> tensor<128x256xf32>
+      CHECK: %[[RES:.*]] = arith.addf %{{.*}}, %[[DOT]] : tensor<128x256xf32>
+      )"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

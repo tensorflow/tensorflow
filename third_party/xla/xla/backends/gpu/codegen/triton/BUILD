@@ -422,6 +422,7 @@ cc_library(
         ":emitter_helpers",
         "//xla:xla_data_proto_cc",
         "//xla/codegen:emitter_loc_op_builder",
+        "//xla/codegen/xtile/ir:xtile",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/hlo_to_mhlo:attribute_importer",
         "//xla/service:algorithm_util",
