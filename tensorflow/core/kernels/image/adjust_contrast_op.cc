@@ -99,10 +99,10 @@ class AdjustContrastOp : public OpKernel {
       Name("AdjustContrast").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       AdjustContrastOp<CPUDevice, T>);
 
-REGISTER_KERNEL(uint8);
-REGISTER_KERNEL(int8);
-REGISTER_KERNEL(int16);
-REGISTER_KERNEL(int32);
+REGISTER_KERNEL(uint8_t);
+REGISTER_KERNEL(int8_t);
+REGISTER_KERNEL(int16_t);
+REGISTER_KERNEL(int32_t);
 REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL

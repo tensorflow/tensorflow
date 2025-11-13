@@ -56,7 +56,7 @@ class EncodeJpegOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("chroma_downsampling",
                                              &flags_.chroma_downsampling));
 
-    string density_unit;
+    std::string density_unit;
     OP_REQUIRES_OK(context, context->GetAttr("density_unit", &density_unit));
     if (density_unit == "in") {
       flags_.density_unit = 1;
@@ -80,15 +80,15 @@ class EncodeJpegOp : public OpKernel {
                 errors::InvalidArgument("image must be 3-dimensional",
                                         image.shape().DebugString()));
 
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(image.NumElements(), std::numeric_limits<int32>::max()),
-        errors::InvalidArgument(
-            "Cannot encode images with >= max int32 elements"));
+    OP_REQUIRES(context,
+                FastBoundsCheck(image.NumElements(),
+                                std::numeric_limits<int32_t>::max()),
+                errors::InvalidArgument(
+                    "Cannot encode images with >= max int32 elements"));
 
-    const int32_t dim_size0 = static_cast<int32>(image.dim_size(0));
-    const int32_t dim_size1 = static_cast<int32>(image.dim_size(1));
-    const int32_t dim_size2 = static_cast<int32>(image.dim_size(2));
+    const int32_t dim_size0 = static_cast<int32_t>(image.dim_size(0));
+    const int32_t dim_size1 = static_cast<int32_t>(image.dim_size(1));
+    const int32_t dim_size2 = static_cast<int32_t>(image.dim_size(2));
 
     // Autodetect format if desired, otherwise make sure format and
     // image channels are consistent.
@@ -122,15 +122,16 @@ class EncodeJpegOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output));
-    OP_REQUIRES(context,
-                jpeg::Compress(image.flat<uint8>().data(), dim_size1, dim_size0,
-                               adjusted_flags, &output->scalar<tstring>()()),
-                errors::Internal("JPEG encoding failed"));
+    OP_REQUIRES(
+        context,
+        jpeg::Compress(image.flat<uint8_t>().data(), dim_size1, dim_size0,
+                       adjusted_flags, &output->scalar<tstring>()()),
+        errors::Internal("JPEG encoding failed"));
   }
 
  private:
-  string format_;
-  string xmp_metadata_;  // Owns data referenced by flags_
+  std::string format_;
+  std::string xmp_metadata_;  // Owns data referenced by flags_
   jpeg::CompressFlags flags_;
 };
 REGISTER_KERNEL_BUILDER(Name("EncodeJpeg").Device(DEVICE_CPU), EncodeJpegOp);
@@ -146,15 +147,15 @@ class EncodeJpegVariableQualityOp : public OpKernel {
                 errors::InvalidArgument("image must be 3-dimensional",
                                         image.shape().DebugString()));
 
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(image.NumElements(), std::numeric_limits<int32>::max()),
-        errors::InvalidArgument(
-            "Cannot encode images with >= max int32 elements"));
+    OP_REQUIRES(context,
+                FastBoundsCheck(image.NumElements(),
+                                std::numeric_limits<int32_t>::max()),
+                errors::InvalidArgument(
+                    "Cannot encode images with >= max int32 elements"));
 
-    const int32_t dim_size0 = static_cast<int32>(image.dim_size(0));
-    const int32_t dim_size1 = static_cast<int32>(image.dim_size(1));
-    const int32_t dim_size2 = static_cast<int32>(image.dim_size(2));
+    const int32_t dim_size0 = static_cast<int32_t>(image.dim_size(0));
+    const int32_t dim_size1 = static_cast<int32_t>(image.dim_size(1));
+    const int32_t dim_size2 = static_cast<int32_t>(image.dim_size(2));
 
     // Use default jpeg compression flags except for format and quality.
     jpeg::CompressFlags adjusted_flags;
@@ -188,10 +189,11 @@ class EncodeJpegVariableQualityOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output));
-    OP_REQUIRES(context,
-                jpeg::Compress(image.flat<uint8>().data(), dim_size1, dim_size0,
-                               adjusted_flags, &output->scalar<tstring>()()),
-                errors::Internal("JPEG encoding failed"));
+    OP_REQUIRES(
+        context,
+        jpeg::Compress(image.flat<uint8_t>().data(), dim_size1, dim_size0,
+                       adjusted_flags, &output->scalar<tstring>()()),
+        errors::Internal("JPEG encoding failed"));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("EncodeJpegVariableQuality").Device(DEVICE_CPU),
