@@ -36,7 +36,8 @@ llvm::TargetOptions CompilerTargetOptions(const HloModuleConfig& module_config);
 
 absl::StatusOr<std::unique_ptr<FunctionLibrary>> LoadFunctionLibrary(
     const std::vector<FunctionLibrary::Symbol>& compiled_symbols,
-    absl::Span<const ObjFileProto> obj_files, const HloModule* hlo_module);
+    absl::Span<const ObjFileProto> obj_files, const HloModule* hlo_module,
+    const TargetMachineOptionsProto& target_machine_options_proto);
 
 absl::StatusOr<std::vector<FunctionLibrary::Symbol>>
 GetCompiledSymbolsFromProto(

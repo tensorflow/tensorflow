@@ -37,7 +37,7 @@ namespace gpu {
 class TritonBackend : public GpuCodegenBackend {
  public:
   explicit TritonBackend(const DebugOptions* debug_options, Compiler* compiler,
-                         const Compiler::TargetConfig* target_config,
+                         const Compiler::GpuTargetConfig* target_config,
                          SymbolicExprContext* symbolic_expr_context)
       : GpuCodegenBackend("Triton", debug_options, compiler, target_config),
         symbolic_expr_context_(symbolic_expr_context) {}

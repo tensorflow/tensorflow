@@ -180,7 +180,7 @@ GetTargetConfigForDevices(absl::Span<PjRtDevice* const> devices) {
         tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
             ->local_device_state();
     if (local_device_state != nullptr) {
-      return xla::Compiler::TargetConfig(local_device_state->executor())
+      return xla::Compiler::GpuTargetConfig(local_device_state->executor())
           .ToProto();
     }
   }

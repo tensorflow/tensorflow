@@ -17,6 +17,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringMap.h"  // IWYU pragma: keep
 #include "llvm/TargetParser/Host.h"
@@ -172,15 +174,80 @@ ENTRY main {
       llvm::Triple(kTargetTripleForHost).getArchName());
 
   auto host_machine_features = llvm::sys::getHostCPUFeatures();
-  std::vector<absl::string_view> enabled_features;
-  for (const auto& feature : host_machine_features) {
-    if (feature.getValue()) {
-      enabled_features.push_back(feature.getKey());
+
+  for (const auto& [feature, supported] : host_machine_features) {
+    if (supported && absl::StartsWith(feature, "avx512")) {
+      host_machine_features["prefer-no-scatter"] = true;
+      host_machine_features["prefer-no-gather"] = true;
     }
   }
 
-  EXPECT_EQ(cpu_aot_result->proto().target_machine_options().features(),
-            absl::StrJoin(enabled_features, ","));
+  for (const auto& feature : absl::StrSplit(
+           cpu_aot_result->proto().target_machine_options().features(), ',')) {
+    if (feature[0] == '+') {
+      EXPECT_TRUE(host_machine_features[feature.substr(1)]);
+    } else {
+      EXPECT_EQ(feature[0], '-');
+      EXPECT_FALSE(host_machine_features[feature.substr(1)]);
+    }
+  }
+}
+
+TEST_F(CpuAotCompilerTest,
+       ExportedExecutableTargetMachineOptionsMatchTheOptionsSetInTargetConfig) {
+  absl::string_view module_string = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  a_plus_b = f32[] add(a, b)
+  ROOT result = f32[] add(a_plus_b, b)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          se::PlatformManager::PlatformWithName("host"));
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                          platform->ExecutorForDevice(0));
+
+  Compiler* compiler = backend().compiler();
+  ASSERT_NE(compiler, nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(module_string));
+
+  xla::Compiler::CompileOptions compile_options;
+  TargetMachineOptionsProto target_machine_options_proto;
+  target_machine_options_proto.set_triple(kTargetTripleForHost);
+  target_machine_options_proto.set_cpu(kTargetCpuForHost);
+  target_machine_options_proto.set_features("+foo-feature,-bar-feature");
+  compile_options.cpu_target_config.emplace(target_machine_options_proto);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      hlo_module, compiler->RunHloPasses(std::move(hlo_module), stream_exec,
+                                         compile_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable, compiler->RunBackend(std::move(hlo_module), stream_exec,
+                                            compile_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto aot_result, compiler->Export(executable.get()));
+
+  CpuAotCompilationResult* cpu_aot_result =
+      tsl::down_cast<CpuAotCompilationResult*>(aot_result.get());
+  ASSERT_NE(cpu_aot_result, nullptr);
+
+  EXPECT_EQ(
+      llvm::Triple(cpu_aot_result->proto().target_machine_options().triple())
+          .getArchName(),
+      llvm::Triple(kTargetTripleForHost).getArchName());
+
+  std::vector<absl::string_view> aot_result_features = absl::StrSplit(
+      cpu_aot_result->proto().target_machine_options().features(), ',');
+
+  EXPECT_EQ(aot_result_features.size(), 2);
+  EXPECT_EQ(aot_result_features[0], "+foo-feature");
+  EXPECT_EQ(aot_result_features[1], "-bar-feature");
 }
 
 }  // namespace

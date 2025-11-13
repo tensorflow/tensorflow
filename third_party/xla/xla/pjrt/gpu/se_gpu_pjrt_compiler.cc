@@ -124,7 +124,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
                       GetCompilerForPlatform(requested_platform_id_));
 
   CompileOptions input_options = options;
-  if (!options.target_config) {
+  if (!options.gpu_target_config) {
     if (client != nullptr) {
       TF_RET_CHECK(IsGpuClient(*client))
           << "GPU compilation requires a GPU PjRt client.";
@@ -138,9 +138,9 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
             topology);
     if (gpu_topology.target_config().has_value()) {
       TF_ASSIGN_OR_RETURN(
-          Compiler::TargetConfig target_config,
-          Compiler::TargetConfig::FromProto(*gpu_topology.target_config()));
-      options.target_config.emplace(std::move(target_config));
+          Compiler::GpuTargetConfig target_config,
+          Compiler::GpuTargetConfig::FromProto(*gpu_topology.target_config()));
+      options.gpu_target_config.emplace(std::move(target_config));
     } else {
       return absl::UnimplementedError(
           "Compilation without client and without target_config specified is "
@@ -168,10 +168,10 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
                                   gpu_compiler.get(), std::placeholders::_1));
   DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
   Compiler::CompileOptions opts;
-  opts.target_config = options.target_config;
+  opts.gpu_target_config = options.gpu_target_config;
 
   AotCompilationOptions aot_options(gpu_compiler->PlatformId());
-  aot_options.set_target_config(*options.target_config);
+  aot_options.set_gpu_target_config(*options.gpu_target_config);
   aot_options.set_run_backend_only(
       options.executable_build_options.run_backend_only());
 
@@ -193,7 +193,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
                                    mlir::ModuleOp module,
                                    const PjRtTopologyDescription& topology,
                                    PjRtClient* client) {
-  if (!options.target_config && client != nullptr) {
+  if (!options.gpu_target_config && client != nullptr) {
     TF_RET_CHECK(IsGpuClient(*client))
         << "GPU compilation requires a GPU PjRt client.";
     TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));

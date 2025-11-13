@@ -45,7 +45,7 @@ class AutotunerPass : public HloModulePass {
       std::vector<std::unique_ptr<CodegenBackend>> backends,
       const DebugOptions& debug_options, se::StreamExecutor* stream_executor,
       tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
-      const Compiler::TargetConfig* target_config,
+      const Compiler::GpuTargetConfig* target_config,
       se::DeviceMemoryAllocator* allocator = nullptr,
       bool optimize_scratch_bytes = true,
       MultiProcessKeyValueStore key_value_store = MultiProcessKeyValueStore());

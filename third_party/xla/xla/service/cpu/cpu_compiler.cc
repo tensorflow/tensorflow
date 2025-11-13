@@ -370,6 +370,47 @@ absl::StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
   llvm::InitializeNativeTargetAsmPrinter();
 }
 
+void AddAdditionalFeaturesIfAVX512(
+    TargetMachineOptionsProto& target_machine_options_proto) {
+  if (absl::StrContains(target_machine_options_proto.features(), "+avx512")) {
+    std::string new_features = target_machine_options_proto.features();
+
+    constexpr absl::string_view kPreferNoScatter = "+prefer-no-scatter";
+    constexpr absl::string_view kPreferNoGather = "+prefer-no-gather";
+    if (new_features.find(kPreferNoScatter) == std::string::npos) {
+      new_features = absl::StrJoin({new_features, kPreferNoScatter}, ",");
+    }
+    if (new_features.find(kPreferNoGather) == std::string::npos) {
+      new_features = absl::StrJoin({new_features, kPreferNoGather}, ",");
+    }
+    target_machine_options_proto.set_features(new_features);
+  }
+}
+
+TargetMachineOptionsProto GetDefaultHostTargetMachineOptions(
+    const DebugOptions& debug_options) {
+  TargetMachineOptionsProto target_machine_options_proto;
+  // Fallback to the default target machine options.
+  target_machine_options_proto.set_triple(llvm::sys::getDefaultTargetTriple());
+
+  auto xla_cpu_max_isa = CpuFeatureFromString(debug_options.xla_cpu_max_isa());
+  auto detected_machine_attributes = DetectMachineAttributes(xla_cpu_max_isa);
+  target_machine_options_proto.set_features(
+      absl::StrJoin(detected_machine_attributes.features, ","));
+
+  // If `max_cpu_feature` is newer than the host CPU, we should keep the host
+  // CPU name, e.g., we don't want to set the target CPU to Skylake when we
+  // are on a Broadwell host.
+  auto cpu_host_name = detected_machine_attributes.num_filtered_features
+                           ? CpuTargetFromMaxFeature(*xla_cpu_max_isa)
+                           : absl::string_view(llvm::sys::getHostCPUName());
+  target_machine_options_proto.set_cpu(cpu_host_name);
+
+  AddAdditionalFeaturesIfAVX512(target_machine_options_proto);
+
+  return target_machine_options_proto;
+}
+
 namespace {
 
 // This visitor records which HLO instructions should have profiling information
@@ -1225,12 +1266,20 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
         module->config().debug_options().xla_backend_extra_options());
     llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
+    // Use default target machine options if not specified in the target config.
+    auto target_machine_options_proto =
+        GetDefaultHostTargetMachineOptions(module->config().debug_options());
+    if (options.cpu_target_config &&
+        options.cpu_target_config->cpu_target_machine_options_proto) {
+      target_machine_options_proto =
+          options.cpu_target_config->cpu_target_machine_options_proto.value();
+    }
+
     TF_ASSIGN_OR_RETURN(
         jit_target_machine,
-        IrCompiler::InferTargetMachine(
-            CompilerTargetOptions(config),
-            IrCompiler::GetCodeGenOptLevel(config),
-            CpuFeatureFromString(config.debug_options().xla_cpu_max_isa())));
+        IrCompiler::InferTargetMachine(CompilerTargetOptions(config),
+                                       IrCompiler::GetCodeGenOptLevel(config),
+                                       target_machine_options_proto));
   }
 
   TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
@@ -2006,24 +2055,16 @@ CpuCompiler::CompileCpuExecutable(
   TF_ASSIGN_OR_RETURN(std::vector<ConstantAllocation> constants,
                       CreateConstantAllocations(*assignment));
 
+  // We don't use the target machine options from the
+  // CompileOptions::target_config field as we consider TargetMachine to be the
+  // source of truth at this point. This is because the AOT path might set its
+  // own target machine options.
   TargetMachineOptionsProto target_machine_options_proto;
   target_machine_options_proto.set_triple(
-      target_machine->getTargetTriple().getTriple());
+      target_machine->getTargetTriple().normalize());
   target_machine_options_proto.set_cpu(target_machine->getTargetCPU());
-
-  // TODO(basioli): Target machine features are returning an empty string at the
-  // moment so for now we are using the host CPU features. This should be
-  // updated to use the target machine features of the target we are actually
-  // compiling for as we might want to support cross-compilation.
-  auto host_machine_features = llvm::sys::getHostCPUFeatures();
-  std::vector<absl::string_view> enabled_features;
-  for (const auto& feature : host_machine_features) {
-    if (feature.getValue()) {
-      enabled_features.push_back(feature.getKey());
-    }
-  }
   target_machine_options_proto.set_features(
-      absl::StrJoin(enabled_features, ","));
+      target_machine->getTargetFeatureString());
 
   TF_ASSIGN_OR_RETURN(
       auto cpu_executable,
@@ -2072,12 +2113,20 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       module->config().debug_options().xla_backend_extra_options());
   llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
+  auto target_machine_options_proto =
+      GetDefaultHostTargetMachineOptions(module->config().debug_options());
+  if (options.cpu_target_config &&
+      options.cpu_target_config->cpu_target_machine_options_proto) {
+    target_machine_options_proto =
+        options.cpu_target_config->cpu_target_machine_options_proto.value();
+  }
+
   // Options for compiling LLVM IR to machine code.
   IrCompiler::Options ir_compiler_options{
       /*optimization_level=*/IrCompiler::GetCodeGenOptLevel(module->config()),
       /*optimize_for_size=*/options::OptimizeForSizeRequested(module->config()),
-      /*max_cpu_isa=*/
-      CpuFeatureFromString(module->config().debug_options().xla_cpu_max_isa()),
+      /*target_machine_options_proto=*/
+      target_machine_options_proto,
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(module->config()),
       /*disable_expensive_passes=*/
       module->config().debug_options().xla_llvm_disable_expensive_passes(),
@@ -2215,12 +2264,18 @@ CpuCompiler::CompileAheadOfTimeThunks(
       /*compile_copy_as_llvm_kernel=*/aot_options.compile_copy_as_llvm_kernel(),
       /*is_aot_compilation=*/true};
 
+  TargetMachineOptionsProto target_machine_options_proto;
+  target_machine_options_proto.set_triple(
+      target_machine->getTargetTriple().normalize());
+  target_machine_options_proto.set_cpu(target_machine->getTargetCPU());
+  target_machine_options_proto.set_features(
+      target_machine->getTargetFeatureString());
+
   IrCompiler::Options ir_compiler_options = {
       /*optimization_level=*/target_machine->getOptLevel(),
       /*optimize_for_size=*/
       options::OptimizeForSizeRequested(module->config()),
-      /*max_cpu_isa=*/
-      CpuFeatureFromString(module->config().debug_options().xla_cpu_max_isa()),
+      /*target_machine_options_proto=*/target_machine_options_proto,
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(module->config()),
       /*disable_expensive_passes=*/
       module->config().debug_options().xla_llvm_disable_expensive_passes(),
@@ -2310,9 +2365,11 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
   TF_ASSIGN_OR_RETURN(auto compiled_symbols,
                       GetCompiledSymbolsFromProto(compiled_symbols_proto));
 
-  TF_ASSIGN_OR_RETURN(auto function_library,
-                      LoadFunctionLibrary(compiled_symbols, obj_files,
-                                          &cpu_executable->module()));
+  TF_ASSIGN_OR_RETURN(
+      auto function_library,
+      LoadFunctionLibrary(compiled_symbols, obj_files,
+                          &cpu_executable->module(),
+                          cpu_executable->target_machine_options()));
 
   return CpuAotCompilationResult::Create(
       &cpu_executable->module(), &cpu_executable->buffer_assignment(),

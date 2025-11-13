@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -103,6 +104,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
@@ -250,7 +252,11 @@ PjRtCpuClient::PjRtCpuClient(
       transpose_cache_(1024),
       collectives_(std::move(collectives)),
       topology_(platform_id(), platform_name(), platform_version(),
-                GetCpuDevices(owned_devices_), cpu::DetectMachineAttributes()),
+                GetCpuDevices(owned_devices_),
+                cpu::DetectMachineAttributes(
+                    cpu::CpuFeatureFromString(
+                        GetDebugOptionsFromFlags().xla_cpu_max_isa()))
+                    .features),
       asynchronous_(asynchronous),
       customize_hlo_module_config_(std::move(customize_hlo_module_config)),
       eigen_intraop_pool_(new tsl::thread::ThreadPool(
@@ -801,6 +807,18 @@ PjRtCpuClient::CompileInternal(
     if (!compile_options.thread_pool) {
       compile_options.thread_pool = pjrt_client_thread_pool();
     }
+
+    cpu::TargetMachineOptionsProto target_machine_options =
+        cpu::GetDefaultHostTargetMachineOptions(
+            hlo_module->config().debug_options());
+    // Overwrite the features with the machine attributes from the topology.
+    target_machine_options.set_features(
+        absl::StrJoin(topology_.cpu_topology().machine_attributes(), ","));
+
+    compile_options.cpu_target_config.emplace(target_machine_options);
+
+    cpu::AddAdditionalFeaturesIfAVX512(target_machine_options);
+
     TF_ASSIGN_OR_RETURN(cpu_executable,
                         JitCompile(std::move(hlo_module), build_options,
                                    execution_options, compile_options));
