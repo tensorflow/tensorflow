@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -100,6 +101,13 @@ class LegacyCacheTest : public ::testing::Test {
     return config;
   }
 
+  Config CreateDummyCublasFissionConfig() {
+    Config config;
+    config.codegen_backend_name = "Cublas_fission";
+    config.backend_config.PackFrom(AutotuneResult::GemmKey());
+    return config;
+  }
+
   Config CreateDummyCudnnConfig() {
     Config config;
     config.codegen_backend_name = "Cudnn";
@@ -164,6 +172,31 @@ TEST_F(LegacyCacheTest, InsertAndLookupCublas) {
 
   TF_ASSERT_OK(cache.Insert(instr.get(), config));
   EXPECT_THAT(cache.Lookup(instr.get()), Optional(ConfigEq(config)));
+}
+
+TEST_F(LegacyCacheTest, InsertAndLookupCublasFission) {
+  auto cache = LegacyCache(test_dir_, mode_, device_desc_);
+  constexpr char kHLO[] = R"(
+HloModule test_module
+
+fused_computation {
+  param.0 = f32[] parameter(0)
+  param.1 = f32[] parameter(1)
+  ROOT add.0 = f32[] add(param.0, param.1)
+}
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT fusion.0 = f32[] fusion(p0, p1), kind=kLoop, calls=fused_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHLO));
+  auto instr = module->entry_computation()->root_instruction();
+  Config config = CreateDummyCublasFissionConfig();
+
+  TF_ASSERT_OK(cache.Insert(instr, config));
+  EXPECT_THAT(cache.Lookup(instr), Optional(ConfigEq(config)));
 }
 
 TEST_F(LegacyCacheTest, InsertAndLookupCudnn) {

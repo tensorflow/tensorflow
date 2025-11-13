@@ -499,7 +499,7 @@ absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
         std::remove_if(results.begin(), results.end(),
                        [](const ConfigResult& result) {
                          return result.config.codegen_backend->name() ==
-                                "cublas";
+                                "Cublas_fission";
                        }),
         results.end());
   }
