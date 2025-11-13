@@ -228,6 +228,10 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
   int64_t DurationPs() const { return event_->duration_ps(); }
   int64_t MetadataId() const { return event_->metadata_id(); }
 
+  void SetMetadataId(int64_t metadata_id) {
+    event_->set_metadata_id(metadata_id);
+  }
+
   void SetOffsetPs(int64_t offset_ps) { event_->set_offset_ps(offset_ps); }
 
   void SetOffsetNs(int64_t offset_ns) { SetOffsetPs(NanoToPico(offset_ns)); }
