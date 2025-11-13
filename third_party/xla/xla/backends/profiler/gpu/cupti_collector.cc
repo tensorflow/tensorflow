@@ -414,60 +414,6 @@ class PerDeviceCollector {
 
  public:
   PerDeviceCollector() = default;
-  void SetCudaGraphIdMap(
-      absl::flat_hash_map<uint32_t, uint32_t>& cuda_graph_id_map) {
-    per_device_cuda_graph_id_map_.insert(cuda_graph_id_map.begin(),
-                                         cuda_graph_id_map.end());
-  }
-
-  void SetCudaGraphNodeIdMap(
-      absl::flat_hash_map<uint32_t, absl::flat_hash_map<uint64_t, uint64_t>>&
-          cuda_graph_node_id_map) {
-    for (const auto& [graph_id, node_map] : cuda_graph_node_id_map) {
-      per_device_cuda_graph_node_id_map_[graph_id].insert(node_map.begin(),
-                                                          node_map.end());
-    }
-  }
-
-  void AddGraphIdMapsToPlane(XPlaneBuilder* device_plane) {
-    // Create a new line for graph metadata
-    XLineBuilder line =
-        device_plane->GetOrCreateLine(StatType::kGraphMetadataLineId);
-    line.SetName(GetStatTypeStr(StatType::kGraphMetadataLineId));
-    line.SetTimestampNs(0);
-
-    // Add the graph id map to the device plane
-    for (const auto& [graph_id, orig_graph_id] :
-         per_device_cuda_graph_id_map_) {
-      XEventBuilder event =
-          line.AddEvent(*device_plane->GetOrCreateEventMetadata(
-              GetStatTypeStr(StatType::kCudaGraphMapId)));
-      event.AddStatValue(*device_plane->GetOrCreateStatMetadata(
-                             GetStatTypeStr(StatType::kCudaGraphId)),
-                         graph_id);
-      event.AddStatValue(*device_plane->GetOrCreateStatMetadata(
-                             GetStatTypeStr(StatType::kCudaGraphOrigId)),
-                         orig_graph_id);
-    }
-    // Add the node id map to the device plane
-    for (const auto& [graph_id, node_map] :
-         per_device_cuda_graph_node_id_map_) {
-      for (const auto& [node_id, orig_node_id] : node_map) {
-        XEventBuilder event =
-            line.AddEvent(*device_plane->GetOrCreateEventMetadata(
-                GetStatTypeStr(StatType::kCudaGraphNodeMapId)));
-        event.AddStatValue(*device_plane->GetOrCreateStatMetadata(
-                               GetStatTypeStr(StatType::kCudaGraphId)),
-                           graph_id);
-        event.AddStatValue(*device_plane->GetOrCreateStatMetadata(
-                               GetStatTypeStr(StatType::kCudaGraphNodeId)),
-                           node_id);
-        event.AddStatValue(*device_plane->GetOrCreateStatMetadata(
-                               GetStatTypeStr(StatType::kCudaGraphOrigNodeId)),
-                           orig_node_id);
-      }
-    }
-  }
 
   void AddEvent(CuptiTracerEvent&& event) {
     absl::MutexLock l(m_);
@@ -635,9 +581,6 @@ class PerDeviceCollector {
   std::vector<CuptiTracerEvent> events_ TF_GUARDED_BY(m_);
   cudaOccDeviceProp device_properties_;
   absl::flat_hash_map<DeviceOccupancyParams, OccupancyStats> occupancy_cache_;
-  absl::flat_hash_map<uint32_t, uint32_t> per_device_cuda_graph_id_map_;
-  absl::flat_hash_map<uint32_t, absl::flat_hash_map<uint64_t, uint64_t>>
-      per_device_cuda_graph_node_id_map_;
 };
 
 // Using two iterator of the CuptiTracerEvent queue to mark the current and
@@ -752,17 +695,26 @@ void CuptiTraceCollector::OnTracerCollectedCallbackData(
     auto event_in_queue = min_heap.top();
     min_heap.pop();
     auto& event = event_in_queue.Event();
+    absl::string_view deduped_annotation{};
     if (event.type == CuptiTracerEventType::Generic &&
         event.generic_info.cbid ==
             CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice) {
       for (uint32_t device = 0; device < options_.num_gpus; ++device) {
-        annotation_map_.Add(device, event.correlation_id, event.annotation,
-                            event.nvtx_range, event.scope_range_id);
+        deduped_annotation =
+            annotation_map_.Add(device, event.correlation_id, event.annotation,
+                                event.nvtx_range, event.scope_range_id);
       }
     } else {
-      annotation_map_.Add(event.device_id, event.correlation_id,
-                          event.annotation, event.nvtx_range,
-                          event.scope_range_id);
+      deduped_annotation = annotation_map_.Add(
+          event.device_id, event.correlation_id, event.annotation,
+          event.nvtx_range, event.scope_range_id);
+    }
+    if (event.type == CuptiTracerEventType::CudaGraph && event.graph_id != 0 &&
+        event.graph_node_id != 0) {
+      if (!deduped_annotation.empty()) {
+        graph_node_annotations_.insert(
+            {{event.graph_id, event.graph_node_id}, deduped_annotation});
+      }
     }
     // Clear the annotation and nvtx_range of the Callback API events, as they
     // are now in the combined AnnotationMap which will be used by the
@@ -840,20 +792,39 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       // followed AddEvent() processing.
       if (!AddNvtxMarker(event)) return;
     }
+
+    // If this is a CudaGraphNodeMap event, we need to record the mapping from
+    // graph_id/graph_node_id to orig_graph_id/orig_graph_node_id.
     if (event.type == CuptiTracerEventType::CudaGraphNodeMap) {
+      cuda_graph_id_map_[event.graph_id] = event.cuda_graph_info.orig_graph_id;
       cuda_graph_node_id_map_[event.graph_id][event.graph_node_id] =
           event.cuda_graph_info.orig_graph_node_id;
-      cuda_graph_id_map_[event.graph_id] = event.cuda_graph_info.orig_graph_id;
+      return;
     }
-    if (event.type != CuptiTracerEventType::CudaGraphNodeMap) {
-      per_device_collector_[event.device_id].AddEvent(std::move(event));
+
+    // For activity events with graph_id and graph_node_id, we need to rewrite
+    // the annotation to reflect the detail framework information which are got
+    // during the callback for cuda graph creation and nodes insertion.
+    if (event.source == CuptiTracerEventSource::Activity &&
+        (event.graph_id != 0 && event.graph_node_id != 0)) {
+      // We need to rewrite the annotation of this inner node event in cuda
+      // graph device plane.
+      auto orig_graph_id_it = cuda_graph_id_map_.find(event.graph_id);
+      if (orig_graph_id_it != cuda_graph_id_map_.end()) {
+        uint32_t orig_graph_id = orig_graph_id_it->second;
+        const auto& node_id_2_orig = cuda_graph_node_id_map_[event.graph_id];
+        auto orig_node_id_it = node_id_2_orig.find(event.graph_node_id);
+        if (orig_node_id_it != node_id_2_orig.end()) {
+          uint64_t orig_node_id = orig_node_id_it->second;
+          auto annotation_it =
+              graph_node_annotations_.find({orig_graph_id, orig_node_id});
+          if (annotation_it != graph_node_annotations_.end()) {
+            event.annotation = annotation_it->second;
+          }
+        }
+      }
     }
-    per_device_collector_[event.device_id].SetCudaGraphIdMap(
-        cuda_graph_id_map_);
-    per_device_collector_[event.device_id].SetCudaGraphNodeIdMap(
-        cuda_graph_node_id_map_);
-    cuda_graph_node_id_map_.clear();
-    cuda_graph_id_map_.clear();
+    per_device_collector_[event.device_id].AddEvent(std::move(event));
   }
   void OnEventsDropped(const std::string& reason,
                        uint32_t num_events) override {
@@ -903,11 +874,6 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
           device_ordinal, &device_plane);
       num_events += per_device_collector_[device_ordinal].Flush(
           start_gpu_ns_, end_gpu_ns, &device_plane, &host_plane, &nvtx_plane);
-      if (options_.dump_graph_nope_mapping) {
-        // Add the graph id maps to the device plane
-        per_device_collector_[device_ordinal].AddGraphIdMapsToPlane(
-            &device_plane);
-      }
       NormalizeTimeStamps(&device_plane, start_walltime_ns_);
     }
     NormalizeTimeStamps(&host_plane, start_walltime_ns_);
