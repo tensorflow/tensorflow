@@ -75,26 +75,26 @@ class TransformGraphTest : public ::testing::Test {
 
     GraphDef graph_def;
     TF_ASSERT_OK(root.ToGraphDef(&graph_def));
-    string graph_def_serialized;
+    std::string graph_def_serialized;
     graph_def.SerializeToString(&graph_def_serialized);
-    const string dir = testing::TmpDir();
-    const string in_filename_pb = io::JoinPath(dir, "in_graphdef.pb");
-    const string out_filename_pb = io::JoinPath(dir, "out_graphdef.pb");
+    const std::string dir = testing::TmpDir();
+    const std::string in_filename_pb = io::JoinPath(dir, "in_graphdef.pb");
+    const std::string out_filename_pb = io::JoinPath(dir, "out_graphdef.pb");
     TF_ASSERT_OK(WriteStringToFile(Env::Default(), in_filename_pb,
                                    graph_def_serialized));
 
-    std::vector<string> args = {"some_binary",
-                                "--in_graph=" + in_filename_pb,
-                                "--out_graph=" + out_filename_pb,
-                                "--inputs=placeholder_expect_remains",
-                                "--outputs=output_expect_remains",
-                                "--transforms=fold_constants"};
+    std::vector<std::string> args = {"some_binary",
+                                     "--in_graph=" + in_filename_pb,
+                                     "--out_graph=" + out_filename_pb,
+                                     "--inputs=placeholder_expect_remains",
+                                     "--outputs=output_expect_remains",
+                                     "--transforms=fold_constants"};
     const int argc = 6;
     EXPECT_EQ(argc, args.size());
     char* argv[argc];
     std::vector<char*> char_strings;
     for (int i = 0; i < argc; ++i) {
-      string arg = args[i];
+      std::string arg = args[i];
       char* char_string = new char[arg.size() + 1];
       std::copy_n(arg.c_str(), arg.size() + 1, char_string);
       argv[i] = char_string;
@@ -109,7 +109,7 @@ class TransformGraphTest : public ::testing::Test {
     TF_EXPECT_OK(
         ReadBinaryProto(Env::Default(), out_filename_pb, &out_graph_def));
 
-    std::map<string, const NodeDef*> out_node_map;
+    std::map<std::string, const NodeDef*> out_node_map;
     graph_transforms::MapNamesToNodes(out_graph_def, &out_node_map);
 
     for (const NodeDef& node : out_graph_def.node()) {

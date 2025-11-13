@@ -40,8 +40,8 @@ absl::Status QuantizeWeights(const GraphDef& input_graph_def,
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def, {"Const"},
       [minimum_size](const NodeMatch& match,
-                     const std::set<string>& input_nodes,
-                     const std::set<string>& output_nodes,
+                     const std::set<std::string>& input_nodes,
+                     const std::set<std::string>& output_nodes,
                      std::vector<NodeDef>* new_nodes) {
         const NodeDef& old_const_node = match.node;
         if (!old_const_node.attr().count("dtype")) {

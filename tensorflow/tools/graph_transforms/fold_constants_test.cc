@@ -37,8 +37,8 @@ namespace graph_transforms {
 // Declaring this here so it doesn't need to be in the public header.
 absl::Status ReplaceSendRecvs(const GraphDef& original_graph_def,
                               const GraphDef& rewritten_graph_def,
-                              const std::vector<string>& inputs,
-                              const std::vector<string>& outputs,
+                              const std::vector<std::string>& inputs,
+                              const std::vector<std::string>& outputs,
                               GraphDef* output_graph_def);
 
 class ConstantFoldingTest : public ::testing::Test {
@@ -171,9 +171,9 @@ class ConstantFoldingTest : public ::testing::Test {
   }
 
   void TestConstantFolding(const GraphDef& graph_def,
-                           std::vector<std::pair<string, Tensor> > inputs,
-                           std::vector<string> excluded_ops,
-                           const std::vector<string>& outputs,
+                           std::vector<std::pair<std::string, Tensor> > inputs,
+                           std::vector<std::string> excluded_ops,
+                           const std::vector<std::string>& outputs,
                            graph_transforms::TransformFuncContext context) {
     std::unique_ptr<tensorflow::Session> unfolded_session(
         tensorflow::NewSession(tensorflow::SessionOptions()));
@@ -182,7 +182,7 @@ class ConstantFoldingTest : public ::testing::Test {
     TF_ASSERT_OK(unfolded_session->Run(inputs, outputs, {}, &unfolded_tensors));
 
     GraphDef folded_graph_def;
-    for (const std::pair<string, Tensor>& input : inputs) {
+    for (const std::pair<std::string, Tensor>& input : inputs) {
       context.input_names.push_back(input.first);
     }
     context.output_names = outputs;
@@ -202,7 +202,7 @@ class ConstantFoldingTest : public ::testing::Test {
                                     1e-5);
     }
 
-    std::map<string, const NodeDef*> folded_node_map;
+    std::map<std::string, const NodeDef*> folded_node_map;
     for (const NodeDef& node : folded_graph_def.node()) {
       folded_node_map.insert({node.name(), &node});
     }
@@ -250,7 +250,7 @@ class ConstantFoldingTest : public ::testing::Test {
         o_graph_def, n_graph_def, {"placeholder"}, {"a_const"},
         &result_graph_def));
 
-    std::map<string, const NodeDef*> node_map;
+    std::map<std::string, const NodeDef*> node_map;
     graph_transforms::MapNamesToNodes(result_graph_def, &node_map);
     EXPECT_EQ(1, node_map.count("original_recv"));
     EXPECT_EQ(1, node_map.count("a_const"));
@@ -284,7 +284,7 @@ class ConstantFoldingTest : public ::testing::Test {
         o_graph_def, n_graph_def, {"placeholder", "placeholder_1"}, {"add"},
         &result_graph_def));
 
-    std::map<string, const NodeDef*> node_map;
+    std::map<std::string, const NodeDef*> node_map;
     graph_transforms::MapNamesToNodes(result_graph_def, &node_map);
     EXPECT_EQ(1, node_map.count("placeholder"));
     EXPECT_EQ(1, node_map.count("placeholder_1"));
@@ -320,7 +320,7 @@ class ConstantFoldingTest : public ::testing::Test {
     TF_ASSERT_OK(graph_transforms::RemoveUnusedNodes(
         graph_def, {{"placeholder"}, {"output"}}, &result_graph_def));
 
-    std::map<string, const NodeDef*> node_map;
+    std::map<std::string, const NodeDef*> node_map;
     graph_transforms::MapNamesToNodes(result_graph_def, &node_map);
     EXPECT_EQ(1, node_map.count("a"));
     EXPECT_EQ(1, node_map.count("b"));

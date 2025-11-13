@@ -33,8 +33,9 @@ absl::Status SparsifyGather(const GraphDef& input_graph_def,
                             const TransformFuncContext& context,
                             GraphDef* output_graph_def);
 absl::Status ReadTensorFromCheckpoint(
-    const string& tensor_name, const std::unique_ptr<BundleReader>& ckpt_reader,
-    const string& shape_and_slice, Tensor* tensor);
+    const std::string& tensor_name,
+    const std::unique_ptr<BundleReader>& ckpt_reader,
+    const std::string& shape_and_slice, Tensor* tensor);
 
 class SparsifyGatherTest : public ::testing::Test {
  protected:
@@ -42,8 +43,8 @@ class SparsifyGatherTest : public ::testing::Test {
                       const std::vector<NodeDef*>& inputs, GraphDef* graph_def,
                       bool control_dep = false) {
     NodeDef* node_def = graph_def->add_node();
-    node_def->set_name(string(name));
-    node_def->set_op(string(op));
+    node_def->set_name(name);
+    node_def->set_op(op);
     if (!control_dep) {
       std::for_each(inputs.begin(), inputs.end(), [&node_def](NodeDef* input) {
         node_def->add_input(input->name());
@@ -62,8 +63,8 @@ class SparsifyGatherTest : public ::testing::Test {
       NodeDef* axis_node =
           CreateNode(absl::StrCat(name, "_axis"), "Const", {}, graph_def);
       Tensor axis_t(DT_INT32, TensorShape({}));
-      axis_t.scalar<int32>()() = 0;
-      SetNodeTensorAttr<int32>("value", axis_t, axis_node);
+      axis_t.scalar<int32_t>()() = 0;
+      SetNodeTensorAttr<int32_t>("value", axis_t, axis_node);
       CreateNode(name, "GatherV2", {params, indices, axis_node}, graph_def);
     } else {
       CreateNode(name, "Gather", {params, indices}, graph_def);
@@ -72,7 +73,7 @@ class SparsifyGatherTest : public ::testing::Test {
 
   void TestSinglePartition(bool gather_v2, bool include_shared_init,
                            bool test_variable, bool test_kept_concat,
-                           const string& shared_init_name = "group_deps") {
+                           const std::string& shared_init_name = "group_deps") {
     GraphDef graph_def;
 
     const auto checkpoint_path =
@@ -110,15 +111,15 @@ class SparsifyGatherTest : public ::testing::Test {
       test::FillValues<tstring>(&tensor_names_values, {"w"});
       NodeDef* tensor_names_node =
           CreateNode("save/RestoreV2/tensor_names", "Const", {}, &graph_def);
-      SetNodeTensorAttr<string>("value", tensor_names_values,
-                                tensor_names_node);
+      SetNodeTensorAttr<std::string>("value", tensor_names_values,
+                                     tensor_names_node);
 
       NodeDef* tensor_shapes_slices_node = CreateNode(
           "save/RestoreV2/shape_and_slices", "Const", {}, &graph_def);
       Tensor shapes_slices_val(DT_STRING, TensorShape({1}));
       shapes_slices_val.flat<tstring>()(0) = "4 1 0,4:0,1";
-      SetNodeTensorAttr<string>("value", shapes_slices_val,
-                                tensor_shapes_slices_node);
+      SetNodeTensorAttr<std::string>("value", shapes_slices_val,
+                                     tensor_shapes_slices_node);
 
       NodeDef* restore_node = CreateNode(
           "save/RestoreV2", "RestoreV2",
@@ -177,7 +178,7 @@ class SparsifyGatherTest : public ::testing::Test {
     TF_ASSERT_OK(SparsifyGather(graph_def, context, &result));
 
     // Validation begins.
-    std::map<string, const NodeDef*> node_lookup;
+    std::map<std::string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
 
     // Check nodes.
@@ -246,8 +247,8 @@ class SparsifyGatherTest : public ::testing::Test {
     EXPECT_EQ(1, node_lookup.count("gather/ExpandDims/Const"));
     EXPECT_EQ("Const", node_lookup.at("gather/ExpandDims/Const")->op());
     Tensor expected_expand_dims_tensor(DT_INT32, TensorShape({}));
-    test::FillValues<int32>(&expected_expand_dims_tensor, {-1});
-    test::ExpectTensorEqual<int32>(
+    test::FillValues<int32_t>(&expected_expand_dims_tensor, {-1});
+    test::ExpectTensorEqual<int32_t>(
         expected_expand_dims_tensor,
         GetNodeTensorAttr(*(node_lookup.at("gather/ExpandDims/Const")),
                           "value"));
@@ -284,7 +285,7 @@ class SparsifyGatherTest : public ::testing::Test {
 
   void TestMultiPartition(bool gather_v2, bool include_shared_init,
                           bool test_variable,
-                          const string& shared_init_name = "group_deps") {
+                          const std::string& shared_init_name = "group_deps") {
     // The 'ids' node is served input for two 'Gather's.
     GraphDef graph_def;
 
@@ -321,16 +322,16 @@ class SparsifyGatherTest : public ::testing::Test {
           CreateNode("save/RestoreV2/tensor_names", "Const", {}, &graph_def);
       Tensor tensor_names_values(DT_STRING, TensorShape({2}));
       test::FillValues<tstring>(&tensor_names_values, {"w1", "w2"});
-      SetNodeTensorAttr<string>("value", tensor_names_values,
-                                tensor_names_node);
+      SetNodeTensorAttr<std::string>("value", tensor_names_values,
+                                     tensor_names_node);
 
       NodeDef* tensor_shapes_slices_node = CreateNode(
           "save/RestoreV2/shape_and_slices", "Const", {}, &graph_def);
       Tensor shapes_slices_val(DT_STRING, TensorShape({2}));
       shapes_slices_val.flat<tstring>()(0) = "4 1 0,4:0,1";
       shapes_slices_val.flat<tstring>()(1) = "4 1 0,4:0,1";
-      SetNodeTensorAttr<string>("value", shapes_slices_val,
-                                tensor_shapes_slices_node);
+      SetNodeTensorAttr<std::string>("value", shapes_slices_val,
+                                     tensor_shapes_slices_node);
 
       NodeDef* restore_node = CreateNode(
           "save/RestoreV2", "RestoreV2",
@@ -409,7 +410,7 @@ class SparsifyGatherTest : public ::testing::Test {
     TF_ASSERT_OK(SparsifyGather(graph_def, context, &result));
 
     // Validation begins.
-    std::map<string, const NodeDef*> node_lookup;
+    std::map<std::string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
 
     // Check nodes.
@@ -469,8 +470,8 @@ class SparsifyGatherTest : public ::testing::Test {
     EXPECT_EQ(1, node_lookup.count("gather1/ExpandDims/Const"));
     EXPECT_EQ("Const", node_lookup.at("gather1/ExpandDims/Const")->op());
     Tensor expected_expand_dims_tensor1(DT_INT32, TensorShape({}));
-    test::FillValues<int32>(&expected_expand_dims_tensor1, {-1});
-    test::ExpectTensorEqual<int32>(
+    test::FillValues<int32_t>(&expected_expand_dims_tensor1, {-1});
+    test::ExpectTensorEqual<int32_t>(
         expected_expand_dims_tensor1,
         GetNodeTensorAttr(*(node_lookup.at("gather1/ExpandDims/Const")),
                           "value"));
@@ -518,8 +519,8 @@ class SparsifyGatherTest : public ::testing::Test {
     EXPECT_EQ(1, node_lookup.count("gather2/ExpandDims/Const"));
     EXPECT_EQ("Const", node_lookup.at("gather2/ExpandDims/Const")->op());
     Tensor expected_expand_dims_tensor2(DT_INT32, TensorShape({}));
-    test::FillValues<int32>(&expected_expand_dims_tensor2, {-1});
-    test::ExpectTensorEqual<int32>(
+    test::FillValues<int32_t>(&expected_expand_dims_tensor2, {-1});
+    test::ExpectTensorEqual<int32_t>(
         expected_expand_dims_tensor2,
         GetNodeTensorAttr(*(node_lookup.at("gather2/ExpandDims/Const")),
                           "value"));
