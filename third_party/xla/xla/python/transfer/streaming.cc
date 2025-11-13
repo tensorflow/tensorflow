@@ -322,7 +322,9 @@ void PullTable::Handle(tsl::RCReference<ConnectionState> state,
   if (entry->Handle(std::move(state), req, base_req_id)) {
     absl::MutexLock l(mu_);
     auto it = entries_.find(req.uuid());
-    entries_.erase(it);
+    if (it != entries_.end()) {
+      entries_.erase(it);
+    }
   }
 }
 
