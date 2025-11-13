@@ -54,7 +54,7 @@ struct CSRSparseMatrixZeros {
 
     Tensor batch_ptr_t(cpu_allocator(), DT_INT32,
                        TensorShape({batch_size + 1}));
-    batch_ptr_t.vec<int32>().setZero();  // On host.
+    batch_ptr_t.vec<int32_t>().setZero();  // On host.
 
     Allocator* allocator = c->device()->GetAllocator(AllocatorAttributes());
     // An all-zeros CSR matrix is composed of an empty set of column
@@ -66,10 +66,10 @@ struct CSRSparseMatrixZeros {
     Tensor coo_col_ind_t(allocator, DT_INT32, TensorShape({0}));
     Tensor csr_values_t(allocator, dtype, TensorShape({0}));
     const Device& d = c->eigen_device<Device>();
-    functor::SetZeroFunctor<Device, int32> set_zero;
+    functor::SetZeroFunctor<Device, int32_t> set_zero;
     TF_RETURN_IF_ERROR(c->allocate_temp(
         DT_INT32, TensorShape({batch_size * (rows + 1)}), &csr_row_ptr_t));
-    set_zero(d, csr_row_ptr_t.flat<int32>());
+    set_zero(d, csr_row_ptr_t.flat<int32_t>());
 
     TF_RETURN_IF_ERROR(CSRSparseMatrix::CreateCSRSparseMatrix(
         dtype, dense_shape_t, batch_ptr_t, csr_row_ptr_t, coo_col_ind_t,
