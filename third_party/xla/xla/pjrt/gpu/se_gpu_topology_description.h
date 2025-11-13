@@ -82,7 +82,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   // No subslice is supported.
   bool is_subslice_topology() const override { return false; }
 
-  absl::StatusOr<int> ProcessCount() const override {
+  absl::StatusOr<int> HostCount() const override {
     return gpu_topology_->number_of_hosts();
   }
 
