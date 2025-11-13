@@ -66,9 +66,9 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
                tensorflow::DataType dtype, EagerContext* ctx);
 
 #if !defined(IS_MOBILE_PLATFORM)
-  TensorHandle(int64_t op_id, int32_t output_num, const string& remote_task,
-               tensorflow::DataType dtype, Device* device, EagerContext* ctx,
-               bool unknown_device);
+  TensorHandle(int64_t op_id, int32_t output_num,
+               const std::string& remote_task, tensorflow::DataType dtype,
+               Device* device, EagerContext* ctx, bool unknown_device);
   TensorHandle(int64_t op_id, int32_t output_num, tensorflow::DataType dtype,
                Device* device, bool is_ready, EagerContext* ctx);
 #endif  // IS_MOBILE_PLATFORM
@@ -97,7 +97,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   static absl::Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
                                          tensorflow::DataType dtype,
                                          const tensorflow::TensorShape& shape,
-                                         const string& device_name,
+                                         const std::string& device_name,
                                          EagerContext* ctx,
                                          TensorHandle** packed_handle);
   static absl::Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
@@ -108,12 +108,10 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // An unshaped remote handle refers to a tensor on a remote worker. It's not
   // ready until the shape is set. It controls the lifetime of the remote
   // tensor.
-  static TensorHandle* CreateUnshapedRemoteHandle(int64_t op_id,
-                                                  int32_t output_num,
-                                                  const string& remote_task,
-                                                  tensorflow::DataType dtype,
-                                                  Device* d, EagerContext* ctx,
-                                                  bool unknown_device = false);
+  static TensorHandle* CreateUnshapedRemoteHandle(
+      int64_t op_id, int32_t output_num, const std::string& remote_task,
+      tensorflow::DataType dtype, Device* d, EagerContext* ctx,
+      bool unknown_device = false);
   // A lazy remote handle refers to a tensor on a remote worker. The lifetime of
   // the remote tensor is controlled by the remote worker, but not by the lazy
   // remote handle. Lazy handles are normally created on a default function
@@ -189,12 +187,12 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   absl::Status AddLocalMirror(tensorflow::Tensor&& tensor, const Device* d);
 
 #if !defined(IS_MOBILE_PLATFORM)
-  bool HasRemoteMirror(const Device* d, uint64 context_view_id) const;
-  bool HasResourceShapeMirror(const Device* d, uint64 context_view_id) const;
+  bool HasRemoteMirror(const Device* d, uint64_t context_view_id) const;
+  bool HasResourceShapeMirror(const Device* d, uint64_t context_view_id) const;
 
   absl::Status AddUnshapedRemoteMirror(const Device* d, int64_t op_id,
                                        int output_num,
-                                       const string& remote_task,
+                                       const std::string& remote_task,
                                        EagerContext* ctx);
   absl::Status AddResourceShapeMirror(const Device* d, int64_t op_id,
                                       int output_num, EagerContext* ctx);
@@ -203,7 +201,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // If wait_until_ready is true, block until the remote tensor is ready on the
   // given remote worker.
   absl::Status RemoteAddress(const Device* d, bool wait_until_ready,
-                             int64_t* op_id, int32* output_num) const;
+                             int64_t* op_id, int32_t* output_num) const;
 
   // Called on an async remote tensor once it's shape has been determined. This
   // transitions the tensor handle from a non-ready to a ready state by
@@ -213,12 +211,13 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // This method or Poison must be called exactly once for remote tensors that
   // were created without a known shape.
   absl::Status SetRemoteShape(const TensorShape& shape, const Device* d,
-                              uint64 context_view_id);
+                              uint64_t context_view_id);
   // If op_device is not empty, reset the devices of a remote tensor which is
   // created without known devices (e.g. function outputs).
   absl::Status SetRemoteShapeAndDevice(const TensorShape& shape,
-                                       const Device* d, uint64 context_view_id,
-                                       string op_device);
+                                       const Device* d,
+                                       uint64_t context_view_id,
+                                       std::string op_device);
 
   // Poisons either this handle or a remote mirror with error `status`.
   // Poisoning means that the handle will become ready and methods trying
@@ -226,7 +225,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // Exactly one of SetRemoteShape or PoisonRemote methods must be called on a
   // unshaped handle on a remote device.
   void PoisonRemote(absl::Status status, const Device* d,
-                    uint64 context_view_id);
+                    uint64_t context_view_id);
 #endif
 
   // Sets the `tensor` for this async non-ready handle making it ready.
@@ -260,7 +259,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   enum HandleType { LOCAL = 0, PACKED = 1, REMOTE = 2 };
 
   HandleType Type() const;
-  string TypeString() const;
+  std::string TypeString() const;
 
   void SetResourceHandleDtypeAndShape(
       std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes);
@@ -330,9 +329,9 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // TODO(yujingzhang): Remove resource_shape_mirrors_ once scalable per-replica
   // variable is ready, since we could get the shape locally without remote copy
   // then.
-  std::unordered_map<string, RemoteTensorHandleData> resource_shape_mirrors_
-      TF_GUARDED_BY(mu_);
-  std::unordered_map<string, RemoteTensorHandleData> remote_mirrors_
+  std::unordered_map<std::string, RemoteTensorHandleData>
+      resource_shape_mirrors_ TF_GUARDED_BY(mu_);
+  std::unordered_map<std::string, RemoteTensorHandleData> remote_mirrors_
       TF_GUARDED_BY(mu_);
 #endif
 
@@ -371,7 +370,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
     bool IsReady() const;
     absl::Status WaitReady(const char* caller) const;
     void Poison(absl::Status status);
-    string DebugString() const;
+    std::string DebugString() const;
 
     // Number of packed handles.
     int NumPackedHandles() const;
