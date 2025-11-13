@@ -104,8 +104,8 @@ class GraphCompilerTest : public ::testing::Test {
     core::ScopedUnref context_unref(xla_context);
     xla_context->Ref();
 
-    auto step_container =
-        std::make_unique<ScopedStepContainer>(0, [this](const string& name) {
+    auto step_container = std::make_unique<ScopedStepContainer>(
+        0, [this](const std::string& name) {
           absl::Status status =
               this->device_->resource_manager()->Cleanup(name);
         });

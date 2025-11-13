@@ -42,7 +42,7 @@ absl::StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index) {
 
 absl::Status ExtractWhileLoopFrames(
     const std::vector<ControlFlowInfo>& cf_info, const Graph* graph,
-    std::unordered_map<string, WhileLoopFrame>* frames,
+    std::unordered_map<std::string, WhileLoopFrame>* frames,
     const NodeFilter& node_filter) {
   for (Node* node : graph->op_nodes()) {
     const ControlFlowInfo& cf = cf_info[node->id()];
