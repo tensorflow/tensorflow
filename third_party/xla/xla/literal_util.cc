@@ -288,7 +288,7 @@ void PopulateWithIntNext(Literal* literal) {
 }
 
 template <typename FloatT>
-void PopulateWithNoDuplicateData(Literal* literal, std::minstd_rand0* engine) {
+void PopulateWithNoDuplicateData(Literal* literal, absl::BitGenRef* engine) {
   PopulateWithIntNext<FloatT>(literal);
   std::shuffle(literal->data<FloatT>().begin(), literal->data<FloatT>().end(),
                *engine);
@@ -299,7 +299,7 @@ void PopulateWithNoDuplicateData(Literal* literal, std::minstd_rand0* engine) {
 // representable floating point.
 template <typename FloatT>
 void PopulateWithRandomFullRangeFloatingPointData(Literal* literal,
-                                                  std::minstd_rand0* engine) {
+                                                  absl::BitGenRef* engine) {
   constexpr float kSpecialValueProbability = 1e-6;
   constexpr float kSpecialValues[] = {+0.F,
                                       -0.F,
@@ -332,7 +332,7 @@ void PopulateWithRandomFullRangeFloatingPointData(Literal* literal,
 
 template <typename FloatT, typename GeneratorT>
 void PopulateWithRandomFloatingPointData(Literal* literal,
-                                         std::minstd_rand0* engine) {
+                                         absl::BitGenRef* engine) {
   std::uniform_real_distribution<GeneratorT> generator(-0.1f, 0.2f);
   for (FloatT& value : literal->data<FloatT>()) {
     value = static_cast<FloatT>(generator(*engine));
@@ -341,7 +341,7 @@ void PopulateWithRandomFloatingPointData(Literal* literal,
 
 template <typename FloatT>
 void PopulateWithFloatingPointData(
-    Literal* literal, std::minstd_rand0* engine, bool no_duplicates,
+    Literal* literal, absl::BitGenRef* engine, bool no_duplicates,
     bool use_large_range, std::optional<int64_t> max_bits_of_precision) {
   using ComputeT =
       std::conditional_t<sizeof(FloatT) < sizeof(float), float, FloatT>;
@@ -373,7 +373,7 @@ void PopulateWithFloatingPointData(
 }
 
 template <typename ComplexT>
-void PopulateWithComplexData(Literal* result, std::minstd_rand0* engine,
+void PopulateWithComplexData(Literal* result, absl::BitGenRef* engine,
                              bool no_duplicates, bool use_large_range) {
   using InnerFloatT = typename ComplexT::value_type;
   CHECK_NOTNULL(engine);
@@ -409,7 +409,7 @@ using RngT = std::conditional_t<
     IntT>;
 template <typename IntT>
 void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
-                                              std::minstd_rand0* engine,
+                                              absl::BitGenRef* engine,
                                               bool no_duplicates, IntT min,
                                               IntT max) {
   CHECK_NOTNULL(engine);
@@ -734,15 +734,22 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 
 absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
                                         bool use_large_range) {
-  auto engine = pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
-  return MakeFakeLiteral(shape, engine.get(), /*limit=*/std::nullopt,
+  if (!pseudo_random) {
+    return MakeFakeLiteral(shape, nullptr, /*limit=*/std::nullopt,
+                           /*is_sorted=*/false,
+                           /*no_duplicates=*/false, use_large_range,
+                           /*max_bits_of_precision=*/std::nullopt);
+  }
+  std::minstd_rand0 engine_storage;
+  absl::BitGenRef engine(engine_storage);
+  return MakeFakeLiteral(shape, &engine, /*limit=*/std::nullopt,
                          /*is_sorted=*/false,
                          /*no_duplicates=*/false, use_large_range,
                          /*max_bits_of_precision=*/std::nullopt);
 }
 
 absl::StatusOr<Literal> MakeFakeLiteral(
-    const Shape& shape, std::minstd_rand0* engine,
+    const Shape& shape, absl::BitGenRef* engine,
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,
     bool no_duplicates, bool use_large_range,
     std::optional<int64_t> max_bits_of_precision) {
