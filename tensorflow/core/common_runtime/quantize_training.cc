@@ -35,18 +35,18 @@ namespace tensorflow {
 namespace {
 
 // TODO(suharshs): If desired, make these values configurable.
-const uint32 kAllowedInputs = 2;
+const uint32_t kAllowedInputs = 2;
 const float kEMADecay = 0.999;
 
 // Node types to rewrite. Insert quantize_and_dequantize op for their inputs.
 const auto* nodes_to_rewrite =
-    new std::unordered_set<string, StringPieceHasher>{"MatMul", "Conv2D"};
+    new std::unordered_set<std::string, StringPieceHasher>{"MatMul", "Conv2D"};
 
 // Contains necessary parameters to convert an edge.
 struct EdgeToConvert {
   // edge is not owned here.
   const Edge* edge;
-  int32 num_bits;
+  int32_t num_bits;
   bool signed_input;
   bool range_given;
   float input_min;
@@ -67,7 +67,7 @@ struct EdgeToConvert {
 // TODO(jmchen): Make this check more robust as it is not guaranteed that the
 // forward node will not be named with a leading "gradients".
 inline bool IsGradientNode(const Graph* graph, const Node* node) {
-  static const string tag = "gradients";
+  static const std::string tag = "gradients";
   return (node->name().compare(0, tag.size(), tag) == 0);
 }
 
@@ -76,7 +76,7 @@ inline bool IsGradientNode(const Graph* graph, const Node* node) {
 // Returns true if the root tensor op type is known, false otherwise.
 bool FindType(const Graph* graph, const Node* node, bool* signed_input,
               bool* range_given, float* input_min, float* input_max) {
-  const string& src_op = node->type_string();
+  const std::string& src_op = node->type_string();
   if (src_op == "Const" || src_op == "Variable" || src_op == "VariableV2") {
     *signed_input = true;
     *range_given = false;
@@ -154,7 +154,7 @@ absl::Status FindSaveOp(const Graph* graph, Node** save_op,
 Node* FindRestoreAllOp(const Graph* graph, absl::string_view save_prefix) {
   for (Node* node : graph->op_nodes()) {
     // The restore_all op should have the same prefix of the save_op.
-    if (node->name() == strings::StrCat(save_prefix, "/restore_all")) {
+    if (node->name() == absl::StrCat(save_prefix, "/restore_all")) {
       return node;
     }
   }
@@ -254,21 +254,21 @@ absl::Status AddRestoreVariableSubgraphs(
   if (restore_all == nullptr) {
     return errors::InvalidArgument("graph has SaveOp, but no restore_all NoOp");
   }
-  const string restore_op_name = strings::StrCat(name_prefix, "/RestoreV2");
-  const string assign_op_name = strings::StrCat(name_prefix, "/Assign");
+  const std::string restore_op_name = absl::StrCat(name_prefix, "/RestoreV2");
+  const std::string assign_op_name = absl::StrCat(name_prefix, "/Assign");
   for (Node* var : variables) {
     // Add an extra prefix after calling graph->NewName because the "unique"
     // name may conflict with names generated for Send nodes.
     // TODO(b/77547936): fix this more generally and get rid of the extra prefix
     // here.
-    string new_restore_op_name =
-        strings::StrCat(graph->NewName(restore_op_name), "_qt");
-    string new_assign_op_name =
-        strings::StrCat(graph->NewName(assign_op_name), "_qt");
-    string tensor_names_op_name =
-        strings::StrCat(new_restore_op_name, "/tensor_names");
-    string shape_and_slices_op_name =
-        strings::StrCat(new_restore_op_name, "/shape_and_slices");
+    std::string new_restore_op_name =
+        absl::StrCat(graph->NewName(restore_op_name), "_qt");
+    std::string new_assign_op_name =
+        absl::StrCat(graph->NewName(assign_op_name), "_qt");
+    std::string tensor_names_op_name =
+        absl::StrCat(new_restore_op_name, "/tensor_names");
+    std::string shape_and_slices_op_name =
+        absl::StrCat(new_restore_op_name, "/shape_and_slices");
 
     // Construct the tensor_names input with the variable name.
     Node* tensor_names;
@@ -329,32 +329,32 @@ absl::Status AddSaveAndRestore(Graph* graph,
 
 // Sets output to the Node that computes reduction axes corresponding to all
 // dimensions of input and return.
-absl::Status MakeReductionAxes(Graph* graph, string name_prefix, Node* input,
-                               Node** output) {
-  name_prefix = strings::StrCat(name_prefix, "/ReductionAxes");
+absl::Status MakeReductionAxes(Graph* graph, std::string name_prefix,
+                               Node* input, Node** output) {
+  name_prefix = absl::StrCat(name_prefix, "/ReductionAxes");
   Node* start;
   Tensor zero_tensor(DT_INT32, TensorShape());
-  zero_tensor.flat<int32>()(0) = 0;
+  zero_tensor.flat<int32_t>()(0) = 0;
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/RangeStart"), "Const")
+      NodeBuilder(absl::StrCat(name_prefix, "/RangeStart"), "Const")
           .Attr("dtype", DT_INT32)
           .Attr("value", zero_tensor)
           .Finalize(graph, &start));
   Node* delta;
   Tensor one_tensor(DT_INT32, TensorShape());
-  one_tensor.flat<int32>()(0) = 1;
+  one_tensor.flat<int32_t>()(0) = 1;
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/RangeDelta"), "Const")
+      NodeBuilder(absl::StrCat(name_prefix, "/RangeDelta"), "Const")
           .Attr("dtype", DT_INT32)
           .Attr("value", one_tensor)
           .Finalize(graph, &delta));
   Node* rank;
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/InputRank"), "Rank")
+      NodeBuilder(absl::StrCat(name_prefix, "/InputRank"), "Rank")
           .Input(input)
           .Finalize(graph, &rank));
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/ReductionAxes"), "Range")
+      NodeBuilder(absl::StrCat(name_prefix, "/ReductionAxes"), "Range")
           .Input(start)
           .Input(rank)
           .Input(delta)
@@ -363,45 +363,43 @@ absl::Status MakeReductionAxes(Graph* graph, string name_prefix, Node* input,
 }
 
 // Computes the exponential moving average of input, updated in update_variable.
-absl::Status MakeExponentialMovingAverage(Graph* graph, string name_prefix,
+absl::Status MakeExponentialMovingAverage(Graph* graph, std::string name_prefix,
                                           const NodeBuilder::NodeOut& input,
                                           Node* decay, Node* update_variable,
                                           Node** assign_value) {
   // variable_t+1 = variable_t - [(variable_t - value) * (1 - decay)]
-  name_prefix = strings::StrCat(name_prefix, "/EMA");
+  name_prefix = absl::StrCat(name_prefix, "/EMA");
   Node* one;
   Tensor one_tensor(DT_FLOAT, TensorShape());
   one_tensor.flat<float>()(0) = 1.0;
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/OneConst"), "Const")
+      NodeBuilder(absl::StrCat(name_prefix, "/OneConst"), "Const")
           .Attr("dtype", DT_FLOAT)
           .Attr("value", one_tensor)
           .Finalize(graph, &one));
   Node* decay_complement;
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/DecayComplement"), "Sub")
+      NodeBuilder(absl::StrCat(name_prefix, "/DecayComplement"), "Sub")
           .Input(one)
           .Input(decay)
           .Finalize(graph, &decay_complement));
 
   Node* value_diff;
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/ValueDiff"), "Sub")
-          .Input(update_variable)
-          .Input(input)
-          .Finalize(graph, &value_diff));
+  TF_RETURN_IF_ERROR(NodeBuilder(absl::StrCat(name_prefix, "/ValueDiff"), "Sub")
+                         .Input(update_variable)
+                         .Input(input)
+                         .Finalize(graph, &value_diff));
   Node* update_value;
   TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/UpdateValue"), "Mul")
+      NodeBuilder(absl::StrCat(name_prefix, "/UpdateValue"), "Mul")
           .Input(value_diff)
           .Input(decay_complement)
           .Finalize(graph, &update_value));
 
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/EMAValue"), "Sub")
-          .Input(update_variable)
-          .Input(update_value)
-          .Finalize(graph, assign_value));
+  TF_RETURN_IF_ERROR(NodeBuilder(absl::StrCat(name_prefix, "/EMAValue"), "Sub")
+                         .Input(update_variable)
+                         .Input(update_value)
+                         .Finalize(graph, assign_value));
   return absl::OkStatus();
 }
 
@@ -416,25 +414,24 @@ absl::Status MakeExponentialMovingAverage(Graph* graph, string name_prefix,
 //       |         EMA    init_val
 //       |           \      /
 //       +----------- assign
-absl::Status MakeInitializedEMAVariable(Graph* graph, const string& name,
+absl::Status MakeInitializedEMAVariable(Graph* graph, const std::string& name,
                                         Node* decay, Node* init_val,
                                         std::vector<Node*>* added_variables,
                                         Node** var) {
   // TODO(suharshs): Update this to use ResourceVariables when they are ready.
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name, "/Variable"), "VariableV2")
-          .Attr("shape", TensorShape())
-          .Attr("dtype", DT_FLOAT)
-          .Finalize(graph, var));
+  TF_RETURN_IF_ERROR(NodeBuilder(absl::StrCat(name, "/Variable"), "VariableV2")
+                         .Attr("shape", TensorShape())
+                         .Attr("dtype", DT_FLOAT)
+                         .Finalize(graph, var));
   added_variables->push_back(*var);
 
   Node* is_initialized;
-  TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat(name, "/IsInitialized"),
-                                 "IsVariableInitialized")
-                         .Input(*var)
-                         .Finalize(graph, &is_initialized));
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(absl::StrCat(name, "/IsInitialized"), "IsVariableInitialized")
+          .Input(*var)
+          .Finalize(graph, &is_initialized));
   Node* switch_node;
-  TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat(name, "/Switch"), "Switch")
+  TF_RETURN_IF_ERROR(NodeBuilder(absl::StrCat(name, "/Switch"), "Switch")
                          .Input(init_val)
                          .Input(is_initialized)
                          .Finalize(graph, &switch_node));
@@ -446,20 +443,19 @@ absl::Status MakeInitializedEMAVariable(Graph* graph, const string& name,
                                                   decay, *var, &ema_value));
 
   Node* assign_value;
-  TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat(name, "/Merge"), "Merge")
+  TF_RETURN_IF_ERROR(NodeBuilder(absl::StrCat(name, "/Merge"), "Merge")
                          .Input({output_false, ema_value})
                          .Finalize(graph, &assign_value));
 
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name, "/AssignValue"), "Assign")
-          .Input(*var)
-          .Input(assign_value)
-          .Finalize(graph, var));
+  TF_RETURN_IF_ERROR(NodeBuilder(absl::StrCat(name, "/AssignValue"), "Assign")
+                         .Input(*var)
+                         .Input(assign_value)
+                         .Finalize(graph, var));
   return absl::OkStatus();
 }
 
 // Computes the min and max EMA of input and stores them in min_var and max_var.
-absl::Status MakeEMAMinMaxVars(Graph* graph, const string& name_prefix,
+absl::Status MakeEMAMinMaxVars(Graph* graph, const std::string& name_prefix,
                                Node* input, std::vector<Node*>* added_variables,
                                Node** min_var, Node** max_var) {
   // TODO(suharshs): The decay will be constant, so we could make only one for
@@ -468,23 +464,22 @@ absl::Status MakeEMAMinMaxVars(Graph* graph, const string& name_prefix,
   Tensor decay_tensor(DT_FLOAT, TensorShape());
   decay_tensor.flat<float>()(0) = kEMADecay;
   Node* decay;
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(strings::StrCat(name_prefix, "/Decay"), "Const")
-          .Attr("dtype", DT_FLOAT)
-          .Attr("value", decay_tensor)
-          .Finalize(graph, &decay));
+  TF_RETURN_IF_ERROR(NodeBuilder(absl::StrCat(name_prefix, "/Decay"), "Const")
+                         .Attr("dtype", DT_FLOAT)
+                         .Attr("value", decay_tensor)
+                         .Finalize(graph, &decay));
 
   Node* reduction_axes;
   TF_RETURN_IF_ERROR(
       MakeReductionAxes(graph, name_prefix, input, &reduction_axes));
   Node* min;
-  string min_name = strings::StrCat(name_prefix, "/Min");
+  std::string min_name = absl::StrCat(name_prefix, "/Min");
   TF_RETURN_IF_ERROR(NodeBuilder(min_name, "Min")
                          .Input(input)
                          .Input(reduction_axes)
                          .Finalize(graph, &min));
   Node* max;
-  string max_name = strings::StrCat(name_prefix, "/Max");
+  std::string max_name = absl::StrCat(name_prefix, "/Max");
   TF_RETURN_IF_ERROR(NodeBuilder(max_name, "Max")
                          .Input(input)
                          .Input(reduction_axes)
@@ -498,7 +493,7 @@ absl::Status MakeEMAMinMaxVars(Graph* graph, const string& name_prefix,
 
 // Makes an input min and max constant if the range is given. Otherwise, makes
 // min and max variables that are updated by an EMA.
-absl::Status MakeInputMinMax(Graph* graph, const string& name_prefix,
+absl::Status MakeInputMinMax(Graph* graph, const std::string& name_prefix,
                              const EdgeToConvert& edge,
                              std::vector<Node*>* added_variables,
                              Node** input_min, Node** input_max) {
@@ -508,14 +503,14 @@ absl::Status MakeInputMinMax(Graph* graph, const string& name_prefix,
     Tensor input_min_tensor(DT_FLOAT, TensorShape());
     input_min_tensor.flat<float>()(0) = edge.input_min;
     TF_RETURN_IF_ERROR(
-        NodeBuilder(strings::StrCat(name_prefix, "/InputMin"), "Const")
+        NodeBuilder(absl::StrCat(name_prefix, "/InputMin"), "Const")
             .Attr("dtype", DT_FLOAT)
             .Attr("value", input_min_tensor)
             .Finalize(graph, input_min));
     Tensor input_max_tensor(DT_FLOAT, TensorShape());
     input_max_tensor.flat<float>()(0) = edge.input_max;
     TF_RETURN_IF_ERROR(
-        NodeBuilder(strings::StrCat(name_prefix, "/InputMax"), "Const")
+        NodeBuilder(absl::StrCat(name_prefix, "/InputMax"), "Const")
             .Attr("dtype", DT_FLOAT)
             .Attr("value", input_max_tensor)
             .Finalize(graph, input_max));
@@ -532,8 +527,8 @@ absl::Status MakeInputMinMax(Graph* graph, const string& name_prefix,
 // Adds a QuantizeAndDequantizeV2 or FakeQuantizeWithMinMaxVars op
 // (and required input nodes) based on edge.
 // The result is stored in convert_node.
-absl::Status MakeQuantizeOp(Graph* graph, const string& name_prefix,
-                            const string& quant_op_type,
+absl::Status MakeQuantizeOp(Graph* graph, const std::string& name_prefix,
+                            const std::string& quant_op_type,
                             const EdgeToConvert& edge,
                             std::vector<Node*>* added_variables,
                             Node** convert_node) {
@@ -541,7 +536,7 @@ absl::Status MakeQuantizeOp(Graph* graph, const string& name_prefix,
   Node* input_max;
   TF_RETURN_IF_ERROR(MakeInputMinMax(graph, name_prefix, edge, added_variables,
                                      &input_min, &input_max));
-  string quant_name = strings::StrCat(name_prefix, "/", quant_op_type);
+  std::string quant_name = absl::StrCat(name_prefix, "/", quant_op_type);
   if (quant_op_type == "QuantizeAndDequantizeV2") {
     TF_RETURN_IF_ERROR(NodeBuilder(quant_name, quant_op_type)
                            .Input(edge.edge->src())
@@ -566,15 +561,15 @@ absl::Status MakeQuantizeOp(Graph* graph, const string& name_prefix,
 
 // Insert conversion op, connect it to the graph and remove the old edge.
 absl::Status ProcessTargetEdges(
-    Graph* graph, const string& quant_op_type,
+    Graph* graph, const std::string& quant_op_type,
     const std::vector<EdgeToConvert>& target_edges) {
   // Remember previously converted ops to avoid duplicated conversion on the
   // same input.
-  std::unordered_map<string, Node*, StringPieceHasher> name_index;
+  std::unordered_map<std::string, Node*, StringPieceHasher> name_index;
   std::vector<Node*> added_variables;
   for (const EdgeToConvert edge : target_edges) {
     Node* convert_node;
-    string name_prefix = edge.edge->src()->name();
+    std::string name_prefix = edge.edge->src()->name();
 
     auto iter = name_index.find(name_prefix);
     if (iter == name_index.end()) {
@@ -596,7 +591,8 @@ absl::Status ProcessTargetEdges(
 
 }  // namespace
 
-absl::Status DoQuantizeTraining(int32_t num_bits, const string& quant_op_type,
+absl::Status DoQuantizeTraining(int32_t num_bits,
+                                const std::string& quant_op_type,
                                 Graph* graph) {
   if (graph == nullptr) {
     return errors::InvalidArgument("Cannot accept empty graph pointer.");
@@ -663,7 +659,7 @@ absl::Status DoQuantizeTraining(int32_t num_bits, const string& quant_op_type,
 
 absl::Status DoQuantizeTrainingOnGraphDef(const GraphDef& input_graphdef,
                                           int32_t num_bits,
-                                          const string& quant_op_type,
+                                          const std::string& quant_op_type,
                                           GraphDef* result_graphdef) {
   Graph graph(OpRegistry::Global());
   GraphConstructorOptions opts;
@@ -678,8 +674,8 @@ absl::Status DoQuantizeTrainingOnGraphDef(const GraphDef& input_graphdef,
 }
 
 absl::Status DoQuantizeTrainingOnSerializedGraphDef(
-    const string& input_graph_string, int32_t num_bits,
-    const string& quant_op_type, string* result_graph_string) {
+    const std::string& input_graph_string, int32_t num_bits,
+    const std::string& quant_op_type, std::string* result_graph_string) {
   // First create the graph from the GraphDef.
   GraphDef input_graphdef;
   if (!ParseProtoUnlimited(&input_graphdef, input_graph_string)) {

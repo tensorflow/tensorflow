@@ -35,7 +35,7 @@ SimplePropagatorState::SimplePropagatorState(
       vlog_(vlog || VLOG_IS_ON(1)),
       input_tensors_(finfo.total_inputs),
       pending_(
-          new std::atomic<int32>[immutable_state.graph_view().num_nodes()]),
+          new std::atomic<int32_t>[immutable_state.graph_view().num_nodes()]),
       active_(vlog_ ? new std::vector<bool>(
                           immutable_state.graph_view().num_nodes())
                     : nullptr),

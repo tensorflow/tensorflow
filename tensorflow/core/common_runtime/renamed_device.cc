@@ -28,7 +28,7 @@ namespace tensorflow {
 
 /* static */
 std::unique_ptr<Device> RenamedDevice::NewRenamedDevice(
-    const string& new_base, Device* underlying, bool owns_underlying,
+    const std::string& new_base, Device* underlying, bool owns_underlying,
     bool isolate_session_state,
     thread::ThreadPoolInterface* underlying_threadpool) {
   DeviceNameUtils::ParsedName parsed_name;
@@ -39,9 +39,9 @@ std::unique_ptr<Device> RenamedDevice::NewRenamedDevice(
   CHECK(underlying_parsed_name.has_id);
   parsed_name.type = underlying_parsed_name.type;
   parsed_name.id = underlying_parsed_name.id;
-  string name = DeviceNameUtils::FullName(parsed_name.job, parsed_name.replica,
-                                          parsed_name.task, parsed_name.type,
-                                          parsed_name.id);
+  std::string name = DeviceNameUtils::FullName(
+      parsed_name.job, parsed_name.replica, parsed_name.task, parsed_name.type,
+      parsed_name.id);
   DeviceAttributes attributes(underlying->attributes());
   attributes.set_name(name);
   // Call absl::WrapUnique to access private constructor.
