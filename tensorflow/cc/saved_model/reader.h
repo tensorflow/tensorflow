@@ -21,7 +21,9 @@ limitations under the License.
 #include <memory>
 #include <unordered_set>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
