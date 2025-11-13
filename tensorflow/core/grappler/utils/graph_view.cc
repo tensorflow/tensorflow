@@ -944,7 +944,7 @@ void MutableGraphView::FixRenamedNodes(
 }
 
 void MutableGraphView::AddNewNodes(
-    absl::flat_hash_map<string, NodeViewFanouts>* renamed_fanouts,
+    absl::flat_hash_map<std::string, NodeViewFanouts>* renamed_fanouts,
     std::vector<int>* new_node_indices) {
   new_node_indices->reserve(mutation_.new_nodes_.size());
   for (auto& new_node : mutation_.new_nodes_) {
