@@ -150,7 +150,9 @@ TEST(KernelArgumentsPackingSpecTest, BuildArguments) {
           {DeviceMemoryBase(
               absl::bit_cast<void*>(static_cast<uintptr_t>(0xff42)), 0)},
           /*shared_memory_bytes=*/8989));
-  EXPECT_EQ(packed_args->number_of_arguments(), 2);
+  // We expect 3 arguments: 2 parameters and the shared memory which counts as
+  // an argument.
+  EXPECT_EQ(packed_args->number_of_arguments(), 3);
   EXPECT_EQ(packed_args->number_of_shared_bytes(), 8989);
   EXPECT_EQ(packed_args->argument_addresses().size(), 2);
   EXPECT_THAT(
@@ -201,7 +203,9 @@ TEST(KernelArgumentsPackingSpecTest, FromProto) {
           {DeviceMemoryBase(
               absl::bit_cast<void*>(static_cast<uintptr_t>(0xff42)), 0)},
           /*shared_memory_bytes=*/8989));
-  EXPECT_EQ(arguments->number_of_arguments(), 2);
+  // We expect 3 arguments: 2 parameters and the shared memory which counts as
+  // an argument.
+  EXPECT_EQ(arguments->number_of_arguments(), 3);
   EXPECT_EQ(arguments->number_of_shared_bytes(), 8989);
   ASSERT_THAT(arguments->argument_addresses(), SizeIs(2));
   EXPECT_THAT(absl::Span<const char>(absl::bit_cast<const char*>(
