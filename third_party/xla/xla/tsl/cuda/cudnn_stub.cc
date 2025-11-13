@@ -28,7 +28,8 @@ void* GetDsoHandle() {
   return nullptr;
 #else
   static auto handle = []() -> void* {
-    auto handle_or = tsl::internal::DsoLoader::GetCudnnDsoHandle();
+    auto handle_or =
+        tsl::internal::DsoLoader::GetCudnnDsoHandle("../../nvidia/cudnn/lib");
     if (!handle_or.ok()) return nullptr;
     return handle_or.value();
   }();
