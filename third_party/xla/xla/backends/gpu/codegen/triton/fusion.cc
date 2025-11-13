@@ -103,7 +103,8 @@ TritonFusion::GenerateTritonKernelAndWrapper(
 
   if (fusion_kind == kTritonFusionKind ||
       fusion_kind == kTritonNestedGemmFusionKind ||
-      fusion_kind == kTritonScaledDotFusionKind) {
+      fusion_kind == kTritonScaledDotFusionKind ||
+      fusion_kind == kTritonCollectiveFusionKind) {
     if (!analysis_.fusion_backend_config().has_block_level_fusion_config()) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Block level fusion config is required for Triton fusions: ",

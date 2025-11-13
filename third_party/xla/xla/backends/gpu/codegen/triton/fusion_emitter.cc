@@ -65,6 +65,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -93,6 +94,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/triton/collective_emitter.h"
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
@@ -1245,6 +1247,11 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     return EmitReduce(b, tiled_hlo, values);
   }
 
+  if (hlo->opcode() == HloOpcode::kAllReduceStart) {
+    return EmitCollective(b, fusion, tiled_hlo, block_level_parameters, fn, pid,
+                          values);
+  }
+
   if (hlo->IsElementwise()) {
     std::vector<Value> operands;
     operands.reserve(hlo->operands().size());
@@ -1982,7 +1989,21 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     fn_arg_types.push_back(GetMemRefType(shape, triton_ty));
   }
 
-  auto fn = b.create<xtile::EntryFuncOp>(fn_name, fn_arg_types);
+  // Add metadata arguments for collectives.
+  // This is done after the input and output arguments but before the tile
+  // index.
+  int32_t num_metadata_arguments = 0;
+  if (fusion_kind == kTritonCollectiveFusionKind) {
+    TF_ASSIGN_OR_RETURN(
+        num_metadata_arguments,
+        AddCollectiveMetadataArguments(fn_arg_types, b, hlo_computation));
+  }
+  // Metadata arguments are opaque to the tiling infra.
+  llvm::SmallVector<mlir::NamedAttribute> named_attributes{b.getNamedAttr(
+      "num_opaque_args", b.getI32IntegerAttr(num_metadata_arguments))};
+
+  auto fn =
+      b.create<xtile::EntryFuncOp>(fn_name, fn_arg_types, named_attributes, {});
 
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
@@ -2002,7 +2023,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
         legacy_matmul_emitter->Emit(b, fusion, fn, block_level_parameters));
   } else if (fusion_kind == kTritonFusionKind ||
              fusion_kind == kTritonNestedGemmFusionKind ||
-             fusion_kind == kTritonScaledDotFusionKind) {
+             fusion_kind == kTritonScaledDotFusionKind ||
+             fusion_kind == kTritonCollectiveFusionKind) {
     TF_RETURN_IF_ERROR(EmitGeneric(b, emitter_specific_constraints_builder,
                                    fusion, fn, block_level_parameters,
                                    &symbolic_expr_context));
