@@ -1023,6 +1023,8 @@ absl::StatusOr<TensorValue> EmitConcatenate(
     int64_t operand_concat_dim_size =
         operand->hlo()->shape().dimensions(concatenate_dimension);
 
+    // The last operand does not have to be a multiple of the tile size, since
+    // we can pad it.
     if (index != num_operands - 1 &&
         operand_concat_dim_size % concat_dim_tile_size != 0) {
       // Sanity check: concatenation dimension should be divisible by the tile
