@@ -114,7 +114,7 @@ class SnappyOutputBuffer : public WritableFile {
   absl::Status AddToOutputBuffer(const char* data, size_t length);
 
   // Returns the total space available in `input_buffer_`.
-  int32 AvailableInputSpace() const;
+  int32_t AvailableInputSpace() const;
 
   // Deflate contents in input_buffer_ and store results in output_buffer_.
   // The contents of output stream are written to file if more space is needed.

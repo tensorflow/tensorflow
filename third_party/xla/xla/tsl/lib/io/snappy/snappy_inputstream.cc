@@ -85,11 +85,11 @@ absl::Status SnappyInputStream::ReadNBytes(int64_t bytes_to_read,
 
 absl::Status SnappyInputStream::Inflate() {
   tstring compressed_block_length_ts;
-  uint32 compressed_block_length;
+  uint32_t compressed_block_length;
 
   TF_RETURN_IF_ERROR(
-      input_stream_->ReadNBytes(sizeof(uint32), &compressed_block_length_ts));
-  for (int i = 0; i < sizeof(uint32); ++i) {
+      input_stream_->ReadNBytes(sizeof(uint32_t), &compressed_block_length_ts));
+  for (int i = 0; i < sizeof(uint32_t); ++i) {
     compressed_block_length =
         (compressed_block_length << 8) |
         static_cast<unsigned char>(compressed_block_length_ts.data()[i]);
