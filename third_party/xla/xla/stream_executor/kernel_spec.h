@@ -48,6 +48,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -62,6 +63,9 @@ namespace stream_executor {
 // function).
 struct InProcessSymbol {
   void* symbol;
+  // If not empty, this symbol can be looked up by this name in the kernel
+  // symbol registry.
+  std::string persistent_name;
 };
 
 // Kernel loader specification for PTX text that resides in memory.
@@ -155,6 +159,9 @@ class KernelLoaderSpec {
   static KernelLoaderSpec CreateInProcessSymbolSpec(
       void* symbol, std::string kernel_name, size_t arity,
       KernelArgsPacking kernel_args_packing = nullptr);
+  static KernelLoaderSpec CreateSerializableInProcessSymbolSpec(
+      std::string persistent_kernel_name, void* symbol, std::string kernel_name,
+      size_t arity, KernelArgsPacking kernel_args_packing = nullptr);
   static KernelLoaderSpec CreateCudaCubinInMemorySpec(
       absl::Span<const uint8_t> cubin_bytes, std::string kernel_name,
       size_t arity,
@@ -181,8 +188,12 @@ class KernelLoaderSpec {
 
   absl::StatusOr<KernelLoaderSpecProto> ToProto() const;
 
+  using SymbolResolver =
+      absl::FunctionRef<absl::StatusOr<void*>(absl::string_view)>;
+
   static absl::StatusOr<KernelLoaderSpec> FromProto(
-      const KernelLoaderSpecProto& proto);
+      const KernelLoaderSpecProto& proto,
+      std::optional<SymbolResolver> symbol_resolver = std::nullopt);
 
  private:
   using Payload =
