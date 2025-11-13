@@ -63,7 +63,7 @@ class YnnMatcher : public LibraryMatcher {
                                  instr->operand(1)->shape(), instr->shape());
     }
     if (instr->opcode() == HloOpcode::kReduce) {
-      return IsReduceOpSupportedByYnn(instr);
+      return IsReduceOpOffloadedToYnn(instr);
     }
     if (instr->IsConstant()) {
       return IsConstantSupportedByYnn(instr);
