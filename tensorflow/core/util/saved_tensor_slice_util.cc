@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
+#include <cstdint>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/ordered_code.h"
 #include "tensorflow/core/lib/strings/str_util.h"
