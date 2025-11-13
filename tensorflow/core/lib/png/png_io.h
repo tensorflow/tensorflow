@@ -45,7 +45,7 @@ namespace png {
 
 // Handy container for decoding information and struct pointers
 struct DecodeContext {
-  const uint8* data;
+  const uint8_t* data;
   int data_left;
   png_structp png_ptr;
   png_infop info_ptr;
