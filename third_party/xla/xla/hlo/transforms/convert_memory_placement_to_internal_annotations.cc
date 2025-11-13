@@ -41,12 +41,6 @@ absl::StatusOr<absl::string_view> GetCustomCallTarget(
   if (external_annotation == memory_annotations::kMemoryTargetDevice) {
     return memory_annotations::kMoveToDeviceCustomCallTarget;
   }
-  if (external_annotation == memory_annotations::kMemoryTargetDeviceSram) {
-    return memory_annotations::kPinToDeviceSramCustomCallTarget;
-  }
-  if (external_annotation == memory_annotations::kMemoryTargetPinnedDevice) {
-    return memory_annotations::kPinToDeviceCustomCallTarget;
-  }
   return absl::InvalidArgumentError(
       absl::StrCat("Invalid external annotation: ", external_annotation));
 }
@@ -65,9 +59,7 @@ ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
       (it->second == memory_annotations::kMemoryTargetPinnedHost ||
        it->second == memory_annotations::kMemoryTargetUnpinnedHost);
   const bool is_to_device_case =
-      (it->second == memory_annotations::kMemoryTargetDevice ||
-       it->second == memory_annotations::kMemoryTargetDeviceSram ||
-       it->second == memory_annotations::kMemoryTargetPinnedDevice);
+      (it->second == memory_annotations::kMemoryTargetDevice);
   if (!is_to_host_case && !is_to_device_case) {
     return false;
   }
