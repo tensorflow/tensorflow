@@ -99,6 +99,6 @@ PjRtGpuClientCreationInfo* PjRtState::GetPjRtGpuClientCreationInfo() {
   return pjrt_gpu_client_creation_info_.get();
 }
 
-string PjRtState::DebugString() const { return "PjRtState"; }
+std::string PjRtState::DebugString() const { return "PjRtState"; }
 
 }  // namespace tensorflow
