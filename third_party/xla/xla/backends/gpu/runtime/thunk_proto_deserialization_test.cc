@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
+#include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -591,6 +592,110 @@ TEST(ThunkProtoDeserializationTest, EmptyThunkImplReturnsAnError) {
   EXPECT_THAT(DeserializeThunkProto(proto, /*buffer_allocations=*/{},
                                     /*hlo_module=*/nullptr, kTestPlatformName),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(ThunkProtoDeserializationTest, HostSendRecvThunksRoundTrip) {
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
+      R"pb(
+        thunk_info { execution_stream_id: 7 }
+        sequential_thunk {
+          thunks {
+            thunk_info { execution_stream_id: 7 }
+            host_send_thunk {
+              shape {
+                element_type: F32
+                dimensions: [ 10 ]
+                is_dynamic_dimension: false
+              }
+              buffer { buffer_allocation_index: 0 }
+              channel_id: 123
+              async_events_unique_id: 1
+            }
+          }
+          thunks {
+            thunk_info { execution_stream_id: 7 }
+            host_send_done_thunk { channel_id: 123 async_events_unique_id: 1 }
+          }
+          thunks {
+            thunk_info { execution_stream_id: 7 }
+            host_recv_thunk {
+              shape {
+                element_type: F32
+                dimensions: [ 10 ]
+                is_dynamic_dimension: false
+
+              }
+              buffer { buffer_allocation_index: 0 }
+              channel_id: 456
+              async_events_unique_id: 2
+            }
+          }
+          thunks {
+            thunk_info { execution_stream_id: 7 }
+            host_recv_done_thunk { channel_id: 456 async_events_unique_id: 2 }
+          }
+        }
+      )pb");
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0)};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> thunk,
+      DeserializeThunkProto(proto, buffer_allocations,
+                            /*hlo_module=*/nullptr, kTestPlatformName));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+
+  const auto* sequential_thunk = dynamic_cast<SequentialThunk*>(thunk.get());
+  ASSERT_NE(sequential_thunk, nullptr);
+  ASSERT_EQ(sequential_thunk->thunks().size(), 4);
+
+  const auto* send_thunk =
+      dynamic_cast<HostSendThunk*>(sequential_thunk->thunks()[0].get());
+  ASSERT_NE(send_thunk, nullptr);
+
+  const auto* send_done_thunk =
+      dynamic_cast<HostSendDoneThunk*>(sequential_thunk->thunks()[1].get());
+  ASSERT_NE(send_done_thunk, nullptr);
+
+  const auto* recv_thunk =
+      dynamic_cast<HostRecvThunk*>(sequential_thunk->thunks()[2].get());
+  ASSERT_NE(recv_thunk, nullptr);
+
+  const auto* recv_done_thunk =
+      dynamic_cast<HostRecvDoneThunk*>(sequential_thunk->thunks()[3].get());
+  ASSERT_NE(recv_done_thunk, nullptr);
+
+  EXPECT_TRUE(send_thunk->GetAsyncEventsUniqueId().has_value());
+  EXPECT_TRUE(send_done_thunk->GetAsyncEventsUniqueId().has_value());
+  EXPECT_EQ(send_thunk->GetAsyncEventsUniqueId(),
+            send_done_thunk->GetAsyncEventsUniqueId());
+
+  EXPECT_TRUE(recv_thunk->GetAsyncEventsUniqueId().has_value());
+  EXPECT_TRUE(recv_done_thunk->GetAsyncEventsUniqueId().has_value());
+  EXPECT_EQ(recv_thunk->GetAsyncEventsUniqueId(),
+            recv_done_thunk->GetAsyncEventsUniqueId());
+
+  // The unique id is regenerated on deserialization. Overwrite it with the
+  // original value for the purpose of the roundtrip test.
+  round_trip_proto.mutable_sequential_thunk()
+      ->mutable_thunks(0)
+      ->mutable_host_send_thunk()
+      ->set_async_events_unique_id(1);
+  round_trip_proto.mutable_sequential_thunk()
+      ->mutable_thunks(1)
+      ->mutable_host_send_done_thunk()
+      ->set_async_events_unique_id(1);
+  round_trip_proto.mutable_sequential_thunk()
+      ->mutable_thunks(2)
+      ->mutable_host_recv_thunk()
+      ->set_async_events_unique_id(2);
+  round_trip_proto.mutable_sequential_thunk()
+      ->mutable_thunks(3)
+      ->mutable_host_recv_done_thunk()
+      ->set_async_events_unique_id(2);
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
 TEST(ThunkProtoDeserializationTest, HostExecuteThunksRoundTrip) {
