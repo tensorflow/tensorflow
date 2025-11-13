@@ -36,7 +36,7 @@ class AutoShardDatasetParams : public DatasetParams {
                          int64_t index, int auto_shard_policy,
                          int64_t num_replicas, DataTypeVector output_dtypes,
                          std::vector<PartialTensorShape> output_shapes,
-                         string node_name)
+                         std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         num_workers_(num_workers),
@@ -53,7 +53,8 @@ class AutoShardDatasetParams : public DatasetParams {
     return CreateTensors<int64_t>(TensorShape({}), {{num_workers_}, {index_}});
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back(AutoShardDatasetOp::kInputDataset);
     input_names->emplace_back(AutoShardDatasetOp::kNumWorkers);
@@ -72,7 +73,7 @@ class AutoShardDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override {
+  std::string dataset_type() const override {
     return AutoShardDatasetOp::kDatasetType;
   }
 
