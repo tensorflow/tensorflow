@@ -45,7 +45,7 @@ class RandomShuffleQueue : public TypedQueue<std::vector<Tensor> > {
   RandomShuffleQueue(int32_t capacity, int32_t min_after_dequeue, int64_t seed,
                      int64_t seed2, const DataTypeVector& component_dtypes,
                      const std::vector<TensorShape>& component_shapes,
-                     const string& name);
+                     const std::string& name);
 
   absl::Status Initialize()
       override;  // Must be called before any other method.
@@ -61,7 +61,7 @@ class RandomShuffleQueue : public TypedQueue<std::vector<Tensor> > {
                       CallbackWithTuple callback) override;
   absl::Status MatchesNodeDef(const NodeDef& node_def) override;
 
-  int32 size() const override {
+  int32_t size() const override {
     mutex_lock lock(mu_);
     return queues_[0].size();
   }
@@ -78,7 +78,7 @@ class RandomShuffleQueue : public TypedQueue<std::vector<Tensor> > {
                                                    OpKernelContext* ctx,
                                                    Tensor* out_tensor);
 
-  const int32 min_after_dequeue_;
+  const int32_t min_after_dequeue_;
   const int64_t original_seed_;
   const int64_t original_seed2_;
 
@@ -93,7 +93,7 @@ class RandomShuffleQueue : public TypedQueue<std::vector<Tensor> > {
 RandomShuffleQueue::RandomShuffleQueue(
     int32_t capacity, int32_t min_after_dequeue, int64_t seed, int64_t seed2,
     const DataTypeVector& component_dtypes,
-    const std::vector<TensorShape>& component_shapes, const string& name)
+    const std::vector<TensorShape>& component_shapes, const std::string& name)
     : TypedQueue(capacity, component_dtypes, component_shapes, name),
       min_after_dequeue_(min_after_dequeue),
       original_seed_(seed),
@@ -503,7 +503,7 @@ class RandomShuffleQueueOp : public TypedQueueOp {
     return CreateTypedQueue(queue, ret);
   }
 
-  int32 min_after_dequeue_;
+  int32_t min_after_dequeue_;
   int64_t seed_;
   int64_t seed2_;
   std::vector<TensorShape> component_shapes_;

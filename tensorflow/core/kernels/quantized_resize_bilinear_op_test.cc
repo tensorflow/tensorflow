@@ -171,8 +171,8 @@ void CheckTensorValue(const T* in_data, const T* out_data, const int batch_size,
           const float val = QuantizedToFloat<T>(qval, min, max);
           if (!relative) {
             const int q_tolerance = std::round(tolerance);
-            EXPECT_TRUE(std::abs(static_cast<int32>(ref_qval) -
-                                 static_cast<int32>(qval)) <= q_tolerance)
+            EXPECT_TRUE(std::abs(static_cast<int32_t>(ref_qval) -
+                                 static_cast<int32_t>(qval)) <= q_tolerance)
                 << "ref = " << ref_val << ", val = " << val << ", " << b << ", "
                 << y << ", " << x << ", " << c << ", qval = " << qval
                 << ", ref qval = " << ref_qval << ", " << q_tolerance;
@@ -197,7 +197,7 @@ void TestResizeBilinear(const Tensor& image_tensor, const DataType dt,
   Scope root = Scope::NewRootScope();
 
   Output placeholder = ops::Placeholder(root.WithOpName("placeholder"), dt);
-  Output size = ops::Const<int32>(root.WithOpName("size"), new_size);
+  Output size = ops::Const<int32_t>(root.WithOpName("size"), new_size);
   Output in_min = ops::Const<float>(root.WithOpName("min"), min);
   Output in_max = ops::Const<float>(root.WithOpName("max"), max);
 
