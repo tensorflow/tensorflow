@@ -29,11 +29,11 @@ class WorkerCacheWrapper : public WorkerCacheInterface {
 
   // Updates *workers with strings naming the remote worker tasks to
   // which open channels have been established.
-  void ListWorkers(std::vector<string>* workers) const override {
+  void ListWorkers(std::vector<std::string>* workers) const override {
     return wrapped_->ListWorkers(workers);
   }
-  void ListWorkersInJob(const string& job_name,
-                        std::vector<string>* workers) const override {
+  void ListWorkersInJob(const std::string& job_name,
+                        std::vector<std::string>* workers) const override {
     return wrapped_->ListWorkersInJob(job_name, workers);
   }
 
@@ -41,7 +41,7 @@ class WorkerCacheWrapper : public WorkerCacheInterface {
   // or can be constructed, returns a pointer to a WorkerInterface object
   // wrapping that channel. The returned value must be destroyed by
   // calling `this->ReleaseWorker(target, ret)`
-  WorkerInterface* GetOrCreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const std::string& target) override {
     return wrapped_->GetOrCreateWorker(target);
   }
 
@@ -50,7 +50,8 @@ class WorkerCacheWrapper : public WorkerCacheInterface {
   // TODO(jeff,sanjay): Consider moving target into WorkerInterface.
   // TODO(jeff,sanjay): Unify all worker-cache impls and factor out a
   //                    per-rpc-subsystem WorkerInterface creator.
-  void ReleaseWorker(const string& target, WorkerInterface* worker) override {
+  void ReleaseWorker(const std::string& target,
+                     WorkerInterface* worker) override {
     return wrapped_->ReleaseWorker(target, worker);
   }
 
@@ -69,7 +70,7 @@ class WorkerCacheWrapper : public WorkerCacheInterface {
   // within its local environment.  Returns true if *locality
   // was set, using only locally cached data.  Returns false
   // if status data for that device was not available.  Never blocks.
-  bool GetDeviceLocalityNonBlocking(const string& device,
+  bool GetDeviceLocalityNonBlocking(const std::string& device,
                                     DeviceLocality* locality) override {
     return wrapped_->GetDeviceLocalityNonBlocking(device, locality);
   }
@@ -77,7 +78,8 @@ class WorkerCacheWrapper : public WorkerCacheInterface {
   // Set *locality with the DeviceLocality of the specified remote device
   // within its local environment.  Callback gets Status::OK if *locality
   // was set.
-  void GetDeviceLocalityAsync(const string& device, DeviceLocality* locality,
+  void GetDeviceLocalityAsync(const std::string& device,
+                              DeviceLocality* locality,
                               StatusCallback done) override {
     return wrapped_->GetDeviceLocalityAsync(device, locality, std::move(done));
   }
