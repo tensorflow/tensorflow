@@ -68,6 +68,9 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
 // Returns true if the reduce op is supported by YNNPACK.
 bool IsReduceOpSupportedByYnn(const HloInstruction* hlo);
 
+// Returns true if the reduce op will be offloaded to YNNPACK.
+bool IsReduceOpOffloadedToYnn(const HloInstruction* hlo);
+
 // Convert XLA options to YNNPACK flags.
 uint32_t YnnFlags(const DebugOptions& debug_options);
 
