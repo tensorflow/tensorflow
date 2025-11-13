@@ -2930,6 +2930,8 @@ inline constexpr absl::string_view kPinCustomCallTarget = "Pin";
 inline constexpr absl::string_view kUnpinCustomCallTarget = "Unpin";
 inline constexpr absl::string_view kCreateBufferCustomCallTarget =
     "CreateBuffer";
+inline constexpr absl::string_view kCollectiveMetadataCustomCallTarget =
+    "CollectiveMetadata";
 
 }  // namespace xla
 

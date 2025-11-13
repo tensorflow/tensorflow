@@ -116,7 +116,7 @@ func.func @reduce_outer_and_inner(%input : tensor<1024x32x8xf32>, %init : tensor
 }
 
 // CHECK: func.func @reduce_outer_and_inner
-// CHECK:   %[[BUFFER0:.*]] = memref.alloca() : memref<32x8xf32>
+// CHECK:   %[[BUFFER:.*]] = memref.alloca() : memref<32xf32>
 // CHECK:   scf.for
 // CHECK:     vector.transfer_read {{.*}} : tensor<1024x32x8xf32>, vector<8xf32>
 // CHECK:     scf.for
@@ -124,13 +124,8 @@ func.func @reduce_outer_and_inner(%input : tensor<1024x32x8xf32>, %init : tensor
 // CHECK:       arith.addf %{{.*}} : vector<8xf32>
 // CHECK:       scf.yield {{.*}} : vector<8xf32>
 // CHECK:     }
-// CHECK:     vector.transfer_write {{.*}}, %[[BUFFER0]]{{.*}} : vector<8xf32>, memref<32x8xf32>
-// CHECK:   }
-// CHECK:   %[[BUFFER1:.*]] = memref.alloca() : memref<32xf32>
-// CHECK:   scf.for
-// CHECK:     vector.transfer_read %[[BUFFER0]]{{.*}} : memref<32x8xf32>, vector<8xf32>
 // CHECK:     vector.reduction <add>, {{.*}} : vector<8xf32> into f32
-// CHECK:     memref.store {{.*}} %[[BUFFER1]]{{.*}} : memref<32xf32>
+// CHECK:     memref.store {{.*}}, %[[BUFFER]]{{.*}} : memref<32xf32>
 // CHECK:   }
 // CHECK: }
 
