@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel_args_packed_vector.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace stream_executor {
 namespace {
@@ -71,8 +71,9 @@ absl::StatusOr<std::vector<char>> SingleArgumentPackingSpec::BuildArgument(
                               "at least %d, but got %d)",
                               sizeof(void*), argument.size()));
         }
-        uint64_t ptr = absl::bit_cast<uint64_t>(
-            args.at(relocation.argument_index()).opaque());
+        uint64_t ptr =
+            static_cast<uint64_t>(tsl::safe_reinterpret_cast<uintptr_t>(
+                args.at(relocation.argument_index()).opaque()));
         std::memcpy(argument.data() + relocation.offset(), &ptr, sizeof(ptr));
         break;
       }
