@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/Module.h"
+#include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic_function.h"
 #include "xla/xla_data.pb.h"
@@ -62,6 +63,7 @@ class IntrinsicFunctionLib {
   std::vector<std::unique_ptr<IntrinsicFunction>> intrinsic_functions_;
   absl::flat_hash_map<absl::string_view, absl::string_view> targets_;
   const intrinsics::IntrinsicOptions options_;
+  std::vector<std::unique_ptr<CppGenIntrinsicLibrary>> ir_libraries_;
 };
 
 }  // namespace xla::codegen

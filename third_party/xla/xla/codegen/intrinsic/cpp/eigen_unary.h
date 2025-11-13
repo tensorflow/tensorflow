@@ -15,12 +15,27 @@ limitations under the License.
 #ifndef XLA_CODEGEN_INTRINSIC_CPP_EIGEN_UNARY_H_
 #define XLA_CODEGEN_INTRINSIC_CPP_EIGEN_UNARY_H_
 
+#include "Eigen/Core"
 #include "xla/codegen/intrinsic/cpp/vector_ops.h"
 
 namespace xla::codegen {
 
-Vec4f FastTanhf(Vec4f x) asm("xla.tanh.v4f32");
-Vec8d FastRqsqrtf(Vec8d x) asm("xla.rsqrt.v8f64");
+// Half precision
+Eigen::half tanh_f16(Eigen::half x) asm("xla.tanh.f16");
+Vec8h tanh_v8f16(Vec8h x) asm("xla.tanh.v8f16");
+Vec16h tanh_v16f16(Vec16h x) asm("xla.tanh.v16f16");
+
+// Single precision
+float tanh_f32(float x) asm("xla.tanh.f32");
+Vec4f tanh_v4f32(Vec4f x) asm("xla.tanh.v4f32");
+Vec8f tanh_v8f32(Vec8f x) asm("xla.tanh.v8f32");
+Vec16f tanh_v16f32(Vec16f x) asm("xla.tanh.v16f32");
+
+// Double precision
+double tanh_f64(double x) asm("xla.tanh.f64");
+Vec2d tanh_v2f64(Vec2d x) asm("xla.tanh.v2f64");
+Vec4d tanh_v4f64(Vec4d x) asm("xla.tanh.v4f64");
+Vec8d tanh_v8f64(Vec8d x) asm("xla.tanh.v8f64");
 
 }  // namespace xla::codegen
 

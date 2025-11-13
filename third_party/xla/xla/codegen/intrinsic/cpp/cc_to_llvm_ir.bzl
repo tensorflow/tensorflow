@@ -3,11 +3,11 @@ A rule to compile a C++ file to a header containing LLVM IR for various
 CPU features on the host platform.
 """
 
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain", "use_cc_toolchain")
 load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
@@ -56,7 +56,7 @@ def _cc_ir_header_impl(ctx):
         # 4. Prepare the C++ variable definition for the header.
         feature_camel_case = to_camel_case(feature)
         ir_definitions.append(
-            'inline constexpr char k{base_name}{feature}Ir[] = R"IR(\\n$(cat {input})\\n)IR";'.format(
+            'inline constexpr char k{base_name}{feature}Ir[] = R"IR($(cat {input}))IR";'.format(
                 base_name = to_camel_case(ctx.attr.base_name),
                 feature = feature_camel_case,
                 input = ir_file.path,
@@ -145,6 +145,7 @@ def cc_ir_header(name, src, deps, cpu_features, **kwargs):
         deps = deps,
         cpu_features = cpu_features,
         out_header = out_header,
+        compatible_with = ["//buildenv/target:non_prod"],
         **kwargs
     )
 
