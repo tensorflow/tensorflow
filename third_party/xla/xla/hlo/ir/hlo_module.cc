@@ -1437,6 +1437,8 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
   module->buffer_donor_config() = buffer_donor_config();
   module->set_is_dynamic(is_dynamic());
   module->set_frontend_attributes(frontend_attributes());
+  module->set_layout_canonicalization_callback(
+      layout_canonicalization_callback());
   if (has_schedule() && schedule().Verify().ok()) {
     HloSchedule clone_schedule(module);
     for (HloComputation* computation : computations()) {
