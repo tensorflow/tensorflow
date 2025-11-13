@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -79,8 +80,8 @@ absl::StatusOr<bool> ProcessShardingInstruction(
         shard_group_id_to_shard_as_group = nullptr,
     absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>*
         shard_group_id_to_shard_like_group = nullptr,
-    const std::vector<bool>*
-        allow_spmd_sharding_propagation_to_parameters_vector = nullptr,
+    absl::Span<const bool>
+        allow_spmd_sharding_propagation_to_parameters_vector = {},
     bool remove_unknown_shardings = false);
 
 int64_t ComputeNonRootUsers(const HloInstruction* instr);
@@ -198,8 +199,10 @@ class ShardingPropagation : public HloModulePass {
   bool propagate_metadata_;
   bool allow_spmd_sharding_propagation_to_output_;
   bool allow_spmd_sharding_propagation_to_parameters_;
-  std::vector<bool> allow_spmd_sharding_propagation_to_output_vector_;
-  std::vector<bool> allow_spmd_sharding_propagation_to_parameters_vector_;
+  absl::InlinedVector<bool, 1>
+      allow_spmd_sharding_propagation_to_output_vector_;
+  absl::InlinedVector<bool, 1>
+      allow_spmd_sharding_propagation_to_parameters_vector_;
   // If true, the pass keeps the propagation results only on selected
   // instructions to prevent CSE across unrelated subgraphs. (A common case is
   // scalar broadcasts).

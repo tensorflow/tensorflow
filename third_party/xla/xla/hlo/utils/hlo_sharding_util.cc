@@ -3057,8 +3057,8 @@ Shape TileLeafShape(const HloSharding& sharding, const Shape& shape) {
 }
 
 absl::Status CanonicalizeLayoutAfterShardingPropagation(
-    HloModule* module, const std::vector<bool>& update_output_layout,
-    const std::vector<bool>& update_parameters_layout) {
+    HloModule* module, absl::Span<const bool> update_output_layout,
+    absl::Span<const bool> update_parameters_layout) {
   if (!module->layout_canonicalization_callback()) {
     VLOG(4) << "There is no registered layout_canonicalization_callback.";
     return absl::OkStatus();

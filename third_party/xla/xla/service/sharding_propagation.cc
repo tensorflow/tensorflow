@@ -1393,8 +1393,7 @@ absl::StatusOr<bool> ProcessShardingInstruction(
         shard_group_id_to_shard_as_group,
     absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>*
         shard_group_id_to_shard_like_group,
-    const std::vector<bool>*
-        allow_spmd_sharding_propagation_to_parameters_vector,
+    absl::Span<const bool> allow_spmd_sharding_propagation_to_parameters_vector,
     bool remove_unknown_shardings) {
   bool changed = false;
 
@@ -1412,11 +1411,10 @@ absl::StatusOr<bool> ProcessShardingInstruction(
           instruction->sharding().IsShardGroup()) {
         if (instruction->IsCustomCall("Sharding")) {
           CHECK(instruction->operand(0)->opcode() != HloOpcode::kParameter ||
-                (allow_spmd_sharding_propagation_to_parameters_vector &&
-                 allow_spmd_sharding_propagation_to_parameters_vector->size() ==
+                (allow_spmd_sharding_propagation_to_parameters_vector.size() ==
                      module->entry_computation()->num_parameters() &&
-                 allow_spmd_sharding_propagation_to_parameters_vector->at(
-                     instruction->operand(0)->parameter_number())));
+                 allow_spmd_sharding_propagation_to_parameters_vector
+                     [instruction->operand(0)->parameter_number()]));
         }
         if (instruction->IsCustomCall("Sharding") && !replaced_with_copy) {
           // Pass shard group to operand sharding custom-call if it's not
@@ -3190,7 +3188,7 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
               : nullptr,
           &instruction_to_shard_group_id, &shard_group_id_to_shard_as_group,
           &shard_group_id_to_shard_like_group,
-          &allow_spmd_sharding_propagation_to_parameters_vector_));
+          allow_spmd_sharding_propagation_to_parameters_vector_));
   any_changed |= changed;
 
   for (const auto& [shard_group_id, shard_as_group] :

@@ -3566,7 +3566,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
           /*instruction_to_shard_group_id=*/nullptr,
           /*shard_group_id_to_shard_as_group=*/nullptr,
           /*shard_group_id_to_shard_like_group=*/nullptr,
-          /*allow_spmd_sharding_propagation_to_parameters_vector=*/nullptr,
+          /*allow_spmd_sharding_propagation_to_parameters_vector=*/{},
           /*remove_unknown_shardings=*/true));
 
   DumpHloModuleIfEnabled(*module, "after_spmd_calls");
