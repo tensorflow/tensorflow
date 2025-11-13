@@ -24,6 +24,8 @@ CastFunctorType GetCpuCastFromDouble(DataType dst_dtype) {
   CURRY_TYPES3(CAST_CASE, CPUDevice, double);
   CAST_CASE(CPUDevice, double, float8_e5m2);
   CAST_CASE(CPUDevice, double, float8_e4m3fn);
+  CAST_CASE(CPUDevice, double, float8_e5m2fnuz);
+  CAST_CASE(CPUDevice, double, float8_e4m3fnuz);
   return nullptr;
 }
 
@@ -37,6 +39,8 @@ CastFunctorType GetGpuCastFromDouble(DataType dst_dtype) {
 #endif
   CAST_CASE(GPUDevice, double, float8_e5m2);
   CAST_CASE(GPUDevice, double, float8_e4m3fn);
+  CAST_CASE(GPUDevice, double, float8_e5m2fnuz);
+  CAST_CASE(GPUDevice, double, float8_e4m3fnuz);
   return nullptr;
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
