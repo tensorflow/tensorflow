@@ -1091,7 +1091,7 @@ xla_test(
 # Run dot tests with auto-tuning disabled.  This just does a basic sanity check
 # that setting xla_gpu_autotune_level to 0 does not break simple graphs.
 xla_test(
-    name = "dot_operation_test_autotune_disabled",
+    name = "dot_operation_autotune_disabled_test",
     srcs = ["dot_operation_test.cc"],
     args = ["--xla_gpu_autotune_level=0"],
     backend_tags = {
@@ -1147,7 +1147,7 @@ xla_test(
 
 # Run dot tests with dot canonicalization after the layout assignment pass.
 xla_test(
-    name = "dot_operation_test_canonicalization_after_layout",
+    name = "dot_operation_canonicalization_after_layout_test",
     timeout = "long",
     srcs = ["dot_operation_test.cc"],
     args = [
@@ -1464,7 +1464,7 @@ xla_test(
 )
 
 xla_test(
-    name = "convolution_test_1d",
+    name = "convolution_1d_test",
     timeout = "long",
     srcs = ["convolution_test_1d.cc"],
     # Turn on logging so that VLOG statements don't appear uncovered to zapfhahn.
@@ -1501,7 +1501,7 @@ xla_test(
 )
 
 xla_test(
-    name = "convolution_test_1d_no_vmodule",
+    name = "convolution_1d_no_vmodule_test",
     timeout = "long",
     srcs = ["convolution_test_1d.cc"],
     backends = [
@@ -1537,7 +1537,7 @@ xla_test(
 # sanity check that setting xla_gpu_autotune_level to 0 does not break simple
 # graphs.
 xla_test(
-    name = "convolution_test_autotune_disabled",
+    name = "convolution_autotune_disabled_test",
     timeout = "long",
     srcs = ["convolution_test.cc"],
     args = ["--xla_gpu_autotune_level=0"],
@@ -1575,7 +1575,7 @@ xla_test(
 )
 
 xla_test(
-    name = "convolution_test_1d_autotune_disabled",
+    name = "convolution_1d_autotune_disabled_test",
     timeout = "long",
     srcs = ["convolution_test_1d.cc"],
     args = ["--xla_gpu_autotune_level=0"],
@@ -1606,7 +1606,7 @@ xla_test(
 )
 
 xla_test(
-    name = "convolution_test_gpu_alternative_layout",
+    name = "convolution_gpu_alternative_layout_test",
     timeout = "long",
     srcs = ["convolution_test.cc"],
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
@@ -1640,7 +1640,7 @@ xla_test(
 )
 
 xla_test(
-    name = "convolution_test_1d_gpu_alternative_layout",
+    name = "convolution_1d_gpu_alternative_layout_test",
     timeout = "long",
     srcs = ["convolution_test_1d.cc"],
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
@@ -3545,7 +3545,7 @@ xla_cc_test(
 )
 
 xla_test(
-    name = "ptxas_bug_120501638",
+    name = "ptxas_bug_120501638_test",
     srcs = ["ptxas_bug_120501638.cc"],
     tags = [
         # Disabled in OSS until nvidia publicly releases a fixed ptxas.
