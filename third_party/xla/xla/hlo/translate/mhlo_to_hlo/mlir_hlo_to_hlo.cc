@@ -6443,12 +6443,11 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
 #endif
   pm.enableVerifier(enableVerifier);
 
-  mhlo::StablehloLegalizeToHloPassOptions shlo_pass_opts;
-  shlo_pass_opts.convert_xla_supported_stablehlo_ =
-      !options.direct_stablehlo_to_hlo;
-  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass(shlo_pass_opts));
+  mhlo::HloLegalizeToStablehloPassOptions shlo_pass_opts;
+  shlo_pass_opts.allow_xla_features_ = true;
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass(shlo_pass_opts));
   if (failed(pm.run(module))) {
-    return absl::InternalError("Unable to convert StableHLO to MHLO");
+    return absl::InternalError("Unable to convert MHLO to StableHLO");
   }
 
   TF_RETURN_IF_ERROR(PrepareForExport(module));
