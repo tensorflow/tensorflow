@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 
 absl::Status DeviceResolverLocal::GetDeviceAttributes(
-    const string& device, DeviceAttributes* attributes) {
+    const std::string& device, DeviceAttributes* attributes) {
   Device* dev;
   // LookupDevice returns InvalidArgument if the device is not found.
   absl::Status s = dev_mgr_->LookupDevice(device, &dev);
@@ -35,7 +35,7 @@ absl::Status DeviceResolverLocal::GetDeviceAttributes(
 }
 
 absl::Status DeviceResolverLocal::GetAllDeviceAttributes(
-    const string& task, std::vector<DeviceAttributes>* attributes) {
+    const std::string& task, std::vector<DeviceAttributes>* attributes) {
   return errors::Internal(
       "GetTaskCached is not supposed to be called in local collectives");
 }
