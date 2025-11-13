@@ -160,18 +160,18 @@ TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
     }
   };
 
-  for (string op_name : {"Add",        "Complex",
-                         "Div",        "Equal",
-                         "Greater",    "GreaterEqual",
-                         "Igamma",     "Igammac",
-                         "Zeta",       "Polygamma",
-                         "Less",       "LessEqual",
-                         "LogicalAnd", "LogicalOr",
-                         "Maximum",    "Minimum",
-                         "Mod",        "Mul",
-                         "NotEqual",   "Pow",
-                         "Sub",        "SquaredDifference",
-                         "DivNoNan"}) {
+  for (std::string op_name : {"Add",        "Complex",
+                              "Div",        "Equal",
+                              "Greater",    "GreaterEqual",
+                              "Igamma",     "Igammac",
+                              "Zeta",       "Polygamma",
+                              "Less",       "LessEqual",
+                              "LogicalAnd", "LogicalOr",
+                              "Maximum",    "Minimum",
+                              "Mod",        "Mul",
+                              "NotEqual",   "Pow",
+                              "Sub",        "SquaredDifference",
+                              "DivNoNan"}) {
     ShapeInferenceTestOp op(op_name);
     AddNodeAttr("incompatible_shape_error", true, &op.node_def);
     test_shapes(op, true);

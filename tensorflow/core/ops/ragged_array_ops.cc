@@ -106,7 +106,7 @@ REGISTER_OP("RaggedCross")
       int dense_start = num_ragged * 2 + num_sparse * 3;
       for (int i = 0; i < dense_types.size(); ++i) {
         ShapeHandle dense_input = c->input(i + dense_start);
-        int32 rank = c->Rank(dense_input);
+        int32_t rank = c->Rank(dense_input);
         if (rank == InferenceContext::kUnknownRank) {
           continue;
         } else if (rank != 2) {

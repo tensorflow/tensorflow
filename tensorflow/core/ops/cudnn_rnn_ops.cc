@@ -92,9 +92,9 @@ REGISTER_OP("CudnnRNN")
       auto batch_size = c->Dim(input_shape, 1);
       auto num_units = c->Dim(input_h_shape, 2);
 
-      string direction;
+      std::string direction;
       TF_RETURN_IF_ERROR(c->GetAttr("direction", &direction));
-      string rnn_mode;
+      std::string rnn_mode;
       TF_RETURN_IF_ERROR(c->GetAttr("rnn_mode", &rnn_mode));
       int dir_count = (direction == "bidirectional") ? 2 : 1;
       DimensionHandle output_size;
@@ -140,9 +140,9 @@ REGISTER_OP("CudnnRNNV2")
       auto seq_length = c->Dim(input_shape, 0);
       auto batch_size = c->Dim(input_shape, 1);
       auto num_units = c->Dim(input_h_shape, 2);
-      string direction;
+      std::string direction;
       TF_RETURN_IF_ERROR(c->GetAttr("direction", &direction));
-      string rnn_mode;
+      std::string rnn_mode;
       TF_RETURN_IF_ERROR(c->GetAttr("rnn_mode", &rnn_mode));
       int dir_count = (direction == "bidirectional") ? 2 : 1;
       DimensionHandle output_size;
@@ -195,9 +195,9 @@ REGISTER_OP("CudnnRNNV3")
       auto batch_size = c->Dim(input_shape, 1);
       auto num_units = c->Dim(input_h_shape, 2);
 
-      string direction;
+      std::string direction;
       TF_RETURN_IF_ERROR(c->GetAttr("direction", &direction));
-      string rnn_mode;
+      std::string rnn_mode;
       TF_RETURN_IF_ERROR(c->GetAttr("rnn_mode", &rnn_mode));
       if (rnn_mode == "lstm") {
         TF_RETURN_IF_ERROR(c->WithRank(input_c_shape, 3, &unused));

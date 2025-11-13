@@ -138,12 +138,12 @@ TEST(DataFlowOpsTest, DynamicStitch) {
   INFER_OK(op, "[2,3];[5,6];[2,3,4,5];[5,6,4,5]", "[?,d2_2,d2_3]");
 
   // 1 known input tensors, not enough to change answer.
-  Tensor tensor_2 = test::AsTensor<int32>(
-      std::vector<int32>{2, 4, 6, 0, 10, 11}, TensorShape({2, 3}));
-  Tensor tensor_5 = test::AsTensor<int32>(
-      std::vector<int32>{0,    1,  2,  3,  4,  5,  6,  7,  8,  9,
-                         10,   11, 12, 13, 14, 15, 16, 17, 18, 19,
-                         1000, 21, 22, 23, 24, 25, 26, 27, 28, 29},
+  Tensor tensor_2 = test::AsTensor<int32_t>(
+      std::vector<int32_t>{2, 4, 6, 0, 10, 11}, TensorShape({2, 3}));
+  Tensor tensor_5 = test::AsTensor<int32_t>(
+      std::vector<int32_t>{0,    1,  2,  3,  4,  5,  6,  7,  8,  9,
+                           10,   11, 12, 13, 14, 15, 16, 17, 18, 19,
+                           1000, 21, 22, 23, 24, 25, 26, 27, 28, 29},
       TensorShape({5, 6}));
   op.input_tensors.push_back(nullptr);
   op.input_tensors.push_back(&tensor_5);
@@ -157,7 +157,7 @@ TEST(DataFlowOpsTest, DynamicStitch) {
   op.input_tensors[1] = &tensor_5;
   INFER_OK(op, "[2,3];[5,6];[2,3,4,5];[5,6,4,5]", "[1001,d2_2,d2_3]");
 
-  tensor_2.flat<int32>()(3) = 10000;
+  tensor_2.flat<int32_t>()(3) = 10000;
   INFER_OK(op, "[2,3];[5,6];[2,3,4,5];[5,6,4,5]", "[10001,d2_2,d2_3]");
 }
 
@@ -254,7 +254,7 @@ TEST(DataFlowOpsTest, QueueDequeueManyV2ShapeFn) {
   shapes_and_types.emplace_back("[?,2]", DT_FLOAT);
   INFER_OK(op, "?;?", "[12,1,?,3];[12,?,2]");
 
-  n_tensor = test::AsScalar<int32>(-1);  // invalid value of n.
+  n_tensor = test::AsScalar<int32_t>(-1);  // invalid value of n.
   INFER_ERROR("must be >= 0", op, "?;?");
 }
 

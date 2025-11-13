@@ -157,7 +157,7 @@ TEST(ParsingOpsTest, ParseSequenceExample_ShapeFn) {
                            bool add_extra_shape = false) {
     using NodeOutList = std::vector<NodeDefBuilder::NodeOut>;
     using DataTypeList = std::vector<DataType>;
-    string string_in("test");
+    std::string string_in("test");
     NodeDefBuilder::NodeOut node_in{"a", 0, DT_STRING};
     TF_ASSERT_OK(
         NodeDefBuilder("test", "ParseSequenceExample")
@@ -169,15 +169,15 @@ TEST(ParsingOpsTest, ParseSequenceExample_ShapeFn) {
             .Attr("Nfeature_list_sparse", num_feature_list_sparse)
             .Attr("Nfeature_list_dense", num_feature_list_dense)
             .Attr("feature_list_dense_missing_assumed_empty",
-                  std::vector<string>(num_feature_list_dense, string_in))
+                  std::vector<std::string>(num_feature_list_dense, string_in))
             .Attr("context_sparse_keys",
-                  std::vector<string>(num_context_sparse, string_in))
+                  std::vector<std::string>(num_context_sparse, string_in))
             .Attr("context_dense_keys",
-                  std::vector<string>(num_context_dense, string_in))
+                  std::vector<std::string>(num_context_dense, string_in))
             .Attr("feature_list_sparse_keys",
-                  std::vector<string>(num_feature_list_sparse, string_in))
+                  std::vector<std::string>(num_feature_list_sparse, string_in))
             .Attr("feature_list_dense_keys",
-                  std::vector<string>(num_feature_list_dense, string_in))
+                  std::vector<std::string>(num_feature_list_dense, string_in))
             .Attr("context_sparse_types",
                   DataTypeList(num_context_sparse, DT_FLOAT))
             .Attr("context_dense_types",
@@ -395,7 +395,7 @@ TEST(ParsingOpsTest, ParseSequenceExampleV2_ShapeFn) {
                            bool add_extra_shape = false) {
     using NodeOutList = std::vector<NodeDefBuilder::NodeOut>;
     using DataTypeList = std::vector<DataType>;
-    string string_in("test");
+    std::string string_in("test");
     NodeDefBuilder::NodeOut node_in{"a", 0, DT_STRING};
     TF_ASSERT_OK(
         NodeDefBuilder("test", "ParseSequenceExampleV2")
