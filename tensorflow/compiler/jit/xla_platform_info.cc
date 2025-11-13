@@ -90,7 +90,7 @@ absl::StatusOr<std::optional<std::set<int>>> GetAllowedGpus(
   std::optional<std::set<int>> gpu_ids = std::nullopt;
 
   if (flr->config_proto()) {
-    string allowed_gpus =
+    std::string allowed_gpus =
         flr->config_proto()->gpu_options().visible_device_list();
     TF_ASSIGN_OR_RETURN(gpu_ids, ParseVisibleDeviceList(allowed_gpus));
   }
@@ -176,9 +176,9 @@ absl::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
   if (visible_device_list.empty()) {
     return {{std::nullopt}};
   }
-  const std::vector<string> visible_devices =
+  const std::vector<std::string> visible_devices =
       absl::StrSplit(visible_device_list, ',');
-  for (const string& platform_device_id_str : visible_devices) {
+  for (const std::string& platform_device_id_str : visible_devices) {
     int32_t platform_device_id;
     if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
       return errors::InvalidArgument(
