@@ -178,6 +178,12 @@ class Allocation {
   virtual std::string ToString() const = 0;
   virtual bool operator==(const Allocation& other) const = 0;
 
+  // Returns the original defining position of this allocation.
+  HloPosition original_defining_position() const;
+
+  // Sets the original defining position of this allocation.
+  void set_original_defining_position(HloPosition defining_position);
+
  protected:
   // Protected constructor to encourage use of the final subclasses (e.g.,
   // PinnedAllocation, CopyAllocation, etc.).
@@ -186,10 +192,6 @@ class Allocation {
              int64_t end_time,
              std::optional<int64_t> cross_program_prefetch_index);
 
-  // Returns the original defining position of this allocation.
-  HloPosition original_defining_position() const;
-  // Sets the original defining position of this allocation.
-  void set_original_defining_position(HloPosition defining_position);
   bool base_is_equal(const Allocation& other) const;
 
  private:
