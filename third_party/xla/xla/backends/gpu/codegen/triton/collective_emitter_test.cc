@@ -27,10 +27,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
+#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -72,6 +74,8 @@ struct ModuleWithEmitter : public ModuleWithFusion {
   SymbolicExprContext symbolic_expr_context{&mlir_context};
   std::optional<HloFusionAnalysis> analysis;
   std::unique_ptr<TritonFusion> emitter;
+  llvm::LLVMContext llvm_context;
+  llvm::Module llvm_module{"test_module", llvm_context};
 
   explicit ModuleWithEmitter(std::unique_ptr<HloModule> module_arg)
       : ModuleWithFusion{std::move(module_arg)} {}
@@ -146,7 +150,7 @@ class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
     TF_RET_CHECK(triton_emitter != nullptr);
     fusion_emitter.release();
     result->emitter = absl::WrapUnique(triton_emitter);
-    return std::move(result);
+    return result;
   }
 };
 
@@ -216,6 +220,19 @@ TEST_F(CollectiveEmitterTest, AllReduceWithTritonGetLaunchConfig) {
   ASSERT_NE(launch_config, std::nullopt);
   EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 16);
   EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 512);
+}
+
+TEST_F(CollectiveEmitterTest, AllReduceWithTritonGenerateTritonKernel) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ModuleWithEmitter> result,
+      BuildModuleWithEmitter(ShapeUtil::MakeShape(F32, {65536}), device_info_));
+  const TritonFusion* triton_fusion = result->emitter.get();
+  ASSERT_NE(triton_fusion, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(
+      TritonWrapperResult triton_kernel,
+      triton_fusion->GenerateTritonKernelAndWrapper(
+          *result->FusionInstr(), "test-all-reduce-start", device_info_,
+          &result->llvm_module, &result->symbolic_expr_context));
 }
 
 }  // namespace

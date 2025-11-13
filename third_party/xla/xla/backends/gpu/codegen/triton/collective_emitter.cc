@@ -17,13 +17,29 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/Support/MathExtras.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
+#include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/codegen/emitter_loc_op_builder.h"
+#include "xla/codegen/tiling/tiled_hlo_instruction.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -32,18 +48,39 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "triton/Dialect/Triton/IR/Dialect.h"
+#include "triton/Dialect/Triton/IR/Types.h"
 
 namespace xla::gpu {
 namespace {
 
+using ::mlir::ShapedType;
+using ::mlir::Value;
+using ::xla::gpu::triton::TensorValue;
+using ::xla::gpu::triton::TileInfo;
 using ::xla::se::gpu::AllReduceStrategy;
+
+namespace ttir = ::mlir::triton;
+namespace mtx = ::mlir::triton::xla;
+namespace arith = ::mlir::arith;
+
+// The main memory space on a device (HBM).
+static constexpr auto kGlobalAddressSpace =
+    static_cast<std::underlying_type_t<mlir::NVVM::NVVMMemorySpace>>(
+        mlir::NVVM::NVVMMemorySpace::Global);
+
+// Metadata arguments for the collective emitter.
+// device_rank, signal-value, signal_buffers.
+static constexpr int32_t kNumCollectiveMetadataArgs = 3;
 
 bool CanAllReduceBeEmitted(const HloAllReduceInstruction* all_reduce,
                            ReductionKind reduction_kind, int64_t num_devices,
@@ -119,6 +156,117 @@ GetBlockLevelFusionConfigForAllReduce(
   }
   return block_level_config;
 }
+
+absl::StatusOr<TensorValue> EmitAllReduce(
+    EmitterLocOpBuilder b, const HloComputation* computation,
+    const HloAllReduceInstruction& all_reduce,
+    const TiledHloInstruction& tiled_hlo_reduce,
+    const BlockLevelParameters& block_level_parameters,
+    mlir::FunctionOpInterface fn, mlir::Value pid,
+    absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
+  const TiledHloInstruction* tiled_input_hlo = tiled_hlo_reduce.operand(0);
+  TensorValue input_tile = values[tiled_input_hlo];
+
+  // Variadics are not supported yet so we can fix inputs to 1.
+  // Which means 2 arguments for input/output one for scratch buffers and 3
+  // metadata arguments. Plus 1 for the tile index for a total of 7.
+  const int32_t num_input_output_args = computation->num_parameters() * 2;
+  const int32_t num_scratch_buffers = computation->num_parameters();
+  static constexpr int32_t kNumTileIndexArgs = 1;
+  TF_RET_CHECK(fn.getNumArguments() ==
+               (num_input_output_args + num_scratch_buffers +
+                kNumCollectiveMetadataArgs + kNumTileIndexArgs));
+  // Opaque arguments start after the input/output arguments.
+  const int32_t start_idx = num_input_output_args;
+  mlir::Value device_rank = fn.getArgument(start_idx);
+  TF_RET_CHECK(device_rank.getType().isInteger(32));
+  mlir::Value signal_value = fn.getArgument(start_idx + 1);
+  TF_RET_CHECK(signal_value.getType().isInteger(32));
+  // !tt.ptr<!tt.ptr<i32>>
+  mlir::Value signal_buffers = fn.getArgument(start_idx + 2);
+  // !tt.ptr<!tt.ptr<i64>>
+  mlir::Value remote_input_buffers = fn.getArgument(start_idx + 3);
+
+  TF_ASSIGN_OR_RETURN(
+      TileInfo tile_info,
+      TileInfo::Construct(b, pid, /*runtime_values=*/{}, *tiled_input_hlo));
+
+  // 1. Scatter phase: Copy local tile to the remote buffer of the current rank.
+  const auto ptr_to_i64_type =
+      ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace);
+  auto remote_input_buffers_i64 =
+      b.create<ttir::BitcastOp>(ptr_to_i64_type, remote_input_buffers);
+  Value remote_buf_ptr_addr = b.create<ttir::AddPtrOp>(
+      ptr_to_i64_type, remote_input_buffers_i64, device_rank);
+  Value remote_buf_i64 =
+      b.create<ttir::LoadOp>(remote_buf_ptr_addr,
+                             ttir::CacheModifier::NONE,     //
+                             ttir::EvictionPolicy::NORMAL,  //
+                             false);                        // isVolatile
+  const auto elem_type =
+      mlir::cast<ShapedType>(input_tile.getType()).getElementType();
+  const auto ptr_to_elem_type =
+      ttir::PointerType::get(elem_type, kGlobalAddressSpace);
+  Value remote_buf_ptr =
+      b.create<ttir::IntToPtrOp>(ptr_to_elem_type, remote_buf_i64);
+  mlir::ArrayRef<int64_t> remote_shape = tile_info.original_shape();
+  const mlir::MemRefType remote_memref_type =
+      mlir::MemRefType::get(remote_shape, elem_type);
+  mlir::Value remote_buf_memref =
+      b.create<mtx::PtrToMemrefOp>(remote_memref_type, remote_buf_ptr);
+  b.create<xtile::InsertTileOp>(
+      input_tile, remote_buf_memref, tile_info.offsets(),
+      tile_info.padded_tile_sizes(), tile_info.tile_strides());
+
+  // 2. Synchronization phase: Wait for all ranks to complete the scatter.
+  int64_t world_size = all_reduce.device_list().num_devices_per_group();
+  b.create<mtx::BlockBarrierOp>(signal_buffers, device_rank, signal_value,
+                                b.getI32IntegerAttr(world_size));
+
+  // 3. Reduce phase: Load tiles from all ranks and reduce them.
+  HloComputation* reduction_computation = all_reduce.to_apply();
+  llvm::SmallVector<const HloInstruction*> to_emit;
+  // There is really only one non-parameter instruction in the computation.
+  for (const HloInstruction* instr : reduction_computation->instructions()) {
+    if (instr->opcode() != HloOpcode::kParameter) {
+      to_emit.push_back(instr);
+    }
+  }
+  // Set accumulator zero.
+  mlir::Value accumulator_zero =
+      b.create<arith::ConstantOp>(elem_type, b.getZeroAttr(elem_type));
+  TensorValue accumulator =
+      b.create<ttir::SplatOp>(input_tile.getType(), accumulator_zero);
+  for (int rank = 0; rank < world_size; ++rank) {
+    Value rank_idx =
+        b.create<arith::ConstantOp>(b.getI64Type(), b.getI64IntegerAttr(rank));
+    Value remote_buf_ptr_addr = b.create<ttir::AddPtrOp>(
+        ptr_to_i64_type, remote_input_buffers_i64, rank_idx);
+    Value remote_buf_i64 =
+        b.create<ttir::LoadOp>(remote_buf_ptr_addr,
+                               ttir::CacheModifier::NONE,     //
+                               ttir::EvictionPolicy::NORMAL,  //
+                               false);                        // isVolatile
+    Value remote_buf_ptr =
+        b.create<ttir::IntToPtrOp>(ptr_to_elem_type, remote_buf_i64);
+    Value remote_buf_memref =
+        b.create<mtx::PtrToMemrefOp>(remote_memref_type, remote_buf_ptr);
+    TensorValue next_tile =
+        EmitParameterExtract(b, tile_info, remote_buf_memref);
+
+    absl::flat_hash_map<const HloInstruction*, TensorValue> region_values;
+    region_values[reduction_computation->parameter_instruction(0)] =
+        accumulator;
+    region_values[reduction_computation->parameter_instruction(1)] = next_tile;
+    TF_ASSIGN_OR_RETURN(
+        accumulator,
+        triton::EmitScope(b,
+                          /*analysis=*/nullptr, /*instructions=*/to_emit,
+                          /*values=*/region_values));
+  }
+  return accumulator;
+}
+
 }  // namespace
 
 absl::StatusOr<std::optional<BlockLevelFusionConfig>>
@@ -153,4 +301,55 @@ absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
       fusion_instr->set_backend_config(std::move(gpu_backend_config)));
   return true;
 }
+
+absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
+    llvm::SmallVector<mlir::Type>& fn_arg_types, EmitterLocOpBuilder& b,
+    const HloComputation* hlo_computation) {
+  // rank: i32
+  fn_arg_types.push_back(b.getI32Type());
+  // signal_value: i32
+  fn_arg_types.push_back(b.getI32Type());
+  // signal_buffers: !tt.ptr<!tt.ptr<i32>>
+  fn_arg_types.push_back(ttir::PointerType::get(
+      ttir::PointerType::get(b.getI32Type(), kGlobalAddressSpace),
+      kGlobalAddressSpace));
+  for (HloInstruction* p : hlo_computation->parameter_instructions()) {
+    PrimitiveType type = p->shape().element_type();
+    mlir::Type ir_type;
+    if (type == U16) {
+      ir_type = b.getI16Type();
+    } else if (type == S4) {
+      ir_type = b.getI4Type();
+    } else {
+      TF_ASSIGN_OR_RETURN(ir_type, triton::TritonType(b, type));
+    }
+    // Also add the remote/scratch buffers for collectives.
+    // !tt.ptr<!tt.ptr<type>>
+    fn_arg_types.push_back(ttir::PointerType::get(
+        ttir::PointerType::get(ir_type, kGlobalAddressSpace),
+        kGlobalAddressSpace));
+  }
+  // num_metadata_args =
+  return hlo_computation->num_parameters() + kNumCollectiveMetadataArgs;
+}
+
+absl::StatusOr<TensorValue> EmitCollective(
+    EmitterLocOpBuilder b, const HloFusionInstruction* fusion,
+    const TiledHloInstruction& tiled_hlo_reduce,
+    const BlockLevelParameters& block_level_parameters,
+    mlir::FunctionOpInterface fn, mlir::Value pid,
+    absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
+  const HloComputation* computation = fusion->fused_instructions_computation();
+  const HloInstruction* root = computation->root_instruction();
+  switch (root->opcode()) {
+    case HloOpcode::kAllReduceStart:
+      return EmitAllReduce(
+          b, computation, *xla::Cast<HloAllReduceInstruction>(root),
+          tiled_hlo_reduce, block_level_parameters, fn, pid, values);
+    default:
+      return absl::UnimplementedError(
+          absl::StrCat("Unsupported collective fusion: ", root->ToString()));
+  }
+}
+
 }  // namespace xla::gpu

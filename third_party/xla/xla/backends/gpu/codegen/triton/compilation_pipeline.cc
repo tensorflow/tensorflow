@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 
-#include <variant>
-
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -35,6 +33,9 @@ void CreateTritonXlaPipeline(
     bool allow_tma, int num_stages) {
   pm->addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
   pm->addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
+  pm->addPass(mlir::triton::xla::CreateTritonXLALowerBlockBarrierPass());
+  pm->addPass(mlir::triton::xla::CreateTritonXLALowerAtomicsPass());
+  pm->addPass(mlir::triton::xla::CreateTritonXLALowerGetTidPass());
   pm->addPass(mlir::triton::xla::CreateTritonXLALowerXTilePass());
 
   auto* cuda_cc = gpu_cc.cuda_compute_capability();

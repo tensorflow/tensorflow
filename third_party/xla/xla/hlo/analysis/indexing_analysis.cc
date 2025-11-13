@@ -1782,9 +1782,11 @@ HloInstructionIndexing ComputeOutputToInputIndexing(
     const HloInstruction* instr, int output_id,
     SymbolicExprContext* symbolic_expr_context) {
   if (HloInstruction::IsOpElementwise(instr->opcode()) ||
-      instr->opcode() == HloOpcode::kMap) {
-    // Note: map has a `dimensions` attribute, but it does nothing. See
-    // b/65689298.
+      // Note: map has a `dimensions` attribute, but it does nothing. See
+      // b/65689298.
+      instr->opcode() == HloOpcode::kMap ||
+      // For a single device, all-reduce is an elementwise op.
+      instr->opcode() == HloOpcode::kAllReduceStart) {
     return ComputeOutputToInputCwiseOpIndexing(instr, symbolic_expr_context);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
@@ -1874,9 +1876,11 @@ HloInstructionIndexing ComputeInputToOutputIndexing(
     const HloInstruction* instr, int input_id,
     SymbolicExprContext* symbolic_expr_context) {
   if (HloInstruction::IsOpElementwise(instr->opcode()) ||
-      instr->opcode() == HloOpcode::kMap) {
-    // Note: map has a `dimensions` attribute, but it does nothing. See
-    // b/65689298.
+      // Note: map has a `dimensions` attribute, but it does nothing. See
+      // b/65689298.
+      instr->opcode() == HloOpcode::kMap ||
+      // For a single device, all-reduce has 1:1 output to input mapping.
+      instr->opcode() == HloOpcode::kAllReduceStart) {
     return ComputeInputToOutputCwiseOpIndexing(instr, symbolic_expr_context);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
