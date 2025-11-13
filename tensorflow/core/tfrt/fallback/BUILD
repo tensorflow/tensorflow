@@ -78,6 +78,7 @@ tf_cc_test(
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
         "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
