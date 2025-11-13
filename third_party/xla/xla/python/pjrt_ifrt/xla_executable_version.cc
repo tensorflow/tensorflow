@@ -43,11 +43,14 @@ bool XlaExecutableVersion::IsCompatibleWith(
   if (this == &other) {
     return true;
   }
-  if (auto other_xla_executable_version =
+  if (auto* other_xla_executable_version =
           llvm::dyn_cast<XlaExecutableVersion>(&other)) {
-    return platform_id == other_xla_executable_version->platform_id &&
-           runtime_abi_version ==
-               other_xla_executable_version->runtime_abi_version;
+    if (platform_id != other_xla_executable_version->platform_id) {
+      return false;
+    }
+    // TODO(b/458164983): Update this to use the PJRT ABI Compatibility
+    // Extension to verify the abi compatibility.
+    return true;
   }
   return false;
 }
