@@ -338,6 +338,10 @@ absl::StatusOr<bool> TritonEmitterConstraints::ParametersSatisfyConstraints(
       // invalid. Otherwise we would for example compute the launch config
       // incorrectly.
       if ((tile_size & (tile_size - 1)) && tile_size != dim_size) {
+        VLOG(5)
+            << "Found a tile size that is not a power of 2 and is not equal "
+               "to the dimension size. Bailing out."
+            << tile_size << " " << dim_size;
         return false;
       }
     }
