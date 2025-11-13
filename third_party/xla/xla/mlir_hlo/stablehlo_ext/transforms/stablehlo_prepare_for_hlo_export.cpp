@@ -44,7 +44,7 @@ limitations under the License.
 namespace mlir {
 namespace stablehlo_ext {
 
-constexpr char kShardingAttr[] = "stablehlo.sharding";
+constexpr char kShardingAttr[] = "mhlo.sharding";
 
 #define GEN_PASS_DEF_STABLEHLOPREPAREFORHLOEXPORTPASS
 #include "stablehlo_ext/transforms/passes.h.inc"

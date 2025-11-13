@@ -106,13 +106,18 @@ struct HloLegalizeToStablehloPass
     stablehlo::registerFuncOpsForTypeConversion(target, patterns, converter);
 
     if (allow_xla_features_) {
-      // These ops do not exist in StableHLO.
-      target.addLegalOp<mhlo::AsyncDoneOp, mhlo::AsyncStartOp,
-                        mhlo::AsyncUpdateOp, mhlo::BitcastOp, mhlo::CopyOp,
-                        mhlo::DomainOp, mhlo::ErfOp, mhlo::FusionOp,
-                        mhlo::MinimumBroadcastShapesOp, mhlo::RaggedDotOp,
-                        mhlo::StochasticConvertOp, mhlo::TopKOp, mhlo::TraceOp,
-                        mhlo::XlaRngGetAndUpdateStateOp>();
+      // These ops do not exist in StableHLO, though they do exist in CHLO.
+      target.addLegalOp<  //
+          mhlo::AcosOp, mhlo::AcoshOp, mhlo::AsinOp, mhlo::AsinhOp,
+          mhlo::AtanhOp, mhlo::CaseOp, mhlo::CoshOp, mhlo::ErfOp,
+          mhlo::RaggedDotOp, mhlo::SinhOp, mhlo::TopKOp>();
+      // These ops do not exist in StableHLO nor in CHLO.
+      target.addLegalOp<
+          mhlo::AsyncDoneOp, mhlo::AsyncStartOp, mhlo::AsyncUpdateOp,
+          mhlo::BitcastOp, mhlo::CopyOp, mhlo::DomainOp, mhlo::FusionOp,
+          mhlo::MinimumBroadcastShapesOp, mhlo::StochasticConvertOp,
+          mhlo::TraceOp, mhlo::XlaRngGetAndUpdateStateOp>();
+
       target.addDynamicallyLegalOp<mhlo::AddDependencyOp>(
           [](mhlo::AddDependencyOp op) {
             return !hasMhloTypes(op->getOperandTypes());
@@ -142,8 +147,11 @@ struct HloLegalizeToStablehloPass
         [](Operation* op) { return !hasMhloTypes(op->getOperandTypes()); });
     patterns.add<UpdateOperandsInUnknownOp>(converter, &getContext());
 
+    ConversionConfig config;
+    config.foldingMode = DialectConversionFoldingMode::Never;
+
     if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns))))
+                                      std::move(patterns), config)))
       return signalPassFailure();
   }
 };
