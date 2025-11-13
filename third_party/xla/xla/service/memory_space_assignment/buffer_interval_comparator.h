@@ -66,12 +66,58 @@ class BufferIntervalComparator {
   BufferIntervalComparator() = default;
 };
 
+// A specialization for the cases were we can build keys for comparisons.
+//
+// Instead of supplying a binary LessThan function, the user only needs to
+// supply a unary BuildComparisonKey function instead.
+//
+// This class caches HloValue -> ComparisonKey, so BuildComparisonKey is only
+// called once per MsaBufferInterval.
+//
+// From our tests on real-world cases, we see ~100x calls to
+// GetComparisonKeyCached compared to BuildComparisonKey, which justifies the
+// caching.
+template <typename ComparisonKeyT>
+class BufferIntervalKeyedComparator : public BufferIntervalComparator {
+ public:
+  using ComparisonKey = ComparisonKeyT;
+  bool LessThan(const MsaBufferInterval& lhs,
+                const MsaBufferInterval& rhs) final {
+    return GetComparisonKeyCached(lhs) < GetComparisonKeyCached(rhs);
+  }
+  const ComparisonKey& GetComparisonKeyCached(
+      const MsaBufferInterval& buffer_interval) {
+    auto [iter, newly_inserted] =
+        buffer_to_comparison_key_.try_emplace(buffer_interval.buffer);
+    if (newly_inserted) {
+      iter->second = BuildComparisonKey(buffer_interval);
+    } else {
+      // DO_NOT_SUBMIT
+      const auto& curr = BuildComparisonKey(buffer_interval);
+      CHECK(iter->second == curr)
+          << "\nprev="
+          << absl::StrCat("[ ", absl::StrJoin(iter->second, ", "), " ]")
+          << "\ncurr=" << absl::StrCat("[ ", absl::StrJoin(curr, ", "), " ]");
+    }
+    return iter->second;
+  }
+
+ private:
+  virtual ComparisonKey BuildComparisonKey(
+      const MsaBufferInterval& buffer_interval) = 0;
+
+  absl::flat_hash_map<const HloValue*, ComparisonKey> buffer_to_comparison_key_;
+};
+
 // A BufferIntervalComparator that utilizes MemoryBoundedness as its primary
 // sorting criteria.
 //
-// This comparator caches HloValues -> latest use time.
+// See the value returned by DescribeComparisonCriteria() for the meaning of
+// each tuple element.
 class MemoryBoundednessBufferIntervalComparator
-    : public BufferIntervalComparator {
+    : public BufferIntervalKeyedComparator<
+          std::tuple<int64_t, float, int64_t, int64_t, int64_t, int64_t,
+                     BufferValue::Id> > {
  public:
   MemoryBoundednessBufferIntervalComparator(
       const CostAnalysis& cost_analysis,
@@ -87,18 +133,10 @@ class MemoryBoundednessBufferIntervalComparator
   std::string DescribeComparisonCriteria() const override;
   std::string CriteriaToString(
       const MsaBufferInterval& buffer_interval) override;
-  bool LessThan(const MsaBufferInterval& lhs,
-                const MsaBufferInterval& rhs) override;
-
  private:
-  // See the value returned by DescribeComparisonCriteria() for the meaning of
-  // each tuple element.
-  using ComparisonTuple = std::tuple<int64_t, float, int64_t, int64_t, int64_t,
-                                     int64_t, BufferValue::Id>;
-
-  ComparisonTuple GetTuple(const MsaBufferInterval& buffer_interval);
+  ComparisonKey BuildComparisonKey(
+      const MsaBufferInterval& buffer_interval) override;
   int64_t GetLatestUseTime(const MsaBufferInterval& buffer_interval);
-  absl::flat_hash_map<const HloValue*, int64_t> buffer_to_latest_use_;
   const CostAnalysis& cost_analysis_;
   CostAnalysis::Cache* cost_analysis_cache_;
 
@@ -109,9 +147,11 @@ class MemoryBoundednessBufferIntervalComparator
 
 // The default BufferIntervalComparator used for cross-program prefetching.
 //
-// This class caches HloValue -> {latest use, cumulative use size }.
+// See the value returned by DescribeComparisonCriteria() for the meaning of
+// each tuple element.
 class DefaultCrossProgramPrefetchBufferIntervalComparator
-    : public BufferIntervalComparator {
+    : public BufferIntervalKeyedComparator<
+          std::tuple<int64_t, int64_t, int64_t, int64_t, BufferValue::Id> > {
  public:
   explicit DefaultCrossProgramPrefetchBufferIntervalComparator(
       const HloLiveRange& hlo_live_range,
@@ -122,24 +162,10 @@ class DefaultCrossProgramPrefetchBufferIntervalComparator
   std::string DescribeComparisonCriteria() const override;
   std::string CriteriaToString(
       const MsaBufferInterval& buffer_interval) override;
-  bool LessThan(const MsaBufferInterval& lhs,
-                const MsaBufferInterval& rhs) override;
-
  private:
-  // See the value returned by DescribeComparisonCriteria() for the meaning of
-  // each tuple element.
-  using ComparisonTuple =
-      std::tuple<int64_t, int64_t, int64_t, int64_t, BufferValue::Id>;
+  ComparisonKey BuildComparisonKey(
+      const MsaBufferInterval& buffer_interval) override;
 
-  struct AdditionalSortData {
-    int64_t latest_use = 0;
-    int64_t cumulative_use_size = 0;
-  };
-
-  ComparisonTuple GetTuple(const MsaBufferInterval& buffer_interval);
-
-  absl::flat_hash_map<const HloValue*, AdditionalSortData>
-      additional_sort_data_;
   const HloLiveRange& hlo_live_range_;
   const MsaSortOrderOverrides& msa_sort_order_overrides_;
 };
