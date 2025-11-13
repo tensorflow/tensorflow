@@ -213,7 +213,7 @@ class MultiGrpcChannelCache : public CachingGrpcChannelCache {
   }
 
   string TranslateTask(const string& target) override {
-    absl::MutexLock l(&mu_);  // could use reader lock
+    absl::MutexLock l(mu_);  // could use reader lock
     GrpcChannelCache* cache = gtl::FindPtrOrNull(target_caches_, target);
     if (cache == nullptr) {
       for (GrpcChannelCache* c : caches_) {
@@ -235,7 +235,7 @@ class MultiGrpcChannelCache : public CachingGrpcChannelCache {
     for (GrpcChannelCache* cache : caches_) {
       SharedGrpcChannelPtr ch(cache->FindWorkerChannel(target));
       if (ch) {
-        absl::MutexLock l(&mu_);
+        absl::MutexLock l(mu_);
         target_caches_.insert({target, cache});
         return ch;
       }
