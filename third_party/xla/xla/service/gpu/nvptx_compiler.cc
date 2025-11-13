@@ -264,7 +264,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
 absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const TargetConfig& gpu_target_config,
+    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool) {
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
@@ -346,7 +346,7 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     const CompileOptions& options, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
     se::StreamExecutor* stream_exec,
-    const Compiler::TargetConfig* target_config) {
+    const Compiler::GpuTargetConfig* target_config) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   if (hlo_module->config()
           .debug_options()
@@ -422,7 +422,7 @@ absl::Status NVPTXCompiler::AddFusionAutotuningPass(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
     stream_executor::StreamExecutor* stream_executor,
-    const Compiler::TargetConfig* target_config,
+    const Compiler::GpuTargetConfig* target_config,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
   if (stream_executor == nullptr) {
     return absl::OkStatus();

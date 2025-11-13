@@ -481,4 +481,155 @@ TEST_F(CommunicationTypeTest, DetectsRailAlignedMultiPartition) {
 }
 
 }  // namespace
+
+TEST_F(CommunicationTypeTest, CollectivePermuteIntraPartitionOneWay) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,1},{2,3},{4,5},{6,7}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kIntraPartitionOneWay);
+}
+
+TEST_F(CommunicationTypeTest, CollectivePermuteIntraPartitionTwoWayMutual) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=4
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,1},{1,0},{2,3},{3,2}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kIntraPartitionTwoWayAllMutual);
+}
+
+TEST_F(CommunicationTypeTest, CollectivePermuteInterPartitionTwoWayMutual) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,8},{8,0}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kInterPartitionTwoWayAllMutual);
+}
+
+TEST_F(CommunicationTypeTest, CollectivePermuteInterPartitionOneWay) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,8},{1,9}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kInterPartitionOneWay);
+}
+
+TEST_F(CommunicationTypeTest,
+       CollectivePermuteIntraPartitionTwoWayHasNonMutual) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,1},{1,2},{2,0}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kIntraPartitionTwoWayHasNonMutual);
+}
+
+TEST_F(CommunicationTypeTest,
+       CollectivePermuteInterPartitionTwoWayHasNonMutual) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,8},{1,9},{8,2}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kInterPartitionTwoWayHasNonMutual);
+}
+
+// TODO(b/460155942): remove once the collective-permute with empty pairs is
+// disallowed by the HLO verifier.
+TEST_F(CommunicationTypeTest, CollectivePermuteEmptyPairs) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kUnknown);
+}
+
 }  // namespace xla::gpu
