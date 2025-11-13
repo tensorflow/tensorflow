@@ -82,6 +82,12 @@ absl::StatusOr<std::string> GetDataTypeString(xla::PrimitiveType data_type) {
       return "s32";
     case xla::PrimitiveType::S64:
       return "s64";
+    case xla::PrimitiveType::PRED:
+      return "pred";
+    case xla::PrimitiveType::S8:
+      return "s8";
+    case xla::PrimitiveType::U8:
+      return "u8";
     default:
       return absl::InvalidArgumentError("Invalida data type.");
   }
@@ -125,6 +131,18 @@ TEST(NvshmemGpuCollectivesTest, NvshmemCollectivePermuteFloat) {
 
 TEST(NvshmemGpuCollectivesTest, NvshmemAllReduceFloat) {
   RunNvshmemTest(PrimitiveType::F32, "all_reduce");
+}
+
+TEST(NvshmemGpuCollectivesTest, NvshmemAllReducePred) {
+  RunNvshmemTest(PrimitiveType::PRED, "all_reduce");
+}
+
+TEST(NvshmemGpuCollectivesTest, NvshmemAllReduceInt8) {
+  RunNvshmemTest(PrimitiveType::S8, "all_reduce");
+}
+
+TEST(NvshmemGpuCollectivesTest, NvshmemAllReduceUint8) {
+  RunNvshmemTest(PrimitiveType::U8, "all_reduce");
 }
 
 absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
@@ -335,6 +353,45 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
                 /*device_layout=*/nullptr));
         break;
       }
+      case xla::PrimitiveType::PRED: {
+        std::vector<uint8_t> data_array{10};
+        TF_ASSIGN_OR_RETURN(
+            input,
+            client->BufferFromHostBuffer(
+                data_array.data(), shape.element_type(), shape.dimensions(),
+                /*byte_strides=*/std::nullopt,
+                PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+                /*on_done_with_host_buffer=*/nullptr,
+                *device->default_memory_space(),
+                /*device_layout=*/nullptr));
+        break;
+      }
+      case xla::PrimitiveType::S8: {
+        std::vector<int8_t> data_array{10};
+        TF_ASSIGN_OR_RETURN(
+            input,
+            client->BufferFromHostBuffer(
+                data_array.data(), shape.element_type(), shape.dimensions(),
+                /*byte_strides=*/std::nullopt,
+                PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+                /*on_done_with_host_buffer=*/nullptr,
+                *device->default_memory_space(),
+                /*device_layout=*/nullptr));
+        break;
+      }
+      case xla::PrimitiveType::U8: {
+        std::vector<uint8_t> data_array{10};
+        TF_ASSIGN_OR_RETURN(
+            input,
+            client->BufferFromHostBuffer(
+                data_array.data(), shape.element_type(), shape.dimensions(),
+                /*byte_strides=*/std::nullopt,
+                PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+                /*on_done_with_host_buffer=*/nullptr,
+                *device->default_memory_space(),
+                /*device_layout=*/nullptr));
+        break;
+      }
       default:
         return absl::InvalidArgumentError("Invalida data type.");
     }
@@ -478,6 +535,21 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
       case xla::PrimitiveType::S64: {
         std::vector<int64_t> ref_data{20};
         TF_RET_CHECK(literal->data<int64_t>()[0] == ref_data[0]);
+        break;
+      }
+      case xla::PrimitiveType::PRED: {
+        std::vector<uint8_t> ref_data{20};
+        TF_RET_CHECK(literal->data<uint8_t>()[0] == ref_data[0]);
+        break;
+      }
+      case xla::PrimitiveType::S8: {
+        std::vector<int8_t> ref_data{20};
+        TF_RET_CHECK(literal->data<int8_t>()[0] == ref_data[0]);
+        break;
+      }
+      case xla::PrimitiveType::U8: {
+        std::vector<uint8_t> ref_data{20};
+        TF_RET_CHECK(literal->data<uint8_t>()[0] == ref_data[0]);
         break;
       }
       default:
