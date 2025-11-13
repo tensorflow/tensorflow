@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/log1p.h"
 #include "xla/codegen/intrinsic/rsqrt.h"
 #include "xla/codegen/intrinsic/tanh.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace emitters {
