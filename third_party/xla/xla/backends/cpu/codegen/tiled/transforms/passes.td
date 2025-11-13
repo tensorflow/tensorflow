@@ -56,16 +56,13 @@ def ShloToVectorPass : Pass<"xtile-cpu-shlo-to-vector", "mlir::ModuleOp"> {
   ];
 }
 
-def ElementalTensorToVectorPass : Pass<"xtile-cpu-elemental-tensor-to-vector",
+def LinalgElementwiseToVectorPass : Pass<"xtile-cpu-linalg-elementwise-to-vector",
                                        "mlir::ModuleOp"> {
-  let summary = "Lowering arith & math ops with tensor types to vector types";
+  let summary = "Convert elementwise linalg ops to vector ops";
 
-  let constructor = "CreateElementalTensorToVectorPass()";
+  let constructor = "CreateLinalgElementwiseToVectorPass()";
 
   let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "mlir::math::MathDialect",
-    "mlir::tensor::TensorDialect",
     "mlir::vector::VectorDialect",
   ];
 }
