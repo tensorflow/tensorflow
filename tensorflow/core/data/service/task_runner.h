@@ -261,7 +261,7 @@ class PrefetchThread {
 class RoundRobinTaskRunner : public TaskRunner {
  public:
   RoundRobinTaskRunner(std::unique_ptr<TaskIterator> iterator,
-                       int64_t num_consumers, string worker_address);
+                       int64_t num_consumers, std::string worker_address);
 
   absl::Status GetNext(const GetElementRequest& req,
                        GetElementResult& result) override;
@@ -280,7 +280,7 @@ class RoundRobinTaskRunner : public TaskRunner {
   // start.
   absl::Status PrepareRound(const GetElementRequest& req);
   const int64_t num_consumers_;
-  const string worker_address_;
+  const std::string worker_address_;
   mutex mu_;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
   // Condition variable notified whenever we start a new round of round-robin.
