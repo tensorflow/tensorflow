@@ -39,13 +39,13 @@ class DescriptorPoolRegistry {
   static DescriptorPoolRegistry* Global();
 
   // Returns a pointer to a descriptor pool function for the given source.
-  DescriptorPoolFn* Get(const string& source);
+  DescriptorPoolFn* Get(const std::string& source);
 
   // Registers a descriptor pool factory.
-  void Register(const string& source, const DescriptorPoolFn& pool_fn);
+  void Register(const std::string& source, const DescriptorPoolFn& pool_fn);
 
  private:
-  std::map<string, DescriptorPoolFn> fns_;
+  std::map<std::string, DescriptorPoolFn> fns_;
 };
 
 namespace descriptor_pool_registration {
@@ -53,7 +53,7 @@ namespace descriptor_pool_registration {
 class DescriptorPoolRegistration {
  public:
   DescriptorPoolRegistration(
-      const string& source,
+      const std::string& source,
       const DescriptorPoolRegistry::DescriptorPoolFn& pool_fn) {
     DescriptorPoolRegistry::Global()->Register(source, pool_fn);
   }
