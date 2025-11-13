@@ -470,9 +470,7 @@ class CPUIDInfo {
   }
   static void InitializeCPUFeature() {
     // Initialize CPUIDInfo pointer.
-    if (cpuid != nullptr) return;
-
-    cpuid = new CPUIDInfo;
+    if (cpuid == nullptr) CPUIDInfo::Initialize();
 
     const uint32_t hwcaps2 = getauxval(AT_HWCAP2);
     cpuid->has_bf16_ = IsFeatureSupported(hwcaps2, kHwcap2Bf16);
@@ -519,13 +517,14 @@ class CPUIDInfo {
 };
 
 absl::once_flag cpuid_once_flag;
+absl::once_flag cpu_feature_init_once_flag;
 
 void InitCPUIDInfo() {
   absl::call_once(cpuid_once_flag, CPUIDInfo::Initialize);
 }
 
 void InitCPUIDFeatureInfo() {
-  absl::call_once(cpuid_once_flag, CPUIDInfo::InitializeCPUFeature);
+  absl::call_once(cpu_feature_init_once_flag, CPUIDInfo::InitializeCPUFeature);
 }
 
 #endif  // PLATFORM_IS_ARM64 && !__APPLE__ && !__OpenBSD__
