@@ -64,16 +64,16 @@ mlir::DenseIntElementsAttr GetScatterGroupAssignment(
   auto partitions =
       GetAllReducePartitionsFromReducedDims(original_layout, scattered_dims)
           .value();
-  const int32 num_partitions = partitions.size();
+  const int32_t num_partitions = partitions.size();
 
   // Construct a flattened list of scatter partitions.
-  std::vector<int32> partitions_flat;
+  std::vector<int32_t> partitions_flat;
   for (auto& p : partitions) {
     partitions_flat.insert(partitions_flat.end(), p.second.begin(),
                            p.second.end());
   }
 
-  int32 partition_size = partitions.begin()->second.size();
+  int32_t partition_size = partitions.begin()->second.size();
   mlir::OpBuilder builder(all_scatter);
   auto group_shaped_type = mlir::RankedTensorType::get(
       {num_partitions, partition_size},
