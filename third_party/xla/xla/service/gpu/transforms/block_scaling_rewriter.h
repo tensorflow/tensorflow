@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"
 #include "xla/stream_executor/dnn.h"
 
@@ -96,6 +97,18 @@ class BlockScalingRewriter : public OpExpanderPass {
 
  private:
   se::dnn::VersionInfo cudnn_version_;
+};
+
+// Helper class for building cuDNN scaled dot operations.
+class CudnnScaledDotHelper {
+ public:
+  // Check if the scaled dot fusion is supported by cuDNN.
+  static bool IsSupported(const HloScaledDotInstruction* scaled_dot);
+
+  // Extract scale tensor swizzling from the block scaled dot fusion into
+  // separate computations.
+  static absl::StatusOr<HloInstruction*> AddScaleSwizzle(
+      HloFusionInstruction* fusion);
 };
 
 }  // namespace xla::gpu
