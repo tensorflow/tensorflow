@@ -785,7 +785,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedRenamedMissingFaninControl) {
   EXPECT_TRUE(IsEmpty(&diff));
   EXPECT_TRUE(IsWellFormed(&diff, updated_node_names));
 
-  string old_node_name = "d";
+  std::string old_node_name = "d";
   string new_node_name = "e";
   updated_node_names.erase(old_node_name);
   updated_node_names.emplace(old_node_name, 3);

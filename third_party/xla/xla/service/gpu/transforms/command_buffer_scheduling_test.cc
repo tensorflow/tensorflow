@@ -313,6 +313,89 @@ TEST_F(CommandBufferSchedulingTest, ReduceScatterStartFollowedByDone) {
                             });
 }
 
+TEST_F(CommandBufferSchedulingTest, CollectivePermuteStartFollowedByDone) {
+  const char* hlo = R"(
+    HloModule TestModule, is_scheduled=true
+
+    ENTRY main (a: s32[2]) -> s32[2] {
+      a = s32[2] parameter(0)
+
+      start = (s32[2]{0}, s32[2]{0}) collective-permute-start(a),
+        channel_id=555, source_target_pairs={{1,0},{3,2},{2,1},{0,3}}, 
+        backend_config={"collective_backend_config": {"is_sync":true}}
+
+      ROOT done = s32[2]{0} collective-permute-done(start)
+    })";
+
+  const char* expected = R"(
+    CHECK: %command_buffer ([[P0:.+]]: s32[2]) -> s32[2] {
+    CHECK:   %[[P0]] = s32[2]{0} parameter(0)
+    CHECK:   %[[START:.+]] = {{.*}} collective-permute-start(%[[P0]])
+    CHECK:   ROOT %[[DONE:.+]] = s32[2]{0} collective-permute-done(%[[START]])
+    CHECK: }
+
+    CHECK: ENTRY %main (a: s32[2]) -> s32[2] {
+    CHECK:   %[[A:.+]] = s32[2]{0} parameter(0)
+    CHECK:   ROOT %[[CALL:.+]] = s32[2]{0} call(%[[A]]),
+    CHECK:     to_apply=%command_buffer
+    CHECK: })";
+
+  RunAndFilecheckHloRewrite(hlo, CommandBufferScheduling(device_desc()),
+                            expected, [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
+TEST_F(CommandBufferSchedulingTest,
+       CollectivePermuteStartFollowedByAnotherStart) {
+  const char* hlo = R"(
+    HloModule TestModule, is_scheduled=true
+
+    ENTRY main (a: s32[2], b: s32[2]) -> (s32[2], s32[2]) {
+      a = s32[2] parameter(0)
+      b = s32[2] parameter(1)
+
+      start.1 = (s32[2]{0}, s32[2]{0}) collective-permute-start(a),
+        channel_id=555, source_target_pairs={{1,0},{3,2},{2,1},{0,3}}, 
+        backend_config={"collective_backend_config": {"is_sync":true}}
+
+      start.2 = (s32[2]{0}, s32[2]{0}) collective-permute-start(b),
+        channel_id=555, source_target_pairs={{1,2},{3,0},{2,3},{0,1}}, 
+        backend_config={"collective_backend_config": {"is_sync":true}}
+
+      done.1 = s32[2]{0} collective-permute-done(start.1)
+      done.2 = s32[2]{0} collective-permute-done(start.2)
+      ROOT tuple = (s32[2]{0}, s32[2]{0}) tuple(done.1, done.2)
+    })";
+
+  // ROOT %tuple = (s32[2]{0}, s32[2]{0}) tuple(%done.1, %done.2)
+
+  const char* expected = R"(
+    CHECK: %command_buffer ([[P0:.+]]: s32[2], [[P1:.+]]: s32[2]) -> (s32[2], s32[2]) {
+    CHECK:   %[[P0]] = s32[2]{0} parameter(0)
+    CHECK:   %[[P1]] = s32[2]{0} parameter(1)
+    CHECK:   %[[START1:.+]] = {{.*}} collective-permute-start(%[[P0]])
+    CHECK:   %[[START2:.+]] = {{.*}} collective-permute-start(%[[P1]])
+    CHECK:   %[[DONE1:.+]] = s32[2]{0} collective-permute-done(%[[START1]])
+    CHECK:   %[[DONE2:.+]] = s32[2]{0} collective-permute-done(%[[START2]])
+    CHECK:   ROOT %[[tuple:.+]] = (s32[2]{0}, s32[2]{0}) tuple(%[[DONE1]], %[[DONE2]])
+    CHECK: }
+
+    CHECK: ENTRY %main (a: s32[2], b: s32[2]) -> (s32[2], s32[2]) {
+    CHECK:   %[[A:.+]] = s32[2]{0} parameter(0)
+    CHECK:   %[[B:.+]] = s32[2]{0} parameter(1)
+    CHECK:   %[[CALL:.+]] = (s32[2]{0}, s32[2]{0}) call(%[[A]], %[[B]]),
+    CHECK:     to_apply=%command_buffer
+    CHECK: })";
+
+  RunAndFilecheckHloRewrite(hlo, CommandBufferScheduling(device_desc()),
+                            expected, [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
 TEST_F(CommandBufferSchedulingTest, AllReduceStartFollowedByBitcast) {
   const char* hlo = R"(
     HloModule TestModule, is_scheduled=true

@@ -641,7 +641,7 @@ absl::Status MutableGraphView::GetNodeNamesAndPartitionUpdatedNodes(
       continue;
     }
     // Get name of updated node after potential mutation.
-    const string& node_name =
+    const std::string& node_name =
         diff.update_name ? diff.name : nodes_[diff.node_index].GetName();
     auto it = node_names->insert({node_name, internal::kNodeNamePresent});
     if (!it.second) {

@@ -133,7 +133,7 @@ TEST_F(TopologicalSortTest, DuplicatedInputs) {
   });
 
   TF_EXPECT_OK(TopologicalSort(&graph));
-  std::vector<string> order = {"1", "2"};
+  std::vector<std::string> order = {"1", "2"};
   for (int i = 0; i < order.size(); i++) {
     EXPECT_EQ(graph.node(i).name(), order[i]);
   }

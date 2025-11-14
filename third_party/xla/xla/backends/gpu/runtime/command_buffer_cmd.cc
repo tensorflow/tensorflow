@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
+#include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
@@ -2367,6 +2368,81 @@ CommandBufferCmd::BufferUseVector CollectiveBroadcastCmd::buffers() const {
   for (auto& buffer : buffers_) {
     buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer));
     buffer_usage.emplace_back(BufferUse::Write(buffer.destination_buffer));
+  }
+  return buffer_usage;
+}
+
+//===----------------------------------------------------------------------===//
+// CollectivePermuteCmd
+//===----------------------------------------------------------------------===//
+
+CollectivePermuteCmd::CollectivePermuteCmd(
+    P2PConfig p2p_config, bool p2p_memcpy_enabled,
+    absl::Span<const CollectiveThunk::Buffer> buffers,
+    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
+    : CollectiveCmd(CommandBufferCmdType::kCollectivePermuteCmd,
+                    std::move(p2p_config.config), std::move(async_events)),
+      id_to_source_target_(std::move(p2p_config.id_to_source_target)),
+      buffers_(buffers.begin(), buffers.end()) {
+  if (p2p_memcpy_enabled) {
+    LOG(WARNING) << "CollectivePermuteCmd does not support p2p_memcpy: "
+                 << "falling back to the default NCCL implementation";
+  }
+}
+
+absl::StatusOr<const se::CommandBuffer::Command*> CollectivePermuteCmd::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, RecordAction record_action,
+    se::CommandBuffer* command_buffer) {
+  TF_ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
+                      ConvertToDeviceBuffers(execute_params, buffers_,
+                                             config().operand_element_type));
+
+  VLOG(5) << "CollectivePermuteCmd";
+  for (size_t i = 0; i < device_buffers.size(); ++i) {
+    VLOG(5) << "  Src: " << buffers_[i].source_buffer << " ("
+            << device_buffers[i].source_buffer.opaque() << ")";
+    VLOG(5) << "  Dst: " << buffers_[i].destination_buffer << " ("
+            << device_buffers[i].destination_buffer.opaque() << ")";
+  }
+
+  if (!execute_params.collective_params || !execute_params.collective_cliques) {
+    return absl::InvalidArgumentError(
+        "CollectivePermuteCmd requires collective parameters and cliques");
+  }
+
+  TF_ASSIGN_OR_RETURN(const int64_t current_id,
+                      GetCurrentId(execute_params.collective_params, config()));
+
+  const P2PConfig::SourceTargetMapEntry source_target =
+      P2PConfig::GetSourceTarget(id_to_source_target_, current_id);
+
+  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
+                      Thunk::GetGpuCollectives(execute_params));
+
+  TF_ASSIGN_OR_RETURN(
+      CommunicatorHandle comm_handle,
+      GetComm(collectives, *execute_params.collective_params,
+              *execute_params.collective_cliques, config().replica_groups,
+              config().group_mode,
+              AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
+
+  return RecordTracedCommand(
+      execute_params, record_params, std::move(record_action), command_buffer,
+      [&](se::Stream* stream) {
+        return RunCollectivePermute(
+            source_target, device_buffers, *stream, comm_handle.comm,
+            "cmd_buf_collective_permute", current_id,
+            /*use_memcpy*/ false, /*recv_ptr_map*/ nullptr,
+            config().use_symmetric_buffer);
+      });
+}
+
+CommandBufferCmd::BufferUseVector CollectivePermuteCmd::buffers() const {
+  BufferUseVector buffer_usage;
+  for (auto& buffer : buffers_) {
+    buffer_usage.emplace_back(buffer.source_buffer, MemoryAccess::kRead);
+    buffer_usage.emplace_back(buffer.destination_buffer, MemoryAccess::kWrite);
   }
   return buffer_usage;
 }
