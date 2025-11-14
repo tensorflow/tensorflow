@@ -252,10 +252,10 @@ absl::Status CreateAndAppendPrefetchNode(MutableGraphView* graph,
   return absl::OkStatus();
 }
 
-absl::Status AddInterleaveNode(MutableGraphView* graph,
-                               const NodeDef& parallel_interleave_node,
-                               const std::string& interleave_map_func_name,
-                               absl::flat_hash_set<string>& nodes_to_delete) {
+absl::Status AddInterleaveNode(
+    MutableGraphView* graph, const NodeDef& parallel_interleave_node,
+    const std::string& interleave_map_func_name,
+    absl::flat_hash_set<std::string>& nodes_to_delete) {
   NodeDef interleave_node;
   interleave_node.set_op(kInterleaveDatasetOpName);
   graph_utils::SetUniqueGraphNodeName(
@@ -327,7 +327,7 @@ absl::Status SeqInterleavePrefetch::OptimizeAndCollectStats(
     OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
-  absl::flat_hash_set<string> nodes_to_delete;
+  absl::flat_hash_set<std::string> nodes_to_delete;
   FunctionLibraryDefinition fld(OpRegistry::Global(), item.graph.library());
 
   for (const NodeDef& node : item.graph.node()) {
