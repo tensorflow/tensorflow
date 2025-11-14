@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/java/src/gen/cc/op_specs.h"
 
-#include <cctype>
 #include <map>
 #include <sstream>
 #include <string>
