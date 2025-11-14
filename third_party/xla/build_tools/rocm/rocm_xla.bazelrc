@@ -26,10 +26,13 @@ build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
 build:tsan --linkopt -g
 build:tsan --//build_tools/rocm:sanitizer=tsan
+build:tsan --test_env=TSAN_OPTIONS=suppressions=build_tools/rocm/tsan_ignore_list.txt::history_size=7:ignore_noninstrumented_modules=1
+build:tsan --run_under=//build_tools/rocm:sanitizer_wrapper
 
 build:asan --test_env=ASAN_OPTIONS=suppressions=build_tools/rocm/asan_ignore_list.txt:use_sigaltstack=0
 build:asan --test_env=LSAN_OPTIONS=suppressions=build_tools/rocm/lsan_ignore_list.txt:use_sigaltstack=0
 build:asan --//build_tools/rocm:sanitizer=asan
+build:asan --run_under=//build_tools/rocm:sanitizer_wrapper
 
 test:xla_sgpu -- \
 //xla/... \
