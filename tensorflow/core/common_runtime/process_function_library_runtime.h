@@ -94,8 +94,8 @@ class ProcessFunctionLibraryRuntime {
   // `tensors_to_send` and indicates how the input tensors are allocated. Method
   // takes references on each of the `tensors_to_send`. Method doesn't block.
   static absl::Status SendTensors(
-      const string& source_device, const string& target_device,
-      const string& key_prefix, int64_t src_incarnation,
+      const std::string& source_device, const std::string& target_device,
+      const std::string& key_prefix, int64_t src_incarnation,
       absl::Span<const Tensor> tensors_to_send, DeviceContext* device_context,
       const std::vector<AllocatorAttributes>& alloc_attrs,
       RendezvousInterface* rendezvous);
@@ -107,23 +107,23 @@ class ProcessFunctionLibraryRuntime {
   // tensors and should either be empty or `num_tensors` in size. Method doesn't
   // block and calls `done` when `num_tensors` are fetched.
   static void ReceiveTensorsAsync(
-      const string& source_device, const string& target_device,
-      const string& key_prefix, int64_t src_incarnation, int64_t num_tensors,
-      DeviceContext* device_context,
+      const std::string& source_device, const std::string& target_device,
+      const std::string& key_prefix, int64_t src_incarnation,
+      int64_t num_tensors, DeviceContext* device_context,
       const std::vector<AllocatorAttributes>& alloc_attrs,
       RendezvousInterface* rendezvous, std::vector<Tensor>* received_tensors,
       StatusCallback done);
 
   static const char kDefaultFLRDevice[];
   // Returns the FunctionLibraryRuntime for the corresponding device_name.
-  FunctionLibraryRuntime* GetFLR(const string& device_name) const;
+  FunctionLibraryRuntime* GetFLR(const std::string& device_name) const;
 
   // Returns the return types for the function identified by handle `h`.
   absl::Status GetRetTypes(FunctionLibraryRuntime::Handle h,
                            DataTypeVector* ret_types);
 
   // Returns the device incarnation for the given device_name.
-  absl::Status GetDeviceIncarnation(const string& device_name,
+  absl::Status GetDeviceIncarnation(const std::string& device_name,
                                     int64_t* incarnation) const;
 
   // For a given canonicalized key signature of the function instantiated
@@ -131,11 +131,12 @@ class ProcessFunctionLibraryRuntime {
   // that value. Uses core/common_runtime/framework/function.h::Canonicalize
   // to canonicalize the function signature.
   FunctionLibraryRuntime::Handle AddHandle(
-      const string& function_key, const string& device_name,
+      const std::string& function_key, const std::string& device_name,
       FunctionLibraryRuntime::LocalHandle local_handle);
 
   // Returns a handle if found for the given key, else returns kInvalidHandle.
-  FunctionLibraryRuntime::Handle GetHandle(const string& function_key) const;
+  FunctionLibraryRuntime::Handle GetHandle(
+      const std::string& function_key) const;
 
   // For the given handle instantiated on device `device_name` returns the local
   // index of instantiation of that function. If the function was not
@@ -146,7 +147,7 @@ class ProcessFunctionLibraryRuntime {
   // with a single component that is placed on `device_name`, then this method
   // will return the local handle for that component.
   FunctionLibraryRuntime::LocalHandle GetHandleOnDevice(
-      const string& device_name, FunctionLibraryRuntime::Handle handle,
+      const std::string& device_name, FunctionLibraryRuntime::Handle handle,
       bool include_multi_device = false) const;
 
   // Fills `output_devices` with the devices on which the results will
@@ -161,7 +162,7 @@ class ProcessFunctionLibraryRuntime {
   // Allows for function_name to be instantiated on different devices
   // as specified in attrs.
   absl::Status Instantiate(
-      const string& function_name, AttrSlice attrs,
+      const std::string& function_name, AttrSlice attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       FunctionLibraryRuntime::Handle* handle);
 
@@ -273,7 +274,7 @@ class ProcessFunctionLibraryRuntime {
     // The handle for the instantiated component function.
     FunctionLibraryRuntime::Handle handle;
     // The name for the component function.
-    string name;
+    std::string name;
     // arg_indices.size() is the number of arguments to the component function.
     // The i-th argument of the component function comes from the
     // `arg_indices[i]`-th argument of the multi-device function.
@@ -297,8 +298,8 @@ class ProcessFunctionLibraryRuntime {
   // The fields are filled in during instantiation. Once the object is
   // added to mdevice_data_, all fields are constant.
   struct MultiDeviceFunctionData {
-    MultiDeviceFunctionData(const string& function_name,
-                            const string& function_key, int num_outputs,
+    MultiDeviceFunctionData(const std::string& function_name,
+                            const std::string& function_key, int num_outputs,
                             DataTypeVector ret_types)
         : function_name_(function_name),
           function_key_(function_key),
@@ -308,9 +309,9 @@ class ProcessFunctionLibraryRuntime {
           is_cross_process_(false),
           has_remote_outputs(false) {}
 
-    const string function_name_;
-    const string function_key_;
-    uint64 instantiation_counter_;
+    const std::string function_name_;
+    const std::string function_key_;
+    uint64_t instantiation_counter_;
     // Stored here to resize the output tensor vector when function is run.
     const int num_outputs_;
     DataTypeVector ret_types_;
@@ -325,12 +326,12 @@ class ProcessFunctionLibraryRuntime {
 
     // Maps the device name to the information about the component function
     // be run on this device.
-    std::unordered_map<string, ComponentFunctionData> glue_;
+    std::unordered_map<std::string, ComponentFunctionData> glue_;
   };
 
   struct CleanUpItem {
-    string device;
-    uint64 step_id;
+    std::string device;
+    uint64_t step_id;
     FunctionLibraryRuntime::Handle local_handle;
   };
 
@@ -343,18 +344,18 @@ class ProcessFunctionLibraryRuntime {
 
  private:
   FunctionLibraryRuntime::Handle AddHandleLocked(
-      const string& function_key, const string& device_name,
+      const std::string& function_key, const std::string& device_name,
       FunctionLibraryRuntime::LocalHandle local_handle)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // For a given device_name, returns a DeviceContext for copying
   // tensors to/from the device.
-  absl::Status GetDeviceContext(const string& device_name,
+  absl::Status GetDeviceContext(const std::string& device_name,
                                 DeviceContext** device_context) const;
 
   // Looks up the information for the given `handle` and returns the name
   // of the device where the function is registered.
-  string GetDeviceName(FunctionLibraryRuntime::Handle handle) const;
+  std::string GetDeviceName(FunctionLibraryRuntime::Handle handle) const;
 
   // Removes handle from the state owned by this object.
   absl::Status RemoveHandle(FunctionLibraryRuntime::Handle handle);
@@ -380,19 +381,19 @@ class ProcessFunctionLibraryRuntime {
   absl::Status ReleaseMultiDeviceHandle(FunctionLibraryRuntime::Handle handle);
 
   absl::Status InstantiateMultiDevice(
-      const string& function_name, AttrSlice attrs,
+      const std::string& function_name, AttrSlice attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       FunctionLibraryRuntime::Handle* handle);
 
   void InstantiateRemote(
-      const string& function_name, AttrSlice attrs,
+      const std::string& function_name, AttrSlice attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       FunctionLibraryRuntime::Handle* handle,
       FunctionLibraryRuntime::DoneCallback done);
 
   FunctionLibraryRuntime::Handle AddMultiDeviceHandle(
       const std::unique_ptr<MultiDeviceFunctionData> data,
-      const string& function_key);
+      const std::string& function_key);
 
   bool HasMultiDeviceHandle(FunctionLibraryRuntime::Handle handle) const;
 
@@ -426,7 +427,7 @@ class ProcessFunctionLibraryRuntime {
                                        InternalArgs* comp_args);
 #endif  // IS_MOBILE_PLATFORM
 
-  std::vector<string> GetOrderedSubgraphs(
+  std::vector<std::string> GetOrderedSubgraphs(
       const MultiDeviceFunctionData* data) const;
 
   absl::Status PrepareRunMultiDevice(
@@ -458,15 +459,15 @@ class ProcessFunctionLibraryRuntime {
   // (to be executed on `target_device`) function.
   class FunctionData {
    public:
-    FunctionData(const string& target_device,
+    FunctionData(const std::string& target_device,
                  FunctionLibraryRuntime::LocalHandle local_handle,
-                 const string& function_key)
+                 const std::string& function_key)
         : target_device_(target_device),
           local_handle_(local_handle),
           function_key_(function_key) {}
 
-    const string& target_device() { return target_device_; }
-    const string& function_key() { return function_key_; }
+    const std::string& target_device() { return target_device_; }
+    const std::string& function_key() { return function_key_; }
 
     FunctionLibraryRuntime::LocalHandle local_handle() {
       mutex_lock l(mu_);
@@ -476,7 +477,8 @@ class ProcessFunctionLibraryRuntime {
     // Initializes the FunctionData object by potentially making an Initialize
     // call to the DistributedFunctionLibraryRuntime.
     void DistributedInit(
-        DistributedFunctionLibraryRuntime* parent, const string& function_name,
+        DistributedFunctionLibraryRuntime* parent,
+        const std::string& function_name,
         const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
         const FunctionLibraryRuntime::InstantiateOptions& options,
         FunctionLibraryRuntime::DoneCallback done);
@@ -489,9 +491,9 @@ class ProcessFunctionLibraryRuntime {
    private:
     mutex mu_;
 
-    const string target_device_;
+    const std::string target_device_;
     FunctionLibraryRuntime::LocalHandle local_handle_ TF_GUARDED_BY(mu_);
-    const string function_key_;
+    const std::string function_key_;
     bool is_cross_process_ TF_GUARDED_BY(mu_) = false;
     bool init_started_ TF_GUARDED_BY(mu_) = false;
     absl::Status init_result_ TF_GUARDED_BY(mu_);
@@ -516,7 +518,7 @@ class ProcessFunctionLibraryRuntime {
   std::vector<CompositeDevice*> composite_devices_ TF_GUARDED_BY(mu_);
 
   // Holds all the function instantiations. Maps function_keys to handles.
-  std::unordered_map<string, FunctionLibraryRuntime::Handle> table_
+  std::unordered_map<std::string, FunctionLibraryRuntime::Handle> table_
       TF_GUARDED_BY(mu_);
 
   // Function data for instantiated remote functions.
