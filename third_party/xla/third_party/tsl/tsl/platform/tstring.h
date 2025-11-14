@@ -19,6 +19,7 @@ limitations under the License.
 #include <assert.h>
 
 #include <cstddef>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -309,8 +310,16 @@ inline tstring::tstring(const absl::string_view str)
 #ifdef PLATFORM_GOOGLE
 inline tstring::tstring(const absl::Cord& cord) {
   TF_TString_Init(&tstr_);
+  if (cord.size() > TF_TString_SmallCapacity) {
+    std::optional<absl::string_view> flat = cord.TryFlat();
+    if (flat.has_value()) {
+      auto* cord_owner = new tstring::owner<absl::Cord>(cord);
+      assign_as_shared_view(*flat, cord_owner);
+      cord_owner->Unref();
+      return;
+    }
+  }
   TF_TString_ResizeUninitialized(&tstr_, cord.size());
-
   cord.CopyToArray(data());
 }
 #endif  // PLATFORM_GOOGLE
@@ -367,10 +376,17 @@ inline tstring& tstring::operator=(const absl::string_view str) {
 
 #ifdef PLATFORM_GOOGLE
 inline tstring& tstring::operator=(const absl::Cord& cord) {
+  if (cord.size() > TF_TString_SmallCapacity) {
+    std::optional<absl::string_view> flat = cord.TryFlat();
+    if (flat.has_value()) {
+      auto* cord_owner = new tstring::owner<absl::Cord>(cord);
+      assign_as_shared_view(*flat, cord_owner);
+      cord_owner->Unref();
+      return *this;
+    }
+  }
   TF_TString_ResizeUninitialized(&tstr_, cord.size());
-
   cord.CopyToArray(data());
-
   return *this;
 }
 #endif  // PLATFORM_GOOGLE
@@ -547,7 +563,7 @@ inline tstring& tstring::assign_as_view(const char* str) {
 
 template <typename T>
 inline tstring& tstring::assign_as_shared_view(const absl::string_view str,
-                                        tstring::owner<T>* owner) {
+                                               tstring::owner<T>* owner) {
   TF_TString_AssignViewWithOwner(&tstr_, str.data(), str.size(),
                                  owner ? &owner->capi_ : nullptr);
   return *this;
@@ -555,7 +571,7 @@ inline tstring& tstring::assign_as_shared_view(const absl::string_view str,
 
 template <typename T>
 inline tstring& tstring::assign_as_shared_view(const char* str, size_t len,
-                                        tstring::owner<T>* owner) {
+                                               tstring::owner<T>* owner) {
   TF_TString_AssignViewWithOwner(&tstr_, str, len,
                                  owner ? &owner->capi_ : nullptr);
   return *this;

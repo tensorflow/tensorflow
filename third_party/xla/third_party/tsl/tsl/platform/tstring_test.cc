@@ -183,15 +183,29 @@ TEST(TF_TStringTest, Assignment) {
 #ifdef PLATFORM_GOOGLE
   s33 = absl::Cord(kLongString);
 
+  // Check flat cord.
   EXPECT_EQ(kLongString, s33);
-  EXPECT_EQ(tstring::Type::LARGE, s33.type());
+  EXPECT_EQ(tstring::Type::VIEW, s33.type());
   EXPECT_EQ(kLongStringLen, s33.size());
 
   tstring s34((absl::Cord(kLongString)));
 
   EXPECT_EQ(kLongString, s34);
-  EXPECT_EQ(tstring::Type::LARGE, s34.type());
+  EXPECT_EQ(tstring::Type::VIEW, s34.type());
   EXPECT_EQ(kLongStringLen, s34.size());
+
+  // Check non-flat cord.
+  absl::Cord c1(kLongString);
+  absl::Cord c2(std::string(500, 'x'));
+  c1.Append(c2);
+  if (!c1.TryFlat()) {
+    tstring s35(c1);
+    EXPECT_EQ(tstring::Type::LARGE, s35.type());
+    EXPECT_EQ(c1.size(), s35.size());
+    s33 = c1;
+    EXPECT_EQ(tstring::Type::LARGE, s33.type());
+    EXPECT_EQ(c1.size(), s33.size());
+  }
 #endif  // PLATFORM_GOOGLE
 }
 
