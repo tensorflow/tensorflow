@@ -62,7 +62,8 @@ void AsRemoteDevices(
 typedef std::function<void(const absl::Status&, std::vector<Device*>*)>
     NewRemoteDevicesDone;
 void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
-                      const string& worker_name, NewRemoteDevicesDone done);
+                      const std::string& worker_name,
+                      NewRemoteDevicesDone done);
 
 // Create Remote Device based on the given attributes.
 std::unique_ptr<Device> NewRemoteDevice(Env* env,
