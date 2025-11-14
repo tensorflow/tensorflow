@@ -38,10 +38,10 @@ se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
 namespace functor {
 template <typename T>
 void TensorCuBlasGemm<T>::operator()(OpKernelContext* ctx, bool transa,
-                                     bool transb, uint64 m, uint64 n, uint64 k,
-                                     float alpha, const T* a, int lda,
-                                     const T* b, int ldb, float beta, T* c,
-                                     int ldc) {
+                                     bool transb, uint64_t m, uint64_t n,
+                                     uint64_t k, float alpha, const T* a,
+                                     int lda, const T* b, int ldb, float beta,
+                                     T* c, int ldc) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                  se::blas::Transpose::kTranspose};
