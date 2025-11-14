@@ -314,6 +314,7 @@ cc_library(
     deps = [
         ":cord",
         ":platform",
+        ":refcount",
         ":stringpiece",
     ],
 )

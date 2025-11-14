@@ -1353,15 +1353,16 @@ TEST(FfiTest, UserData) {
 
 struct MyState {
   static TypeId id;
+  static TypeInfo info;
 
   explicit MyState(int32_t value) : value(value) {}
   int32_t value;
 };
 
 TypeId MyState::id = {};  // zero-initialize type id
-static constexpr auto kMyStateTypeInfo = MakeTypeInfo<MyState>();
+TypeInfo MyState::info = MakeTypeInfo<MyState>();
 
-XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "state", &MyState::id, &kMyStateTypeInfo);
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "state", &MyState::id, &MyState::info);
 
 TEST(FfiTest, StatefulHandler) {
   ExecutionState execution_state;

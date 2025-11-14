@@ -407,3 +407,66 @@ TEST(TF_TStringTest, Friends) {
 
   EXPECT_EQ(std::string("\0a\0", 3), ss.str());
 }
+
+struct DeletionMarker {
+  bool* deleted = nullptr;
+  DeletionMarker() = default;
+  explicit DeletionMarker(bool* d) : deleted(d) {
+    if (deleted) *deleted = false;
+  }
+  DeletionMarker(DeletionMarker&& other) : deleted(other.deleted) {
+    other.deleted = nullptr;
+  }
+  DeletionMarker& operator=(DeletionMarker&& other) {
+    deleted = other.deleted;
+    other.deleted = nullptr;
+    return *this;
+  }
+  ~DeletionMarker() {
+    if (deleted) *deleted = true;
+  }
+};
+
+TEST(OwnerTest, RefUnref) {
+  bool deleted = false;
+  auto* owner =
+      new tsl::tstring::owner<DeletionMarker>(DeletionMarker(&deleted));
+  EXPECT_FALSE(deleted);
+
+  tsl::tstring s1;
+  s1.assign_as_shared_view("hello", owner);
+  owner->Unref();
+  EXPECT_FALSE(deleted);
+
+  tsl::tstring s2 = s1;
+  EXPECT_FALSE(deleted);
+
+  s1.clear();
+  EXPECT_FALSE(deleted);
+
+  s2.clear();
+  EXPECT_TRUE(deleted);
+}
+
+TEST(OwnerTest, Assign) {
+  bool deleted = false;
+  auto* owner =
+      new tsl::tstring::owner<DeletionMarker>(DeletionMarker(&deleted));
+  EXPECT_FALSE(deleted);
+
+  tsl::tstring s1;
+  s1.assign_as_shared_view("hello", owner);
+  owner->Unref();
+
+  tsl::tstring s2;
+  s2 = s1;
+
+  tsl::tstring s3;
+  s3 = std::move(s1);
+
+  s2.clear();
+  EXPECT_FALSE(deleted);
+
+  s3.clear();
+  EXPECT_TRUE(deleted);
+}
