@@ -31,8 +31,9 @@ using protobuf::RepeatedPtrField;
 absl::StatusOr<TFPackage> TFPackage::Load(const std::string& path) {
   // Load the proto
   TFPackage tf_package;
-  const string saved_model_pb_path = io::JoinPath(path, kSavedModelFilenamePb);
-  const string saved_model_pbtxt_path =
+  const std::string saved_model_pb_path =
+      io::JoinPath(path, kSavedModelFilenamePb);
+  const std::string saved_model_pbtxt_path =
       io::JoinPath(path, kSavedModelFilenamePbTxt);
   if (Env::Default()->FileExists(saved_model_pb_path).ok()) {
     TF_RETURN_IF_ERROR(ReadBinaryProto(Env::Default(), saved_model_pb_path,
