@@ -102,7 +102,7 @@ class ResourceCountUpToOp : public OpKernel {
       Name("ResourceCountUpTo").TypeConstraint<TYPE>("T").Device(DEVICE_CPU), \
       ResourceCountUpToOp<TYPE>)
 
-REGISTER(int32);
+REGISTER(int32_t);
 REGISTER(int64_t);
 
 #undef REGISTER
