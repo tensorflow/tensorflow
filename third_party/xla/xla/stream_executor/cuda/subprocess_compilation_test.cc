@@ -29,8 +29,6 @@ limitations under the License.
 namespace stream_executor {
 namespace {
 using testing::Not;
-using tsl::testing::IsOkAndHolds;
-using tsl::testing::StatusIs;
 
 TEST(SubprocessCompilationTest, GetToolVersion) {
   std::string cuda_dir;

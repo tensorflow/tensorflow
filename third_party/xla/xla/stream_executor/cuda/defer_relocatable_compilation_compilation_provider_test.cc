@@ -40,8 +40,6 @@ using ::testing::Field;
 using ::testing::FieldsAre;
 using ::testing::Return;
 using ::testing::VariantWith;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 TEST(DeferRelocatableCompilationCompilationProviderTest,
      CreateFailsIfDelegateDoesNotSupportCompileAndLink) {

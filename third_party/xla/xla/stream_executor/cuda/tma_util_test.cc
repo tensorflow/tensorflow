@@ -25,9 +25,6 @@ limitations under the License.
 namespace stream_executor::gpu {
 namespace {
 
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
-
 TEST(TmaUtilTest, GetTensorMapDataTypeReturnsCorrectDataType) {
   EXPECT_THAT(GetTensorMapDataType(1),
               absl_testing::IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT8));
