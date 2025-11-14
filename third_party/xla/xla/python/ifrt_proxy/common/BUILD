@@ -96,7 +96,10 @@ tf_proto_library(
         "//xla/python/ifrt:sharding_proto",
         "//xla/tsl/protobuf:status_proto",
     ],
-    deps = ["//xla/pjrt/proto:executable_metadata_proto"],
+    deps = [
+        "//xla/pjrt/proto:executable_metadata_proto",
+        "//xla/python/ifrt:device_proto",
+    ],
 )
 
 tf_proto_library(
