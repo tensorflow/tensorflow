@@ -25,6 +25,7 @@ filegroup(
         "convolution_thunk_f16.cc",
         "convolution_thunk_f32.cc",
         "rng_state_lib.cc",
+        "sort_lib.cc",
     ],
     visibility = internal_visibility([":friends"]),
 )
@@ -35,6 +36,7 @@ filegroup(
         "convolution_thunk_internal.h",
         "kernel_c_api.h",
         "rng_state_lib.h",
+        "sort_lib.h",
         "work_queue.h",
     ],
     visibility = internal_visibility([":friends"]),

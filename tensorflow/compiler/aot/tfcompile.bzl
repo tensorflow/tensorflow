@@ -336,8 +336,8 @@ def _tf_library(
         ] or []) + (include_standard_runtime_deps and [
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
+            "@local_xla//xla/backends/cpu/runtime:sort_lib",
             "@local_xla//xla/service/cpu:runtime_conv2d",
-            "@local_xla//xla/service/cpu:runtime_key_value_sort",
             "@local_xla//xla/service/cpu:runtime_matmul",
             "@local_xla//xla/service/cpu:runtime_topk",
             "@local_xla//xla/service/cpu:runtime_single_threaded_conv2d",

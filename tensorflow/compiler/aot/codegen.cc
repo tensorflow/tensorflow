@@ -702,7 +702,7 @@ absl::Status ExtendRewrites(
   if (HasThunkKind(aot_thunks->proto().thunk_sequence(),
                    xla::cpu::ThunkProto::kSortThunk)) {
     runtime_specific_includes.push_back(
-        R"(#include "xla/service/cpu/runtime_key_value_sort.h")");
+        R"(#include "xla/backends/cpu/runtime/sort_lib.h")");
   }
 
   if (HasThunkKind(aot_thunks->proto().thunk_sequence(),

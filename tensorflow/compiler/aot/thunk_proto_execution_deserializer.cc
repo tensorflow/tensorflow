@@ -594,35 +594,46 @@ ThunkProtoExecutionDeserializer::GetSortThunkRunImpl(
   std::vector<std::string> buffers_to_sort;
   buffers_to_sort.reserve(sort_thunk.inputs_shapes_size());
 
-  std::vector<int32_t> values_primitive_type_size_in_bytes;
-  values_primitive_type_size_in_bytes.reserve(sort_thunk.inputs_shapes_size());
+  std::vector<int32_t> primitive_sizes;
+  primitive_sizes.reserve(sort_thunk.inputs_shapes_size());
   for (const auto& buffer_proto : sort_thunk.inputs_shapes()) {
     buffers_to_sort.push_back(
-        absl::StrCat("reinterpret_cast<char*>(",
+        absl::StrCat("reinterpret_cast<std::byte*>(",
                      GetBufferAllocationString(buffer_proto.slice()), ")"));
-    values_primitive_type_size_in_bytes.push_back(
-        xla::ShapeUtil::ByteSizeOfPrimitiveType(
-            buffer_proto.shape().element_type()));
+    primitive_sizes.push_back(xla::ShapeUtil::ByteSizeOfPrimitiveType(
+        buffer_proto.shape().element_type()));
   }
   absl::string_view sort_thunk_invocation_format = R"(
      // Sort Thunk
      {
-       std::vector<char*> values = {
+       std::vector<std::byte*> values = {
          {{BUFFERS_TO_SORT}}
        };
-       std::vector<int32_t> values_primitive_type_size_in_bytes = {
+       std::vector<size_t> primitive_sizes = {
          {{VALUES_PRIMITIVE_TYPE_SIZE_IN_BYTES}}
        };
 
-       __xla_cpu_runtime_KeyValueSort(
-         {{HIGHER_DIMENSIONS}}, {{SORT_DIMENSION_ELEMENTS}}, {{LOWER_DIMENSIONS}},
-         values.data(),
-         int32_t(values.size()),
-         values_primitive_type_size_in_bytes.data(),
-         /*is_stable=*/{{IS_STABLE}},
-         reinterpret_cast<char*>(run_options),
-         /*prof_counters=*/nullptr,
-         reinterpret_cast<void(*)(char*, char*, char**, char**, int64_t*)>({{SORT_FUNCTION_NAME}}));
+       // Type alias compatible with `FunctionLibrary::Comparator`.
+       using Comparator = void(bool* result, const void* run_options,
+                               const void** params, const void* buffer_table,
+                               const void* status, const void* prof_counters);
+       Comparator* comparator = reinterpret_cast<Comparator*>(
+           {{SORT_FUNCTION_NAME}});
+
+       absl::AnyInvocable<bool(const void** data)> less_than =
+           [comparator](const void** data) {
+             bool result;
+             (*comparator)(&result, nullptr, data, nullptr, nullptr, nullptr);
+             return result;
+           };
+
+       xla::cpu::internal::SortInplace(
+         {
+           {{HIGHER_DIMENSIONS}},
+           {{SORT_DIMENSION_ELEMENTS}},
+           {{LOWER_DIMENSIONS}}
+         },
+         values, primitive_sizes, {{IS_STABLE}}, &less_than);
      })";
 
   TF_ASSIGN_OR_RETURN(
@@ -660,7 +671,7 @@ ThunkProtoExecutionDeserializer::GetSortThunkRunImpl(
           {"{{SORT_FUNCTION_NAME}}", sort_thunk.comparator_name()},
           {"{{BUFFERS_TO_SORT}}", absl::StrJoin(buffers_to_sort, ", ")},
           {"{{VALUES_PRIMITIVE_TYPE_SIZE_IN_BYTES}}",
-           absl::StrJoin(values_primitive_type_size_in_bytes, ", ")},
+           absl::StrJoin(primitive_sizes, ", ")},
           {"{{IS_STABLE}}", sort_thunk.is_stable() ? "true" : "false"},
       });
 }
