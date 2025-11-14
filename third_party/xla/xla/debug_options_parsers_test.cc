@@ -398,6 +398,7 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
       enabled_features,
       testing::UnorderedElementsAre(
           DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM,
+          DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM,
           DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES,
           DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION));
 
@@ -414,6 +415,7 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
       enabled_features,
       testing::UnorderedElementsAre(
           DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM,
+          DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM,
           DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION));
 
   // Overwriting options.
