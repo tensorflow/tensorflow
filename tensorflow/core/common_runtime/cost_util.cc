@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/cost_util.h"
 
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
