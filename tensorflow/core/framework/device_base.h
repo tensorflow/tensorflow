@@ -20,7 +20,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/macros.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/tensor.h"

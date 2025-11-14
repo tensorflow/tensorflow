@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/function_handle_cache.h"
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
