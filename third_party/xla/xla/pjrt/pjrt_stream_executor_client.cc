@@ -642,7 +642,7 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
     options.dims = dims;
     options.permutation = permutation;
     options.input_layout = TransposePlan::Striding{*byte_strides};
-    absl::MutexLock lock(&transpose_mu_);
+    absl::MutexLock lock(transpose_mu_);
     TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }
 
@@ -942,7 +942,7 @@ absl::Status PjRtStreamExecutorClient::DmaMap(void* data, size_t buffer_size) {
     return absl::InternalError(absl::StrFormat(
         "Failed to register host memory at address: %ps", data));
   }
-  absl::MutexLock lock(&dma_maps_mutex_);
+  absl::MutexLock lock(dma_maps_mutex_);
   dma_maps_.insert({data, buffer_size});
   return absl::OkStatus();
 }
@@ -959,7 +959,7 @@ absl::Status PjRtStreamExecutorClient::DmaUnmap(void* data) {
     return absl::InternalError(absl::StrFormat(
         "Failed to unregister host memory at address: %ps", data));
   }
-  absl::MutexLock lock(&dma_maps_mutex_);
+  absl::MutexLock lock(dma_maps_mutex_);
   dma_maps_.erase(data);
   return absl::OkStatus();
 }
@@ -1532,7 +1532,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
           {{"channel_id", channel_id_}});
     });
 
-    absl::ReleasableMutexLock lock(&mu_);
+    absl::ReleasableMutexLock lock(mu_);
 
     VLOG(3) << "Add chunk to a H2D channel #" << channel_id_ << ": "
             << "size=" << chunk.size() << ", "
@@ -2248,7 +2248,7 @@ PjRtStreamExecutorLoadedExecutable::Execute(
             ExecuteHelper(argument_handles[i], replica, partition, run_id,
                           options, returned_futures.has_value());
 
-        absl::MutexLock lock(&mu);
+        absl::MutexLock lock(mu);
         --running;
         if (!results[i].ok()) {
           if (failed == 0) {
@@ -2263,7 +2263,7 @@ PjRtStreamExecutorLoadedExecutable::Execute(
       mu.AssertHeld();
       return running == 0 || failed > 0;
     };
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     mu.Await(absl::Condition(&done_running_or_failed));
     if (failed > 0) {
       auto done_running = [&]() {
@@ -2960,7 +2960,7 @@ PjRtStreamExecutorClient::Load(std::unique_ptr<PjRtExecutable> executable,
 
 bool PjRtStreamExecutorClient::IsDmaMapped(const void* data_start,
                                            int64_t transfer_size) {
-  absl::MutexLock lock(&dma_maps_mutex_);
+  absl::MutexLock lock(dma_maps_mutex_);
   if (!dma_maps_.empty()) {
     void* data_end = (char*)data_start + transfer_size;
     for (const auto& [map_start, map_size] : dma_maps_) {
