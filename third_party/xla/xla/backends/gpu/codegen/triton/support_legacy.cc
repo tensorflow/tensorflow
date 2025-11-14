@@ -290,12 +290,11 @@ CodegenDecision CanTritonHandleGEMM(
   CHECK(cuda_compute_capability || rocm_compute_capability);
 
   if (dot.precision_config().algorithm() == PrecisionConfig::ALG_UNSET) {
-    if (!tsl::tensor_float_32_execution_enabled() ||
-        absl::c_any_of(dot.precision_config().operand_precision(),
+    if (absl::c_any_of(dot.precision_config().operand_precision(),
                        [](int x) { return x != PrecisionConfig::DEFAULT; })) {
       return CodegenDecision::Forbid(
-          "Having non-default operand precisions or TensorFloat-32 disabled "
-          "for Dot op with unset algorithm.");
+          "Having non-default operand precisions for Dot op with unset "
+          "algorithm.");
     }
   } else {
     if (!IsDotAlgorithmSupportedByTriton(dot.precision_config().algorithm(),
