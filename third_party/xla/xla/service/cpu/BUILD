@@ -52,7 +52,6 @@ filegroup(
     name = "runtime_srcs",
     srcs = [
         # Single-threaded support.
-        "runtime_key_value_sort.cc",
         "runtime_single_threaded_conv2d.cc",
         "runtime_single_threaded_conv3d.cc",
         "runtime_single_threaded_matmul_c128.cc",
@@ -84,7 +83,6 @@ filegroup(
     name = "runtime_hdrs",
     srcs = [
         # Single-threaded support.
-        "runtime_key_value_sort.h",
         "runtime_single_threaded_conv2d.h",
         "runtime_single_threaded_conv3d.h",
         "runtime_single_threaded_matmul.h",
@@ -1186,15 +1184,7 @@ cc_library(
 
 cc_library(
     name = "runtime_key_value_sort",
-    srcs = ["runtime_key_value_sort.cc"],
-    hdrs = ["runtime_key_value_sort.h"],
-    copts = runtime_copts(),
     visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
-        "@eigen_archive//:eigen3",
-    ],
 )
 
 cc_library(
