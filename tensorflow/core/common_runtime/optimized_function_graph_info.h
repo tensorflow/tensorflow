@@ -33,13 +33,13 @@ namespace tensorflow {
 // third_party/tensorflow/core/framework/optimized_function_graph.proto.
 struct OptimizedFunctionGraphInfo {
   // Function name.
-  string name;
+  std::string name;
   // Optimized function graph.
   std::unique_ptr<Graph> function_graph;
   // Optimized function library.
   FunctionLibraryDefinition lib_def;
   // Map from original node names to control return names.
-  std::unordered_map<string, string> node_name_to_control_ret;
+  std::unordered_map<std::string, std::string> node_name_to_control_ret;
   // Return node types of the function.
   DataTypeVector ret_types;
   // Number of return nodes.
@@ -55,7 +55,8 @@ struct OptimizedFunctionGraphInfo {
   OptimizedFunctionGraphInfo(
       const std::string& name, std::unique_ptr<Graph>&& graph,
       FunctionLibraryDefinition&& lib_def,
-      const std::unordered_map<string, string>& node_name_to_control_ret,
+      const std::unordered_map<std::string, std::string>&
+          node_name_to_control_ret,
       const DataTypeVector& ret_types, size_t num_return_nodes,
       uint64_t optimization_duration_usecs,
       OptimizedFunctionGraph::OptimizationSource optimization_source)

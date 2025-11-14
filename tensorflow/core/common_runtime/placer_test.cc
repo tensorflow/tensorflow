@@ -94,30 +94,30 @@ class FakeDevice : public Device {
 
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
-  static std::unique_ptr<Device> MakeDevice(const string& name,
-                                            const string& device_type) {
+  static std::unique_ptr<Device> MakeDevice(const std::string& name,
+                                            const std::string& device_type) {
     DeviceAttributes device_attributes;
     device_attributes.set_name(name);
     device_attributes.set_device_type(device_type);
     return std::unique_ptr<Device>(new FakeDevice(device_attributes));
   }
 
-  static std::unique_ptr<Device> MakeCPU(const string& name) {
+  static std::unique_ptr<Device> MakeCPU(const std::string& name) {
     return MakeDevice(name, "FakeCPU");
   }
 
-  static std::unique_ptr<Device> MakeGPU(const string& name) {
+  static std::unique_ptr<Device> MakeGPU(const std::string& name) {
     return MakeDevice(name, "FakeGPU");
   }
 };
 
 class DummyFactory : public DeviceFactory {
  public:
-  absl::Status ListPhysicalDevices(std::vector<string>* devices) override {
+  absl::Status ListPhysicalDevices(std::vector<std::string>* devices) override {
     return absl::OkStatus();
   }
   absl::Status CreateDevices(
-      const SessionOptions& options, const string& name_prefix,
+      const SessionOptions& options, const std::string& name_prefix,
       std::vector<std::unique_ptr<Device>>* devices) override {
     return absl::OkStatus();
   }
@@ -240,10 +240,10 @@ class PlacerTest : public ::testing::Test {
     // objects.
     for (int i = 0; i < num_devices; ++i) {
       local_devices_.emplace_back(FakeDevice::MakeCPU(
-          strings::StrCat("/job:a/replica:0/task:0/device:FakeCPU:", i)));
+          absl::StrCat("/job:a/replica:0/task:0/device:FakeCPU:", i)));
       devices_.AddDevice(local_devices_.back().get());
       // Insert the GPUs in reverse order.
-      local_devices_.emplace_back(FakeDevice::MakeGPU(strings::StrCat(
+      local_devices_.emplace_back(FakeDevice::MakeGPU(absl::StrCat(
           "/job:a/replica:0/task:0/device:FakeGPU:", num_devices - 1 - i)));
       devices_.AddDevice(local_devices_.back().get());
     }
@@ -347,7 +347,7 @@ class PlacerTest : public ::testing::Test {
   // Returns the node in "graph" with the given name.
   //
   // REQUIRES: "graph" was produced by the most recent call to BuildGraph.
-  Node* GetNodeByName(const Graph& graph, const string& name) {
+  Node* GetNodeByName(const Graph& graph, const std::string& name) {
     const auto search = nodes_by_name_.find(name);
     CHECK(search != nodes_by_name_.end()) << "Unknown node name: " << name;
     return graph.FindNodeId(search->second);
@@ -356,10 +356,10 @@ class PlacerTest : public ::testing::Test {
  protected:
   std::vector<std::unique_ptr<Device>> local_devices_;
   DeviceSet devices_;
-  std::unordered_map<string, int> nodes_by_name_;
+  std::unordered_map<std::string, int> nodes_by_name_;
 
-  absl::Status ReferenceTestHelper(const string& variable_op_type,
-                                   const string& assign_op_type,
+  absl::Status ReferenceTestHelper(const std::string& variable_op_type,
+                                   const std::string& assign_op_type,
                                    const DeviceType& expected_device_type);
 
  private:
@@ -941,7 +941,7 @@ TEST_F(PlacerTest, TestAssignedGpuDeviceToCpuDevice) {
 // Assign op of "assign_op_type", and expect all of the ops to be
 // placed on a device of type "expected_device_type".
 absl::Status PlacerTest::ReferenceTestHelper(
-    const string& variable_op_type, const string& assign_op_type,
+    const std::string& variable_op_type, const std::string& assign_op_type,
     const DeviceType& expected_device_type) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
@@ -950,9 +950,9 @@ absl::Status PlacerTest::ReferenceTestHelper(
     // Build ten variable-and-assignment pairs.
     for (int i = 0; i < 10; ++i) {
       Node* var = ops::SourceOp(variable_op_type,
-                                b.opts().WithName(strings::StrCat("var_", i)));
+                                b.opts().WithName(absl::StrCat("var_", i)));
       ops::BinaryOp(assign_op_type, var, input,
-                    b.opts().WithName(strings::StrCat("assign_", i)));
+                    b.opts().WithName(absl::StrCat("assign_", i)));
     }
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
@@ -960,10 +960,9 @@ absl::Status PlacerTest::ReferenceTestHelper(
   TF_RETURN_IF_ERROR(Place(&g));
 
   for (int i = 0; i < 10; ++i) {
-    EXPECT_COLOCATED(g, strings::StrCat("var_", i),
-                     strings::StrCat("assign_", i));
-    EXPECT_DEVICE_TYPE(g, strings::StrCat("var_", i), expected_device_type);
-    EXPECT_DEVICE_TYPE(g, strings::StrCat("assign_", i), expected_device_type);
+    EXPECT_COLOCATED(g, absl::StrCat("var_", i), absl::StrCat("assign_", i));
+    EXPECT_DEVICE_TYPE(g, absl::StrCat("var_", i), expected_device_type);
+    EXPECT_DEVICE_TYPE(g, absl::StrCat("assign_", i), expected_device_type);
   }
 
   return absl::OkStatus();
@@ -1021,8 +1020,8 @@ REGISTER_KERNEL_BUILDER(Name("TestTwoHandlesIn").Device("FakeGPU"), DummyOp);
 
 // Tests all combinations of resource handles and ops using them.
 TEST_F(PlacerTest, TestResourceHandle) {
-  auto handle_test = [this](const string& var_op_name,
-                            const string& use_op_name, DeviceType device) {
+  auto handle_test = [this](const std::string& var_op_name,
+                            const std::string& use_op_name, DeviceType device) {
     Graph g(OpRegistry::Global());
     {  // Scope for temporary variables used to construct g.
       GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1421,9 +1420,9 @@ TEST_F(PlacerTest, TestColocationAndReferenceConnections) {
     for (int i = 0; i < 10; ++i) {
       // Declare ten variable and assignment pairs.
       Node* var = ops::SourceOp("TestVariable",
-                                b.opts().WithName(strings::StrCat("var_", i)));
+                                b.opts().WithName(absl::StrCat("var_", i)));
       ops::BinaryOp("TestAssign", var, input,
-                    b.opts().WithName(strings::StrCat("assign_", i)));
+                    b.opts().WithName(absl::StrCat("assign_", i)));
     }
     for (int i = 10; i < 100; ++i) {
       // Create a variable colocated with some existing variable, and
@@ -1431,29 +1430,26 @@ TEST_F(PlacerTest, TestColocationAndReferenceConnections) {
       Node* var = ops::SourceOp(
           "TestVariable",
           b.opts()
-              .WithName(strings::StrCat("var_", i))
-              .WithAttr("_class", {strings::StrCat("loc:@var_", i % 6)}));
+              .WithName(absl::StrCat("var_", i))
+              .WithAttr("_class", {absl::StrCat("loc:@var_", i % 6)}));
       ops::BinaryOp(
           "TestAssign", var, input,
           b.opts()
-              .WithName(strings::StrCat("assign_", i))
-              .WithAttr("_class", {strings::StrCat("loc:@assign_", i % 3)}));
+              .WithName(absl::StrCat("assign_", i))
+              .WithAttr("_class", {absl::StrCat("loc:@assign_", i % 3)}));
     }
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
   TF_EXPECT_OK(Place(&g));
   for (int i = 0; i < 10; ++i) {
-    EXPECT_COLOCATED(g, strings::StrCat("var_", i),
-                     strings::StrCat("assign_", i));
+    EXPECT_COLOCATED(g, absl::StrCat("var_", i), absl::StrCat("assign_", i));
   }
   for (int i = 10; i < 100; ++i) {
-    EXPECT_COLOCATED(g, strings::StrCat("var_", i),
-                     strings::StrCat("assign_", i));
-    EXPECT_COLOCATED(g, strings::StrCat("var_", i),
-                     strings::StrCat("var_", i % 6));
-    EXPECT_COLOCATED(g, strings::StrCat("assign_", i),
-                     strings::StrCat("assign_", i % 3));
+    EXPECT_COLOCATED(g, absl::StrCat("var_", i), absl::StrCat("assign_", i));
+    EXPECT_COLOCATED(g, absl::StrCat("var_", i), absl::StrCat("var_", i % 6));
+    EXPECT_COLOCATED(g, absl::StrCat("assign_", i),
+                     absl::StrCat("assign_", i % 3));
   }
 }
 
@@ -1574,8 +1570,8 @@ TEST_F(PlacerTest, TestNoKernelsRegisteredWithNoRequestedDevice) {
 // and the requested device has the same (job, replica, task) as the placer's
 // local device
 TEST_F(PlacerTest, TestNoKernelsRegisteredWithRequestedDeviceLocal) {
-  const string cpu_device = "/job:b/replica:0/task:0/device:FakeCPU:0";
-  const string gpu_device = "/job:b/replica:0/task:0/device:FakeGPU:0";
+  const std::string cpu_device = "/job:b/replica:0/task:0/device:FakeCPU:0";
+  const std::string gpu_device = "/job:b/replica:0/task:0/device:FakeGPU:0";
 
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
@@ -1602,8 +1598,8 @@ TEST_F(PlacerTest, TestNoKernelsRegisteredWithRequestedDeviceLocal) {
 // and the requested device has different (job, replica, task) than the placer's
 // local device
 TEST_F(PlacerTest, TestNoKernelsRegisteredWithRequestedDeviceRemote) {
-  const string local_device = "/job:b/replica:0/task:0/device:FakeCPU:0";
-  const string remote_device = "/job:b/replica:0/task:1/device:FakeGPU:0";
+  const std::string local_device = "/job:b/replica:0/task:0/device:FakeCPU:0";
+  const std::string remote_device = "/job:b/replica:0/task:1/device:FakeGPU:0";
 
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
@@ -1974,7 +1970,7 @@ TEST_P(SoftPlacementPlacerTest,
           NDef("b", "_Arg", {}, {{"T", DT_RESOURCE}}, kCPU),
           NDef("id1", "Identity", {"a"},
                {{"T", DT_RESOURCE},
-                {"_class", absl::Span<const string>({"loc:@id2"})}}),
+                {"_class", absl::Span<const std::string>({"loc:@id2"})}}),
           NDef("id2", "Identity", {"b"}, {{"T", DT_RESOURCE}}),
       },
       // FunctionLib
@@ -2021,7 +2017,7 @@ TEST_F(PlacerTest, RequestedDeviceCanBeOverridden) {
           NDef("id_b", "Identity", {"b"}, {{"T", DT_RESOURCE}}, kCPU),
           NDef("id1", "Identity", {"id_a"},
                {{"T", DT_RESOURCE},
-                {"_class", absl::Span<const string>({"loc:@id2"})}}),
+                {"_class", absl::Span<const std::string>({"loc:@id2"})}}),
           NDef("id2", "Identity", {"id_b"}, {{"T", DT_RESOURCE}}),
       },
       // FunctionLib
@@ -2084,7 +2080,7 @@ TEST_P(SoftPlacementPlacerTest,
           NDef("id_b", "Identity", {"b"}, {{"T", DT_RESOURCE}}),
           NDef("id1", "Identity", {"id_a"},
                {{"T", DT_RESOURCE},
-                {"_class", absl::Span<const string>({"loc:@id2"})}}),
+                {"_class", absl::Span<const std::string>({"loc:@id2"})}}),
           NDef("id2", "Identity", {"id_b"}, {{"T", DT_RESOURCE}}),
       },
       // FunctionLib

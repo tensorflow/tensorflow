@@ -38,9 +38,9 @@ namespace {
 // `partitions` maps device names to the graphdef assigned to that device.
 absl::Status PartitionFunctionGraph(
     const DeviceSet& device_set, Graph* graph,
-    std::unordered_map<string, GraphDef>* partitions,
-    std::function<string(const Node*)> node_to_loc,
-    std::function<string(const Edge*)> get_tensor_name_attr) {
+    std::unordered_map<std::string, GraphDef>* partitions,
+    std::function<std::string(const Node*)> node_to_loc,
+    std::function<std::string(const Edge*)> get_tensor_name_attr) {
   PartitionOptions partition_options;
   if (node_to_loc != nullptr) {
     partition_options.node_to_loc = node_to_loc;
@@ -54,11 +54,11 @@ absl::Status PartitionFunctionGraph(
     };
   }
   int64_t edge_name_counter = 0;
-  partition_options.new_name = [&edge_name_counter](const string& prefix) {
-    return strings::StrCat(prefix, "/_", ++edge_name_counter);
+  partition_options.new_name = [&edge_name_counter](const std::string& prefix) {
+    return absl::StrCat(prefix, "/_", ++edge_name_counter);
   };
   partition_options.get_incarnation =
-      [&device_set](const string& name) -> int64 {
+      [&device_set](const std::string& name) -> int64_t {
     const Device* d = device_set.FindDeviceByName(name);
     if (d == nullptr) {
       return PartitionOptions::kIllegalIncarnation;
@@ -117,9 +117,9 @@ absl::Status MakeSendRecvDependencyExplicit(Graph* graph) {
 
 absl::Status PartitionFunctionGraph(
     const DeviceSet& device_set, std::unique_ptr<Graph> graph,
-    std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs,
-    std::function<string(const Edge*)> get_tensor_name_attr) {
-  std::unordered_map<string, GraphDef> partitions;
+    std::unordered_map<std::string, std::unique_ptr<Graph>>* subgraphs,
+    std::function<std::string(const Edge*)> get_tensor_name_attr) {
+  std::unordered_map<std::string, GraphDef> partitions;
   TF_RETURN_IF_ERROR(
       PartitionFunctionGraph(device_set, graph.get(), &partitions,
                              /*node_to_loc=*/nullptr, get_tensor_name_attr));
@@ -128,7 +128,7 @@ absl::Status PartitionFunctionGraph(
       graph->flib_def().default_registry();
   graph.reset();
   for (auto& partition : partitions) {
-    const string& device = partition.first;
+    const std::string& device = partition.first;
     GraphDef& graph_def = partition.second;
     // Each partition gets a new graph.
     auto subgraph = std::make_unique<Graph>(default_registry);
@@ -170,7 +170,7 @@ absl::StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
   // partitioning.
   auto new_graph = std::make_unique<Graph>(graph->flib_def());
 
-  std::unordered_map<string, GraphDef> partitions;
+  std::unordered_map<std::string, GraphDef> partitions;
   TF_RETURN_IF_ERROR(PartitionFunctionGraph(device_set, graph.get(),
                                             &partitions, node_to_loc,
                                             /*get_tensor_name_attr=*/nullptr));
@@ -266,9 +266,9 @@ absl::Status UpdateArgAndRetvalMetadata(
   return absl::OkStatus();
 }
 
-string FunctionNameGenerator::GetName() {
+std::string FunctionNameGenerator::GetName() {
   while (true) {
-    const string candidate = strings::StrCat(name_, "_", counter_++);
+    const std::string candidate = absl::StrCat(name_, "_", counter_++);
     if (flib_def_->Find(candidate) == nullptr) {
       return candidate;
     }
