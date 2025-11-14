@@ -46,6 +46,7 @@ using int16 ABSL_DEPRECATE_AND_INLINE() = int16_t;
 using int32 ABSL_DEPRECATE_AND_INLINE() = int32_t;
 using int64 ABSL_DEPRECATE_AND_INLINE() = int64_t;
 
+using tsl::float4_e2m1fn;
 using tsl::float8_e4m3b11fnuz;
 using tsl::float8_e4m3fn;
 using tsl::float8_e4m3fnuz;

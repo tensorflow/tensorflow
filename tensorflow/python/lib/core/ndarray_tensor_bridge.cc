@@ -207,6 +207,9 @@ absl::Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
     case TF_FLOAT8_E5M2FNUZ:
       *out_pyarray_type = custom_dtypes.float8_e5m2fnuz;
       break;
+    case TF_FLOAT4_E2M1FN:
+      *out_pyarray_type = custom_dtypes.float4_e2m1fn;
+      break;
     case TF_INT4:
       *out_pyarray_type = custom_dtypes.int4;
       break;
