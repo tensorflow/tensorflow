@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "Python.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "pybind11/chrono.h"  // from @pybind11
 #include "pybind11/complex.h"  // from @pybind11
 #include "pybind11/detail/common.h"  // from @pybind11

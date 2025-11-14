@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
+#include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/xla_data.pb.h"
 
