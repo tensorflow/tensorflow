@@ -136,11 +136,11 @@ struct GatherFunctorBatchedCPU {
     const int64_t batch_size = params.dimension(0);
     const int64_t outer_size = params.dimension(1);
 
-    bool use_large = (slice_size > std::numeric_limits<int32>::max() ||
-                      params.size() > std::numeric_limits<int32>::max() ||
-                      indices_size > std::numeric_limits<int32>::max() ||
+    bool use_large = (slice_size > std::numeric_limits<int32_t>::max() ||
+                      params.size() > std::numeric_limits<int32_t>::max() ||
+                      indices_size > std::numeric_limits<int32_t>::max() ||
                       batch_size * outer_size * indices_size * slice_size >
-                          std::numeric_limits<int32>::max());
+                          std::numeric_limits<int32_t>::max());
 #define CALL(elems)                                             \
   do {                                                          \
     if (use_large) {                                            \

@@ -48,7 +48,7 @@ class DecodePaddedRawOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(length_input.shape()),
                 errors::InvalidArgument("k must be scalar, got shape ",
                                         length_input.shape().DebugString()));
-    fixed_length = length_input.scalar<int32>()();
+    fixed_length = length_input.scalar<int32_t>()();
 
     OP_REQUIRES(
         context, fixed_length % sizeof(T) == 0,
@@ -146,11 +146,11 @@ class DecodePaddedRawOp : public OpKernel {
 
 REGISTER(float);
 REGISTER(double);
-REGISTER(int32);
-REGISTER(uint16);
-REGISTER(uint8);
-REGISTER(int16);
-REGISTER(int8);
+REGISTER(int32_t);
+REGISTER(uint16_t);
+REGISTER(uint8_t);
+REGISTER(int16_t);
+REGISTER(int8_t);
 REGISTER(int64_t);
 REGISTER(bfloat16);
 

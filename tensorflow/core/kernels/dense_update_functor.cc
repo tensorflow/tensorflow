@@ -31,7 +31,7 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace functor {
 
 template <>
-struct DenseUpdate<CPUDevice, string, ASSIGN> {
+struct DenseUpdate<CPUDevice, std::string, ASSIGN> {
   void operator()(const CPUDevice& d, typename TTypes<tstring>::Flat params,
                   typename TTypes<tstring>::ConstFlat update) {
     if (params.dimension(0) == 1) {

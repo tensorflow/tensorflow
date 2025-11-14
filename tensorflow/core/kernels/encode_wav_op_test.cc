@@ -61,7 +61,7 @@ TEST(EncodeWavOpTest, EncodeWavTest) {
                            &outputs));
 
   const Tensor& audio = outputs[0];
-  const int sample_rate = outputs[1].flat<int32>()(0);
+  const int sample_rate = outputs[1].flat<int32_t>()(0);
 
   EXPECT_EQ(2, audio.dims());
   EXPECT_EQ(2, audio.dim_size(1));

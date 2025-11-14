@@ -813,11 +813,11 @@ class ParseSingleSequenceExampleOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input_list("context_dense_defaults",
                                         &context_dense_defaults));
 
-    std::vector<string> context_dense_keys_t(attrs_.num_context_dense);
-    std::vector<string> context_sparse_keys_t(attrs_.num_context_sparse);
-    std::vector<string> feature_list_dense_keys_t(
+    std::vector<std::string> context_dense_keys_t(attrs_.num_context_dense);
+    std::vector<std::string> context_sparse_keys_t(attrs_.num_context_sparse);
+    std::vector<std::string> feature_list_dense_keys_t(
         attrs_.num_feature_list_dense);
-    std::vector<string> feature_list_sparse_keys_t(
+    std::vector<std::string> feature_list_sparse_keys_t(
         attrs_.num_feature_list_sparse);
     absl::call_once(
         flag_, [&context_dense_keys_t, &context_sparse_keys_t,
@@ -827,7 +827,8 @@ class ParseSingleSequenceExampleOp : public OpKernel {
           metrics::RecordParseSparseFeature(context_sparse_keys_t.size() +
                                             feature_list_sparse_keys_t.size());
         });
-    std::unordered_set<string> feature_list_dense_missing_assumed_empty_set;
+    std::unordered_set<std::string>
+        feature_list_dense_missing_assumed_empty_set;
     CHECK_EQ(context_dense_keys.size(), attrs_.num_context_dense);
     CHECK_EQ(context_sparse_keys.size(), attrs_.num_context_sparse);
     CHECK_EQ(feature_list_dense_keys.size(), attrs_.num_feature_list_dense);
@@ -1225,7 +1226,7 @@ class DecodeJSONExampleOp : public OpKernel {
           resolver_.get(), "type.googleapis.com/tensorflow.Example", &in, &out);
       OP_REQUIRES(ctx, status.ok(),
                   errors::InvalidArgument("Error while parsing JSON: ",
-                                          string(status.message())));
+                                          std::string(status.message())));
     }
   }
 
