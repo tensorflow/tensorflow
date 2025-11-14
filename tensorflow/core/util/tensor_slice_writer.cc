@@ -36,7 +36,8 @@ namespace {
 
 class TableBuilder : public TensorSliceWriter::Builder {
  public:
-  TableBuilder(const string& name, WritableFile* f) : name_(name), file_(f) {
+  TableBuilder(const std::string& name, WritableFile* f)
+      : name_(name), file_(f) {
     table::Options option;
     option.compression = table::kNoCompression;
     builder_ = std::make_unique<table::TableBuilder>(option, f);
@@ -63,14 +64,14 @@ class TableBuilder : public TensorSliceWriter::Builder {
   }
 
  private:
-  string name_;
+  std::string name_;
   std::unique_ptr<WritableFile> file_;
   std::unique_ptr<table::TableBuilder> builder_;
 };
 }  // anonymous namespace
 
 absl::Status CreateTableTensorSliceBuilder(
-    const string& name, TensorSliceWriter::Builder** builder) {
+    const std::string& name, TensorSliceWriter::Builder** builder) {
   *builder = nullptr;
   std::unique_ptr<WritableFile> f;
   absl::Status s = Env::Default()->NewWritableFile(name, &f);
@@ -82,7 +83,7 @@ absl::Status CreateTableTensorSliceBuilder(
   }
 }
 
-TensorSliceWriter::TensorSliceWriter(const string& filename,
+TensorSliceWriter::TensorSliceWriter(const std::string& filename,
                                      CreateBuilderFunction create_builder)
     : filename_(filename),
       create_builder_(std::move(create_builder)),
@@ -113,7 +114,7 @@ absl::Status TensorSliceWriter::Finish() {
   std::unique_ptr<Builder> builder(b);
 
   // We save the saved tensor slice metadata as the first element.
-  string meta;
+  std::string meta;
   sts_.AppendToString(&meta);
   builder->Add(kSavedTensorSlicesKey, meta);
 
