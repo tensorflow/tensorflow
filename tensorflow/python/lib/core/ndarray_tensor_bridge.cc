@@ -253,10 +253,10 @@ absl::Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data,
   auto* np_array = reinterpret_cast<PyArrayObject*>(
       PyArray_SimpleNewFromData(dim_size, dims, type_num, data));
   if (np_array == nullptr) {
-    string shape_str = absl::StrJoin(
+    std::string shape_str = absl::StrJoin(
         absl::Span<npy_intp>{dims, static_cast<size_t>(dim_size)}, ", ");
     if (PyErr_Occurred()) {
-      string exception_str = PyExceptionFetch();
+      std::string exception_str = PyExceptionFetch();
       PyErr_Clear();
       return errors::InvalidArgument(
           "Failed to create numpy array from tensor of shape [", shape_str,
