@@ -57,7 +57,7 @@ class CSRSparseMatrixComponentsOp : public OpKernel {
     OP_REQUIRES(c, index_t.dims() == 0,
                 errors::InvalidArgument("index should be a scalar, but saw: ",
                                         index_t.DebugString()));
-    int32_t index = index_t.scalar<int32>()();
+    int32_t index = index_t.scalar<int32_t>()();
     OP_REQUIRES(c, index >= 0 && index < csr_sparse_matrix->batch_size(),
                 errors::InvalidArgument("index (", index, ") not in [0, ",
                                         csr_sparse_matrix->batch_size(), ")"));
@@ -67,7 +67,7 @@ class CSRSparseMatrixComponentsOp : public OpKernel {
       c->set_output(1, csr_sparse_matrix->col_indices());
       c->set_output(2, csr_sparse_matrix->values());
     } else {
-      auto batch_ptrs = csr_sparse_matrix->batch_pointers().vec<int32>();
+      auto batch_ptrs = csr_sparse_matrix->batch_pointers().vec<int32_t>();
       auto dense_shape = csr_sparse_matrix->dense_shape().vec<int64_t>();
       int64_t rows = dense_shape(1);
       int nnz = batch_ptrs(index + 1) - batch_ptrs(index);
@@ -78,23 +78,23 @@ class CSRSparseMatrixComponentsOp : public OpKernel {
           c, c->allocate_output(0, TensorShape({rows + 1}), &row_ptrs_t));
       OP_REQUIRES_OK(c, c->allocate_output(1, TensorShape({nnz}), &col_inds_t));
       OP_REQUIRES_OK(c, c->allocate_output(2, TensorShape({nnz}), &values_t));
-      auto row_ptrs = row_ptrs_t->vec<int32>();
-      auto col_inds = col_inds_t->vec<int32>();
+      auto row_ptrs = row_ptrs_t->vec<int32_t>();
+      auto col_inds = col_inds_t->vec<int32_t>();
       auto values = values_t->vec<T>();
 
-      functor::Slice<Device, int32, 1> slice_int;
+      functor::Slice<Device, int32_t, 1> slice_int;
       functor::Slice<Device, T, 1> slice_t;
       typedef Eigen::DSizes<Eigen::DenseIndex, 1> EVec;
       const Device& d = c->eigen_device<Device>();
       slice_int(d,
                 /*output*/ row_ptrs,
-                /*input*/ csr_sparse_matrix->row_pointers().vec<int32>(),
+                /*input*/ csr_sparse_matrix->row_pointers().vec<int32_t>(),
                 /*slice_indices*/
                 EVec{static_cast<Eigen::DenseIndex>(index * (rows + 1))},
                 /*slice_sizes*/ EVec{static_cast<Eigen::DenseIndex>(rows + 1)});
       slice_int(d,
                 /*output*/ col_inds,
-                /*input*/ csr_sparse_matrix->col_indices().vec<int32>(),
+                /*input*/ csr_sparse_matrix->col_indices().vec<int32_t>(),
                 /*slice_indices*/ EVec{batch_ptrs(index)},
                 /*slice_sizes*/ EVec{nnz});
       slice_t(d,
