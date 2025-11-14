@@ -26,7 +26,7 @@ Output ConstHelper(const Scope& scope, const T& value, DataType dtype) {
 
   Node* ret;
   Graph* graph = scope.graph();
-  const string unique_name = scope.GetUniqueNameForOp("Const");
+  const std::string unique_name = scope.GetUniqueNameForOp("Const");
   auto builder = NodeBuilder(unique_name, "Const")
                      .Attr("value", value)
                      .Attr("dtype", dtype);
