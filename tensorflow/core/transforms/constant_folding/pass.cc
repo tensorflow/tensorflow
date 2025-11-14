@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <cstdint>
 #include <memory>
 #include <numeric>
