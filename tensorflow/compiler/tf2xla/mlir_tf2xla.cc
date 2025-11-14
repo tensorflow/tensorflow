@@ -127,7 +127,7 @@ absl::Status ConvertGraphDefToXlaViaMlir(
   // with a placeholder node that contains a single output.
   FunctionLibraryDefinition flib_def(OpRegistry::Global(), graph_def.library());
   std::unique_ptr<Graph> graph(new Graph(flib_def));
-  std::unordered_map<string, string> feed_name_remap;
+  std::unordered_map<std::string, std::string> feed_name_remap;
   TF_RETURN_IF_ERROR(AddPlaceholdersForFeeds(config, graph->op_registry(),
                                              &feed_name_remap, &graph_def));
 
