@@ -186,6 +186,7 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
        DebugOptions::DETECTION_MODE_NONE) ||
       (debug_options.xla_gpu_detect_inf() !=
        DebugOptions::DETECTION_MODE_NONE)) {
+    LOG(ERROR) << "Adding ThunkBufferDebugPass for nan/inf checking";
     pipeline.AddPass(std::make_unique<ThunkBufferDebugPass>(
         ThunkBufferDebugPass::Mode::kFloatChecker));
   }
