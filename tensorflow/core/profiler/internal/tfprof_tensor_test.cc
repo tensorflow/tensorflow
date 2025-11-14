@@ -30,7 +30,7 @@ namespace tfprof {
 class TFProfTensorTest : public ::testing::Test {
  protected:
   TFProfTensorTest() {
-    string graph_path =
+    std::string graph_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "core/profiler/internal/testdata/graph.pbtxt");
     std::unique_ptr<tensorflow::GraphDef> graph_pb =
@@ -41,8 +41,8 @@ class TFProfTensorTest : public ::testing::Test {
     std::unique_ptr<tensorflow::RunMetadata> run_meta_pb;
     std::unique_ptr<OpLogProto> op_log_pb;
 
-    string ckpt_path = io::JoinPath(testing::TensorFlowSrcRoot(),
-                                    "core/profiler/internal/testdata/ckpt");
+    std::string ckpt_path = io::JoinPath(
+        testing::TensorFlowSrcRoot(), "core/profiler/internal/testdata/ckpt");
     TF_Status* status = TF_NewStatus();
     std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader =
         std::make_unique<checkpoint::CheckpointReader>(ckpt_path, status);

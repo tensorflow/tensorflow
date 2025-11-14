@@ -32,8 +32,8 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 namespace {
-string FormatToalExecTime(const ShowMultiNode* node,
-                          const ShowMultiNode* root) {
+std::string FormatToalExecTime(const ShowMultiNode* node,
+                               const ShowMultiNode* root) {
   double accu_pct = 0.0;
   double pct = 0.0;
   if (node->proto().total_exec_micros() > 0) {
@@ -48,7 +48,8 @@ string FormatToalExecTime(const ShowMultiNode* node,
       absl::StrFormat("%s (%.2f%%, %.2f%%)",
                       FormatTime(node->proto().exec_micros()), accu_pct, pct));
 }
-string FormatCPUExecTime(const ShowMultiNode* node, const ShowMultiNode* root) {
+std::string FormatCPUExecTime(const ShowMultiNode* node,
+                              const ShowMultiNode* root) {
   double accu_pct = 0.0;
   double pct = 0.0;
   if (node->proto().total_cpu_exec_micros() > 0) {
@@ -63,8 +64,8 @@ string FormatCPUExecTime(const ShowMultiNode* node, const ShowMultiNode* root) {
                               FormatTime(node->proto().cpu_exec_micros()),
                               accu_pct, pct));
 }
-string FormatAcceleratorExecTime(const ShowMultiNode* node,
-                                 const ShowMultiNode* root) {
+std::string FormatAcceleratorExecTime(const ShowMultiNode* node,
+                                      const ShowMultiNode* root) {
   double accu_pct = 0.0;
   double pct = 0.0;
   if (node->proto().total_accelerator_exec_micros() > 0) {
@@ -83,7 +84,7 @@ string FormatAcceleratorExecTime(const ShowMultiNode* node,
 }  // namespace
 
 void TFOp::AddNode(TFGraphNode* node) {
-  const string& op = node->op();
+  const std::string& op = node->op();
   if (tfcnodes_map_.find(op) == tfcnodes_map_.end()) {
     tfcnodes_map_[op] = std::make_unique<TFMultiGraphNode>(op);
   }
@@ -172,7 +173,7 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
     }
   }
   if (opts.output_type == kOutput[1] || opts.output_type == kOutput[2]) {
-    string display_str = FormatLegend(opts);
+    std::string display_str = FormatLegend(opts);
     for (OpNode* node : show_nodes) {
       display_str += FormatNode(node, root_.get(), opts);
     }
@@ -191,14 +192,14 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
 }
 
 int64_t TFOp::SearchRoot(const std::vector<OpNode*> nodes,
-                         const std::vector<string>& regexes) {
+                         const std::vector<std::string>& regexes) {
   if (regexes.empty() || (regexes.size() == 1 && regexes[0] == ".*")) {
     return 0;
   }
   int64_t i = 0;
   const int64_t nodes_size = nodes.size();
   for (; i < nodes_size; ++i) {
-    for (const string& regex : regexes) {
+    for (const std::string& regex : regexes) {
       if (RE2::FullMatch(nodes[i]->name(), regex)) {
         return i;
       }
@@ -207,9 +208,9 @@ int64_t TFOp::SearchRoot(const std::vector<OpNode*> nodes,
   return i;
 }
 
-string TFOp::FormatMemoryNode(int64_t node_total_bytes,
-                              int64_t root_total_bytes,
-                              int64_t node_bytes) const {
+std::string TFOp::FormatMemoryNode(int64_t node_total_bytes,
+                                   int64_t root_total_bytes,
+                                   int64_t node_bytes) const {
   double accu_pct = 0.0;
   double pct = 0.0;
   if (node_bytes > 0) {
@@ -221,8 +222,9 @@ string TFOp::FormatMemoryNode(int64_t node_total_bytes,
                               accu_pct, pct));
 }
 
-string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) const {
-  std::vector<string> attrs;
+std::string TFOp::FormatNode(OpNode* node, OpNode* root,
+                             const Options& opts) const {
+  std::vector<std::string> attrs;
 
   if (opts.select.find(kShown[0]) != opts.select.end()) {
     attrs.push_back(FormatMemoryNode(node->proto().total_requested_bytes(),
@@ -295,7 +297,7 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) const {
   }
 
   if (opts.select.find(kShown[6]) != opts.select.end()) {
-    std::set<string> op_types = node->node->op_types();
+    std::set<std::string> op_types = node->node->op_types();
     attrs.push_back(absl::StrJoin(op_types, "|"));
   }
 
@@ -309,11 +311,11 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) const {
                                 node->proto().graph_nodes_size())));
   }
 
-  string node_str =
+  std::string node_str =
       absl::StrFormat("%-25s%s\n", node->name(), absl::StrJoin(attrs, ", "));
 
   if (opts.select.find(kShown[8]) != opts.select.end()) {
-    string input_shape_str = FormatInputShapes(node->proto());
+    std::string input_shape_str = FormatInputShapes(node->proto());
     if (!input_shape_str.empty()) {
       node_str = absl::StrFormat("%s\n%s\n\n", node_str, input_shape_str);
     }
