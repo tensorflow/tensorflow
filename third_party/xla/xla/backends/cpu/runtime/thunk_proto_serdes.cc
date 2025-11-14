@@ -63,7 +63,10 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_convolution_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 #include "xla/backends/cpu/xnn_fusion_options.pb.h"
+#include "xla/backends/cpu/ynn_emitter.h"
 #include "xla/backends/cpu/ynn_fusion_options.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -79,12 +82,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
-
-#ifdef XLA_YNNPACK
-#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
-#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
-#include "xla/backends/cpu/ynn_emitter.h"
-#endif  // XLA_YNNPACK
 
 namespace xla::cpu {
 
