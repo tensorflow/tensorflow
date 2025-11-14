@@ -51,7 +51,7 @@ TEST(FakePythonEnvTest, GetExecutablePath) {
   Env* env = Env::Default();
   // We depend on the file/executable name to include python and fool the
   // library to think this is running under the python interpreter.
-  string path = env->GetExecutablePath();
+  std::string path = env->GetExecutablePath();
   EXPECT_TRUE(strstr(path.c_str(), kMagicBazelDirSubstring) != nullptr);
 }
 
