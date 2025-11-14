@@ -210,7 +210,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
         ctx->SetModel(model_);
       }
 
-      absl::flat_hash_set<string> experiments = GetExperiments();
+      absl::flat_hash_set<std::string> experiments = GetExperiments();
       if (experiments.contains("stage_based_autotune_v2")) {
         model_->AddExperiment("stage_based_autotune_v2");
       }
@@ -413,7 +413,7 @@ RootDataset::RootDataset(core::RefCountPtr<DatasetBase> input,
 RootDataset::~RootDataset() = default;
 
 std::unique_ptr<IteratorBase> RootDataset::MakeIteratorInternal(
-    const string& prefix) const {
+    const std::string& prefix) const {
   return std::make_unique<Iterator>(
       Iterator::Params{this, name_utils::IteratorPrefix(kDatasetType, prefix)});
 }
@@ -426,7 +426,7 @@ const std::vector<PartialTensorShape>& RootDataset::output_shapes() const {
   return input_->output_shapes();
 }
 
-string RootDataset::DebugString() const {
+std::string RootDataset::DebugString() const {
   return name_utils::DatasetDebugString(kDatasetType);
 }
 
@@ -434,7 +434,7 @@ int64_t RootDataset::CardinalityInternal(CardinalityOptions options) const {
   return input_->Cardinality(options);
 }
 
-absl::Status RootDataset::Get(OpKernelContext* ctx, int64 index,
+absl::Status RootDataset::Get(OpKernelContext* ctx, int64_t index,
                               std::vector<Tensor>* out_tensors) const {
   std::vector<const DatasetBase*> inputs;
   TF_RETURN_IF_ERROR(this->InputDatasets(&inputs));
