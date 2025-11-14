@@ -621,7 +621,40 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplific
  }
  
  // -----
-@@ -976,6 +984,26 @@
+@@ -120,6 +128,16 @@
+   return %7 : tensor<3x2x3x3xi32>
+ }
+ 
++// CHECK-LABEL: func.func @broadcast_in_dim_nested_bounded
++func.func @broadcast_in_dim_nested_bounded(%arg0: tensor<3x3xi32>, %arg1: tensor<i32>) -> tensor<3x2x?x3xi32, #stablehlo.bounds<?, ?, 3, ?>> {
++  // CHECK: [[SDS:%.+]] = stablehlo.set_dimension_size
++  // CHECK-NEXT: stablehlo.broadcast_in_dim [[SDS]], dims = [2, 0] : (tensor<?x3xi32, #stablehlo.bounds<3, ?>>) -> tensor<3x2x?x3xi32, #stablehlo.bounds<?, ?, 3, ?>>
++  %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 0 : (tensor<3x3xi32>, tensor<i32>) -> tensor<?x3xi32, #stablehlo.bounds<3, ?>>
++  %1 = stablehlo.broadcast_in_dim %0, dims = [1, 0] : (tensor<?x3xi32, #stablehlo.bounds<3, ?>>) -> tensor<3x?x2xi32, #stablehlo.bounds<?, 3, ?>>
++  %2 = stablehlo.broadcast_in_dim %1, dims = [0, 2, 1] : (tensor<3x?x2xi32, #stablehlo.bounds<?, 3, ?>>) -> tensor<3x2x?x3xi32, #stablehlo.bounds<?, ?, 3, ?>>
++  return %2 : tensor<3x2x?x3xi32, #stablehlo.bounds<?, ?, 3, ?>>
++}
++
+ // CHECK-LABEL: func.func @broadcast_in_dim_reshape
+ // CHECK-SAME:   ([[ARG0:%.+]]: tensor<3x6xi32>)
+ func.func @broadcast_in_dim_reshape(%arg0: tensor<3x6xi32>)
+@@ -132,6 +150,15 @@
+ 
+   // CHECK-NEXT: return [[R0]], [[R5]]
+   return %0, %5 : tensor<1x3x6xi32>, tensor<3x6x1xi32>
++}
++
++// CHECK-LABEL: func.func @broadcast_in_dim_bounded_no_reshape
++func.func @broadcast_in_dim_bounded_no_reshape(%arg0: tensor<20xf32>, %arg1: tensor<i32>) -> tensor<1x?xf32, #stablehlo.bounds<?, 20>> {
++  %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 0 : (tensor<20xf32>, tensor<i32>) -> tensor<?xf32, #stablehlo.bounds<20>>
++  // CHECK: stablehlo.set_dimension_size
++  // CHECK-NEXT: stablehlo.broadcast_in_dim
++  %1 = stablehlo.broadcast_in_dim %0, dims = [1] : (tensor<?xf32, #stablehlo.bounds<20>>) -> tensor<1x?xf32, #stablehlo.bounds<?, 20>>
++  return %1 : tensor<1x?xf32, #stablehlo.bounds<?, 20>>
+ }
+ 
+ // CHECK-LABEL: func.func @broadcast_in_dim_prefer_nested_reshape
+@@ -976,6 +1003,26 @@
    // CHECK-NOT: stablehlo.constant
    // CHECK: return %arg0 : tensor<f32>
    return %0 : tensor<f32>
@@ -1198,7 +1231,17 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
-@@ -134,6 +134,8 @@
+@@ -44,7 +44,8 @@
+     "same number of elements">;
+ 
+ def BroadcastNotReducibleToReshape : Constraint<
+-    CPred<"llvm::isa<stablehlo::BroadcastInDimOp>($0.getDefiningOp()) && "
++    CPred<"!llvm::cast<ShapedType>($0.getType()).hasStaticShape() || "
++          "llvm::isa<stablehlo::BroadcastInDimOp>($0.getDefiningOp()) && "
+           "!("
+             "llvm::is_sorted($0.getDefiningOp<stablehlo::BroadcastInDimOp>().getBroadcastDimensions()) && "
+             "llvm::cast<ShapedType>($0.getType()).getNumElements() == llvm::cast<ShapedType>($1.getType()).getNumElements()"
+@@ -134,6 +135,8 @@
  
  def MergePermutations : NativeCodeCall<"getMergedTransposePermutation($_builder, $0, $1)">;
  
@@ -1207,7 +1250,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
  def StableHLO_ConvertOpWithShape : NativeCodeCall<
      "stablehlo::ConvertOp::create($_builder, $_loc, $0.getType(), $1)">;
  
-@@ -149,8 +151,9 @@
+@@ -149,8 +152,9 @@
  // op(cst, X) -> op(X, cst)
  class CanonicalizeConstantToRhs<Op StableHLO_OpType>
    : Pat<(StableHLO_OpType:$op (StableHLO_ConstantOp:$lhs $value), $rhs),
@@ -1219,7 +1262,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
  
  ////////
  // AddOp
-@@ -161,8 +164,9 @@
+@@ -161,8 +165,9 @@
  
  // Pattern: add(X, 0) -> X
  def AddOp_RemoveNoop
@@ -1231,7 +1274,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
  
  ////////
  // AndOp
-@@ -173,13 +177,15 @@
+@@ -173,13 +178,15 @@
  
  // Pattern: and(X, 0) -> 0
  def AndOp_FoldToZero
@@ -1251,7 +1294,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
  
  ////////
  // BroadcastInDimOp
-@@ -188,7 +194,8 @@
+@@ -188,7 +195,8 @@
  def BroadcastInDimOp_RemoveNoop
    : Pat<(StableHLO_BroadcastInDimOp:$op $operand, IotaDims:$dims),
          (replaceWithValue $operand),
@@ -1261,7 +1304,28 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
  
  // Pattern: broadcast_in_dim(broadcast_in_dim(X, [dimsA...]), [dimsB...])
  //       -> broadcast_in_dim(X, merge(dimsA, dimsB))
-@@ -254,7 +261,8 @@
+@@ -203,8 +211,10 @@
+ 
+ // Pattern: broadcast_in_dim(X, [sorted...]) -> reshape(X, [sorted...])
+ //          [if same numel]
++// TODO: Figure out if static extents matching is valid (i.e. <=10 -> 1x[<=10])
++// for bounded dynamism, same for BroadcastInDimOp_ReplaceWithReshape
+ def BroadcastInDimOp_ReplaceWithReshape
+-  : Pat<(StableHLO_BroadcastInDimOp:$op $operand, SortedDims:$dims),
++  : Pat<(StableHLO_BroadcastInDimOp:$op AnyStaticShapeTensor:$operand, SortedDims:$dims),
+         (StableHLO_ReshapeOpWithShape $op, $operand),
+         [(NumberOfElementsEqual $op, $operand)],
+         [],
+@@ -213,7 +223,7 @@
+ // Pattern: broadcast_in_dim(X, [dims...]) -> transpose(X, [dims...])
+ //          [if same numel & rank]
+ def BroadcastInDimOp_ReplaceWithTranspose
+-  : Pat<(StableHLO_BroadcastInDimOp:$op $operand, $dims),
++  : Pat<(StableHLO_BroadcastInDimOp:$op AnyStaticShapeTensor:$operand, $dims),
+         (StableHLO_TransposeOp $operand, (InvertBroadcastDims $dims)),
+         [(NumberOfElementsEqual $op, $operand), (RankEqual $op, $operand)]>;
+ 
+@@ -254,7 +264,8 @@
  def ConvertOp_RemoveNoop
    : Pat<(StableHLO_ConvertOp:$convert $operand),
          (replaceWithValue $operand),
@@ -1271,7 +1335,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
  
  ////////
  // DynamicBroadcastInDimOp
-@@ -441,13 +449,15 @@
+@@ -441,13 +452,15 @@
  // Multiplication by 0. This fold is not trivial for floats in presence of NaNs,
  // so we currently only enable it for ints.
  def MulOp_FoldToZero
@@ -1291,7 +1355,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
  
  ////////
  // OrOp
-@@ -457,13 +467,15 @@
+@@ -457,13 +470,15 @@
  
  // Pattern: or(X, 1) -> 1
  def OrOp_FoldToOne
@@ -1311,7 +1375,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
  
  ////////
  // PadOp
-@@ -564,8 +576,9 @@
+@@ -564,8 +579,9 @@
  
  // Pattern: subtract(X, 0) -> X
  def SubtractOp_RemoveNoop
