@@ -1017,11 +1017,25 @@ cc_library(
 )
 
 cc_library(
+    name = "sort_lib",
+    srcs = ["sort_lib.cc"],
+    hdrs = ["sort_lib.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "sort_thunk",
     srcs = ["sort_thunk.cc"],
     hdrs = ["sort_thunk.h"],
     deps = [
         ":function_library",
+        ":sort_lib",
         ":thunk",
         "//xla:shape_util",
         "//xla:util",
