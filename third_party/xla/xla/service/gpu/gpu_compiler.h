@@ -273,6 +273,15 @@ class GpuCompiler : public LLVMCompiler {
     return Unimplemented("LinkModules is not implemented.");
   }
 
+  // New AOT compilation as part of the AOT split project.
+  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  NewCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
+                        const AotCompilationOptions& options);
+  // Legacy AOT compilation.
+  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
+                           const AotCompilationOptions& options);
+
   se::Platform::Id platform_id_;
 
   // The triple that represents our target.
