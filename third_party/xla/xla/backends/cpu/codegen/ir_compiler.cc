@@ -262,8 +262,8 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
   XLA_SCOPED_LOGGING_TIMER_LEVEL(
       absl::StrCat("Compiled LLVM module: ", module_name), 1);
 
-  VLOG(2) << "IR before optimizations";
-  XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
+  VLOG(3) << "IR before optimizations";
+  XLA_VLOG_LINES(3, llvm_ir::DumpToString(&module));
 
   // Get a target machine for compilation. If compilations run concurrently on
   // multiple threads, `IrCompiler` user (in most cases `SimpleOrcJIT`)
@@ -292,8 +292,8 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
     return ir_passes_error;
   }
 
-  VLOG(2) << "IR after optimizations";
-  XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
+  VLOG(3) << "IR after optimizations";
+  XLA_VLOG_LINES(3, llvm_ir::DumpToString(&module));
 
   {  // Synchronize access to user-defined hooks.
     absl::MutexLock lock(mutex_);
