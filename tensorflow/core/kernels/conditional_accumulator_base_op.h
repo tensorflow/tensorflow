@@ -88,7 +88,7 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
   DataType dtype_;
   PartialTensorShape shape_;
   ContainerInfo cinfo_;
-  string reduction_type_;
+  std::string reduction_type_;
   mutex mu_;
   Tensor accumulator_ TF_GUARDED_BY(mu_);
   bool accumulator_set_ TF_GUARDED_BY(mu_);
@@ -252,7 +252,7 @@ class ConditionalAccumulatorBaseTakeGradientOp
     }
 
     // Actually try to take gradient now
-    accumulator->TryTakeGrad(num_required_tensor->scalar<int32>()(), ctx,
+    accumulator->TryTakeGrad(num_required_tensor->scalar<int32_t>()(), ctx,
                              callback);
   }
 };
