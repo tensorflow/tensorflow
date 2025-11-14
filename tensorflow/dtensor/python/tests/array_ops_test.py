@@ -26,155 +26,154 @@ from tensorflow.python.platform import test
 
 Layout = layout_lib.Layout
 
-_MESH_DIM_X = 'x'
-_MESH_DIM_Y = 'y'
+_MESH_DIM_X = "x"
+_MESH_DIM_Y = "y"
 _MESH_DIMS = [_MESH_DIM_X, _MESH_DIM_Y]
 
 
 class ArrayOpsTest(test_util.DTensorBaseTest):
+    def setUp(self):
+        super().setUp()
 
-  def setUp(self):
-    super().setUp()
+        global_ids = test_util.create_device_ids_array((2, 1))
+        local_ids = np.ravel(global_ids).tolist()
+        mesh_dict = {  # pylint: disable=g-complex-comprehension
+            device: layout_lib.Mesh(
+                _MESH_DIMS,
+                global_ids,
+                local_ids,
+                test_util.create_device_list((2, 1), device),
+            )
+            for device in ("CPU", "GPU", "TPU")
+        }
+        self.mesh = self.configTestMesh(mesh_dict)
 
-    global_ids = test_util.create_device_ids_array((2, 1))
-    local_ids = np.ravel(global_ids).tolist()
-    mesh_dict = {  # pylint: disable=g-complex-comprehension
-        device: layout_lib.Mesh(
-            _MESH_DIMS,
-            global_ids,
-            local_ids,
-            test_util.create_device_list((2, 1), device),
+    @combinations.generate(
+        combinations.combine(is_graph=[False, True], size=[32, 4096])
+    )
+    def testTwoFills(self, is_graph, size):
+        layout_x = Layout.batch_sharded(self.mesh, _MESH_DIM_X, rank=1)
+        layout_y = Layout.batch_sharded(self.mesh, _MESH_DIM_Y, rank=1)
+
+        def fn():
+            return (
+                array_ops.fill([size], 0.0, layout=layout_x),
+                array_ops.fill([size], 0.0, layout=layout_y),
+            )
+
+        if is_graph:
+            fn = polymorphic_function.function(fn)
+
+        with api.default_mesh(self.mesh):
+            dtensor_x, dtensor_y = fn()
+        tensor = array_ops.zeros([size], layout=None)
+
+        self.assertDTensorEqual(tensor, layout_x, dtensor_x)
+        self.assertDTensorEqual(tensor, layout_y, dtensor_y)
+
+    @combinations.generate(
+        combinations.combine(
+            is_graph=[False, True],
+            size=[32, 4096],
+            nullary_op=[array_ops.zeros, array_ops.ones],
         )
-        for device in ('CPU', 'GPU', 'TPU')
-    }
-    self.mesh = self.configTestMesh(mesh_dict)
+    )
+    def testNullaryOp(self, is_graph, size, nullary_op):
+        layout_y = Layout.batch_sharded(self.mesh, _MESH_DIM_Y, rank=1)
 
-  @combinations.generate(
-      combinations.combine(is_graph=[False, True], size=[32, 4096])
-  )
-  def testTwoFills(self, is_graph, size):
-    layout_x = Layout.batch_sharded(self.mesh, _MESH_DIM_X, rank=1)
-    layout_y = Layout.batch_sharded(self.mesh, _MESH_DIM_Y, rank=1)
+        tensor = nullary_op([size], layout=None)
 
-    def fn():
-      return (
-          array_ops.fill([size], 0.0, layout=layout_x),
-          array_ops.fill([size], 0.0, layout=layout_y),
-      )
+        def fn():
+            return nullary_op([size], layout=layout_y)
 
-    if is_graph:
-      fn = polymorphic_function.function(fn)
+        if is_graph:
+            fn = polymorphic_function.function(fn)
 
-    with api.default_mesh(self.mesh):
-      dtensor_x, dtensor_y = fn()
-    tensor = array_ops.zeros([size], layout=None)
+        with api.default_mesh(self.mesh):
+            dtensor = fn()
 
-    self.assertDTensorEqual(tensor, layout_x, dtensor_x)
-    self.assertDTensorEqual(tensor, layout_y, dtensor_y)
+        self.assertDTensorEqual(tensor, layout_y, dtensor)
 
-  @combinations.generate(
-      combinations.combine(
-          is_graph=[False, True],
-          size=[32, 4096],
-          nullary_op=[array_ops.zeros, array_ops.ones],
-      )
-  )
-  def testNullaryOp(self, is_graph, size, nullary_op):
-    layout_y = Layout.batch_sharded(self.mesh, _MESH_DIM_Y, rank=1)
+    @combinations.generate(
+        combinations.combine(
+            is_graph=[False, True],
+            size=[32, 4096],
+            nullary_op=[array_ops.zeros_like_v2, array_ops.ones_like_v2],
+        )
+    )
+    def testNullaryLikeOpWithLayout(self, is_graph, size, nullary_op):
+        layout_x = Layout.batch_sharded(self.mesh, batch_dim=_MESH_DIM_X, rank=1)
+        layout_y = Layout.batch_sharded(self.mesh, batch_dim=_MESH_DIM_Y, rank=1)
 
-    tensor = nullary_op([size], layout=None)
+        tensor = array_ops.zeros([size], layout=None)
+        tensor_like = nullary_op(tensor, layout=None)
+        dtensor = array_ops.zeros([size], layout=layout_x)
+        self.assertDTensorEqual(tensor, layout_x, dtensor)
 
-    def fn():
-      return nullary_op([size], layout=layout_y)
+        def fn(layout):
+            return nullary_op(dtensor, layout=layout)
 
-    if is_graph:
-      fn = polymorphic_function.function(fn)
+        if is_graph:
+            fn = polymorphic_function.function(fn)
 
-    with api.default_mesh(self.mesh):
-      dtensor = fn()
+        with api.default_mesh(self.mesh):
+            dtensor_like = fn(layout_y)
 
-    self.assertDTensorEqual(tensor, layout_y, dtensor)
+        self.assertDTensorEqual(tensor_like, layout_y, dtensor_like)
 
-  @combinations.generate(
-      combinations.combine(
-          is_graph=[False, True],
-          size=[32, 4096],
-          nullary_op=[array_ops.zeros_like_v2, array_ops.ones_like_v2],
-      )
-  )
-  def testNullaryLikeOpWithLayout(self, is_graph, size, nullary_op):
-    layout_x = Layout.batch_sharded(self.mesh, batch_dim=_MESH_DIM_X, rank=1)
-    layout_y = Layout.batch_sharded(self.mesh, batch_dim=_MESH_DIM_Y, rank=1)
+    @combinations.generate(
+        combinations.combine(
+            is_graph=[True],
+            size=[32, 4096],
+            nullary_op=[array_ops.zeros_like_v2, array_ops.ones_like_v2],
+        )
+    )
+    def testNullaryLikeOpWithoutLayoutEager(self, is_graph, size, nullary_op):
+        layout_x = Layout.batch_sharded(self.mesh, batch_dim=_MESH_DIM_X, rank=1)
+        layout_replicated = Layout.replicated(self.mesh, rank=1)
 
-    tensor = array_ops.zeros([size], layout=None)
-    tensor_like = nullary_op(tensor, layout=None)
-    dtensor = array_ops.zeros([size], layout=layout_x)
-    self.assertDTensorEqual(tensor, layout_x, dtensor)
+        tensor = array_ops.zeros([size], layout=None)
+        tensor_like = nullary_op(tensor, layout=None)
+        dtensor = array_ops.zeros([size], layout=layout_x)
+        self.assertDTensorEqual(tensor, layout_x, dtensor)
 
-    def fn(layout):
-      return nullary_op(dtensor, layout=layout)
+        def fn(layout):
+            return nullary_op(dtensor, layout=layout)
 
-    if is_graph:
-      fn = polymorphic_function.function(fn)
+        if is_graph:
+            fn = polymorphic_function.function(fn)
 
-    with api.default_mesh(self.mesh):
-      dtensor_like = fn(layout_y)
+        with api.default_mesh(self.mesh):
+            dtensor_like = fn(None)
 
-    self.assertDTensorEqual(tensor_like, layout_y, dtensor_like)
+        self.assertDTensorEqual(tensor_like, layout_replicated, dtensor_like)
 
-  @combinations.generate(
-      combinations.combine(
-          is_graph=[True],
-          size=[32, 4096],
-          nullary_op=[array_ops.zeros_like_v2, array_ops.ones_like_v2],
-      )
-  )
-  def testNullaryLikeOpWithoutLayoutEager(self, is_graph, size, nullary_op):
-    layout_x = Layout.batch_sharded(self.mesh, batch_dim=_MESH_DIM_X, rank=1)
-    layout_replicated = Layout.replicated(self.mesh, rank=1)
+    @combinations.generate(
+        combinations.combine(
+            is_graph=[False],
+            size=[32, 4096],
+            nullary_op=[array_ops.zeros_like_v2, array_ops.ones_like_v2],
+        )
+    )
+    def testNullaryLikeOpWithoutLayoutGraph(self, is_graph, size, nullary_op):
+        layout_x = Layout.batch_sharded(self.mesh, batch_dim=_MESH_DIM_X, rank=1)
 
-    tensor = array_ops.zeros([size], layout=None)
-    tensor_like = nullary_op(tensor, layout=None)
-    dtensor = array_ops.zeros([size], layout=layout_x)
-    self.assertDTensorEqual(tensor, layout_x, dtensor)
+        tensor = array_ops.zeros([size], layout=None)
+        tensor_like = nullary_op(tensor, layout=None)
+        dtensor = array_ops.zeros([size], layout=layout_x)
+        self.assertDTensorEqual(tensor, layout_x, dtensor)
 
-    def fn(layout):
-      return nullary_op(dtensor, layout=layout)
+        def fn(layout):
+            return nullary_op(dtensor, layout=layout)
 
-    if is_graph:
-      fn = polymorphic_function.function(fn)
+        if is_graph:
+            fn = polymorphic_function.function(fn)
 
-    with api.default_mesh(self.mesh):
-      dtensor_like = fn(None)
+        with api.default_mesh(self.mesh):
+            dtensor_like = fn(None)
 
-    self.assertDTensorEqual(tensor_like, layout_replicated, dtensor_like)
-
-  @combinations.generate(
-      combinations.combine(
-          is_graph=[False],
-          size=[32, 4096],
-          nullary_op=[array_ops.zeros_like_v2, array_ops.ones_like_v2],
-      )
-  )
-  def testNullaryLikeOpWithoutLayoutGraph(self, is_graph, size, nullary_op):
-    layout_x = Layout.batch_sharded(self.mesh, batch_dim=_MESH_DIM_X, rank=1)
-
-    tensor = array_ops.zeros([size], layout=None)
-    tensor_like = nullary_op(tensor, layout=None)
-    dtensor = array_ops.zeros([size], layout=layout_x)
-    self.assertDTensorEqual(tensor, layout_x, dtensor)
-
-    def fn(layout):
-      return nullary_op(dtensor, layout=layout)
-
-    if is_graph:
-      fn = polymorphic_function.function(fn)
-
-    with api.default_mesh(self.mesh):
-      dtensor_like = fn(None)
-
-    self.assertDTensorEqual(tensor_like, layout_x, dtensor_like)
+        self.assertDTensorEqual(tensor_like, layout_x, dtensor_like)
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

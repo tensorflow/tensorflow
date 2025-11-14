@@ -20,4 +20,4 @@ from tensorflow.python.platform import test
 DepthwiseConv2DTest = depthwise_conv_op_base.DepthwiseConv2DBase
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

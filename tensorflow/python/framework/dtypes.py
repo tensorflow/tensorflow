@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Library of dtypes (Tensor element types)."""
+
 import abc
 import builtins
 import dataclasses
@@ -22,10 +23,10 @@ import ml_dtypes
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
+
 # We need to import pywrap_tensorflow prior to the bfloat wrapper to avoid
 # protobuf errors where a file is defined twice on MacOS.
 # pylint: disable=invalid-import-order,g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.framework import _dtypes
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.types import doc_typealias
@@ -36,256 +37,272 @@ from tensorflow.tools.docs import doc_controls
 
 
 class DTypeMeta(type(_dtypes.DType), abc.ABCMeta):
-  pass
+    pass
 
 
 @dataclasses.dataclass(frozen=True)
 class HandleData:
-  """Holds resource/variant tensor specific data."""
-  shape_inference: Optional[
-      cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData
-  ] = None
-  alias_id: Optional[int] = None
+    """Holds resource/variant tensor specific data."""
+
+    shape_inference: Optional[
+        cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData
+    ] = None
+    alias_id: Optional[int] = None
 
 
 @tf_export("dtypes.DType", "DType")
 class DType(
-    _dtypes.DType,
-    trace.TraceType,
-    trace_type.Serializable,
-    metaclass=DTypeMeta):
-  """Represents the type of the elements in a `Tensor`.
+    _dtypes.DType, trace.TraceType, trace_type.Serializable, metaclass=DTypeMeta
+):
+    """Represents the type of the elements in a `Tensor`.
 
-  `DType`'s are used to specify the output data type for operations which
-  require it, or to inspect the data type of existing `Tensor`'s.
+    `DType`'s are used to specify the output data type for operations which
+    require it, or to inspect the data type of existing `Tensor`'s.
 
-  Examples:
+    Examples:
 
-  >>> tf.constant(1, dtype=tf.int64)
-  <tf.Tensor: shape=(), dtype=int64, numpy=1>
-  >>> tf.constant(1.0).dtype
-  tf.float32
+    >>> tf.constant(1, dtype=tf.int64)
+    <tf.Tensor: shape=(), dtype=int64, numpy=1>
+    >>> tf.constant(1.0).dtype
+    tf.float32
 
-  See `tf.dtypes` for a complete list of `DType`'s defined.
-  """
-  __slots__ = ["_handle_data"]
-
-  def __init__(self, type_enum, handle_data=None):
-    super().__init__(type_enum)
-
-    # Resource and Variant dtypes have additional handle data information that
-    # is necessary for manipulating those Tensors.
-    if handle_data is not None and not isinstance(handle_data, HandleData):
-      raise TypeError("handle_data must be of the type HandleData")
-
-    self._handle_data = handle_data
-
-  @property
-  def _is_ref_dtype(self):
-    """Returns `True` if this `DType` represents a reference type."""
-    return self._type_enum > 100
-
-  @property
-  def _as_ref(self):
-    """Returns a reference `DType` based on this `DType`."""
-    if self._is_ref_dtype:
-      return self
-    else:
-      return _INTERN_TABLE[self._type_enum + 100]
-
-  @property
-  def base_dtype(self):
-    """Returns a non-reference `DType` based on this `DType` (for TF1).
-
-    Programs written for TensorFlow 2.x do not need this attribute.
-    It exists only for compatibility with TensorFlow 1.x, which used
-    reference `DType`s in the implementation of `tf.compat.v1.Variable`.
-    In TensorFlow 2.x, `tf.Variable` is implemented without reference types.
+    See `tf.dtypes` for a complete list of `DType`'s defined.
     """
-    if self._is_ref_dtype:
-      return _INTERN_TABLE[self._type_enum - 100]
-    else:
-      return self
 
-  @property
-  def real_dtype(self):
-    """Returns the `DType` corresponding to this `DType`'s real part."""
-    base = self.base_dtype
-    if base == complex64:
-      return float32
-    elif base == complex128:
-      return float64
-    else:
-      return self
+    __slots__ = ["_handle_data"]
 
-  @property
-  def as_numpy_dtype(self):
-    """Returns a Python `type` object based on this `DType`."""
-    return _TF_TO_NP[self._type_enum]
+    def __init__(self, type_enum, handle_data=None):
+        super().__init__(type_enum)
 
-  @property
-  def min(self):
-    """Returns the minimum representable value in this data type.
+        # Resource and Variant dtypes have additional handle data information that
+        # is necessary for manipulating those Tensors.
+        if handle_data is not None and not isinstance(handle_data, HandleData):
+            raise TypeError("handle_data must be of the type HandleData")
 
-    Raises:
-      TypeError: if this is a non-numeric, unordered, or quantized type.
+        self._handle_data = handle_data
 
-    """
-    if (self.is_quantized or
-        self.base_dtype in (bool, string, complex64, complex128)):
-      raise TypeError(f"Cannot find minimum value of {self} with "
-                      f"{'quantized type' if self.is_quantized else 'type'} "
-                      f"{self.base_dtype}.")
+    @property
+    def _is_ref_dtype(self):
+        """Returns `True` if this `DType` represents a reference type."""
+        return self._type_enum > 100
 
-    # There is no simple way to get the min value of a dtype, we have to check
-    # float and int types separately.
-    try:
-      return ml_dtypes.finfo(self.as_numpy_dtype).min
-    except:  # bare except as possible raises by finfo not documented
-      try:
-        return ml_dtypes.iinfo(self.as_numpy_dtype).min
-      except:
-        raise TypeError(f"Cannot find minimum value of {self}.")
+    @property
+    def _as_ref(self):
+        """Returns a reference `DType` based on this `DType`."""
+        if self._is_ref_dtype:
+            return self
+        else:
+            return _INTERN_TABLE[self._type_enum + 100]
 
-  @property
-  def max(self):
-    """Returns the maximum representable value in this data type.
+    @property
+    def base_dtype(self):
+        """Returns a non-reference `DType` based on this `DType` (for TF1).
 
-    Raises:
-      TypeError: if this is a non-numeric, unordered, or quantized type.
+        Programs written for TensorFlow 2.x do not need this attribute.
+        It exists only for compatibility with TensorFlow 1.x, which used
+        reference `DType`s in the implementation of `tf.compat.v1.Variable`.
+        In TensorFlow 2.x, `tf.Variable` is implemented without reference types.
+        """
+        if self._is_ref_dtype:
+            return _INTERN_TABLE[self._type_enum - 100]
+        else:
+            return self
 
-    """
-    if (self.is_quantized or
-        self.base_dtype in (bool, string, complex64, complex128)):
-      raise TypeError(f"Cannot find maximum value of {self} with "
-                      f"{'quantized type' if self.is_quantized else 'type'} "
-                      f"{self.base_dtype}.")
+    @property
+    def real_dtype(self):
+        """Returns the `DType` corresponding to this `DType`'s real part."""
+        base = self.base_dtype
+        if base == complex64:
+            return float32
+        elif base == complex128:
+            return float64
+        else:
+            return self
 
-    # there is no simple way to get the max value of a dtype, we have to check
-    # float and int types separately
-    try:
-      return ml_dtypes.finfo(self.as_numpy_dtype).max
-    except:  # bare except as possible raises by finfo not documented
-      try:
-        return ml_dtypes.iinfo(self.as_numpy_dtype).max
-      except:
-        raise TypeError(f"Cannot find maximum value of {self}.")
+    @property
+    def as_numpy_dtype(self):
+        """Returns a Python `type` object based on this `DType`."""
+        return _TF_TO_NP[self._type_enum]
 
-  @property
-  def limits(self, clip_negative=True):
-    """Return intensity limits, i.e.
+    @property
+    def min(self):
+        """Returns the minimum representable value in this data type.
 
-    (min, max) tuple, of the dtype.
-    Args:
-      clip_negative : bool, optional If True, clip the negative range (i.e.
-        return 0 for min intensity) even if the image dtype allows negative
-        values. Returns
-      min, max : tuple Lower and upper intensity limits.
-    """
-    if self.as_numpy_dtype in dtype_range:
-      min, max = dtype_range[self.as_numpy_dtype]  # pylint: disable=redefined-builtin
-    else:
-      raise ValueError(str(self) + " does not have defined limits.")
+        Raises:
+          TypeError: if this is a non-numeric, unordered, or quantized type.
 
-    if clip_negative:
-      min = 0  # pylint: disable=redefined-builtin
-    return min, max
+        """
+        if self.is_quantized or self.base_dtype in (
+            bool,
+            string,
+            complex64,
+            complex128,
+        ):
+            raise TypeError(
+                f"Cannot find minimum value of {self} with "
+                f"{'quantized type' if self.is_quantized else 'type'} "
+                f"{self.base_dtype}."
+            )
 
-  def is_compatible_with(self, other):
-    """Returns True if the `other` DType will be converted to this DType (TF1).
+        # There is no simple way to get the min value of a dtype, we have to check
+        # float and int types separately.
+        try:
+            return ml_dtypes.finfo(self.as_numpy_dtype).min
+        except:  # bare except as possible raises by finfo not documented
+            try:
+                return ml_dtypes.iinfo(self.as_numpy_dtype).min
+            except:
+                raise TypeError(f"Cannot find minimum value of {self}.")
 
-    Programs written for TensorFlow 2.x do not need this function.
-    Instead, they can do equality comparison on `DType` objects directly:
-    `tf.as_dtype(this) == tf.as_dtype(other)`.
+    @property
+    def max(self):
+        """Returns the maximum representable value in this data type.
 
-    This function exists only for compatibility with TensorFlow 1.x, where it
-    additionally allows conversion from a reference type (used by
-    `tf.compat.v1.Variable`) to its base type.
+        Raises:
+          TypeError: if this is a non-numeric, unordered, or quantized type.
 
-    Args:
-      other: A `DType` (or object that may be converted to a `DType`).
+        """
+        if self.is_quantized or self.base_dtype in (
+            bool,
+            string,
+            complex64,
+            complex128,
+        ):
+            raise TypeError(
+                f"Cannot find maximum value of {self} with "
+                f"{'quantized type' if self.is_quantized else 'type'} "
+                f"{self.base_dtype}."
+            )
 
-    Returns:
-      True if a Tensor of the `other` `DType` will be implicitly converted to
-      this `DType`.
-    """
-    other = as_dtype(other)
-    return self._type_enum in (other.as_datatype_enum,
-                               other.base_dtype.as_datatype_enum)
+        # there is no simple way to get the max value of a dtype, we have to check
+        # float and int types separately
+        try:
+            return ml_dtypes.finfo(self.as_numpy_dtype).max
+        except:  # bare except as possible raises by finfo not documented
+            try:
+                return ml_dtypes.iinfo(self.as_numpy_dtype).max
+            except:
+                raise TypeError(f"Cannot find maximum value of {self}.")
 
-  def is_subtype_of(self, other: trace.TraceType) -> bool:
-    """See tf.types.experimental.TraceType base class."""
-    return self == other
+    @property
+    def limits(self, clip_negative=True):
+        """Return intensity limits, i.e.
 
-  def most_specific_common_supertype(
-      self, types: Sequence[trace.TraceType]) -> Optional["DType"]:
-    """See tf.types.experimental.TraceType base class."""
-    return self if all(self == other for other in types) else None
+        (min, max) tuple, of the dtype.
+        Args:
+          clip_negative : bool, optional If True, clip the negative range (i.e.
+            return 0 for min intensity) even if the image dtype allows negative
+            values. Returns
+          min, max : tuple Lower and upper intensity limits.
+        """
+        if self.as_numpy_dtype in dtype_range:
+            min, max = dtype_range[self.as_numpy_dtype]  # pylint: disable=redefined-builtin
+        else:
+            raise ValueError(str(self) + " does not have defined limits.")
 
-  @doc_controls.do_not_doc_inheritable
-  def placeholder_value(self, placeholder_context):
-    """See tf.types.experimental.TraceType base class."""
-    return super().placeholder_value(placeholder_context)
+        if clip_negative:
+            min = 0  # pylint: disable=redefined-builtin
+        return min, max
 
-  @doc_controls.do_not_doc_inheritable
-  def from_tensors(self, tensors):
-    """See tf.types.experimental.TraceType base class."""
-    return super().from_tensors(tensors)
+    def is_compatible_with(self, other):
+        """Returns True if the `other` DType will be converted to this DType (TF1).
 
-  @doc_controls.do_not_doc_inheritable
-  def to_tensors(self, value):
-    """See tf.types.experimental.TraceType base class."""
-    return super().to_tensors(value)
+        Programs written for TensorFlow 2.x do not need this function.
+        Instead, they can do equality comparison on `DType` objects directly:
+        `tf.as_dtype(this) == tf.as_dtype(other)`.
 
-  @doc_controls.do_not_doc_inheritable
-  def flatten(self):
-    """See tf.types.experimental.TraceType base class."""
-    return super().flatten()
+        This function exists only for compatibility with TensorFlow 1.x, where it
+        additionally allows conversion from a reference type (used by
+        `tf.compat.v1.Variable`) to its base type.
 
-  @doc_controls.do_not_doc_inheritable
-  def cast(self, value, cast_context):
-    """See tf.types.experimental.TraceType base class."""
-    return super().cast(value, cast_context)
+        Args:
+          other: A `DType` (or object that may be converted to a `DType`).
 
-  @classmethod
-  def experimental_type_proto(cls) -> Type[types_pb2.SerializedDType]:
-    """Returns the type of proto associated with DType serialization."""
-    return types_pb2.SerializedDType
-
-  @classmethod
-  def experimental_from_proto(cls, proto: types_pb2.SerializedDType) -> "DType":
-    """Returns a Dtype instance based on the serialized proto."""
-    return DType(proto.datatype)
-
-  def experimental_as_proto(self) -> types_pb2.SerializedDType:
-    """Returns a proto representation of the Dtype instance."""
-    return types_pb2.SerializedDType(datatype=self._type_enum)
-
-  def __eq__(self, other):
-    """Returns True iff this DType refers to the same type as `other`."""
-    if other is None:
-      return False
-
-    if type(other) != DType:  # pylint: disable=unidiomatic-typecheck
-      try:
+        Returns:
+          True if a Tensor of the `other` `DType` will be implicitly converted to
+          this `DType`.
+        """
         other = as_dtype(other)
-      except TypeError:
-        return False
+        return self._type_enum in (
+            other.as_datatype_enum,
+            other.base_dtype.as_datatype_enum,
+        )
 
-    return self._type_enum == other._type_enum  # pylint: disable=protected-access
+    def is_subtype_of(self, other: trace.TraceType) -> bool:
+        """See tf.types.experimental.TraceType base class."""
+        return self == other
 
-  def __ne__(self, other):
-    """Returns True iff self != other."""
-    return not self.__eq__(other)
+    def most_specific_common_supertype(
+        self, types: Sequence[trace.TraceType]
+    ) -> Optional["DType"]:
+        """See tf.types.experimental.TraceType base class."""
+        return self if all(self == other for other in types) else None
 
-  # "If a class that overrides __eq__() needs to retain the implementation
-  #  of __hash__() from a parent class, the interpreter must be told this
-  #  explicitly by setting __hash__ = <ParentClass>.__hash__."
-  # TODO(slebedev): Remove once __eq__ and __ne__ are implemented in C++.
-  __hash__ = _dtypes.DType.__hash__
+    @doc_controls.do_not_doc_inheritable
+    def placeholder_value(self, placeholder_context):
+        """See tf.types.experimental.TraceType base class."""
+        return super().placeholder_value(placeholder_context)
 
-  def __reduce__(self):
-    return as_dtype, (self.name,)
+    @doc_controls.do_not_doc_inheritable
+    def from_tensors(self, tensors):
+        """See tf.types.experimental.TraceType base class."""
+        return super().from_tensors(tensors)
+
+    @doc_controls.do_not_doc_inheritable
+    def to_tensors(self, value):
+        """See tf.types.experimental.TraceType base class."""
+        return super().to_tensors(value)
+
+    @doc_controls.do_not_doc_inheritable
+    def flatten(self):
+        """See tf.types.experimental.TraceType base class."""
+        return super().flatten()
+
+    @doc_controls.do_not_doc_inheritable
+    def cast(self, value, cast_context):
+        """See tf.types.experimental.TraceType base class."""
+        return super().cast(value, cast_context)
+
+    @classmethod
+    def experimental_type_proto(cls) -> Type[types_pb2.SerializedDType]:
+        """Returns the type of proto associated with DType serialization."""
+        return types_pb2.SerializedDType
+
+    @classmethod
+    def experimental_from_proto(cls, proto: types_pb2.SerializedDType) -> "DType":
+        """Returns a Dtype instance based on the serialized proto."""
+        return DType(proto.datatype)
+
+    def experimental_as_proto(self) -> types_pb2.SerializedDType:
+        """Returns a proto representation of the Dtype instance."""
+        return types_pb2.SerializedDType(datatype=self._type_enum)
+
+    def __eq__(self, other):
+        """Returns True iff this DType refers to the same type as `other`."""
+        if other is None:
+            return False
+
+        if type(other) != DType:  # pylint: disable=unidiomatic-typecheck
+            try:
+                other = as_dtype(other)
+            except TypeError:
+                return False
+
+        return self._type_enum == other._type_enum  # pylint: disable=protected-access
+
+    def __ne__(self, other):
+        """Returns True iff self != other."""
+        return not self.__eq__(other)
+
+    # "If a class that overrides __eq__() needs to retain the implementation
+    #  of __hash__() from a parent class, the interpreter must be told this
+    #  explicitly by setting __hash__ = <ParentClass>.__hash__."
+    # TODO(slebedev): Remove once __eq__ and __ne__ are implemented in C++.
+    __hash__ = _dtypes.DType.__hash__
+
+    def __reduce__(self):
+        return as_dtype, (self.name,)
+
 
 trace_type.register_serializable(DType)
 
@@ -312,9 +329,7 @@ doc_typealias.document(
 tf_export("dtypes.resource", "resource").export_constant(__name__, "resource")
 
 variant = DType(types_pb2.DT_VARIANT)
-doc_typealias.document(
-    obj=variant, doc="Data of arbitrary type (known at runtime)."
-)
+doc_typealias.document(obj=variant, doc="Data of arbitrary type (known at runtime).")
 tf_export("dtypes.variant", "variant").export_constant(__name__, "variant")
 
 uint8 = DType(types_pb2.DT_UINT8)
@@ -351,37 +366,27 @@ tf_export("dtypes.int64", "int64").export_constant(__name__, "int64")
 
 float16 = DType(types_pb2.DT_HALF)
 half = float16
-doc_typealias.document(
-    obj=float16, doc="16-bit (half precision) floating-point."
-)
+doc_typealias.document(obj=float16, doc="16-bit (half precision) floating-point.")
 tf_export("dtypes.float16", "float16").export_constant(__name__, "float16")
 tf_export("dtypes.half", "half").export_constant(__name__, "half")
 
 float32 = DType(types_pb2.DT_FLOAT)
-doc_typealias.document(
-    obj=float32, doc="32-bit (single precision) floating-point."
-)
+doc_typealias.document(obj=float32, doc="32-bit (single precision) floating-point.")
 tf_export("dtypes.float32", "float32").export_constant(__name__, "float32")
 
 float64 = DType(types_pb2.DT_DOUBLE)
-doc_typealias.document(
-    obj=float64, doc="64-bit (double precision) floating-point."
-)
+doc_typealias.document(obj=float64, doc="64-bit (double precision) floating-point.")
 tf_export("dtypes.float64", "float64").export_constant(__name__, "float64")
 double = float64
 tf_export("dtypes.double", "double").export_constant(__name__, "double")
 
 complex64 = DType(types_pb2.DT_COMPLEX64)
 doc_typealias.document(obj=complex64, doc="64-bit complex.")
-tf_export("dtypes.complex64", "complex64").export_constant(
-    __name__, "complex64"
-)
+tf_export("dtypes.complex64", "complex64").export_constant(__name__, "complex64")
 
 complex128 = DType(types_pb2.DT_COMPLEX128)
 doc_typealias.document(obj=complex128, doc="128-bit complex.")
-tf_export("dtypes.complex128", "complex128").export_constant(
-    __name__, "complex128"
-)
+tf_export("dtypes.complex128", "complex128").export_constant(__name__, "complex128")
 
 string = DType(types_pb2.DT_STRING)
 doc_typealias.document(
@@ -414,9 +419,7 @@ doc_typealias.document(obj=quint16, doc="Unsigned quantized 16-bit integer.")
 tf_export("dtypes.quint16", "quint16").export_constant(__name__, "quint16")
 
 bfloat16 = DType(types_pb2.DT_BFLOAT16)
-doc_typealias.document(
-    obj=bfloat16, doc="16-bit bfloat (brain floating point)."
-)
+doc_typealias.document(obj=bfloat16, doc="16-bit bfloat (brain floating point).")
 tf_export("dtypes.bfloat16", "bfloat16").export_constant(__name__, "bfloat16")
 
 float8_e5m2 = DType(types_pb2.DT_FLOAT8_E5M2)
@@ -692,9 +695,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_RESOURCE_REF: "resource_ref",
     types_pb2.DT_VARIANT_REF: "variant_ref",
 }
-_STRING_TO_TF = {
-    value: _INTERN_TABLE[key] for key, value in _TYPE_TO_STRING.items()
-}
+_STRING_TO_TF = {value: _INTERN_TABLE[key] for key, value in _TYPE_TO_STRING.items()}
 # Add non-canonical aliases.
 _STRING_TO_TF["half"] = float16
 _STRING_TO_TF["half_ref"] = float16_ref
@@ -779,12 +780,11 @@ for pdt in [
     np.longlong,
     np.ulonglong,
 ]:
-  if pdt not in _NP_TO_TF:
-    _NP_TO_TF[pdt] = next(
-        _NP_TO_TF[dt] for dt in _NP_TO_TF if dt == pdt().dtype)  # pylint: disable=no-value-for-parameter
+    if pdt not in _NP_TO_TF:
+        _NP_TO_TF[pdt] = next(_NP_TO_TF[dt] for dt in _NP_TO_TF if dt == pdt().dtype)  # pylint: disable=no-value-for-parameter
 
 if hasattr(np.dtypes, "StringDType"):
-  _NP_TO_TF[np.dtypes.StringDType()] = string
+    _NP_TO_TF[np.dtypes.StringDType()] = string
 
 TF_VALUE_DTYPES = set(_NP_TO_TF.values())
 
@@ -858,18 +858,14 @@ _TF_TO_NP = {
 
 _QUANTIZED_DTYPES_NO_REF = frozenset([qint8, quint8, qint16, quint16, qint32])
 _QUANTIZED_DTYPES_REF = frozenset(
-    [qint8_ref, quint8_ref, qint16_ref, quint16_ref, qint32_ref])
+    [qint8_ref, quint8_ref, qint16_ref, quint16_ref, qint32_ref]
+)
 QUANTIZED_DTYPES = _QUANTIZED_DTYPES_REF.union(_QUANTIZED_DTYPES_NO_REF)
 tf_export(
-    "dtypes.QUANTIZED_DTYPES",
-    v1=["dtypes.QUANTIZED_DTYPES",
-        "QUANTIZED_DTYPES"]).export_constant(__name__, "QUANTIZED_DTYPES")
+    "dtypes.QUANTIZED_DTYPES", v1=["dtypes.QUANTIZED_DTYPES", "QUANTIZED_DTYPES"]
+).export_constant(__name__, "QUANTIZED_DTYPES")
 
-_PYTHON_TO_TF = {
-    builtins.float: float32,
-    builtins.bool: bool,
-    builtins.object: string
-}
+_PYTHON_TO_TF = {builtins.float: float32, builtins.bool: bool, builtins.object: string}
 
 _ANY_TO_TF = {}
 _ANY_TO_TF.update(_INTERN_TABLE)
@@ -879,67 +875,70 @@ _ANY_TO_TF.update(_NP_TO_TF)
 
 # Ensure no collisions.
 assert len(_ANY_TO_TF) == sum(
-    len(d) for d in [_INTERN_TABLE, _STRING_TO_TF, _PYTHON_TO_TF, _NP_TO_TF])
+    len(d) for d in [_INTERN_TABLE, _STRING_TO_TF, _PYTHON_TO_TF, _NP_TO_TF]
+)
 
 
 @tf_export("dtypes.as_dtype", "as_dtype")
 def as_dtype(type_value):
-  """Converts the given `type_value` to a `tf.DType`.
+    """Converts the given `type_value` to a `tf.DType`.
 
-  Inputs can be existing `tf.DType` objects, a [`DataType`
-  enum](https://www.tensorflow.org/code/tensorflow/core/framework/types.proto),
-  a string type name, or a
-  [`numpy.dtype`](https://numpy.org/doc/stable/reference/generated/numpy.dtype.html).
+    Inputs can be existing `tf.DType` objects, a [`DataType`
+    enum](https://www.tensorflow.org/code/tensorflow/core/framework/types.proto),
+    a string type name, or a
+    [`numpy.dtype`](https://numpy.org/doc/stable/reference/generated/numpy.dtype.html).
 
-  Examples:
-  >>> tf.as_dtype(2)  # Enum value for float64.
-  tf.float64
+    Examples:
+    >>> tf.as_dtype(2)  # Enum value for float64.
+    tf.float64
 
-  >>> tf.as_dtype('float')
-  tf.float32
+    >>> tf.as_dtype('float')
+    tf.float32
 
-  >>> tf.as_dtype(np.int32)
-  tf.int32
+    >>> tf.as_dtype(np.int32)
+    tf.int32
 
-  Note: `DType` values are interned (i.e. a single instance of each dtype is
-  stored in a map). When passed a new `DType` object, `as_dtype` always returns
-  the interned value.
+    Note: `DType` values are interned (i.e. a single instance of each dtype is
+    stored in a map). When passed a new `DType` object, `as_dtype` always returns
+    the interned value.
 
-  Args:
-    type_value: A value that can be converted to a `tf.DType` object.
+    Args:
+      type_value: A value that can be converted to a `tf.DType` object.
 
-  Returns:
-    A `DType` corresponding to `type_value`.
+    Returns:
+      A `DType` corresponding to `type_value`.
 
-  Raises:
-    TypeError: If `type_value` cannot be converted to a `DType`.
-  """
-  if isinstance(type_value, DType):
-    if type_value._handle_data is None:  # pylint:disable=protected-access
-      return _INTERN_TABLE[type_value.as_datatype_enum]
-    else:
-      return type_value
+    Raises:
+      TypeError: If `type_value` cannot be converted to a `DType`.
+    """
+    if isinstance(type_value, DType):
+        if type_value._handle_data is None:  # pylint:disable=protected-access
+            return _INTERN_TABLE[type_value.as_datatype_enum]
+        else:
+            return type_value
 
-  if isinstance(type_value, np.dtype):
+    if isinstance(type_value, np.dtype):
+        try:
+            return _NP_TO_TF[type_value.type]
+        except KeyError:
+            pass
+
     try:
-      return _NP_TO_TF[type_value.type]
-    except KeyError:
-      pass
-
-  try:
-    return _ANY_TO_TF[type_value]
-  except (KeyError, TypeError):
-    # TypeError indicates that type_value is not hashable.
-    pass
-
-  if hasattr(type_value, "dtype"):
-    try:
-      return _NP_TO_TF[np.dtype(type_value.dtype).type]
+        return _ANY_TO_TF[type_value]
     except (KeyError, TypeError):
-      pass
+        # TypeError indicates that type_value is not hashable.
+        pass
 
-  if isinstance(type_value, _dtypes.DType):
-    return _INTERN_TABLE[type_value.as_datatype_enum]
+    if hasattr(type_value, "dtype"):
+        try:
+            return _NP_TO_TF[np.dtype(type_value.dtype).type]
+        except (KeyError, TypeError):
+            pass
 
-  raise TypeError(f"Cannot convert the argument `type_value`: {type_value!r} "
-                  "to a TensorFlow DType.")
+    if isinstance(type_value, _dtypes.DType):
+        return _INTERN_TABLE[type_value.as_datatype_enum]
+
+    raise TypeError(
+        f"Cannot convert the argument `type_value`: {type_value!r} "
+        "to a TensorFlow DType."
+    )

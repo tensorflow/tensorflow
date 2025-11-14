@@ -20,20 +20,11 @@
 
 import numpy as onp
 from tensorflow.python.compat import v2_compat
-from tensorflow.python.framework.dtypes import bfloat16
 from tensorflow.python.ops.numpy_ops import np_random as random
 from tensorflow.python.ops.numpy_ops.np_array_ops import *
-from tensorflow.python.ops.numpy_ops.np_arrays import ndarray
 from tensorflow.python.ops.numpy_ops.np_config import enable_numpy_behavior
 from tensorflow.python.ops.numpy_ops.np_dtypes import *
-from tensorflow.python.ops.numpy_ops.np_dtypes import canonicalize_dtype
-from tensorflow.python.ops.numpy_ops.np_dtypes import default_float_type
-from tensorflow.python.ops.numpy_ops.np_dtypes import is_allow_float64
-from tensorflow.python.ops.numpy_ops.np_dtypes import set_allow_float64
 from tensorflow.python.ops.numpy_ops.np_math_ops import *
-from tensorflow.python.ops.numpy_ops.np_utils import finfo
-from tensorflow.python.ops.numpy_ops.np_utils import promote_types
-from tensorflow.python.ops.numpy_ops.np_utils import result_type
 
 random.DEFAULT_RANDN_DTYPE = onp.float32
 # pylint: enable=unused-import

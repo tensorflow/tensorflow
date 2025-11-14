@@ -22,22 +22,21 @@ from tensorflow.python.platform import test
 
 
 class ProtoTest(test.TestCase):
-
-  # TODO(vrv): re-enable this test once we figure out how this can
-  # pass the pip install test (where the user is expected to have
-  # protobuf installed).
-  def _testLargeProto(self):
-    # create a constant of size > 64MB.
-    a = constant_op.constant(np.zeros([1024, 1024, 17]))
-    # Serialize the resulting graph def.
-    gdef = a.op.graph.as_graph_def()
-    serialized = gdef.SerializeToString()
-    unserialized = ops.Graph().as_graph_def()
-    # Deserialize back. Protobuf python library should support
-    # protos larger than 64MB.
-    unserialized.ParseFromString(serialized)
-    self.assertProtoEquals(unserialized, gdef)
+    # TODO(vrv): re-enable this test once we figure out how this can
+    # pass the pip install test (where the user is expected to have
+    # protobuf installed).
+    def _testLargeProto(self):
+        # create a constant of size > 64MB.
+        a = constant_op.constant(np.zeros([1024, 1024, 17]))
+        # Serialize the resulting graph def.
+        gdef = a.op.graph.as_graph_def()
+        serialized = gdef.SerializeToString()
+        unserialized = ops.Graph().as_graph_def()
+        # Deserialize back. Protobuf python library should support
+        # protos larger than 64MB.
+        unserialized.ParseFromString(serialized)
+        self.assertProtoEquals(unserialized, gdef)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

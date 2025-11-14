@@ -26,68 +26,82 @@ from tensorflow.python.platform import test
 
 
 class TensorArrayOpsTest(test.TestCase):
+    @test_util.run_v1_only("Testing placeholders specifically.")
+    def test_concat_graph(self):
+        values = tensor_array_ops.TensorArray(
+            size=4, dtype=dtypes.string, element_shape=[None], infer_shape=False
+        )
+        a = array_ops.placeholder(
+            dtypes.string,
+            [
+                None,
+            ],
+        )
+        b = array_ops.placeholder(
+            dtypes.string,
+            [
+                None,
+            ],
+        )
+        values = (
+            (values.write(0, a).write(1, constant_op.constant([], dtypes.string)))
+            .write(2, b)
+            .write(3, constant_op.constant([], dtypes.string))
+        )
 
-  @test_util.run_v1_only('Testing placeholders specifically.')
-  def test_concat_graph(self):
-    values = tensor_array_ops.TensorArray(
-        size=4, dtype=dtypes.string, element_shape=[None], infer_shape=False)
-    a = array_ops.placeholder(dtypes.string, [
-        None,
-    ])
-    b = array_ops.placeholder(dtypes.string, [
-        None,
-    ])
-    values = (values.write(0, a).write(
-        1, constant_op.constant([], dtypes.string))).write(2, b).write(
-            3, constant_op.constant([], dtypes.string))
+        with self.session() as s:
+            result = s.run(values.concat(), {a: ["a", "b", "c"], b: ["c", "d", "e"]})
+        self.assertAllEqual(result, [b"a", b"b", b"c", b"c", b"d", b"e"])
 
-    with self.session() as s:
-      result = s.run(values.concat(), {a: ['a', 'b', 'c'], b: ['c', 'd', 'e']})
-    self.assertAllEqual(result, [b'a', b'b', b'c', b'c', b'd', b'e'])
+    @test_util.run_v2_only
+    def test_concat(self):
+        values = tensor_array_ops.TensorArray(
+            size=4, dtype=dtypes.string, element_shape=[None], infer_shape=False
+        )
+        a = constant_op.constant(["a", "b", "c"], dtypes.string)
+        b = constant_op.constant(["c", "d", "e"], dtypes.string)
+        values = (
+            (values.write(0, a).write(1, constant_op.constant([], dtypes.string)))
+            .write(2, b)
+            .write(3, constant_op.constant([], dtypes.string))
+        )
+        self.assertAllEqual(values.concat(), [b"a", b"b", b"c", b"c", b"d", b"e"])
 
-  @test_util.run_v2_only
-  def test_concat(self):
-    values = tensor_array_ops.TensorArray(
-        size=4, dtype=dtypes.string, element_shape=[None], infer_shape=False)
-    a = constant_op.constant(['a', 'b', 'c'], dtypes.string)
-    b = constant_op.constant(['c', 'd', 'e'], dtypes.string)
-    values = (values.write(0, a).write(
-        1, constant_op.constant([], dtypes.string))).write(2, b).write(
-            3, constant_op.constant([], dtypes.string))
-    self.assertAllEqual(values.concat(), [b'a', b'b', b'c', b'c', b'd', b'e'])
+    @test_util.run_v2_only
+    def test_concat_in_function(self):
+        @def_function.function
+        def fn(a, b):
+            values = tensor_array_ops.TensorArray(
+                size=4, dtype=dtypes.string, element_shape=[None], infer_shape=False
+            )
+            values = (
+                (values.write(0, a).write(1, constant_op.constant([], dtypes.string)))
+                .write(2, b)
+                .write(3, constant_op.constant([], dtypes.string))
+            )
+            return values.concat()
 
-  @test_util.run_v2_only
-  def test_concat_in_function(self):
-    @def_function.function
-    def fn(a, b):
-      values = tensor_array_ops.TensorArray(
-          size=4, dtype=dtypes.string, element_shape=[None], infer_shape=False)
-      values = (values.write(0, a).write(
-          1, constant_op.constant([], dtypes.string))).write(2, b).write(
-              3, constant_op.constant([], dtypes.string))
-      return values.concat()
+        self.assertAllEqual(
+            fn(["a", "b", "c"], ["c", "d", "e"]), [b"a", b"b", b"c", b"c", b"d", b"e"]
+        )
 
-    self.assertAllEqual(fn(['a', 'b', 'c'], ['c', 'd', 'e']),
-                        [b'a', b'b', b'c', b'c', b'd', b'e'])
+    def test_init_numpy_shape(self):
+        @def_function.function
+        def fn():
+            values = tensor_array_ops.TensorArray(
+                np.float32, size=1, dynamic_size=False, element_shape=np.array((2, 3))
+            )
+            values = values.write(0, np.ones((2, 3)))
+            return values.concat()
 
-  def test_init_numpy_shape(self):
-    @def_function.function
-    def fn():
-      values = tensor_array_ops.TensorArray(
-          np.float32,
-          size=1,
-          dynamic_size=False,
-          element_shape=np.array((2, 3)))
-      values = values.write(0, np.ones((2, 3)))
-      return values.concat()
-    self.assertAllEqual(fn(), [[1., 1., 1.], [1., 1., 1.]])
+        self.assertAllEqual(fn(), [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]])
 
-  def test_shape_inference_stack_concat(self):
-    arr = tensor_array_ops.TensorArray(size=4, dtype=dtypes.float32)
-    new_arr = arr.write(0, np.ones((2, 3)))
-    self.assertEqual(new_arr.stack().shape, (4, 2, 3))
-    self.assertEqual(new_arr.concat().shape, (8, 3))
+    def test_shape_inference_stack_concat(self):
+        arr = tensor_array_ops.TensorArray(size=4, dtype=dtypes.float32)
+        new_arr = arr.write(0, np.ones((2, 3)))
+        self.assertEqual(new_arr.stack().shape, (4, 2, 3))
+        self.assertEqual(new_arr.concat().shape, (8, 3))
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

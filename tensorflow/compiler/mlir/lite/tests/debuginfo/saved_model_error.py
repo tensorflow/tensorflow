@@ -21,33 +21,35 @@ import sys
 from absl import app
 
 import tensorflow.compat.v2 as tf
-if hasattr(tf, 'enable_v2_behavior'):
-  tf.enable_v2_behavior()
+
+if hasattr(tf, "enable_v2_behavior"):
+    tf.enable_v2_behavior()
 
 
 class TestModule(tf.Module):
-  """The test model has unsupported op."""
+    """The test model has unsupported op."""
 
-  @tf.function(input_signature=[tf.TensorSpec(shape=[3, 3], dtype=tf.float32)])
-  def model(self, x):
-    y = tf.math.betainc(x, 0.5, 1.0)  # Not supported
-    return y + y
+    @tf.function(input_signature=[tf.TensorSpec(shape=[3, 3], dtype=tf.float32)])
+    def model(self, x):
+        y = tf.math.betainc(x, 0.5, 1.0)  # Not supported
+        return y + y
 
 
 class TestGraphDebugInfo(object):
-  """Test stack trace can be displayed."""
+    """Test stack trace can be displayed."""
 
-  def testSavedModelDebugInfo(self):
-    """Save a saved model with unsupported ops, and then load and convert it."""
-    # saved the model
-    test_model = TestModule()
-    saved_model_path = '/tmp/test.saved_model'
-    save_options = tf.saved_model.SaveOptions(save_debug_info=True)
-    tf.saved_model.save(test_model, saved_model_path, options=save_options)
+    def testSavedModelDebugInfo(self):
+        """Save a saved model with unsupported ops, and then load and convert it."""
+        # saved the model
+        test_model = TestModule()
+        saved_model_path = "/tmp/test.saved_model"
+        save_options = tf.saved_model.SaveOptions(save_debug_info=True)
+        tf.saved_model.save(test_model, saved_model_path, options=save_options)
 
-    # load the model and convert
-    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_path)
-    converter.convert()
+        # load the model and convert
+        converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_path)
+        converter.convert()
+
 
 # pylint: disable=line-too-long
 
@@ -67,16 +69,16 @@ class TestGraphDebugInfo(object):
 
 
 def main(argv):
-  """test driver method writes the error message to stdout."""
-  if len(argv) > 1:
-    raise app.UsageError('Too many command-line arguments.')
+    """test driver method writes the error message to stdout."""
+    if len(argv) > 1:
+        raise app.UsageError("Too many command-line arguments.")
 
-  try:
-    TestGraphDebugInfo().testSavedModelDebugInfo()
-  except Exception as e:  # pylint: disable=broad-except
-    sys.stdout.write('testSavedModelDebugInfo')
-    sys.stdout.write(str(e))
+    try:
+        TestGraphDebugInfo().testSavedModelDebugInfo()
+    except Exception as e:  # pylint: disable=broad-except
+        sys.stdout.write("testSavedModelDebugInfo")
+        sys.stdout.write(str(e))
 
 
-if __name__ == '__main__':
-  app.run(main)
+if __name__ == "__main__":
+    app.run(main)

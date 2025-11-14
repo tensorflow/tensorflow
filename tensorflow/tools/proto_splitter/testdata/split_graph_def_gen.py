@@ -51,96 +51,92 @@ def _split_and_write(
     max_size: int,
     export_files: Sequence[str],
 ):
-  """Writes the .pb, .pbtxt and .cpb files for a GraphDef."""
-  constants.debug_set_max_size(max_size)
+    """Writes the .pb, .pbtxt and .cpb files for a GraphDef."""
+    constants.debug_set_max_size(max_size)
 
-  if "pbtxt" in export_files:
-    output_path = f"{path}.pbtxt"
-    file_io.write_string_to_file(output_path, str(graph_def))
-    logging.info("  %s written", output_path)
-  if "pb" in export_files:
-    output_path = f"{path}.pb"
-    file_io.write_string_to_file(output_path, graph_def.SerializeToString())
-    logging.info("  %s written", output_path)
-  if "cpb" in export_files:
-    splitter = split_graph_def.GraphDefSplitter(graph_def)
-    splitter.write(path)
-    chunks, _ = splitter.split()
-    if len(chunks) > 1:
-      logging.info("  %s.cpb written", path)
-    else:
-      raise RuntimeError(
-          "For some reason this graph was not chunked, so a .cpb file was not"
-          " produced. Raising an error since this should not be the case."
-      )
+    if "pbtxt" in export_files:
+        output_path = f"{path}.pbtxt"
+        file_io.write_string_to_file(output_path, str(graph_def))
+        logging.info("  %s written", output_path)
+    if "pb" in export_files:
+        output_path = f"{path}.pb"
+        file_io.write_string_to_file(output_path, graph_def.SerializeToString())
+        logging.info("  %s written", output_path)
+    if "cpb" in export_files:
+        splitter = split_graph_def.GraphDefSplitter(graph_def)
+        splitter.write(path)
+        chunks, _ = splitter.split()
+        if len(chunks) > 1:
+            logging.info("  %s.cpb written", path)
+        else:
+            raise RuntimeError(
+                "For some reason this graph was not chunked, so a .cpb file was not"
+                " produced. Raising an error since this should not be the case."
+            )
 
 
 def split_lots_nodes(path: str, export_files: Sequence[str]):
-  """GraphDef with lots of nodes."""
-  # The actual sizes in the generated graph has a slight deviation, but are
-  # between [90, 100] (tested in testMakeGraphDef with atol=5).
-  #    Expected Chunks (Max Size = 500)
-  #    -----------------------------
-  #       Chunk #: Contents
-  #    -----------------------------
-  #       0: GraphDef  # (nodes [0:5])
-  #    -----------------------------
-  #       1: GraphDef  # (nodes [5:10])
-  #    -----------------------------
-  #       2: GraphDef  # (nodes [10:15])
-  #    -----------------------------
-  #       3: ChunkedMessage
-  #    -----------------------------
-  graph_def = test_util.make_graph_def_with_constant_nodes(LOTS_NODES_SIZES)
-  _split_and_write(path, graph_def, 500, export_files)
+    """GraphDef with lots of nodes."""
+    # The actual sizes in the generated graph has a slight deviation, but are
+    # between [90, 100] (tested in testMakeGraphDef with atol=5).
+    #    Expected Chunks (Max Size = 500)
+    #    -----------------------------
+    #       Chunk #: Contents
+    #    -----------------------------
+    #       0: GraphDef  # (nodes [0:5])
+    #    -----------------------------
+    #       1: GraphDef  # (nodes [5:10])
+    #    -----------------------------
+    #       2: GraphDef  # (nodes [10:15])
+    #    -----------------------------
+    #       3: ChunkedMessage
+    #    -----------------------------
+    graph_def = test_util.make_graph_def_with_constant_nodes(LOTS_NODES_SIZES)
+    _split_and_write(path, graph_def, 500, export_files)
 
 
 def split_large_nodes(path: str, export_files: Sequence[str]):
-  """GraphDef with large nodes."""
-  # Large nodes are greedily split from the original proto if they are
-  # larger than max_size / 3.
-  # This should create 6 chunks:
-  #   [parent GraphDef, node[1], node[2], node[3], node[5], ChunkedMessage]
-  graph_def = test_util.make_graph_def_with_constant_nodes(LARGE_NODES_SIZES)
-  _split_and_write(path, graph_def, 200, export_files)
+    """GraphDef with large nodes."""
+    # Large nodes are greedily split from the original proto if they are
+    # larger than max_size / 3.
+    # This should create 6 chunks:
+    #   [parent GraphDef, node[1], node[2], node[3], node[5], ChunkedMessage]
+    graph_def = test_util.make_graph_def_with_constant_nodes(LARGE_NODES_SIZES)
+    _split_and_write(path, graph_def, 200, export_files)
 
 
 def split_large_constant(path: str, export_files: Sequence[str]):
-  """GraphDef with large constant nodes."""
-  #    Expected Chunks (Max Size = 500)
-  #    -----------------------------
-  #       Chunk #: Contents
-  #    -----------------------------
-  #       0: GraphDef
-  #    -----------------------------
-  #       1: GraphDef.nodes[2].attr["value"].tensor.tensor_content
-  #    -----------------------------
-  #       2: GraphDef.nodes[4].attr["value"].tensor.tensor_content
-  #    -----------------------------
-  graph_def = test_util.make_graph_def_with_constant_nodes(LARGE_CONSTANT_SIZES)
-  _split_and_write(path, graph_def, 500, export_files)
+    """GraphDef with large constant nodes."""
+    #    Expected Chunks (Max Size = 500)
+    #    -----------------------------
+    #       Chunk #: Contents
+    #    -----------------------------
+    #       0: GraphDef
+    #    -----------------------------
+    #       1: GraphDef.nodes[2].attr["value"].tensor.tensor_content
+    #    -----------------------------
+    #       2: GraphDef.nodes[4].attr["value"].tensor.tensor_content
+    #    -----------------------------
+    graph_def = test_util.make_graph_def_with_constant_nodes(LARGE_CONSTANT_SIZES)
+    _split_and_write(path, graph_def, 500, export_files)
 
 
 def function_lots_of_nodes(path: str, export_files: Sequence[str]):
-  """Generates a proto of GraphDef with a FunctionDef that have many nodes."""
-  graph_def = test_util.make_graph_def_with_constant_nodes(
-      [], fn=LOTS_NODES_SIZES
-  )
-  _split_and_write(path, graph_def, 500, export_files)
+    """Generates a proto of GraphDef with a FunctionDef that have many nodes."""
+    graph_def = test_util.make_graph_def_with_constant_nodes([], fn=LOTS_NODES_SIZES)
+    _split_and_write(path, graph_def, 500, export_files)
 
 
 def function_large_nodes(path: str, export_files: Sequence[str]):
-  graph_def = test_util.make_graph_def_with_constant_nodes(
-      [], fn=LARGE_NODES_SIZES
-  )
-  _split_and_write(path, graph_def, 200, export_files)
+    graph_def = test_util.make_graph_def_with_constant_nodes([], fn=LARGE_NODES_SIZES)
+    _split_and_write(path, graph_def, 200, export_files)
 
 
 def graph_def_and_function(path: str, export_files: Sequence[str]):
-  graph_def = test_util.make_graph_def_with_constant_nodes(
-      [50, 50, 50, 50, 50, 50], fn1=[50, 50, 50], fn2=[50], fn3=[50], fn4=[50]
-  )
-  _split_and_write(path, graph_def, 200, export_files)
+    graph_def = test_util.make_graph_def_with_constant_nodes(
+        [50, 50, 50, 50, 50, 50], fn1=[50, 50, 50], fn2=[50], fn3=[50], fn4=[50]
+    )
+    _split_and_write(path, graph_def, 200, export_files)
 
 
 VALID_GRAPH_TYPES = {
@@ -169,30 +165,30 @@ EXPORT_FILES = flags.DEFINE_multi_string(
 
 
 def main(argv: Sequence[str]) -> None:
-  if len(argv) > 1:
-    raise app.UsageError("Too many command-line arguments.")
+    if len(argv) > 1:
+        raise app.UsageError("Too many command-line arguments.")
 
-  if "all" in EXPORT_FILES.value:
-    export_files = ["pb", "pbtxt", "cpb"]
-  else:
-    export_files = EXPORT_FILES.value
+    if "all" in EXPORT_FILES.value:
+        export_files = ["pb", "pbtxt", "cpb"]
+    else:
+        export_files = EXPORT_FILES.value
 
-  if "all" in GRAPH_TYPES.value:
-    graph_types = VALID_GRAPH_TYPES.keys()
-  else:
-    graph_types = GRAPH_TYPES.value
+    if "all" in GRAPH_TYPES.value:
+        graph_types = VALID_GRAPH_TYPES.keys()
+    else:
+        graph_types = GRAPH_TYPES.value
 
-  for v in graph_types:
-    if v not in VALID_GRAPH_TYPES:
-      raise ValueError(
-          f"Invalid flag passed to `graph_type`: {v}\nValid graph types:"
-          f" {ALL_GRAPH_TYPES}"
-      )
+    for v in graph_types:
+        if v not in VALID_GRAPH_TYPES:
+            raise ValueError(
+                f"Invalid flag passed to `graph_type`: {v}\nValid graph types:"
+                f" {ALL_GRAPH_TYPES}"
+            )
 
-    logging.info("Generating graph %s", v)
-    f = VALID_GRAPH_TYPES[v]
-    f(os.path.join(SPLITTER_TESTDATA_PATH.value, v), export_files)
+        logging.info("Generating graph %s", v)
+        f = VALID_GRAPH_TYPES[v]
+        f(os.path.join(SPLITTER_TESTDATA_PATH.value, v), export_files)
 
 
 if __name__ == "__main__":
-  app.run(main)
+    app.run(main)

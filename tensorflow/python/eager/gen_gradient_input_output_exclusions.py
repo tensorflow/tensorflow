@@ -25,12 +25,12 @@ from tensorflow.python.eager import gradient_input_output_exclusions
 
 
 def main(output_file):
-  with open(output_file, "w") as fp:
-    fp.write(gradient_input_output_exclusions.get_contents())
+    with open(output_file, "w") as fp:
+        fp.write(gradient_input_output_exclusions.get_contents())
 
 
 if __name__ == "__main__":
-  arg_parser = argparse.ArgumentParser()
-  arg_parser.add_argument("output", metavar="O", type=str, help="Output file.")
-  args = arg_parser.parse_args()
-  main(args.output)
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("output", metavar="O", type=str, help="Output file.")
+    args = arg_parser.parse_args()
+    main(args.output)

@@ -25,52 +25,50 @@ import argparse
 import os
 
 
-def should_convert(var_name: str,
-                   blacklist: list[str] | None,
-                   whitelist_prefix: list[str] | None):
-  """Check the variable name against white/black lists."""
-  if blacklist and var_name in blacklist:
-    return False
-  if not whitelist_prefix:
-    return True
+def should_convert(
+    var_name: str, blacklist: list[str] | None, whitelist_prefix: list[str] | None
+):
+    """Check the variable name against white/black lists."""
+    if blacklist and var_name in blacklist:
+        return False
+    if not whitelist_prefix:
+        return True
 
-  for prefix in whitelist_prefix:
-    if var_name.startswith(prefix):
-      return True
-  return False
+    for prefix in whitelist_prefix:
+        if var_name.startswith(prefix):
+            return True
+    return False
 
 
 def main(parsed_args: argparse.Namespace):
-  converted_vars = {}
+    converted_vars = {}
 
-  for var, value in os.environ.items():
-    if not value or not should_convert(var,
-                                       parsed_args.blacklist,
-                                       parsed_args.whitelist_prefix):
-      continue
+    for var, value in os.environ.items():
+        if not value or not should_convert(
+            var, parsed_args.blacklist, parsed_args.whitelist_prefix
+        ):
+            continue
 
-    # In Python, MSYS, Linux-like paths are automatically read as Windows paths
-    # with forward slashes, e.g. 'C:/Program Files', instead of
-    # '/c/Program Files', thus becoming converted simply by virtue of having
-    # been read.
-    converted_vars[var] = value
+        # In Python, MSYS, Linux-like paths are automatically read as Windows paths
+        # with forward slashes, e.g. 'C:/Program Files', instead of
+        # '/c/Program Files', thus becoming converted simply by virtue of having
+        # been read.
+        converted_vars[var] = value
 
-  var_str = '\n'.join(f'{k}="{v}"'
-                      for k, v in converted_vars.items())
-  # The string can then be piped into `source`, to re-set the
-  # 'converted' variables.
-  print(var_str)
+    var_str = "\n".join(f'{k}="{v}"' for k, v in converted_vars.items())
+    # The string can then be piped into `source`, to re-set the
+    # 'converted' variables.
+    print(var_str)
 
 
-if __name__ == '__main__':
-  parser = argparse.ArgumentParser(description=(
-      'Convert MSYS paths in environment variables to Windows paths.'))
-  parser.add_argument('--blacklist',
-                      nargs='*',
-                      help='List of variables to ignore')
-  parser.add_argument('--whitelist-prefix',
-                      nargs='*',
-                      help='Prefix for variables to include')
-  args = parser.parse_args()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description=("Convert MSYS paths in environment variables to Windows paths.")
+    )
+    parser.add_argument("--blacklist", nargs="*", help="List of variables to ignore")
+    parser.add_argument(
+        "--whitelist-prefix", nargs="*", help="Prefix for variables to include"
+    )
+    args = parser.parse_args()
 
-  main(args)
+    main(args)

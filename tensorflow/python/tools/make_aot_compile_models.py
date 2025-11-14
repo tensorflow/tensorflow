@@ -28,51 +28,54 @@ from tensorflow.python.saved_model import save
 from tensorflow.python.trackable import autotrackable
 
 
-flags.DEFINE_string('out_dir', None,
-                    'Directory to output saved models to.')
+flags.DEFINE_string("out_dir", None, "Directory to output saved models to.")
 
 FLAGS = flags.FLAGS
 
 
 def create_large_matmul_savedmodel(out_dir):
-  """Create a SavedModel that performs a large matmul."""
-  root = autotrackable.AutoTrackable()
-  root.f = def_function.function(
-      lambda x, y: math_ops.matmul(x, y),  # pylint: disable=unnecessary-lambda
-      input_signature=[tensor_spec.TensorSpec([3000, 5000], dtypes.float32),
-                       tensor_spec.TensorSpec([5000, 4000], dtypes.float32),])
-  root.f(x=array_ops.zeros((3000, 5000)),
-         y=array_ops.zeros((5000, 4000)))
-  save_dir = os.path.join(out_dir, 'x_matmul_y_large')
-  save.save(root, save_dir, root.f)
-  # This simple SavedModel lacks any variables, but we need to create a
-  # variables.index file to make bazel genrule happy.
-  with open(os.path.join(save_dir, 'variables', 'variables.index'), 'w'):
-    pass
+    """Create a SavedModel that performs a large matmul."""
+    root = autotrackable.AutoTrackable()
+    root.f = def_function.function(
+        lambda x, y: math_ops.matmul(x, y),  # pylint: disable=unnecessary-lambda
+        input_signature=[
+            tensor_spec.TensorSpec([3000, 5000], dtypes.float32),
+            tensor_spec.TensorSpec([5000, 4000], dtypes.float32),
+        ],
+    )
+    root.f(x=array_ops.zeros((3000, 5000)), y=array_ops.zeros((5000, 4000)))
+    save_dir = os.path.join(out_dir, "x_matmul_y_large")
+    save.save(root, save_dir, root.f)
+    # This simple SavedModel lacks any variables, but we need to create a
+    # variables.index file to make bazel genrule happy.
+    with open(os.path.join(save_dir, "variables", "variables.index"), "w"):
+        pass
 
 
 def create_small_matmul_savedmodel(out_dir):
-  """Create a SavedModel that performs a small matmul."""
-  root = autotrackable.AutoTrackable()
-  root.f = def_function.function(
-      lambda x, y: math_ops.matmul(x, y),  # pylint: disable=unnecessary-lambda
-      input_signature=[tensor_spec.TensorSpec([3, 5], dtypes.float32),
-                       tensor_spec.TensorSpec([5, 4], dtypes.float32),])
-  root.f(x=array_ops.zeros((3, 5)),
-         y=array_ops.zeros((5, 4)))
-  save_dir = os.path.join(out_dir, 'x_matmul_y_small')
-  save.save(root, save_dir, root.f)
-  # This simple SavedModel lacks any variables, but we need to create a
-  # variables.index file to make bazel genrule happy.
-  with open(os.path.join(save_dir, 'variables', 'variables.index'), 'w'):
-    pass
+    """Create a SavedModel that performs a small matmul."""
+    root = autotrackable.AutoTrackable()
+    root.f = def_function.function(
+        lambda x, y: math_ops.matmul(x, y),  # pylint: disable=unnecessary-lambda
+        input_signature=[
+            tensor_spec.TensorSpec([3, 5], dtypes.float32),
+            tensor_spec.TensorSpec([5, 4], dtypes.float32),
+        ],
+    )
+    root.f(x=array_ops.zeros((3, 5)), y=array_ops.zeros((5, 4)))
+    save_dir = os.path.join(out_dir, "x_matmul_y_small")
+    save.save(root, save_dir, root.f)
+    # This simple SavedModel lacks any variables, but we need to create a
+    # variables.index file to make bazel genrule happy.
+    with open(os.path.join(save_dir, "variables", "variables.index"), "w"):
+        pass
 
 
 def main(unused_args):
-  create_small_matmul_savedmodel(FLAGS.out_dir)
-  create_large_matmul_savedmodel(FLAGS.out_dir)
+    create_small_matmul_savedmodel(FLAGS.out_dir)
+    create_large_matmul_savedmodel(FLAGS.out_dir)
 
 
-if __name__ == '__main__':
-  flags.mark_flag_as_required('out_dir')
-  app.run(main)
+if __name__ == "__main__":
+    flags.mark_flag_as_required("out_dir")
+    app.run(main)

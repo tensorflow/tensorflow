@@ -28,54 +28,53 @@ from tensorflow.python.platform import test
 # with XLA in the on demand compilation mode. Instead we use
 # tf.function(jit_compile=True)
 class ConstOpTest(test_util.TensorFlowTestCase):
-
-  # Verifies that the Const op works
-  # @test_util.run_v2_only
-  def testConst(self):
-    types = {
-        dtypes.bool,
-        dtypes.int8,
-        dtypes.int16,
-        dtypes.int32,
-        dtypes.int64,
-        dtypes.uint8,
-        dtypes.uint16,
-        dtypes.uint32,
-        dtypes.uint64,
-        dtypes.float16,
-        dtypes.bfloat16,
-        dtypes.float32,
-        dtypes.float64,
-        dtypes.float8_e5m2,
-        dtypes.float8_e4m3fn,
-        dtypes.float8_e4m3fnuz,
-        dtypes.float8_e4m3b11fnuz,
-        dtypes.float8_e5m2fnuz,
-    }
-    for dtype in types:
-      with self.subTest(dtype=dtype):
-        if dtype == dtypes.bool:
-          values = [True, False]
-        elif dtype in [
+    # Verifies that the Const op works
+    # @test_util.run_v2_only
+    def testConst(self):
+        types = {
+            dtypes.bool,
+            dtypes.int8,
+            dtypes.int16,
+            dtypes.int32,
+            dtypes.int64,
             dtypes.uint8,
             dtypes.uint16,
             dtypes.uint32,
             dtypes.uint64,
-        ]:
-          values = [0., 1., dtype.min, dtype.max]
-        else:
-          values = [0., 1., -1., dtype.min, dtype.max]
-        if dtype.is_floating:
-          values.extend([float("Inf"), -float("Inf"), float("NaN")])
-        values = np.array(values, dtype=dtype.as_numpy_dtype)
+            dtypes.float16,
+            dtypes.bfloat16,
+            dtypes.float32,
+            dtypes.float64,
+            dtypes.float8_e5m2,
+            dtypes.float8_e4m3fn,
+            dtypes.float8_e4m3fnuz,
+            dtypes.float8_e4m3b11fnuz,
+            dtypes.float8_e5m2fnuz,
+        }
+        for dtype in types:
+            with self.subTest(dtype=dtype):
+                if dtype == dtypes.bool:
+                    values = [True, False]
+                elif dtype in [
+                    dtypes.uint8,
+                    dtypes.uint16,
+                    dtypes.uint32,
+                    dtypes.uint64,
+                ]:
+                    values = [0.0, 1.0, dtype.min, dtype.max]
+                else:
+                    values = [0.0, 1.0, -1.0, dtype.min, dtype.max]
+                if dtype.is_floating:
+                    values.extend([float("Inf"), -float("Inf"), float("NaN")])
+                values = np.array(values, dtype=dtype.as_numpy_dtype)
 
-        @def_function.function(jit_compile=True)
-        def f():
-          return constant_op.constant(values, dtype)  # pylint: disable=cell-var-from-loop
+                @def_function.function(jit_compile=True)
+                def f():
+                    return constant_op.constant(values, dtype)  # pylint: disable=cell-var-from-loop
 
-        result = f()
-        self.assertAllEqual(self.evaluate(result), values)
+                result = f()
+                self.assertAllEqual(self.evaluate(result), values)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

@@ -14,9 +14,7 @@
 # ==============================================================================
 from typing import Any
 
-from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
-from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as rd
 
 # LINT.IfChange(quantize_qat_model)
 def quantize_qat_model(

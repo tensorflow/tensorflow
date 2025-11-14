@@ -13,22 +13,21 @@
 # limitations under the License.
 # =============================================================================
 
-"""Contains the normalization layer classes and their functional aliases.
-"""
+"""Contains the normalization layer classes and their functional aliases."""
 
 from tensorflow.python.util import lazy_loader
 
 normalization = lazy_loader.LazyLoader(
-    'normalization', globals(),
-    'tf_keras.legacy_tf_layers.normalization')
+    "normalization", globals(), "tf_keras.legacy_tf_layers.normalization"
+)
 
 
 # pylint: disable=invalid-name
 # lazy load all the attributes until they are accessed for the first time
 def __getattr__(name):
-  if name in ['BatchNormalization', 'BatchNorm']:
-    return normalization.BatchNormalization
-  elif name in ['batch_normalization', 'batch_norm']:
-    return normalization.batch_normalization
-  else:
-    raise AttributeError(f'module {__name__} doesn\'t have attribute {name}')
+    if name in ["BatchNormalization", "BatchNorm"]:
+        return normalization.BatchNormalization
+    elif name in ["batch_normalization", "batch_norm"]:
+        return normalization.batch_normalization
+    else:
+        raise AttributeError(f"module {__name__} doesn't have attribute {name}")

@@ -15,14 +15,12 @@
 """Python module for Session ops, vars, and functions exported by pybind11."""
 
 # pylint: disable=invalid-import-order,g-bad-import-order, wildcard-import, unused-import
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client._pywrap_tf_session import *
 from tensorflow.python.client._pywrap_tf_session import _TF_SetTarget
 from tensorflow.python.client._pywrap_tf_session import _TF_SetConfig
 from tensorflow.python.client._pywrap_tf_session import _TF_NewSessionOptions
 
 # Register pybind11 type caster for StackTraceWrapper/AbstractStackTrace
-from tensorflow.python.util import tf_stack
 
 # Convert versions to strings for Python2 and keep api_compatibility_test green.
 # We can remove this hack once we remove Python2 presubmits. pybind11 can only
@@ -49,22 +47,22 @@ TENSOR_HANDLE_KEY = get_tensor_handle_key()
 # Disable pylint invalid name warnings for legacy functions.
 # pylint: disable=invalid-name
 def TF_NewSessionOptions(target=None, config=None):
-  # NOTE: target and config are validated in the session constructor.
-  opts = _TF_NewSessionOptions()
-  if target is not None:
-    _TF_SetTarget(opts, target)
-  if config is not None:
-    config_str = config.SerializeToString()
-    _TF_SetConfig(opts, config_str)
-  return opts
+    # NOTE: target and config are validated in the session constructor.
+    opts = _TF_NewSessionOptions()
+    if target is not None:
+        _TF_SetTarget(opts, target)
+    if config is not None:
+        config_str = config.SerializeToString()
+        _TF_SetConfig(opts, config_str)
+    return opts
 
 
 # Disable pylind undefined-variable as the variable is exported in the shared
 # object via pybind11.
 # pylint: disable=undefined-variable
 def TF_Reset(target, containers=None, config=None):
-  opts = TF_NewSessionOptions(target=target, config=config)
-  try:
-    TF_Reset_wrapper(opts, containers)
-  finally:
-    TF_DeleteSessionOptions(opts)
+    opts = TF_NewSessionOptions(target=target, config=config)
+    try:
+        TF_Reset_wrapper(opts, containers)
+    finally:
+        TF_DeleteSessionOptions(opts)

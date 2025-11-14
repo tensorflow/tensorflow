@@ -40,37 +40,42 @@ from tensorflow.tools.proto_splitter import constants
 from tensorflow.tools.proto_splitter.python import saved_model as proto_splitter
 
 SPLITTER_TESTDATA_PATH = flags.DEFINE_string(
-    "path", None, help="Path to testdata directory.")
+    "path", None, help="Path to testdata directory."
+)
 
 
 def generate_non_chunked_model(non_chunked_dir: str):
-  root = module.Module()
-  root.c = constant_op.constant(np.random.random_sample([150, 150]))
-  constants.debug_set_max_size(80000)
-  root.get_c = def_function.function(lambda: root.c)
-  signatures = root.get_c.get_concrete_function()
-  save.save(root, non_chunked_dir, signatures=signatures,
-            options=save_options.SaveOptions(experimental_image_format=False))
+    root = module.Module()
+    root.c = constant_op.constant(np.random.random_sample([150, 150]))
+    constants.debug_set_max_size(80000)
+    root.get_c = def_function.function(lambda: root.c)
+    signatures = root.get_c.get_concrete_function()
+    save.save(
+        root,
+        non_chunked_dir,
+        signatures=signatures,
+        options=save_options.SaveOptions(experimental_image_format=False),
+    )
 
 
 def generate_chunked_model(non_chunked_dir: str, chunked_dir: str):
-  saved_model = loader_impl.parse_saved_model(non_chunked_dir)
-  prefix = file_io.join(compat.as_str(chunked_dir), "saved_model")
-  file_io.write_string_to_file(f"{prefix}.pbtxt", str(saved_model))
-  proto_splitter.SavedModelSplitter(saved_model).write(prefix)
+    saved_model = loader_impl.parse_saved_model(non_chunked_dir)
+    prefix = file_io.join(compat.as_str(chunked_dir), "saved_model")
+    file_io.write_string_to_file(f"{prefix}.pbtxt", str(saved_model))
+    proto_splitter.SavedModelSplitter(saved_model).write(prefix)
 
 
 def main(argv: Sequence[str]) -> None:
-  if len(argv) > 1:
-    raise app.UsageError("Too many command-line arguments.")
+    if len(argv) > 1:
+        raise app.UsageError("Too many command-line arguments.")
 
-  main_dir = os.path.join(SPLITTER_TESTDATA_PATH.value, "chunked_saved_model")
-  non_chunked_dir = os.path.join(main_dir, "non_chunked_model")
-  generate_non_chunked_model(non_chunked_dir)
-  chunked_dir = os.path.join(main_dir, "chunked_model")
-  generate_chunked_model(non_chunked_dir, chunked_dir)
+    main_dir = os.path.join(SPLITTER_TESTDATA_PATH.value, "chunked_saved_model")
+    non_chunked_dir = os.path.join(main_dir, "non_chunked_model")
+    generate_non_chunked_model(non_chunked_dir)
+    chunked_dir = os.path.join(main_dir, "chunked_model")
+    generate_chunked_model(non_chunked_dir, chunked_dir)
 
 
 if __name__ == "__main__":
-  v2_compat.enable_v2_behavior()
-  app.run(main)
+    v2_compat.enable_v2_behavior()
+    app.run(main)

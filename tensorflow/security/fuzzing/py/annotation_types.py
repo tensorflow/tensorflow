@@ -13,15 +13,16 @@
 # limitations under the License.
 # ==============================================================================
 """Library of types used for type annotation."""
+
 from tensorflow.python.framework import dtypes as _dtypes
 
 
 class DTypeAnnotation:
-  pass
+    pass
 
 
 def _create_dtype_wrapper(name, underlying_dtype: _dtypes.DType):
-  return type(name, (DTypeAnnotation,), {"underlying_dtype": underlying_dtype})
+    return type(name, (DTypeAnnotation,), {"underlying_dtype": underlying_dtype})
 
 
 BFloat16 = _create_dtype_wrapper("BFloat16", _dtypes.bfloat16)
@@ -30,15 +31,11 @@ Complex128 = _create_dtype_wrapper("Complex128", _dtypes.complex128)
 Complex64 = _create_dtype_wrapper("Complex64", _dtypes.complex64)
 Float8e4m3fn = _create_dtype_wrapper("Float8e4m3fn", _dtypes.float8_e4m3fn)
 Float8e5m2 = _create_dtype_wrapper("Float8e5m2", _dtypes.float8_e5m2)
-Float8e4m3fnuz = _create_dtype_wrapper(
-    "Float8e4m3fnuz", _dtypes.float8_e4m3fnuz
-)
+Float8e4m3fnuz = _create_dtype_wrapper("Float8e4m3fnuz", _dtypes.float8_e4m3fnuz)
 Float8e4m3b11fnuz = _create_dtype_wrapper(
     "Float8e4m3b11fnuz", _dtypes.float8_e4m3b11fnuz
 )
-Float8e5m2fnuz = _create_dtype_wrapper(
-    "Float8e5m2fnuz", _dtypes.float8_e5m2fnuz
-)
+Float8e5m2fnuz = _create_dtype_wrapper("Float8e5m2fnuz", _dtypes.float8_e5m2fnuz)
 Float4e2m1fn = _create_dtype_wrapper("Float4e2m1fn", _dtypes.float4_e2m1fn)
 Float16 = _create_dtype_wrapper("Float16", _dtypes.float16)
 Float32 = _create_dtype_wrapper("Float32", _dtypes.float32)

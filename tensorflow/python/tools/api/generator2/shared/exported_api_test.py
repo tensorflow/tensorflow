@@ -47,15 +47,14 @@ _EXPORTS = exported_api.ExportedApi(
 
 
 class ExportedApiTest(test.TestCase):
+    def test_read_write(self):
+        filename = self.get_temp_dir() + "/test_write.json"
+        _EXPORTS.write(filename)
+        e = exported_api.ExportedApi()
+        e.read(filename)
 
-  def test_read_write(self):
-    filename = self.get_temp_dir() + "/test_write.json"
-    _EXPORTS.write(filename)
-    e = exported_api.ExportedApi()
-    e.read(filename)
-
-    self.assertEqual(e, _EXPORTS)
+        self.assertEqual(e, _EXPORTS)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

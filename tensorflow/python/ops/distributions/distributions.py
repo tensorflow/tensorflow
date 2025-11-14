@@ -13,24 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Core module for TensorFlow distribution objects and helpers."""
+
 from tensorflow.python.util import deprecation
 
 
 # pylint: disable=wildcard-import,unused-import,g-import-not-at-top
 with deprecation.silence():
-  from tensorflow.python.ops.distributions.bernoulli import Bernoulli
-  from tensorflow.python.ops.distributions.beta import Beta
-  from tensorflow.python.ops.distributions.categorical import Categorical
-  from tensorflow.python.ops.distributions.dirichlet import Dirichlet
-  from tensorflow.python.ops.distributions.dirichlet_multinomial import DirichletMultinomial
-  from tensorflow.python.ops.distributions.distribution import *
-  from tensorflow.python.ops.distributions.exponential import Exponential
-  from tensorflow.python.ops.distributions.gamma import Gamma
-  from tensorflow.python.ops.distributions.kullback_leibler import *
-  from tensorflow.python.ops.distributions.laplace import Laplace
-  from tensorflow.python.ops.distributions.multinomial import Multinomial
-  from tensorflow.python.ops.distributions.normal import Normal
-  from tensorflow.python.ops.distributions.student_t import StudentT
-  from tensorflow.python.ops.distributions.uniform import Uniform
+    from tensorflow.python.ops.distributions.distribution import *
+    from tensorflow.python.ops.distributions.kullback_leibler import *
 # pylint: enable=wildcard-import,unused-import
 del deprecation

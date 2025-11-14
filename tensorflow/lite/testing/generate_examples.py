@@ -62,97 +62,112 @@ MLIR_CONVERTER_KNOWN_BUGS = {
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 parser = argparse.ArgumentParser(description="Script to generate TFLite tests.")
+parser.add_argument("output_path", help="Directory where the outputs will be go.")
 parser.add_argument(
-    "output_path", help="Directory where the outputs will be go.")
-parser.add_argument(
-    "--zip_to_output",
-    type=str,
-    help="Particular zip to output.",
-    required=True)
+    "--zip_to_output", type=str, help="Particular zip to output.", required=True
+)
 parser.add_argument(
     "--known_bugs_are_errors",
     action="store_true",
-    help=("If a particular model is affected by a known bug,"
-          " count it as a converter error."))
+    help=(
+        "If a particular model is affected by a known bug,"
+        " count it as a converter error."
+    ),
+)
 parser.add_argument(
     "--ignore_converter_errors",
     action="store_true",
-    help="Raise an exception if any converter error is encountered.")
+    help="Raise an exception if any converter error is encountered.",
+)
 parser.add_argument(
     "--save_graphdefs",
     action="store_true",
-    help="Include intermediate graphdefs in the output zip files.")
+    help="Include intermediate graphdefs in the output zip files.",
+)
 parser.add_argument(
     "--run_with_flex",
     action="store_true",
-    help="Whether the TFLite Flex converter is being used.")
+    help="Whether the TFLite Flex converter is being used.",
+)
 parser.add_argument(
     "--make_edgetpu_tests",
     action="store_true",
-    help="Whether to generate test cases for edgetpu.")
+    help="Whether to generate test cases for edgetpu.",
+)
 parser.add_argument(
     "--make_tf_ptq_tests",
     action="store_true",
-    help="Whether to generate test cases for TF post-training quantization.")
+    help="Whether to generate test cases for TF post-training quantization.",
+)
 parser.add_argument(
     "--hlo_aware_conversion",
     action="store_true",
-    help="For TF Quantization only: whether conversion for HLO target.")
+    help="For TF Quantization only: whether conversion for HLO target.",
+)
 parser.add_argument(
     "--make_forward_compat_test",
     action="store_true",
-    help="Make tests by setting TF forward compatibility horizon to the future")
+    help="Make tests by setting TF forward compatibility horizon to the future",
+)
 parser.add_argument(
     "--no_tests_limit",
     action="store_true",
-    help="Remove the limit of the number of tests.")
+    help="Remove the limit of the number of tests.",
+)
 parser.add_argument(
     "--test_sets",
     type=str,
-    help=("Comma-separated list of test set names to generate. "
-          "If not specified, a test set is selected by parsing the name of "
-          "'zip_to_output' file."))
+    help=(
+        "Comma-separated list of test set names to generate. "
+        "If not specified, a test set is selected by parsing the name of "
+        "'zip_to_output' file."
+    ),
+)
 parser.add_argument(
     "--mlir_quantizer",
     action="store_true",
-    help=("Whether the new MLIR quantizer is being used."))
+    help=("Whether the new MLIR quantizer is being used."),
+)
 parser.add_argument(
     "--skip_high_dimension_inputs",
     action="store_true",
-    help=("Whether to skip generating tests with high dimension input shape."))
+    help=("Whether to skip generating tests with high dimension input shape."),
+)
 
 
 def main(unused_args):
-  options = generate_examples_lib.Options()
+    options = generate_examples_lib.Options()
 
-  options.output_path = FLAGS.output_path
-  options.zip_to_output = FLAGS.zip_to_output
-  options.known_bugs_are_errors = FLAGS.known_bugs_are_errors
-  options.ignore_converter_errors = FLAGS.ignore_converter_errors
-  options.save_graphdefs = FLAGS.save_graphdefs
-  options.run_with_flex = FLAGS.run_with_flex
-  options.make_edgetpu_tests = FLAGS.make_edgetpu_tests
-  options.make_tf_ptq_tests = FLAGS.make_tf_ptq_tests
-  options.tflite_convert_function = mlir_convert.mlir_convert
-  options.known_bugs = MLIR_CONVERTER_KNOWN_BUGS
-  options.make_forward_compat_test = FLAGS.make_forward_compat_test
-  options.no_tests_limit = FLAGS.no_tests_limit
-  options.mlir_quantizer = FLAGS.mlir_quantizer
-  options.skip_high_dimension_inputs = FLAGS.skip_high_dimension_inputs
+    options.output_path = FLAGS.output_path
+    options.zip_to_output = FLAGS.zip_to_output
+    options.known_bugs_are_errors = FLAGS.known_bugs_are_errors
+    options.ignore_converter_errors = FLAGS.ignore_converter_errors
+    options.save_graphdefs = FLAGS.save_graphdefs
+    options.run_with_flex = FLAGS.run_with_flex
+    options.make_edgetpu_tests = FLAGS.make_edgetpu_tests
+    options.make_tf_ptq_tests = FLAGS.make_tf_ptq_tests
+    options.tflite_convert_function = mlir_convert.mlir_convert
+    options.known_bugs = MLIR_CONVERTER_KNOWN_BUGS
+    options.make_forward_compat_test = FLAGS.make_forward_compat_test
+    options.no_tests_limit = FLAGS.no_tests_limit
+    options.mlir_quantizer = FLAGS.mlir_quantizer
+    options.skip_high_dimension_inputs = FLAGS.skip_high_dimension_inputs
 
-  if FLAGS.test_sets:
-    test_sets = FLAGS.test_sets.split(",")
-    generate_examples_lib.generate_multi_set_examples(options, test_sets)
-  else:
-    generate_examples_lib.generate_examples(options)
+    if FLAGS.test_sets:
+        test_sets = FLAGS.test_sets.split(",")
+        generate_examples_lib.generate_multi_set_examples(options, test_sets)
+    else:
+        generate_examples_lib.generate_examples(options)
 
 
 if __name__ == "__main__":
-  FLAGS, unparsed = parser.parse_known_args()
+    FLAGS, unparsed = parser.parse_known_args()
 
-  if unparsed:
-    print("\nGot the following unparsed args, %r please fix.\n" % unparsed +
-          "Usage: %s <path out> <zip file to generate>")
-    exit(1)
-  else:
-    tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+    if unparsed:
+        print(
+            "\nGot the following unparsed args, %r please fix.\n" % unparsed
+            + "Usage: %s <path out> <zip file to generate>"
+        )
+        exit(1)
+    else:
+        tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

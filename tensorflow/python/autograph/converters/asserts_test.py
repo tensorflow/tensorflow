@@ -24,19 +24,17 @@ from tensorflow.python.platform import test
 
 
 class AssertsTest(converter_testing.TestCase):
+    def test_basic(self):
+        def f(a):
+            assert a, "testmsg"
+            return a
 
-  def test_basic(self):
+        tr = self.transform(f, (functions, asserts, return_statements))
 
-    def f(a):
-      assert a, 'testmsg'
-      return a
-
-    tr = self.transform(f, (functions, asserts, return_statements))
-
-    op = tr(constant_op.constant(False))
-    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, 'testmsg'):
-      self.evaluate(op)
+        op = tr(constant_op.constant(False))
+        with self.assertRaisesRegex(errors_impl.InvalidArgumentError, "testmsg"):
+            self.evaluate(op)
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

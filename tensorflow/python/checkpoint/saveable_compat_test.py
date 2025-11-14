@@ -29,140 +29,140 @@ from tensorflow.python.training.saving import saveable_object
 
 
 _LEGACY_TABLE_CHECKPOINT_PATH = test.test_src_dir_path(
-    "python/checkpoint/testdata/table_legacy_saveable_object")
+    "python/checkpoint/testdata/table_legacy_saveable_object"
+)
 
 
 class SaveableCompatTest(test.TestCase):
+    def test_lookup_table_compatibility(self):
+        saveable_compat.force_checkpoint_conversion(False)
 
-  def test_lookup_table_compatibility(self):
-    saveable_compat.force_checkpoint_conversion(False)
+        table_module = generate_checkpoint.TableModule()
+        ckpt = checkpoint.Checkpoint(table_module)
+        checkpoint_directory = self.get_temp_dir()
+        checkpoint_path = os.path.join(checkpoint_directory, "ckpt")
+        ckpt.write(checkpoint_path)
 
-    table_module = generate_checkpoint.TableModule()
-    ckpt = checkpoint.Checkpoint(table_module)
-    checkpoint_directory = self.get_temp_dir()
-    checkpoint_path = os.path.join(checkpoint_directory, "ckpt")
-    ckpt.write(checkpoint_path)
+        # Ensure that the checkpoint metadata and keys are the same.
+        legacy_metadata = checkpoint.object_metadata(_LEGACY_TABLE_CHECKPOINT_PATH)
+        metadata = checkpoint.object_metadata(checkpoint_path)
 
-    # Ensure that the checkpoint metadata and keys are the same.
-    legacy_metadata = checkpoint.object_metadata(_LEGACY_TABLE_CHECKPOINT_PATH)
-    metadata = checkpoint.object_metadata(checkpoint_path)
+        def _get_table_node(object_metadata):
+            for child in object_metadata.nodes[0].children:
+                if child.local_name == "lookup_table":
+                    return object_metadata.nodes[child.node_id]
 
-    def _get_table_node(object_metadata):
-      for child in object_metadata.nodes[0].children:
-        if child.local_name == "lookup_table":
-          return object_metadata.nodes[child.node_id]
+        table_proto = _get_table_node(metadata)
+        legacy_table_proto = _get_table_node(legacy_metadata)
+        self.assertAllEqual(
+            [table_proto.attributes[0].name, table_proto.attributes[0].checkpoint_key],
+            [
+                legacy_table_proto.attributes[0].name,
+                legacy_table_proto.attributes[0].checkpoint_key,
+            ],
+        )
+        legacy_reader = checkpoint_utils.load_checkpoint(_LEGACY_TABLE_CHECKPOINT_PATH)
+        reader = checkpoint_utils.load_checkpoint(checkpoint_path)
+        self.assertEqual(
+            legacy_reader.get_variable_to_shape_map().keys(),
+            reader.get_variable_to_shape_map().keys(),
+        )
 
-    table_proto = _get_table_node(metadata)
-    legacy_table_proto = _get_table_node(legacy_metadata)
-    self.assertAllEqual(
-        [table_proto.attributes[0].name,
-         table_proto.attributes[0].checkpoint_key],
-        [legacy_table_proto.attributes[0].name,
-         legacy_table_proto.attributes[0].checkpoint_key])
-    legacy_reader = checkpoint_utils.load_checkpoint(
-        _LEGACY_TABLE_CHECKPOINT_PATH)
-    reader = checkpoint_utils.load_checkpoint(checkpoint_path)
-    self.assertEqual(
-        legacy_reader.get_variable_to_shape_map().keys(),
-        reader.get_variable_to_shape_map().keys())
-
-    # Ensure that previous checkpoint can be loaded into current table.
-    ckpt.read(_LEGACY_TABLE_CHECKPOINT_PATH).assert_consumed()
+        # Ensure that previous checkpoint can be loaded into current table.
+        ckpt.read(_LEGACY_TABLE_CHECKPOINT_PATH).assert_consumed()
 
 
 class TestForceCheckpointConversionFlag(test.TestCase):
+    def test_checkpoint(self):
+        saveable_compat.force_checkpoint_conversion()
 
-  def test_checkpoint(self):
-    saveable_compat.force_checkpoint_conversion()
+        table_module = generate_checkpoint.TableModule()
+        table_module.lookup_table.insert(3, 9)
+        ckpt = checkpoint.Checkpoint(table_module)
+        checkpoint_directory = self.get_temp_dir()
+        checkpoint_path = os.path.join(checkpoint_directory, "ckpt")
+        ckpt.write(checkpoint_path)
 
-    table_module = generate_checkpoint.TableModule()
-    table_module.lookup_table.insert(3, 9)
-    ckpt = checkpoint.Checkpoint(table_module)
-    checkpoint_directory = self.get_temp_dir()
-    checkpoint_path = os.path.join(checkpoint_directory, "ckpt")
-    ckpt.write(checkpoint_path)
+        new_table_module = generate_checkpoint.TableModule()
+        self.assertEqual(-1, self.evaluate(new_table_module.lookup_table.lookup(3)))
 
-    new_table_module = generate_checkpoint.TableModule()
-    self.assertEqual(-1, self.evaluate(new_table_module.lookup_table.lookup(3)))
+        new_ckpt = checkpoint.Checkpoint(new_table_module)
+        new_ckpt.read(checkpoint_path).assert_consumed()
+        self.assertEqual(9, self.evaluate(new_table_module.lookup_table.lookup(3)))
 
-    new_ckpt = checkpoint.Checkpoint(new_table_module)
-    new_ckpt.read(checkpoint_path).assert_consumed()
-    self.assertEqual(9, self.evaluate(new_table_module.lookup_table.lookup(3)))
+    def test_backwards_compatibility(self):
+        saveable_compat.force_checkpoint_conversion()
 
-  def test_backwards_compatibility(self):
-    saveable_compat.force_checkpoint_conversion()
+        table_module = generate_checkpoint.TableModule()
+        table_module.lookup_table.insert(3, 9)
+        self.assertEqual(9, self.evaluate(table_module.lookup_table.lookup(3)))
 
-    table_module = generate_checkpoint.TableModule()
-    table_module.lookup_table.insert(3, 9)
-    self.assertEqual(9, self.evaluate(table_module.lookup_table.lookup(3)))
+        ckpt = checkpoint.Checkpoint(table_module)
+        ckpt.read(_LEGACY_TABLE_CHECKPOINT_PATH).assert_consumed()
+        self.assertEqual(-1, self.evaluate(table_module.lookup_table.lookup(3)))
+        self.assertEqual(4, self.evaluate(table_module.lookup_table.lookup(2)))
 
-    ckpt = checkpoint.Checkpoint(table_module)
-    ckpt.read(_LEGACY_TABLE_CHECKPOINT_PATH).assert_consumed()
-    self.assertEqual(-1, self.evaluate(table_module.lookup_table.lookup(3)))
-    self.assertEqual(4, self.evaluate(table_module.lookup_table.lookup(2)))
+    def test_forward_compatibility(self):
+        class _MultiSpecSaveable(saveable_object.SaveableObject):
+            def __init__(self, obj, name):
+                self.obj = obj
+                specs = [
+                    saveable_object.SaveSpec(obj.a, "", name + "-a"),
+                    saveable_object.SaveSpec(obj.b, "", name + "-b"),
+                ]
+                super(_MultiSpecSaveable, self).__init__(None, specs, name)
 
-  def test_forward_compatibility(self):
+            def restore(self, restored_tensors, restored_shapes):
+                del restored_shapes  # Unused.
+                self.obj.a.assign(restored_tensors[0])
+                self.obj.b.assign(restored_tensors[1])
 
-    class _MultiSpecSaveable(saveable_object.SaveableObject):
+        class DeprecatedTrackable(base.Trackable):
+            def __init__(self):
+                self.a = variables.Variable(1.0)
+                self.b = variables.Variable(2.0)
 
-      def __init__(self, obj, name):
-        self.obj = obj
-        specs = [
-            saveable_object.SaveSpec(obj.a, "", name + "-a"),
-            saveable_object.SaveSpec(obj.b, "", name + "-b")]
-        super(_MultiSpecSaveable, self).__init__(None, specs, name)
+            def _gather_saveables_for_checkpoint(self):
+                return {"foo": lambda name: _MultiSpecSaveable(self, name)}
 
-      def restore(self, restored_tensors, restored_shapes):
-        del restored_shapes  # Unused.
-        self.obj.a.assign(restored_tensors[0])
-        self.obj.b.assign(restored_tensors[1])
+        @saveable_compat.legacy_saveable_name("foo")
+        class NewTrackable(base.Trackable):
+            def __init__(self):
+                self.a = variables.Variable(3.0)
+                self.b = variables.Variable(4.0)
 
-    class DeprecatedTrackable(base.Trackable):
+            def _serialize_to_tensors(self):
+                return {"-a": self.a, "-b": self.b}
 
-      def __init__(self):
-        self.a = variables.Variable(1.0)
-        self.b = variables.Variable(2.0)
+            def _restore_from_tensors(self, restored_tensors):
+                return control_flow_ops.group(
+                    self.a.assign(restored_tensors["-a"]),
+                    self.b.assign(restored_tensors["-b"]),
+                )
 
-      def _gather_saveables_for_checkpoint(self):
-        return {"foo": lambda name: _MultiSpecSaveable(self, name)}
+        new = NewTrackable()
 
-    @saveable_compat.legacy_saveable_name("foo")
-    class NewTrackable(base.Trackable):
+        # Test with the checkpoint conversion flag disabled (normal compatibility).
+        saveable_compat.force_checkpoint_conversion(False)
+        checkpoint_path = os.path.join(self.get_temp_dir(), "ckpt")
+        checkpoint.Checkpoint(new).write(checkpoint_path)
 
-      def __init__(self):
-        self.a = variables.Variable(3.0)
-        self.b = variables.Variable(4.0)
+        dep = DeprecatedTrackable()
+        checkpoint.Checkpoint(dep).read(checkpoint_path).assert_consumed()
+        self.assertEqual(3, self.evaluate(dep.a))
+        self.assertEqual(4, self.evaluate(dep.b))
 
-      def _serialize_to_tensors(self):
-        return {"-a": self.a, "-b": self.b}
+        # Now test with the checkpoint conversion flag enabled (forward compat).
+        # The deprecated object will try to load from the new checkpoint.
+        saveable_compat.force_checkpoint_conversion()
+        checkpoint_path = os.path.join(self.get_temp_dir(), "ckpt2")
+        checkpoint.Checkpoint(new).write(checkpoint_path)
 
-      def _restore_from_tensors(self, restored_tensors):
-        return control_flow_ops.group(
-            self.a.assign(restored_tensors["-a"]),
-            self.b.assign(restored_tensors["-b"]))
+        dep = DeprecatedTrackable()
+        checkpoint.Checkpoint(dep).read(checkpoint_path).assert_consumed()
+        self.assertEqual(3, self.evaluate(dep.a))
+        self.assertEqual(4, self.evaluate(dep.b))
 
-    new = NewTrackable()
-
-    # Test with the checkpoint conversion flag disabled (normal compatibility).
-    saveable_compat.force_checkpoint_conversion(False)
-    checkpoint_path = os.path.join(self.get_temp_dir(), "ckpt")
-    checkpoint.Checkpoint(new).write(checkpoint_path)
-
-    dep = DeprecatedTrackable()
-    checkpoint.Checkpoint(dep).read(checkpoint_path).assert_consumed()
-    self.assertEqual(3, self.evaluate(dep.a))
-    self.assertEqual(4, self.evaluate(dep.b))
-
-    # Now test with the checkpoint conversion flag enabled (forward compat).
-    # The deprecated object will try to load from the new checkpoint.
-    saveable_compat.force_checkpoint_conversion()
-    checkpoint_path = os.path.join(self.get_temp_dir(), "ckpt2")
-    checkpoint.Checkpoint(new).write(checkpoint_path)
-
-    dep = DeprecatedTrackable()
-    checkpoint.Checkpoint(dep).read(checkpoint_path).assert_consumed()
-    self.assertEqual(3, self.evaluate(dep.a))
-    self.assertEqual(4, self.evaluate(dep.b))
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

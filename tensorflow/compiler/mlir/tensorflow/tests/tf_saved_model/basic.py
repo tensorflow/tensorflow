@@ -32,26 +32,25 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common
 
 
 class TestModule(tf.Module):
+    def __init__(self):
+        super(TestModule, self).__init__()
+        self.v42 = tf.Variable(42.0)
+        self.c43 = tf.constant(43.0)
 
-  def __init__(self):
-    super(TestModule, self).__init__()
-    self.v42 = tf.Variable(42.0)
-    self.c43 = tf.constant(43.0)
+    # During serialization, the constants are given internal (non-user-accessible, non-semantically-load-bearing) exported names.
+    # CHECK: "tf_saved_model.global_tensor"() <{sym_name = "[[CONST:[a-zA-Z_0-9.]+]]", type = tensor<f32>, value = dense<4.300000e+01> : tensor<f32>}> {tf_saved_model.exported_names = [{{.*}}]} : () -> ()
 
-  # During serialization, the constants are given internal (non-user-accessible, non-semantically-load-bearing) exported names.
-  # CHECK: "tf_saved_model.global_tensor"() <{sym_name = "[[CONST:[a-zA-Z_0-9.]+]]", type = tensor<f32>, value = dense<4.300000e+01> : tensor<f32>}> {tf_saved_model.exported_names = [{{.*}}]} : () -> ()
-
-  # CHECK: "tf_saved_model.global_tensor"() <{is_mutable, sym_name = "[[VAR:[a-zA-Z_0-9]+]]", type = tensor<f32>, value = dense<4.200000e+01> : tensor<f32>}> {tf_saved_model.exported_names = ["v42"]} : () -> ()
-  # CHECK:      func {{@[a-zA-Z_0-9]+}}(
-  # CHECK-SAME:   %arg0: tensor<f32> {tf._user_specified_name = "x", tf_saved_model.index_path = [0]},
-  # CHECK-SAME:   %arg1: tensor<!tf_type.resource<tensor<f32>>>
-  # CHECK-SAME:   %arg2: tensor<!tf_type.resource<tensor<f32>>>
-  # CHECK-SAME:   tensor<f32> {tf_saved_model.index_path = []})
-  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["some_function"]
-  @tf.function(input_signature=[tf.TensorSpec([], tf.float32)])
-  def some_function(self, x):
-    return x + self.v42 + self.c43
+    # CHECK: "tf_saved_model.global_tensor"() <{is_mutable, sym_name = "[[VAR:[a-zA-Z_0-9]+]]", type = tensor<f32>, value = dense<4.200000e+01> : tensor<f32>}> {tf_saved_model.exported_names = ["v42"]} : () -> ()
+    # CHECK:      func {{@[a-zA-Z_0-9]+}}(
+    # CHECK-SAME:   %arg0: tensor<f32> {tf._user_specified_name = "x", tf_saved_model.index_path = [0]},
+    # CHECK-SAME:   %arg1: tensor<!tf_type.resource<tensor<f32>>>
+    # CHECK-SAME:   %arg2: tensor<!tf_type.resource<tensor<f32>>>
+    # CHECK-SAME:   tensor<f32> {tf_saved_model.index_path = []})
+    # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["some_function"]
+    @tf.function(input_signature=[tf.TensorSpec([], tf.float32)])
+    def some_function(self, x):
+        return x + self.v42 + self.c43
 
 
-if __name__ == '__main__':
-  common.do_test(TestModule)
+if __name__ == "__main__":
+    common.do_test(TestModule)

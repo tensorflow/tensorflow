@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for fenced_doctest."""
+
 from typing import List, Optional, Tuple
 
 from absl.testing import absltest
@@ -22,7 +23,10 @@ from tensorflow.tools.docs import fenced_doctest_lib
 
 EXAMPLES = [
     # pyformat: disable
-    ('simple', [('code', None)], """
+    (
+        "simple",
+        [("code", None)],
+        """
      Hello
 
      ``` python
@@ -30,8 +34,12 @@ EXAMPLES = [
      ```
 
      Goodbye
-     """),
-    ('output', [('code', 'result')], """
+     """,
+    ),
+    (
+        "output",
+        [("code", "result")],
+        """
      Hello
 
      ``` python
@@ -43,8 +51,12 @@ EXAMPLES = [
      ```
 
      Goodbye
-     """),
-    ('not-output', [('code', None)], """
+     """,
+    ),
+    (
+        "not-output",
+        [("code", None)],
+        """
      Hello
 
      ``` python
@@ -56,21 +68,33 @@ EXAMPLES = [
      ```
 
      Goodbye
-     """),
-    ('first', [('code', None)], """
+     """,
+    ),
+    (
+        "first",
+        [("code", None)],
+        """
      ``` python
      code
      ```
 
      Goodbye
-     """[1:]),
-    ('last', [('code', None)], """
+     """[1:],
+    ),
+    (
+        "last",
+        [("code", None)],
+        """
      Hello
 
      ``` python
      code
-     ```"""),
-    ('last_output', [('code', 'result')], """
+     ```""",
+    ),
+    (
+        "last_output",
+        [("code", "result")],
+        """
      Hello
 
      ``` python
@@ -79,8 +103,12 @@ EXAMPLES = [
 
      ```
      result
-     ```"""),
-    ('skip-unlabeled', [], """
+     ```""",
+    ),
+    (
+        "skip-unlabeled",
+        [],
+        """
      Hello
 
      ```
@@ -88,8 +116,12 @@ EXAMPLES = [
      ```
 
      Goodbye
-     """),
-    ('skip-wrong-label', [], """
+     """,
+    ),
+    (
+        "skip-wrong-label",
+        [],
+        """
      Hello
 
      ``` sdkfjgsd
@@ -97,8 +129,12 @@ EXAMPLES = [
      ```
 
      Goodbye
-     """),
-    ('doctest_skip', [], """
+     """,
+    ),
+    (
+        "doctest_skip",
+        [],
+        """
      Hello
 
      ``` python
@@ -106,8 +142,12 @@ EXAMPLES = [
      ```
 
      Goodbye
-     """),
-    ('skip_all', [], """
+     """,
+    ),
+    (
+        "skip_all",
+        [],
+        """
      <!-- doctest: skip-all -->
 
      Hello
@@ -121,8 +161,12 @@ EXAMPLES = [
      ```
 
      Goodbye
-     """),
-    ('two', [('a', None), ('b', None)], """
+     """,
+    ),
+    (
+        "two",
+        [("a", None), ("b", None)],
+        """
      Hello
 
      ``` python
@@ -134,8 +178,12 @@ EXAMPLES = [
      ```
 
      Goodbye
-     """),
-    ('two-outputs', [('a', 'A'), ('b', 'B')], """
+     """,
+    ),
+    (
+        "two-outputs",
+        [("a", "A"), ("b", "B")],
+        """
      Hello
 
      ``` python
@@ -155,8 +203,12 @@ EXAMPLES = [
      ```
 
      Goodbye
-     """),
-    ('list', [('a', None), ('b', 'B'), ('c', 'C'), ('d', None)], """
+     """,
+    ),
+    (
+        "list",
+        [("a", None), ("b", "B"), ("c", "C"), ("d", None)],
+        """
      Hello
 
      ``` python
@@ -189,8 +241,12 @@ EXAMPLES = [
 
 
      Goodbye
-     """),
-    ('multiline', [('a\nb', 'A\nB')], """
+     """,
+    ),
+    (
+        "multiline",
+        [("a\nb", "A\nB")],
+        """
      Hello
 
      ``` python
@@ -204,37 +260,38 @@ EXAMPLES = [
      ```
 
      Goodbye
-     """)
+     """,
+    ),
 ]
 
 ExampleTuples = List[Tuple[str, Optional[str]]]
 
 
 class G3DoctestTest(parameterized.TestCase):
+    def _do_test(self, expected_example_tuples, string):
+        parser = fenced_doctest_lib.FencedCellParser(fence_label="python")
 
-  def _do_test(self, expected_example_tuples, string):
-    parser = fenced_doctest_lib.FencedCellParser(fence_label='python')
+        example_tuples = []
+        for example in parser.get_examples(string, name=self._testMethodName):
+            source = example.source.rstrip("\n")
+            want = example.want
+            if want is not None:
+                want = want.rstrip("\n")
+            example_tuples.append((source, want))
 
-    example_tuples = []
-    for example in parser.get_examples(string, name=self._testMethodName):
-      source = example.source.rstrip('\n')
-      want = example.want
-      if want is not None:
-        want = want.rstrip('\n')
-      example_tuples.append((source, want))
+        self.assertEqual(expected_example_tuples, example_tuples)
 
-    self.assertEqual(expected_example_tuples, example_tuples)
+    @parameterized.named_parameters(*EXAMPLES)
+    def test_parser(self, expected_example_tuples: ExampleTuples, string: str):
+        self._do_test(expected_example_tuples, string)
 
-  @parameterized.named_parameters(*EXAMPLES)
-  def test_parser(self, expected_example_tuples: ExampleTuples, string: str):
-    self._do_test(expected_example_tuples, string)
-
-  @parameterized.named_parameters(*EXAMPLES)
-  def test_parser_no_blanks(self, expected_example_tuples: ExampleTuples,
-                            string: str):
-    string = string.replace('\n\n', '\n')
-    self._do_test(expected_example_tuples, string)
+    @parameterized.named_parameters(*EXAMPLES)
+    def test_parser_no_blanks(
+        self, expected_example_tuples: ExampleTuples, string: str
+    ):
+        string = string.replace("\n\n", "\n")
+        self._do_test(expected_example_tuples, string)
 
 
-if __name__ == '__main__':
-  absltest.main()
+if __name__ == "__main__":
+    absltest.main()

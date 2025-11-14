@@ -19,57 +19,54 @@ from tensorflow.python.platform import test
 
 
 class CacheTest(test.TestCase):
+    def test_code_object_cache(self):
+        def factory(x):
+            def test_fn():
+                return x + 1
 
-  def test_code_object_cache(self):
+            return test_fn
 
-    def factory(x):
-      def test_fn():
-        return x + 1
-      return test_fn
+        c = cache.CodeObjectCache()
 
-    c = cache.CodeObjectCache()
+        f1 = factory(1)
+        dummy = object()
 
-    f1 = factory(1)
-    dummy = object()
+        c[f1][1] = dummy
 
-    c[f1][1] = dummy
+        self.assertTrue(c.has(f1, 1))
+        self.assertFalse(c.has(f1, 2))
+        self.assertIs(c[f1][1], dummy)
+        self.assertEqual(len(c), 1)
 
-    self.assertTrue(c.has(f1, 1))
-    self.assertFalse(c.has(f1, 2))
-    self.assertIs(c[f1][1], dummy)
-    self.assertEqual(len(c), 1)
+        f2 = factory(2)
 
-    f2 = factory(2)
+        self.assertTrue(c.has(f2, 1))
+        self.assertIs(c[f2][1], dummy)
+        self.assertEqual(len(c), 1)
 
-    self.assertTrue(c.has(f2, 1))
-    self.assertIs(c[f2][1], dummy)
-    self.assertEqual(len(c), 1)
+    def test_unbound_instance_cache(self):
+        class TestClass(object):
+            def method(self):
+                pass
 
-  def test_unbound_instance_cache(self):
+        c = cache.UnboundInstanceCache()
 
-    class TestClass(object):
+        o1 = TestClass()
+        dummy = object()
 
-      def method(self):
-        pass
+        c[o1.method][1] = dummy
 
-    c = cache.UnboundInstanceCache()
+        self.assertTrue(c.has(o1.method, 1))
+        self.assertFalse(c.has(o1.method, 2))
+        self.assertIs(c[o1.method][1], dummy)
+        self.assertEqual(len(c), 1)
 
-    o1 = TestClass()
-    dummy = object()
+        o2 = TestClass()
 
-    c[o1.method][1] = dummy
-
-    self.assertTrue(c.has(o1.method, 1))
-    self.assertFalse(c.has(o1.method, 2))
-    self.assertIs(c[o1.method][1], dummy)
-    self.assertEqual(len(c), 1)
-
-    o2 = TestClass()
-
-    self.assertTrue(c.has(o2.method, 1))
-    self.assertIs(c[o2.method][1], dummy)
-    self.assertEqual(len(c), 1)
+        self.assertTrue(c.has(o2.method, 1))
+        self.assertIs(c[o2.method][1], dummy)
+        self.assertEqual(len(c), 1)
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

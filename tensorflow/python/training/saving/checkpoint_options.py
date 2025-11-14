@@ -19,5 +19,4 @@
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.util import deprecation
 
-__getattr__ = deprecation.deprecate_moved_module(
-    __name__, checkpoint_options, "2.11")
+__getattr__ = deprecation.deprecate_moved_module(__name__, checkpoint_options, "2.11")

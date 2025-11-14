@@ -32,87 +32,90 @@ from tensorflow.python.ops import collective_ops
 
 # Based on collective_ops_multi_worker_test.py
 def enable_collective_ops(cluster_resolver):
-  context.context().configure_collective_ops(
-      collective_leader="/job:worker/replica:0/task:0")
-  config_proto = copy.deepcopy(context.context().config)
-  server_def = tensorflow_server_pb2.ServerDef(
-      cluster=cluster_resolver.cluster_spec().as_cluster_def(),
-      default_session_config=config_proto,
-      job_name=cluster_resolver.task_type,
-      task_index=cluster_resolver.task_id,
-      protocol=cluster_resolver.rpc_layer or "grpc")
-  context.context().enable_collective_ops(server_def)
+    context.context().configure_collective_ops(
+        collective_leader="/job:worker/replica:0/task:0"
+    )
+    config_proto = copy.deepcopy(context.context().config)
+    server_def = tensorflow_server_pb2.ServerDef(
+        cluster=cluster_resolver.cluster_spec().as_cluster_def(),
+        default_session_config=config_proto,
+        job_name=cluster_resolver.task_type,
+        task_index=cluster_resolver.task_id,
+        protocol=cluster_resolver.rpc_layer or "grpc",
+    )
+    context.context().enable_collective_ops(server_def)
 
 
 def configure_coordination_service():
-  context.context().configure_coordination_service(
-      service_type="standalone",
-      service_leader="/job:worker/replica:0/task:0",
-      enable_health_check=False,
-  )
+    context.context().configure_coordination_service(
+        service_type="standalone",
+        service_leader="/job:worker/replica:0/task:0",
+        enable_health_check=False,
+    )
 
 
 class MultiWorkerMirroredStrategyPjRtRemoteGpuTest(
     multi_worker_test_base.MultiWorkerTestBase, test.TestCase
 ):
-  def testRemoteGpusFound(self):
+    def testRemoteGpusFound(self):
+        def worker_fn():
+            configure_coordination_service()
+            cluster_resolver = cluster_resolver_lib.TFConfigClusterResolver()
+            enable_collective_ops(cluster_resolver=cluster_resolver)
+            context.context().ensure_initialized()
 
-    def worker_fn():
+            group_size = 2
+            group_key = 1
+            instance_key1 = 1
+            instance_key2 = 2
+            tensor_size = 10
 
-      configure_coordination_service()
-      cluster_resolver = cluster_resolver_lib.TFConfigClusterResolver()
-      enable_collective_ops(cluster_resolver=cluster_resolver)
-      context.context().ensure_initialized()
+            # cluster_resolver.task_id is int 0 or 1.
+            tensor_val = [cluster_resolver.task_id + 1.0] * tensor_size
+            constant = constant_op.constant(tensor_val)
 
-      group_size = 2
-      group_key = 1
-      instance_key1 = 1
-      instance_key2 = 2
-      tensor_size = 10
+            @def_function.function(jit_compile=True)
+            def g():
+                def f(x):
+                    return 2 * x + 1
 
-      # cluster_resolver.task_id is int 0 or 1.
-      tensor_val = [cluster_resolver.task_id + 1.] * tensor_size
-      constant = constant_op.constant(tensor_val)
+                input_tensor1 = array_ops.identity(f(constant))
+                input_tensor2 = array_ops.identity(f(constant))
 
-      @def_function.function(jit_compile=True)
-      def g():
+                reduced_tensor1 = collective_ops.all_reduce_v2(
+                    input_tensor1, group_size, group_key, instance_key1, "Add", "Id"
+                )
+                reduced_tensor2 = collective_ops.all_reduce_v2(
+                    input_tensor2, group_size, group_key, instance_key2, "Add", "Id"
+                )
+                return reduced_tensor1, reduced_tensor2
 
-        def f(x):
-          return 2 * x + 1
+            return g()
 
-        input_tensor1 = array_ops.identity(f(constant))
-        input_tensor2 = array_ops.identity(f(constant))
+        num_gpus = len(tf_config.list_physical_devices("GPU"))
+        skip_flag = (num_gpus < 2) or not test_util.is_xla_enabled()
+        if skip_flag:
+            self.skipTest(
+                "This test is intended to test the 2 GPU (1 per worker with 2"
+                " workers) with XLA case (%d GPUs found, using XLA = %s)."
+                % (num_gpus, test_util.is_xla_enabled())
+            )
 
-        reduced_tensor1 = collective_ops.all_reduce_v2(
-            input_tensor1, group_size, group_key, instance_key1, "Add", "Id")
-        reduced_tensor2 = collective_ops.all_reduce_v2(
-            input_tensor2, group_size, group_key, instance_key2, "Add", "Id")
-        return reduced_tensor1, reduced_tensor2
-
-      return g()
-
-    num_gpus = len(tf_config.list_physical_devices("GPU"))
-    skip_flag = (num_gpus < 2) or not test_util.is_xla_enabled()
-    if skip_flag:
-      self.skipTest(
-          "This test is intended to test the 2 GPU (1 per worker with 2"
-          " workers) with XLA case (%d GPUs found, using XLA = %s)."
-          % (num_gpus, test_util.is_xla_enabled())
-      )
-
-    cluster_spec = multi_worker_test_base.create_cluster_spec(num_workers=2)
-    mpr = multi_process_runner.MultiProcessRunner(
-        worker_fn, cluster_spec, share_gpu=False
-    )
-    mpr.start()
-    mpr_result = mpr.join()
-    self.assertLen(mpr_result.return_value, 2)
-    for rval in mpr_result.return_value:
-      for t in rval:
-        # for IDs 0 and 1: (2*(0+1)+1) + (2*(1+1)+1) = 8
-        self.assertAllClose(t.numpy(), [8., 8., 8., 8., 8., 8., 8., 8., 8., 8.])
+        cluster_spec = multi_worker_test_base.create_cluster_spec(num_workers=2)
+        mpr = multi_process_runner.MultiProcessRunner(
+            worker_fn, cluster_spec, share_gpu=False
+        )
+        mpr.start()
+        mpr_result = mpr.join()
+        self.assertLen(mpr_result.return_value, 2)
+        for rval in mpr_result.return_value:
+            for t in rval:
+                # for IDs 0 and 1: (2*(0+1)+1) + (2*(1+1)+1) = 8
+                self.assertAllClose(
+                    t.numpy(), [8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0]
+                )
 
 
 if __name__ == "__main__":
-  v2_compat.enable_v2_behavior()
-  multi_process_runner.test_main()
+    v2_compat.enable_v2_behavior()
+    multi_process_runner.test_main()

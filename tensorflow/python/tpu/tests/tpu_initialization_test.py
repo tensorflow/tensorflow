@@ -22,12 +22,11 @@ from tensorflow.python.platform import test
 
 
 class TPUInitializationTest(parameterized.TestCase, test.TestCase):
+    def test_tpu_initialization(self):
+        resolver = tpu_cluster_resolver.TPUClusterResolver("")
+        tpu_cluster_resolver.initialize_tpu_system(resolver)
 
-  def test_tpu_initialization(self):
-    resolver = tpu_cluster_resolver.TPUClusterResolver('')
-    tpu_cluster_resolver.initialize_tpu_system(resolver)
 
-
-if __name__ == '__main__':
-  v2_compat.enable_v2_behavior()
-  test.main()
+if __name__ == "__main__":
+    v2_compat.enable_v2_behavior()
+    test.main()

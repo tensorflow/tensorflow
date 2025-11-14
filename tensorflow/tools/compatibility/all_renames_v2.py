@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Provides a list of renames between TensorFlow 1.* and 2.0."""
+
 from tensorflow.tools.compatibility import renames_v2
 
 # pylint: disable=line-too-long
@@ -94,15 +95,11 @@ manual_symbol_renames = {
     "tf.contrib.data.dense_to_sparse_batch": (
         "tf.data.experimental.dense_to_sparse_batch"
     ),
-    "tf.contrib.data.enumerate_dataset": (
-        "tf.data.experimental.enumerate_dataset"
-    ),
+    "tf.contrib.data.enumerate_dataset": ("tf.data.experimental.enumerate_dataset"),
     "tf.contrib.data.get_next_as_optional": (
         "tf.data.experimental.get_next_as_optional"
     ),
-    "tf.contrib.data.get_single_element": (
-        "tf.data.experimental.get_single_element"
-    ),
+    "tf.contrib.data.get_single_element": ("tf.data.experimental.get_single_element"),
     "tf.contrib.data.group_by_reducer": "tf.data.experimental.group_by_reducer",
     "tf.contrib.data.group_by_window": "tf.data.experimental.group_by_window",
     "tf.contrib.data.ignore_errors": "tf.data.experimental.ignore_errors",
@@ -115,18 +112,12 @@ manual_symbol_renames = {
         "tf.data.experimental.make_saveable_from_iterator"
     ),
     "tf.contrib.data.map_and_batch": "tf.data.experimental.map_and_batch",
-    "tf.contrib.data.parallel_interleave": (
-        "tf.data.experimental.parallel_interleave"
-    ),
+    "tf.contrib.data.parallel_interleave": ("tf.data.experimental.parallel_interleave"),
     "tf.contrib.data.parse_example_dataset": (
         "tf.data.experimental.parse_example_dataset"
     ),
-    "tf.contrib.data.prefetch_to_device": (
-        "tf.data.experimental.prefetch_to_device"
-    ),
-    "tf.contrib.data.rejection_resample": (
-        "tf.data.experimental.rejection_resample"
-    ),
+    "tf.contrib.data.prefetch_to_device": ("tf.data.experimental.prefetch_to_device"),
+    "tf.contrib.data.rejection_resample": ("tf.data.experimental.rejection_resample"),
     "tf.contrib.data.sample_from_datasets": (
         "tf.data.experimental.sample_from_datasets"
     ),
@@ -134,9 +125,7 @@ manual_symbol_renames = {
     "tf.contrib.data.set_stats_aggregator": (
         "tf.data.experimental.set_stats_aggregator"
     ),
-    "tf.contrib.data.shuffle_and_repeat": (
-        "tf.data.experimental.shuffle_and_repeat"
-    ),
+    "tf.contrib.data.shuffle_and_repeat": ("tf.data.experimental.shuffle_and_repeat"),
     "tf.contrib.data.unbatch": "tf.data.experimental.unbatch",
     "tf.contrib.data.unique": "tf.data.experimental.unique",
     "tf.contrib.distribute.CrossDeviceOps": "tf.distribute.CrossDeviceOps",
@@ -177,12 +166,8 @@ manual_symbol_renames = {
     ),
     "tf.contrib.framework.sort": "tf.sort",
     "tf.contrib.framework.argsort": "tf.argsort",
-    "tf.contrib.summary.all_summary_ops": (
-        "tf.compat.v1.summary.all_v2_summary_ops"
-    ),
-    "tf.contrib.summary.always_record_summaries": (
-        "tf.compat.v2.summary.record_if"
-    ),
+    "tf.contrib.summary.all_summary_ops": ("tf.compat.v1.summary.all_v2_summary_ops"),
+    "tf.contrib.summary.always_record_summaries": ("tf.compat.v2.summary.record_if"),
     "tf.contrib.summary.audio": "tf.compat.v2.summary.audio",
     "tf.contrib.summary.create_file_writer": (
         "tf.compat.v2.summary.create_file_writer"
@@ -192,21 +177,15 @@ manual_symbol_renames = {
     "tf.contrib.summary.histogram": "tf.compat.v2.summary.histogram",
     "tf.contrib.summary.image": "tf.compat.v2.summary.image",
     "tf.contrib.summary.initialize": "tf.compat.v1.summary.initialize",
-    "tf.contrib.summary.never_record_summaries": (
-        "tf.compat.v2.summary.record_if"
-    ),
+    "tf.contrib.summary.never_record_summaries": ("tf.compat.v2.summary.record_if"),
     "tf.contrib.summary.scalar": "tf.compat.v2.summary.scalar",
-    "tf.contrib.tpu.CrossShardOptimizer": (
-        "tf.compat.v1.tpu.CrossShardOptimizer"
-    ),
+    "tf.contrib.tpu.CrossShardOptimizer": ("tf.compat.v1.tpu.CrossShardOptimizer"),
     "tf.contrib.tpu.batch_parallel": "tf.compat.v1.tpu.batch_parallel",
     "tf.contrib.tpu.bfloat16_scope": "tf.compat.v1.tpu.bfloat16_scope",
     "tf.contrib.tpu.core": "tf.compat.v1.tpu.core",
     "tf.contrib.tpu.cross_replica_sum": "tf.compat.v1.tpu.cross_replica_sum",
     "tf.contrib.tpu.initialize_system": "tf.compat.v1.tpu.initialize_system",
-    "tf.contrib.tpu.outside_compilation": (
-        "tf.compat.v1.tpu.outside_compilation"
-    ),
+    "tf.contrib.tpu.outside_compilation": ("tf.compat.v1.tpu.outside_compilation"),
     "tf.contrib.tpu.replicate": "tf.compat.v1.tpu.replicate",
     "tf.contrib.tpu.rewrite": "tf.compat.v1.tpu.rewrite",
     "tf.contrib.tpu.shard": "tf.compat.v1.tpu.shard",
@@ -292,9 +271,7 @@ manual_symbol_renames = {
     "tf.assert_rank_in": "tf.compat.v1.assert_rank_in",
     "tf.assert_scalar": "tf.compat.v1.assert_scalar",
     "tf.assert_type": "tf.compat.v1.assert_type",
-    "tf.assert_variables_initialized": (
-        "tf.compat.v1.assert_variables_initialized"
-    ),
+    "tf.assert_variables_initialized": ("tf.compat.v1.assert_variables_initialized"),
     "tf.debugging.assert_equal": "tf.compat.v1.debugging.assert_equal",
     "tf.debugging.assert_greater": "tf.compat.v1.debugging.assert_greater",
     "tf.debugging.assert_greater_equal": (
@@ -302,20 +279,12 @@ manual_symbol_renames = {
     ),
     "tf.debugging.assert_integer": "tf.compat.v1.debugging.assert_integer",
     "tf.debugging.assert_less": "tf.compat.v1.debugging.assert_less",
-    "tf.debugging.assert_less_equal": (
-        "tf.compat.v1.debugging.assert_less_equal"
-    ),
+    "tf.debugging.assert_less_equal": ("tf.compat.v1.debugging.assert_less_equal"),
     "tf.debugging.assert_near": "tf.compat.v1.debugging.assert_near",
     "tf.debugging.assert_negative": "tf.compat.v1.debugging.assert_negative",
-    "tf.debugging.assert_non_negative": (
-        "tf.compat.v1.debugging.assert_non_negative"
-    ),
-    "tf.debugging.assert_non_positive": (
-        "tf.compat.v1.debugging.assert_non_positive"
-    ),
-    "tf.debugging.assert_none_equal": (
-        "tf.compat.v1.debugging.assert_none_equal"
-    ),
+    "tf.debugging.assert_non_negative": ("tf.compat.v1.debugging.assert_non_negative"),
+    "tf.debugging.assert_non_positive": ("tf.compat.v1.debugging.assert_non_positive"),
+    "tf.debugging.assert_none_equal": ("tf.compat.v1.debugging.assert_none_equal"),
     "tf.debugging.assert_positive": "tf.compat.v1.debugging.assert_positive",
     "tf.debugging.assert_rank": "tf.compat.v1.debugging.assert_rank",
     "tf.debugging.assert_rank_at_least": (
@@ -339,27 +308,15 @@ manual_symbol_renames = {
     "tf.keras.initializers.Zeros": "tf.compat.v1.keras.initializers.Zeros",
     "tf.keras.initializers.ones": "tf.compat.v1.keras.initializers.ones",
     "tf.keras.initializers.Ones": "tf.compat.v1.keras.initializers.Ones",
-    "tf.keras.initializers.constant": (
-        "tf.compat.v1.keras.initializers.constant"
-    ),
-    "tf.keras.initializers.Constant": (
-        "tf.compat.v1.keras.initializers.Constant"
-    ),
+    "tf.keras.initializers.constant": ("tf.compat.v1.keras.initializers.constant"),
+    "tf.keras.initializers.Constant": ("tf.compat.v1.keras.initializers.Constant"),
     "tf.keras.initializers.VarianceScaling": (
         "tf.compat.v1.keras.initializers.VarianceScaling"
     ),
-    "tf.keras.initializers.Orthogonal": (
-        "tf.compat.v1.keras.initializers.Orthogonal"
-    ),
-    "tf.keras.initializers.orthogonal": (
-        "tf.compat.v1.keras.initializers.orthogonal"
-    ),
-    "tf.keras.initializers.Identity": (
-        "tf.compat.v1.keras.initializers.Identity"
-    ),
-    "tf.keras.initializers.identity": (
-        "tf.compat.v1.keras.initializers.identity"
-    ),
+    "tf.keras.initializers.Orthogonal": ("tf.compat.v1.keras.initializers.Orthogonal"),
+    "tf.keras.initializers.orthogonal": ("tf.compat.v1.keras.initializers.orthogonal"),
+    "tf.keras.initializers.Identity": ("tf.compat.v1.keras.initializers.Identity"),
+    "tf.keras.initializers.identity": ("tf.compat.v1.keras.initializers.identity"),
     "tf.keras.initializers.glorot_uniform": (
         "tf.compat.v1.keras.initializers.glorot_uniform"
     ),
@@ -372,12 +329,8 @@ manual_symbol_renames = {
     "tf.keras.initializers.lecun_uniform": (
         "tf.compat.v1.keras.initializers.lecun_uniform"
     ),
-    "tf.keras.initializers.he_normal": (
-        "tf.compat.v1.keras.initializers.he_normal"
-    ),
-    "tf.keras.initializers.he_uniform": (
-        "tf.compat.v1.keras.initializers.he_uniform"
-    ),
+    "tf.keras.initializers.he_normal": ("tf.compat.v1.keras.initializers.he_normal"),
+    "tf.keras.initializers.he_uniform": ("tf.compat.v1.keras.initializers.he_uniform"),
     "tf.keras.initializers.TruncatedNormal": (
         "tf.compat.v1.keras.initializers.TruncatedNormal"
     ),
@@ -405,29 +358,17 @@ manual_symbol_renames = {
     "tf.constant_initializer": "tf.compat.v1.constant_initializer",
     "tf.initializers.constant": "tf.compat.v1.initializers.constant",
     "tf.random_uniform_initializer": "tf.compat.v1.random_uniform_initializer",
-    "tf.initializers.random_uniform": (
-        "tf.compat.v1.initializers.random_uniform"
-    ),
+    "tf.initializers.random_uniform": ("tf.compat.v1.initializers.random_uniform"),
     "tf.random_normal_initializer": "tf.compat.v1.random_normal_initializer",
     "tf.initializers.random_normal": "tf.compat.v1.initializers.random_normal",
-    "tf.truncated_normal_initializer": (
-        "tf.compat.v1.truncated_normal_initializer"
-    ),
-    "tf.initializers.truncated_normal": (
-        "tf.compat.v1.initializers.truncated_normal"
-    ),
-    "tf.variance_scaling_initializer": (
-        "tf.compat.v1.variance_scaling_initializer"
-    ),
-    "tf.initializers.variance_scaling": (
-        "tf.compat.v1.initializers.variance_scaling"
-    ),
+    "tf.truncated_normal_initializer": ("tf.compat.v1.truncated_normal_initializer"),
+    "tf.initializers.truncated_normal": ("tf.compat.v1.initializers.truncated_normal"),
+    "tf.variance_scaling_initializer": ("tf.compat.v1.variance_scaling_initializer"),
+    "tf.initializers.variance_scaling": ("tf.compat.v1.initializers.variance_scaling"),
     "tf.orthogonal_initializer": "tf.compat.v1.orthogonal_initializer",
     "tf.initializers.orthogonal": "tf.compat.v1.initializers.orthogonal",
     "tf.glorot_uniform_initializer": "tf.compat.v1.glorot_uniform_initializer",
-    "tf.initializers.glorot_uniform": (
-        "tf.compat.v1.initializers.glorot_uniform"
-    ),
+    "tf.initializers.glorot_uniform": ("tf.compat.v1.initializers.glorot_uniform"),
     "tf.glorot_normal_initializer": "tf.compat.v1.glorot_normal_initializer",
     "tf.initializers.glorot_normal": "tf.compat.v1.initializers.glorot_normal",
     "tf.initializers.identity": "tf.compat.v1.initializers.identity",
@@ -449,10 +390,11 @@ manual_symbol_renames = {
 
 
 def add_contrib_direct_import_support(symbol_dict):
-  """Add support for `tf.contrib.*` alias `contrib_*.` Updates dict in place."""
-  for symbol_name in list(symbol_dict.keys()):
-    symbol_alias = symbol_name.replace("tf.contrib.", "contrib_")
-    symbol_dict[symbol_alias] = symbol_dict[symbol_name]
+    """Add support for `tf.contrib.*` alias `contrib_*.` Updates dict in place."""
+    for symbol_name in list(symbol_dict.keys()):
+        symbol_alias = symbol_name.replace("tf.contrib.", "contrib_")
+        symbol_dict[symbol_alias] = symbol_dict[symbol_name]
+
 
 add_contrib_direct_import_support(manual_symbol_renames)
 
@@ -460,58 +402,32 @@ symbol_renames = renames_v2.renames
 symbol_renames.update(manual_symbol_renames)
 
 addons_symbol_mappings = {
-    "tf.contrib.layers.poincare_normalize":
-        "tfa.layers.PoincareNormalize",
-    "tf.contrib.layers.maxout":
-        "tfa.layers.Maxout",
-    "tf.contrib.layers.group_norm":
-        "tfa.layers.GroupNormalization",
-    "tf.contrib.layers.instance_norm":
-        "tfa.layers.InstanceNormalization",
-    "tf.contrib.sparsemax.sparsemax":
-        "tfa.activations.sparsemax",
-    "tf.contrib.losses.metric_learning.contrastive_loss":
-        "tfa.losses.ContrastiveLoss",
-    "tf.contrib.losses.metric_learning.lifted_struct_loss":
-        "tfa.losses.LiftedStructLoss",
-    "tf.contrib.sparsemax.sparsemax_loss":
-        "tfa.losses.SparsemaxLoss",
-    "tf.contrib.losses.metric_learning.triplet_semihard_loss":
-        "tfa.losses.TripletSemiHardLoss",
-    "tf.contrib.opt.LazyAdamOptimizer":
-        "tfa.optimizers.LazyAdam",
-    "tf.contrib.opt.MovingAverageOptimizer":
-        "tfa.optimizers.MovingAverage",
-    "tf.contrib.opt.MomentumWOptimizer":
-        "tfa.optimizers.SGDW",
-    "tf.contrib.opt.AdamWOptimizer":
-        "tfa.optimizers.AdamW",
-    "tf.contrib.opt.extend_with_decoupled_weight_decay":
-        "tfa.optimizers.extend_with_decoupled_weight_decay",
-    "tf.contrib.text.skip_gram_sample":
-        "tfa.text.skip_gram_sample",
-    "tf.contrib.text.skip_gram_sample_with_text_vocab":
-        "tfa.text.skip_gram_sample_with_text_vocab",
-    "tf.contrib.image.dense_image_warp":
-        "tfa.image.dense_image_warp",
-    "tf.contrib.image.adjust_hsv_in_yiq":
-        "tfa.image.adjust_hsv_in_yiq",
-    "tf.contrib.image.compose_transforms":
-        "tfa.image.compose_transforms",
-    "tf.contrib.image.random_hsv_in_yiq":
-        "tfa.image.random_hsv_in_yiq",
-    "tf.contrib.image.angles_to_projective_transforms":
-        "tfa.image.angles_to_projective_transforms",
-    "tf.contrib.image.matrices_to_flat_transforms":
-        "tfa.image.matrices_to_flat_transforms",
-    "tf.contrib.image.rotate":
-        "tfa.image.rotate",
-    "tf.contrib.image.transform":
-        "tfa.image.transform",
-    "tf.contrib.rnn.NASCell":
-        "tfa.rnn.NASCell",
-    "tf.contrib.rnn.LayerNormBasicLSTMCell":
-        "tfa.rnn.LayerNormLSTMCell"
+    "tf.contrib.layers.poincare_normalize": "tfa.layers.PoincareNormalize",
+    "tf.contrib.layers.maxout": "tfa.layers.Maxout",
+    "tf.contrib.layers.group_norm": "tfa.layers.GroupNormalization",
+    "tf.contrib.layers.instance_norm": "tfa.layers.InstanceNormalization",
+    "tf.contrib.sparsemax.sparsemax": "tfa.activations.sparsemax",
+    "tf.contrib.losses.metric_learning.contrastive_loss": "tfa.losses.ContrastiveLoss",
+    "tf.contrib.losses.metric_learning.lifted_struct_loss": "tfa.losses.LiftedStructLoss",
+    "tf.contrib.sparsemax.sparsemax_loss": "tfa.losses.SparsemaxLoss",
+    "tf.contrib.losses.metric_learning.triplet_semihard_loss": "tfa.losses.TripletSemiHardLoss",
+    "tf.contrib.opt.LazyAdamOptimizer": "tfa.optimizers.LazyAdam",
+    "tf.contrib.opt.MovingAverageOptimizer": "tfa.optimizers.MovingAverage",
+    "tf.contrib.opt.MomentumWOptimizer": "tfa.optimizers.SGDW",
+    "tf.contrib.opt.AdamWOptimizer": "tfa.optimizers.AdamW",
+    "tf.contrib.opt.extend_with_decoupled_weight_decay": "tfa.optimizers.extend_with_decoupled_weight_decay",
+    "tf.contrib.text.skip_gram_sample": "tfa.text.skip_gram_sample",
+    "tf.contrib.text.skip_gram_sample_with_text_vocab": "tfa.text.skip_gram_sample_with_text_vocab",
+    "tf.contrib.image.dense_image_warp": "tfa.image.dense_image_warp",
+    "tf.contrib.image.adjust_hsv_in_yiq": "tfa.image.adjust_hsv_in_yiq",
+    "tf.contrib.image.compose_transforms": "tfa.image.compose_transforms",
+    "tf.contrib.image.random_hsv_in_yiq": "tfa.image.random_hsv_in_yiq",
+    "tf.contrib.image.angles_to_projective_transforms": "tfa.image.angles_to_projective_transforms",
+    "tf.contrib.image.matrices_to_flat_transforms": "tfa.image.matrices_to_flat_transforms",
+    "tf.contrib.image.rotate": "tfa.image.rotate",
+    "tf.contrib.image.transform": "tfa.image.transform",
+    "tf.contrib.rnn.NASCell": "tfa.rnn.NASCell",
+    "tf.contrib.rnn.LayerNormBasicLSTMCell": "tfa.rnn.LayerNormLSTMCell",
 }
 
 add_contrib_direct_import_support(addons_symbol_mappings)

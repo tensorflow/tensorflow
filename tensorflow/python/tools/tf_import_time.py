@@ -14,4 +14,3 @@
 # ==============================================================================
 """Script to measure the internal tensorflow import time."""
 
-import tensorflow as tf  # pylint: disable=unused-import

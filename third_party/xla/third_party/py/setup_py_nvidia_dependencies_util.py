@@ -46,31 +46,31 @@ NVIDIA_WHEEL_VERSIONS_PATTERN = re.compile(r"^([a-z0-9_-]+)(\W*[0-9\.]*.*)$")
 def get_setup_py_content_with_nvidia_wheel_versions(
     setup_py_content: str, cuda_version: str, nvidia_wheel_versions_data: str
 ) -> str:
-  nvidia_wheel_versions = {"12": {}, "13": {}}
-  for line in nvidia_wheel_versions_data.splitlines():
-    match = NVIDIA_WHEEL_VERSIONS_PATTERN.match(line)
-    if match:
-      wheel_name = match.group(1).replace("-", "_")
-      for suffix, version in {"_cu12": "12", "_cu13": "13", "": "13"}.items():
-        if not wheel_name.endswith(suffix):
-          continue
-        wheel_name = wheel_name.replace(suffix, "") + "_version"
-        nvidia_wheel_versions[version][wheel_name] = match.group(2).strip()
-        break
+    nvidia_wheel_versions = {"12": {}, "13": {}}
+    for line in nvidia_wheel_versions_data.splitlines():
+        match = NVIDIA_WHEEL_VERSIONS_PATTERN.match(line)
+        if match:
+            wheel_name = match.group(1).replace("-", "_")
+            for suffix, version in {"_cu12": "12", "_cu13": "13", "": "13"}.items():
+                if not wheel_name.endswith(suffix):
+                    continue
+                wheel_name = wheel_name.replace(suffix, "") + "_version"
+                nvidia_wheel_versions[version][wheel_name] = match.group(2).strip()
+                break
 
-  setup_py_content = setup_py_content.replace(
-      "cuda_version = 0  # placeholder", f"cuda_version = {cuda_version}"
-  )
-  setup_py_content = setup_py_content.replace(
-      "cuda_wheel_suffix = ''  # placeholder",
-      "cuda_wheel_suffix = '-cu12'" if cuda_version == "12" else "cuda_wheel_suffix = ''",
-  )
-  for version_name, version_value in nvidia_wheel_versions[
-      str(cuda_version)
-  ].items():
     setup_py_content = setup_py_content.replace(
-        f"{version_name} = ''  # placeholder",
-        f"{version_name} = '{version_value}'",
+        "cuda_version = 0  # placeholder", f"cuda_version = {cuda_version}"
     )
+    setup_py_content = setup_py_content.replace(
+        "cuda_wheel_suffix = ''  # placeholder",
+        "cuda_wheel_suffix = '-cu12'"
+        if cuda_version == "12"
+        else "cuda_wheel_suffix = ''",
+    )
+    for version_name, version_value in nvidia_wheel_versions[str(cuda_version)].items():
+        setup_py_content = setup_py_content.replace(
+            f"{version_name} = ''  # placeholder",
+            f"{version_name} = '{version_value}'",
+        )
 
-  return setup_py_content
+    return setup_py_content

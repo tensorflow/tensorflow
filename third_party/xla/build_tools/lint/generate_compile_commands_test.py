@@ -20,35 +20,34 @@ CompileCommand = generate_compile_commands.CompileCommand
 
 
 class CompileCommandsTest(absltest.TestCase):
+    def test_command_from_args_list(self):
+        arguments = [
+            "/usr/bin/gcc",
+            "-DTEST_DEFINE",
+            "-fstack-protector",
+            "-c",
+            "xla/compiler.cc",
+            "-o",
+            "bazel-out/k8-opt/bin/xla/_objs/compiler/compiler.pic.o",
+        ]
 
-  def test_command_from_args_list(self):
-    arguments = [
-        "/usr/bin/gcc",
-        "-DTEST_DEFINE",
-        "-fstack-protector",
-        "-c",
-        "xla/compiler.cc",
-        "-o",
-        "bazel-out/k8-opt/bin/xla/_objs/compiler/compiler.pic.o",
-    ]
+        command = CompileCommand.from_args_list(arguments)
 
-    command = CompileCommand.from_args_list(arguments)
+        self.assertEqual(command.file, "xla/compiler.cc")
+        self.assertEqual(command.arguments, arguments)
 
-    self.assertEqual(command.file, "xla/compiler.cc")
-    self.assertEqual(command.arguments, arguments)
+    def test_command_from_args_list_with_disallowed_option(self):
+        arguments = [
+            "/usr/bin/gcc",
+            "-DTEST_DEFINE",
+            "-fno-canonical-system-headers",
+            "-c",
+            "xla/compiler.cc",
+            "-o",
+            "bazel-out/k8-opt/bin/xla/_objs/compiler/compiler.pic.o",
+        ]
 
-  def test_command_from_args_list_with_disallowed_option(self):
-    arguments = [
-        "/usr/bin/gcc",
-        "-DTEST_DEFINE",
-        "-fno-canonical-system-headers",
-        "-c",
-        "xla/compiler.cc",
-        "-o",
-        "bazel-out/k8-opt/bin/xla/_objs/compiler/compiler.pic.o",
-    ]
+        command = CompileCommand.from_args_list(arguments)
 
-    command = CompileCommand.from_args_list(arguments)
-
-    self.assertEqual(command.file, "xla/compiler.cc")
-    self.assertEqual(command.arguments, arguments[0:2] + arguments[3:])
+        self.assertEqual(command.file, "xla/compiler.cc")
+        self.assertEqual(command.arguments, arguments[0:2] + arguments[3:])

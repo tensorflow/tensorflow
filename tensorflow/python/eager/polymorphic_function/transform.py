@@ -21,12 +21,12 @@ CONCRETE_FUNCTION_CALLBACKS = []
 
 
 def apply_func_graph_transforms(func_graph):
-  """Applies registered transformations to FuncGraph."""
-  for transform in FUNC_GRAPH_TRANSFORMS:
-    transform(func_graph)
+    """Applies registered transformations to FuncGraph."""
+    for transform in FUNC_GRAPH_TRANSFORMS:
+        transform(func_graph)
 
 
 def call_concrete_function_callbacks(concrete_fn):
-  """Calls registered callbacks against new ConcreteFunctions."""
-  for callback in CONCRETE_FUNCTION_CALLBACKS:
-    callback(concrete_fn)
+    """Calls registered callbacks against new ConcreteFunctions."""
+    for callback in CONCRETE_FUNCTION_CALLBACKS:
+        callback(concrete_fn)

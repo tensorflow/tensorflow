@@ -21,61 +21,62 @@ from tensorflow.python.trackable import base
 
 
 class InterfaceTests(test.TestCase):
+    def testOverwrite(self):
+        root = base.Trackable()
+        leaf = base.Trackable()
+        root._track_trackable(leaf, name="leaf")
+        ((current_name, current_dependency),) = root._trackable_children().items()
+        self.assertIs(leaf, current_dependency)
+        self.assertEqual("leaf", current_name)
+        duplicate_name_dep = base.Trackable()
+        with self.assertRaises(ValueError):
+            root._track_trackable(duplicate_name_dep, name="leaf")
+        root._track_trackable(duplicate_name_dep, name="leaf", overwrite=True)
+        ((current_name, current_dependency),) = root._trackable_children().items()
+        self.assertIs(duplicate_name_dep, current_dependency)
+        self.assertEqual("leaf", current_name)
 
-  def testOverwrite(self):
-    root = base.Trackable()
-    leaf = base.Trackable()
-    root._track_trackable(leaf, name="leaf")
-    (current_name, current_dependency), = root._trackable_children().items()
-    self.assertIs(leaf, current_dependency)
-    self.assertEqual("leaf", current_name)
-    duplicate_name_dep = base.Trackable()
-    with self.assertRaises(ValueError):
-      root._track_trackable(duplicate_name_dep, name="leaf")
-    root._track_trackable(duplicate_name_dep, name="leaf", overwrite=True)
-    (current_name, current_dependency), = root._trackable_children().items()
-    self.assertIs(duplicate_name_dep, current_dependency)
-    self.assertEqual("leaf", current_name)
+    def testAddVariableOverwrite(self):
+        root = base.Trackable()
+        a = root._add_variable_with_custom_getter(
+            name="v", shape=[], getter=variable_scope.get_variable
+        )
+        self.assertEqual([root, a], util.list_objects(root))
+        with ops.Graph().as_default():
+            b = root._add_variable_with_custom_getter(
+                name="v", shape=[], overwrite=True, getter=variable_scope.get_variable
+            )
+            self.assertEqual([root, b], util.list_objects(root))
+        with ops.Graph().as_default():
+            with self.assertRaisesRegex(ValueError, "already declared as a dependency"):
+                root._add_variable_with_custom_getter(
+                    name="v",
+                    shape=[],
+                    overwrite=False,
+                    getter=variable_scope.get_variable,
+                )
 
-  def testAddVariableOverwrite(self):
-    root = base.Trackable()
-    a = root._add_variable_with_custom_getter(
-        name="v", shape=[], getter=variable_scope.get_variable)
-    self.assertEqual([root, a], util.list_objects(root))
-    with ops.Graph().as_default():
-      b = root._add_variable_with_custom_getter(
-          name="v", shape=[], overwrite=True,
-          getter=variable_scope.get_variable)
-      self.assertEqual([root, b], util.list_objects(root))
-    with ops.Graph().as_default():
-      with self.assertRaisesRegex(ValueError,
-                                  "already declared as a dependency"):
-        root._add_variable_with_custom_getter(
-            name="v", shape=[], overwrite=False,
-            getter=variable_scope.get_variable)
+    def testAssertConsumedWithUnusedPythonState(self):
+        has_config = base.Trackable()
+        has_config.get_config = lambda: {}
+        saved = util.Checkpoint(obj=has_config)
+        save_path = saved.save(os.path.join(self.get_temp_dir(), "ckpt"))
+        restored = util.Checkpoint(obj=base.Trackable())
+        restored.restore(save_path).assert_consumed()
 
-  def testAssertConsumedWithUnusedPythonState(self):
-    has_config = base.Trackable()
-    has_config.get_config = lambda: {}
-    saved = util.Checkpoint(obj=has_config)
-    save_path = saved.save(os.path.join(self.get_temp_dir(), "ckpt"))
-    restored = util.Checkpoint(obj=base.Trackable())
-    restored.restore(save_path).assert_consumed()
+    def testBuggyGetConfig(self):
+        class NotSerializable(object):
+            pass
 
-  def testBuggyGetConfig(self):
+        class GetConfigRaisesError(base.Trackable):
+            def get_config(self):
+                return NotSerializable()
 
-    class NotSerializable(object):
-      pass
-
-    class GetConfigRaisesError(base.Trackable):
-
-      def get_config(self):
-        return NotSerializable()
-
-    util.Checkpoint(obj=GetConfigRaisesError()).save(
-        os.path.join(self.get_temp_dir(), "ckpt"))
+        util.Checkpoint(obj=GetConfigRaisesError()).save(
+            os.path.join(self.get_temp_dir(), "ckpt")
+        )
 
 
 if __name__ == "__main__":
-  ops.enable_eager_execution()
-  test.main()
+    ops.enable_eager_execution()
+    test.main()

@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Helpers to traverse the Dataset dependency structure."""
+
 import queue
 
 from tensorflow.python.framework import dtypes
@@ -26,56 +27,58 @@ TENSOR_TYPES_ALLOWLIST = [dtypes.variant]
 
 
 def _traverse(dataset, op_filter_fn):
-  """Traverse a dataset graph, returning nodes matching `op_filter_fn`."""
-  result = []
-  bfs_q = queue.Queue()
-  bfs_q.put(dataset._variant_tensor.op)  # pylint: disable=protected-access
-  visited = []
-  while not bfs_q.empty():
-    op = bfs_q.get()
-    visited.append(op)
-    if op_filter_fn(op):
-      result.append(op)
-    for i in op.inputs:
-      input_op = i.op
-      if input_op not in visited:
-        bfs_q.put(input_op)
-  return result
+    """Traverse a dataset graph, returning nodes matching `op_filter_fn`."""
+    result = []
+    bfs_q = queue.Queue()
+    bfs_q.put(dataset._variant_tensor.op)  # pylint: disable=protected-access
+    visited = []
+    while not bfs_q.empty():
+        op = bfs_q.get()
+        visited.append(op)
+        if op_filter_fn(op):
+            result.append(op)
+        for i in op.inputs:
+            input_op = i.op
+            if input_op not in visited:
+                bfs_q.put(input_op)
+    return result
 
 
 def obtain_capture_by_value_ops(dataset):
-  """Given an input dataset, finds all allowlisted ops used for construction.
+    """Given an input dataset, finds all allowlisted ops used for construction.
 
-  Allowlisted ops are stateful ops which are known to be safe to capture by
-  value.
+    Allowlisted ops are stateful ops which are known to be safe to capture by
+    value.
 
-  Args:
-    dataset: Dataset to find allowlisted stateful ops for.
+    Args:
+      dataset: Dataset to find allowlisted stateful ops for.
 
-  Returns:
-    A list of variant_tensor producing dataset ops used to construct this
-    dataset.
-  """
+    Returns:
+      A list of variant_tensor producing dataset ops used to construct this
+      dataset.
+    """
 
-  def capture_by_value(op):
-    return (op.outputs[0].dtype in TENSOR_TYPES_ALLOWLIST or
-            op.type in OP_TYPES_ALLOWLIST)
+    def capture_by_value(op):
+        return (
+            op.outputs[0].dtype in TENSOR_TYPES_ALLOWLIST
+            or op.type in OP_TYPES_ALLOWLIST
+        )
 
-  return _traverse(dataset, capture_by_value)
+    return _traverse(dataset, capture_by_value)
 
 
 def obtain_all_variant_tensor_ops(dataset):
-  """Given an input dataset, finds all dataset ops used for construction.
+    """Given an input dataset, finds all dataset ops used for construction.
 
-  A series of transformations would have created this dataset with each
-  transformation including zero or more Dataset ops, each producing a dataset
-  variant tensor. This method outputs all of them.
+    A series of transformations would have created this dataset with each
+    transformation including zero or more Dataset ops, each producing a dataset
+    variant tensor. This method outputs all of them.
 
-  Args:
-    dataset: Dataset to find variant tensors for.
+    Args:
+      dataset: Dataset to find variant tensors for.
 
-  Returns:
-    A list of variant_tensor producing dataset ops used to construct this
-    dataset.
-  """
-  return _traverse(dataset, lambda op: op.outputs[0].dtype == dtypes.variant)
+    Returns:
+      A list of variant_tensor producing dataset ops used to construct this
+      dataset.
+    """
+    return _traverse(dataset, lambda op: op.outputs[0].dtype == dtypes.variant)

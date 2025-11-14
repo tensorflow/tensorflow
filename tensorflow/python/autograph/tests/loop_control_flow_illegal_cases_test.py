@@ -28,85 +28,91 @@ from tensorflow.python.autograph.tests import reference_test_base
 
 
 def tf_break_in_py_for(l):
-  s = 0
-  for c in l:
-    if tf.greater(c % 2, 0):
-      break
-    s += c
-  return s
+    s = 0
+    for c in l:
+        if tf.greater(c % 2, 0):
+            break
+        s += c
+    return s
 
 
 def tf_return_in_py_for(l):
-  s = 0
-  for c in l:
-    if tf.greater(c % 2, 0):
-      return s
-    else:
-      return s
-    s += c
-  return s
+    s = 0
+    for c in l:
+        if tf.greater(c % 2, 0):
+            return s
+        else:
+            return s
+        s += c
+    return s
 
 
 def tf_break_in_py_while(x):
-  s = 0
-  while x > 0:
-    x -= 1
-    if tf.greater(x % 2, 0):
-      break
-    s += x
-  return s
+    s = 0
+    while x > 0:
+        x -= 1
+        if tf.greater(x % 2, 0):
+            break
+        s += x
+    return s
 
 
 def tf_return_in_py_while(x):
-  s = 0
-  while x > 0:
-    x -= 1
-    if tf.greater(x % 2, 0):
-      return s
-    else:
-      return s
-    s += x
-  return s
+    s = 0
+    while x > 0:
+        x -= 1
+        if tf.greater(x % 2, 0):
+            return s
+        else:
+            return s
+        s += x
+    return s
 
 
-class LoopControlFlowIllegalCasesTest(reference_test_base.TestCase,
-                                      parameterized.TestCase):
+class LoopControlFlowIllegalCasesTest(
+    reference_test_base.TestCase, parameterized.TestCase
+):
+    @parameterized.parameters(
+        *itertools.product(
+            (
+                [1],
+                [1, 2],
+                [1, 2, 3],
+            ),
+            (
+                tf_break_in_py_for,
+                tf_return_in_py_for,
+            ),
+        )
+    )
+    def test_tf_control_flow_in_py_for(self, l, target):
+        with self.assertRaisesRegex(NotImplementedError, "not supported in Python for"):
+            tf.function(target)(l)
 
-  @parameterized.parameters(*itertools.product(
-      (
-          [1],
-          [1, 2],
-          [1, 2, 3],
-      ),
-      (
-          tf_break_in_py_for,
-          tf_return_in_py_for,
-      ),
-  ))
-  def test_tf_control_flow_in_py_for(self, l, target):
-    with self.assertRaisesRegex(NotImplementedError,
-                                'not supported in Python for'):
-      tf.function(target)(l)
-
-  @parameterized.parameters(*itertools.product(
-      (
-          1,
-          2,
-          3,
-      ),
-      (
-          tf_break_in_py_while,
-          tf_return_in_py_while,
-      ),
-  ))
-  def test_tf_control_flow_in_py_while(self, n, target):
-    with self.assertRaisesRegex(
-        NotImplementedError,
-        re.compile(
-            r'.*condition of while loop started as non\-Tensor,'
-            r' then changed to Tensor.*', re.DOTALL)):
-      tf.function(target)(n)
+    @parameterized.parameters(
+        *itertools.product(
+            (
+                1,
+                2,
+                3,
+            ),
+            (
+                tf_break_in_py_while,
+                tf_return_in_py_while,
+            ),
+        )
+    )
+    def test_tf_control_flow_in_py_while(self, n, target):
+        with self.assertRaisesRegex(
+            NotImplementedError,
+            re.compile(
+                r".*condition of while loop started as non\-Tensor,"
+                r" then changed to Tensor.*",
+                re.DOTALL,
+            ),
+        ):
+            tf.function(target)(n)
 
 
-if __name__ == '__main__':
-  tf.test.main()
+if __name__ == "__main__":
+    tf.test.main()

@@ -18,9 +18,9 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_export
 
 
-make_decorator = tf_export.tf_export(
-    '__internal__.decorator.make_decorator', v1=[]
-)(tf_decorator.make_decorator)
-unwrap = tf_export.tf_export('__internal__.decorator.unwrap', v1=[])(
+make_decorator = tf_export.tf_export("__internal__.decorator.make_decorator", v1=[])(
+    tf_decorator.make_decorator
+)
+unwrap = tf_export.tf_export("__internal__.decorator.unwrap", v1=[])(
     tf_decorator.unwrap
 )

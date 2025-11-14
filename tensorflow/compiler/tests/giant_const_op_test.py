@@ -34,19 +34,19 @@ flags.DEFINE_string("zone", None, "Name of GCP zone with TPU.")
 
 
 def get_tpu_cluster_resolver():
-  resolver = tpu_cluster_resolver.TPUClusterResolver(
-      tpu=FLAGS.tpu,
-      zone=FLAGS.zone,
-      project=FLAGS.project,
-  )
-  return resolver
+    resolver = tpu_cluster_resolver.TPUClusterResolver(
+        tpu=FLAGS.tpu,
+        zone=FLAGS.zone,
+        project=FLAGS.project,
+    )
+    return resolver
 
 
 def get_tpu_strategy():
-  resolver = get_tpu_cluster_resolver()
-  remote.connect_to_cluster(resolver)
-  tpu_cluster_resolver.initialize_tpu_system(resolver)
-  return tpu_lib.TPUStrategyV2(resolver)
+    resolver = get_tpu_cluster_resolver()
+    remote.connect_to_cluster(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
+    return tpu_lib.TPUStrategyV2(resolver)
 
 
 # This test doesn't use XLATestCase like the other tests in this directory.
@@ -55,55 +55,64 @@ def get_tpu_strategy():
 # full program to XLA to verify handling of programs with giant constant
 # tensors.
 class GiantConstOp(test.TestCase):
+    # Verifies that graphs containing giant const tensors that won't fit in memory
+    # are compiled correctly to HLO.
+    def testGiantConst(self):
+        # Disabling Mlir bridge since using the tf2xla implementation of
+        # StridedSliceop which would get executed in this GiantConst test.
+        config.disable_mlir_bridge()
+        strategy = get_tpu_strategy()
+        types = {
+            dtypes.bool,
+            dtypes.int8,
+            dtypes.int16,
+            dtypes.int32,
+            dtypes.int64,
+            dtypes.uint8,
+            dtypes.uint16,
+            dtypes.uint32,
+            dtypes.uint64,
+            dtypes.float16,
+            dtypes.bfloat16,
+            dtypes.float32,
+            dtypes.float64,
+        }
+        for dtype in types:
+            values = [True if dtype is dtypes.bool else 1]
 
-  # Verifies that graphs containing giant const tensors that won't fit in memory
-  # are compiled correctly to HLO.
-  def testGiantConst(self):
-    # Disabling Mlir bridge since using the tf2xla implementation of
-    # StridedSliceop which would get executed in this GiantConst test.
-    config.disable_mlir_bridge()
-    strategy = get_tpu_strategy()
-    types = {
-        dtypes.bool,
-        dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
-        dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64,
-        dtypes.float16, dtypes.bfloat16,
-        dtypes.float32, dtypes.float64,
-    }
-    for dtype in types:
-      values = [True if dtype is dtypes.bool else 1]
+            if dtype is dtypes.bool:
+                values.append(False)
+            elif dtype is not dtypes.float64:
+                # TPUs don't follow IEEE 754 float64 standard for 64 bit floating point
+                # numbers so it could return different output even with just data
+                # transformation ops without any arithmetic operations.
+                values.extend([dtype.min, dtype.max])
 
-      if dtype is dtypes.bool:
-        values.append(False)
-      elif dtype is not dtypes.float64:
-        # TPUs don't follow IEEE 754 float64 standard for 64 bit floating point
-        # numbers so it could return different output even with just data
-        # transformation ops without any arithmetic operations.
-        values.extend([dtype.min, dtype.max])
+            for value in values:
 
-      for value in values:
+                @def_function.function
+                def train_step():
+                    # pylint: disable=cell-var-from-loop
+                    def computation():
+                        const = constant_op.constant(
+                            value, dtype=dtype, shape=[1024] * 4
+                        )
+                        return const[:1, :1, :1, :1]
 
-        @def_function.function
-        def train_step():
+                    return strategy.run(computation, args=())
 
-          # pylint: disable=cell-var-from-loop
-          def computation():
-            const = constant_op.constant(value, dtype=dtype, shape=[1024]*4)
-            return const[:1, :1, :1, :1]
+                output = strategy.experimental_local_results(train_step())[0]
+                expected = np.full((1, 1, 1, 1), value)
+                self.assertAllEqual(output, expected)
 
-          return strategy.run(computation, args=())
-
-        output = strategy.experimental_local_results(train_step())[0]
-        expected = np.full((1, 1, 1, 1), value)
-        self.assertAllEqual(output, expected)
 
 if __name__ == "__main__":
-  # Make sure TF_XLA_FLAGS is not already set to avoid dropping the existing
-  # value silently.
-  assert "TF_XLA_FLAGS" not in os.environ
+    # Make sure TF_XLA_FLAGS is not already set to avoid dropping the existing
+    # value silently.
+    assert "TF_XLA_FLAGS" not in os.environ
 
-  # Disable tfxla constant folding that always creates full Tensors and will
-  # fail for giant tensors.
-  os.environ["TF_XLA_FLAGS"] = "--tf_xla_disable_constant_folding=true"
+    # Disable tfxla constant folding that always creates full Tensors and will
+    # fail for giant tensors.
+    os.environ["TF_XLA_FLAGS"] = "--tf_xla_disable_constant_folding=true"
 
-  test.main()
+    test.main()

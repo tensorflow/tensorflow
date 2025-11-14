@@ -29,62 +29,61 @@ _v1_glorot_normal_initializer = init_ops.GlorotNormal
 
 
 class RandomNormal(init_ops.RandomNormal):
-
-  def __init__(self, mean=0.0, stddev=0.05, seed=None, dtype=dtypes.float32):
-    super(RandomNormal, self).__init__(
-        mean=mean, stddev=stddev, seed=seed, dtype=dtype)
+    def __init__(self, mean=0.0, stddev=0.05, seed=None, dtype=dtypes.float32):
+        super(RandomNormal, self).__init__(
+            mean=mean, stddev=stddev, seed=seed, dtype=dtype
+        )
 
 
 class RandomUniform(init_ops.RandomUniform):
-
-  def __init__(self, minval=-0.05, maxval=0.05, seed=None,
-               dtype=dtypes.float32):
-    super(RandomUniform, self).__init__(
-        minval=minval, maxval=maxval, seed=seed, dtype=dtype)
+    def __init__(self, minval=-0.05, maxval=0.05, seed=None, dtype=dtypes.float32):
+        super(RandomUniform, self).__init__(
+            minval=minval, maxval=maxval, seed=seed, dtype=dtype
+        )
 
 
 class TruncatedNormal(init_ops.TruncatedNormal):
-
-  def __init__(self, mean=0.0, stddev=0.05, seed=None, dtype=dtypes.float32):
-    super(TruncatedNormal, self).__init__(
-        mean=mean, stddev=stddev, seed=seed, dtype=dtype)
+    def __init__(self, mean=0.0, stddev=0.05, seed=None, dtype=dtypes.float32):
+        super(TruncatedNormal, self).__init__(
+            mean=mean, stddev=stddev, seed=seed, dtype=dtype
+        )
 
 
 class LecunNormal(init_ops.VarianceScaling):
+    def __init__(self, seed=None):
+        super(LecunNormal, self).__init__(
+            scale=1.0, mode="fan_in", distribution="truncated_normal", seed=seed
+        )
 
-  def __init__(self, seed=None):
-    super(LecunNormal, self).__init__(
-        scale=1., mode='fan_in', distribution='truncated_normal', seed=seed)
-
-  def get_config(self):
-    return {'seed': self.seed}
+    def get_config(self):
+        return {"seed": self.seed}
 
 
 class LecunUniform(init_ops.VarianceScaling):
+    def __init__(self, seed=None):
+        super(LecunUniform, self).__init__(
+            scale=1.0, mode="fan_in", distribution="uniform", seed=seed
+        )
 
-  def __init__(self, seed=None):
-    super(LecunUniform, self).__init__(
-        scale=1., mode='fan_in', distribution='uniform', seed=seed)
-
-  def get_config(self):
-    return {'seed': self.seed}
+    def get_config(self):
+        return {"seed": self.seed}
 
 
 class HeNormal(init_ops.VarianceScaling):
+    def __init__(self, seed=None):
+        super(HeNormal, self).__init__(
+            scale=2.0, mode="fan_in", distribution="truncated_normal", seed=seed
+        )
 
-  def __init__(self, seed=None):
-    super(HeNormal, self).__init__(
-        scale=2., mode='fan_in', distribution='truncated_normal', seed=seed)
-
-  def get_config(self):
-    return {'seed': self.seed}
+    def get_config(self):
+        return {"seed": self.seed}
 
 
 class HeUniform(init_ops.VarianceScaling):
+    def __init__(self, seed=None):
+        super(HeUniform, self).__init__(
+            scale=2.0, mode="fan_in", distribution="uniform", seed=seed
+        )
 
-  def __init__(self, seed=None):
-    super(HeUniform, self).__init__(
-        scale=2., mode='fan_in', distribution='uniform', seed=seed)
-
-  def get_config(self):
-    return {'seed': self.seed}
+    def get_config(self):
+        return {"seed": self.seed}

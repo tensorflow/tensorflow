@@ -21,27 +21,27 @@ from tensorflow.tools.proto_splitter import split_graph_def
 
 
 class SavedModelSplitter(split.ComposableSplitter):
-  """Splits a SavedModel proto into chunks of size < 2GB."""
+    """Splits a SavedModel proto into chunks of size < 2GB."""
 
-  def build_chunks(self):
-    if not isinstance(self._proto, saved_model_pb2.SavedModel):
-      raise TypeError(
-          "SavedModelSplitter can only split SavedModel protos. "
-          f"Got {type(self._proto)}."
-      )
+    def build_chunks(self):
+        if not isinstance(self._proto, saved_model_pb2.SavedModel):
+            raise TypeError(
+                "SavedModelSplitter can only split SavedModel protos. "
+                f"Got {type(self._proto)}."
+            )
 
-    if self._proto.ByteSize() >= constants.max_size():
-      graph_def = self._proto.meta_graphs[0].graph_def
-      graph_def_fields = ["meta_graphs", 0, "graph_def"]
-      split_graph_def.GraphDefSplitter(
-          self._proto.meta_graphs[0].graph_def,
-          parent_splitter=self,
-          fields_in_parent=graph_def_fields,
-      ).build_chunks()
+        if self._proto.ByteSize() >= constants.max_size():
+            graph_def = self._proto.meta_graphs[0].graph_def
+            graph_def_fields = ["meta_graphs", 0, "graph_def"]
+            split_graph_def.GraphDefSplitter(
+                self._proto.meta_graphs[0].graph_def,
+                parent_splitter=self,
+                fields_in_parent=graph_def_fields,
+            ).build_chunks()
 
-    # Check if the proto size is still larger than the max size.
-    if self._proto.ByteSize() >= constants.max_size():
-      # Create a chunk for the GraphDef, and ensure the GraphDef is merged in
-      # first by adding it at index 1. The 0th chunk is the SavedModel itself.
-      self.add_chunk(graph_def, graph_def_fields, index=1)
-      self._proto.meta_graphs[0].ClearField("graph_def")
+        # Check if the proto size is still larger than the max size.
+        if self._proto.ByteSize() >= constants.max_size():
+            # Create a chunk for the GraphDef, and ensure the GraphDef is merged in
+            # first by adding it at index 1. The 0th chunk is the SavedModel itself.
+            self.add_chunk(graph_def, graph_def_fields, index=1)
+            self._proto.meta_graphs[0].ClearField("graph_def")

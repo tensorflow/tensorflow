@@ -20,36 +20,34 @@ from tensorflow.python.autograph.tests import reference_test_base
 
 
 def basic_generator():
-  yield 1
+    yield 1
 
 
 def generator_in_for(n):
-  for i in range(n):
-    yield i
+    for i in range(n):
+        yield i
 
 
 def generator_in_while(n):
-  i = 0
-  while i < n:
-    i += 1
-    yield i
+    i = 0
+    while i < n:
+        i += 1
+        yield i
 
 
 class LoopControlFlowTest(reference_test_base.TestCase):
+    def test_basic_generator(self):
+        with self.assertRaisesRegex(NotImplementedError, "generators"):
+            tf.function(basic_generator)()
 
-  def test_basic_generator(self):
-    with self.assertRaisesRegex(NotImplementedError, 'generators'):
-      tf.function(basic_generator)()
+    def test_generator_in_for(self):
+        with self.assertRaisesRegex(NotImplementedError, "generators"):
+            tf.function(generator_in_for)([])
 
-  def test_generator_in_for(self):
-    with self.assertRaisesRegex(NotImplementedError, 'generators'):
-      tf.function(generator_in_for)([])
-
-  def test_generator_in_while(self):
-    with self.assertRaisesRegex(NotImplementedError, 'generators'):
-      tf.function(generator_in_while)(0)
+    def test_generator_in_while(self):
+        with self.assertRaisesRegex(NotImplementedError, "generators"):
+            tf.function(generator_in_while)(0)
 
 
-if __name__ == '__main__':
-  tf.test.main()
-
+if __name__ == "__main__":
+    tf.test.main()

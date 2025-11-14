@@ -29,54 +29,53 @@ flags.DEFINE_string("zone", None, "Name of GCP zone with TPU.")
 
 
 def get_tpu_cluster_resolver():
-  resolver = tpu_cluster_resolver.TPUClusterResolver(
-      tpu=FLAGS.tpu,
-      zone=FLAGS.zone,
-      project=FLAGS.project,
-  )
-  return resolver
+    resolver = tpu_cluster_resolver.TPUClusterResolver(
+        tpu=FLAGS.tpu,
+        zone=FLAGS.zone,
+        project=FLAGS.project,
+    )
+    return resolver
 
 
 def get_tpu_strategy():
-  resolver = get_tpu_cluster_resolver()
-  remote.connect_to_cluster(resolver)
-  tpu_cluster_resolver.initialize_tpu_system(resolver)
-  strategy = tpu_lib.TPUStrategyV2(resolver)
-  return strategy
+    resolver = get_tpu_cluster_resolver()
+    remote.connect_to_cluster(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
+    strategy = tpu_lib.TPUStrategyV2(resolver)
+    return strategy
 
 
 # TODO(b/158494076): Merge this test back into TPUStrategy tests
 # (tpu_strategy_test) once MLIR bridge is enabled by default.
 class TPUStrategyCompilationTest(test.TestCase):
+    def test_functions_compile_same_signature(self):
+        """Tests compiling different functions with the same signature."""
+        strategy = get_tpu_strategy()
 
-  def test_functions_compile_same_signature(self):
-    """Tests compiling different functions with the same signature."""
-    strategy = get_tpu_strategy()
+        @def_function.function
+        def return_one():
+            def computation():
+                return constant_op.constant(1)
 
-    @def_function.function
-    def return_one():
+            return strategy.run(computation)
 
-      def computation():
-        return constant_op.constant(1)
+        @def_function.function
+        def return_two():
+            def computation():
+                return constant_op.constant(2)
 
-      return strategy.run(computation)
+            return strategy.run(computation)
 
-    @def_function.function
-    def return_two():
+        expected_result_ones = [1 for _ in range(0, strategy.num_replicas_in_sync)]
+        self.assertAllEqual(
+            expected_result_ones, strategy.experimental_local_results(return_one())
+        )
 
-      def computation():
-        return constant_op.constant(2)
-
-      return strategy.run(computation)
-
-    expected_result_ones = [1 for _ in range(0, strategy.num_replicas_in_sync)]
-    self.assertAllEqual(expected_result_ones,
-                        strategy.experimental_local_results(return_one()))
-
-    expected_result_twos = [2 for _ in range(0, strategy.num_replicas_in_sync)]
-    self.assertAllEqual(expected_result_twos,
-                        strategy.experimental_local_results(return_two()))
+        expected_result_twos = [2 for _ in range(0, strategy.num_replicas_in_sync)]
+        self.assertAllEqual(
+            expected_result_twos, strategy.experimental_local_results(return_two())
+        )
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

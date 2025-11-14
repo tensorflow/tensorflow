@@ -13,8 +13,8 @@
 # limitations under the License.
 # =============================================================================
 
-"""Contains the pooling layer classes and their functional aliases.
-"""
+"""Contains the pooling layer classes and their functional aliases."""
+
 from tensorflow.python.keras.legacy_tf_layers import pooling
 
 

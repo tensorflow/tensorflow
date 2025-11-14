@@ -24,45 +24,46 @@ import os
 
 from setuptools import find_packages
 from setuptools import setup
-PACKAGE_NAME = os.environ['PROJECT_NAME']
-PACKAGE_VERSION = os.environ['PACKAGE_VERSION']
-DOCLINES = __doc__.split('\n')
+
+PACKAGE_NAME = os.environ["PROJECT_NAME"]
+PACKAGE_VERSION = os.environ["PACKAGE_VERSION"]
+DOCLINES = __doc__.split("\n")
 
 setup(
-    name=PACKAGE_NAME.replace('_', '-'),
+    name=PACKAGE_NAME.replace("_", "-"),
     version=PACKAGE_VERSION,
     description=DOCLINES[0],
-    long_description='\n'.join(DOCLINES[2:]),
-    url='https://www.tensorflow.org/lite/',
-    author='Google, LLC',
-    author_email='packages@tensorflow.org',
-    license='Apache 2.0',
+    long_description="\n".join(DOCLINES[2:]),
+    url="https://www.tensorflow.org/lite/",
+    author="Google, LLC",
+    author_email="packages@tensorflow.org",
+    license="Apache 2.0",
     include_package_data=True,
     has_ext_modules=lambda: True,
-    keywords='tflite tensorflow tensor machine learning',
+    keywords="tflite tensorflow tensor machine learning",
     classifiers=[
-        'Development Status :: 5 - Production/Stable',
-        'Intended Audience :: Developers',
-        'Intended Audience :: Education',
-        'Intended Audience :: Science/Research',
-        'License :: OSI Approved :: Apache Software License',
-        'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.8',
-        'Programming Language :: Python :: 3.9',
-        'Programming Language :: Python :: 3.10',
-        'Programming Language :: Python :: 3.11',
-        'Topic :: Scientific/Engineering',
-        'Topic :: Scientific/Engineering :: Mathematics',
-        'Topic :: Scientific/Engineering :: Artificial Intelligence',
-        'Topic :: Software Development',
-        'Topic :: Software Development :: Libraries',
-        'Topic :: Software Development :: Libraries :: Python Modules',
+        "Development Status :: 5 - Production/Stable",
+        "Intended Audience :: Developers",
+        "Intended Audience :: Education",
+        "Intended Audience :: Science/Research",
+        "License :: OSI Approved :: Apache Software License",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Topic :: Scientific/Engineering",
+        "Topic :: Scientific/Engineering :: Mathematics",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+        "Topic :: Software Development",
+        "Topic :: Software Development :: Libraries",
+        "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     packages=find_packages(exclude=[]),
-    package_dir={'': '.'},
-    package_data={'': ['*.so', '*.pyd']},
+    package_dir={"": "."},
+    package_data={"": ["*.so", "*.pyd"]},
     install_requires=[
-        'numpy >= 1.23.2',  # Better to keep sync with both TF ci_build
+        "numpy >= 1.23.2",  # Better to keep sync with both TF ci_build
         # and OpenCV-Python requirement.
     ],
 )

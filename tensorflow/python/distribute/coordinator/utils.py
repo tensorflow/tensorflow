@@ -16,6 +16,7 @@
 
 Parameter server training in TF2 is currently under development.
 """
+
 import threading
 import time
 
@@ -24,56 +25,63 @@ from tensorflow.python.training import server_lib
 
 
 def start_server(cluster_resolver, protocol):
-  """Start a server and block the process from exiting."""
-  # This function is for multi-processing test or users who would like to have
-  # every job run the same binary for simplicity.
-  if not (cluster_resolver.task_type == 'worker' or
-          cluster_resolver.task_type == 'ps'):
-    raise ValueError('Unexpected task_type to start a server: {}'.format(
-        cluster_resolver.task_type))
+    """Start a server and block the process from exiting."""
+    # This function is for multi-processing test or users who would like to have
+    # every job run the same binary for simplicity.
+    if not (
+        cluster_resolver.task_type == "worker" or cluster_resolver.task_type == "ps"
+    ):
+        raise ValueError(
+            "Unexpected task_type to start a server: {}".format(
+                cluster_resolver.task_type
+            )
+        )
 
-  server = server_lib.Server(
-      cluster_resolver.cluster_spec().as_cluster_def(),
-      job_name=cluster_resolver.task_type,
-      task_index=cluster_resolver.task_id,
-      protocol=protocol)
+    server = server_lib.Server(
+        cluster_resolver.cluster_spec().as_cluster_def(),
+        job_name=cluster_resolver.task_type,
+        task_index=cluster_resolver.task_id,
+        protocol=protocol,
+    )
 
-  logging.info('TensorFlow server started for job %s, task %d.',
-               cluster_resolver.task_type, cluster_resolver.task_id)
+    logging.info(
+        "TensorFlow server started for job %s, task %d.",
+        cluster_resolver.task_type,
+        cluster_resolver.task_id,
+    )
 
-  # Blocking the process that starts a server from exiting.
-  server.join()
+    # Blocking the process that starts a server from exiting.
+    server.join()
 
 
 class RepeatedTimer(object):
-  """Threaded Repeated Timer from http://shortn/_3hMZTFr1Iv."""
+    """Threaded Repeated Timer from http://shortn/_3hMZTFr1Iv."""
 
-  def __init__(self, interval, function, *args):
-    self._timer = None
-    self.interval = interval
-    self.function = function
-    self.args = args
-    self.start_time = time.time()
-    self.is_running = False
-    self.start()
+    def __init__(self, interval, function, *args):
+        self._timer = None
+        self.interval = interval
+        self.function = function
+        self.args = args
+        self.start_time = time.time()
+        self.is_running = False
+        self.start()
 
-  def _get_duration_sec(self):
-    return int(time.time() - self.start_time)
+    def _get_duration_sec(self):
+        return int(time.time() - self.start_time)
 
-  def _run(self):
-    self.is_running = False
-    self.start()
-    self.function(*self.args)
+    def _run(self):
+        self.is_running = False
+        self.start()
+        self.function(*self.args)
 
-  def start(self):
-    if not self.is_running:
-      self._timer = threading.Timer(self.interval, self._run)
-      self._timer.start()
-      self.is_running = True
+    def start(self):
+        if not self.is_running:
+            self._timer = threading.Timer(self.interval, self._run)
+            self._timer.start()
+            self.is_running = True
 
-  def stop(self):
-    duration = self._get_duration_sec()
-    self._timer.cancel()
-    self.is_running = False
-    return duration
-
+    def stop(self):
+        duration = self._get_duration_sec()
+        self._timer.cancel()
+        self.is_running = False
+        return duration

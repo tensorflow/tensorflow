@@ -32,114 +32,121 @@ from tensorflow.python.platform import test
 
 
 class AccumulateNBenchmark(test.Benchmark):
+    def _AccumulateNTemplate(self, inputs, init, shape, validate_shape):
+        var = gen_state_ops.temporary_variable(
+            shape=shape, dtype=inputs[0].dtype.base_dtype
+        )
+        ref = state_ops.assign(var, init, validate_shape=validate_shape)
+        update_ops = [
+            state_ops.assign_add(ref, tensor, use_locking=True).op for tensor in inputs
+        ]
+        with ops.control_dependencies(update_ops):
+            return gen_state_ops.destroy_temporary_variable(ref, var_name=var.op.name)
 
-  def _AccumulateNTemplate(self, inputs, init, shape, validate_shape):
-    var = gen_state_ops.temporary_variable(
-        shape=shape, dtype=inputs[0].dtype.base_dtype)
-    ref = state_ops.assign(var, init, validate_shape=validate_shape)
-    update_ops = [
-        state_ops.assign_add(
-            ref, tensor, use_locking=True).op for tensor in inputs
-    ]
-    with ops.control_dependencies(update_ops):
-      return gen_state_ops.destroy_temporary_variable(ref, var_name=var.op.name)
+    def _AccumulateNInitializedWithFirst(self, inputs):
+        return self._AccumulateNTemplate(
+            inputs,
+            init=array_ops.zeros_like(inputs[0]),
+            shape=inputs[0].get_shape(),
+            validate_shape=True,
+        )
 
-  def _AccumulateNInitializedWithFirst(self, inputs):
-    return self._AccumulateNTemplate(
-        inputs,
-        init=array_ops.zeros_like(inputs[0]),
-        shape=inputs[0].get_shape(),
-        validate_shape=True)
+    def _AccumulateNInitializedWithMerge(self, inputs):
+        return self._AccumulateNTemplate(
+            inputs,
+            init=array_ops.zeros_like(gen_control_flow_ops.merge(inputs)[0]),
+            shape=tensor_shape.TensorShape([0]),
+            validate_shape=False,
+        )
 
-  def _AccumulateNInitializedWithMerge(self, inputs):
-    return self._AccumulateNTemplate(
-        inputs,
-        init=array_ops.zeros_like(gen_control_flow_ops.merge(inputs)[0]),
-        shape=tensor_shape.TensorShape([0]),
-        validate_shape=False)
+    def _AccumulateNInitializedWithShape(self, inputs):
+        return self._AccumulateNTemplate(
+            inputs,
+            init=array_ops.zeros(
+                shape=inputs[0].get_shape(), dtype=inputs[0].dtype.base_dtype
+            ),
+            shape=inputs[0].get_shape(),
+            validate_shape=True,
+        )
 
-  def _AccumulateNInitializedWithShape(self, inputs):
-    return self._AccumulateNTemplate(
-        inputs,
-        init=array_ops.zeros(
-            shape=inputs[0].get_shape(), dtype=inputs[0].dtype.base_dtype),
-        shape=inputs[0].get_shape(),
-        validate_shape=True)
+    def _GenerateUnorderedInputs(self, size, n):
+        inputs = [random_ops.random_uniform(shape=[size]) for _ in range(n)]
+        random.shuffle(inputs)
+        return inputs
 
-  def _GenerateUnorderedInputs(self, size, n):
-    inputs = [random_ops.random_uniform(shape=[size]) for _ in range(n)]
-    random.shuffle(inputs)
-    return inputs
+    def _GenerateReplicatedInputs(self, size, n):
+        return n * self._GenerateUnorderedInputs(size, 1)
 
-  def _GenerateReplicatedInputs(self, size, n):
-    return n * self._GenerateUnorderedInputs(size, 1)
+    def _GenerateOrderedInputs(self, size, n):
+        inputs = self._GenerateUnorderedInputs(size, 1)
+        queue = data_flow_ops.FIFOQueue(
+            capacity=1, dtypes=[inputs[0].dtype], shapes=[inputs[0].get_shape()]
+        )
+        for _ in range(n - 1):
+            op = queue.enqueue(inputs[-1])
+            with ops.control_dependencies([op]):
+                inputs.append(math_ops.tanh(1.0 + queue.dequeue()))
+        return inputs
 
-  def _GenerateOrderedInputs(self, size, n):
-    inputs = self._GenerateUnorderedInputs(size, 1)
-    queue = data_flow_ops.FIFOQueue(
-        capacity=1, dtypes=[inputs[0].dtype], shapes=[inputs[0].get_shape()])
-    for _ in range(n - 1):
-      op = queue.enqueue(inputs[-1])
-      with ops.control_dependencies([op]):
-        inputs.append(math_ops.tanh(1.0 + queue.dequeue()))
-    return inputs
+    def _GenerateReversedInputs(self, size, n):
+        inputs = self._GenerateOrderedInputs(size, n)
+        inputs.reverse()
+        return inputs
 
-  def _GenerateReversedInputs(self, size, n):
-    inputs = self._GenerateOrderedInputs(size, n)
-    inputs.reverse()
-    return inputs
-
-  def _SetupAndRunBenchmark(self, graph, inputs, repeats, format_args):
-    with graph.as_default():
-      add_n = math_ops.add_n(inputs)
-      acc_n_first = self._AccumulateNInitializedWithFirst(inputs)
-      acc_n_merge = self._AccumulateNInitializedWithMerge(inputs)
-      acc_n_shape = self._AccumulateNInitializedWithShape(inputs)
-
-    test_ops = (("AddN", add_n.op),
-                ("AccNFirst", acc_n_first.op),
-                ("AccNMerge", acc_n_merge.op),
-                ("AccNShape", acc_n_shape.op))
-
-    with session.Session(graph=graph):
-      for tag, op in test_ops:
-        for _ in range(100):
-          op.run()  # Run for warm up.
-        start = time.time()
-        for _ in range(repeats):
-          op.run()
-        duration = time.time() - start
-        args = format_args + (tag, duration)
-        print(self._template.format(*args))
-
-  def _RunBenchmark(self, tag, input_fn, sizes, ninputs, repeats):
-    for size in sizes:
-      for ninput in ninputs:
-        graph = ops.Graph()
+    def _SetupAndRunBenchmark(self, graph, inputs, repeats, format_args):
         with graph.as_default():
-          inputs = input_fn(size, ninput)
+            add_n = math_ops.add_n(inputs)
+            acc_n_first = self._AccumulateNInitializedWithFirst(inputs)
+            acc_n_merge = self._AccumulateNInitializedWithMerge(inputs)
+            acc_n_shape = self._AccumulateNInitializedWithShape(inputs)
 
-        format_args = (tag, size, ninput, repeats)
-        self._SetupAndRunBenchmark(graph, inputs, repeats, format_args)
+        test_ops = (
+            ("AddN", add_n.op),
+            ("AccNFirst", acc_n_first.op),
+            ("AccNMerge", acc_n_merge.op),
+            ("AccNShape", acc_n_shape.op),
+        )
 
-  def benchmarkAccumulateN(self):
-    self._template = "{:<15}" * 6
-    args = {
-        "sizes": (128, 128**2),
-        "ninputs": (1, 10, 100, 300),
-        "repeats": 100
-    }
-    benchmarks = (("Replicated", self._GenerateReplicatedInputs),
-                  ("Unordered", self._GenerateUnorderedInputs),
-                  ("Ordered", self._GenerateOrderedInputs),
-                  ("Reversed", self._GenerateReversedInputs))
+        with session.Session(graph=graph):
+            for tag, op in test_ops:
+                for _ in range(100):
+                    op.run()  # Run for warm up.
+                start = time.time()
+                for _ in range(repeats):
+                    op.run()
+                duration = time.time() - start
+                args = format_args + (tag, duration)
+                print(self._template.format(*args))
 
-    print(self._template.format("", "Size", "#Inputs", "#Repeat", "Method",
-                                "Duration"))
-    print("-" * 90)
-    for benchmark in benchmarks:
-      self._RunBenchmark(*benchmark, **args)
+    def _RunBenchmark(self, tag, input_fn, sizes, ninputs, repeats):
+        for size in sizes:
+            for ninput in ninputs:
+                graph = ops.Graph()
+                with graph.as_default():
+                    inputs = input_fn(size, ninput)
+
+                format_args = (tag, size, ninput, repeats)
+                self._SetupAndRunBenchmark(graph, inputs, repeats, format_args)
+
+    def benchmarkAccumulateN(self):
+        self._template = "{:<15}" * 6
+        args = {"sizes": (128, 128**2), "ninputs": (1, 10, 100, 300), "repeats": 100}
+        benchmarks = (
+            ("Replicated", self._GenerateReplicatedInputs),
+            ("Unordered", self._GenerateUnorderedInputs),
+            ("Ordered", self._GenerateOrderedInputs),
+            ("Reversed", self._GenerateReversedInputs),
+        )
+
+        print(
+            self._template.format(
+                "", "Size", "#Inputs", "#Repeat", "Method", "Duration"
+            )
+        )
+        print("-" * 90)
+        for benchmark in benchmarks:
+            self._RunBenchmark(*benchmark, **args)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

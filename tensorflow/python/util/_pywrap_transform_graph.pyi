@@ -13,4 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-def TransformGraphWithStringInputs(arg0: object, arg1: object, arg2: object, arg3: object) -> bytes: ...
+def TransformGraphWithStringInputs(
+    arg0: object, arg1: object, arg2: object, arg3: object
+) -> bytes: ...

@@ -25,59 +25,51 @@ from tensorflow.python.platform import test
 
 
 class CaseTest(xla_test.XLATestCase):
+    def testCaseBasic(self):
+        @def_function.function(jit_compile=True)
+        def switch_case_test(branch_index):
+            def f1():
+                return array_ops.constant(17)
 
-  def testCaseBasic(self):
+            def f2():
+                return array_ops.constant(31)
 
-    @def_function.function(jit_compile=True)
-    def switch_case_test(branch_index):
+            def f3():
+                return array_ops.constant(-1)
 
-      def f1():
-        return array_ops.constant(17)
+            return control_flow_switch_case.switch_case(
+                branch_index, branch_fns={0: f1, 1: f2}, default=f3
+            )
 
-      def f2():
-        return array_ops.constant(31)
+        with ops.device(self.device):
+            self.assertEqual(switch_case_test(array_ops.constant(0)).numpy(), 17)
+            self.assertEqual(switch_case_test(array_ops.constant(1)).numpy(), 31)
+            self.assertEqual(switch_case_test(array_ops.constant(2)).numpy(), -1)
+            self.assertEqual(switch_case_test(array_ops.constant(3)).numpy(), -1)
 
-      def f3():
-        return array_ops.constant(-1)
+    def testBranchIsPruned(self):
+        @def_function.function(jit_compile=True)
+        def switch_case_test():
+            branch_index = array_ops.constant(0)
 
-      return control_flow_switch_case.switch_case(
-          branch_index, branch_fns={
-              0: f1,
-              1: f2
-          }, default=f3)
+            def f1():
+                return array_ops.constant(17)
 
-    with ops.device(self.device):
-      self.assertEqual(switch_case_test(array_ops.constant(0)).numpy(), 17)
-      self.assertEqual(switch_case_test(array_ops.constant(1)).numpy(), 31)
-      self.assertEqual(switch_case_test(array_ops.constant(2)).numpy(), -1)
-      self.assertEqual(switch_case_test(array_ops.constant(3)).numpy(), -1)
+            def f2():
+                # Some operations that XLA cannot compile.
+                image_ops.decode_image(io_ops.read_file("/tmp/bmp"))
+                return array_ops.constant(31)
 
-  def testBranchIsPruned(self):
+            # This tests that we do not try to compile all branches if the branch
+            # index in trivially constant.
+            return control_flow_switch_case.switch_case(
+                branch_index, branch_fns={0: f1, 1: f2}, default=f2
+            )
 
-    @def_function.function(jit_compile=True)
-    def switch_case_test():
-      branch_index = array_ops.constant(0)
-
-      def f1():
-        return array_ops.constant(17)
-
-      def f2():
-        # Some operations that XLA cannot compile.
-        image_ops.decode_image(io_ops.read_file('/tmp/bmp'))
-        return array_ops.constant(31)
-
-      # This tests that we do not try to compile all branches if the branch
-      # index in trivially constant.
-      return control_flow_switch_case.switch_case(
-          branch_index, branch_fns={
-              0: f1,
-              1: f2
-          }, default=f2)
-
-    with ops.device(self.device):
-      self.assertEqual(switch_case_test().numpy(), 17)
+        with ops.device(self.device):
+            self.assertEqual(switch_case_test().numpy(), 17)
 
 
-if __name__ == '__main__':
-  ops.enable_eager_execution()
-  test.main()
+if __name__ == "__main__":
+    ops.enable_eager_execution()
+    test.main()

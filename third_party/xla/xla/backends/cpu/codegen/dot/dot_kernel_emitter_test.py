@@ -39,12 +39,12 @@ def create_input(
     shape: Sequence[int],
     dtype: np.dtype,
 ) -> np.ndarray:
-  size = np.prod(shape) if shape else 1
-  result = np.linspace(
-      value_range[0], value_range[1], size, dtype=dtype
-  ).reshape(shape)
+    size = np.prod(shape) if shape else 1
+    result = np.linspace(value_range[0], value_range[1], size, dtype=dtype).reshape(
+        shape
+    )
 
-  return result
+    return result
 
 
 emitter_types = [
@@ -69,111 +69,110 @@ dtypes_to_test = [
 
 
 class DotKernelTest(parameterized.TestCase):
-
-  @parameterized.product(
-      emitter_type=emitter_types,
-      rhs_shape=[(4,), (4, 3), (4, 3, 10), (500, 10, 123)],
-      dtype=dtypes_to_test,
-  )
-  def test_vector_matrix_dot(self, emitter_type, rhs_shape, dtype):
-    value_range = (0.0, 20.0)
-    lhs_np = create_input(value_range, rhs_shape[0], dtype)
-    rhs_np = create_input(value_range, rhs_shape, dtype)
-
-    lhs_literal = create_literal(lhs_np)
-    rhs_literal = create_literal(rhs_np)
-
-    output_literal = create_literal(np.ndarray(rhs_shape[1:], dtype=dtype))
-
-    lhs_param = HloInstruction.create_parameter(0, lhs_literal.shape(), "lhs")
-    rhs_param = HloInstruction.create_parameter(1, rhs_literal.shape(), "rhs")
-
-    dot_dimension_numbers = testlib_base.DotDimensionNumbers([0], [0])
-    hlo_op = HloInstruction.create_dot(
-        output_literal.shape(), lhs_param, rhs_param, dot_dimension_numbers
+    @parameterized.product(
+        emitter_type=emitter_types,
+        rhs_shape=[(4,), (4, 3), (4, 3, 10), (500, 10, 123)],
+        dtype=dtypes_to_test,
     )
+    def test_vector_matrix_dot(self, emitter_type, rhs_shape, dtype):
+        value_range = (0.0, 20.0)
+        lhs_np = create_input(value_range, rhs_shape[0], dtype)
+        rhs_np = create_input(value_range, rhs_shape, dtype)
 
-    hlo_module, buffer_assignment = utilities.build_hlo_module(
-        hlo_op, lhs_param, rhs_param
+        lhs_literal = create_literal(lhs_np)
+        rhs_literal = create_literal(rhs_np)
+
+        output_literal = create_literal(np.ndarray(rhs_shape[1:], dtype=dtype))
+
+        lhs_param = HloInstruction.create_parameter(0, lhs_literal.shape(), "lhs")
+        rhs_param = HloInstruction.create_parameter(1, rhs_literal.shape(), "rhs")
+
+        dot_dimension_numbers = testlib_base.DotDimensionNumbers([0], [0])
+        hlo_op = HloInstruction.create_dot(
+            output_literal.shape(), lhs_param, rhs_param, dot_dimension_numbers
+        )
+
+        hlo_module, buffer_assignment = utilities.build_hlo_module(
+            hlo_op, lhs_param, rhs_param
+        )
+        jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+
+        emitter = emitter_type(
+            hlo_module.get_root_instruction(),
+            buffer_assignment,
+            jit_compiler.get_target_machine(),
+        )
+
+        runner = testlib_cpu.KernelRunner.create(
+            emitter.emit_kernel_definition(), jit_compiler
+        )
+
+        runner.call([lhs_literal, rhs_literal, output_literal])
+
+        np_result = np.tensordot(lhs_np, rhs_np, axes=(0, 0))
+        np.testing.assert_array_max_ulp(
+            np.asarray(output_literal),
+            np_result,
+            maxulp=10,
+        )
+
+    @parameterized.product(
+        emitter_type=emitter_types,
+        shapes=[
+            ((1, 1), (1, 1)),
+            ((1, 1), (1, 10)),
+            ((2, 2), (2, 2)),
+            ((2, 2), (2, 3)),
+            ((10, 10), (10, 10)),
+            ((15, 13), (13, 17)),
+        ],
+        dtype=dtypes_to_test,
     )
-    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+    def test_matrix_multiplication(self, emitter_type, shapes, dtype):
+        if dtype == np.float16 and emitter_type is testlib_cpu.DotKernelEmitter:
+            self.skipTest("float16 is not supported by the dot emitter")
 
-    emitter = emitter_type(
-        hlo_module.get_root_instruction(),
-        buffer_assignment,
-        jit_compiler.get_target_machine(),
-    )
+        value_range = (0.0, 20.0)
+        lhs_np = create_input(value_range, shapes[0], dtype)
+        rhs_np = create_input(value_range, shapes[1], dtype)
 
-    runner = testlib_cpu.KernelRunner.create(
-        emitter.emit_kernel_definition(), jit_compiler
-    )
+        lhs_literal = create_literal(lhs_np)
+        rhs_literal = create_literal(rhs_np)
 
-    runner.call([lhs_literal, rhs_literal, output_literal])
+        output_shape = shapes[0][:-1] + shapes[1][1:]
+        output_literal = create_literal(np.ndarray(output_shape, dtype=dtype))
 
-    np_result = np.tensordot(lhs_np, rhs_np, axes=(0, 0))
-    np.testing.assert_array_max_ulp(
-        np.asarray(output_literal),
-        np_result,
-        maxulp=10,
-    )
+        lhs_param = HloInstruction.create_parameter(0, lhs_literal.shape(), "lhs")
+        rhs_param = HloInstruction.create_parameter(1, rhs_literal.shape(), "rhs")
 
-  @parameterized.product(
-      emitter_type=emitter_types,
-      shapes=[
-          ((1, 1), (1, 1)),
-          ((1, 1), (1, 10)),
-          ((2, 2), (2, 2)),
-          ((2, 2), (2, 3)),
-          ((10, 10), (10, 10)),
-          ((15, 13), (13, 17)),
-      ],
-      dtype=dtypes_to_test,
-  )
-  def test_matrix_multiplication(self, emitter_type, shapes, dtype):
-    if dtype == np.float16 and emitter_type is testlib_cpu.DotKernelEmitter:
-      self.skipTest("float16 is not supported by the dot emitter")
+        dot_dimension_numbers = testlib_base.DotDimensionNumbers([1], [0])
+        hlo_op = HloInstruction.create_dot(
+            output_literal.shape(), lhs_param, rhs_param, dot_dimension_numbers
+        )
 
-    value_range = (0.0, 20.0)
-    lhs_np = create_input(value_range, shapes[0], dtype)
-    rhs_np = create_input(value_range, shapes[1], dtype)
+        hlo_module, buffer_assignment = utilities.build_hlo_module(
+            hlo_op, lhs_param, rhs_param
+        )
+        jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
-    lhs_literal = create_literal(lhs_np)
-    rhs_literal = create_literal(rhs_np)
+        emitter = emitter_type(
+            hlo_module.get_root_instruction(),
+            buffer_assignment,
+            jit_compiler.get_target_machine(),
+        )
 
-    output_shape = shapes[0][:-1] + shapes[1][1:]
-    output_literal = create_literal(np.ndarray(output_shape, dtype=dtype))
+        kernel_definition = emitter.emit_kernel_definition()
+        runner = testlib_cpu.KernelRunner.create(kernel_definition, jit_compiler)
 
-    lhs_param = HloInstruction.create_parameter(0, lhs_literal.shape(), "lhs")
-    rhs_param = HloInstruction.create_parameter(1, rhs_literal.shape(), "rhs")
+        runner.call([lhs_literal, rhs_literal, output_literal])
 
-    dot_dimension_numbers = testlib_base.DotDimensionNumbers([1], [0])
-    hlo_op = HloInstruction.create_dot(
-        output_literal.shape(), lhs_param, rhs_param, dot_dimension_numbers
-    )
-
-    hlo_module, buffer_assignment = utilities.build_hlo_module(
-        hlo_op, lhs_param, rhs_param
-    )
-    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
-
-    emitter = emitter_type(
-        hlo_module.get_root_instruction(),
-        buffer_assignment,
-        jit_compiler.get_target_machine(),
-    )
-
-    kernel_definition = emitter.emit_kernel_definition()
-    runner = testlib_cpu.KernelRunner.create(kernel_definition, jit_compiler)
-
-    runner.call([lhs_literal, rhs_literal, output_literal])
-
-    np_result = lhs_np @ rhs_np
-    np.testing.assert_array_max_ulp(
-        np.asarray(output_literal),
-        np_result,
-        maxulp=10,
-    )
+        np_result = lhs_np @ rhs_np
+        np.testing.assert_array_max_ulp(
+            np.asarray(output_literal),
+            np_result,
+            maxulp=10,
+        )
 
 
 if __name__ == "__main__":
-  absltest.main()
+    absltest.main()

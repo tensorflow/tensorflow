@@ -23,15 +23,15 @@ _MAX_SIZE = 1 << 30
 
 
 def debug_set_max_size(value: int) -> None:
-  """Sets the max size allowed for each proto chunk (used for debugging only).
+    """Sets the max size allowed for each proto chunk (used for debugging only).
 
-  Args:
-    value: int byte size
-  """
-  global _MAX_SIZE
-  _MAX_SIZE = value
+    Args:
+      value: int byte size
+    """
+    global _MAX_SIZE
+    _MAX_SIZE = value
 
 
 def max_size() -> int:
-  """Returns the maximum size each proto chunk."""
-  return _MAX_SIZE
+    """Returns the maximum size each proto chunk."""
+    return _MAX_SIZE

@@ -36,7 +36,7 @@ USER_CONFIG_IN_RANGE = {
     "grapefruit": ["2.0"],
     "apricot": ["wind", "flower"],
     "grape": ["7.1"],
-    "blueberry": ["3.0"]
+    "blueberry": ["3.0"],
 }
 USER_CONFIG_NOT_IN_RANGE = {
     "apple": ["4.0"],
@@ -53,66 +53,64 @@ USER_CONFIG_NOT_IN_RANGE = {
     "apricot": ["hello", "world"],
     "blueberry": ["11.0"],
     "grape": ["7.0"],
-    "cantaloupe": ["11.0"]
+    "cantaloupe": ["11.0"],
 }
-USER_CONFIG_MISSING = {
-    "avocado": ["3.0"],
-    "apple": [],
-    "banana": ""
-}
+USER_CONFIG_MISSING = {"avocado": ["3.0"], "apple": [], "banana": ""}
 
 
 class CompatCheckerTest(unittest.TestCase):
+    def setUp(self):
+        """Set up test."""
+        super(CompatCheckerTest, self).setUp()
+        self.test_file = os.path.join(PATH_TO_DIR, "test_config.ini")
 
-  def setUp(self):
-    """Set up test."""
-    super(CompatCheckerTest, self).setUp()
-    self.test_file = os.path.join(PATH_TO_DIR, "test_config.ini")
+    def testWithUserConfigInRange(self):
+        """Test a set of configs that are supported.
 
-  def testWithUserConfigInRange(self):
-    """Test a set of configs that are supported.
+        Testing with the following combination should always return `success`:
+          [1] A set of configurations that are supported and/or compatible.
+          [2] `.ini` config file with proper formatting.
+        """
+        # Initialize compatibility checker.
+        self.compat_checker = compat_checker.ConfigCompatChecker(
+            USER_CONFIG_IN_RANGE, self.test_file
+        )
+        # Compatibility check should succeed.
+        self.assertTrue(self.compat_checker.check_compatibility())
+        # Make sure no warning or error messages are recorded.
+        self.assertFalse(len(self.compat_checker.error_msg))
+        # Make sure total # of successes match total # of configs.
+        cnt = len(list(USER_CONFIG_IN_RANGE.keys()))
+        self.assertEqual(len(self.compat_checker.successes), cnt)
 
-    Testing with the following combination should always return `success`:
-      [1] A set of configurations that are supported and/or compatible.
-      [2] `.ini` config file with proper formatting.
-    """
-    # Initialize compatibility checker.
-    self.compat_checker = compat_checker.ConfigCompatChecker(
-        USER_CONFIG_IN_RANGE, self.test_file)
-    # Compatibility check should succeed.
-    self.assertTrue(self.compat_checker.check_compatibility())
-    # Make sure no warning or error messages are recorded.
-    self.assertFalse(len(self.compat_checker.error_msg))
-    # Make sure total # of successes match total # of configs.
-    cnt = len(list(USER_CONFIG_IN_RANGE.keys()))
-    self.assertEqual(len(self.compat_checker.successes), cnt)
+    def testWithUserConfigNotInRange(self):
+        """Test a set of configs that are NOT supported.
 
-  def testWithUserConfigNotInRange(self):
-    """Test a set of configs that are NOT supported.
+        Testing with the following combination should always return `failure`:
+          [1] A set of configurations that are NOT supported and/or compatible.
+          [2] `.ini` config file with proper formatting.
+        """
+        self.compat_checker = compat_checker.ConfigCompatChecker(
+            USER_CONFIG_NOT_IN_RANGE, self.test_file
+        )
+        # Compatibility check should fail.
+        self.assertFalse(self.compat_checker.check_compatibility())
+        # Check error and warning messages.
+        err_msg_list = self.compat_checker.failures
+        self.assertTrue(len(err_msg_list))
+        # Make sure total # of failures match total # of configs.
+        cnt = len(list(USER_CONFIG_NOT_IN_RANGE.keys()))
+        self.assertEqual(len(err_msg_list), cnt)
 
-    Testing with the following combination should always return `failure`:
-      [1] A set of configurations that are NOT supported and/or compatible.
-      [2] `.ini` config file with proper formatting.
-    """
-    self.compat_checker = compat_checker.ConfigCompatChecker(
-        USER_CONFIG_NOT_IN_RANGE, self.test_file)
-    # Compatibility check should fail.
-    self.assertFalse(self.compat_checker.check_compatibility())
-    # Check error and warning messages.
-    err_msg_list = self.compat_checker.failures
-    self.assertTrue(len(err_msg_list))
-    # Make sure total # of failures match total # of configs.
-    cnt = len(list(USER_CONFIG_NOT_IN_RANGE.keys()))
-    self.assertEqual(len(err_msg_list), cnt)
-
-  def testWithUserConfigMissing(self):
-    """Test a set of configs that are empty or missing specification."""
-    self.compat_checker = compat_checker.ConfigCompatChecker(
-        USER_CONFIG_MISSING, self.test_file)
-    # With missing specification in config file, the check should
-    # always fail.
-    self.assertFalse(self.compat_checker.check_compatibility())
+    def testWithUserConfigMissing(self):
+        """Test a set of configs that are empty or missing specification."""
+        self.compat_checker = compat_checker.ConfigCompatChecker(
+            USER_CONFIG_MISSING, self.test_file
+        )
+        # With missing specification in config file, the check should
+        # always fail.
+        self.assertFalse(self.compat_checker.check_compatibility())
 
 
 if __name__ == "__main__":
-  unittest.main()
+    unittest.main()

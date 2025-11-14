@@ -14,19 +14,16 @@
 # ==============================================================================
 """Utilities for GPU on-device tracing inject events into Xprof profiler."""
 
-
 def active_version() -> int:
-  """Returns the active version of the GPU on-device tracing.
+    """Returns the active version of the GPU on-device tracing.
 
-  0 mean no active tracing.
-  """
-  ...
-
+    0 mean no active tracing.
+    """
+    ...
 
 def start_injection_instance(version: int) -> int:
-  """Starts a new injection instance of the GPU on-device tracing."""
-  ...
-
+    """Starts a new injection instance of the GPU on-device tracing."""
+    ...
 
 def inject(
     version: int,
@@ -38,5 +35,5 @@ def inject(
     start_time_ns: int,
     duration_ps: int,
 ) -> None:
-  """Injects an event into the Xprof profiler."""
-  ...
+    """Injects an event into the Xprof profiler."""
+    ...

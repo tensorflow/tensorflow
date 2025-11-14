@@ -13,14 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for py_function_lib."""
+
 from tensorflow.python.platform import test
 
 
 class PyFunctionLibTest(test.TestCase):
-  # Functions in PyFunctionLib is in the process of migration to c++
-  # implementations.
-  pass
+    # Functions in PyFunctionLib is in the process of migration to c++
+    # implementations.
+    pass
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

@@ -20,10 +20,10 @@ import sys
 
 
 def main(_):
-  """Run an interactive console."""
-  code.interact()
-  return 0
+    """Run an interactive console."""
+    code.interact()
+    return 0
 
 
-if __name__ == '__main__':
-  sys.exit(main(sys.argv))
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

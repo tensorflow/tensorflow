@@ -23,17 +23,18 @@ from tensorflow.python.platform import test
 
 
 class MeanOpTest(test.TestCase):
-  def testReduceMeanOverflow(self):
-    @function(jit_compile=True)
-    def tpu_computation():
-      shape = (4, 32, 512, 512, 96)
-      dtype = dtypes.float32
-      test_ones = array_ops.ones(shape=shape, dtype=dtype)
-      return math_ops.reduce_mean(test_ones)
-    with ops.device("TPU:0"):
-      result = tpu_computation()
-      self.assertAllClose(
-          result, 1.0, rtol=1e-4, atol=1e-4)
+    def testReduceMeanOverflow(self):
+        @function(jit_compile=True)
+        def tpu_computation():
+            shape = (4, 32, 512, 512, 96)
+            dtype = dtypes.float32
+            test_ones = array_ops.ones(shape=shape, dtype=dtype)
+            return math_ops.reduce_mean(test_ones)
+
+        with ops.device("TPU:0"):
+            result = tpu_computation()
+            self.assertAllClose(result, 1.0, rtol=1e-4, atol=1e-4)
+
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

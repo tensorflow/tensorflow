@@ -31,6 +31,7 @@ to the regular expression is executed.
 e.g. --benchmark_filter=".*matmul*." will run all matmul related benchmarks.
 
 """
+
 import gc
 import time
 
@@ -44,74 +45,74 @@ NUM_ITERATIONS = 30000
 
 
 def _run_benchmark(func, num_iters, execution_mode=None):
-  ctx = context.context()
-  with context.execution_mode(execution_mode):
-    # call func to warm up
-    func()
-    if execution_mode == context.ASYNC:
-      ctx.executor.wait()
-    start = time.time()
-    for _ in range(num_iters):
-      func()
-    if execution_mode == context.ASYNC:
-      ctx.executor.wait()
-    end = time.time()
+    ctx = context.context()
+    with context.execution_mode(execution_mode):
+        # call func to warm up
+        func()
+        if execution_mode == context.ASYNC:
+            ctx.executor.wait()
+        start = time.time()
+        for _ in range(num_iters):
+            func()
+        if execution_mode == context.ASYNC:
+            ctx.executor.wait()
+        end = time.time()
 
-    return end - start
+        return end - start
 
 
 class KpiBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
-  """A Collection of KPI benchmarks."""
+    """A Collection of KPI benchmarks."""
 
-  def _get_benchmark_name(self):
-    return self._get_name()
+    def _get_benchmark_name(self):
+        return self._get_name()
 
-  def _run(self, func, num_iters):
-    gc.disable()
-    gc.collect()
-    self.run_report(_run_benchmark, func, num_iters)
-    gc.enable()
+    def _run(self, func, num_iters):
+        gc.disable()
+        gc.collect()
+        self.run_report(_run_benchmark, func, num_iters)
+        gc.enable()
 
-  def benchmark_tf_constant_2x2(self):
-    x = [[1., 2.], [3., 4.]]
+    def benchmark_tf_constant_2x2(self):
+        x = [[1.0, 2.0], [3.0, 4.0]]
 
-    def fn():
-      with trace.Trace("tf.constant-2x2"):
-        tf.constant(x)
+        def fn():
+            with trace.Trace("tf.constant-2x2"):
+                tf.constant(x)
 
-    self._run(fn, NUM_ITERATIONS)
+        self._run(fn, NUM_ITERATIONS)
 
-  def benchmark_tf_convert_to_tensor_2x2(self):
-    x = [[1., 2.], [3., 4.]]
+    def benchmark_tf_convert_to_tensor_2x2(self):
+        x = [[1.0, 2.0], [3.0, 4.0]]
 
-    def fn():
-      with trace.Trace("tf.convert_to_tensor-2x2"):
-        tf.convert_to_tensor(x)
+        def fn():
+            with trace.Trace("tf.convert_to_tensor-2x2"):
+                tf.convert_to_tensor(x)
 
-    self._run(fn, NUM_ITERATIONS)
+        self._run(fn, NUM_ITERATIONS)
 
-  def benchmark_tf_nn_relu_2x2(self):
-    x = tf.constant([[1., 2.], [3., 4.]])
+    def benchmark_tf_nn_relu_2x2(self):
+        x = tf.constant([[1.0, 2.0], [3.0, 4.0]])
 
-    def fn():
-      with trace.Trace("tf.nn.relu-2x2"):
-        tf.nn.relu(x)
+        def fn():
+            with trace.Trace("tf.nn.relu-2x2"):
+                tf.nn.relu(x)
 
-    self._run(fn, NUM_ITERATIONS)
+        self._run(fn, NUM_ITERATIONS)
 
-  def benchmark_tf_function_invocation_identity(self):
-    x = tf.constant([[1., 2.], [3., 4.]])
+    def benchmark_tf_function_invocation_identity(self):
+        x = tf.constant([[1.0, 2.0], [3.0, 4.0]])
 
-    @tf.function
-    def identity(x):
-      return x
+        @tf.function
+        def identity(x):
+            return x
 
-    def fn():
-      with trace.Trace("tf.function-identity"):
-        identity(x)
+        def fn():
+            with trace.Trace("tf.function-identity"):
+                identity(x)
 
-    self._run(fn, NUM_ITERATIONS)
+        self._run(fn, NUM_ITERATIONS)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+    tf.test.main()

@@ -21,25 +21,24 @@ from tensorflow.python.platform import test
 
 
 class FunctionTests(xla_test.XLATestCase):
+    def testVarInitializedInFunction(self):
+        with self.test_scope():
+            v_holder = []
 
-  def testVarInitializedInFunction(self):
-    with self.test_scope():
-      v_holder = []
+            @polymorphic_function.function
+            def add_var(x):
+                if not v_holder:
+                    v = variables.Variable([1.0, 2.0])
+                    v_holder.append(v)
+                    already_initialized = variables.Variable(3.0)
+                    with ops.init_scope():
+                        already_initialized.assign(10.0)
+                    v_holder.append(already_initialized)
+                return v_holder[0] + v_holder[1] + x
 
-      @polymorphic_function.function
-      def add_var(x):
-        if not v_holder:
-          v = variables.Variable([1., 2.])
-          v_holder.append(v)
-          already_initialized = variables.Variable(3.)
-          with ops.init_scope():
-            already_initialized.assign(10.)
-          v_holder.append(already_initialized)
-        return v_holder[0] + v_holder[1] + x
-
-      self.assertAllClose([13., 14.], add_var(constant_op.constant(2.)))
+            self.assertAllClose([13.0, 14.0], add_var(constant_op.constant(2.0)))
 
 
 if __name__ == "__main__":
-  ops.enable_eager_execution()
-  test.main()
+    ops.enable_eager_execution()
+    test.main()

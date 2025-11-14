@@ -26,73 +26,72 @@ from tensorflow.python.autograph.tests import reference_test_base
 
 
 def function_1(x):
-  return x * x * x
+    return x * x * x
 
 
 def function_2(x):
-  return -1 * x + 11
+    return -1 * x + 11
 
 
 def factory(n):
-  if n == 1:
-    return function_1
-  return function_2
+    if n == 1:
+        return function_1
+    return function_2
 
 
 def static_fn(x):
-  a = function_1(x)
-  b = function_2(x)
-  return a + b
+    a = function_1(x)
+    b = function_2(x)
+    return a + b
 
 
 def factory_dynamic_fn(x):
-  f = factory(1)
-  a = f(x)
-  f = factory(2)
-  b = f(x)
-  return a + b
+    f = factory(1)
+    a = f(x)
+    f = factory(2)
+    b = f(x)
+    return a + b
 
 
 def param_dynamic_fn(f, x):
-  return f(x)
+    return f(x)
 
 
 def variable_dynamic_fn(x):
-  f = function_1
-  a = f(x)
-  f = function_2
-  b = f(x)
-  return a + b
+    f = function_1
+    a = f(x)
+    f = function_2
+    b = f(x)
+    return a + b
 
 
 def variable_dynamic_whitelisted_fn(x):
-  f = tf.identity
-  return f(x)
+    f = tf.identity
+    return f(x)
 
 
 def dynamic_fn_with_kwargs(f, x):
-  return f(x=x)
+    return f(x=x)
 
 
 class ReferenceTest(reference_test_base.TestCase):
+    def test_basic(self):
+        self.assertFunctionMatchesEager(static_fn, 1)
+        self.assertFunctionMatchesEager(factory_dynamic_fn, 1)
+        self.assertFunctionMatchesEager(param_dynamic_fn, function_1, 1)
+        self.assertFunctionMatchesEager(variable_dynamic_fn, 1)
+        self.assertFunctionMatchesEager(variable_dynamic_whitelisted_fn, 1)
+        self.assertFunctionMatchesEager(dynamic_fn_with_kwargs, function_1, 1)
 
-  def test_basic(self):
-    self.assertFunctionMatchesEager(static_fn, 1)
-    self.assertFunctionMatchesEager(factory_dynamic_fn, 1)
-    self.assertFunctionMatchesEager(param_dynamic_fn, function_1, 1)
-    self.assertFunctionMatchesEager(variable_dynamic_fn, 1)
-    self.assertFunctionMatchesEager(variable_dynamic_whitelisted_fn, 1)
-    self.assertFunctionMatchesEager(dynamic_fn_with_kwargs, function_1, 1)
-
-  def test_basic_tensor(self):
-    self.all_inputs_tensors = True
-    self.assertFunctionMatchesEager(static_fn, 1)
-    self.assertFunctionMatchesEager(factory_dynamic_fn, 1)
-    self.assertFunctionMatchesEager(param_dynamic_fn, function_1, 1)
-    self.assertFunctionMatchesEager(variable_dynamic_fn, 1)
-    self.assertFunctionMatchesEager(variable_dynamic_whitelisted_fn, 1)
-    self.assertFunctionMatchesEager(dynamic_fn_with_kwargs, function_1, 1)
+    def test_basic_tensor(self):
+        self.all_inputs_tensors = True
+        self.assertFunctionMatchesEager(static_fn, 1)
+        self.assertFunctionMatchesEager(factory_dynamic_fn, 1)
+        self.assertFunctionMatchesEager(param_dynamic_fn, function_1, 1)
+        self.assertFunctionMatchesEager(variable_dynamic_fn, 1)
+        self.assertFunctionMatchesEager(variable_dynamic_whitelisted_fn, 1)
+        self.assertFunctionMatchesEager(dynamic_fn_with_kwargs, function_1, 1)
 
 
-if __name__ == '__main__':
-  tf.test.main()
+if __name__ == "__main__":
+    tf.test.main()

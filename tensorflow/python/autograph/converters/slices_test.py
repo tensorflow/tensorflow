@@ -25,30 +25,28 @@ from tensorflow.python.platform import test
 
 
 class SliceTest(converter_testing.TestCase):
+    def test_index_access(self):
+        def f(l):
+            directives.set_element_type(l, dtypes.int32)
+            return l[1]
 
-  def test_index_access(self):
+        tr = self.transform(f, (directives_converter, slices))
 
-    def f(l):
-      directives.set_element_type(l, dtypes.int32)
-      return l[1]
+        tl = list_ops.tensor_list_from_tensor(
+            [1, 2], element_shape=constant_op.constant([], dtype=dtypes.int32)
+        )
+        y = tr(tl)
+        self.assertEqual(2, self.evaluate(y))
 
-    tr = self.transform(f, (directives_converter, slices))
+    def test_index_access_multiple_definitions(self):
+        def f(l):
+            directives.set_element_type(l, dtypes.int32)
+            if l:
+                l = []
+            return l[1]
 
-    tl = list_ops.tensor_list_from_tensor(
-        [1, 2], element_shape=constant_op.constant([], dtype=dtypes.int32))
-    y = tr(tl)
-    self.assertEqual(2, self.evaluate(y))
-
-  def test_index_access_multiple_definitions(self):
-
-    def f(l):
-      directives.set_element_type(l, dtypes.int32)
-      if l:
-        l = []
-      return l[1]
-
-    self.transform(f, (directives_converter, slices))
+        self.transform(f, (directives_converter, slices))
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

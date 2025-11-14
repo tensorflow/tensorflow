@@ -22,60 +22,57 @@ _TEST_VERSION = 1
 
 
 class TestUpgrade(test_util.TensorFlowTestCase):
-  """Test various APIs that have been changed in 2.0."""
+    """Test various APIs that have been changed in 2.0."""
 
-  @classmethod
-  def setUpClass(cls):
-    cls._tf_api_version = 1 if hasattr(tf, 'contrib') else 2
+    @classmethod
+    def setUpClass(cls):
+        cls._tf_api_version = 1 if hasattr(tf, "contrib") else 2
 
-  def setUp(self):
-    tf.compat.v1.enable_v2_behavior()
+    def setUp(self):
+        tf.compat.v1.enable_v2_behavior()
 
-  def testRenames(self):
-    self.assertAllClose(1.04719755, tf.acos(0.5))
-    self.assertAllClose(0.5, tf.rsqrt(4.0))
+    def testRenames(self):
+        self.assertAllClose(1.04719755, tf.acos(0.5))
+        self.assertAllClose(0.5, tf.rsqrt(4.0))
 
-  def testSerializeSparseTensor(self):
-    sp_input = tf.SparseTensor(
-        indices=tf.constant([[1]], dtype=tf.int64),
-        values=tf.constant([2], dtype=tf.int64),
-        dense_shape=[2])
+    def testSerializeSparseTensor(self):
+        sp_input = tf.SparseTensor(
+            indices=tf.constant([[1]], dtype=tf.int64),
+            values=tf.constant([2], dtype=tf.int64),
+            dense_shape=[2],
+        )
 
-    with self.cached_session():
-      serialized_sp = tf.serialize_sparse(sp_input, 'serialize_name', tf.string)
-      self.assertEqual((3,), serialized_sp.shape)
-      self.assertTrue(serialized_sp[0].numpy())  # check non-empty
+        with self.cached_session():
+            serialized_sp = tf.serialize_sparse(sp_input, "serialize_name", tf.string)
+            self.assertEqual((3,), serialized_sp.shape)
+            self.assertTrue(serialized_sp[0].numpy())  # check non-empty
 
-  def testSerializeManySparse(self):
-    sp_input = tf.SparseTensor(
-        indices=tf.constant([[0, 1]], dtype=tf.int64),
-        values=tf.constant([2], dtype=tf.int64),
-        dense_shape=[1, 2])
+    def testSerializeManySparse(self):
+        sp_input = tf.SparseTensor(
+            indices=tf.constant([[0, 1]], dtype=tf.int64),
+            values=tf.constant([2], dtype=tf.int64),
+            dense_shape=[1, 2],
+        )
 
-    with self.cached_session():
-      serialized_sp = tf.serialize_many_sparse(
-          sp_input, 'serialize_name', tf.string)
-      self.assertEqual((1, 3), serialized_sp.shape)
+        with self.cached_session():
+            serialized_sp = tf.serialize_many_sparse(
+                sp_input, "serialize_name", tf.string
+            )
+            self.assertEqual((1, 3), serialized_sp.shape)
 
-  def testArgMaxMin(self):
-    self.assertAllClose(
-        [1],
-        tf.argmax([[1, 3, 2]], name='abc', dimension=1))
-    self.assertAllClose(
-        [0, 0, 0],
-        tf.argmax([[1, 3, 2]], dimension=0))
-    self.assertAllClose(
-        [0],
-        tf.argmin([[1, 3, 2]], name='abc', dimension=1))
+    def testArgMaxMin(self):
+        self.assertAllClose([1], tf.argmax([[1, 3, 2]], name="abc", dimension=1))
+        self.assertAllClose([0, 0, 0], tf.argmax([[1, 3, 2]], dimension=0))
+        self.assertAllClose([0], tf.argmin([[1, 3, 2]], name="abc", dimension=1))
 
-  def testSoftmaxCrossEntropyWithLogits(self):
-    out = tf.nn.softmax_cross_entropy_with_logits(
-        logits=[0.1, 0.8], labels=[0, 1])
-    self.assertAllClose(out, 0.40318608)
-    out = tf.nn.softmax_cross_entropy_with_logits_v2(
-        logits=[0.1, 0.8], labels=[0, 1])
-    self.assertAllClose(out, 0.40318608)
+    def testSoftmaxCrossEntropyWithLogits(self):
+        out = tf.nn.softmax_cross_entropy_with_logits(logits=[0.1, 0.8], labels=[0, 1])
+        self.assertAllClose(out, 0.40318608)
+        out = tf.nn.softmax_cross_entropy_with_logits_v2(
+            logits=[0.1, 0.8], labels=[0, 1]
+        )
+        self.assertAllClose(out, 0.40318608)
 
 
 if __name__ == "__main__":
-  test_lib.main()
+    test_lib.main()

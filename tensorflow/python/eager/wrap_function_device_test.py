@@ -26,57 +26,57 @@ from tensorflow.python.platform import test
 
 
 def _dataset_reduce_sum(dataset):
-  return dataset.reduce(
-      constant_op.constant(0, dtype=dtypes.int64), lambda x, y: x + y)
+    return dataset.reduce(
+        constant_op.constant(0, dtype=dtypes.int64), lambda x, y: x + y
+    )
 
 
 def _loop_dataset_sum(dataset):
-  value = constant_op.constant(0, dtype=dtypes.int64)
-  for d in dataset:
-    value += d
-  return value
+    value = constant_op.constant(0, dtype=dtypes.int64)
+    for d in dataset:
+        value += d
+    return value
 
 
 def _iter_dataset_sum(dataset):
-  value = constant_op.constant(0, dtype=dtypes.int64)
-  for d in iter(dataset):
-    value += d
-  return value
+    value = constant_op.constant(0, dtype=dtypes.int64)
+    for d in iter(dataset):
+        value += d
+    return value
 
 
 class WrappedGraphTest(test.TestCase, parameterized.TestCase):
+    @parameterized.named_parameters(
+        ("cpu_reduce", "CPU", _dataset_reduce_sum),
+        ("gpu_reduce", "GPU", _dataset_reduce_sum),
+        ("cpu_loop", "CPU", _loop_dataset_sum),
+        ("gpu_loop", "GPU", _loop_dataset_sum),
+        ("cpu_iter", "CPU", _iter_dataset_sum),
+        ("gpu_iter", "GPU", _iter_dataset_sum),
+    )
+    def testWrapFuncDatasetDevice(self, device_type, dataset_reduce_fn):
+        devices = config.list_logical_devices(device_type=device_type)
+        if not devices:
+            self.skipTest("Skip when {} is not detected by TF".format(device_type))
 
-  @parameterized.named_parameters(
-      ('cpu_reduce', 'CPU', _dataset_reduce_sum),
-      ('gpu_reduce', 'GPU', _dataset_reduce_sum),
-      ('cpu_loop', 'CPU', _loop_dataset_sum),
-      ('gpu_loop', 'GPU', _loop_dataset_sum),
-      ('cpu_iter', 'CPU', _iter_dataset_sum),
-      ('gpu_iter', 'GPU', _iter_dataset_sum),
-  )
-  def testWrapFuncDatasetDevice(self, device_type, dataset_reduce_fn):
+        @def_function.function
+        def comp():
+            return dataset_reduce_fn(dataset_ops.Dataset.range(10))
 
-    devices = config.list_logical_devices(device_type=device_type)
-    if not devices:
-      self.skipTest('Skip when {} is not detected by TF'.format(device_type))
+        graph = comp.get_concrete_function().graph
 
-    @def_function.function
-    def comp():
-      return dataset_reduce_fn(dataset_ops.Dataset.range(10))
+        def function_to_wrap():
+            with ops.device(devices[0].name):
+                return graph_def_importer.import_graph_def(graph.as_graph_def())
 
-    graph = comp.get_concrete_function().graph
+        with ops.device(devices[0].name):
+            wrapped_noarg_fn = wrap_function.wrap_function(
+                function_to_wrap, signature=[]
+            )
 
-    def function_to_wrap():
-      with ops.device(devices[0].name):
-        return graph_def_importer.import_graph_def(graph.as_graph_def())
-
-    with ops.device(devices[0].name):
-      wrapped_noarg_fn = wrap_function.wrap_function(
-          function_to_wrap, signature=[])
-
-    wrapped_noarg_fn()
+        wrapped_noarg_fn()
 
 
-if __name__ == '__main__':
-  ops.enable_eager_execution()
-  test.main()
+if __name__ == "__main__":
+    ops.enable_eager_execution()
+    test.main()

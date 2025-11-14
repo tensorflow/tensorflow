@@ -25,83 +25,80 @@ from tensorflow.python.autograph.tests import reference_test_base
 
 
 def dict_call(x):
-  return dict(foo=x)
+    return dict(foo=x)
 
 
 def dict_call_aliased(x):
-  def fake_dict(x):
-    return x
+    def fake_dict(x):
+        return x
 
-  dict = fake_dict  # pylint:disable=redefined-builtin
-  return dict(x)
+    dict = fake_dict  # pylint:disable=redefined-builtin
+    return dict(x)
 
 
 def dict_call_dynamic(x):
-  def gen_dict():
-    return dict
+    def gen_dict():
+        return dict
 
-  d = gen_dict()
-  return d(foo=x)
+    d = gen_dict()
+    return d(foo=x)
 
 
 def len_call(x):
-  return len(x)
+    return len(x)
 
 
 def nested_call(x):
-  return list(range(len(x)))
+    return list(range(len(x)))
 
 
 def nested_cast(x):
-  return float(int(x))
+    return float(int(x))
 
 
 def len_call_aliased(x):
+    def fake_len(x):
+        return x
 
-  def fake_len(x):
-    return x
-
-  len = fake_len  # pylint:disable=redefined-builtin
-  return len(x)
+    len = fake_len  # pylint:disable=redefined-builtin
+    return len(x)
 
 
 def len_call_dynamic(x):
+    def gen_len():
+        return len
 
-  def gen_len():
-    return len
-
-  l = gen_len()
-  return l(x)
+    l = gen_len()
+    return l(x)
 
 
 def len_call_on_mock():
-  x = unittest.mock.MagicMock()
-  return len(x)
+    x = unittest.mock.MagicMock()
+    return len(x)
 
 
 class ReferenceTest(reference_test_base.TestCase):
+    def test_basic(self):
+        self.assertFunctionMatchesEager(dict_call, 1)
+        self.assertFunctionMatchesEager(len_call, [1, 2])
+        self.assertFunctionMatchesEager(dict_call_aliased, 1)
+        self.assertFunctionMatchesEager(len_call_aliased, [1, 2])
+        self.assertFunctionMatchesEager(dict_call_dynamic, 1)
+        self.assertFunctionMatchesEager(len_call_dynamic, [1, 2])
+        self.assertFunctionMatchesEager(nested_call, [])
+        self.assertFunctionMatchesEager(nested_call, [1, 2, 3])
 
-  def test_basic(self):
-    self.assertFunctionMatchesEager(dict_call, 1)
-    self.assertFunctionMatchesEager(len_call, [1, 2])
-    self.assertFunctionMatchesEager(dict_call_aliased, 1)
-    self.assertFunctionMatchesEager(len_call_aliased, [1, 2])
-    self.assertFunctionMatchesEager(dict_call_dynamic, 1)
-    self.assertFunctionMatchesEager(len_call_dynamic, [1, 2])
-    self.assertFunctionMatchesEager(nested_call, [])
-    self.assertFunctionMatchesEager(nested_call, [1, 2, 3])
-
-  def test_basic_tensor(self):
-    self.all_inputs_tensors = True
-    self.assertFunctionMatchesEager(dict_call, 1)
-    self.assertFunctionMatchesEager(len_call, [1, 2])
-    self.assertFunctionMatchesEager(dict_call_aliased, 1)
-    self.assertFunctionMatchesEager(len_call_aliased, [1, 2])
-    self.assertFunctionMatchesEager(dict_call_dynamic, 1)
-    self.assertFunctionMatchesEager(len_call_dynamic, [1, 2])
-    self.assertFunctionMatchesEager(nested_call, [])
-    self.assertFunctionMatchesEager(nested_call, [1, 2, 3])
+    def test_basic_tensor(self):
+        self.all_inputs_tensors = True
+        self.assertFunctionMatchesEager(dict_call, 1)
+        self.assertFunctionMatchesEager(len_call, [1, 2])
+        self.assertFunctionMatchesEager(dict_call_aliased, 1)
+        self.assertFunctionMatchesEager(len_call_aliased, [1, 2])
+        self.assertFunctionMatchesEager(dict_call_dynamic, 1)
+        self.assertFunctionMatchesEager(len_call_dynamic, [1, 2])
+        self.assertFunctionMatchesEager(nested_call, [])
+        self.assertFunctionMatchesEager(nested_call, [1, 2, 3])
 
 
-if __name__ == '__main__':
-  tf.test.main()
+if __name__ == "__main__":
+    tf.test.main()

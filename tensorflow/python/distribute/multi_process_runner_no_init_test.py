@@ -20,20 +20,20 @@ from tensorflow.python.eager import test
 
 
 class MultiProcessRunnerNoInitTest(test.TestCase):
+    def test_not_calling_correct_main(self):
+        def simple_func():
+            return "foobar"
 
-  def test_not_calling_correct_main(self):
-
-    def simple_func():
-      return 'foobar'
-
-    with self.assertRaisesRegex(multi_process_runner.NotInitializedError,
-                                '`multi_process_runner` is not initialized.'):
-      multi_process_runner.run(
-          simple_func,
-          multi_worker_test_base.create_cluster_spec(num_workers=1))
+        with self.assertRaisesRegex(
+            multi_process_runner.NotInitializedError,
+            "`multi_process_runner` is not initialized.",
+        ):
+            multi_process_runner.run(
+                simple_func, multi_worker_test_base.create_cluster_spec(num_workers=1)
+            )
 
 
-if __name__ == '__main__':
-  # Intentionally not using `multi_process_runner.test_main()` so the error
-  # would occur.
-  test.main()
+if __name__ == "__main__":
+    # Intentionally not using `multi_process_runner.test_main()` so the error
+    # would occur.
+    test.main()

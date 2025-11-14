@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2
+from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import (
+    calibration_statistics_pb2,
+)
 
 # LINT.IfChange(clear_calibrator)
 def clear_calibrator() -> None: ...

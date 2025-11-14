@@ -19,20 +19,21 @@ from tensorflow.python.ops import gen_filesystem_ops as _gen_filesystem_ops
 
 # pylint: disable=protected-access
 def filesystem_set_configuration(scheme, key, value, name=None):
-  """Set configuration of the file system.
+    """Set configuration of the file system.
 
-  Args:
-    scheme: File system scheme.
-    key: The name of the configuration option.
-    value: The value of the configuration option.
-    name: A name for the operation (optional).
+    Args:
+      scheme: File system scheme.
+      key: The name of the configuration option.
+      value: The value of the configuration option.
+      name: A name for the operation (optional).
 
-  Returns:
-    None.
-  """
+    Returns:
+      None.
+    """
 
-  return _gen_filesystem_ops.file_system_set_configuration(
-      scheme, key=key, value=value, name=name)
+    return _gen_filesystem_ops.file_system_set_configuration(
+        scheme, key=key, value=value, name=name
+    )
 
 
 # pylint: enable=protected-access

@@ -12,37 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from typing import Any, Optional
+from typing import Optional
 
 class PyFunctionLibrary:
-
-  # LINT.IfChange(save_exported_model)
-  def save_exported_model(
-      self,
-      dst_saved_model_path: str,
-      exported_model_serialized: bytes,
-      src_saved_model_path: str,
-      tags: set[str],
-      serialized_signature_def_map: dict[str, bytes],
-  ) -> Optional[bool]: ...
-  # LINT.ThenChange()
-
-  # LINT.IfChange(run_calibration)
-  def run_calibration(
-      self,
-      saved_model_path: str,
-      signature_keys: list[str],
-      tags: set[str],
-      force_graph_mode_calibration: bool,
-      # Value type: RepresentativeDatasetFile.
-      representative_dataset_file_map_serialized: dict[str, bytes],
-  ) -> Optional[bool]: ...
-  # LINT.ThenChange()
-
-  # LINT.IfChange(get_calibration_min_max_value)
-  def get_calibration_min_max_value(
-      self,
-      calibration_statistics_serialized: bytes,
-      calibration_options_serialized: bytes,
-  ) -> Optional[tuple[float, float]]: ...
-  # LINT.ThenChange()
+    # LINT.IfChange(save_exported_model)
+    def save_exported_model(
+        self,
+        dst_saved_model_path: str,
+        exported_model_serialized: bytes,
+        src_saved_model_path: str,
+        tags: set[str],
+        serialized_signature_def_map: dict[str, bytes],
+    ) -> Optional[bool]: ...
+    # LINT.ThenChange()
+    # LINT.IfChange(run_calibration)
+    def run_calibration(
+        self,
+        saved_model_path: str,
+        signature_keys: list[str],
+        tags: set[str],
+        force_graph_mode_calibration: bool,
+        # Value type: RepresentativeDatasetFile.
+        representative_dataset_file_map_serialized: dict[str, bytes],
+    ) -> Optional[bool]: ...
+    # LINT.ThenChange()
+    # LINT.IfChange(get_calibration_min_max_value)
+    def get_calibration_min_max_value(
+        self,
+        calibration_statistics_serialized: bytes,
+        calibration_options_serialized: bytes,
+    ) -> Optional[tuple[float, float]]: ...
+    # LINT.ThenChange()

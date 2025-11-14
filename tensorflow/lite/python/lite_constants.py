@@ -53,12 +53,12 @@ _tf_export(v1=["lite.constants.INT32"]).export_constant(__name__, "INT32")
 _tf_export(v1=["lite.constants.INT64"]).export_constant(__name__, "INT64")
 _tf_export(v1=["lite.constants.STRING"]).export_constant(__name__, "STRING")
 _tf_export(v1=["lite.constants.QUANTIZED_UINT8"]).export_constant(
-    __name__, "QUANTIZED_UINT8")
+    __name__, "QUANTIZED_UINT8"
+)
 _tf_export(v1=["lite.constants.INT8"]).export_constant(__name__, "INT8")
 _tf_export(v1=["lite.constants.INT16"]).export_constant(__name__, "INT16")
 _tf_export(v1=["lite.constants.TFLITE"]).export_constant(__name__, "TFLITE")
-_tf_export(v1=["lite.constants.GRAPHVIZ_DOT"]).export_constant(
-    __name__, "GRAPHVIZ_DOT")
+_tf_export(v1=["lite.constants.GRAPHVIZ_DOT"]).export_constant(__name__, "GRAPHVIZ_DOT")
 
 
 _allowed_symbols = [

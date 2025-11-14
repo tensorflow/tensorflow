@@ -30,49 +30,49 @@ def make_graph_def_with_constant_nodes(
     dtype: Optional[dtypes.DType] = None,
     **function_node_sizes,
 ) -> graph_pb2.GraphDef:
-  """Creates a GraphDef with approximate node sizes.
+    """Creates a GraphDef with approximate node sizes.
 
-  Args:
-    node_sizes: list of ints, the approximate desired sizes of the nodes in the
-      GraphDef.
-    dtype: Dtype of encoded constant values (float32 or float64).
-    **function_node_sizes: Map of function name to FunctionDef node sizes (see
-      `node_sizes`).
+    Args:
+      node_sizes: list of ints, the approximate desired sizes of the nodes in the
+        GraphDef.
+      dtype: Dtype of encoded constant values (float32 or float64).
+      **function_node_sizes: Map of function name to FunctionDef node sizes (see
+        `node_sizes`).
 
-  Returns:
-    A GraphDef proto.
-  """
-  dtype = dtypes.float32
-  graph_def = graph_pb2.GraphDef()
-  n = 0
+    Returns:
+      A GraphDef proto.
+    """
+    dtype = dtypes.float32
+    graph_def = graph_pb2.GraphDef()
+    n = 0
 
-  def add_nodes(node_list, sizes):
-    nonlocal n
-    for s in sizes:
-      node = node_list.add(name=f"Const_{n}", op="Const")
+    def add_nodes(node_list, sizes):
+        nonlocal n
+        for s in sizes:
+            node = node_list.add(name=f"Const_{n}", op="Const")
 
-      # Add an empty value to compute the approximate size of the constant
-      # value that will be added to the proto.
-      node.attr["value"].tensor.MergeFrom(
-          tensor_util.make_tensor_proto(np.ones([]), dtype=dtype)
-      )
-      remaining_size = s - node.ByteSize()
-      if remaining_size < 0:
-        raise ValueError(f"Unable to create node of size {s} bytes.")
+            # Add an empty value to compute the approximate size of the constant
+            # value that will be added to the proto.
+            node.attr["value"].tensor.MergeFrom(
+                tensor_util.make_tensor_proto(np.ones([]), dtype=dtype)
+            )
+            remaining_size = s - node.ByteSize()
+            if remaining_size < 0:
+                raise ValueError(f"Unable to create node of size {s} bytes.")
 
-      constant_size = [math.ceil(remaining_size / dtype.size)]
-      node.attr["value"].tensor.Clear()
-      node.attr["value"].tensor.MergeFrom(
-          tensor_util.make_tensor_proto(
-              np.random.random_sample(constant_size), dtype=dtype
-          )
-      )
-      n += 1
+            constant_size = [math.ceil(remaining_size / dtype.size)]
+            node.attr["value"].tensor.Clear()
+            node.attr["value"].tensor.MergeFrom(
+                tensor_util.make_tensor_proto(
+                    np.random.random_sample(constant_size), dtype=dtype
+                )
+            )
+            n += 1
 
-  add_nodes(graph_def.node, node_sizes)
-  for fn_name, fn_sizes in function_node_sizes.items():
-    fn = graph_def.library.function.add()
-    fn.signature.name = fn_name
-    add_nodes(fn.node_def, fn_sizes)
+    add_nodes(graph_def.node, node_sizes)
+    for fn_name, fn_sizes in function_node_sizes.items():
+        fn = graph_def.library.function.add()
+        fn.signature.name = fn_name
+        add_nodes(fn.node_def, fn_sizes)
 
-  return graph_def
+    return graph_def

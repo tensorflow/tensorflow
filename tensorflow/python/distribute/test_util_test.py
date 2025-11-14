@@ -36,86 +36,89 @@ from tensorflow.python.ops import array_ops
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
             strategy_combinations.multi_worker_mirrored_2x2_gpu,
-        ] + strategy_combinations.strategies_minus_tpu,
-        mode=['eager']))
+        ]
+        + strategy_combinations.strategies_minus_tpu,
+        mode=["eager"],
+    )
+)
 class GatherTest(test.TestCase, parameterized.TestCase):
+    def testOne(self, strategy):
+        @def_function.function
+        def f():
+            return array_ops.ones((), dtypes.float32)
 
-  def testOne(self, strategy):
+        results = test_util.gather(strategy, strategy.run(f))
+        self.assertAllEqual(
+            self.evaluate(results), [1.0] * strategy.num_replicas_in_sync
+        )
 
-    @def_function.function
-    def f():
-      return array_ops.ones((), dtypes.float32)
+    def testNest(self, strategy):
+        @def_function.function
+        def f():
+            return {
+                "foo": array_ops.ones((), dtypes.float32),
+                "bar": [
+                    array_ops.zeros((), dtypes.float32),
+                    array_ops.ones((), dtypes.float32),
+                ],
+            }
 
-    results = test_util.gather(strategy, strategy.run(f))
-    self.assertAllEqual(
-        self.evaluate(results), [1.] * strategy.num_replicas_in_sync)
-
-  def testNest(self, strategy):
-
-    @def_function.function
-    def f():
-      return {
-          'foo':
-              array_ops.ones((), dtypes.float32),
-          'bar': [
-              array_ops.zeros((), dtypes.float32),
-              array_ops.ones((), dtypes.float32),
-          ]
-      }
-
-    results = test_util.gather(strategy, strategy.run(f))
-    self.assertAllEqual(
-        self.evaluate(results['foo']), [1.] * strategy.num_replicas_in_sync)
-    self.assertAllEqual(
-        self.evaluate(results['bar'][0]), [0.] * strategy.num_replicas_in_sync)
-    self.assertAllEqual(
-        self.evaluate(results['bar'][1]), [1.] * strategy.num_replicas_in_sync)
+        results = test_util.gather(strategy, strategy.run(f))
+        self.assertAllEqual(
+            self.evaluate(results["foo"]), [1.0] * strategy.num_replicas_in_sync
+        )
+        self.assertAllEqual(
+            self.evaluate(results["bar"][0]), [0.0] * strategy.num_replicas_in_sync
+        )
+        self.assertAllEqual(
+            self.evaluate(results["bar"][1]), [1.0] * strategy.num_replicas_in_sync
+        )
 
 
 class LogicalDevicesTest(test.TestCase):
-
-  def testLogicalCPUs(self):
-    # TODO(b/273484131): Causing segmentation fault.
-    if (test.is_gpu_available() and sys.version_info.major == 3 and
-        sys.version_info.minor == 8):
-      self.skipTest('Causing segmentation fault in Python 3.8 / GPU')
-    context._reset_context()
-    test_util.set_logical_devices_to_at_least('CPU', 3)
-    cpu_device = config.list_physical_devices('CPU')[0]
-    self.assertLen(config.get_logical_device_configuration(cpu_device), 3)
+    def testLogicalCPUs(self):
+        # TODO(b/273484131): Causing segmentation fault.
+        if (
+            test.is_gpu_available()
+            and sys.version_info.major == 3
+            and sys.version_info.minor == 8
+        ):
+            self.skipTest("Causing segmentation fault in Python 3.8 / GPU")
+        context._reset_context()
+        test_util.set_logical_devices_to_at_least("CPU", 3)
+        cpu_device = config.list_physical_devices("CPU")[0]
+        self.assertLen(config.get_logical_device_configuration(cpu_device), 3)
 
 
 class AssertSequentailExecutionTest(test.TestCase):
+    def test1(self):
+        @def_function.function
+        def f():
+            a = array_ops.identity(1.0, name="a")
+            b = a + 1
+            c = array_ops.identity(2.0, name="c")
+            d = array_ops.identity(a + c, name="d")
+            with ops.control_dependencies([b]):
+                e = array_ops.identity(3.0, name="e")
+            f = array_ops.identity(c + e, name="f")
+            return d, f
 
-  def test1(self):
-
-    @def_function.function
-    def f():
-      a = array_ops.identity(1., name='a')
-      b = a + 1
-      c = array_ops.identity(2., name='c')
-      d = array_ops.identity(a + c, name='d')
-      with ops.control_dependencies([b]):
-        e = array_ops.identity(3., name='e')
-      f = array_ops.identity(c + e, name='f')
-      return d, f
-
-    graph = f.get_concrete_function().graph
-    order = test_util.topological_sort_operations(graph.get_operations())
-    a = graph.get_operation_by_name('a')
-    c = graph.get_operation_by_name('c')
-    d = graph.get_operation_by_name('d')
-    e = graph.get_operation_by_name('e')
-    f = graph.get_operation_by_name('f')
-    test_util.assert_sequential_execution(order, [a, d])
-    test_util.assert_sequential_execution(order, [e, a, f])
-    with self.assertRaises(AssertionError):
-      test_util.assert_sequential_execution(order, [a, c])
-    with self.assertRaises(AssertionError):
-      test_util.assert_sequential_execution(order, [f, a, c])
-    with self.assertRaises(AssertionError):
-      test_util.assert_sequential_execution(order, [d, e, a, c])
+        graph = f.get_concrete_function().graph
+        order = test_util.topological_sort_operations(graph.get_operations())
+        a = graph.get_operation_by_name("a")
+        c = graph.get_operation_by_name("c")
+        d = graph.get_operation_by_name("d")
+        e = graph.get_operation_by_name("e")
+        f = graph.get_operation_by_name("f")
+        test_util.assert_sequential_execution(order, [a, d])
+        test_util.assert_sequential_execution(order, [e, a, f])
+        with self.assertRaises(AssertionError):
+            test_util.assert_sequential_execution(order, [a, c])
+        with self.assertRaises(AssertionError):
+            test_util.assert_sequential_execution(order, [f, a, c])
+        with self.assertRaises(AssertionError):
+            test_util.assert_sequential_execution(order, [d, e, a, c])
 
 
-if __name__ == '__main__':
-  test_util.main()
+if __name__ == "__main__":
+    test_util.main()

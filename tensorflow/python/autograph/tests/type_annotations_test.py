@@ -20,15 +20,14 @@ from tensorflow.python.autograph.tests import reference_test_base
 
 
 def pure_declaration():
-  n: int  # pylint:disable=unused-variable
-  return 1
+    n: int  # pylint:disable=unused-variable
+    return 1
 
 
 class ReferenceTest(reference_test_base.TestCase):
+    def test_pure_declaration(self):
+        self.assertFunctionMatchesEager(pure_declaration)
 
-  def test_pure_declaration(self):
-    self.assertFunctionMatchesEager(pure_declaration)
 
-
-if __name__ == '__main__':
-  tf.test.main()
+if __name__ == "__main__":
+    tf.test.main()
