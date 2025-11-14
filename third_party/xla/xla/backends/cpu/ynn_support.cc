@@ -258,9 +258,12 @@ bool IsReduceOpOffloadedToYnn(const HloInstruction* hlo) {
   }
   switch (input->opcode()) {
     case HloOpcode::kMultiply:
+    case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kSlice:
     case HloOpcode::kConcatenate:
+    case HloOpcode::kConvert:
+    case HloOpcode::kReshape:
       return false;
     default: {
       return true;
