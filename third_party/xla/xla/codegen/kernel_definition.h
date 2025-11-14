@@ -44,7 +44,7 @@ class KernelDefinitionBase {
 
  protected:
   KernelDefinitionBase(KernelDefinitionBase&&) = default;
-  KernelDefinitionBase& operator=(KernelDefinitionBase&&) = default;
+  KernelDefinitionBase& operator=(KernelDefinitionBase&&) noexcept = default;
 
  private:
   KernelSpec spec_;
@@ -65,7 +65,7 @@ class KernelDefinition final : public KernelDefinitionBase {
       : KernelDefinitionBase(std::move(spec)), source_(std::move(source)) {}
 
   KernelDefinition(KernelDefinition&&) = default;
-  KernelDefinition& operator=(KernelDefinition&&) = default;
+  KernelDefinition& operator=(KernelDefinition&&) noexcept = default;
 
   const Source& source() const final { return source_; }
   Source& source() final { return source_; }
