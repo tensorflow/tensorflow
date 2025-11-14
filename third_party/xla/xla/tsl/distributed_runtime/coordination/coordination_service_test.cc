@@ -161,14 +161,14 @@ class TestCoordinationClientCache : public CoordinationClientCache {
     clients_.emplace(target, client);
   }
 
-  CoordinationClient* GetClient(const string& target) override {
+  CoordinationClient* GetClient(const std::string& target) override {
     auto it = clients_.find(target);
     if (it == clients_.end()) return nullptr;
     return it->second;
   }
 
   std::unique_ptr<CoordinationClient> GetOwnedClient(
-      const string& target) override {
+      const std::string& target) override {
     LOG(ERROR) << "GetOwnedClient is not supported.";
     return nullptr;
   }
