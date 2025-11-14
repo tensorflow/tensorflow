@@ -1017,3 +1017,19 @@ cc_library(
         "//xla/stream_executor:kernel",
     ],
 )
+
+cc_library(
+    name = "kernel_serialization_check",
+    testonly = True,
+    srcs = ["kernel_serialization_check.cc"],
+    hdrs = ["kernel_serialization_check.h"],
+    deps = [
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:kernel_symbol_registry",
+        "//xla/stream_executor:platform",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_for_library",
+    ],
+)

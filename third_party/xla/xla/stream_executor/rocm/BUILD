@@ -1184,6 +1184,7 @@ rocm_library(
     deps = [
         ":rocm_platform_id",
         "//xla:types",
+        "//xla/stream_executor:kernel_symbol_registry",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:topk_kernel",
         "//xla/tsl/lib/math:math_util",
