@@ -48,6 +48,7 @@ namespace gpu {
 struct ComparisonParams {
   double relative_tol = 0.1;
   bool verbose = true;
+  bool run_host_compare = true;
   const Shape* shape = nullptr;
   se::Stream* stream = nullptr;
   se::DeviceMemoryBase current{};
@@ -85,6 +86,14 @@ static absl::StatusOr<bool> DeviceCompare(const ComparisonParams& params) {
 
   LaunchDimensions dim =
       CalculateLaunchDimensions(*params.shape, gpu_device_info);
+  // Limit # of blocks to some meaningful number which is large enough to
+  // occupy all GPU cores if necessary but not too large to reduce # of idle
+  // blocks
+  dim = LaunchDimensions(
+      se::BlockDim(std::min(dim.num_blocks(),
+                            BufferComparator::kMaxNumThreadBlocksForKernel),
+                   1, 1),
+      dim.thread_counts_per_block());
 
   se::DeviceMemory<uint64_t> as_uint64(out.memory());
   TF_RETURN_IF_ERROR(comparison_kernel.Launch(
@@ -161,9 +170,8 @@ static absl::StatusOr<bool> CompareEqualParameterized(
     const ComparisonParams& params) {
   XLA_SCOPED_LOGGING_TIMER("BufferComparator::CompareEqual");
   TF_ASSIGN_OR_RETURN(bool result, DeviceCompare<ElementT>(params));
-  if (result) {
-    return true;
-  }
+  if (result) return true;
+  if (!params.run_host_compare) return false;
 
   TF_ASSIGN_OR_RETURN(bool host_return,
                       (HostCompare<ElementT, ComparisonT>(params)));
@@ -173,9 +181,9 @@ static absl::StatusOr<bool> CompareEqualParameterized(
 }
 
 absl::StatusOr<bool> BufferComparator::CompareEqual(
-    se::Stream* stream, se::DeviceMemoryBase current,
-    se::DeviceMemoryBase expected) const {
-  ComparisonParams params{relative_tol_, verbose_, &shape_,
+    se::Stream* stream, const se::DeviceMemoryBase& current,
+    const se::DeviceMemoryBase& expected) const {
+  ComparisonParams params{relative_tol_, verbose_, run_host_compare_, &shape_,
                           stream,        current,  expected};
 
   auto do_compare = [&](auto cst_type) {
@@ -206,8 +214,11 @@ absl::StatusOr<bool> BufferComparator::CompareEqual(
 }
 
 BufferComparator::BufferComparator(const Shape& shape, double tolerance,
-                                   bool verbose)
-    : shape_(shape), relative_tol_(tolerance), verbose_(verbose) {
+                                   bool verbose, bool run_host_compare)
+    : shape_(shape),
+      relative_tol_(tolerance),
+      verbose_(verbose),
+      run_host_compare_(run_host_compare) {
   // Normalize complex shapes: since we treat the passed array as a contiguous
   // storage it does not matter which dimension are we doubling.
   auto double_dim_size = [&]() {
