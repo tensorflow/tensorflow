@@ -61,8 +61,8 @@ template <typename T>
 struct StatelessRandomGammaFunctor<CPUDevice, T> {
   static absl::Status Fill(OpKernelContext* ctx, const T* alpha_flat,
                            int64_t num_samples, int64_t num_alphas,
-                           int64_t samples_per_alpha, const uint64* key,
-                           const uint64* counter, random::PhiloxRandom random,
+                           int64_t samples_per_alpha, const uint64_t* key,
+                           const uint64_t* counter, random::PhiloxRandom random,
                            T* samples_flat) {
     if (key != nullptr && counter != nullptr) {
       random = GetPhiloxRandomFromCounterKeyMem(counter, key);
@@ -272,8 +272,8 @@ class StatelessRandomGammaOpWithKeyCounter
     auto samples_flat = output->flat<T>().data();
 
     if (alg == RNG_ALG_PHILOX) {
-      auto key_data = key.flat<uint64>().data();
-      auto counter_data = counter.flat<uint64>().data();
+      auto key_data = key.flat<uint64_t>().data();
+      auto counter_data = counter.flat<uint64_t>().data();
       OP_REQUIRES_OK(ctx, functor::StatelessRandomGammaFunctor<Device, T>::Fill(
                               ctx, alpha_flat, num_samples, num_alphas,
                               samples_per_alpha, key_data, counter_data,
