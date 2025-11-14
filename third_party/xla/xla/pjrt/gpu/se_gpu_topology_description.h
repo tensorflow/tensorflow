@@ -125,6 +125,9 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   FromProto(const xla::PjRtTopologyDescriptionProto& proto);
 
  private:
+  std::unique_ptr<PjRtStreamExecutorDeviceDescription> CreateDeviceDescription(
+      int device_id) const;
+
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
   std::shared_ptr<const GpuTopology> gpu_topology_;
