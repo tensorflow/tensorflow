@@ -39,7 +39,7 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
       std::unique_ptr<DeviceResolverDistributed> dev_resolver,
       std::unique_ptr<CollectiveParamResolverDistributed> param_resolver,
       std::unique_ptr<NcclCommunicatorInterface> nccl_communicator,
-      WorkerCacheInterface* worker_cache, const string& task_name);
+      WorkerCacheInterface* worker_cache, const std::string& task_name);
 
   virtual ~RpcCollectiveExecutorMgr();
 
@@ -60,8 +60,8 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
   virtual CollectiveExecutor* Create(int64_t step_id) override;
 
   WorkerCacheInterface* const worker_cache_;  // Not owned.
-  const string task_name_;
-  string group_leader_;
+  const std::string task_name_;
+  std::string group_leader_;
   friend class RpcCollectiveExecutorMgrTest;
 
  private:
@@ -88,7 +88,7 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
 std::unique_ptr<RpcCollectiveExecutorMgr> CreateProdRpcCollectiveExecutorMgr(
     const ConfigProto& config, const DeviceMgr* device_mgr,
     std::unique_ptr<NcclCommunicatorInterface> nccl_communicator,
-    WorkerCacheInterface* worker_cache, const string& default_worker_name);
+    WorkerCacheInterface* worker_cache, const std::string& default_worker_name);
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_COLLECTIVE_EXECUTOR_MGR_H_
