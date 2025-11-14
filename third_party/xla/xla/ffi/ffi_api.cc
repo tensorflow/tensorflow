@@ -739,16 +739,8 @@ static XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args) {
 
   DCHECK(args->ctx->execution_state) << "ExecutionState must be set";
 
-  absl::Status status;
-  if (args->deleter == nullptr) {
-    status = args->ctx->execution_state->Set(
-        TypeRegistry::TypeId(args->type_id->type_id), args->state);
-  } else {
-    status = args->ctx->execution_state->Set(
-        TypeRegistry::TypeId(args->type_id->type_id), args->state,
-        args->deleter);
-  }
-
+  absl::Status status = args->ctx->execution_state->Set(
+      TypeRegistry::TypeId(args->type_id->type_id), args->state);
   if (!status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
   }

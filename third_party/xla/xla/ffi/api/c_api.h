@@ -547,10 +547,9 @@ struct XLA_FFI_State_Set_Args {
   XLA_FFI_ExecutionContext* ctx;
   XLA_FFI_TypeId* type_id;
   void* state;
-  void (*deleter)(void* state);
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_State_Set_Args, deleter);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_State_Set_Args, state);
 
 // Sets execution state to the `state` of type `type_id`. Returns an error if
 // state already set.
