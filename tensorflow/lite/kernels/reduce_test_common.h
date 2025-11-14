@@ -69,6 +69,8 @@ class BaseOpModel : public SingleOpModel {
   int input_;
   int axis_;
   int output_;
+  public:
+  flatbuffers::FlatBufferBuilder& builder() { return builder_; }
 };
 
 // Model for the tests case where axis is a const tensor.
