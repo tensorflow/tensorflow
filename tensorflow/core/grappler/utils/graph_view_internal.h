@@ -406,7 +406,7 @@ inline bool UpdateName(NodeViewDiff<GraphViewT>* diff, absl::string_view name) {
     diff->name.clear();
     diff->update_name = false;
   } else {
-    diff->name = string(name);
+    diff->name = std::string(name);
     diff->update_name = true;
   }
   return true;
