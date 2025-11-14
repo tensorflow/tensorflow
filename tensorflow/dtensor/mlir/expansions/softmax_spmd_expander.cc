@@ -63,7 +63,8 @@ StatusOr<mlir::Value> ComputeGlobalReduce(
       const Layout reduction_layout,
       input_layout.GetLayoutWithReducedDims(reduced_dims,
                                             /*keep_dims=*/true));
-  std::vector<int32> reduce_dim_array(reduced_dims.begin(), reduced_dims.end());
+  std::vector<int32_t> reduce_dim_array(reduced_dims.begin(),
+                                        reduced_dims.end());
   const mlir::Value reduction_indices =
       IntConst(builder, input.getLoc(), reduce_dim_array);
   mlir::Operation* local_reduce;
@@ -127,7 +128,7 @@ absl::Status ComputeExpAndSum(mlir::OpBuilder& builder,
   if (logits_layout.rank() == 0)
     return errors::Unimplemented("softmax not supported for rank 0 tensors.");
 
-  const int64 class_dimension = logits_layout.rank() - 1;
+  const int64_t class_dimension = logits_layout.rank() - 1;
 
   // Softmax is exp(input)/sum(exp(input)) and LogSoftmax is
   // logits - log(sum(exp(input)) where the sum takes place on the
