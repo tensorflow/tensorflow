@@ -210,7 +210,7 @@ DequeueManyOp::DequeueManyOp(OpKernelConstruction* context)
 void DequeueManyOp::ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
                                  DoneCallback callback) {
   const Tensor& Tnum_elements = ctx->input(1);
-  int32_t num_elements = Tnum_elements.flat<int32>()(0);
+  int32_t num_elements = Tnum_elements.flat<int32_t>()(0);
 
   OP_REQUIRES_ASYNC(ctx, num_elements >= 0,
                     errors::InvalidArgument("DequeueManyOp requested ",
@@ -283,7 +283,7 @@ DequeueUpToOp::DequeueUpToOp(OpKernelConstruction* context)
 void DequeueUpToOp::ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
                                  DoneCallback callback) {
   const Tensor& Tnum_elements = ctx->input(1);
-  int32_t num_elements = Tnum_elements.flat<int32>()(0);
+  int32_t num_elements = Tnum_elements.flat<int32_t>()(0);
 
   OP_REQUIRES_ASYNC(ctx, num_elements >= 0,
                     errors::InvalidArgument("DequeueUpToOp requested ",
@@ -349,7 +349,7 @@ void QueueSizeOp::ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
                                DoneCallback callback) {
   Tensor* Tqueue_size = nullptr;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &Tqueue_size));
-  Tqueue_size->flat<int32>().setConstant(queue->size());
+  Tqueue_size->flat<int32_t>().setConstant(queue->size());
   callback();
 }
 

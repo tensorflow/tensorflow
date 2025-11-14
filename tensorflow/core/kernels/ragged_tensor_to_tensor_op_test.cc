@@ -51,7 +51,8 @@ class RaggedTensorToTensorOpTest : public ::tensorflow::OpsTestBase {
   // Builds the tensorflow test graph for RaggedTensorToTensor.
   template <typename VALUE_TYPE, typename INDEX_TYPE>
   void BuildRaggedTensorToTensorGraph(
-      const TensorShape& shape, const std::vector<string>& row_partition_types,
+      const TensorShape& shape,
+      const std::vector<std::string>& row_partition_types,
       const ShapeAndValues<VALUE_TYPE>& values,
       const ShapeAndValues<VALUE_TYPE>& default_value,
       const std::vector<ShapeAndValues<INDEX_TYPE>>& row_partition_tensors) {
@@ -95,12 +96,13 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor) {
   // indices = [2, 1, 0, 3]
   // params = [[.1, .2, .3], [], [.4, .5, .6, .7], [.8, .9]]
   // params.shape = [4, None]
-  BuildRaggedTensorToTensorGraph<float, int32>(
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
       TensorShape({4, 4}),                 // shape
       {"FIRST_DIM_SIZE", "VALUE_ROWIDS"},  // row_partition_types
       createVector<float>({.1, .2, .3, .4, .5, .6, .7, .8, .9}),  // values
       createScalar<float>(1.5),  // default_value
-      {createScalar<int32>(4), createVector<int32>({0, 0, 0, 2, 2, 2, 2, 3, 3})}
+      {createScalar<int32_t>(4),
+       createVector<int32_t>({0, 0, 0, 2, 2, 2, 2, 3, 3})}
       // row_partition_tensors
   );
 
@@ -117,12 +119,12 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor) {
 TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensorRowSplits) {
   // indices = [2, 1, 0, 3]
   // params = [[.1, .2, .3], [], [.4, .5, .6, .7], [.8, .9]]
-  BuildRaggedTensorToTensorGraph<float, int32>(
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
       TensorShape({4, 4}),  // shape
       {"ROW_SPLITS"},       // row_partition_types
       createVector<float>({.1, .2, .3, .4, .5, .6, .7, .8, .9}),  // values
-      createScalar<float>(1.5),               // default_value
-      {createVector<int32>({0, 3, 3, 7, 9})}  // row_partition_tensors
+      createScalar<float>(1.5),                 // default_value
+      {createVector<int32_t>({0, 3, 3, 7, 9})}  // row_partition_tensors
   );
 
   TF_ASSERT_OK(RunOpKernel());
@@ -143,16 +145,16 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor_3DParams) {
   //           [[.4, .5], [.6, .7, .8]],
   //           [[.9]]
   //          ]
-  BuildRaggedTensorToTensorGraph<float, int32>(
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
       TensorShape({5, 2, 3}),  // shape
       {"FIRST_DIM_SIZE", "VALUE_ROWIDS",
        "VALUE_ROWIDS"},  // row_partition_types
       createVector<float>({.1, .2, .3, .4, .5, .6, .7, .8, .9}),  // values
       createScalar<float>(1.5),  // default_value
       {
-          createScalar<int32>(5),
-          createVector<int32>({0, 1, 1, 3, 3, 4}),
-          createVector<int32>({1, 1, 2, 3, 3, 4, 4, 4, 5}),
+          createScalar<int32_t>(5),
+          createVector<int32_t>({0, 1, 1, 3, 3, 4}),
+          createVector<int32_t>({1, 1, 2, 3, 3, 4, 4, 4, 5}),
       }  // row_partition_tensors
   );
   TF_ASSERT_OK(RunOpKernel());
@@ -181,14 +183,14 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor_3DParamsRowSplits) {
   //           [[.4, .5], [.6, .7, .8]],
   //           [[.9]]
   //          ]
-  BuildRaggedTensorToTensorGraph<float, int32>(
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
       TensorShape({5, 2, 3}),        // shape
       {"ROW_SPLITS", "ROW_SPLITS"},  // row_partition_types
       createVector<float>({.1, .2, .3, .4, .5, .6, .7, .8, .9}),  // values
       createScalar<float>(1.5),  // default_value
       {
-          createVector<int32>({0, 1, 3, 3, 5, 6}),
-          createVector<int32>({0, 0, 2, 3, 5, 8, 9}),
+          createVector<int32_t>({0, 1, 3, 3, 5, 6}),
+          createVector<int32_t>({0, 0, 2, 3, 5, 8, 9}),
       }  // row_partition_tensors
   );
   TF_ASSERT_OK(RunOpKernel());
@@ -249,15 +251,16 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor_4DParams) {
   //            []
   // ]
   // params.shape = [3, 2, 3, 2]
-  BuildRaggedTensorToTensorGraph<int32, int32>(
+  BuildRaggedTensorToTensorGraph<int32_t, int32_t>(
       TensorShape({4, 2, 3, 2}),  // shape
       {"FIRST_DIM_SIZE", "VALUE_ROWIDS", "VALUE_ROWIDS",
-       "VALUE_ROWIDS"},                               // row_partition_types
-      createVector<int32>({1, 2, 3, 4, 5, 6, 7, 8}),  // values
-      createScalar<int32>(15),                        // default_value
-      {createScalar<int32>(5), createVector<int32>({0, 1, 1}),
-       createVector<int32>({1, 1, 1, 2}),
-       createVector<int32>({0, 0, 1, 1, 2, 2, 3, 3})}  // row_partition_tensors
+       "VALUE_ROWIDS"},                                 // row_partition_types
+      createVector<int32_t>({1, 2, 3, 4, 5, 6, 7, 8}),  // values
+      createScalar<int32_t>(15),                        // default_value
+      {createScalar<int32_t>(5), createVector<int32_t>({0, 1, 1}),
+       createVector<int32_t>({1, 1, 1, 2}),
+       createVector<int32_t>({0, 0, 1, 1, 2, 2, 3, 3})}
+      // row_partition_tensors
   );
 
   TF_ASSERT_OK(RunOpKernel());
@@ -277,9 +280,9 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor_4DParams) {
   //             [[15,15],[15,15],[15,15]],
   //           ]
   // params.shape = [3, 2, 3, 2]
-  test::ExpectTensorEqual<int32>(
+  test::ExpectTensorEqual<int32_t>(
       *GetOutput(0),
-      test::AsTensor<int32>(
+      test::AsTensor<int32_t>(
           {15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 1,  2,  3,  4,
            5,  6,  7,  8,  15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
            15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15},
@@ -296,14 +299,14 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor_4DParamsRowSplit) {
   //            []
   // ]
   // params.shape = [3, 2, 3, 2]
-  BuildRaggedTensorToTensorGraph<int32, int32>(
+  BuildRaggedTensorToTensorGraph<int32_t, int32_t>(
       TensorShape({4, 2, 3, 2}),  // shape
       {"ROW_SPLITS", "ROW_SPLITS", "ROW_SPLITS"},
       // row_partition_types
-      createVector<int32>({1, 2, 3, 4, 5, 6, 7, 8}),  // values
-      createScalar<int32>(15),                        // default_value
-      {createVector<int32>({0, 1, 3}), createVector<int32>({0, 0, 3, 4}),
-       createVector<int32>({0, 2, 4, 6, 8})}  // row_partition_tensors
+      createVector<int32_t>({1, 2, 3, 4, 5, 6, 7, 8}),  // values
+      createScalar<int32_t>(15),                        // default_value
+      {createVector<int32_t>({0, 1, 3}), createVector<int32_t>({0, 0, 3, 4}),
+       createVector<int32_t>({0, 2, 4, 6, 8})}  // row_partition_tensors
   );
 
   TF_ASSERT_OK(RunOpKernel());
@@ -323,9 +326,9 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor_4DParamsRowSplit) {
   //             [[15,15],[15,15],[15,15]],
   //           ]
   // params.shape = [3, 2, 3, 2]
-  test::ExpectTensorEqual<int32>(
+  test::ExpectTensorEqual<int32_t>(
       *GetOutput(0),
-      test::AsTensor<int32>(
+      test::AsTensor<int32_t>(
           {15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 1,  2,  3,  4,
            5,  6,  7,  8,  15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
            15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15},
@@ -334,12 +337,13 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor_4DParamsRowSplit) {
 
 TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensorContractExpanded) {
   // params = [[.1, .2, .3], [], [.4, .5, .6, .7], [.8, .9]]
-  BuildRaggedTensorToTensorGraph<float, int32>(
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
       TensorShape({3, 5}),                 // shape
       {"FIRST_DIM_SIZE", "VALUE_ROWIDS"},  // row_partition_types
       createVector<float>({.1, .2, .3, .4, .5, .6, .7, .8, .9}),  // values
       createScalar<float>(1.5),  // default_value
-      {createScalar<int32>(4), createVector<int32>({0, 0, 0, 2, 2, 2, 2, 3, 3})}
+      {createScalar<int32_t>(4),
+       createVector<int32_t>({0, 0, 0, 2, 2, 2, 2, 3, 3})}
       // row_partition_tensors
   );
 
@@ -357,14 +361,15 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensorContractExpanded) {
 // Adds a dense dimension.
 TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensorContractExpandedDense) {
   // params = [[.1, .2, .3], [], [.4, .5, .6, .7], [.8, .9]]
-  BuildRaggedTensorToTensorGraph<float, int32>(
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
       TensorShape({3, 5, 2}),              // shape
       {"FIRST_DIM_SIZE", "VALUE_ROWIDS"},  // row_partition_types
       ShapeAndValues<float>{TensorShape({9, 2}),
                             {.1, 1.1, .2, 1.2, .3, 1.3, .4, 1.4, .5, 1.5, .6,
                              1.6, .7, 1.7, .8, 1.8, .9, 1.9}},  // values
       createScalar<float>(1.5),                                 // default_value
-      {createScalar<int32>(4), createVector<int32>({0, 0, 0, 2, 2, 2, 2, 3, 3})}
+      {createScalar<int32_t>(4),
+       createVector<int32_t>({0, 0, 0, 2, 2, 2, 2, 3, 3})}
       // row_partition_tensors
   );
 
@@ -386,12 +391,13 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensorConstrained) {
   //           [.4, .5, .6, .7],
   //           [.8, .9]]
   // constrained to (3, 3)
-  BuildRaggedTensorToTensorGraph<float, int32>(
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
       TensorShape({3, 3}),                 // shape
       {"FIRST_DIM_SIZE", "VALUE_ROWIDS"},  // row_partition_types
       createVector<float>({.1, .2, .3, .4, .5, .6, .7, .8, .9}),  // values
       createScalar<float>(1.5),  // default_value
-      {createScalar<int32>(4), createVector<int32>({0, 0, 0, 2, 2, 2, 2, 3, 3})}
+      {createScalar<int32_t>(4),
+       createVector<int32_t>({0, 0, 0, 2, 2, 2, 2, 3, 3})}
       // row_partition_tensors
   );
 
@@ -418,16 +424,16 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor_3DParamsConstrained) {
   //           [[.9]]
   //          ]
   // params.shape = [5, None, None]
-  BuildRaggedTensorToTensorGraph<float, int32>(
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
       TensorShape({4, 1, 2}),  // shape
       {"FIRST_DIM_SIZE", "VALUE_ROWIDS",
        "VALUE_ROWIDS"},  // row_partition_types
       createVector<float>({.1, .2, .3, .4, .5, .6, .7, .8, .9}),  // values
       createScalar<float>(1.5),  // default_value
       {
-          createScalar<int32>(5),
-          createVector<int32>({0, 1, 1, 3, 3, 4}),
-          createVector<int32>({1, 1, 2, 3, 3, 4, 4, 4, 5}),
+          createScalar<int32_t>(5),
+          createVector<int32_t>({0, 1, 1, 3, 3, 4}),
+          createVector<int32_t>({1, 1, 2, 3, 3, 4, 4, 4, 5}),
       }  // row_partition_tensors
   );
   TF_ASSERT_OK(RunOpKernel());
@@ -457,15 +463,16 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor_4DParamsConstrained) {
   //            []
   // ]
   // params.shape = [3, 2, 3, 2]
-  BuildRaggedTensorToTensorGraph<int32, int32>(
+  BuildRaggedTensorToTensorGraph<int32_t, int32_t>(
       TensorShape({2, 2, 2, 2}),  // shape
       {"FIRST_DIM_SIZE", "VALUE_ROWIDS", "VALUE_ROWIDS",
-       "VALUE_ROWIDS"},                               // row_partition_types
-      createVector<int32>({1, 2, 3, 4, 5, 6, 7, 8}),  // values
-      createScalar<int32>(15),                        // default_value
-      {createScalar<int32>(5), createVector<int32>({0, 1, 1}),
-       createVector<int32>({1, 1, 1, 2}),
-       createVector<int32>({0, 0, 1, 1, 2, 2, 3, 3})}  // row_partition_tensors
+       "VALUE_ROWIDS"},                                 // row_partition_types
+      createVector<int32_t>({1, 2, 3, 4, 5, 6, 7, 8}),  // values
+      createScalar<int32_t>(15),                        // default_value
+      {createScalar<int32_t>(5), createVector<int32_t>({0, 1, 1}),
+       createVector<int32_t>({1, 1, 1, 2}),
+       createVector<int32_t>({0, 0, 1, 1, 2, 2, 3, 3})}
+      // row_partition_tensors
   );
 
   TF_ASSERT_OK(RunOpKernel());
@@ -480,25 +487,38 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor_4DParamsConstrained) {
   //           ],
   //          ]
   // params.shape = [3, 2, 3, 2]
-  test::ExpectTensorEqual<int32>(*GetOutput(0), test::AsTensor<int32>(
-                                                    {
-                                                        15, 15, 15, 15,  //
-                                                        15, 15, 15, 15,  //
-                                                        1, 2, 3, 4,      //
-                                                        7, 8, 15, 15,    //
-                                                    },
-                                                    TensorShape({2, 2, 2, 2})));
+  test::ExpectTensorEqual<int32_t>(*GetOutput(0),
+                                   test::AsTensor<int32_t>(
+                                       {
+                                           15,
+                                           15,
+                                           15,
+                                           15,  //
+                                           15,
+                                           15,
+                                           15,
+                                           15,  //
+                                           1,
+                                           2,
+                                           3,
+                                           4,  //
+                                           7,
+                                           8,
+                                           15,
+                                           15,  //
+                                       },
+                                       TensorShape({2, 2, 2, 2})));
 }
 
 TEST_F(RaggedTensorToTensorOpTest, ShapeWrongDimensions) {
-  BuildRaggedTensorToTensorGraph<int32, int32>(
+  BuildRaggedTensorToTensorGraph<int32_t, int32_t>(
       TensorShape({10, 7, 10, 20}),  // shape
       {"FIRST_DIM_SIZE", "VALUE_ROWIDS",
-       "VALUE_ROWIDS"},                   // row_partition_types
-      createVector<int32>({1, 2, 3, 4}),  // values
-      createScalar<int32>(15),            // default_value
-      {createScalar<int32>(5), createVector<int32>({0, 1, 1}),
-       createVector<int32>({1, 1, 1, 2})}  // row_partition_tensors
+       "VALUE_ROWIDS"},                     // row_partition_types
+      createVector<int32_t>({1, 2, 3, 4}),  // values
+      createScalar<int32_t>(15),            // default_value
+      {createScalar<int32_t>(5), createVector<int32_t>({0, 1, 1}),
+       createVector<int32_t>({1, 1, 1, 2})}  // row_partition_tensors
   );
   // Fails with an invalid argument.
   EXPECT_EQ(absl::IsInvalidArgument(RunOpKernel()), true);
@@ -508,7 +528,7 @@ class RaggedTensorToTensorOpUnknownShapeTest
     : public ::tensorflow::OpsTestBase {
  protected:
   std::unique_ptr<ShapeInferenceTestOp> op_;
-  void SetAttributes(const absl::Span<const string> row_partition_types,
+  void SetAttributes(const absl::Span<const std::string> row_partition_types,
                      int num_row_partition_tensors) {
     op_ = std::make_unique<ShapeInferenceTestOp>("RaggedTensorToTensor");
     SetAttrValue(row_partition_types,
@@ -519,7 +539,8 @@ class RaggedTensorToTensorOpUnknownShapeTest
 };
 
 TEST_F(RaggedTensorToTensorOpUnknownShapeTest, ValueRowIDs) {
-  SetAttributes(absl::Span<const string>{"FIRST_DIM_SIZE", "VALUE_ROWIDS"}, 2);
+  SetAttributes(absl::Span<const std::string>{"FIRST_DIM_SIZE", "VALUE_ROWIDS"},
+                2);
 
   INFER_OK(*op_, "?;?;?;?;?", "?");
   INFER_OK(*op_, "?;[6];[];[];[6]", "[?,?]");
@@ -544,7 +565,7 @@ TEST_F(RaggedTensorToTensorOpUnknownShapeTest, ValueRowIDs) {
 TEST_F(RaggedTensorToTensorOpUnknownShapeTest, RowSplits) {
   // RaggedTensorToTensor(param_splits+, param_values, indices) -> [splits+,
   // values]
-  SetAttributes(absl::Span<const string>{"ROW_SPLITS"}, 1);
+  SetAttributes(absl::Span<const std::string>{"ROW_SPLITS"}, 1);
 
   // value, default_value, ROW_SPLITS
   INFER_OK(*op_, "?;?;?;?", "?");
