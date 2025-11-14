@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
@@ -28,8 +29,8 @@ namespace toco {
 namespace tflite {
 
 // Parse the given string as TF Lite flatbuffer and return a new tf.mini model.
-std::unique_ptr<Model> Import(const ModelFlags &model_flags,
-                              const std::string &input_file_contents);
+std::unique_ptr<Model> Import(const ModelFlags& model_flags,
+                              absl::string_view input_file_contents);
 
 namespace details {
 

@@ -16,7 +16,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOCO_IMPORT_TENSORFLOW_H_
 
 #include <memory>
-#include <string>
+
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
@@ -43,7 +44,7 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
 // flags.
 std::unique_ptr<Model> ImportTensorFlowGraphDef(
     const ModelFlags& model_flags, const TensorFlowImportFlags& tf_import_flags,
-    const std::string& input_file_contents);
+    absl::string_view input_file_contents);
 
 }  // namespace toco
 
