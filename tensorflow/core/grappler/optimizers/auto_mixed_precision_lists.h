@@ -36,34 +36,35 @@ class AutoMixedPrecisionLists {
   // Returns the set of ops that are considered numerically-safe (for execution
   // in f16), performance-critical, and can run in f16. These ops are always
   // converted to f16.
-  virtual gtl::FlatSet<string> AllowList() = 0;
+  virtual gtl::FlatSet<std::string> AllowList() = 0;
   // Returns the set of ops that can run in f16 and are considered numerically-
   // safe (for execution in f16), but which may be made unsafe by an upstream
   // denylist op.
-  virtual gtl::FlatSet<string> InferList() = 0;
+  virtual gtl::FlatSet<std::string> InferList() = 0;
   // Returns the set of ops that are considered numerically-dangerous (i.e.,
   // unsafe for execution in f16) and whose effects may also be observed in
   // downstream nodes (e.g. for f16, in Exp -> Add, the Add is unsafe due to
   // the Exp).
-  virtual gtl::FlatSet<string> DenyList() = 0;
+  virtual gtl::FlatSet<std::string> DenyList() = 0;
   // Returns the set of ops that do not have numerically-significant effects
   // (i.e., they are always considered safe for execution in f16 precision), and
   // can run in f16.
-  virtual gtl::FlatSet<string> ClearList() = 0;
+  virtual gtl::FlatSet<std::string> ClearList() = 0;
 
  protected:
   // Adds or removes ops from list if certain environmental variables are set.
-  static void UpdateList(const string& list_name, gtl::FlatSet<string>* list) {
+  static void UpdateList(const std::string& list_name,
+                         gtl::FlatSet<std::string>* list) {
     CHECK(list_name == "ALLOWLIST" || list_name == "INFERLIST" ||  // Crash OK.
           list_name == "DENYLIST" || list_name == "CLEARLIST" ||
           // TODO(reedwm): for bkwds compat; remove when no longer necessary:
           list_name == "WHITELIST" || list_name == "GRAYLIST" ||
           list_name == "BLACKLIST");
-    string add_env_var =
+    std::string add_env_var =
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_" + list_name + "_ADD";
-    string remove_env_var =
+    std::string remove_env_var =
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_" + list_name + "_REMOVE";
-    string to_add, to_remove;
+    std::string to_add, to_remove;
     TF_CHECK_OK(ReadStringFromEnvVar(add_env_var, "", &to_add));
     TF_CHECK_OK(ReadStringFromEnvVar(remove_env_var, "", &to_remove));
     for (const auto& x : str_util::Split(to_add, ",")) {
@@ -75,7 +76,7 @@ class AutoMixedPrecisionLists {
   }
 
   // Subclasses should include these on the ClearList.
-  static void AddTensorListOps(gtl::FlatSet<string>* list) {
+  static void AddTensorListOps(gtl::FlatSet<std::string>* list) {
     // Note: if a data structure op (such as TensorListPopBack) is added here,
     // IsTensorListReaderOp or IsTensorListWriterOp may need to be modified
     // LINT.IfChange
@@ -98,7 +99,7 @@ class AutoMixedPrecisionLists {
 class AutoMixedPrecisionListsFp16 : public AutoMixedPrecisionLists {
  private:
   static bool IsPseudoFastMath() {
-    string optimization_level;
+    std::string optimization_level;
     TF_CHECK_OK(
         ReadStringFromEnvVar("TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL", "",
                              &optimization_level));
@@ -123,8 +124,8 @@ class AutoMixedPrecisionListsFp16 : public AutoMixedPrecisionLists {
     }
   }
 
-  gtl::FlatSet<string> AllowList() override {
-    auto list = gtl::FlatSet<string>{
+  gtl::FlatSet<std::string> AllowList() override {
+    auto list = gtl::FlatSet<std::string>{
         "Conv2D", "Conv2DBackpropFilter", "Conv2DBackpropInput", "Einsum",
         "MatMul",
     };
@@ -184,12 +185,12 @@ class AutoMixedPrecisionListsFp16 : public AutoMixedPrecisionLists {
     return list;
   }
 
-  gtl::FlatSet<string> InferList() override {
+  gtl::FlatSet<std::string> InferList() override {
     if (IsPseudoFastMath() && use_cuda_) {
-      return gtl::FlatSet<string>{};
+      return gtl::FlatSet<std::string>{};
     }
 
-    auto list = gtl::FlatSet<string>{
+    auto list = gtl::FlatSet<std::string>{
         "Add",
         "AddN",
         "AddV2",
@@ -246,12 +247,12 @@ class AutoMixedPrecisionListsFp16 : public AutoMixedPrecisionLists {
     return list;
   }
 
-  gtl::FlatSet<string> DenyList() override {
+  gtl::FlatSet<std::string> DenyList() override {
     if (IsPseudoFastMath() && use_cuda_) {
-      return gtl::FlatSet<string>{};
+      return gtl::FlatSet<std::string>{};
     }
 
-    auto list = gtl::FlatSet<string>{
+    auto list = gtl::FlatSet<std::string>{
         "Exp",
         "Expm1",
         "L2Loss",
@@ -269,12 +270,12 @@ class AutoMixedPrecisionListsFp16 : public AutoMixedPrecisionLists {
     return list;
   }
 
-  gtl::FlatSet<string> ClearList() override {
+  gtl::FlatSet<std::string> ClearList() override {
     if (IsPseudoFastMath() && use_cuda_) {
-      return gtl::FlatSet<string>{};
+      return gtl::FlatSet<std::string>{};
     }
 
-    auto list = gtl::FlatSet<string>{
+    auto list = gtl::FlatSet<std::string>{
         "Abs",
         "ArgMax",
         "ArgMin",
@@ -393,21 +394,21 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
 
   // Only ops which are supported by MKL in bfloat16 should be added to the
   // allow list, infer list, or clear list.
-  gtl::FlatSet<string> AllowList() override {
-    auto list = gtl::FlatSet<string>{"Conv2D",
-                                     "Conv2DBackpropFilter",
-                                     "Conv2DBackpropInput",
-                                     "Conv3D",
-                                     "Conv3DBackpropFilterV2",
-                                     "Conv3DBackpropInputV2",
-                                     "DepthwiseConv2dNative",
-                                     "DepthwiseConv2dNativeBackpropFilter",
-                                     "DepthwiseConv2dNativeBackpropInput",
-                                     "MatMul",
-                                     "FusedPadConv2D",
-                                     "BatchMatMul",
-                                     "BatchMatMulV2",
-                                     "Einsum"};
+  gtl::FlatSet<std::string> AllowList() override {
+    auto list = gtl::FlatSet<std::string>{"Conv2D",
+                                          "Conv2DBackpropFilter",
+                                          "Conv2DBackpropInput",
+                                          "Conv3D",
+                                          "Conv3DBackpropFilterV2",
+                                          "Conv3DBackpropInputV2",
+                                          "DepthwiseConv2dNative",
+                                          "DepthwiseConv2dNativeBackpropFilter",
+                                          "DepthwiseConv2dNativeBackpropInput",
+                                          "MatMul",
+                                          "FusedPadConv2D",
+                                          "BatchMatMul",
+                                          "BatchMatMulV2",
+                                          "Einsum"};
 
     UpdateList("ALLOWLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
@@ -416,55 +417,55 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
     return list;
   }
 
-  gtl::FlatSet<string> InferList() override {
-    auto list = gtl::FlatSet<string>{"Add",
-                                     "AddN",
-                                     "AddV2",
-                                     "AvgPool",
-                                     "AvgPool3D",
-                                     "AvgPool3DGrad",
-                                     "AvgPoolGrad",
-                                     "BiasAdd",
-                                     "BiasAddGrad",
-                                     "BiasAddV1",
-                                     "Erf",
-                                     "Erfc",
-                                     "FusedBatchNormV2",
-                                     "FusedBatchNormGradV2",
-                                     "FusedBatchNormV3",
-                                     "FusedBatchNormGradV3",
-                                     "LeakyRelu",
-                                     "LeakyReluGrad",
-                                     "Mul",
-                                     "Sub",
-                                     "Elu",
-                                     "EluGrad",
-                                     "FloorDiv",
-                                     "_FusedBatchNormEx",
-                                     "Inv",
-                                     "Log",
-                                     "Log1p",
-                                     "LogSoftmax",
-                                     "Mean",
-                                     "Prod",
-                                     "RealDiv",
-                                     "Reciprocal",
-                                     "Rsqrt",
-                                     "Selu",
-                                     "SeluGrad",
-                                     "Sigmoid",
-                                     "SigmoidGrad",
-                                     "Softmax",
-                                     "Softplus",
-                                     "SoftplusGrad",
-                                     "Softsign",
-                                     "SoftsignGrad",
-                                     "Sqrt",
-                                     "Square",
-                                     "SquaredDifference",
-                                     "Sum",
-                                     "Tanh",
-                                     "TanhGrad"};
+  gtl::FlatSet<std::string> InferList() override {
+    auto list = gtl::FlatSet<std::string>{"Add",
+                                          "AddN",
+                                          "AddV2",
+                                          "AvgPool",
+                                          "AvgPool3D",
+                                          "AvgPool3DGrad",
+                                          "AvgPoolGrad",
+                                          "BiasAdd",
+                                          "BiasAddGrad",
+                                          "BiasAddV1",
+                                          "Erf",
+                                          "Erfc",
+                                          "FusedBatchNormV2",
+                                          "FusedBatchNormGradV2",
+                                          "FusedBatchNormV3",
+                                          "FusedBatchNormGradV3",
+                                          "LeakyRelu",
+                                          "LeakyReluGrad",
+                                          "Mul",
+                                          "Sub",
+                                          "Elu",
+                                          "EluGrad",
+                                          "FloorDiv",
+                                          "_FusedBatchNormEx",
+                                          "Inv",
+                                          "Log",
+                                          "Log1p",
+                                          "LogSoftmax",
+                                          "Mean",
+                                          "Prod",
+                                          "RealDiv",
+                                          "Reciprocal",
+                                          "Rsqrt",
+                                          "Selu",
+                                          "SeluGrad",
+                                          "Sigmoid",
+                                          "SigmoidGrad",
+                                          "Softmax",
+                                          "Softplus",
+                                          "SoftplusGrad",
+                                          "Softsign",
+                                          "SoftsignGrad",
+                                          "Sqrt",
+                                          "Square",
+                                          "SquaredDifference",
+                                          "Sum",
+                                          "Tanh",
+                                          "TanhGrad"};
     UpdateList("INFERLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
     // TODO(reedwm): This should be removed if we don't have active users.
@@ -472,8 +473,8 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
     return list;
   }
 
-  gtl::FlatSet<string> DenyList() override {
-    auto list = gtl::FlatSet<string>{
+  gtl::FlatSet<std::string> DenyList() override {
+    auto list = gtl::FlatSet<std::string>{
         "Exp",
         "Expm1",
         "L2Loss",
@@ -489,8 +490,8 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
     return list;
   }
 
-  gtl::FlatSet<string> ClearList() override {
-    auto list = gtl::FlatSet<string>{
+  gtl::FlatSet<std::string> ClearList() override {
+    auto list = gtl::FlatSet<std::string>{
         "Abs",
         "ArgMax",
         "ArgMin",
