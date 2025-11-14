@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -43,6 +48,37 @@ enum class GPUCommunicationType {
 absl::StatusOr<GPUCommunicationType> CommunicationType(
     int partition_size, const HloChannelInstruction& instr,
     const se::GpuComputeCapability& gpu_version);
+
+// Enum to categorize collective-permute cost models based on communication
+// patterns. The cost model is determined by the highest-latency pattern
+// present in any device: TwoWayHasNonMutual > TwoWayAllMutual > OneWay.
+enum class CollectivePermuteCostModelType {
+  // This is currently only used for CollectivePermute instructions with empty
+  // source-target pairs.
+  // TODO(b/460155942): Remove this field once the HLO verifier stop supporting
+  // empty source-target pairs.
+  kUnknown,
+  // Intra-partition: All devices only send or only receive data.
+  kIntraPartitionOneWay,
+  // Intra-partition: Devices send/receive, but only with the same peer
+  // (e.g., {{0,1},{1,0}}).
+  kIntraPartitionTwoWayAllMutual,
+  // Intra-partition: At least one device sends to one peer and receives from
+  // another (e.g., {{0,1},{1,2}}).
+  kIntraPartitionTwoWayHasNonMutual,
+  // Inter-partition: All devices only send or only receive data.
+  kInterPartitionOneWay,
+  // Inter-partition: Devices send/receive, but only with the same peer.
+  kInterPartitionTwoWayAllMutual,
+  // Inter-partition: At least one device sends to one peer and receives from
+  // another.
+  kInterPartitionTwoWayHasNonMutual,
+};
+
+// Returns cost model type based on collective-permute properties.
+CollectivePermuteCostModelType GetCollectivePermuteCostModelType(
+    const HloCollectivePermuteInstruction& instr,
+    int64_t num_devices_per_partition);
 
 // Returns true if instruction is a synchronous collective op.
 bool IsGPUSyncCollective(const HloInstruction& instr);
