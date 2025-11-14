@@ -83,23 +83,23 @@ inline absl::string_view ParseNodeNameAsStringPiece(absl::string_view name,
 }
 
 // Returns the node name and position in a single call.
-inline string ParseNodeName(const string& name, int* position) {
-  return string(ParseNodeNameAsStringPiece(name, position));
+inline std::string ParseNodeName(const std::string& name, int* position) {
+  return std::string(ParseNodeNameAsStringPiece(name, position));
 }
 
 // Return the node name corresponding to 'name' if name is valid, or the empty
 // string otherwise.
-inline absl::string_view NodeNameAsStringPiece(const string& name) {
+inline absl::string_view NodeNameAsStringPiece(const std::string& name) {
   return ParseNodeNameAsStringPiece(name, nullptr);
 }
 
 // Return the node name corresponding to 'name' if name is valid, or the empty
 // string otherwise.
-inline string NodeName(const string& name) {
-  return string(NodeNameAsStringPiece(name));
+inline std::string NodeName(const std::string& name) {
+  return std::string(NodeNameAsStringPiece(name));
 }
 
-inline int NodePosition(const string& name) {
+inline int NodePosition(const std::string& name) {
   int position;
   ParseNodeNameAsStringPiece(name, &position);
   return position;
@@ -121,7 +121,7 @@ class NodeMapInternal {
     outputs_.reserve(graph->node_size());
     for (int i = 0; i < graph->node_size(); i++) {
       NodeDefT* node = GetNodeDefFromGraph(graph, i);
-      const string& node_name = node->name();
+      const std::string& node_name = node->name();
       auto rslt = nodes_.emplace(node_name, node);
       // Check that the graph doesn't contain multiple nodes with the same name.
       if (!rslt.second) {
@@ -138,7 +138,7 @@ class NodeMapInternal {
   // Get unordered list of fanouts from node. Notice, that the order is
   // non-deterministic.
   const absl::flat_hash_set<NodeDefT*>& GetOutputs(
-      const string& node_name) const {
+      const std::string& node_name) const {
     auto it = outputs_.find(node_name);
     if (it == outputs_.end()) {
       return empty_set_;
@@ -148,7 +148,7 @@ class NodeMapInternal {
 
   // Get fanouts ordered by name.
   std::vector<NodeDefT*> GetOutputsOrderedByNodeName(
-      const string& node_name) const {
+      const std::string& node_name) const {
     std::vector<NodeDefT*> result;
     auto it = outputs_.find(node_name);
     if (it != outputs_.end()) {
@@ -165,7 +165,7 @@ class NodeMapInternal {
 
   // This method doesn't record the outputs of the added node; the outputs need
   // to be explicitly added by the AddOutput method.
-  void AddNode(const string& node_name, NodeDefT* node) {
+  void AddNode(const std::string& node_name, NodeDefT* node) {
     DCHECK(node != nullptr);
     auto ret = nodes_.emplace(node_name, node);
     DCHECK(ret.second)
@@ -173,13 +173,13 @@ class NodeMapInternal {
         << ") is not inserted because the same key already exists.";
   }
 
-  void RemoveNode(const string& name) {
+  void RemoveNode(const std::string& name) {
     nodes_.erase(NodeName(name));
     outputs_.erase(NodeName(name));
   }
 
-  NodeDefT* GetNode(const string& name) const {
-    const string node_name = NodeName(name);
+  NodeDefT* GetNode(const std::string& name) const {
+    const std::string node_name = NodeName(name);
     auto it = nodes_.find(node_name);
     if (it == nodes_.end()) {
       VLOG(1) << "Node could not be found: " << name;
@@ -188,39 +188,44 @@ class NodeMapInternal {
     return it->second;
   }
 
-  bool NodeExists(const string& name) const {
-    const string node_name = NodeName(name);
+  bool NodeExists(const std::string& name) const {
+    const std::string node_name = NodeName(name);
     return nodes_.find(node_name) != nodes_.end();
   }
 
-  void AddOutput(const string& node_name, const string& output_name) {
+  void AddOutput(const std::string& node_name, const std::string& output_name) {
     auto output_node = nodes_[NodeName(output_name)];
     DCHECK(output_node) << "Output node " << output_name
                         << " is missing in NodeMap.";
     outputs_[node_name].insert(output_node);
   }
 
-  void RemoveOutput(const string& node_name, const string& output_name) {
+  void RemoveOutput(const std::string& node_name,
+                    const std::string& output_name) {
     outputs_[node_name].erase(nodes_[NodeName(output_name)]);
   }
 
-  void UpdateInput(const string& node_name, const string& old_input_name,
-                   const string& new_input_name) {
+  void UpdateInput(const std::string& node_name,
+                   const std::string& old_input_name,
+                   const std::string& new_input_name) {
     RemoveOutput(NodeName(old_input_name), node_name);
     AddOutput(NodeName(new_input_name), node_name);
   }
 
-  void RemoveInputs(const string& node_name) {
+  void RemoveInputs(const std::string& node_name) {
     auto node = nodes_[node_name];
     for (const auto& input : node->input()) {
       RemoveOutput(NodeName(input), node->name());
     }
   }
 
-  void RemoveOutputs(const string& node_name) { outputs_.erase(node_name); }
+  void RemoveOutputs(const std::string& node_name) {
+    outputs_.erase(node_name);
+  }
 
-  void UpdateOutput(const string& node_name, const string& old_output_name,
-                    const string& new_output_name) {
+  void UpdateOutput(const std::string& node_name,
+                    const std::string& old_output_name,
+                    const std::string& new_output_name) {
     absl::flat_hash_set<NodeDef*>& outputs = outputs_[node_name];
     outputs.erase(nodes_[NodeName(old_output_name)]);
     outputs.insert(nodes_[NodeName(new_output_name)]);
@@ -231,8 +236,8 @@ class NodeMapInternal {
   inline NodeDefT* GetNodeDefFromGraph(GraphDefT* graph, int64_t i) const;
 
   const absl::flat_hash_set<NodeDefT*> empty_set_;
-  absl::node_hash_map<string, NodeDefT*> nodes_;
-  absl::node_hash_map<string, absl::flat_hash_set<NodeDefT*>> outputs_;
+  absl::node_hash_map<std::string, NodeDefT*> nodes_;
+  absl::node_hash_map<std::string, absl::flat_hash_set<NodeDefT*>> outputs_;
 };
 
 // Specialized template class method GetNodeDefFromGraph.
@@ -298,11 +303,11 @@ class SetVector {
 
 // Returns formatted string from TensorId specific to grappler. Specifically,
 // for the 0 port (first output), only the node name is returned.
-string TensorIdToString(const TensorId& tensor_id);
+std::string TensorIdToString(const TensorId& tensor_id);
 
 // Returns formatted string from SafeTensorId specific to grappler.
 // Specifically, for the 0 port (first output), only the node name is returned.
-string SafeTensorIdToString(const SafeTensorId& tensor_id);
+std::string SafeTensorIdToString(const SafeTensorId& tensor_id);
 
 // True iff 'name' refers to a control inputs, i.e. a node name prefixed with
 // the ^ character.
@@ -312,15 +317,16 @@ bool IsControlInput(absl::string_view name);
 bool IsControlInput(const TensorId& tensor_id);
 
 // True iff 'name1' and 'name2' refer to the same input.
-bool IsSameInput(const string& name1, const string& name2);
-
+bool IsSameInput(const std::string& name1, const std::string& name2);
 
 // Add a prefix to a node name with a custom delimiter.
-string AddPrefixToNodeName(const string& name, const string& prefix,
-                           const string& delimiter);
+std::string AddPrefixToNodeName(const std::string& name,
+                                const std::string& prefix,
+                                const std::string& delimiter);
 
 // Add a prefix to a node name.
-string AddPrefixToNodeName(const string& name, const string& prefix);
+std::string AddPrefixToNodeName(const std::string& name,
+                                const std::string& prefix);
 
 // Executes a 'fn' in the 'thread_pool'. The method waits for the configured
 // timeout (in milliseconds) for 'fn' to complete, before returning false.
@@ -333,11 +339,11 @@ bool ExecuteWithTimeout(std::function<void()> fn, int64_t timeout_in_ms,
 
 // Returns the node name prefixed with conventional symbol '^'
 // for control dependency, given a NodeDef.
-string AsControlDependency(const NodeDef& node);
+std::string AsControlDependency(const NodeDef& node);
 
 // Returns the node name prefixed with conventional symbol '^'
 // for control dependency, given a node name
-string AsControlDependency(const string& node);
+std::string AsControlDependency(const std::string& node);
 
 // Returns true if the node is assigned to run on CPU device.
 bool NodeIsOnCpu(const NodeDef* node);
@@ -381,15 +387,15 @@ int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map);
 void DedupControlInputs(NodeDef* node);
 
 // Returns an error if an attribute with the given key does not exist in node.
-absl::Status CheckAttrExists(const NodeDef& node, const string& key);
+absl::Status CheckAttrExists(const NodeDef& node, const std::string& key);
 
 // Returns an error if attributes with the given keys do not exist in node.
 absl::Status CheckAttrsExist(const NodeDef& node,
-                             absl::Span<const string> keys);
+                             absl::Span<const std::string> keys);
 
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
-DataType GetDataTypeFromAttr(const NodeDef& node, const string& type_attr);
+DataType GetDataTypeFromAttr(const NodeDef& node, const std::string& type_attr);
 
 // Returns the last node in the simple chain starting at source and traversing
 // through the input(0) edge from each node as long as the next node satisfies
@@ -423,7 +429,7 @@ void EraseNodesFromGraph(const std::set<int>& nodes_to_delete, GraphDef* graph);
 
 void EraseNodesFromGraph(std::vector<int>&& nodes_to_delete, GraphDef* graph);
 
-void EraseNodesFromGraph(const std::set<string>& nodes_to_delete,
+void EraseNodesFromGraph(const std::set<std::string>& nodes_to_delete,
                          GraphDef* graph);
 
 // Erase all attributes without leading underscore. Returns the number of
