@@ -118,7 +118,7 @@ class FlatSet {
     }
 
     // Make iterator pointing exactly at ith element in b, which must exist.
-    const_iterator(Bucket* b, Bucket* end, uint32 i)
+    const_iterator(Bucket* b, Bucket* end, uint32_t i)
         : b_(b), end_(end), i_(i) {}
 
     reference operator*() const { return key(); }
@@ -143,7 +143,7 @@ class FlatSet {
     friend class FlatSet;
     Bucket* b_;
     Bucket* end_;
-    uint32 i_;
+    uint32_t i_;
 
     reference key() const { return b_->key(i_); }
     void SkipUnused() {
@@ -257,7 +257,7 @@ class FlatSet {
   // Bucket stores kWidth <marker, key, value> triples.
   // The data is organized as three parallel arrays to reduce padding.
   struct Bucket {
-    uint8 marker[Rep::kWidth];
+    uint8_t marker[Rep::kWidth];
 
     // Wrap keys in union to control construction and destruction.
     union Storage {
@@ -266,15 +266,15 @@ class FlatSet {
       ~Storage() {}
     } storage;
 
-    Key& key(uint32 i) {
+    Key& key(uint32_t i) {
       DCHECK_GE(marker[i], 2);
       return storage.key[i];
     }
-    void Destroy(uint32 i) { storage.key[i].Key::~Key(); }
-    void MoveFrom(uint32 i, Bucket* src, uint32 src_index) {
+    void Destroy(uint32_t i) { storage.key[i].Key::~Key(); }
+    void MoveFrom(uint32_t i, Bucket* src, uint32_t src_index) {
       new (&storage.key[i]) Key(std::move(src->storage.key[src_index]));
     }
-    void CopyFrom(uint32 i, Bucket* src, uint32 src_index) {
+    void CopyFrom(uint32_t i, Bucket* src, uint32_t src_index) {
       new (&storage.key[i]) Key(src->storage.key[src_index]);
     }
   };
