@@ -76,7 +76,7 @@ class EagerNode {
   virtual AsyncEagerNode* AsAsync() { return nullptr; }
   virtual AsyncRemoteExecuteNode* AsAsyncRemoteExecuteNode() { return nullptr; }
 
-  virtual string DebugString() const = 0;
+  virtual std::string DebugString() const = 0;
 
   // Indicates whether a node failure should make the executor unusable.
   virtual bool Fatal() const { return true; }
@@ -193,7 +193,7 @@ class EagerExecutor {
   struct NodeItem : core::RefCounted {
     // Unique id generated in EagerExecutor::Add(). If item1.id < item2.id, it
     // means item1.node is added before item2.node.
-    uint64 id;
+    uint64_t id;
     std::unique_ptr<EagerNode> node;
     NodeState state;
   };
@@ -203,7 +203,8 @@ class EagerExecutor {
 
   void NodeDone(const core::RefCountPtr<NodeItem>& item,
                 const absl::Status& status, bool from_queue);
-  void NotifyWaiters(uint64 id) TF_EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
+  void NotifyWaiters(uint64_t id)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   // Starts execution of pending EagerNodes. This function loops till executor
   // state_ is set to kShutDown. If any errors are encountered, these are set
@@ -220,9 +221,9 @@ class EagerExecutor {
   absl::Status WaitForAllPendingNodesLocked(mutex_lock* lock)
       TF_EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
-  absl::Status WaitImpl(bool wait_all, uint64 node_id);
+  absl::Status WaitImpl(bool wait_all, uint64_t node_id);
 
-  std::atomic<uint64> next_node_id_;
+  std::atomic<uint64_t> next_node_id_;
 
   mutable mutex node_queue_mutex_;
 
@@ -236,7 +237,7 @@ class EagerExecutor {
       TF_GUARDED_BY(node_queue_mutex_);
 
   // Ordered by NodeItem::id.
-  std::map<uint64, core::RefCountPtr<NodeItem>, std::less<uint64>>
+  std::map<uint64_t, core::RefCountPtr<NodeItem>, std::less<uint64_t>>
       unfinished_nodes_ TF_GUARDED_BY(node_queue_mutex_);
 
   // `status_` is set based on any errors raised during execution of a
@@ -248,7 +249,7 @@ class EagerExecutor {
   // These condition_variables are notified and removed when that EagerNode is
   // done executing, or if an error is found in execution of any EagerNode.
   // The map is ordered by id.
-  std::multimap<uint64, condition_variable*, std::less<uint64>>
+  std::multimap<uint64_t, condition_variable*, std::less<uint64_t>>
       node_done_notifications_ TF_GUARDED_BY(node_queue_mutex_);
 
   // thread_exited_notification_ is notified by the `thread_` right before it
