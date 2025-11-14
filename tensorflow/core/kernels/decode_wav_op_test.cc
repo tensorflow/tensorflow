@@ -38,7 +38,7 @@ namespace {
 TEST(DecodeWavOpTest, DecodeWavTest) {
   Scope root = Scope::NewRootScope();
 
-  std::vector<uint8> wav_data = {
+  std::vector<uint8_t> wav_data = {
       'R',  'I',  'F', 'F', 44,  0,   0,   0,  // size of whole file - 8
       'W',  'A',  'V', 'E', 'f', 'm', 't', ' ', 16, 0, 0,
       0,                   // size of fmt block - 8: 24 - 8
@@ -55,7 +55,7 @@ TEST(DecodeWavOpTest, DecodeWavTest) {
       0x00, 0x80,  // fourth sample: -32768 (saturated)
   };
   Tensor content_tensor =
-      test::AsScalar<tstring>(string(wav_data.begin(), wav_data.end()));
+      test::AsScalar<tstring>(std::string(wav_data.begin(), wav_data.end()));
   Output content_op =
       Const(root.WithOpName("content_op"), Input::Initializer(content_tensor));
 
@@ -72,7 +72,7 @@ TEST(DecodeWavOpTest, DecodeWavTest) {
                            &outputs));
 
   const Tensor& audio = outputs[0];
-  const int sample_rate = outputs[1].flat<int32>()(0);
+  const int sample_rate = outputs[1].flat<int32_t>()(0);
 
   EXPECT_EQ(2, audio.dims());
   EXPECT_EQ(1, audio.dim_size(1));
@@ -124,29 +124,100 @@ TEST(DecodeWavOpTest, DecodeWav_ShapeFn) {
 TEST(DecodeWavOpTest, DecodeWavWithJunkChunkTest) {
   Scope root = Scope::NewRootScope();
 
-  std::vector<uint8> wav_data = {
-      'R', 'I', 'F', 'F', 76, 0, 0, 0,         // size of whole file - 8
-      'W', 'A', 'V', 'E', 'J', 'U', 'N', 'K',  // JUNK tag
-      28, 0, 0, 0,                             // size of JUNK chunk
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,            // JUNK chunk
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'f', 'm', 't', ' ',
-      16, 0, 0, 0,       // size of fmt
-                         // block - 8: 24 -
-                         // 8
-      1, 0,              // format: PCM (1)
-      1, 0,              // channels: 1
-      0x13, 0x37, 0, 0,  // sample rate: 14099
-      0x26, 0x6e, 0, 0,  // byte rate: 2 * 14099
-      2, 0,              // block align: NumChannels * BytesPerSample
-      16, 0,             // bits per sample: 2 * 8
-      'd', 'a', 't', 'a', 8, 0, 0, 0,  // size of payload: 8
-      0, 0,                            // first sample: 0
-      0xff, 0x3f,                      // second sample: 16383
-      0xff, 0x7f,                      // third sample: 32767 (saturated)
-      0x00, 0x80,                      // fourth sample: -32768 (saturated)
+  std::vector<uint8_t> wav_data = {
+      'R',
+      'I',
+      'F',
+      'F',
+      76,
+      0,
+      0,
+      0,  // size of whole file - 8
+      'W',
+      'A',
+      'V',
+      'E',
+      'J',
+      'U',
+      'N',
+      'K',  // JUNK tag
+      28,
+      0,
+      0,
+      0,  // size of JUNK chunk
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,  // JUNK chunk
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      'f',
+      'm',
+      't',
+      ' ',
+      16,
+      0,
+      0,
+      0,  // size of fmt
+          // block - 8: 24 -
+          // 8
+      1,
+      0,  // format: PCM (1)
+      1,
+      0,  // channels: 1
+      0x13,
+      0x37,
+      0,
+      0,  // sample rate: 14099
+      0x26,
+      0x6e,
+      0,
+      0,  // byte rate: 2 * 14099
+      2,
+      0,  // block align: NumChannels * BytesPerSample
+      16,
+      0,  // bits per sample: 2 * 8
+      'd',
+      'a',
+      't',
+      'a',
+      8,
+      0,
+      0,
+      0,  // size of payload: 8
+      0,
+      0,  // first sample: 0
+      0xff,
+      0x3f,  // second sample: 16383
+      0xff,
+      0x7f,  // third sample: 32767 (saturated)
+      0x00,
+      0x80,  // fourth sample: -32768 (saturated)
   };
   Tensor content_tensor =
-      test::AsScalar<tstring>(string(wav_data.begin(), wav_data.end()));
+      test::AsScalar<tstring>(std::string(wav_data.begin(), wav_data.end()));
   Output content_op =
       Const(root.WithOpName("content_op"), Input::Initializer(content_tensor));
 
@@ -163,7 +234,7 @@ TEST(DecodeWavOpTest, DecodeWavWithJunkChunkTest) {
                            &outputs));
 
   const Tensor& audio = outputs[0];
-  const int sample_rate = outputs[1].flat<int32>()(0);
+  const int sample_rate = outputs[1].flat<int32_t>()(0);
 
   EXPECT_EQ(2, audio.dims());
   EXPECT_EQ(1, audio.dim_size(1));
