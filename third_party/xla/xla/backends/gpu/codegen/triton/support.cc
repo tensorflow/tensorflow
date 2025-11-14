@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/support.h"
 
+#include <cstdint>
 #include <string>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -652,10 +651,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kParameter:
       return CodegenDecision::Allow();
     case HloOpcode::kDynamicSlice:
-      // TODO(b/417172838): enable this once we confirm that no benchmarks were
-      // regressed.
-      return CodegenDecision::Forbid(
-          "dynamic slice is supported but not enabled yet");
+      return IsTritonSupportedDynamicSlice(
+          *Cast<HloDynamicSliceInstruction>(&instr));
     case HloOpcode::kBitcast:
       if (ShapeUtil::ElementsIn(instr.operand(0)->shape()) !=
           ShapeUtil::ElementsIn(instr.shape())) {
@@ -740,6 +737,44 @@ absl::Status EnsureTritonSupportsComputeCapability(
   }
 
   return absl::OkStatus();
+}
+
+CodegenDecision IsTritonSupportedDynamicSlice(
+    const HloDynamicSliceInstruction& instr) {
+  for (const HloInstruction* index_operand : instr.index_operands()) {
+    switch (index_operand->shape().element_type()) {
+      case S8:
+      case S16:
+      case S32:
+        break;  // supported
+      default:
+        return CodegenDecision::Forbid(
+            "Dynamic slice is only supported with S8, S16, or S32 indices.");
+    }
+  }
+
+  // Similar to normal slice, we cannot slice a non-major-most dimension as
+  // that would introduce non-contiguous strides under tiling. The existing
+  // check against this in GetRequirementsIfSupportedOrder is not suitable for
+  // dynamic slices, so we instead check for this here.
+  const HloInstruction* input = instr.operand(0);
+  Layout in_layout = input->shape().layout();
+  int64_t majormost_dim_id =
+      in_layout.minor_to_major(in_layout.minor_to_major().size() - 1);
+
+  for (int i = 0; i < input->shape().dimensions().size(); ++i) {
+    if (i == majormost_dim_id) {
+      continue;
+    }
+    if (input->shape().dimensions(i) != instr.slice_sizes(i)) {
+      return CodegenDecision::Forbid(
+          "Unsupported dynamic slice on non-major-most dimension.");
+    }
+  }
+
+  // TODO(b/343143854): Check the subtleties of which dynamic slices are
+  // supported, for example that a fragmented dimension cannot be sliced.
+  return CodegenDecision::Allow();
 }
 
 CodegenDecision IsTritonSupportedInstruction(
