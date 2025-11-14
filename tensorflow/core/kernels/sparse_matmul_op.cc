@@ -105,22 +105,22 @@ struct SparseSlice {
  public:
   // Indices of three elements on the same row.
   struct Index3 {
-    Index3(uint8 m, uint8 k1, uint8 k2, uint8 k3)
+    Index3(uint8_t m, uint8_t k1, uint8_t k2, uint8_t k3)
         : m(m), k1(k1), k2(k2), k3(k3) {}
 
-    uint8 m;  // row
+    uint8_t m;  // row
     // columns
-    uint8 k1;
-    uint8 k2;
-    uint8 k3;
+    uint8_t k1;
+    uint8_t k2;
+    uint8_t k3;
   };
 
   // Index of one element.
   struct Index {
-    Index(uint8 m, uint8 k) : m(m), k(k) {}
+    Index(uint8_t m, uint8_t k) : m(m), k(k) {}
 
-    uint8 m;
-    uint8 k;
+    uint8_t m;
+    uint8_t k;
   };
 
   SparseSlice(int nrows, int ncols, int bsize)
@@ -182,7 +182,7 @@ class StridedIterator {
   // Requires `!Done()`.
   ALWAYS_INLINE T Value() const { return *curr_; }
 
-  ALWAYS_INLINE uint8 K() const { return k_; }
+  ALWAYS_INLINE uint8_t K() const { return k_; }
 
   ALWAYS_INLINE void Next() {
     curr_ += stride_;
@@ -197,7 +197,7 @@ class StridedIterator {
 
  private:
   const int stride_;
-  uint8 k_;
+  uint8_t k_;
   const T* curr_;
   const T* const end_;
 };
@@ -227,7 +227,7 @@ void SparseSlice<T>::Initialize(
   for (int i = 0; i < num_blocks; ++i) {
     int num_block_cols = std::min(block_size, num_cols - block_size * i);
     for (int row = 0; row < num_rows; ++row) {
-      const uint8 m = static_cast<uint8>(row);
+      const uint8_t m = static_cast<uint8_t>(row);
       // Safety note: The following code has a race, since it checks whether
       // *curr is nonzero and then reads it again on use.  However, the result
       // of the race is only that some of the "nonzeros" in the resulting sparse
@@ -239,7 +239,7 @@ void SparseSlice<T>::Initialize(
       while (true) {
         iter.EatZeros();
         if (iter.Done()) break;
-        const uint8 k1 = iter.K();
+        const uint8_t k1 = iter.K();
         const T value1 = iter.Value();
         iter.Next();
 
@@ -249,7 +249,7 @@ void SparseSlice<T>::Initialize(
           index.emplace_back(m, k1);
           break;
         }
-        const uint8 k2 = iter.K();
+        const uint8_t k2 = iter.K();
         const T value2 = iter.Value();
         iter.Next();
 
@@ -261,7 +261,7 @@ void SparseSlice<T>::Initialize(
           index.emplace_back(m, k1);
           break;
         }
-        const uint8 k3 = iter.K();
+        const uint8_t k3 = iter.K();
         data3.push_back(value1);
         data3.push_back(value2);
         data3.push_back(iter.Value());

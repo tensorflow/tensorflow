@@ -106,7 +106,7 @@ class KeyedSparseTensorColumn : public ColumnInterface<InternalType> {
 
  private:
   const Tensor& values_;
-  tensorflow::uint64 key_[2];
+  uint64_t key_[2];
   std::vector<int64_t> feature_counts_;
   std::vector<int64_t> feature_start_indices_;
 };
@@ -214,7 +214,7 @@ class KeyedDenseTensorColumn : public ColumnInterface<InternalType> {
 
  private:
   const Tensor& tensor_;
-  tensorflow::uint64 key_[2];
+  uint64_t key_[2];
 };
 
 // InternalType is int64 only when using HashCrosser.
@@ -303,15 +303,16 @@ class OutputUpdater {
 template <typename InternalType>
 class StringCrosser {
  public:
-  StringCrosser(const std::vector<
-                    std::unique_ptr<ColumnInterface<InternalType>>>& columns,
-                const int64_t num_buckets_unused, const uint64 hash_key_unused,
-                const tstring k_feature_separator)
+  StringCrosser(
+      const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>&
+          columns,
+      const int64_t num_buckets_unused, const uint64_t hash_key_unused,
+      const tstring k_feature_separator)
       : columns_(columns), k_feature_separator_(k_feature_separator) {}
 
-  string Generate(const int64_t batch_index,
-                  const std::vector<int>& permutation,
-                  bool unused_strong_hash) const {
+  std::string Generate(const int64_t batch_index,
+                       const std::vector<int>& permutation,
+                       bool unused_strong_hash) const {
     gtl::InlinedVector<InternalType, 6> cross_vec(columns_.size());
     for (int i = 0; i < permutation.size(); i++) {
       cross_vec[i] = columns_[i]->Feature(batch_index, permutation[i], false);
@@ -331,7 +332,7 @@ class HashCrosser {
  public:
   HashCrosser(
       const std::vector<std::unique_ptr<ColumnInterface<int64_t>>>& columns,
-      const int64_t num_buckets, const uint64 hash_key,
+      const int64_t num_buckets, const uint64_t hash_key,
       const tstring k_feature_separator_unused)
       : columns_(columns), num_buckets_(num_buckets), hash_key_(hash_key) {}
 
@@ -339,9 +340,10 @@ class HashCrosser {
                    const std::vector<int>& permutation,
                    bool unused_strong_hash) const {
     // Do the fingerprint concatenation on uint64.
-    uint64 hashed_output = hash_key_;
+    uint64_t hashed_output = hash_key_;
     for (size_t i = 0; i < permutation.size(); ++i) {
-      uint64 hash_i = columns_[i]->Feature(batch_index, permutation[i], false);
+      uint64_t hash_i =
+          columns_[i]->Feature(batch_index, permutation[i], false);
       hashed_output = FingerprintCat64(hashed_output, hash_i);
     }
     // The return value is int64 based on the number of buckets.
@@ -356,7 +358,7 @@ class HashCrosser {
  private:
   const std::vector<std::unique_ptr<ColumnInterface<int64_t>>>& columns_;
   const int64_t num_buckets_;
-  const uint64 hash_key_;
+  const uint64_t hash_key_;
 };
 
 // Generates the sparse crosses as nested hash to avoid string manipulations.
@@ -364,7 +366,7 @@ class HashCrosserV2 {
  public:
   HashCrosserV2(
       const std::vector<std::unique_ptr<ColumnInterface<int64_t>>>& columns,
-      const int64_t num_buckets, const uint64 hash_key_unused,
+      const int64_t num_buckets, const uint64_t hash_key_unused,
       const tstring k_feature_separator_unused)
       : columns_(columns), num_buckets_(num_buckets) {}
 
@@ -372,10 +374,10 @@ class HashCrosserV2 {
                    const std::vector<int>& permutation,
                    bool strong_hash) const {
     // Do the fingerprint concatenation on uint64.
-    uint64 hashed_output =
+    uint64_t hashed_output =
         columns_[0]->Feature(batch_index, permutation[0], strong_hash);
     for (size_t i = 1; i < permutation.size(); ++i) {
-      uint64 hash_i =
+      uint64_t hash_i =
           columns_[i]->Feature(batch_index, permutation[i], strong_hash);
       hashed_output = FingerprintCat64(hashed_output, hash_i);
     }
@@ -745,7 +747,7 @@ class SparseCrossOp : public OpKernel {
     // supported by REGISTER_OP.
     int64_t signed_hash_key_;
     OP_REQUIRES_OK(context, context->GetAttr("hash_key", &signed_hash_key_));
-    hash_key_ = static_cast<uint64>(signed_hash_key_);
+    hash_key_ = static_cast<uint64_t>(signed_hash_key_);
     OP_REQUIRES_OK(context, context->GetAttr("internal_type", &internal_type_));
   }
 
@@ -807,7 +809,7 @@ class SparseCrossOp : public OpKernel {
 
  private:
   int64_t num_buckets_;
-  uint64 hash_key_;
+  uint64_t hash_key_;
   DataType internal_type_;
 };
 
@@ -973,13 +975,13 @@ REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<int64_t>("out_type")
                             .TypeConstraint<tstring>("internal_type"),
-                        SparseCrossOp<true, int64>);
+                        SparseCrossOp<true, int64_t>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<int64_t>("out_type")
                             .TypeConstraint<int64_t>("internal_type"),
-                        SparseCrossOp<true, int64>);
+                        SparseCrossOp<true, int64_t>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCrossV2").Device(DEVICE_CPU),
                         SparseCrossV2Op);
