@@ -53,28 +53,12 @@ enum class TargetIntrinsicID {
 // Enumeration to get target specific device math function.
 enum class TargetDeviceFunctionID {
   kAtan2 = 0,
-  kCbrt,
-  kCos,
-  kExp,
-  kExpm1,
-  kFmod,
+#define DEFINE_CONSTANT(name, ...) k##name,
+  UNARY_OPS_WITH_ACCURACY(DEFINE_CONSTANT)
+#undef OP
+      kFmod,
   kHypot,
-  kLog,
-  kLog1p,
   kPow,
-  kRsqrt,
-  kSin,
-  kSqrt,
-  kTan,
-  kTanh,
-  kErf,
-  kAcosh,
-  kAcos,
-  kSinh,
-  kAsin,
-  kAsinh,
-  kCosh,
-  kAtanh,
 };
 
 // HLO opcode -> TargetDeviceFunctionID mapping. Returns std::nullopt if there

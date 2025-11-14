@@ -117,90 +117,60 @@ HloSchedule ScheduleFromInstructionOrder(HloModule* module) {
 
 bool CanInferShape(HloOpcode code) {
   switch (code) {
-    case HloOpcode::kAbs:
-    case HloOpcode::kAcos:
-    case HloOpcode::kAcosh:
-    case HloOpcode::kAsin:
-    case HloOpcode::kAsinh:
+#define BUILDER(name, ...) case HloOpcode::k##name:
+    UNARY_OPS_WITHOUT_ACCURACY(BUILDER)
+    UNARY_OPS_WITH_ACCURACY(BUILDER)
+#undef BUILDER
     case HloOpcode::kAdd:
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
     case HloOpcode::kAtan2:
-    case HloOpcode::kAtanh:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBroadcast:
     case HloOpcode::kCall:
-    case HloOpcode::kCeil:
     case HloOpcode::kCholesky:
     case HloOpcode::kClamp:
-    case HloOpcode::kClz:
     case HloOpcode::kCompare:
     case HloOpcode::kComplex:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
-    case HloOpcode::kCopy:
-    case HloOpcode::kCos:
-    case HloOpcode::kCosh:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kDivide:
     case HloOpcode::kDomain:
     case HloOpcode::kDot:
-    case HloOpcode::kErf:
-    case HloOpcode::kExp:
-    case HloOpcode::kExpm1:
     case HloOpcode::kFft:
-    case HloOpcode::kFloor:
     case HloOpcode::kGather:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kSetDimensionSize:
     case HloOpcode::kGetTupleElement:
-    case HloOpcode::kImag:
-    case HloOpcode::kIsFinite:
-    case HloOpcode::kLog:
-    case HloOpcode::kLog1p:
-    case HloOpcode::kLogistic:
     case HloOpcode::kAnd:
-    case HloOpcode::kNot:
     case HloOpcode::kOr:
     case HloOpcode::kXor:
     case HloOpcode::kMap:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
-    case HloOpcode::kNegate:
     case HloOpcode::kPad:
     case HloOpcode::kPartitionId:
-    case HloOpcode::kPopulationCount:
     case HloOpcode::kPower:
     case HloOpcode::kRaggedDot:
-    case HloOpcode::kReal:
     case HloOpcode::kReduce:
     case HloOpcode::kRemainder:
     case HloOpcode::kReplicaId:
     case HloOpcode::kReverse:
-    case HloOpcode::kRoundNearestAfz:
-    case HloOpcode::kRoundNearestEven:
-    case HloOpcode::kRsqrt:
     case HloOpcode::kScaledDot:
     case HloOpcode::kScatter:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
-    case HloOpcode::kSign:
-    case HloOpcode::kSin:
-    case HloOpcode::kSinh:
-    case HloOpcode::kSqrt:
-    case HloOpcode::kCbrt:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
     case HloOpcode::kSubtract:
-    case HloOpcode::kTan:
-    case HloOpcode::kTanh:
     case HloOpcode::kTranspose:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kTuple:
@@ -1649,49 +1619,22 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           *shape, operands[0], *k, (largest.has_value() ? *largest : true)));
     }
     // Unary ops with result accuracy.
-    case HloOpcode::kAcos:
-    case HloOpcode::kAcosh:
-    case HloOpcode::kAsin:
-    case HloOpcode::kAsinh:
-    case HloOpcode::kAtanh:
-    case HloOpcode::kExpm1:
-    case HloOpcode::kLog:
-    case HloOpcode::kLog1p:
-    case HloOpcode::kLogistic:
-    case HloOpcode::kSqrt:
-    case HloOpcode::kCbrt:
-    case HloOpcode::kRsqrt:
-    case HloOpcode::kTanh:
-    case HloOpcode::kErf:
-    case HloOpcode::kSin:
-    case HloOpcode::kSinh:
-    case HloOpcode::kCos:
-    case HloOpcode::kCosh:
-    case HloOpcode::kTan:
-    case HloOpcode::kExp: {
-      return create_unary_instruction_with_result_accuracy();
-    }
-    // Unary ops.
-    case HloOpcode::kAbs:
+#define CASE_STMT(name, ...) case HloOpcode::k##name:
+      UNARY_OPS_WITH_ACCURACY(CASE_STMT)
+#undef CASE_STMT
+      {
+        return create_unary_instruction_with_result_accuracy();
+      }
+      // Unary ops.
+#define CASE_STMT(name, ...) case HloOpcode::k##name:
+      UNARY_OPS_WITHOUT_ACCURACY(CASE_STMT)
+#undef CASE_STMT
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
-    case HloOpcode::kRoundNearestAfz:
-    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kBitcast:
-    case HloOpcode::kCeil:
-    case HloOpcode::kClz:
     case HloOpcode::kCollectivePermuteDone:
-    case HloOpcode::kCopy:
     case HloOpcode::kCopyDone:
-    case HloOpcode::kOptimizationBarrier:
-    case HloOpcode::kImag:
-    case HloOpcode::kIsFinite:
-    case HloOpcode::kFloor:
-    case HloOpcode::kNot:
-    case HloOpcode::kNegate:
-    case HloOpcode::kPopulationCount:
-    case HloOpcode::kReal:
-    case HloOpcode::kSign: {
+    case HloOpcode::kOptimizationBarrier: {
       return create_unary_instruction();
     }
     // Binary ops.

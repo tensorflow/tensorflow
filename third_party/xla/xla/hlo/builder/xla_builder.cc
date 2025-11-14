@@ -5206,10 +5206,6 @@ XlaOp MhloDynamicBroadcastInDim(const XlaOp operand,
       operand, output_dimensions, broadcast_dimensions, output_shape);
 }
 
-XlaOp Copy(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kCopy, operand);
-}
-
 XlaOp Pad(const XlaOp operand, const XlaOp padding_value,
           const PaddingConfig& padding_config) {
   return operand.builder()->Pad(operand, padding_value, padding_config);
@@ -5760,14 +5756,6 @@ XlaOp Xor(const XlaOp lhs, const XlaOp rhs,
                                  broadcast_dimensions);
 }
 
-XlaOp Not(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kNot, operand);
-}
-
-XlaOp PopulationCount(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kPopulationCount, operand);
-}
-
 XlaOp ShiftLeft(const XlaOp lhs, const XlaOp rhs,
                 absl::Span<const int64_t> broadcast_dimensions) {
   return lhs.builder()->BinaryOp(HloOpcode::kShiftLeft, lhs, rhs,
@@ -6073,123 +6061,37 @@ XlaOp SelectAndScatterWithGeneralPadding(
       operand.builder()->AddSubComputation(scatter));
 }
 
-XlaOp Abs(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kAbs, operand);
-}
-
 XlaOp Atan2(const XlaOp y, const XlaOp x,
             absl::Span<const int64_t> broadcast_dimensions) {
   return y.builder()->BinaryOp(HloOpcode::kAtan2, y, x, broadcast_dimensions);
 }
 
-XlaOp Exp(const XlaOp operand,
-          const std::optional<ResultAccuracy>& result_accuracy) {
-  return operand.builder()->UnaryOp(HloOpcode::kExp, operand, result_accuracy);
-}
+#define OP_FUNCTION_WITHOUT_RESULT_ACCURACY(name, ...)              \
+  XlaOp name(const XlaOp operand) {                                 \
+    return operand.builder()->UnaryOp(HloOpcode::k##name, operand); \
+  }
+UNARY_OPS_WITHOUT_ACCURACY(OP_FUNCTION_WITHOUT_RESULT_ACCURACY)
+#undef OP_FUNCTION_WITHOUT_RESULT_ACCURACY
 
-XlaOp Expm1(const XlaOp operand,
-            const std::optional<ResultAccuracy>& result_accuracy) {
-  return operand.builder()->UnaryOp(HloOpcode::kExpm1, operand,
-                                    result_accuracy);
-}
+#define OP_FUNCTION_WITH_RESULT_ACCURACY(name, ...)                  \
+  XlaOp name(const XlaOp operand,                                    \
+             const std::optional<ResultAccuracy>& result_accuracy) { \
+    return operand.builder()->UnaryOp(HloOpcode::k##name, operand,   \
+                                      result_accuracy);              \
+  }
+UNARY_OPS_WITH_ACCURACY(OP_FUNCTION_WITH_RESULT_ACCURACY)
+#undef OP_FUNCTION_WITH_RESULT_ACCURACY
 
-XlaOp Floor(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kFloor, operand);
-}
+// Widely used alias for the Negate HLO opcode.
+XlaOp Neg(const XlaOp operand) { return Negate(operand); }
 
-XlaOp Ceil(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kCeil, operand);
-}
+// Widely used alias for the RoundNearestAfz HLO opcode.
+XlaOp Round(xla::XlaOp operand) { return RoundNearestAfz(operand); }
 
-XlaOp Round(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kRoundNearestAfz, operand);
-}
-
-XlaOp RoundNearestEven(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kRoundNearestEven, operand);
-}
-
-XlaOp Log(const XlaOp operand,
-          const std::optional<ResultAccuracy>& result_accuracy) {
-  return operand.builder()->UnaryOp(HloOpcode::kLog, operand, result_accuracy);
-}
-
-XlaOp Log1p(const XlaOp operand,
-            const std::optional<ResultAccuracy>& result_accuracy) {
-  return operand.builder()->UnaryOp(HloOpcode::kLog1p, operand,
-                                    result_accuracy);
-}
-
-XlaOp Erf(const XlaOp operand,
-          const std::optional<ResultAccuracy>& result_accuracy) {
-  return operand.builder()->UnaryOp(HloOpcode::kErf, operand, result_accuracy);
-}
-
-XlaOp Logistic(const XlaOp operand,
-               const std::optional<ResultAccuracy>& result_accuracy) {
-  return operand.builder()->UnaryOp(HloOpcode::kLogistic, operand,
-                                    result_accuracy);
-}
-
-XlaOp Sign(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kSign, operand);
-}
-
-XlaOp Clz(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kClz, operand);
-}
-
-XlaOp Cos(const XlaOp operand,
-          const std::optional<ResultAccuracy>& result_accuracy) {
-  return operand.builder()->UnaryOp(HloOpcode::kCos, operand, result_accuracy);
-}
-
-XlaOp Sin(const XlaOp operand,
-          const std::optional<ResultAccuracy>& result_accuracy) {
-  return operand.builder()->UnaryOp(HloOpcode::kSin, operand, result_accuracy);
-}
-
-XlaOp Tan(const XlaOp operand,
-          const std::optional<ResultAccuracy>& result_accuracy) {
-  return operand.builder()->UnaryOp(HloOpcode::kTan, operand, result_accuracy);
-}
-
-XlaOp Tanh(const XlaOp operand,
-           const std::optional<ResultAccuracy>& result_accuracy) {
-  return operand.builder()->UnaryOp(HloOpcode::kTanh, operand, result_accuracy);
-}
-
-XlaOp Real(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kReal, operand);
-}
-
-XlaOp Imag(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kImag, operand);
-}
-
-XlaOp Sqrt(const XlaOp operand,
-           const std::optional<ResultAccuracy>& result_accuracy) {
-  return operand.builder()->UnaryOp(HloOpcode::kSqrt, operand, result_accuracy);
-}
-
-XlaOp Cbrt(const XlaOp operand,
-           const std::optional<ResultAccuracy>& result_accuracy) {
-  return operand.builder()->UnaryOp(HloOpcode::kCbrt, operand, result_accuracy);
-}
-
-XlaOp Rsqrt(const XlaOp operand,
-            const std::optional<ResultAccuracy>& result_accuracy) {
-  return operand.builder()->UnaryOp(HloOpcode::kRsqrt, operand,
-                                    result_accuracy);
-}
 XlaOp Pow(const XlaOp lhs, const XlaOp rhs,
           absl::Span<const int64_t> broadcast_dimensions) {
   return lhs.builder()->BinaryOp(HloOpcode::kPower, lhs, rhs,
                                  broadcast_dimensions);
-}
-
-XlaOp IsFinite(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kIsFinite, operand);
 }
 
 XlaOp ConvertElementType(const XlaOp operand, PrimitiveType new_element_type) {
@@ -6204,10 +6106,6 @@ XlaOp StochasticConvertType(const XlaOp operand, const XlaOp random,
                             PrimitiveType new_element_type) {
   return operand.builder()->StochasticConvertType(operand, random,
                                                   new_element_type);
-}
-
-XlaOp Neg(const XlaOp operand) {
-  return operand.builder()->UnaryOp(HloOpcode::kNegate, operand);
 }
 
 XlaOp Transpose(const XlaOp operand, absl::Span<const int64_t> permutation) {
