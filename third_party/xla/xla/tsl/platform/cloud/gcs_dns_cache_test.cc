@@ -23,25 +23,25 @@ namespace tsl {
 
 class TestHttpRequest : public HttpRequest {
  public:
-  void SetUri(const string& uri) override {}
-  void SetRange(uint64 start, uint64 end) override {}
-  void AddHeader(const string& name, const string& value) override {}
-  void AddResolveOverride(const string& hostname, int64_t port,
-                          const string& ip_addr) override {
+  void SetUri(const std::string& uri) override {}
+  void SetRange(uint64_t start, uint64_t end) override {}
+  void AddHeader(const std::string& name, const std::string& value) override {}
+  void AddResolveOverride(const std::string& hostname, int64_t port,
+                          const std::string& ip_addr) override {
     EXPECT_EQ(port, 443) << "Unexpected port set for hostname: " << hostname;
     auto itr = resolve_overrides_.find(hostname);
     EXPECT_EQ(itr, resolve_overrides_.end())
         << "Hostname " << hostname << "already in map: " << itr->second;
 
     resolve_overrides_.insert(
-        std::map<string, string>::value_type(hostname, ip_addr));
+        std::map<std::string, std::string>::value_type(hostname, ip_addr));
   }
 
-  void AddAuthBearerHeader(const string& auth_token) override {}
+  void AddAuthBearerHeader(const std::string& auth_token) override {}
   void SetRequestStats(HttpRequest::RequestStats* stats) override {}
   void SetDeleteRequest() override {}
 
-  absl::Status SetPutFromFile(const string& body_filepath,
+  absl::Status SetPutFromFile(const std::string& body_filepath,
                               size_t offset) override {
     return absl::OkStatus();
   }
@@ -52,15 +52,17 @@ class TestHttpRequest : public HttpRequest {
   void SetResultBufferDirect(char* buffer, size_t size) override {}
   size_t GetResultBufferDirectBytesTransferred() override { return 0; }
 
-  string GetResponseHeader(const string& name) const override { return ""; }
-  uint64 GetResponseCode() const override { return 0; }
+  std::string GetResponseHeader(const std::string& name) const override {
+    return "";
+  }
+  uint64_t GetResponseCode() const override { return 0; }
   absl::Status Send() override { return absl::OkStatus(); }
-  string EscapeString(const string& str) override { return ""; }
+  std::string EscapeString(const std::string& str) override { return ""; }
 
-  void SetTimeouts(uint32 connection, uint32 inactivity,
-                   uint32 total) override {}
+  void SetTimeouts(uint32_t connection, uint32_t inactivity,
+                   uint32_t total) override {}
 
-  std::map<string, string> resolve_overrides_;
+  std::map<std::string, std::string> resolve_overrides_;
 };
 
 // Friend class for testing.
