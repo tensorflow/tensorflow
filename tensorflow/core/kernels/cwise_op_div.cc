@@ -19,10 +19,10 @@ namespace tensorflow {
 
 REGISTER6(BinaryOp, CPU, "Div", functor::div, float, Eigen::half, double,
           bfloat16, complex64, complex128);
-REGISTER8(BinaryOp, CPU, "Div", functor::safe_div, uint8, uint16, uint32,
-          uint64, int8, int16, int32, int64_t);
-REGISTER8(BinaryOp, CPU, "TruncateDiv", functor::safe_div, uint8, uint16,
-          uint32, uint64, int8, int16, int32, int64_t);
+REGISTER8(BinaryOp, CPU, "Div", functor::safe_div, uint8_t, uint16_t, uint32_t,
+          uint64_t, int8_t, int16_t, int32_t, int64_t);
+REGISTER8(BinaryOp, CPU, "TruncateDiv", functor::safe_div, uint8_t, uint16_t,
+          uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t);
 REGISTER4(BinaryOp, CPU, "TruncateDiv", functor::truncate_div_real, Eigen::half,
           bfloat16, float, double);
 REGISTER6(BinaryOp, CPU, "RealDiv", functor::div, float, Eigen::half, double,
@@ -35,8 +35,8 @@ REGISTER_KERNEL_BUILDER(Name("Div")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::safe_div<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        BinaryOp<CPUDevice, functor::safe_div<int32_t>>);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
