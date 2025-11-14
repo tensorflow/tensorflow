@@ -914,7 +914,7 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
                                                   properties);
   } else if (hlo.opcode() == HloOpcode::kDynamicSlice &&
              direction == TransformDirection::kOutputToInput) {
-    if (CodegenDecision decision = legacy_triton::IsTritonSupportedDynamicSlice(
+    if (CodegenDecision decision = IsTritonSupportedDynamicSlice(
             *Cast<HloDynamicSliceInstruction>(&hlo));
         !decision.CanFuse()) {
       // CodegenDecision is actually the same type as FusionDecision.

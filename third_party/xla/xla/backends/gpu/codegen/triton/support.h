@@ -73,6 +73,9 @@ CodegenDecision IsTritonSupportedComputation(
 // `kTritonGemmFusionKind`.
 bool IsTritonFusedComputation(const HloComputation& computation);
 
+CodegenDecision IsTritonSupportedDynamicSlice(
+    const HloDynamicSliceInstruction& instr);
+
 namespace internal {
 // TODO(b/363981282): Remove the function below once all ops are tested via
 // HLOs. This is exposed for testing purposes only and will be removed in the
