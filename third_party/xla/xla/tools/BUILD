@@ -894,7 +894,7 @@ xla_cc_binary(
 )
 
 xla_test(
-    name = "matmul_perf_table_gen_run",
+    name = "matmul_perf_table_gen_run_test",
     timeout = "eternal",
     srcs = ["matmul_perf_table_gen_run.cc"],
     # TODO(b/372714955): Fix the memory leak.
