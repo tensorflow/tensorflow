@@ -10,39 +10,55 @@ import "xla/stream_executor/device_description.proto";
 import "xla/xla.proto";
 import "xla/xla_data.proto";
 
+// Serialized representation of a GPU executable, used for AOT compilation.
+//
+// There's a legacy and a new verions of this proto, see
+// `xla::gpu::LegacyGpuAotCompilationResult` and
+// `xla::gpu::GpuAotCompilationResult` respectively for more details.
+//
+// If `thunk` is set, then this is the new format. Otherwise, it's the legacy
+// format.
 message GpuExecutableProto {
+  // The HLO module of the executable - for debugging purposes only.
+  xla.HloModuleProtoWithConfig hlo_module_with_config = 1;
+
+  // Wrapper around repeated BufferAllocationProto to allow using it in a oneof.
+  message RepeatedBufferAllocations {
+    repeated BufferAllocationProto values = 1;
+  }
+
+  // Used in the legacy format.
+  BufferAssignmentProto buffer_assignment = 2;
+  // The buffer allocations of the executable, used in the new format.
+  RepeatedBufferAllocations buffer_allocations = 10;
+
+  // The PTX of the executable. (Only applicable to CUDA)
+  string asm_text = 3;
+
   // The binary of the executable.
   //
   // For CUDA, this is a cubin binary.
   // For ROCm, this is a hsaco binary.
-  bytes binary = 1;
-
-  // The PTX of the executable. (Only applicable to CUDA)
-  string asm_text = 2;
+  bytes binary = 4;
 
   // The DNN compiled graphs of the executable.
   //
   // The key is the DNN kernel name, and the value is the compiled graph
   // serialized to JSON. (Only applicable to cuDNN)
-  map<string, string> dnn_compiled_graphs = 3;
+  map<string, bytes> dnn_compiled_graphs = 5;
 
   // The target compute capability of the executable.
-  stream_executor.GpuComputeCapabilityProto gpu_compute_capability = 4;
-
-  // The HLO module of the executable - for debugging purposes only.
-  xla.HloModuleProtoWithConfig hlo_module = 5;
+  stream_executor.GpuComputeCapabilityProto gpu_compute_capability = 6;
 
   // The thunk tree of the executable.
-  ThunkProto thunk = 6;
+  // Not set in the legacy format.
+  optional ThunkProto thunk = 7;
 
   // The name of the HLO module - for debugging purposes only.
-  string module_name = 7;
+  string module_name = 8;
 
   // The shape of the program (parameters and result).
-  xla.ProgramShapeProto program_shape = 8;
-
-  // The buffer allocations of the executable.
-  repeated BufferAllocationProto buffer_allocations = 9;
+  xla.ProgramShapeProto program_shape = 9;
 
   message OutputInfoProto {
     // This output is part of the following buffer allocation
@@ -61,7 +77,7 @@ message GpuExecutableProto {
   }
 
   // Map from output shape index to output info.
-  repeated OutputInfoMapEntry output_info_map = 10;
+  repeated OutputInfoMapEntry output_info_map = 11;
 
   message ConstantInfoProto {
     // The name of the constant in the HLO module.
@@ -75,5 +91,5 @@ message GpuExecutableProto {
   }
 
   // The constants used by the executable.
-  repeated ConstantInfoProto constants = 11;
+  repeated ConstantInfoProto constants = 12;
 }

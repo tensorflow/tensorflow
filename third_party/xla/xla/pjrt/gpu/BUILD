@@ -477,7 +477,6 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:local_service_utils",
         "//xla/service:platform_util",
-        "//xla/service/gpu:executable_proto_cc",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/tsl/platform:errors",

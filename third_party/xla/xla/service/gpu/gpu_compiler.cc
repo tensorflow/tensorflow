@@ -167,7 +167,6 @@ limitations under the License.
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/fusion_dispatch_pipeline.h"
@@ -2967,8 +2966,7 @@ GpuCompiler::LoadExecutableFromAotResult(
     return Internal(
         "AotCompilationResult is not a GpuThunkAotCompilationResult.");
   }
-  const CompilationResultProto& proto =
-      gpu_aot_result->GetCompilationResultProto();
+  const GpuExecutableProto& proto = gpu_aot_result->GetGpuExecutableProto();
 
   // Recreate HloModule+HloModuleConfig from proto.
   TF_ASSIGN_OR_RETURN(
