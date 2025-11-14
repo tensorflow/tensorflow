@@ -34,7 +34,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
  public:
   explicit GrpcWorkerCache(std::shared_ptr<GrpcChannelCache> channel_cache,
                            WorkerInterface* local_worker,
-                           const string& local_target,
+                           const std::string& local_target,
                            GrpcWorkerEnv* worker_env)
       : local_target_(local_target),
         local_worker_(local_worker),
@@ -42,16 +42,16 @@ class GrpcWorkerCache : public WorkerCachePartial {
         worker_env_(worker_env),
         next_round_robin_assignment_(0) {}
 
-  void ListWorkers(std::vector<string>* workers) const override {
+  void ListWorkers(std::vector<std::string>* workers) const override {
     channel_cache_->ListWorkers(workers);
   }
 
-  void ListWorkersInJob(const string& job_name,
-                        std::vector<string>* workers) const override {
+  void ListWorkersInJob(const std::string& job_name,
+                        std::vector<std::string>* workers) const override {
     channel_cache_->ListWorkersInJob(job_name, workers);
   }
 
-  WorkerInterface* GetOrCreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const std::string& target) override {
     if (target == local_target_) {
       return local_worker_;
     } else {
@@ -66,7 +66,8 @@ class GrpcWorkerCache : public WorkerCachePartial {
     }
   }
 
-  void ReleaseWorker(const string& target, WorkerInterface* worker) override {
+  void ReleaseWorker(const std::string& target,
+                     WorkerInterface* worker) override {
     if (target == local_target_) {
       CHECK_EQ(worker, local_worker_)
           << "Releasing a worker that was not returned by this WorkerCache";
@@ -98,7 +99,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
   }
 
  private:
-  size_t AssignWorkerToThread(const string& target) {
+  size_t AssignWorkerToThread(const std::string& target) {
     // Round-robin target assignment, but keeps the same target on the same
     // polling thread always, as this is important for gRPC performance
     mutex_lock lock(assignment_mu_);
@@ -113,7 +114,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
     return it->second;
   }
 
-  const string local_target_;
+  const std::string local_target_;
   WorkerInterface* const local_worker_;  // Not owned.
   std::shared_ptr<GrpcChannelCache> channel_cache_;
   WorkerCacheLogger logger_;
@@ -177,7 +178,7 @@ WorkerCacheInterface* NewGrpcWorkerCache(std::shared_ptr<GrpcChannelCache> cc,
 
 WorkerCacheInterface* NewGrpcWorkerCacheWithLocalWorker(
     std::shared_ptr<GrpcChannelCache> cc, GrpcWorkerEnv* worker_env,
-    WorkerInterface* local_worker, const string& local_target) {
+    WorkerInterface* local_worker, const std::string& local_target) {
   return new GrpcWorkerCache(cc, local_worker, local_target, worker_env);
 }
 

@@ -39,7 +39,7 @@ class GrpcTensorCodingTest : public ::testing::Test {
     // Make a string
     std::vector<::grpc::Slice> slices;
     (void)buf.Dump(&slices);
-    string tmp;
+    std::string tmp;
     for (const auto& s : slices) {
       tmp.append(reinterpret_cast<const char*>(s.begin()), s.size());
     }
@@ -83,11 +83,11 @@ class GrpcTensorCodingTest : public ::testing::Test {
 TEST_F(GrpcTensorCodingTest, Simple) {
   DoTest<float>(DT_FLOAT);
   DoTest<double>(DT_DOUBLE);
-  DoTest<int32>(DT_INT32);
-  DoTest<uint16>(DT_UINT16);
-  DoTest<uint8>(DT_UINT8);
-  DoTest<int16>(DT_INT16);
-  DoTest<int8>(DT_INT8);
+  DoTest<int32_t>(DT_INT32);
+  DoTest<uint16_t>(DT_UINT16);
+  DoTest<uint8_t>(DT_UINT8);
+  DoTest<int16_t>(DT_INT16);
+  DoTest<int8_t>(DT_INT8);
   DoTest<complex64>(DT_COMPLEX64);
   DoTest<complex128>(DT_COMPLEX128);
   DoTest<int64_t>(DT_INT64);
