@@ -48,6 +48,7 @@ namespace {
 
 // Struct to hold all call instructions and called computations in a module.
 struct HloCalls {
+  // All callsites are guaranteed to be `kCall` instructions.
   std::vector<HloInstruction*> call_sites;
   absl::flat_hash_set<HloComputation*> targets;
 };
@@ -188,13 +189,6 @@ absl::StatusOr<bool> UnflattenCallGraph::RunImpl(
   }
 
   if (changed) {
-    // Clean up any computations that are now no longer called.
-    for (const ComputationHashResult& result : hash_results) {
-      if (!hash_to_canonical.contains(result.hash)) {
-        TF_RETURN_IF_ERROR(
-            module->RemoveEmbeddedComputation(result.computation));
-      }
-    }
     TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
     module->CleanupComputations();
   }
