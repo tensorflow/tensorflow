@@ -114,8 +114,8 @@ class AudioSpectrogramOp : public OpKernel {
   }
 
  private:
-  int32 window_size_;
-  int32 stride_;
+  int32_t window_size_;
+  int32_t stride_;
   bool magnitude_squared_;
 };
 REGISTER_KERNEL_BUILDER(Name("AudioSpectrogram").Device(DEVICE_CPU),

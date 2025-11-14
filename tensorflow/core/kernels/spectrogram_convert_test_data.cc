@@ -25,10 +25,10 @@ namespace wav {
 
 // This takes a CSV file representing an array of complex numbers, and saves out
 // a version using a binary format to save space in the repository.
-absl::Status ConvertCsvToRaw(const string& input_filename) {
+absl::Status ConvertCsvToRaw(const std::string& input_filename) {
   std::vector<std::vector<std::complex<double>>> input_data;
   ReadCSVFileToComplexVectorOrDie(input_filename, &input_data);
-  const string output_filename = input_filename + ".bin";
+  const std::string output_filename = input_filename + ".bin";
   if (!WriteComplexVectorToRawFloatFile(output_filename, input_data)) {
     return errors::InvalidArgument("Failed to write raw float file ",
                                    input_filename);
@@ -46,7 +46,7 @@ int main(int argc, char* argv[]) {
     LOG(ERROR) << "You must supply a CSV file as the first argument";
     return 1;
   }
-  tensorflow::string filename(argv[1]);
+  std::string filename(argv[1]);
   absl::Status status = tensorflow::wav::ConvertCsvToRaw(filename);
   if (!status.ok()) {
     LOG(ERROR) << "Error processing '" << filename << "':" << status;
