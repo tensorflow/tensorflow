@@ -13,19 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
-#include <cstring>
 
 #include "absl/base/casts.h"
 #include "third_party/gpus/cuda/include/cuda/atomic"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
-#include "xla/stream_executor/cuda/cuda_platform.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/buffer_debug_float_check_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/kernel_spec.h"
-#include "xla/tsl/platform/logging.h"
 
 namespace se = stream_executor;
 

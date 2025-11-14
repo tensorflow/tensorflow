@@ -3190,9 +3190,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-    ] + if_cuda_is_configured([
-        "//xla/stream_executor/cuda:buffer_debug_float_check_kernel_cuda",
-    ]),
+    ],
 )
 
 xla_test(

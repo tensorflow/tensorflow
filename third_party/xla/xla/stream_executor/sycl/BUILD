@@ -47,7 +47,6 @@ cc_library(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/platform:initialize",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

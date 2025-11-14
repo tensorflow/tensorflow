@@ -18,7 +18,7 @@ limitations under the License.
 #include "cub/block/block_scan.cuh"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_fp16.h"
-#include "xla/stream_executor/cuda/cuda_platform.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/prefix_sum_kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
