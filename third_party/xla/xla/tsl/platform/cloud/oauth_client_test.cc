@@ -31,7 +31,7 @@ limitations under the License.
 namespace tsl {
 namespace {
 
-string TestData() {
+std::string TestData() {
   return io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform", "cloud",
                       "testdata");
 }
@@ -47,16 +47,16 @@ class FakeEnv : public EnvWrapper {
  public:
   FakeEnv() : EnvWrapper(Env::Default()) {}
 
-  uint64 NowSeconds() const override { return now; }
-  uint64 now = 10000;
+  uint64_t NowSeconds() const override { return now; }
+  uint64_t now = 10000;
 };
 
 }  // namespace
 
 TEST(OAuthClientTest, ParseOAuthResponse) {
-  const uint64 request_timestamp = 100;
-  string token;
-  uint64 expiration_timestamp;
+  const uint64_t request_timestamp = 100;
+  std::string token;
+  uint64_t expiration_timestamp;
   TF_EXPECT_OK(OAuthClient().ParseOAuthResponse(kTokenJson, request_timestamp,
                                                 &token, &expiration_timestamp));
   EXPECT_EQ("WITH_FAKE_ACCESS_TOKEN_TEST_SHOULD_BE_HAPPY", token);
@@ -64,7 +64,7 @@ TEST(OAuthClientTest, ParseOAuthResponse) {
 }
 
 TEST(OAuthClientTest, GetTokenFromRefreshTokenJson) {
-  const string credentials_json = R"(
+  const std::string credentials_json = R"(
       {
         "client_id": "test_client_id",
         "client_secret": "@@@test_client_secret@@@",
@@ -85,8 +85,8 @@ TEST(OAuthClientTest, GetTokenFromRefreshTokenJson) {
   OAuthClient client(std::unique_ptr<HttpRequest::Factory>(
                          new FakeHttpRequestFactory(&requests)),
                      &env);
-  string token;
-  uint64 expiration_timestamp;
+  std::string token;
+  uint64_t expiration_timestamp;
   TF_EXPECT_OK(client.GetTokenFromRefreshTokenJson(
       json, "https://www.googleapis.com/oauth2/v3/token", &token,
       &expiration_timestamp));
@@ -102,7 +102,7 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
   Json::Reader reader;
   ASSERT_TRUE(reader.parse(credentials, json));
 
-  string post_body;
+  std::string post_body;
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest("Uri: https://www.googleapis.com/oauth2/v3/token\n",
                            kTokenJson, &post_body)});
@@ -110,8 +110,8 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
   OAuthClient client(std::unique_ptr<HttpRequest::Factory>(
                          new FakeHttpRequestFactory(&requests)),
                      &env);
-  string token;
-  uint64 expiration_timestamp;
+  std::string token;
+  uint64_t expiration_timestamp;
   TF_EXPECT_OK(client.GetTokenFromServiceAccountJson(
       json, "https://www.googleapis.com/oauth2/v3/token",
       "https://test-token-scope.com", &token, &expiration_timestamp));
@@ -131,15 +131,15 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
             grant_type);
 
   int last_dot = assertion.rfind('.');
-  string header_dot_claim(assertion.substr(0, last_dot));
-  string signature_encoded(assertion.substr(last_dot + 1));
+  std::string header_dot_claim(assertion.substr(0, last_dot));
+  std::string signature_encoded(assertion.substr(last_dot + 1));
 
   // Check that 'signature' signs 'header_dot_claim'.
 
   // Read the serialized public key.
   std::ifstream public_key_stream(
       io::JoinPath(TestData(), "service_account_public_key.txt"));
-  string public_key_serialized(
+  std::string public_key_serialized(
       (std::istreambuf_iterator<char>(public_key_stream)),
       (std::istreambuf_iterator<char>()));
 
@@ -152,7 +152,7 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
   EXPECT_TRUE(public_key) << "Could not load the public key from testdata.";
 
   // Deserialize the signature.
-  string signature;
+  std::string signature;
   TF_EXPECT_OK(Base64Decode(signature_encoded, &signature));
 
   // Actually cryptographically verify the signature.
@@ -178,10 +178,10 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
 
   // Now check the content of the header and the claim.
   int dot = header_dot_claim.find_last_of('.');
-  string header_encoded = header_dot_claim.substr(0, dot);
-  string claim_encoded = header_dot_claim.substr(dot + 1);
+  std::string header_encoded = header_dot_claim.substr(0, dot);
+  std::string claim_encoded = header_dot_claim.substr(dot + 1);
 
-  string header, claim;
+  std::string header, claim;
   TF_EXPECT_OK(Base64Decode(header_encoded, &header));
   TF_EXPECT_OK(Base64Decode(claim_encoded, &claim));
 

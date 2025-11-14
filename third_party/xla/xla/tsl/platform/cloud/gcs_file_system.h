@@ -65,7 +65,7 @@ constexpr size_t kDefaultMaxCacheSize = 0;
 // contents. Once any block of a file reaches this staleness, all cached blocks
 // will be evicted on the next read.
 constexpr char kMaxStaleness[] = "GCS_READ_CACHE_MAX_STALENESS";
-constexpr uint64 kDefaultMaxStaleness = 0;
+constexpr uint64_t kDefaultMaxStaleness = 0;
 
 // Helper function to extract an environment variable and convert it into a
 // value of type T.
@@ -110,11 +110,12 @@ class GcsStatsInterface {
 
   /// RecordBlockLoadRequest is called to record a block load request is about
   /// to be made.
-  virtual void RecordBlockLoadRequest(const string& file, size_t offset) = 0;
+  virtual void RecordBlockLoadRequest(const std::string& file,
+                                      size_t offset) = 0;
 
   /// RecordBlockRetrieved is called once a block within the file has been
   /// retrieved.
-  virtual void RecordBlockRetrieved(const string& file, size_t offset,
+  virtual void RecordBlockRetrieved(const std::string& file, size_t offset,
                                     size_t bytes_transferred) = 0;
 
   // RecordStatObjectRequest is called once a statting object request over GCS
@@ -150,68 +151,71 @@ class GcsFileSystem : public FileSystem {
       : GcsFileSystem(true, cache_options) {}
   // Used mostly for unit testing or use cases which need to customize the
   // filesystem from defaults
-  GcsFileSystem(std::unique_ptr<AuthProvider> auth_provider,
-                std::unique_ptr<HttpRequest::Factory> http_request_factory,
-                std::unique_ptr<ZoneProvider> zone_provider, size_t block_size,
-                size_t max_bytes, uint64 max_staleness,
-                uint64 stat_cache_max_age, size_t stat_cache_max_entries,
-                uint64 matching_paths_cache_max_age,
-                size_t matching_paths_cache_max_entries,
-                RetryConfig retry_config, TimeoutConfig timeouts,
-                const std::unordered_set<string>& allowed_locations,
-                std::pair<const string, const string>* additional_header,
-                bool compose_append);
+  GcsFileSystem(
+      std::unique_ptr<AuthProvider> auth_provider,
+      std::unique_ptr<HttpRequest::Factory> http_request_factory,
+      std::unique_ptr<ZoneProvider> zone_provider, size_t block_size,
+      size_t max_bytes, uint64_t max_staleness, uint64_t stat_cache_max_age,
+      size_t stat_cache_max_entries, uint64_t matching_paths_cache_max_age,
+      size_t matching_paths_cache_max_entries, RetryConfig retry_config,
+      TimeoutConfig timeouts,
+      const std::unordered_set<std::string>& allowed_locations,
+      std::pair<const std::string, const std::string>* additional_header,
+      bool compose_append);
 
   TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
   absl::Status NewRandomAccessFile(
-      const string& fname, TransactionToken* token,
+      const std::string& fname, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override;
 
-  absl::Status NewWritableFile(const string& fname, TransactionToken* token,
+  absl::Status NewWritableFile(const std::string& fname,
+                               TransactionToken* token,
                                std::unique_ptr<WritableFile>* result) override;
 
   absl::Status NewAppendableFile(
-      const string& fname, TransactionToken* token,
+      const std::string& fname, TransactionToken* token,
       std::unique_ptr<WritableFile>* result) override;
 
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, TransactionToken* token,
+      const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  absl::Status FileExists(const string& fname,
+  absl::Status FileExists(const std::string& fname,
                           TransactionToken* token) override;
 
-  absl::Status Stat(const string& fname, TransactionToken* token,
+  absl::Status Stat(const std::string& fname, TransactionToken* token,
                     FileStatistics* stat) override;
 
-  absl::Status GetChildren(const string& dir, TransactionToken* token,
-                           std::vector<string>* result) override;
+  absl::Status GetChildren(const std::string& dir, TransactionToken* token,
+                           std::vector<std::string>* result) override;
 
-  absl::Status GetMatchingPaths(const string& pattern, TransactionToken* token,
-                                std::vector<string>* results) override;
+  absl::Status GetMatchingPaths(const std::string& pattern,
+                                TransactionToken* token,
+                                std::vector<std::string>* results) override;
 
-  absl::Status DeleteFile(const string& fname,
+  absl::Status DeleteFile(const std::string& fname,
                           TransactionToken* token) override;
 
-  absl::Status CreateDir(const string& dirname,
+  absl::Status CreateDir(const std::string& dirname,
                          TransactionToken* token) override;
 
-  absl::Status DeleteDir(const string& dirname,
+  absl::Status DeleteDir(const std::string& dirname,
                          TransactionToken* token) override;
 
-  absl::Status GetFileSize(const string& fname, TransactionToken* token,
-                           uint64* file_size) override;
+  absl::Status GetFileSize(const std::string& fname, TransactionToken* token,
+                           uint64_t* file_size) override;
 
-  absl::Status IsBucketHnsEnabled(const string& bucket, bool* is_hns);
+  absl::Status IsBucketHnsEnabled(const std::string& bucket, bool* is_hns);
 
-  absl::Status RenameFile(const string& src, const string& target,
+  absl::Status RenameFile(const std::string& src, const std::string& target,
                           TransactionToken* token) override;
 
-  absl::Status IsDirectory(const string& fname,
+  absl::Status IsDirectory(const std::string& fname,
                            TransactionToken* token) override;
 
-  absl::Status DeleteRecursively(const string& dirname, TransactionToken* token,
+  absl::Status DeleteRecursively(const std::string& dirname,
+                                 TransactionToken* token,
                                  int64_t* undeleted_files,
                                  int64_t* undeleted_dirs) override;
 
@@ -233,27 +237,27 @@ class GcsFileSystem : public FileSystem {
     absl::ReaderMutexLock l(block_cache_lock_);
     return file_block_cache_->max_bytes();
   }
-  uint64 max_staleness() {
+  uint64_t max_staleness() {
     absl::ReaderMutexLock l(block_cache_lock_);
     return file_block_cache_->max_staleness();
   }
   TimeoutConfig timeouts() const { return timeouts_; }
-  std::unordered_set<string> allowed_locations() const {
+  std::unordered_set<std::string> allowed_locations() const {
     return allowed_locations_;
   }
 
   bool compose_append() const { return compose_append_; }
-  string additional_header_name() const {
+  std::string additional_header_name() const {
     return additional_header_ ? additional_header_->first : "";
   }
-  string additional_header_value() const {
+  std::string additional_header_value() const {
     return additional_header_ ? additional_header_->second : "";
   }
 
-  uint64 stat_cache_max_age() const { return stat_cache_->max_age(); }
+  uint64_t stat_cache_max_age() const { return stat_cache_->max_age(); }
   size_t stat_cache_max_entries() const { return stat_cache_->max_entries(); }
 
-  uint64 matching_paths_cache_max_age() const {
+  uint64_t matching_paths_cache_max_age() const {
     return matching_paths_cache_->max_age();
   }
   size_t matching_paths_cache_max_entries() const {
@@ -267,27 +271,27 @@ class GcsFileSystem : public FileSystem {
   struct TimeoutConfig {
     // The request connection timeout. If a connection cannot be established
     // within `connect` seconds, abort the request.
-    uint32 connect = 120;  // 2 minutes
+    uint32_t connect = 120;  // 2 minutes
 
     // The request idle timeout. If a request has seen no activity in `idle`
     // seconds, abort the request.
-    uint32 idle = 60;  // 1 minute
+    uint32_t idle = 60;  // 1 minute
 
     // The maximum total time a metadata request can take. If a request has not
     // completed within `metadata` seconds, the request is aborted.
-    uint32 metadata = 3600;  // 1 hour
+    uint32_t metadata = 3600;  // 1 hour
 
     // The maximum total time a block read request can take. If a request has
     // not completed within `read` seconds, the request is aborted.
-    uint32 read = 3600;  // 1 hour
+    uint32_t read = 3600;  // 1 hour
 
     // The maximum total time an upload request can take. If a request has not
     // completed within `write` seconds, the request is aborted.
-    uint32 write = 3600;  // 1 hour
+    uint32_t write = 3600;  // 1 hour
 
     TimeoutConfig() {}
-    TimeoutConfig(uint32 connect, uint32 idle, uint32 metadata, uint32 read,
-                  uint32 write)
+    TimeoutConfig(uint32_t connect, uint32_t idle, uint32_t metadata,
+                  uint32_t read, uint32_t write)
         : connect(connect),
           idle(idle),
           metadata(metadata),
@@ -310,29 +314,29 @@ class GcsFileSystem : public FileSystem {
   /// Note: the existing block cache is not cleaned up until all existing files
   /// have been closed.
   void ResetFileBlockCache(size_t block_size_bytes, size_t max_bytes,
-                           uint64 max_staleness_secs);
+                           uint64_t max_staleness_secs);
 
  protected:
   virtual std::unique_ptr<FileBlockCache> MakeFileBlockCache(
-      size_t block_size, size_t max_bytes, uint64 max_staleness);
+      size_t block_size, size_t max_bytes, uint64_t max_staleness);
 
   /// Loads file contents from GCS for a given filename, offset, and length.
-  virtual absl::Status LoadBufferFromGCS(const string& fname, size_t offset,
-                                         size_t n, char* buffer,
+  virtual absl::Status LoadBufferFromGCS(const std::string& fname,
+                                         size_t offset, size_t n, char* buffer,
                                          size_t* bytes_transferred);
 
   // Creates an upload session for an upcoming GCS object upload.
   virtual absl::Status CreateNewUploadSession(
-      uint64 start_offset, const std::string& object_to_upload,
-      const std::string& bucket, uint64 file_size, const std::string& gcs_path,
-      UploadSessionHandle* session_handle);
+      uint64_t start_offset, const std::string& object_to_upload,
+      const std::string& bucket, uint64_t file_size,
+      const std::string& gcs_path, UploadSessionHandle* session_handle);
 
   // Uploads object data to session.
   virtual absl::Status UploadToSession(const std::string& session_uri,
-                                       uint64 start_offset,
-                                       uint64 already_uploaded,
+                                       uint64_t start_offset,
+                                       uint64_t already_uploaded,
                                        const std::string& tmp_content_filename,
-                                       uint64 file_size,
+                                       uint64_t file_size,
                                        const std::string& file_path);
 
   /// \brief Requests status of a previously initiated upload session.
@@ -340,15 +344,13 @@ class GcsFileSystem : public FileSystem {
   /// If the upload has already succeeded, sets 'completed' to true.
   /// Otherwise sets 'completed' to false and 'uploaded' to the currently
   /// uploaded size in bytes.
-  virtual absl::Status RequestUploadSessionStatus(const string& session_uri,
-                                                  uint64 file_size,
-                                                  const std::string& gcs_path,
-                                                  bool* completed,
-                                                  uint64* uploaded);
+  virtual absl::Status RequestUploadSessionStatus(
+      const std::string& session_uri, uint64_t file_size,
+      const std::string& gcs_path, bool* completed, uint64_t* uploaded);
 
-  absl::Status ParseGcsPathForScheme(absl::string_view fname, string scheme,
-                                     bool empty_object_ok, string* bucket,
-                                     string* object);
+  absl::Status ParseGcsPathForScheme(absl::string_view fname,
+                                     std::string scheme, bool empty_object_ok,
+                                     std::string* bucket, std::string* object);
 
   /// \brief Splits a GCS path to a bucket and an object.
   ///
@@ -357,8 +359,8 @@ class GcsFileSystem : public FileSystem {
   /// If fname only contains the bucket and empty_object_ok = true, the returned
   /// object is empty.
   virtual absl::Status ParseGcsPath(absl::string_view fname,
-                                    bool empty_object_ok, string* bucket,
-                                    string* object);
+                                    bool empty_object_ok, std::string* bucket,
+                                    std::string* object);
 
   std::shared_ptr<ComputeEngineMetadataClient> compute_engine_metadata_client_;
 
@@ -378,7 +380,7 @@ class GcsFileSystem : public FileSystem {
   /// \brief Checks if the bucket exists. Returns OK if the check succeeded.
   ///
   /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
-  absl::Status BucketExists(const string& bucket, bool* result);
+  absl::Status BucketExists(const std::string& bucket, bool* result);
 
   /// \brief Retrieves the GCS bucket location. Returns OK if the location was
   /// retrieved.
@@ -389,21 +391,22 @@ class GcsFileSystem : public FileSystem {
   /// This requires the bucket metadata permission.
   /// Repeated calls for the same bucket are cached so this function can be
   /// called frequently without causing an extra API call
-  absl::Status GetBucketLocation(const string& bucket, string* location);
+  absl::Status GetBucketLocation(const std::string& bucket,
+                                 std::string* location);
 
   /// \brief Check if the GCS buckets location is allowed with the current
   /// constraint configuration
-  absl::Status CheckBucketLocationConstraint(const string& bucket);
+  absl::Status CheckBucketLocationConstraint(const std::string& bucket);
 
   /// \brief Given the input bucket `bucket`, fills `result_buffer` with the
   /// results of the metadata. Returns OK if the API call succeeds without
   /// error.
-  absl::Status GetBucketMetadata(const string& bucket,
+  absl::Status GetBucketMetadata(const std::string& bucket,
                                  std::vector<char>* result_buffer);
 
   /// \brief Retrieves the `storageLayout` metadata for a given GCS bucket.
   /// The raw JSON response is stored in `result_buffer`.
-  absl::Status GetStorageLayout(const string& bucket,
+  absl::Status GetStorageLayout(const std::string& bucket,
                                 std::vector<char>* result_buffer);
 
   /// \brief Parses the `storageLayout` JSON to determine if HNS is enabled.
@@ -413,18 +416,19 @@ class GcsFileSystem : public FileSystem {
 
   /// \brief Renames a folder on an HNS-enabled bucket using a fast, server-side
   /// GCS API. This function polls the long-running operation for completion.
-  absl::Status RenameFolderHns(const string& src, const string& target);
+  absl::Status RenameFolderHns(const std::string& src,
+                               const std::string& target);
 
   /// \brief Checks if the object exists. Returns OK if the check succeeded.
   ///
   /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
-  absl::Status ObjectExists(const string& fname, const string& bucket,
-                            const string& object, bool* result);
+  absl::Status ObjectExists(const std::string& fname, const std::string& bucket,
+                            const std::string& object, bool* result);
 
   /// \brief Checks if the folder exists. Returns OK if the check succeeded.
   ///
   /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
-  absl::Status FolderExists(const string& dirname, bool* result);
+  absl::Status FolderExists(const std::string& dirname, bool* result);
 
   /// \brief Internal version of GetChildren with more knobs.
   ///
@@ -434,22 +438,26 @@ class GcsFileSystem : public FileSystem {
   /// If 'include_self_directory_marker' is true and there is a GCS directory
   /// marker at the path 'dir', GetChildrenBound will return an empty string
   /// as one of the children that represents this marker.
-  absl::Status GetChildrenBounded(const string& dir, uint64 max_results,
-                                  std::vector<string>* result, bool recursively,
+  absl::Status GetChildrenBounded(const std::string& dir, uint64_t max_results,
+                                  std::vector<std::string>* result,
+                                  bool recursively,
                                   bool include_self_directory_marker);
 
   /// Retrieves file statistics assuming fname points to a GCS object. The data
   /// may be read from cache or from GCS directly.
-  absl::Status StatForObject(const string& fname, const string& bucket,
-                             const string& object, GcsFileStat* stat);
+  absl::Status StatForObject(const std::string& fname,
+                             const std::string& bucket,
+                             const std::string& object, GcsFileStat* stat);
   /// Retrieves file statistics of file fname directly from GCS.
-  absl::Status UncachedStatForObject(const string& fname, const string& bucket,
-                                     const string& object, GcsFileStat* stat);
+  absl::Status UncachedStatForObject(const std::string& fname,
+                                     const std::string& bucket,
+                                     const std::string& object,
+                                     GcsFileStat* stat);
 
-  absl::Status RenameObject(const string& src, const string& target);
+  absl::Status RenameObject(const std::string& src, const std::string& target);
 
   // Clear all the caches related to the file with name `filename`.
-  void ClearFileCaches(const string& fname);
+  void ClearFileCaches(const std::string& fname);
 
   absl::Mutex mu_;
   std::unique_ptr<AuthProvider> auth_provider_ TF_GUARDED_BY(mu_);
@@ -457,7 +465,7 @@ class GcsFileSystem : public FileSystem {
   std::unique_ptr<ZoneProvider> zone_provider_;
 
   // Reads smaller than block_size_ will trigger a read of block_size_.
-  uint64 block_size_;
+  uint64_t block_size_;
 
   // block_cache_lock_ protects the file_block_cache_ pointer (Note that
   // FileBlockCache instances are themselves threadsafe).
@@ -472,22 +480,23 @@ class GcsFileSystem : public FileSystem {
   using StatCache = ExpiringLRUCache<GcsFileStat>;
   std::unique_ptr<StatCache> stat_cache_;
 
-  using MatchingPathsCache = ExpiringLRUCache<std::vector<string>>;
+  using MatchingPathsCache = ExpiringLRUCache<std::vector<std::string>>;
   std::unique_ptr<MatchingPathsCache> matching_paths_cache_;
 
-  using BucketLocationCache = ExpiringLRUCache<string>;
+  using BucketLocationCache = ExpiringLRUCache<std::string>;
   std::unique_ptr<BucketLocationCache> bucket_location_cache_;
 
   using StorageLayoutCache = ExpiringLRUCache<Json::Value>;
   std::unique_ptr<StorageLayoutCache> storage_layout_cache_;
 
-  std::unordered_set<string> allowed_locations_;
+  std::unordered_set<std::string> allowed_locations_;
   bool compose_append_;
 
   GcsStatsInterface* stats_ = nullptr;  // Not owned.
 
   // Additional header material to be transmitted with all GCS requests
-  std::unique_ptr<std::pair<const string, const string>> additional_header_;
+  std::unique_ptr<std::pair<const std::string, const std::string>>
+      additional_header_;
 
   GcsFileSystem(const GcsFileSystem&) = delete;
   void operator=(const GcsFileSystem&) = delete;

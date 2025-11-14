@@ -31,7 +31,7 @@ class ComputeEngineMetadataClientTest : public ::testing::Test {
 };
 
 TEST_F(ComputeEngineMetadataClientTest, GetMetadata) {
-  const string example_response = "example response";
+  const std::string example_response = "example response";
 
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: http://metadata.google.internal/computeMetadata/v1/instance"
@@ -52,7 +52,7 @@ TEST_F(ComputeEngineMetadataClientTest, GetMetadata) {
 }
 
 TEST_F(ComputeEngineMetadataClientTest, GetCustomMetadataEndpoint) {
-  const string example_response = "example response";
+  const std::string example_response = "example response";
   setenv("GCE_METADATA_HOST", "foo.bar", 1);
 
   std::vector<HttpRequest*> requests(
@@ -74,7 +74,7 @@ TEST_F(ComputeEngineMetadataClientTest, GetCustomMetadataEndpoint) {
 }
 
 TEST_F(ComputeEngineMetadataClientTest, RetryOnFailure) {
-  const string example_response = "example response";
+  const std::string example_response = "example response";
 
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
