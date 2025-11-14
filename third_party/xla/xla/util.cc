@@ -286,7 +286,7 @@ std::string HumanReadableNumOps(double flops, double nanoseconds,
       absl::EndsWith(sp, "b")) {
     *throughput.rbegin() = 'G';
   }
-  throughput += absl::StrCat(op_prefix, "OP/s");
+  absl::StrAppend(&throughput, op_prefix, "OP/s");
   return throughput;
 }
 
