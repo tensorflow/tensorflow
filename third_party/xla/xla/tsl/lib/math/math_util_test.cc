@@ -61,9 +61,9 @@ void TestCeilOfRatio(const TestDataType test_data[][kNumTestArguments],
 }
 
 template <typename UnsignedIntegralType>
-void TestCeilOfRatioUnsigned(uint64 kMax) {
+void TestCeilOfRatioUnsigned(uint64_t kMax) {
   const int kNumTests = 12;
-  const uint64 kTestData[kNumTests][kNumTestArguments] = {
+  const uint64_t kTestData[kNumTests][kNumTestArguments] = {
       // Numerator  | Denominator | Expected floor of ratio | Expected ceil of
       // ratio |
       // When numerator = 0, the result is always zero
@@ -84,7 +84,7 @@ void TestCeilOfRatioUnsigned(uint64 kMax) {
       // Try with a huge numerator and a huge denominator
       {kMax, kMax, 1, 1},
   };
-  TestCeilOfRatio<UnsignedIntegralType, uint64>(kTestData, kNumTests);
+  TestCeilOfRatio<UnsignedIntegralType, uint64_t>(kTestData, kNumTests);
 }
 
 template <typename SignedInteger>
@@ -226,15 +226,15 @@ TEST(MathUtil, GCD) {
   });
 
   for (const auto& tc : testcases) {
-    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint32>(tc.x, tc.y));
-    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint32>(tc.y, tc.x));
-    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint64>(tc.x, tc.y));
-    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint64>(tc.y, tc.x));
+    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint32_t>(tc.x, tc.y));
+    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint32_t>(tc.y, tc.x));
+    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint64_t>(tc.x, tc.y));
+    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint64_t>(tc.y, tc.x));
   }
 
-  const uint64 biggish_prime = 1666666667;
+  const uint64_t biggish_prime = 1666666667;
   EXPECT_EQ(biggish_prime,
-            tsl::MathUtil::GCD<uint64>(biggish_prime * 3, biggish_prime * 4));
+            tsl::MathUtil::GCD<uint64_t>(biggish_prime * 3, biggish_prime * 4));
 }
 
 template <typename T>
