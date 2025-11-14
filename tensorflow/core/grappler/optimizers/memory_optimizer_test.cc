@@ -217,7 +217,7 @@ class MemoryOptimizerTest : public GrapplerTest {
     gpu_device.set_bandwidth(128);
     gpu_device.set_memory_size(1024 * 1024);
     gpu_device.mutable_environment()->insert({"architecture", "6"});
-    std::unordered_map<string, DeviceProperties> devices;
+    std::unordered_map<std::string, DeviceProperties> devices;
     devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
     devices["/job:localhost/replica:0/task:0/gpu:0"] = gpu_device;
     return std::unique_ptr<VirtualCluster>(new VirtualCluster(devices));
@@ -433,7 +433,7 @@ TEST_F(MemoryOptimizerTest, AccumulationRewrites) {
   }
   EXPECT_EQ(4, count);
 
-  std::vector<string> fetch = {"a", "b", "c", "e"};
+  std::vector<std::string> fetch = {"a", "b", "c", "e"};
   auto tensors = EvaluateNodes(output, fetch, {});
   EXPECT_EQ(4, tensors.size());
 
