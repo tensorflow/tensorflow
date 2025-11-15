@@ -45,7 +45,9 @@ if [[ -n "${TF_ANY_EXTRA_ENV:-}" ]]; then
   export TFCI="$TFCI,$TF_ANY_EXTRA_ENV"
 fi
 if [[ -n "${TF_ANY_SCRIPT:-}" ]]; then
-  "$TF_ANY_SCRIPT"
+  # To run ROCM tests inside docker
+  source "${BASH_SOURCE%/*}/utilities/setup.sh"
+  tfrun "$TF_ANY_SCRIPT"
 elif [[ -n "${TF_ANY_TARGETS:-}" ]]; then
   source "${BASH_SOURCE%/*}/utilities/setup.sh"
   tfrun bazel "${TF_ANY_MODE:-test}" $TFCI_BAZEL_COMMON_ARGS $TF_ANY_TARGETS

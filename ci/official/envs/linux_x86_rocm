@@ -1,0 +1,29 @@
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+source ci/official/envs/linux_x86
+# Using image rocm/tensorflow-build:latest-jammy-pythonall-rocm7.0.2-ci_official
+TFCI_DOCKER_IMAGE="rocm/tensorflow-build@sha256:abd4ae15bab1292ba5cb6f7feab43e167b34963f991fc911478e9de65d54b1a3"
+TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION --repo_env=USE_PYWRAP_RULES=True --config rocm"
+TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG="--repo_env=WHEEL_NAME=tensorflow"
+TFCI_DOCKER_ARGS="--device /dev/dri --device /dev/kfd     --device=/dev/infiniband --network host --ipc host     --group-add video --cap-add SYS_PTRACE --security-opt     seccomp=unconfined --privileged  --shm-size 64G"
+TFCI_LIB_SUFFIX="-gpu-linux-x86_64"
+TFCI_ROCM_SMI_ENABLE=1
+TFCI_NVIDIA_SMI_ENABLE=0
+TFCI_BAZEL_CONFIG="rocm"
+TFCI_LIB_SUFFIX="-gpu-linux-x86_64"
+# TODO: Set back to 610M once the wheel size is fixed.
+TFCI_WHL_SIZE_LIMIT=630M
+TFCI_WHL_AUDIT_ENABLE=0
+TFCI_WHL_BAZEL_TEST_ENABLE=0
