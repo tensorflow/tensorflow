@@ -22,7 +22,6 @@ import os
 from typing import Sequence
 
 from jax.jaxlib.xla_client import *  # pylint: disable=wildcard-import
-from jax.jaxlib.xla_client import _xla
 from jax.jaxlib.xla_client import PrimitiveType
 from jax.jaxlib.xla_client import Shape
 
@@ -31,10 +30,7 @@ import numpy as np
 
 
 from . import _ops as ops
-from . import _profiler as profiler
 
-from ._xla_builder import XlaBuilder
-from ._xla_builder import XlaOp
 
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {

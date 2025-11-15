@@ -27,7 +27,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import sparse_ops
-import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 

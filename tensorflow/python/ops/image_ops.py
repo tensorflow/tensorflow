@@ -161,8 +161,6 @@ from tensorflow.python.ops.image_ops_impl import *
 
 # TODO(drpng): remove these once internal use has discontinued.
 # pylint: disable=unused-import
-from tensorflow.python.ops.image_ops_impl import _Check3DImage
-from tensorflow.python.ops.image_ops_impl import _ImageDimensions
 # pylint: enable=unused-import
 
 _IMAGE_DTYPES = frozenset([

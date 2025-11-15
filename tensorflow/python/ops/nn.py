@@ -18,16 +18,8 @@
 
 See the [Neural network](https://tensorflow.org/api_guides/python/nn) guide.
 """
-import sys as _sys
 
 # pylint: disable=unused-import
-from tensorflow.python.ops import ctc_ops as _ctc_ops
-from tensorflow.python.ops import embedding_ops as _embedding_ops
-from tensorflow.python.ops import nn_grad as _nn_grad
-from tensorflow.python.ops import nn_fused_batch_norm_grad as _nn_fused_batch_norm_grad
-from tensorflow.python.ops import nn_ops as _nn_ops
-from tensorflow.python.ops.math_ops import sigmoid
-from tensorflow.python.ops.math_ops import tanh
 # pylint: enable=unused-import
 
 # Bring more nn-associated functionality into this package.

@@ -16,6 +16,5 @@
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,unused-import
-from tensorflow.python.ops.distributions.bijector_impl import Bijector
 
 # pylint: enable=wildcard-import,unused-import

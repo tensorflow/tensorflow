@@ -15,30 +15,4 @@
 """Signal processing operations."""
 
 # pylint: disable=unused-import
-from tensorflow.python.ops import signal
-from tensorflow.python.ops.signal.dct_ops import dct
-from tensorflow.python.ops.signal.fft_ops import fft
-from tensorflow.python.ops.signal.fft_ops import fft2d
-from tensorflow.python.ops.signal.fft_ops import fft3d
-from tensorflow.python.ops.signal.fft_ops import fftshift
-from tensorflow.python.ops.signal.fft_ops import rfft
-from tensorflow.python.ops.signal.fft_ops import rfft2d
-from tensorflow.python.ops.signal.fft_ops import rfft3d
-from tensorflow.python.ops.signal.dct_ops import idct
-from tensorflow.python.ops.signal.fft_ops import ifft
-from tensorflow.python.ops.signal.fft_ops import ifft2d
-from tensorflow.python.ops.signal.fft_ops import ifft3d
-from tensorflow.python.ops.signal.fft_ops import ifftshift
-from tensorflow.python.ops.signal.fft_ops import irfft
-from tensorflow.python.ops.signal.fft_ops import irfft2d
-from tensorflow.python.ops.signal.fft_ops import irfft3d
-from tensorflow.python.ops.signal.mel_ops import linear_to_mel_weight_matrix
-from tensorflow.python.ops.signal.mfcc_ops import mfccs_from_log_mel_spectrograms
-from tensorflow.python.ops.signal.reconstruction_ops import overlap_and_add
-from tensorflow.python.ops.signal.shape_ops import frame
-from tensorflow.python.ops.signal.spectral_ops import inverse_stft
-from tensorflow.python.ops.signal.spectral_ops import inverse_stft_window_fn
-from tensorflow.python.ops.signal.spectral_ops import stft
-from tensorflow.python.ops.signal.window_ops import hamming_window
-from tensorflow.python.ops.signal.window_ops import hann_window
 # pylint: enable=unused-import

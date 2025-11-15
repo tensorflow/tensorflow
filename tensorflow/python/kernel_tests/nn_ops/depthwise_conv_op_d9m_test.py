@@ -23,8 +23,6 @@ from tensorflow.python.kernel_tests.nn_ops import depthwise_conv_op_base
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import random_ops
 # The following imports are required to register the gradient functions.
-from tensorflow.python.ops.nn_grad import _DepthwiseConv2dNativeBackpropFilterGrad  # pylint: disable=unused-import
-from tensorflow.python.ops.nn_grad import _DepthwiseConv2dNativeBackpropInputGrad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 

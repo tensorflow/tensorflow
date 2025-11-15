@@ -66,23 +66,19 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop as while_loop_tf
-from tensorflow.python.ops import while_v2  # pylint: disable=unused-import
 # pylint: disable=unused-import
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-import tensorflow.python.ops.tensor_array_grad
 # pylint: enable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam

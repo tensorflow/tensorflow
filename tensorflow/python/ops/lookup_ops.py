@@ -31,7 +31,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_lookup_ops
 # Ensure lookup gradients are registered
-from tensorflow.python.ops import lookup_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 # go/tf-wildcard-import

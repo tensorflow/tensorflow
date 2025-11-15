@@ -14,9 +14,7 @@
 # ==============================================================================
 """Tests for `tf.data.experimental.parallel_interleave()`."""
 import itertools
-import math
 import threading
-import time
 
 from absl.testing import parameterized
 import numpy as np

@@ -15,7 +15,6 @@
 """Code to enable/disable feature flags."""
 
 # pylint: disable=invalid-import-order, g-bad-import-order, unused-import
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import flags_pybind
 
 

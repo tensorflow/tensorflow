@@ -187,9 +187,9 @@ def embedding_lookup_sparse(
   if not ignore_weights:
     if not isinstance(rt_weights, ragged_tensor.RaggedTensor):
       raise TypeError(
-          f"sp_ids must be of the same type as sp_weights, "
-          f"received {{type(sp_ids).__name__!r}} for sp_ids and "
-          f"{{type(sp_weights).__name__!r}} for sp_weights."
+          "sp_ids must be of the same type as sp_weights, "
+          "received {type(sp_ids).__name__!r} for sp_ids and "
+          "{type(sp_weights).__name__!r} for sp_weights."
       )
     rt_ids.values.get_shape().assert_is_compatible_with(
         rt_weights.values.get_shape()

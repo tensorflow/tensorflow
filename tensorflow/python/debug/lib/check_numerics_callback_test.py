@@ -27,11 +27,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker_v2
-from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest

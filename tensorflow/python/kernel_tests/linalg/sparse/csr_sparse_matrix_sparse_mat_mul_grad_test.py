@@ -23,7 +23,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.linalg.sparse import sparse_csr_matrix_grad  # pylint: disable=unused-import
 from tensorflow.python.ops.linalg.sparse import sparse_csr_matrix_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging

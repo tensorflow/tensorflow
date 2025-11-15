@@ -31,8 +31,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
-import tensorflow.python.ops.data_flow_grad  # pylint: disable=unused-import
-import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 NAN = float('nan')

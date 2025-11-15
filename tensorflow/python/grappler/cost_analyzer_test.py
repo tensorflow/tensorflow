@@ -24,7 +24,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import cost_analyzer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables

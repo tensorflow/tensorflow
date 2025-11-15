@@ -35,7 +35,6 @@ from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.ops.ragged.dynamic_ragged_shape import DynamicRaggedShape
 
 # TODO(b/173144447): remove when structured_array_ops is included in init.
-from tensorflow.python.ops.structured import structured_array_ops  # pylint: disable=unused-import
 
 from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.ops.structured import structured_tensor_dynamic

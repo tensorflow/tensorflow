@@ -37,7 +37,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops import weak_tensor_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import weak_tensor_test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import googletest

@@ -143,7 +143,7 @@ class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
       if b:
         try:
           pass
-        except TestException as e:  # pylint:disable=undefined-variable,unused-variable
+        except TestException:  # pylint:disable=undefined-variable,unused-variable
           if b:
             a = []
       return a

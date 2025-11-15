@@ -31,7 +31,6 @@ from tensorflow.python.framework.experimental import nn_ops as unified_nn_ops
 from tensorflow.python.framework.experimental import tape as tape_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test

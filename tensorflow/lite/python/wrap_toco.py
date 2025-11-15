@@ -15,7 +15,6 @@
 """Wraps toco interface with python lazy loader."""
 # We need to import pywrap_tensorflow prior to the toco wrapper.
 # pylint: disable=invalid-import-order,g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import _pywrap_toco_api
 
 

@@ -16,14 +16,12 @@
 
 # pylint: disable=unused-import
 import doctest
-import inspect
 import pickle
 import types
 
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import lazy_loader
-from tensorflow.python.util import tf_inspect
 
 
 class LazyLoaderTest(test.TestCase):

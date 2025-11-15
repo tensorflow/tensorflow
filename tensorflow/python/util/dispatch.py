@@ -61,7 +61,6 @@ dispatch support using the `add_dispatch_support` decorator.
 
 import collections
 import itertools
-import typing  # pylint: disable=unused-import (used in doctests)
 
 from tensorflow.python.framework import _pywrap_python_api_dispatcher as _api_dispatcher
 from tensorflow.python.framework import ops

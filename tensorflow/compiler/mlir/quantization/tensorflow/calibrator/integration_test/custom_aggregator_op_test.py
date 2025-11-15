@@ -14,11 +14,9 @@
 # ==============================================================================
 """Tests for Custom Aggregator op."""
 
-import tensorflow  # pylint: disable=unused-import
 
 from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as stablehlo_quant_config_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import custom_aggregator_op_wrapper
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops

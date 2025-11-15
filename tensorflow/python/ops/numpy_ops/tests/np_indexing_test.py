@@ -18,7 +18,6 @@ import collections
 import enum
 from functools import partial
 import itertools
-import unittest
 
 from absl.testing import absltest
 from absl.testing import parameterized

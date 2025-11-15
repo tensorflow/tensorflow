@@ -1299,7 +1299,7 @@ class Saver:
               latest_filename=latest_filename,
               save_relative_paths=self._save_relative_paths)
           self._MaybeDeleteOldCheckpoints(meta_graph_suffix=meta_graph_suffix)
-      except (errors.FailedPreconditionError, errors.NotFoundError) as exc:
+      except (errors.FailedPreconditionError, errors.NotFoundError):
         if not gfile.IsDirectory(save_path_parent):
           exc = ValueError(
               "Parent directory of {} doesn't exist, can't save.".format(

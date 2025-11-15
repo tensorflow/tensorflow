@@ -23,7 +23,6 @@ from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_config
 # Ensure parsing_ops gradients are registered
-from tensorflow.python.ops import parsing_grad  # pylint: disable=unused-import
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_parsing_ops import *

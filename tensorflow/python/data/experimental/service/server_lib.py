@@ -19,7 +19,6 @@ from typing import Iterable
 
 # pylint: disable=invalid-import-order,g-bad-import-order, unused-import
 from tensorflow.core.protobuf import service_config_pb2
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.data.experimental.service import _pywrap_utils_exp
 from tensorflow.python.util.tf_export import tf_export

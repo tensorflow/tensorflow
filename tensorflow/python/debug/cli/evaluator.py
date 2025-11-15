@@ -15,7 +15,6 @@
 """Library for arbitrary expression evaluation based on a debugger data dump."""
 import re
 
-import numpy as np  # pylint: disable=unused-import
 
 from tensorflow.python.debug.lib import debug_data
 

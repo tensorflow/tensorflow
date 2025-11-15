@@ -530,7 +530,7 @@ def _ExtractInputsAndAttrs(op_type_name, op_def, allowed_list_attr_map,
           try:
             inferred = ops.convert_to_tensor(
                 values, name=input_arg.name, as_ref=input_arg.is_ref)
-          except TypeError as err:
+          except TypeError:
             # When converting a python object such as a list of Dimensions, we
             # need a dtype to be specified, thus tensor conversion may throw
             # an exception which we will ignore and try again below.

@@ -60,7 +60,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import save_context
-from tensorflow.python.tpu import device_assignment as device_assignment_lib  # pylint: disable=unused-import
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_hardware_feature
 from tensorflow.python.tpu import training_loop

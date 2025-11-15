@@ -26,7 +26,6 @@ from tensorflow.python.kernel_tests.nn_ops import xent_op_test_base
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import nn_ops
 # The following import is required to register the gradient function.
-from tensorflow.python.ops.nn_grad import _SoftmaxCrossEntropyWithLogitsGrad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 

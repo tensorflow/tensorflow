@@ -24,7 +24,6 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import nn_ops
-import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 

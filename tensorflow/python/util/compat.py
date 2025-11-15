@@ -46,7 +46,6 @@ API docstring: tensorflow.compat
 """
 
 import codecs
-import collections.abc as collections_abc  # pylint: disable=unused-import
 import numbers as _numbers
 
 import numpy as _np

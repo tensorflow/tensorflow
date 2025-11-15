@@ -28,7 +28,6 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging

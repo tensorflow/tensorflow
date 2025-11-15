@@ -16,9 +16,7 @@
 """Wrappers for candidate sampling operations."""
 
 from tensorflow.python.framework import random_seed
-from tensorflow.python.ops import array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_candidate_sampling_ops
-from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export

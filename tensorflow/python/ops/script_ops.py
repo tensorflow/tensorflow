@@ -18,7 +18,6 @@
 import functools
 import threading
 # Used by py_util.cc to get tracebacks.
-import traceback  # pylint: disable=unused-import
 import weakref
 
 import numpy as np
@@ -37,7 +36,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.lib.core import _pywrap_py_func
-from tensorflow.python.ops import autograph_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat

@@ -22,7 +22,6 @@ import sys as _sys
 import sysconfig
 
 # pylint: disable=g-bad-import-order,protected-access,g-import-not-at-top
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.platform import tf_logging as _logging
 from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
@@ -67,7 +66,7 @@ _current_module.compat.v2  # pylint: disable=pointless-statement
 # Load tensorflow-io-gcs-filesystem if enabled
 if (_os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "true" or
     _os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "1"):
-  import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
+  pass
 
 # Lazy-load Keras v1.
 _tf_uses_legacy_keras = (
@@ -138,7 +137,6 @@ del importlib
 # running under pip.
 # TODO(gunan): Find a better location for this code snippet.
 from tensorflow.python.framework import load_library as _ll
-from tensorflow.python.lib.io import file_io as _fi
 
 # Get sitepackages directories for the python installation.
 _site_packages_dirs = []

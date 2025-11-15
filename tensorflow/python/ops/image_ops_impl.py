@@ -40,7 +40,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import ref_variable  # pylint: disable=unused-import
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import string_ops

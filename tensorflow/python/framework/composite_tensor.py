@@ -16,7 +16,6 @@
 
 import abc
 
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
