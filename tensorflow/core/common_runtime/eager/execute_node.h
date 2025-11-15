@@ -24,6 +24,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
