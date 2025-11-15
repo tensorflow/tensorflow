@@ -61,10 +61,10 @@ struct OutOfRange {
 
 // Add additional logging for out of range inputs when running in debug mode.
 #ifndef NDEBUG
-VALIDATE_CAST(int32, float);
-VALIDATE_CAST(int64, float);
-VALIDATE_CAST(int32, double);
-VALIDATE_CAST(int64, double);
+VALIDATE_CAST(int32_t, float);
+VALIDATE_CAST(int64_t, float);
+VALIDATE_CAST(int32_t, double);
+VALIDATE_CAST(int64_t, double);
 #endif
 
 CAST_FUNCTORS(Eigen::ThreadPoolDevice);
