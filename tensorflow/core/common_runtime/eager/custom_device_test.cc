@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -25,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 

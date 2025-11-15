@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_PLACEMENT_UTILS_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_PLACEMENT_UTILS_H_
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/platform/status.h"
