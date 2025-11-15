@@ -20,7 +20,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/statusor.h"
-#include "xla/backends/cpu/runtime/convolution_lib.h"
+#include "xla/backends/cpu/runtime/convolution_dims.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"

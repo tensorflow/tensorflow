@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/conditional_thunk.h"
-#include "xla/backends/cpu/runtime/convolution_lib.h"
+#include "xla/backends/cpu/runtime/convolution_dims.h"
 #include "xla/backends/cpu/runtime/convolution_thunk.h"
 #include "xla/backends/cpu/runtime/copy_thunk.h"
 #include "xla/backends/cpu/runtime/custom_call_thunk.h"

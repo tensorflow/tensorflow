@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/runtime/convolution_lib.h"
+#include "xla/backends/cpu/runtime/convolution_dims.h"
 
 #include <cstddef>
 #include <cstdint>

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_LIB_H_
-#define XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_LIB_H_
+#ifndef XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_DIMS_H_
+#define XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_DIMS_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -125,4 +125,4 @@ void AbslStringify(Sink& sink, const ConvolutionCanonicalDims& d) {
 
 }  // namespace xla::cpu
 
-#endif  // XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_LIB_H_
+#endif  // XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_DIMS_H_
