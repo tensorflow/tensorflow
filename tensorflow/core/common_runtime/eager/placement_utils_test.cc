@@ -94,7 +94,7 @@ struct MaybePinSmallOpsToCpuTestCase {
   std::string test_name;
   DataType dtype;
   TensorShape shape;
-  string op_name;
+  std::string op_name;
   const char* device;
   bool expect;
 };
@@ -152,7 +152,7 @@ INSTANTIATE_TEST_SUITE_P(
 struct MaybePinToResourceDeviceTestCase {
   std::string test_name;
   DataType dtype;
-  string op_name;
+  std::string op_name;
   const char* device;
   bool expect;
 };
