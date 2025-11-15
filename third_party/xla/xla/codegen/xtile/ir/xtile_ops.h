@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"  // IWYU pragma: keep
+#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep
 #include "mlir/IR/Attributes.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinTypes.h"  // IWYU pragma: keep
@@ -36,6 +37,12 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_attrs.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/ir/xtile_dialect.h"  // IWYU pragma: keep
 #include "xla/hlo/analysis/indexing_map.h"  // IWYU pragma: keep
+
+// TODO(willfroom): DO NOT SUBMIT Wait until
+// https://github.com/llvm/llvm-project/pull/166781 is integrated and removes
+// these.
+using ::llvm::ArrayRef;
+using ::mlir::OpOperand;
 
 #define GET_OP_CLASSES
 #include "xla/codegen/xtile/ir/xtile_interface_ops.h.inc"  // IWYU pragma: keep

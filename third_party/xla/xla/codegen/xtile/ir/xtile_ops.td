@@ -15,7 +15,7 @@ limitations under the License.
 
 #ifndef XLA_CODEGEN_XTILE_IR_XTILE_OPS
 #define XLA_CODEGEN_XTILE_IR_XTILE_OPS
-
+include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
@@ -33,7 +33,14 @@ class XTile_Op<string mnemonic, list<Trait> traits = []> :
       Op<XTileDialect, mnemonic, traits> {
 }
 
-def TiledBufferInterface : OpInterface<"TiledBufferInterface"> {
+def TiledBufferInterface : OpInterface<"TiledBufferInterface",
+    [DeclareOpInterfaceMethods<BufferizableOpInterface,
+      ["bufferizesToMemoryRead",
+       "bufferizesToMemoryWrite",
+       "getAliasingValues",
+       "isWritable",
+       "bufferize"]>
+    ]> {
   let description = [{
 
   }];

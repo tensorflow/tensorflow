@@ -18,6 +18,9 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
@@ -29,6 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
@@ -72,6 +76,13 @@ int main(int argc, char** argv) {
   xla::cpu::registerXlaCpuTransformsPasses();
   xla::cpu::registerXTileCpuTransformsPasses();
   xla::xtile::registerXTileTransformsPasses();
+  mlir::bufferization::registerBufferizationPasses();
+
+  mlir::arith::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
+      registry);
+  mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
+
   mlir::registerPassPipeline(
       "xla-test-optimize",
       "Test pipeline of passes up to inlining. No vectorization, also does not "
