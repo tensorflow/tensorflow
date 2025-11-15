@@ -1963,9 +1963,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
       loc, &mlir_context,
       debug_options.xla_gpu_unsupported_annotate_with_emitter_loc());
 
-  mlir::OwningOpRef<mlir::ModuleOp> triton_module =
+  mlir::OwningOpRef<mlir::ModuleOp> xtile_module =
       llvm_ir::CreateMlirModuleOp(loc);
-  b.setInsertionPointToEnd(triton_module->getBody());
+  b.setInsertionPointToEnd(xtile_module->getBody());
 
   auto backend_config =
       fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
@@ -2036,7 +2036,17 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
 
   b.create<xtile::EntryFuncReturnOp>();
 
-  return triton_module;
+  {
+    // Verify that the emitted module contains only ops from dialects that can
+    // be shared between backends.
+    mlir::PassManager pm(&mlir_context);
+    pm.addPass(xtile::createVerifyLegalXTileOpsPass());
+    if (mlir::failed(pm.run(*xtile_module))) {
+      return Internal("Failed to verify XTile module.");
+    }
+  }
+
+  return xtile_module;
 }
 
 absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
