@@ -222,16 +222,18 @@ class PjRtTopologyDescription {
   // Returns a unique integer ID for the logical device of the default type on
   // the chip at the given coordinates and with the given core index.
   virtual absl::StatusOr<xla::PjRtGlobalDeviceId>
-  IdForLogicalDeviceOfDefaultType(const PjRtDeviceDimensions& chip,
-                                  int core_index) const {
+  LogicalDeviceOfDefaultTypeIdFromChipCoordAndCoreIndex(
+      const PjRtDeviceDimensions& chip, int core_index) const {
     return absl::UnimplementedError(
-        "IdForLogicalDeviceOfDefaultType is unsupported.");
+        "LogicalDeviceOfDefaultTypeIdFromChipCoordAndCoreIndex is "
+        "unsupported.");
   }
 
   // Returns the chip coordinates and core index of the logical device of the
   // default type for the given unique device ID.
   virtual absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
-  LogicalDeviceOfDefaultTypeForId(xla::PjRtGlobalDeviceId device_id) const {
+  ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
+      xla::PjRtGlobalDeviceId device_id) const {
     return absl::UnimplementedError(
         "LogicalDeviceCoordsOfDefaultTypeForId is unsupported.");
   }
