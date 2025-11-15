@@ -680,6 +680,10 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
 
   absl::StatusOr<tsl::RCReference<NanoArray>> Assemble(
       ifrt::ShardingRef sharding) {
+    if (sharding->IsFullyReplicated()) {
+      return shards_[0];
+    }
+
     TF_ASSIGN_OR_RETURN(auto index_domains, sharding->IndexDomains(shape()));
     if (ABSL_PREDICT_FALSE(index_domains.size() != shards_.size())) {
       return absl::FailedPreconditionError(
