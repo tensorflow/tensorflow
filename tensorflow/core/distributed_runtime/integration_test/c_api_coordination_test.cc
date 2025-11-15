@@ -60,7 +60,7 @@ void ConfigCoordinationService(tensorflow::ServerDef* server_def,
   coord_config->set_enable_health_check(enable_health_check);
 }
 
-string SetConfigKeyValueFn() {
+std::string SetConfigKeyValueFn() {
   FunctionDef fdef;
   tensorflow::protobuf::TextFormat::ParseFromString(
       "    signature {"
@@ -86,7 +86,7 @@ string SetConfigKeyValueFn() {
   return fdef.SerializeAsString();
 }
 
-string GetConfigKeyValueFn() {
+std::string GetConfigKeyValueFn() {
   FunctionDef fdef;
   tensorflow::protobuf::TextFormat::ParseFromString(
       "    signature {"
@@ -521,7 +521,7 @@ TEST_P(SingleClientCoordinationServiceTest, TestSetGetConfigInOp) {
   TF_DeleteTensor(t);
   TFE_DeleteOp(get_op2);
 
-  const string& set_fdef = SetConfigKeyValueFn();
+  const std::string& set_fdef = SetConfigKeyValueFn();
   TFE_ContextAddFunctionDef(ctx, set_fdef.data(), set_fdef.size(), status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_Op* set_fn = TFE_NewOp(ctx, "SetConfigKeyValueFn", status);
@@ -542,7 +542,7 @@ TEST_P(SingleClientCoordinationServiceTest, TestSetGetConfigInOp) {
   TFE_DeleteTensorHandle(set_val);
   TFE_DeleteOp(set_fn);
 
-  const string& get_fdef = GetConfigKeyValueFn();
+  const std::string& get_fdef = GetConfigKeyValueFn();
   TFE_ContextAddFunctionDef(ctx, get_fdef.data(), get_fdef.size(), status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_Op* get_fn = TFE_NewOp(ctx, "GetConfigKeyValueFn", status);
