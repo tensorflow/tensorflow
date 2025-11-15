@@ -264,7 +264,7 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
     static const int64_t kMaxMillisToWait = 10000;  // 10 seconds
     r = retry_helper_.AllocateRaw(
         [this, &allocation_attr](size_t a, size_t nb, bool v) {
-          uint64 freed_by_count = 0;
+          uint64_t freed_by_count = 0;
           if (allocation_attr.freed_by_func != nullptr) {
             freed_by_count = (*allocation_attr.freed_by_func)();
           }
