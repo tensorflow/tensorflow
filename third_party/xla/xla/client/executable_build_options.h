@@ -282,7 +282,12 @@ class ExecutableBuildOptions {
   // debugging.
   std::string ToString() const;
 
-  absl::StatusOr<ExecutableBuildOptionsProto> ToProto() const;
+  // Returns a proto representation of the build options.
+  // If `ignore_unserializable_fields` is false, this will fail if any of the
+  // fields cannot be serialized (e.g. callbacks), otherwise they will be
+  // ignored.
+  absl::StatusOr<ExecutableBuildOptionsProto> ToProto(
+      bool ignore_unserializable_fields = false) const;
 
   int process_index() const { return process_index_; }
   void set_process_index(const int process_index) {

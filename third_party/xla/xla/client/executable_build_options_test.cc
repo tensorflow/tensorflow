@@ -99,14 +99,15 @@ TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
   EXPECT_THAT(p2, EqualsProto(p));
 }
 
-TEST(ExecutableBuildOptionsTest, SerializationFailsOnNonSerializableFields) {
+TEST(ExecutableBuildOptionsTest, Serialization) {
   {
     ExecutableBuildOptions options;
     tsl::thread::ThreadPool pool{tsl::Env::Default(), tsl::ThreadOptions(), "",
                                  1};
     options.set_compile_thread_pool(&pool);
-    EXPECT_THAT(options.ToProto(),
+    EXPECT_THAT(options.ToProto(/*ignore_unserializable_fields=*/false),
                 absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+    EXPECT_OK(options.ToProto(/*ignore_unserializable_fields=*/true));
   }
   {
     ExecutableBuildOptions options;
@@ -115,8 +116,9 @@ TEST(ExecutableBuildOptionsTest, SerializationFailsOnNonSerializableFields) {
             -> absl::StatusOr<std::pair<std::vector<Shape>, Shape>> {
           return std::make_pair(std::vector<Shape>(), Shape());
         });
-    EXPECT_THAT(options.ToProto(),
+    EXPECT_THAT(options.ToProto(/*ignore_unserializable_fields=*/false),
                 absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+    EXPECT_OK(options.ToProto(/*ignore_unserializable_fields=*/true));
   }
 }
 

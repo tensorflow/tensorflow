@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_pass.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -255,8 +256,7 @@ GpuExecutable::GpuExecutable(
       buffer_assignment_(std::move(params.buffer_assignment)),
       thunk_pass_allocations_(std::move(thunk_pass_allocations)),
       alias_info_(std::move(params.alias_info)),
-      debug_buffer_assignment_show_max_(
-          params.debug_options.xla_debug_buffer_assignment_show_max()),
+      debug_options_(std::move(params.debug_options)),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)),
       enable_debug_info_manager_(params.enable_debug_info_manager) {
@@ -998,8 +998,9 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 absl::Status GpuExecutable::VerboseAllocationError(absl::Status s) {
   return ResourceExhausted(
       "%s\n%s\n", s.message(),
-      buffer_assignment_->ToVerboseString(alias_info_.get(),
-                                          debug_buffer_assignment_show_max_));
+      buffer_assignment_->ToVerboseString(
+          alias_info_.get(),
+          debug_options_.xla_debug_buffer_assignment_show_max()));
 }
 
 absl::Status GpuExecutable::ExecuteThunks(
@@ -1301,5 +1302,38 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
 
   return Create(std::move(params));
 }
+
+absl::Status GpuExecutable::DumpExecutableIfEnabled(
+    const ExecutableBuildOptions& options) const {
+  if (!debug_options_.has_xla_dump_to() ||
+      !debug_options_.xla_gpu_experimental_dump_gpu_executable()) {
+    return absl::OkStatus();
+  }
+
+  TF_ASSIGN_OR_RETURN(GpuExecutableProto gpu_executable_proto, ToProto());
+  std::string serialized_proto = gpu_executable_proto.SerializeAsString();
+  if (serialized_proto.empty()) {
+    return absl::InternalError("Failed to serialize GPU executable proto");
+  }
+
+  ExecutableAndOptionsProto dump_proto;
+  *dump_proto.mutable_serialized_executable() = std::move(serialized_proto);
+  TF_ASSIGN_OR_RETURN(
+      *dump_proto.mutable_compile_options()->mutable_executable_build_options(),
+      // Some fields in ExecutableBuildOptions are not serializable, but we
+      // don't need them for the dump.
+      options.ToProto(/*ignore_unserializable_fields=*/true));
+
+  constexpr absl::string_view kDumpFilename = "gpu_executable";
+  if (has_module()) {
+    DumpPerModuleProtobufToFile(module(), dump_proto, debug_options_,
+                                kDumpFilename);
+  } else {
+    DumpProtobufToFile(dump_proto, debug_options_, kDumpFilename);
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace gpu
 }  // namespace xla

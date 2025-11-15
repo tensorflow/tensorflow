@@ -685,6 +685,12 @@ message DebugOptions {
   // Enable NCCL symmetric buffers.
   optional bool xla_gpu_experimental_enable_nccl_symmetric_buffers = 406;
 
+  // Enables the new Ahead-of-Time (AOT) compilation flow. In this flow, the
+  // GPU compiler generates and consumes a binary format that includes the
+  // generated Thunks. In contrast, the legacy flow only compiles up to the HLO
+  // optimization stage, before Thunk generation.
+  optional bool xla_gpu_experimental_enable_new_aot_flow = 430;
+
   // Enable NVSHMEM. Must be set via XLA_FLAGS variable before XLA client is
   // initialized and can't be set just through HLO Config->ExecutionOptions.
   optional bool xla_gpu_experimental_enable_nvshmem = 388;
@@ -1420,7 +1426,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 429
+  // Next id: 431
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
