@@ -18,9 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <map>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <set>
 #include <string>
