@@ -354,7 +354,7 @@ MaybeOwningThreadPool CreateMaybeOwningThreadPool(
 
 DeviceOrDevicelessConfig GetDeviceConfig(
     se::StreamExecutor* stream_exec, const GpuCompiler::CompileOptions& options,
-    const Compiler::TargetConfig& gpu_target_config) {
+    const Compiler::GpuTargetConfig& gpu_target_config) {
   if (stream_exec) {
     return DeviceOrDevicelessConfig{
         DeviceConfig{stream_exec, options.device_allocator}};
@@ -459,7 +459,7 @@ absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module) {
 }
 
 absl::Status RunSPMDPasses(
-    HloModule* hlo_module, const Compiler::TargetConfig& gpu_target_config,
+    HloModule* hlo_module, const Compiler::GpuTargetConfig& gpu_target_config,
     const AliasInfo* alias_info,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
     int64_t max_windowed_einsum_iteration) {
@@ -545,7 +545,7 @@ bool BackendConfigDeviceTypeIsHost(HloInstruction* instr) {
 
 absl::Status RunOptimizationPasses(
     HloModule* hlo_module, stream_executor::StreamExecutor* stream_exec,
-    const Compiler::TargetConfig& gpu_target_config,
+    const Compiler::GpuTargetConfig& gpu_target_config,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
     absl::string_view platform_name) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
@@ -1003,7 +1003,7 @@ absl::Status RunLayoutAssignmentPasses(
 }
 
 absl::Status RunFusionPasses(HloModule* hlo_module,
-                             const Compiler::TargetConfig& gpu_target_config,
+                             const Compiler::GpuTargetConfig& gpu_target_config,
                              tsl::thread::ThreadPool* thread_pool,
                              HloCostAnalysis::ShapeSizeFunction shape_size_fn,
                              SymbolicExprContext* symbolic_expr_context) {
@@ -1133,7 +1133,7 @@ absl::Status RunPostFusionPasses(
 absl::Status RunPostFusionSimplificationPasses(
     HloModule* hlo_module, const AlgebraicSimplifierOptions& algsimp_options,
     se::GpuComputeCapability gpu_version,
-    const Compiler::TargetConfig& gpu_target_config) {
+    const Compiler::GpuTargetConfig& gpu_target_config) {
   HloPassPipeline pipeline("post-fusion-simplification-pipeline optimization");
   pipeline.AddPass<GpuAlgebraicSimplifier>(algsimp_options, gpu_version);
 
@@ -1163,7 +1163,7 @@ absl::Status RunPostFusionSimplificationPasses(
 absl::Status RunPostFusionVerificationPasses(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const GpuCompiler::CompileOptions& options,
-    const Compiler::TargetConfig& gpu_target_config,
+    const Compiler::GpuTargetConfig& gpu_target_config,
     SymbolicExprContext* symbolic_expr_context) {
   HloPassPipeline pipeline("post-fusion-verification-pipeline optimization");
 
@@ -1332,7 +1332,7 @@ absl::Status GpuCompiler::RunCollectiveScheduleLinearizerPasses(
 // Runs optimization passes on the given HLO module.
 absl::Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const TargetConfig& gpu_target_config,
+    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
     const GpuAliasInfo* alias_info) {
   tsl::profiler::TraceMe traceme("OptimizeHloModule");
   const se::DeviceDescription& device_description =
@@ -1505,7 +1505,7 @@ void AddGemmRewriterPasses(HloPassPipeline& pipeline,
 
 absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const TargetConfig& gpu_target_config,
+    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool) {
   // Constants:
   const DebugOptions& debug_options = hlo_module->config().debug_options();
@@ -1787,11 +1787,12 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
 // Returns the TargetConfig, either from the module debug options, or from the
 // CompilationOptions, or if both of those are absent, from the attached GPU.
-/*static*/ absl::StatusOr<Compiler::TargetConfig> GpuCompiler::GetTargetConfig(
-    const Compiler::CompileOptions& options, const DebugOptions& debug_opts,
-    se::StreamExecutor* executor) {
-  if (options.target_config.has_value()) {
-    return *options.target_config;
+/*static*/ absl::StatusOr<Compiler::GpuTargetConfig>
+GpuCompiler::GetTargetConfig(const Compiler::CompileOptions& options,
+                             const DebugOptions& debug_opts,
+                             se::StreamExecutor* executor) {
+  if (options.gpu_target_config.has_value()) {
+    return *options.gpu_target_config;
   }
   if (!debug_opts.xla_gpu_target_config_filename().empty()) {
     std::string gpu_target_config_string;
@@ -1805,10 +1806,11 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           "Failed to parse GpuTargetConfigProto");
     }
 
-    return Compiler::TargetConfig::FromProto(gpu_target_config_proto);
+    return Compiler::GpuTargetConfig::FromProto(gpu_target_config_proto);
   }
   if (executor) {
-    Compiler::TargetConfig target_config = Compiler::TargetConfig{executor};
+    Compiler::GpuTargetConfig target_config =
+        Compiler::GpuTargetConfig{executor};
     int64_t device_memory_size =
         target_config.device_description.device_memory_size();
     // Checking for device_memory_size == -1 is how we detect that we are
@@ -1838,10 +1840,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 
   const DebugOptions debug_opts = module->config().debug_options();
   TF_RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_opts));
-  bool is_deviceless = options.target_config.has_value() ||
+  bool is_deviceless = options.gpu_target_config.has_value() ||
                        !debug_opts.xla_gpu_target_config_filename().empty();
 
-  TF_ASSIGN_OR_RETURN(TargetConfig gpu_target_config,
+  TF_ASSIGN_OR_RETURN(GpuTargetConfig gpu_target_config,
                       GetTargetConfig(options, debug_opts, stream_exec));
   const std::optional<std::string> unoptimized_fingerprint =
       MaybeUploadUnoptimizedGpuSymbols(module.get(),
@@ -2522,7 +2524,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   }
 
   const DebugOptions& debug_opts = module->config().debug_options();
-  TF_ASSIGN_OR_RETURN(TargetConfig gpu_target_config,
+  TF_ASSIGN_OR_RETURN(GpuTargetConfig gpu_target_config,
                       GetTargetConfig(options, debug_opts, stream_exec));
 
   if (DumpingEnabledForHloModule(*module)) {
@@ -2665,7 +2667,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
     }};
     CompileOptions compile_options;
     compile_options.device_allocator = options.device_allocator();
-    compile_options.target_config = options.target_config();
+    compile_options.gpu_target_config = options.gpu_target_config();
     TF_ASSIGN_OR_RETURN(optimized_module,
                         RunHloPasses(std::move(hlo_module), options.executor(),
                                      compile_options));
@@ -2675,8 +2677,8 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
 
   std::vector<std::unique_ptr<AotCompilationResult>> results;
 
-  const std::optional<Compiler::TargetConfig>& target_config =
-      options.target_config();
+  const std::optional<Compiler::GpuTargetConfig>& target_config =
+      options.gpu_target_config();
   CHECK(target_config.has_value() || options.executor() != nullptr);
   const se::DeviceDescription& gpu_device_info =
       target_config.has_value() ? target_config->device_description

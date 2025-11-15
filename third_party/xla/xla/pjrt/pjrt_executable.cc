@@ -100,8 +100,8 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
                env_option_override.second);
   }
 
-  if (target_config.has_value()) {
-    *output.mutable_target_config() = target_config->ToProto();
+  if (gpu_target_config.has_value()) {
+    *output.mutable_target_config() = gpu_target_config->ToProto();
   }
   return output;
 }
@@ -137,8 +137,9 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
                       LoadEnvOptionOverrides(proto.env_option_overrides()));
 
   if (proto.has_target_config()) {
-    TF_ASSIGN_OR_RETURN(output.target_config, Compiler::TargetConfig::FromProto(
-                                                  proto.target_config()));
+    TF_ASSIGN_OR_RETURN(
+        output.gpu_target_config,
+        Compiler::GpuTargetConfig::FromProto(proto.target_config()));
   }
   return output;
 }
