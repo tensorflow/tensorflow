@@ -106,7 +106,7 @@ class ParallelConcatUpdate : public OpKernel {
   }
 
  private:
-  int32 loc_;
+  int32_t loc_;
 };
 
 template <typename Device, typename T>
@@ -251,7 +251,7 @@ namespace functor {
 template <typename T>
 void DoInplaceOp(const CPUDevice& d, InplaceOpType op, const Tensor& i,
                  const Tensor& v, Tensor* y) {
-  auto Ti = i.flat<int32>();
+  auto Ti = i.flat<int32_t>();
   auto Tv = v.flat_outer_dims<T>();
   auto Ty = y->flat_outer_dims<T>();
   auto nrows = Ty.dimension(0);
@@ -274,7 +274,7 @@ void DoInplaceOp(const CPUDevice& d, InplaceOpType op, const Tensor& i,
 // String type only supports inplace update.
 void DoInplaceStringUpdateOp(const CPUDevice& d, const Tensor& i,
                              const Tensor& v, Tensor* y) {
-  auto Ti = i.flat<int32>();
+  auto Ti = i.flat<int32_t>();
   auto Tv = v.flat_outer_dims<tstring>();
   auto Ty = y->flat_outer_dims<tstring>();
   auto nrows = Ty.dimension(0);
@@ -398,10 +398,10 @@ class EmptyOp : public OpKernel {
         ctx, TensorShapeUtils::IsVector(shape.shape()),
         errors::InvalidArgument("shape must be a vector of int32, got shape ",
                                 shape.shape().DebugString()));
-    auto dims = shape.flat<int32>();
+    auto dims = shape.flat<int32_t>();
     TensorShape out_shape;
     OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
-                            reinterpret_cast<const int32*>(dims.data()),
+                            reinterpret_cast<const int32_t*>(dims.data()),
                             dims.size(), &out_shape));
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, out_shape, &out));
@@ -474,7 +474,7 @@ REGISTER_KERNEL_BUILDER(Name("InplaceUpdate")
                             .HostMemory("i")
                             .HostMemory("v")
                             .HostMemory("y")
-                            .TypeConstraint<int32>("T"),
+                            .TypeConstraint<int32_t>("T"),
                         InplaceOp<CPUDevice, functor::I_UPDATE>);
 REGISTER_KERNEL_BUILDER(Name("InplaceAdd")
                             .Device(DEVICE_DEFAULT)
@@ -482,7 +482,7 @@ REGISTER_KERNEL_BUILDER(Name("InplaceAdd")
                             .HostMemory("i")
                             .HostMemory("v")
                             .HostMemory("y")
-                            .TypeConstraint<int32>("T"),
+                            .TypeConstraint<int32_t>("T"),
                         InplaceOp<CPUDevice, functor::I_ADD>);
 REGISTER_KERNEL_BUILDER(Name("InplaceSub")
                             .Device(DEVICE_DEFAULT)
@@ -490,14 +490,14 @@ REGISTER_KERNEL_BUILDER(Name("InplaceSub")
                             .HostMemory("i")
                             .HostMemory("v")
                             .HostMemory("y")
-                            .TypeConstraint<int32>("T"),
+                            .TypeConstraint<int32_t>("T"),
                         InplaceOp<CPUDevice, functor::I_SUB>);
 
 REGISTER_KERNEL_BUILDER(Name("DeepCopy")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("x")
                             .HostMemory("y")
-                            .TypeConstraint<int32>("T"),
+                            .TypeConstraint<int32_t>("T"),
                         CopyOp<CPUDevice>);
 
 }  // end namespace
