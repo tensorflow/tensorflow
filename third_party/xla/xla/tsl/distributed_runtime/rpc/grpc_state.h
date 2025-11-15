@@ -50,7 +50,7 @@ class RPCState : public GrpcClientCQTag {
       const ::grpc::string& method, const protobuf::Message& request,
       Response* response, StatusCallback done, CallOptions* call_opts,
       thread::ThreadPool* threadpool, int32_t max_retries = 0,
-      bool fail_fast = true, const string* target = nullptr,
+      bool fail_fast = true, const std::string* target = nullptr,
       std::function<bool(::grpc::ByteBuffer*, Response*)> parse_proto_fn =
           [](::grpc::ByteBuffer* src, Response* dst) {
             return tsl::GrpcMaybeParseProto(src, dst);
@@ -69,10 +69,11 @@ class RPCState : public GrpcClientCQTag {
             // on worker task failures, except a few cases such as GetStatus
             // in cluster initialization and collective param resolution.
             [fail_fast, &done]() -> bool {
-              string fail_fast_env;
+              std::string fail_fast_env;
               TF_CHECK_OK(ReadStringFromEnvVar("GRPC_FAIL_FAST", "use_caller",
                                                &fail_fast_env));
-              string fail_fast_env_lower = absl::AsciiStrToLower(fail_fast_env);
+              std::string fail_fast_env_lower =
+                  absl::AsciiStrToLower(fail_fast_env);
               if (fail_fast_env_lower == "true") {
                 return true;
               } else if (fail_fast_env_lower == "use_caller") {
@@ -80,7 +81,7 @@ class RPCState : public GrpcClientCQTag {
               } else if (fail_fast_env_lower == "false") {
                 return false;
               } else {
-                string error_message = absl::StrCat(
+                std::string error_message = absl::StrCat(
                     "Invalid GRPC_FAIL_FAST config: ", fail_fast_env);
                 LOG(WARNING) << error_message;
                 done(errors::InvalidArgument(error_message));
@@ -96,7 +97,7 @@ class RPCState : public GrpcClientCQTag {
       const ::grpc::string& method, const Request& request, Response* response,
       StatusCallback done, CallOptions* call_opts,
       thread::ThreadPool* threadpool, bool fail_fast, int64_t timeout_in_ms,
-      int32_t max_retries, const string* target,
+      int32_t max_retries, const std::string* target,
       std::function<bool(::grpc::ByteBuffer*, Response*)> parse_proto_fn =
           [](::grpc::ByteBuffer* src, Response* dst) {
             return tsl::GrpcMaybeParseProto(src, dst);
@@ -186,7 +187,7 @@ class RPCState : public GrpcClientCQTag {
                                         [this]() { StartCall(); });
     } else {
       // Attach additional GRPC error information if any to the final status
-      string error_msg = std::string(s.message());
+      std::string error_msg = std::string(s.message());
       absl::StrAppend(&error_msg, "\nAdditional GRPC error information");
       if (target_) {
         absl::StrAppend(&error_msg, " from remote target ", *target_);
@@ -247,7 +248,7 @@ class RPCState : public GrpcClientCQTag {
   ::grpc::GenericStub* stub_;
   ::grpc::string method_;
   bool fail_fast_;
-  const string* target_;
+  const std::string* target_;
   std::function<bool(::grpc::ByteBuffer*, Response*)> parse_proto_fn_ = nullptr;
 };
 }  // namespace tsl
