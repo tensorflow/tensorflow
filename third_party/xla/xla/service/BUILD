@@ -283,6 +283,7 @@ cc_library(
 xla_cc_test(
     name = "collective_permute_cycle_test",
     srcs = ["collective_permute_cycle_test.cc"],
+    tags = ["multi_gpu"],
     deps = [
         ":collective_permute_cycle",
         ":source_target_pairs",
@@ -472,6 +473,7 @@ cc_library(
 xla_cc_test(
     name = "collective_pipeliner_test",
     srcs = ["collective_pipeliner_test.cc"],
+    tags = ["multi_gpu"],
     deps = [
         ":collective_pipeliner",
         ":collective_pipeliner_utils",
@@ -685,6 +687,7 @@ xla_cc_test(
     srcs = [
         "sharding_propagation_test.cc",
     ],
+    tags = ["multi_gpu"],
     deps = [
         ":sharding_propagation",
         "//xla:shape_util",
@@ -734,6 +737,7 @@ xla_cc_test(
     srcs = [
         "sharding_remover_test.cc",
     ],
+    tags = ["multi_gpu"],
     deps = [
         ":sharding_remover",
         "//xla/hlo/ir:hlo",
@@ -1313,6 +1317,7 @@ cc_library(
 xla_cc_test(
     name = "p2p_schedule_preparation_test",
     srcs = ["p2p_schedule_preparation_test.cc"],
+    tags = ["multi_gpu"],
     deps = [
         ":p2p_schedule_preparation",
         "//xla:util",
@@ -2398,6 +2403,7 @@ cc_library(
 xla_cc_test(
     name = "reduce_scatter_combiner_test",
     srcs = ["reduce_scatter_combiner_test.cc"],
+    tags = ["multi_gpu"],
     deps = [
         ":reduce_scatter_combiner",
         "//xla/hlo/ir:hlo",
@@ -2436,6 +2442,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_simplifier_test",
     srcs = ["all_reduce_simplifier_test.cc"],
+    tags = ["multi_gpu"],
     deps = [
         ":all_reduce_simplifier",
         ":hlo_module_config",
@@ -2473,6 +2480,7 @@ cc_library(
 xla_cc_test(
     name = "all_gather_simplifier_test",
     srcs = ["all_gather_simplifier_test.cc"],
+    tags = ["multi_gpu"],
     deps = [
         ":all_gather_simplifier",
         ":pattern_matcher",
@@ -2506,6 +2514,7 @@ cc_library(
 xla_cc_test(
     name = "reduce_scatter_decomposer_test",
     srcs = ["reduce_scatter_decomposer_test.cc"],
+    tags = ["multi_gpu"],
     deps = [
         ":collective_ops_utils",
         ":reduce_scatter_decomposer",
@@ -2539,6 +2548,7 @@ cc_library(
 xla_cc_test(
     name = "reduce_scatter_reassociate_test",
     srcs = ["reduce_scatter_reassociate_test.cc"],
+    tags = ["multi_gpu"],
     deps = [
         ":hlo_verifier",
         ":reduce_scatter_reassociate",
@@ -5225,6 +5235,7 @@ cc_library(
 xla_cc_test(
     name = "collective_ops_utils_test",
     srcs = ["collective_ops_utils_test.cc"],
+    tags = ["multi_gpu"],
     deps = [
         ":collective_ops_utils",
         ":collective_permute_cycle",
@@ -5565,6 +5576,7 @@ cc_library(
 xla_cc_test(
     name = "scatter_simplifier_test",
     srcs = ["scatter_simplifier_test.cc"],
+    tags = ["multi_gpu"],
     deps = [
         ":scatter_simplifier",
         "//xla:literal",
@@ -5694,6 +5706,7 @@ cc_library(
 xla_cc_test(
     name = "batched_gather_scatter_normalizer_test",
     srcs = ["batched_gather_scatter_normalizer_test.cc"],
+    tags = ["multi_gpu"],
     deps = [
         ":batched_gather_scatter_normalizer",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

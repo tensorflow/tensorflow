@@ -25,6 +25,7 @@ load(
     _tf_cuda_tests_tags = "tf_cuda_tests_tags",
     _tf_exec_properties = "tf_exec_properties",
     _tf_gpu_tests_tags = "tf_gpu_tests_tags",
+    _tf_has_tag = "tf_has_tag",
 )
 
 visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_TSL_PLATFORM_BUILD_CONFIG_ROOT_USERS)
@@ -47,3 +48,4 @@ tf_additional_xla_deps_py = _tf_additional_xla_deps_py
 tf_cuda_tests_tags = _tf_cuda_tests_tags
 tf_exec_properties = _tf_exec_properties
 tf_gpu_tests_tags = _tf_gpu_tests_tags
+tf_has_tag = _tf_has_tag

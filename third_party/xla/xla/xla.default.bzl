@@ -22,6 +22,7 @@ load(
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "tf_exec_properties",
+    "tf_has_tag",
 )
 load("//xla/tsl/platform/default:build_config.bzl", "strict_cc_test")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
@@ -89,6 +90,9 @@ def xla_cc_test(
       deps: The dependencies of the test.
       **kwargs: Other arguments to pass to the test.
     """
+
+    if tf_has_tag(kwargs, "multi_gpu"):
+        kwargs["tags"] = kwargs["tags"] + if_rocm_is_configured(["exclusive-if-local"])
 
     strict_cc_test(
         name = name,
