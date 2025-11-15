@@ -1469,7 +1469,7 @@ TEST(GcsFileSystemTest, NewAppendableFile_ObjectDoesNotExist) {
 }
 
 TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile) {
-  const string content = "file content";
+  const std::string content = "file content";
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
