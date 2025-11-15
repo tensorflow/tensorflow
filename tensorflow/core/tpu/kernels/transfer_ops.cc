@@ -51,7 +51,7 @@ limitations under the License.
 namespace tensorflow {
 
 TpuTransferAsyncOpKernelBase::TpuTransferAsyncOpKernelBase(
-    OpKernelConstruction* ctx, const string& transfer_type,
+    OpKernelConstruction* ctx, const std::string& transfer_type,
     int number_of_threads, std::unique_ptr<TpuTransferOpInterface> transfer_op)
     : AsyncOpKernel(ctx),
       transfer_type_(transfer_type),
@@ -113,7 +113,7 @@ absl::Status TpuTransferAsyncOpKernelBase::RunTransferWithOrdinal(
 }
 
 TpuTransferAsyncOpKernel::TpuTransferAsyncOpKernel(
-    OpKernelConstruction* ctx, const string& transfer_type,
+    OpKernelConstruction* ctx, const std::string& transfer_type,
     int number_of_threads, std::unique_ptr<TpuTransferOpInterface> transfer_op)
     : TpuTransferAsyncOpKernelBase(ctx, transfer_type, number_of_threads,
                                    std::move(transfer_op)) {
@@ -132,7 +132,7 @@ absl::Status TpuTransferAsyncOpKernel::RunTransfer(OpKernelContext* ctx) {
 }
 
 TpuTransferAsyncDynamicOrdinalOpKernel::TpuTransferAsyncDynamicOrdinalOpKernel(
-    OpKernelConstruction* ctx, const string& transfer_type,
+    OpKernelConstruction* ctx, const std::string& transfer_type,
     int number_of_threads, std::unique_ptr<TpuTransferOpInterface> transfer_op)
     : TpuTransferAsyncOpKernelBase(ctx, transfer_type, number_of_threads,
                                    std::move(transfer_op)) {}
@@ -140,7 +140,7 @@ TpuTransferAsyncDynamicOrdinalOpKernel::TpuTransferAsyncDynamicOrdinalOpKernel(
 absl::Status TpuTransferAsyncDynamicOrdinalOpKernel::RunTransfer(
     OpKernelContext* ctx) {
   const Tensor& device_ordinal_tensor = ctx->input(0);
-  const int device_ordinal = device_ordinal_tensor.scalar<int32>()();
+  const int device_ordinal = device_ordinal_tensor.scalar<int32_t>()();
   XlaDevice* xla_device =
       dynamic_cast<XlaDevice*>(ctx->device()->UnderlyingDevice());
   if (((xla_device == nullptr) || (xla_device->device_type() == DEVICE_CPU)) &&
