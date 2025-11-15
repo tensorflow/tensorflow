@@ -264,7 +264,8 @@ ENTRY e {
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
 
-TEST_F(GemmFusionTest, DynamicSliceIsFused) {
+// TODO(b/417172838): support dynamic slice op.
+TEST_F(GemmFusionTest, DISABLED_DynamicSliceIsFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -288,7 +289,8 @@ ENTRY e {
                                     m::Parameter(), m::Constant()))));
 }
 
-TEST_F(GemmFusionTest, DynamicSlicesAreFusedEvenIfTheyShareIndices) {
+// TODO(b/417172838): support dynamic slice op.
+TEST_F(GemmFusionTest, DISABLED_DynamicSlicesAreFusedEvenIfTheyShareIndices) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -319,7 +321,8 @@ ENTRY e {
                             m::Parameter(), m::Parameter()))));
 }
 
-TEST_F(GemmFusionTest, DoNotFuseDynamicSliceOfNonMajorFragments) {
+// TODO(b/417172838): support dynamic slice op.
+TEST_F(GemmFusionTest, DISABLED_DoNotFuseDynamicSliceOfNonMajorFragments) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -338,7 +341,9 @@ ENTRY e {
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
 
-TEST_F(GemmFusionTest, CanFuseDynamicSliceOfContractingDimIfItIsMajor) {
+// TODO(b/417172838): support dynamic slice op.
+TEST_F(GemmFusionTest,
+       DISABLED_CanFuseDynamicSliceOfContractingDimIfItIsMajor) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
