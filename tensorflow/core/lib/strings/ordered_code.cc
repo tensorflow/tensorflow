@@ -134,7 +134,7 @@ static const char kFFCharacter = '\000';  // Combined with kEscape2
 static const char kEscape1_Separator[2] = {kEscape1, kSeparator};
 
 // Append to "*dest" the "len" bytes starting from "*src".
-inline static void AppendBytes(string* dest, const char* src, size_t len) {
+inline static void AppendBytes(std::string* dest, const char* src, size_t len) {
   dest->append(src, len);
 }
 
@@ -164,7 +164,8 @@ const char* OrderedCode::TEST_SkipToNextSpecialByte(const char* start,
 
 // Helper routine to encode "s" and append to "*dest", escaping special
 // characters.
-inline static void EncodeStringFragment(string* dest, absl::string_view s) {
+inline static void EncodeStringFragment(std::string* dest,
+                                        absl::string_view s) {
   const char* p = s.data();
   const char* limit = p + s.size();
   const char* copy_start = p;
@@ -191,12 +192,12 @@ inline static void EncodeStringFragment(string* dest, absl::string_view s) {
   }
 }
 
-void OrderedCode::WriteString(string* dest, absl::string_view s) {
+void OrderedCode::WriteString(std::string* dest, absl::string_view s) {
   EncodeStringFragment(dest, s);
   AppendBytes(dest, kEscape1_Separator, 2);
 }
 
-void OrderedCode::WriteNumIncreasing(string* dest, uint64 val) {
+void OrderedCode::WriteNumIncreasing(std::string* dest, uint64_t val) {
   // Values are encoded with a single byte length prefix, followed
   // by the actual value in big-endian format with leading 0 bytes
   // dropped.
@@ -216,7 +217,8 @@ void OrderedCode::WriteNumIncreasing(string* dest, uint64 val) {
 // If parse succeeds, return true, consume encoding from
 // "*src", and if result != NULL append the decoded string to "*result".
 // Otherwise, return false and leave both undefined.
-inline static bool ReadStringInternal(absl::string_view* src, string* result) {
+inline static bool ReadStringInternal(absl::string_view* src,
+                                      std::string* result) {
   const char* start = src->data();
   const char* string_limit = src->data() + src->size();
 
@@ -271,11 +273,11 @@ inline static bool ReadStringInternal(absl::string_view* src, string* result) {
   return false;
 }
 
-bool OrderedCode::ReadString(absl::string_view* src, string* result) {
+bool OrderedCode::ReadString(absl::string_view* src, std::string* result) {
   return ReadStringInternal(src, result);
 }
 
-bool OrderedCode::ReadNumIncreasing(absl::string_view* src, uint64* result) {
+bool OrderedCode::ReadNumIncreasing(absl::string_view* src, uint64_t* result) {
   if (src->empty()) {
     return false;  // Not enough bytes
   }
@@ -294,7 +296,7 @@ bool OrderedCode::ReadNumIncreasing(absl::string_view* src, uint64* result) {
   }
 
   if (result) {
-    uint64 tmp = 0;
+    uint64_t tmp = 0;
     for (size_t i = 0; i < len; i++) {
       tmp <<= 8;
       tmp |= static_cast<unsigned char>((*src)[1 + i]);
@@ -305,7 +307,7 @@ bool OrderedCode::ReadNumIncreasing(absl::string_view* src, uint64* result) {
   return true;
 }
 
-void OrderedCode::TEST_Corrupt(string* str, int k) {
+void OrderedCode::TEST_Corrupt(std::string* str, int k) {
   int seen_seps = 0;
   for (size_t i = 0; i + 1 < str->size(); i++) {
     if ((*str)[i] == kEscape1 && (*str)[i + 1] == kSeparator) {
@@ -389,7 +391,7 @@ static const char kLengthToHeaderBits[1 + kMaxSigned64Length][2] = {
 
 // This array maps encoding lengths to the header bits that overlap with
 // the payload and need fixing when reading.
-static const uint64 kLengthToMask[1 + kMaxSigned64Length] = {
+static const uint64_t kLengthToMask[1 + kMaxSigned64Length] = {
     0ULL,
     0x80ULL,
     0xc000ULL,
@@ -408,7 +410,7 @@ static const uint64 kLengthToMask[1 + kMaxSigned64Length] = {
 // bit position (the highest bit position in a positive int64 is 63).
 // For a negative number n, we count the bits in ~n.
 // That is, length = kBitsToLength[tsl::Log2Floor64(n < 0 ? ~n : n) + 1].
-static const int8 kBitsToLength[1 + 63] = {
+static const int8_t kBitsToLength[1 + 63] = {
     1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4,
     4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 7, 7,
     7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 10};
@@ -418,23 +420,23 @@ static inline int SignedEncodingLength(int64_t n) {
   return kBitsToLength[tsl::Log2Floor64(n < 0 ? ~n : n) + 1];
 }
 
-static void StoreBigEndian64(char* dst, uint64 v) {
+static void StoreBigEndian64(char* dst, uint64_t v) {
   for (int i = 0; i < 8; i++) {
     dst[i] = (v >> (56 - 8 * i)) & 0xff;
   }
 }
 
-static uint64 LoadBigEndian64(const char* src) {
-  uint64 result = 0;
+static uint64_t LoadBigEndian64(const char* src) {
+  uint64_t result = 0;
   for (int i = 0; i < 8; i++) {
     unsigned char c = static_cast<unsigned char>(src[i]);
-    result |= static_cast<uint64>(c) << (56 - 8 * i);
+    result |= static_cast<uint64_t>(c) << (56 - 8 * i);
   }
   return result;
 }
 
-void OrderedCode::WriteSignedNumIncreasing(string* dest, int64_t val) {
-  const uint64 x = val < 0 ? ~val : val;
+void OrderedCode::WriteSignedNumIncreasing(std::string* dest, int64_t val) {
+  const uint64_t x = val < 0 ? ~val : val;
   if (x < 64) {  // fast path for encoding length == 1
     *dest += kLengthToHeaderBits[1][0] ^ val;
     return;
@@ -458,12 +460,12 @@ void OrderedCode::WriteSignedNumIncreasing(string* dest, int64_t val) {
 bool OrderedCode::ReadSignedNumIncreasing(absl::string_view* src,
                                           int64_t* result) {
   if (src->empty()) return false;
-  const uint64 xor_mask = (!((*src)[0] & 0x80)) ? ~0ULL : 0ULL;
+  const uint64_t xor_mask = (!((*src)[0] & 0x80)) ? ~0ULL : 0ULL;
   const unsigned char first_byte = (*src)[0] ^ (xor_mask & 0xff);
 
   // now calculate and test length, and set x to raw (unmasked) result
   int len;
-  uint64 x;
+  uint64_t x;
   if (first_byte != 0xff) {
     len = 7 - tsl::Log2Floor64(first_byte ^ 0xff);
     if (src->size() < static_cast<size_t>(len)) return false;
