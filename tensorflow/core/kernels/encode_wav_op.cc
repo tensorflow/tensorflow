@@ -41,15 +41,15 @@ class EncodeWavOp : public OpKernel {
                 errors::InvalidArgument(
                     "Input sample_rate should be a scalar tensor, got ",
                     sample_rate_tensor.shape().DebugString(), " instead."));
-    const int32_t sample_rate = sample_rate_tensor.scalar<int32>()();
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(audio.NumElements(), std::numeric_limits<int32>::max()),
-        errors::InvalidArgument(
-            "Cannot encode audio with >= max int32 elements"));
+    const int32_t sample_rate = sample_rate_tensor.scalar<int32_t>()();
+    OP_REQUIRES(context,
+                FastBoundsCheck(audio.NumElements(),
+                                std::numeric_limits<int32_t>::max()),
+                errors::InvalidArgument(
+                    "Cannot encode audio with >= max int32 elements"));
 
-    const int32_t channel_count = static_cast<int32>(audio.dim_size(1));
-    const int32_t sample_count = static_cast<int32>(audio.dim_size(0));
+    const int32_t channel_count = static_cast<int32_t>(audio.dim_size(1));
+    const int32_t sample_count = static_cast<int32_t>(audio.dim_size(0));
 
     // Encode audio to wav string.
     Tensor* output = nullptr;

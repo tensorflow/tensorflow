@@ -284,7 +284,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
   explicit DepthwiseConv2dNativeOp(OpKernelConstruction* context)
       : BinaryOp<T>(context) {
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -385,17 +385,17 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     const int64_t input_rows_raw = GetTensorDim(input, data_format_, 'H');
     OP_REQUIRES(
         context,
-        FastBoundsCheck(input_rows_raw, std::numeric_limits<int32>::max()),
+        FastBoundsCheck(input_rows_raw, std::numeric_limits<int32_t>::max()),
         errors::InvalidArgument("Input rows too large"));
-    const int32_t input_rows = static_cast<int32>(input_rows_raw);
+    const int32_t input_rows = static_cast<int32_t>(input_rows_raw);
     const int32_t filter_rows = filter.dim_size(0);
 
     const int64_t input_cols_raw = GetTensorDim(input, data_format_, 'W');
     OP_REQUIRES(
         context,
-        FastBoundsCheck(input_cols_raw, std::numeric_limits<int32>::max()),
+        FastBoundsCheck(input_cols_raw, std::numeric_limits<int32_t>::max()),
         errors::InvalidArgument("Input cols too large"));
-    const int32_t input_cols = static_cast<int32>(input_cols_raw);
+    const int32_t input_cols = static_cast<int32_t>(input_cols_raw);
     const int32_t filter_cols = filter.dim_size(1);
 
     // The first dimension for input is batch.
@@ -425,7 +425,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
         context,
         (!std::is_same<Device, GPUDevice>::value ||
          FastBoundsCheck(out_shape.num_elements(),
-                         std::numeric_limits<int32>::max())),
+                         std::numeric_limits<int32_t>::max())),
         errors::InvalidArgument("Output elements too large for GPU kernel"));
 
     Tensor* output = nullptr;
