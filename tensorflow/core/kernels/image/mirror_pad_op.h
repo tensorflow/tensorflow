@@ -343,13 +343,13 @@ namespace functor {
 template <typename Device, typename T, typename Tpaddings, int Dims>
 struct MirrorPad {
   void operator()(const Device& device,
-                  typename TTypes<T, Dims, int32>::Tensor output,
-                  typename TTypes<T, Dims, int32>::ConstTensor input,
+                  typename TTypes<T, Dims, int32_t>::Tensor output,
+                  typename TTypes<T, Dims, int32_t>::ConstTensor input,
                   typename TTypes<Tpaddings>::ConstMatrix padding, int offset) {
-    Eigen::array<Eigen::IndexPair<int32>, Dims> padding_dims;
+    Eigen::array<Eigen::IndexPair<int32_t>, Dims> padding_dims;
 
     for (int i = 0; i < Dims; ++i) {
-      padding_dims[i] = Eigen::IndexPair<int32>(padding(i, 0), padding(i, 1));
+      padding_dims[i] = Eigen::IndexPair<int32_t>(padding(i, 0), padding(i, 1));
     }
 
     output.device(device) = MirrorPadOp(input, padding_dims, offset);
@@ -370,16 +370,16 @@ struct MirrorPad {
 template <typename Device, typename T, typename Tpaddings, int Dims>
 struct MirrorPadGrad {
   void operator()(const Device& device,
-                  typename TTypes<T, Dims, int32>::Tensor output,
-                  typename TTypes<T, Dims, int32>::ConstTensor input,
+                  typename TTypes<T, Dims, int32_t>::Tensor output,
+                  typename TTypes<T, Dims, int32_t>::ConstTensor input,
                   typename TTypes<Tpaddings>::ConstMatrix paddings, int offset,
-                  typename TTypes<T, Dims, int32>::Tensor scratch) {
+                  typename TTypes<T, Dims, int32_t>::Tensor scratch) {
     // Copy the gradient input into the scratch buffer.
     scratch.device(device) = input;
 
-    Eigen::array<int32, Dims> lhs_offsets;
-    Eigen::array<int32, Dims> rhs_offsets;
-    Eigen::array<int32, Dims> extents;
+    Eigen::array<int32_t, Dims> lhs_offsets;
+    Eigen::array<int32_t, Dims> rhs_offsets;
+    Eigen::array<int32_t, Dims> extents;
     Eigen::array<bool, Dims> reverses;
 
     for (int i = 0; i < Dims; ++i) {

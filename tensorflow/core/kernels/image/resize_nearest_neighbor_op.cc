@@ -236,7 +236,7 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
                 errors::InvalidArgument("shape_t must have two elements",
                                         shape_t.shape().DebugString()));
 
-    auto sizes = shape_t.vec<int32>();
+    auto sizes = shape_t.vec<int32_t>();
     OP_REQUIRES(context, sizes(0) > 0 && sizes(1) > 0,
                 errors::InvalidArgument("shape_t's elements must be positive"));
 
