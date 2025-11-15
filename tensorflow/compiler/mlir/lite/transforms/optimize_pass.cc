@@ -186,78 +186,55 @@ bool IsBalancedPaddingArray(int spatials_start, int spatials_end,
   return false;
 }
 
-bool HasSameStridedDim(int in, int dilate, int stride, int k, int p) {
-  const int effective_filter = (k - 1) * dilate + 1;
-  const int out_size = (in + stride - 1) / stride;
-  const int padding_needed = (out_size - 1) * stride + effective_filter - in;
-  return padding_needed == p;
-}
-
 // Is the pre pad shape amenable to given conv with SAME padding.
 bool HasSameStridedShape(TFL::Conv2DOp op, ArrayRef<int64_t> pre_pad_shape) {
-  auto conv_in_shape =
-      llvm::dyn_cast<ShapedType>(op.getInput().getType()).getShape();
-  auto kernel_shape =
-      llvm::dyn_cast<ShapedType>(op.getFilter().getType()).getShape();
-  if (conv_in_shape.size() != kernel_shape.size()) {
-    return false;
-  }
-  if (conv_in_shape.size() < 3) {
-    return false;
-  }
+  auto conv_out_shape =
+      llvm::dyn_cast<ShapedType>(op.getOutput().getType()).getShape();
 
-  const int64_t h_pad = conv_in_shape[1] - pre_pad_shape[1];
-  const bool h_strided =
-      HasSameStridedDim(pre_pad_shape[1], op.getDilationHFactor(),
-                        op.getStrideH(), kernel_shape[1], h_pad);
+  const int64_t expected_h_out =
+      (pre_pad_shape[1] + op.getStrideH() - 1) / op.getStrideH();
+  if (conv_out_shape[1] != expected_h_out) return false;
 
-  const int64_t w_pad = conv_in_shape[2] - pre_pad_shape[2];
-  const bool w_strided =
-      HasSameStridedDim(pre_pad_shape[2], op.getDilationWFactor(),
-                        op.getStrideW(), kernel_shape[2], w_pad);
-  return h_strided && w_strided;
+  const int64_t expected_w_out =
+      (pre_pad_shape[2] + op.getStrideW() - 1) / op.getStrideW();
+  if (conv_out_shape[2] != expected_w_out) return false;
+
+  return true;
 }
 
 bool HasSameStridedShape(TFL::DepthwiseConv2DOp op,
                          ArrayRef<int64_t> pre_pad_shape) {
-  auto conv_in_shape =
-      llvm::dyn_cast<ShapedType>(op.getInput().getType()).getShape();
-  auto kernel_shape =
-      llvm::dyn_cast<ShapedType>(op.getFilter().getType()).getShape();
+  auto conv_out_shape =
+      llvm::dyn_cast<ShapedType>(op.getOutput().getType()).getShape();
 
-  const int64_t h_pad = conv_in_shape[1] - pre_pad_shape[1];
-  const bool h_strided =
-      HasSameStridedDim(pre_pad_shape[1], op.getDilationHFactor(),
-                        op.getStrideH(), kernel_shape[1], h_pad);
+  const int64_t expected_h_out =
+      (pre_pad_shape[1] + op.getStrideH() - 1) / op.getStrideH();
+  if (conv_out_shape[1] != expected_h_out) return false;
 
-  const int64_t w_pad = conv_in_shape[2] - pre_pad_shape[2];
-  const bool w_strided =
-      HasSameStridedDim(pre_pad_shape[2], op.getDilationWFactor(),
-                        op.getStrideW(), kernel_shape[2], w_pad);
-  return h_strided && w_strided;
+  const int64_t expected_w_out =
+      (pre_pad_shape[2] + op.getStrideW() - 1) / op.getStrideW();
+  if (conv_out_shape[2] != expected_w_out) return false;
+
+  return true;
 }
 
 bool HasSameStridedShape(TFL::Conv3DOp op, ArrayRef<int64_t> pre_pad_shape) {
-  auto conv_in_shape =
-      llvm::dyn_cast<ShapedType>(op.getInput().getType()).getShape();
-  auto kernel_shape =
-      llvm::dyn_cast<ShapedType>(op.getFilter().getType()).getShape();
+  auto conv_out_shape =
+      llvm::dyn_cast<ShapedType>(op.getOutput().getType()).getShape();
 
-  const int64_t d_pad = conv_in_shape[1] - pre_pad_shape[1];
-  const bool d_strided =
-      HasSameStridedDim(pre_pad_shape[1], op.getDilationDFactor(),
-                        op.getStrideD(), kernel_shape[0], d_pad);
+  const int64_t expected_d_out =
+      (pre_pad_shape[1] + op.getStrideD() - 1) / op.getStrideD();
+  if (conv_out_shape[1] != expected_d_out) return false;
 
-  const int64_t h_pad = conv_in_shape[2] - pre_pad_shape[2];
-  const bool h_strided =
-      HasSameStridedDim(pre_pad_shape[2], op.getDilationHFactor(),
-                        op.getStrideH(), kernel_shape[1], h_pad);
+  const int64_t expected_h_out =
+      (pre_pad_shape[2] + op.getStrideH() - 1) / op.getStrideH();
+  if (conv_out_shape[2] != expected_h_out) return false;
 
-  const int64_t w_pad = conv_in_shape[3] - pre_pad_shape[3];
-  const bool w_strided =
-      HasSameStridedDim(pre_pad_shape[3], op.getDilationWFactor(),
-                        op.getStrideW(), kernel_shape[2], w_pad);
-  return h_strided && w_strided && d_strided;
+  const int64_t expected_w_out =
+      (pre_pad_shape[3] + op.getStrideW() - 1) / op.getStrideW();
+  if (conv_out_shape[3] != expected_w_out) return false;
+
+  return true;
 }
 
 using ::llvm::cast;
