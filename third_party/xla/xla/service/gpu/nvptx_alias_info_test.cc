@@ -15,12 +15,10 @@ limitations under the License.
 
 #include "xla/service/gpu/nvptx_alias_info.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
