@@ -36,6 +36,7 @@
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/python/ifrt/user_context_status_util.h"
 #include "xla/python/ifrt_proxy/client/executable.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -145,7 +146,8 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
       fingerprint = response->fingerprint_value();
       break;
     case CompileResponse::kFingerprintError:
-      fingerprint = tsl::StatusFromProto(response->fingerprint_error());
+      fingerprint = xla::ifrt::ReattachUserContextRefs(
+          tsl::StatusFromProto(response->fingerprint_error()));
       break;
     default:
       fingerprint = std::nullopt;

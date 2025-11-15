@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -33,6 +34,9 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/python/ifrt/user_context.h"
+#include "xla/python/ifrt/user_context_registry.h"
+#include "xla/python/ifrt/user_context_status_util.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/prof_util.h"
@@ -95,6 +99,59 @@ class BatchedOps {
       batched_ ABSL_GUARDED_BY(mu_);
 };
 
+// Tracks user contexts referenced by the proxy server.
+class UserContextsReferencedByProxyServer {
+ public:
+  // Registers a user context referenced by the proxy server.
+  void RegisterUserContext(TrackedUserContextRef tracked_user_context) {
+    if (tracked_user_context == nullptr) {
+      return;
+    }
+    absl::MutexLock l(mu_);
+    UserContextId user_context_id = tracked_user_context->user_context()->Id();
+    auto it = user_contexts_.find(user_context_id);
+    if (it == user_contexts_.end()) {
+      user_contexts_.insert(
+          {user_context_id,
+           TrackedUserContextRefWithRefCount{std::move(tracked_user_context),
+                                             /*ref_count=*/1}});
+    } else {
+      ++it->second.ref_count;
+    }
+  }
+
+  // Unregisters user contexts referenced by the proxy server.
+  void UnregisterUserContexts(
+      const google::protobuf::RepeatedField<uint64_t>& user_context_ids) {
+    if (user_context_ids.empty()) {
+      return;
+    }
+    absl::MutexLock l(mu_);
+    for (uint64_t user_context_id : user_context_ids) {
+      auto it = user_contexts_.find(UserContextId(user_context_id));
+      CHECK(it != user_contexts_.end());
+      if (--it->second.ref_count == 0) {
+        user_contexts_.erase(it);
+      }
+    }
+  }
+
+ private:
+  struct TrackedUserContextRefWithRefCount {
+    TrackedUserContextRef tracked_user_context;
+    // Multiple instances of UserContext may be created on the proxy server
+    // for the same `UserContextId`. To ensure that we keep the user context
+    // alive as long as any of its instances are alive on the proxy server,
+    // we keep track of the number of references to each `UserContextId` on
+    // the proxy server.
+    int ref_count;
+  };
+
+  absl::Mutex mu_;
+  absl::flat_hash_map<UserContextId, TrackedUserContextRefWithRefCount>
+      user_contexts_ ABSL_GUARDED_BY(mu_);
+};
+
 }  // namespace
 
 // Batches any requested operations and flushes them periodically in the
@@ -151,6 +208,11 @@ class RpcHelper::Batcher {
     LOG(INFO) << "RpcHelper::Batcher::Finish(): calling session_->Finish().";
     session_->Finish(s);
     LOG(INFO) << "RpcHelper::Batcher::Finish(): done.";
+  }
+
+  UserContextsReferencedByProxyServer*
+  user_contexts_referenced_by_proxy_server() {
+    return &user_contexts_referenced_by_proxy_server_;
   }
 
  private:
@@ -226,6 +288,7 @@ class RpcHelper::Batcher {
   }
 
   const std::shared_ptr<ClientSession> session_;
+  UserContextsReferencedByProxyServer user_contexts_referenced_by_proxy_server_;
 
   BatchedOps batched_;
 
@@ -251,9 +314,17 @@ tsl::Future<std::shared_ptr<Resp>> DoRpc(RpcHelper::Batcher* batcher,
   XFlowHelper x_flow_helper(profiling_name);
   auto traceme = x_flow_helper.Span<XFlowHelper::kSend>();
 
+  TrackedUserContextRef tracked_user_context =
+      UserContextRegistry::Get().Register(UserContextScope::current());
+  if (tracked_user_context != nullptr) {
+    ifrt_req->mutable_request_metadata()->set_user_context_id(
+        tracked_user_context->user_context()->Id().value());
+  }
+
   auto [promise, future] = tsl::Future<std::shared_ptr<Resp>>::MakePromise();
-  auto on_ready = [promise = std::move(promise), has_resp, get_resp,
-                   profiling_name, x_flow_helper](
+  auto on_ready = [promise = std::move(promise), batcher, has_resp, get_resp,
+                   profiling_name, x_flow_helper,
+                   tracked_user_context = std::move(tracked_user_context)](
                       absl::StatusOr<std::shared_ptr<IfrtResponse>> r) mutable {
     if (!r.ok()) {
       VLOG(3) << profiling_name << " response: " << r.status();
@@ -291,15 +362,25 @@ tsl::Future<std::shared_ptr<Resp>> DoRpc(RpcHelper::Batcher* batcher,
             Resp::GetDescriptor()->name(), "): ", r->DebugString()));
       }
 
+      batcher->user_contexts_referenced_by_proxy_server()->RegisterUserContext(
+          std::move(tracked_user_context));
+
       // If the metadata_status is not-OK, according to ifrt_service.proto,
       // there may be an error _instead_ of an actual response value. So, check
       // if an actual response value exists, and if so return it irrespective of
       // what the metadata_status says.
+      absl::StatusOr<std::shared_ptr<Resp>> result;
       if (!has_some_response) {
-        return metadata_status;
+        result = ReattachUserContextRefs(metadata_status);
       } else {
-        return std::make_shared<Resp>(*std::move((r.get()->*get_resp)()));
+        result = std::make_shared<Resp>(*std::move((r.get()->*get_resp)()));
       }
+
+      batcher->user_contexts_referenced_by_proxy_server()
+          ->UnregisterUserContexts(
+              r->response_metadata().destroyed_user_context_ids());
+
+      return result;
     }(*std::move(r));
 
     if (!result.ok()) {
@@ -360,7 +441,9 @@ tsl::Future<> RpcHelper::CheckFuture(uint64_t handle) {
   CheckFuture(std::move(req))
       .OnReady([promise = std::move(promise)](
                    absl::StatusOr<std::shared_ptr<CheckFutureResponse>>
-                       response) mutable { promise.Set(response.status()); });
+                       response) mutable {
+        promise.Set(ReattachUserContextRefs(response.status()));
+      });
 
   return std::move(future);
 }
