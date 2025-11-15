@@ -28,7 +28,8 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-const GraphNodeProto& TFShow::Show(const string& prefix, const Options& opts) {
+const GraphNodeProto& TFShow::Show(const std::string& prefix,
+                                   const Options& opts) {
   if (opts.output_type == kOutput[0]) {
     Timeline timeline(opts.step, opts.output_options.at(kTimelineOpts[0]));
     return ShowInternal(opts, &timeline)->proto();
@@ -53,7 +54,7 @@ const GraphNodeProto& TFShow::Show(const string& prefix, const Options& opts) {
   }
 }
 
-bool TFShow::LookUpCheckPoint(const string& name,
+bool TFShow::LookUpCheckPoint(const std::string& name,
                               std::unique_ptr<TFProfTensor>* tensor) {
   if (name == kTFProfRoot || !ckpt_reader_ || !tensor) {
     return false;
@@ -95,7 +96,7 @@ bool TFShow::ShouldShow(const ShowNode* node, const Options& opts,
   if (opts.show_name_regexes.size() == 1 && opts.show_name_regexes[0] == ".*") {
     show = true;
   } else {
-    for (const string& regex : opts.show_name_regexes) {
+    for (const std::string& regex : opts.show_name_regexes) {
       if (RE2::FullMatch(node->name(), regex)) {
         show = true;
         break;
@@ -105,15 +106,15 @@ bool TFShow::ShouldShow(const ShowNode* node, const Options& opts,
   // Don't show if show_name_regexes don't cover it.
   if (!show) return false;
   // Don't show if hide_name_regexes cover it.
-  for (const string& regex : opts.hide_name_regexes) {
+  for (const std::string& regex : opts.hide_name_regexes) {
     if (RE2::FullMatch(node->name(), regex)) return false;
   }
   return true;
 }
 
 bool TFShow::ShouldTrim(const ShowNode* node,
-                        const std::vector<string>& regexes) const {
-  for (const string& regex : regexes) {
+                        const std::vector<std::string>& regexes) const {
+  for (const std::string& regex : regexes) {
     if (RE2::FullMatch(node->name(), regex)) {
       return true;
     }
@@ -127,8 +128,8 @@ bool TFShow::ReAccount(ShowNode* node, const Options& opts) {
       opts.account_type_regexes[0] == ".*") {
     return true;
   }
-  for (const string& regex : opts.account_type_regexes) {
-    for (const string& type : node->node->op_types()) {
+  for (const std::string& regex : opts.account_type_regexes) {
+    for (const std::string& type : node->node->op_types()) {
       if (RE2::FullMatch(type, regex)) {
         return true;
       }
@@ -137,9 +138,9 @@ bool TFShow::ReAccount(ShowNode* node, const Options& opts) {
   return false;
 }
 
-string TFShow::FormatNodeMemory(ShowNode* node, int64_t bytes,
-                                int64_t total_bytes) const {
-  string memory = FormatMemory(total_bytes);
+std::string TFShow::FormatNodeMemory(ShowNode* node, int64_t bytes,
+                                     int64_t total_bytes) const {
+  std::string memory = FormatMemory(total_bytes);
   if (node->account) {
     memory = FormatMemory(bytes) + "/" + memory;
   } else {
@@ -148,14 +149,15 @@ string TFShow::FormatNodeMemory(ShowNode* node, int64_t bytes,
   return memory;
 }
 
-string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
-  std::vector<string> info;
+std::string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
+  std::vector<std::string> info;
   if (opts.select.find(kShown[2]) != opts.select.end()) {
-    const string shape = FormatShapes(node->node->shape());
+    const std::string shape = FormatShapes(node->node->shape());
     if (!shape.empty()) {
       info.push_back(shape);
     }
-    string params = FormatNumber(node->proto().total_parameters()) + " params";
+    std::string params =
+        FormatNumber(node->proto().total_parameters()) + " params";
     if (node->account) {
       params = FormatNumber(node->proto().parameters()) + "/" + params;
     } else {
@@ -164,7 +166,7 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
     info.push_back(params);
   }
   if (opts.select.find(kShown[3]) != opts.select.end()) {
-    string fops = FormatNumber(node->proto().total_float_ops()) + " flops";
+    std::string fops = FormatNumber(node->proto().total_float_ops()) + " flops";
     if (node->account) {
       fops = FormatNumber(node->proto().float_ops()) + "/" + fops;
     } else {
@@ -207,17 +209,18 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
     }
   }
   if (opts.select.find(kShown[6]) != opts.select.end()) {
-    const std::set<string>& op_types = node->node->op_types();
+    const std::set<std::string>& op_types = node->node->op_types();
     info.push_back(absl::StrJoin(op_types, "|"));
   }
   if (opts.select.find(kShown[7]) != opts.select.end()) {
-    string run = FormatNumber(node->proto().total_run_count());
+    std::string run = FormatNumber(node->proto().total_run_count());
     if (node->account) {
       run = FormatNumber(node->proto().run_count()) + "/" + run;
     } else {
       run = "--/" + run;
     }
-    string definition = FormatNumber(node->proto().total_definition_count());
+    std::string definition =
+        FormatNumber(node->proto().total_definition_count());
     if (node->account) {
       definition = "1/" + definition;
     } else {
@@ -226,7 +229,7 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
     info.push_back(run + "|" + definition);
   }
   if (opts.select.find(kShown[8]) != opts.select.end()) {
-    std::vector<string> shape_vec;
+    std::vector<std::string> shape_vec;
     for (const auto& s : node->node->input_shapes()) {
       if (s.second.empty()) {
         shape_vec.push_back(absl::StrFormat("%d:unknown", s.first));
@@ -241,8 +244,8 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
   return absl::StrFormat("%s (%s)", node->name(), absl::StrJoin(info, ", "));
 }
 
-string TFShow::FormatLegend(const Options& opts) const {
-  std::vector<string> legends;
+std::string TFShow::FormatLegend(const Options& opts) const {
+  std::vector<std::string> legends;
   if (opts.select.find(kShown[2]) != opts.select.end()) {
     legends.push_back("# parameters");
   }
