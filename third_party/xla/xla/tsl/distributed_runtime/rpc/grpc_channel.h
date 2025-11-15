@@ -88,7 +88,7 @@ GrpcChannelCache* NewGrpcChannelCache(
 ::grpc::ChannelArguments GetChannelArguments(const RPCOptions* rpc_options);
 
 ChannelCreationFunction ConvertToChannelCreationFunction(
-    const std::function<absl::Status(string, const RPCOptions*,
+    const std::function<absl::Status(std::string, const RPCOptions*,
                                      SharedGrpcChannelPtr*)>&
         new_channel_func_ptr);
 
