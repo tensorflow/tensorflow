@@ -60,7 +60,6 @@ TEST(TypeInferenceTest, BasicStraightline) {
 
   Node* ds;
   TensorShapeProto shape;
-  shape.mutable_dim();
   shape.set_unknown_rank(false);
   TF_ASSERT_OK(NodeBuilder("ds", "RangeDataset", &root.graph()->flib_def())
                    .Input({NodeBuilder::NodeOut(start.node())})
@@ -100,7 +99,6 @@ TEST(TypeInferenceTest, CyclicGraphWithV1ControlFlow) {
 
   Node* ds;
   TensorShapeProto shape;
-  shape.mutable_dim();
   shape.set_unknown_rank(false);
   TF_ASSERT_OK(NodeBuilder("ds", "RangeDataset", &root.graph()->flib_def())
                    .Input({NodeBuilder::NodeOut(start.node())})
@@ -443,7 +441,6 @@ TEST(ReverseTypeInferenceTest, BasicVDependency) {
 
   Node* ds;  // This node has a type constructor.
   TensorShapeProto shape;
-  shape.mutable_dim();
   shape.set_unknown_rank(false);
   TF_ASSERT_OK(NodeBuilder("ds", "RangeDataset", &root.graph()->flib_def())
                    .Input({NodeBuilder::NodeOut(start.node())})
@@ -491,7 +488,6 @@ TEST(ReverseTypeInferenceTest, FromUnsetType) {
 
   Node* it;
   TensorShapeProto shape;
-  shape.mutable_dim();
   shape.set_unknown_rank(false);
   TF_ASSERT_OK(
       NodeBuilder("it", "AnonymousIteratorV2", &root.graph()->flib_def())
