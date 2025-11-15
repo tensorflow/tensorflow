@@ -290,8 +290,17 @@ TfLiteStatus SimpleMemoryArena::Commit(bool* arena_reallocated) {
   // based, they will remain valid in the new memory block.
   *arena_reallocated = underlying_buffer_.Resize(high_water_mark_);
   committed_ = true;
+
+  //  Fix: Add null check to prevent crash if allocation failed
+  if (underlying_buffer_.GetPtr() == nullptr && high_water_mark_ > 0) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "Failed to allocate arena of size %zu bytes.", high_water_mark_);
+    return kTfLiteError;
+  }
+
   return kTfLiteOk;
 }
+
+
 
 TfLiteStatus SimpleMemoryArena::ResolveAlloc(
     TfLiteContext* context, const ArenaAllocWithUsageInterval& alloc,
