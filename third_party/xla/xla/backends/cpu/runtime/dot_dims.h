@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_RUNTIME_DOT_LIB_H_
-#define XLA_BACKENDS_CPU_RUNTIME_DOT_LIB_H_
+#ifndef XLA_BACKENDS_CPU_RUNTIME_DOT_DIMS_H_
+#define XLA_BACKENDS_CPU_RUNTIME_DOT_DIMS_H_
 
 #include <cstdint>
 
@@ -97,4 +97,4 @@ absl::StatusOr<DotCanonicalDims> GetDotCanonicalDims(
 
 }  // namespace xla::cpu
 
-#endif  // XLA_BACKENDS_CPU_RUNTIME_DOT_LIB_H_
+#endif  // XLA_BACKENDS_CPU_RUNTIME_DOT_DIMS_H_

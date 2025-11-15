@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
@@ -393,9 +393,9 @@ TEST(WhileThunkTest, TransformAllNestedThunks) {
       /*body_thunk_sequence_=*/std::move(body_thunk_sequence),
       /*trip_count=*/3);
 
-  while_thunk->TransformAllNestedThunks([](auto) {
+  TF_EXPECT_OK(while_thunk->TransformAllNestedThunks([](auto) {
     return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());
-  });
+  }));
 
   EXPECT_THAT(while_thunk->condition_thunk_sequence(), NotNull());
   EXPECT_THAT(while_thunk->condition_thunk_sequence()->thunks(), SizeIs(1));

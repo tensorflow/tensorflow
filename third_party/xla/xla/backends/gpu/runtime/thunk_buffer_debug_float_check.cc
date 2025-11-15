@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -325,16 +326,17 @@ absl::Status RunFloatCheckPassInternal(SequentialThunk* root_thunk,
       CreateBufferDebugFloatCheckThunk(metadata_store, log_slice, hlo_module));
 
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
-  root_thunk->TransformAllNestedThunks([&](std::unique_ptr<Thunk> thunk) {
-    if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
-      return thunk;
-    }
-    VLOG(1) << "Wrapping with float check thunk";
-    return WrapWithFloatCheckThunk(
-        std::move(thunk), log_slice,
-        /*predecessor_thunk=*/*buffer_debug_init_thunk,
-        /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store);
-  });
+  TF_RETURN_IF_ERROR(
+      root_thunk->TransformAllNestedThunks([&](std::unique_ptr<Thunk> thunk) {
+        if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
+          return thunk;
+        }
+        VLOG(1) << "Wrapping with float check thunk";
+        return WrapWithFloatCheckThunk(
+            std::move(thunk), log_slice,
+            /*predecessor_thunk=*/*buffer_debug_init_thunk,
+            /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store);
+      }));
 
   ThunkSequence& thunks = root_thunk->thunks();
   thunks.reserve(thunks.size() + 2);

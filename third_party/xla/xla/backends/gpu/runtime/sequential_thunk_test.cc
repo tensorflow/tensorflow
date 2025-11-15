@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -172,12 +173,12 @@ TEST(SequentialThunkTest, TransformAllNestedThunks) {
       std::make_unique<DummyThunk>(Thunk::Kind::kGemm, make_info(3)));
   SequentialThunk sequential_thunk(Thunk::ThunkInfo(), std::move(thunks));
 
-  sequential_thunk.TransformAllNestedThunks(
+  TF_EXPECT_OK(sequential_thunk.TransformAllNestedThunks(
       [&](std::unique_ptr<Thunk> thunk) -> std::unique_ptr<Thunk> {
         return std::make_unique<DummyThunk>(
             Thunk::Kind::kCopy,
             make_info(thunk->thunk_info().thunk_id.value() + 10));
-      });
+      }));
 
   EXPECT_EQ(sequential_thunk.thunks().size(), 3);
   EXPECT_EQ(sequential_thunk.thunks()[0]->kind(), Thunk::Kind::kCopy);

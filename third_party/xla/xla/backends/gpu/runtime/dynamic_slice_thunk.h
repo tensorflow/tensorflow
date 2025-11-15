@@ -172,9 +172,10 @@ class DynamicSliceThunk : public Thunk {
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
   void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
-  void TransformAllNestedThunks(
-      absl::FunctionRef<std::unique_ptr<Thunk>(std::unique_ptr<Thunk>)> fn)
-      override;
+  absl::Status TransformAllNestedThunks(
+      absl::FunctionRef<
+          absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
+          fn) override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 

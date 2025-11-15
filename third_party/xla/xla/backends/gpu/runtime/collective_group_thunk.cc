@@ -135,12 +135,15 @@ void CollectiveGroupThunk::ForAllThunksMutable(
   }
 }
 
-void CollectiveGroupThunk::TransformAllNestedThunks(
-    absl::FunctionRef<std::unique_ptr<Thunk>(std::unique_ptr<Thunk>)> fn) {
+absl::Status CollectiveGroupThunk::TransformAllNestedThunks(
+    absl::FunctionRef<
+        absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
+        fn) {
   for (std::unique_ptr<Thunk>& thunk : thunks_) {
-    thunk->TransformAllNestedThunks(fn);
-    thunk = fn(std::move(thunk));
+    TF_RETURN_IF_ERROR(thunk->TransformAllNestedThunks(fn));
+    TF_ASSIGN_OR_RETURN(thunk, fn(std::move(thunk)));
   }
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

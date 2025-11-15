@@ -16,9 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_DOT_THUNK_H_
 #define XLA_BACKENDS_CPU_RUNTIME_DOT_THUNK_H_
 
-#include "xla/backends/cpu/runtime/dot_lib.h"
-#define EIGEN_USE_THREADS
-
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -28,13 +25,16 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
-#include "Eigen/Core"
-#include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/xla_data.pb.h"
+
+#define EIGEN_USE_THREADS
+#include "Eigen/Core"
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 

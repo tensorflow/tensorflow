@@ -2110,10 +2110,10 @@ TEST_F(DynamicSliceThunkTest, TransformAllNestedThunks) {
                           /*sliced_shapes=*/{},
                           /*offset_byte_sizes=*/{});
 
-  thunk.TransformAllNestedThunks([](auto) {
+  TF_EXPECT_OK(thunk.TransformAllNestedThunks([](auto) {
     return std::make_unique<DummyThunk>(Thunk::Kind::kCustomCall,
                                         Thunk::ThunkInfo());
-  });
+  }));
 
   EXPECT_THAT(thunk.get_embedded_thunk(), NotNull());
   EXPECT_THAT(thunk.get_embedded_thunk()->thunks(), SizeIs(1));

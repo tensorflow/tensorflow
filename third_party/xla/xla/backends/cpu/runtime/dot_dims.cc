@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/runtime/dot_lib.h"
+#include "xla/backends/cpu/runtime/dot_dims.h"
 
 #include <cstdint>
 #include <functional>
@@ -138,10 +138,12 @@ absl::StatusOr<DotCanonicalDims> GetDotCanonicalDims(
       dot_dimensions.rhs_contracting_dimensions().end());
 
   // Adjust contracting dimensions for leading batch dimensions.
-  for (int64_t& dim : lhs_contracting_dims)
+  for (int64_t& dim : lhs_contracting_dims) {
     dim -= dot_dimensions.lhs_batch_dimensions_size();
-  for (int64_t& dim : rhs_contracting_dims)
+  }
+  for (int64_t& dim : rhs_contracting_dims) {
     dim -= dot_dimensions.rhs_batch_dimensions_size();
+  }
 
   // Non-contracting dots should never make it here.
   TF_RET_CHECK(lhs_contracting_dims.size() == 1);

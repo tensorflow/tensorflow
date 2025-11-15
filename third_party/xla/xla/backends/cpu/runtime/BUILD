@@ -712,9 +712,9 @@ cc_library(
 )
 
 cc_library(
-    name = "dot_lib",
-    srcs = ["dot_lib.cc"],
-    hdrs = ["dot_lib.h"],
+    name = "dot_dims",
+    srcs = ["dot_dims.cc"],
+    hdrs = ["dot_dims.h"],
     deps = [
         "//xla:shape_util",
         "//xla:status_macros",
@@ -744,7 +744,7 @@ cc_library(
     ],
     hdrs = ["dot_thunk.h"],
     deps = [
-        ":dot_lib",
+        ":dot_dims",
         ":thunk",
         "//xla:shape_util",
         "//xla:types",
