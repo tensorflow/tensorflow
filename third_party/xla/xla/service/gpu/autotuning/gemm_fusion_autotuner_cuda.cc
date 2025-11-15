@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 
@@ -49,23 +50,32 @@ int GetCuDnnPlanCount(const HloInstruction& hlo,
 }
 
 bool GemmFusionAutotunerImpl::AddLibConfigs(
-    const HloFusionInstruction& fusion, const HloDotInstruction* dot,
+    const HloFusionInstruction& fusion, const HloInstruction* dot,
     std::vector<BackendConfig>& configs) {
   // Add cuDNN plans, if available.
   stream_executor::CudaComputeCapability cc =
       *GetComputeCapability().cuda_compute_capability();
-  bool is_cudnn_enabled =
-      !config_.IsDeviceless() &&
-      GetDnnVersionInfoOrDefault(config_.GetExecutor()).major_version() >= 9 &&
+  auto dnn_version = GetDnnVersionInfoOrDefault(
+      !config_.IsDeviceless() ? config_.GetExecutor() : nullptr);
+
+  bool is_cudnn_fusion = IsGpuFusionKind(fusion, kCuDnnFusionKind);
+  bool is_supported_triton_dot_fusion =
+      IsGpuFusionKind(fusion, kTritonGemmFusionKind) &&
+      dnn_version.major_version() >= 9 &&
+      algorithm_util::IsSupportedByCudnn(dot->precision_config().algorithm()) &&
       ((cc.IsAtLeastAmpere() &&
         debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 1) ||
        (cc.IsAtLeastBlackwell() &&
         debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 0));
-  if ((IsGpuFusionKind(fusion, kCuDnnFusionKind) && IsAutotuningEnabled()) ||
-      (IsGpuFusionKind(fusion, kTritonGemmFusionKind) && is_cudnn_enabled &&
-       algorithm_util::IsSupportedByCudnn(
-           dot->precision_config().algorithm()) &&
-       IsAutotuningEnabled())) {
+  bool is_supported_triton_scaled_dot_fusion =
+      IsGpuFusionKind(fusion, kTritonScaledDotFusionKind) &&
+      dnn_version >= kCudnnSupportsBlockScaledDot &&
+      CudnnScaledDotHelper::IsSupported(Cast<HloScaledDotInstruction>(dot)) &&
+      cc.IsAtLeastBlackwell();
+
+  if (IsAutotuningEnabled() &&
+      (is_cudnn_fusion || is_supported_triton_dot_fusion ||
+       is_supported_triton_scaled_dot_fusion)) {
     const int plan_count = GetCuDnnPlanCount(fusion, config_);
     for (int plan_id = 0; plan_id < plan_count; ++plan_id) {
       configs.push_back(CuDnnConfig{plan_id});

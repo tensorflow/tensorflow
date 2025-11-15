@@ -28,7 +28,7 @@ namespace gpu {
 const int64_t GemmFusionAutotunerImpl::BLAS_GEMM_DEFAULT = HIPBLAS_GEMM_DEFAULT;
 
 bool GemmFusionAutotunerImpl::AddLibConfigs(
-    const HloFusionInstruction& fusion, const HloDotInstruction* dot,
+    const HloFusionInstruction& fusion, const HloInstruction* dot,
     std::vector<BackendConfig>& configs) {
   return false;
 }

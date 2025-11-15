@@ -4630,7 +4630,7 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
                         desc.GetPhysicalDimensionsMajorToMinor());
     std::vector<int64_t> strides = desc.GetPhysicalStridesMajorToMinor();
     if (dimensions.size() == 2) {
-      dimensions.insert(dimensions.begin(), 1);
+      dimensions.insert(dimensions.begin(), 1);  // Batch dimension is implicit.
       strides.insert(strides.begin(), dimensions[1] * dimensions[2]);
     }
     CHECK_EQ(dimensions.size(), 3);
@@ -4670,7 +4670,7 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
     d_tensor->set_uid(next_uid());
     d_tensor->set_is_virtual(false);
   } else {
-    std::vector<int64_t> scalar(lhs_data.ndims(), 1);
+    std::vector<int64_t> scalar(3, 1);  // Batch dimension is implicit.
     auto scale_attr = Tensor_attributes()
                           .set_uid(next_uid())
                           .set_dim(scalar)
