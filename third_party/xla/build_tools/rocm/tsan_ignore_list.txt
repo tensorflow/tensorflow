@@ -1,0 +1,35 @@
+race:libhsa-runtime64.so
+race:libamdhip64.so
+race:hipStreamSynchronize
+race:libhipblaslt.so
+race:libamd_comgr.so
+race:librccl.so
+
+# Abseil reference counting (DropRef / RefCount init)
+race:tsl::ReferenceCounted
+race:absl::lts_*::Mutex
+race:absl::lts_*::CondVar
+
+# XLA GPU RawSEDeviceMemory RCReference reuse
+race:xla::RawSEDeviceMemory
+race:xla::gpu::AllocateDestinationBuffer
+race:xla::LocalDeviceState::ThenRelease
+
+# To be fixed
+race:xla::GpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer
+race:xla::LiteralBase::Piece::DeallocateBuffers
+race:xla::PjRtStreamExecutorLoadedExecutable::ExecuteHelper
+race:xla::PjRtStreamExecutorClient::BufferFromHostBufferInternal
+race:xla::PjRtStreamExecutorClient::AllocateAndRecordEvent
+race:xla::HloRunnerPjRt::TransferLiteralsFromDevice
+race:xla::MutableLiteralBase::~MutableLiteralBase
+race:xla::MutableLiteralBase::PopulateR1<int>
+race:xla::gpu::GpuCompiler::CompileSingleModule
+race:xla::LiteralBase::Piece::Storage::Storage
+race:xla::LocalClient::TransferFromOutfeedLocal
+race:llvm::cl::opt_storage<bool, false, false>::setValue<int>
+
+race:xla::gpu::(anonymous namespace)::RecoverExp2Pattern::initStaticsIfNeeded*
+race:lld::lldMain
+race:llvm::*
+race:xla::gpu::GpuExecutable::ExecuteAsyncOnStream
