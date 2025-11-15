@@ -28,7 +28,7 @@ limitations under the License.
 #include "oneapi/dnnl/dnnl_graph.hpp"  // NOLINT
 #include "xla/backends/cpu/onednn_fusion.h"
 #include "xla/backends/cpu/onednn_support.h"
-#include "xla/backends/cpu/runtime/dot_lib.h"
+#include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/onednn/onednn_interop.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
