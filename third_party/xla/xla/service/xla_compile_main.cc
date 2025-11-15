@@ -99,7 +99,7 @@ int main(int argc, char* argv[]) {
                 "Required if --output_file is not set."),
   };
 
-  tsl::string usage = xla::xla_compile::kUsageHeader;
+  std::string usage = xla::xla_compile::kUsageHeader;
   usage += tsl::Flags::Usage(argv[0], flag_list);
   if (argc > 1 && absl::string_view(argv[1]) == "--help") {
     std::cerr << usage << "\n";
