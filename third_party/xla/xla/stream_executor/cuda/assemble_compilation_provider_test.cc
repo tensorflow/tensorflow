@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/assemble_compilation_provider.h"
 
+#include <algoritm>
 #include <memory>
 #include <string>
 
