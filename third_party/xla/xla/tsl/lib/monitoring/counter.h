@@ -187,7 +187,7 @@ class Counter {
 
   absl::Status status_;
 
-  using LabelArray = std::array<string, NumLabels>;
+  using LabelArray = std::array<std::string, NumLabels>;
   std::map<LabelArray, CounterCell> cells_ TF_GUARDED_BY(mu_);
 
   // The metric definition. This will be used to identify the metric when we
