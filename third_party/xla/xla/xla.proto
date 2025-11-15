@@ -637,6 +637,8 @@ message DebugOptions {
   // Path to experimental collective perf tables.
   optional string xla_gpu_experimental_collective_perf_table_path = 377;
 
+  optional string xla_gpu_experimental_debug_buffer_saver_directory = 430;
+
   // Experimentally disables binary libraries in GPU compiler passes.
   optional bool xla_gpu_experimental_disable_binary_libraries = 329;
 
@@ -1420,7 +1422,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 429
+  // Next id: 431
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
