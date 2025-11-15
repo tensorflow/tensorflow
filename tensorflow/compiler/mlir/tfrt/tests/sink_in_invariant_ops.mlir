@@ -374,3 +374,54 @@ func.func @nested_sink_in_if(%arg: tensor<i32> {tf_saved_model.index_path = ["in
 }
 
 }
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+// Test sinks crossing nested tf.While and BatchFunction, while the sinkable ops are only copied at the target.
+
+// CHECK-LABEL: func private @batched_function
+func.func private @batched_function(%arg0: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+  attributes {tf._input_shapes = [#tf_type.shape<1x3>, #tf_type.shape<*>], tf.signature.is_stateful} {
+  // CHECK: tf.VarHandleOp
+  // CHECK: tf.ReadVariableOp
+  %1 = "tf.ReadVariableOp"(%arg0) {device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+  %2 = "tf.Identity"(%1) {device = "/device:CPU:0"} : (tensor<i32>) -> tensor<i32>
+  func.return %2 : tensor<i32>
+}
+
+// CHECK-LABEL: func private @while_cond_func
+func.func private @while_cond_func(
+    %arg0: tensor<i32>,
+    %arg1: tensor<i32>,
+    %arg: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32> {
+  // CHECK: [[handle:%.*]] = "tf.VarHandleOp"()
+  // CHECK: "tf.ReadVariableOp"([[handle]])
+  %0 = "tf.ReadVariableOp"(%arg) {device = "cpu"} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+  func.return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: func private @while_body_func
+func.func private @while_body_func(
+    %arg0: tensor<i32>,
+    %arg1: tensor<i32>,
+    %arg2: tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<i32>, tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>) {
+  // CHECK: "tf.BatchFunction"(%arg2)
+  %0 = "tf.BatchFunction"(%arg2) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operandSegmentSizes = array<i32: 1, 0>, shared_name = "batch/"} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+  func.return %0, %arg0, %arg2 : tensor<i32>, tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>
+}
+
+// CHECK-LABEL: func @nested_sink_in_while_and_batch_functions
+func.func @nested_sink_in_while_and_batch_functions(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
+  attributes {tf_saved_model.exported_names = ["test_sink_in_while_and_batch_functions"]} {
+  // CHECK: [[handle:%.*]] = "tf.VarHandleOp"()
+  %handle = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
+  // CHECK: [[cond:%.*]] = "tf.Const"()
+  %cond = "tf.Const"() {device = "/CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: "tf.While"([[cond]], [[cond]], [[handle]])
+  %x:3 = "tf.While"(%cond, %cond, %handle) {body = @while_body_func, cond = @while_cond_func, is_stateless = false, parallel_iterations = 10 : i64, shape_invariant} : (tensor<i32>, tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<i32>, tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>)
+  func.return %x#0 : tensor<i32>
+}
+
+}
