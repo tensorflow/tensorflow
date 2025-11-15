@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/base/attributes.h"
-#include "xla/backends/cpu/runtime/convolution_thunk_internal.h"
+#include "xla/backends/cpu/runtime/convolution_lib.h"
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_EigenSingleThreadedConv2DF16(
@@ -32,12 +32,12 @@ __xla_cpu_runtime_EigenSingleThreadedConv2DF16(
     int64_t lhs_col_dilation, int64_t rhs_row_dilation,
     int64_t rhs_col_dilation, int64_t feature_group_count) {
   xla::cpu::internal::EigenConv2D(
-      Eigen::DefaultDevice(), out, lhs, rhs, input_batch, input_rows,
-      input_cols, input_channels, kernel_rows, kernel_cols, kernel_channels,
-      kernel_filters, output_rows, output_cols, row_stride, col_stride,
-      padding_top, padding_bottom, padding_left, padding_right,
-      lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation,
-      feature_group_count, /*count_down=*/{}, /*use_thunk_runtime=*/false);
+      nullptr, out, lhs, rhs, input_batch, input_rows, input_cols,
+      input_channels, kernel_rows, kernel_cols, kernel_channels, kernel_filters,
+      output_rows, output_cols, row_stride, col_stride, padding_top,
+      padding_bottom, padding_left, padding_right, lhs_row_dilation,
+      lhs_col_dilation, rhs_row_dilation, rhs_col_dilation, feature_group_count,
+      /*done=*/[] {});
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
@@ -52,10 +52,10 @@ __xla_cpu_runtime_EigenSingleThreadedConv2DF32(
     int64_t rhs_row_dilation, int64_t rhs_col_dilation,
     int64_t feature_group_count) {
   xla::cpu::internal::EigenConv2D(
-      Eigen::DefaultDevice(), out, lhs, rhs, input_batch, input_rows,
-      input_cols, input_channels, kernel_rows, kernel_cols, kernel_channels,
-      kernel_filters, output_rows, output_cols, row_stride, col_stride,
-      padding_top, padding_bottom, padding_left, padding_right,
-      lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation,
-      feature_group_count, /*count_down=*/{}, /*use_thunk_runtime=*/false);
+      nullptr, out, lhs, rhs, input_batch, input_rows, input_cols,
+      input_channels, kernel_rows, kernel_cols, kernel_channels, kernel_filters,
+      output_rows, output_cols, row_stride, col_stride, padding_top,
+      padding_bottom, padding_left, padding_right, lhs_row_dilation,
+      lhs_col_dilation, rhs_row_dilation, rhs_col_dilation, feature_group_count,
+      /*done=*/[] {});
 }

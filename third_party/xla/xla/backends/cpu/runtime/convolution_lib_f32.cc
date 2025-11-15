@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/runtime/convolution_thunk_internal.h"
+#include "xla/backends/cpu/runtime/convolution_lib.h"
 
-CONV2D_INSTANTIATE_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
-CONV2D_INSTANTIATE_TEMPLATE(Eigen::ThreadPoolDevice, Eigen::half);
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"  // IWYU pragma: keep
+#endif
 
-CONV3D_INSTANTIATE_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
-CONV3D_INSTANTIATE_TEMPLATE(Eigen::ThreadPoolDevice, Eigen::half);
+XLA_CPU_DEFINE_CONV2D(float);
+XLA_CPU_DEFINE_CONV3D(float);

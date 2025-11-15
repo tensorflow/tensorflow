@@ -33,8 +33,9 @@ namespace xla::cpu {
 // Performs 1D, 2D or 3D convolution.
 class ConvolutionThunk final : public Thunk {
  public:
+  // TODO(ezhulenev): Remove this struct as we always use thread pool.
   struct Options {
-    bool multi_threaded = false;
+    bool multi_threaded = true;
   };
 
   static absl::StatusOr<std::unique_ptr<ConvolutionThunk>> Create(

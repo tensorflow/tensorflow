@@ -1052,7 +1052,7 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//xla:executable_run_options",
-        "//xla/backends/cpu/runtime:convolution_thunk_internal",
+        "//xla/backends/cpu/runtime:convolution_lib",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",  # build_cleaner: keep
         "@eigen_archive//:eigen3",
@@ -1068,7 +1068,7 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//xla:executable_run_options",
-        "//xla/backends/cpu/runtime:convolution_thunk_internal",
+        "//xla/backends/cpu/runtime:convolution_lib",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",  # build_cleaner: keep
         "@eigen_archive//:eigen3",
@@ -1107,7 +1107,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/backends/cpu/runtime:convolution_thunk_internal",
+        "//xla/backends/cpu/runtime:convolution_lib",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",  # build_cleaner: keep
         "@eigen_archive//:eigen3",
@@ -1121,7 +1121,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/backends/cpu/runtime:convolution_thunk_internal",
+        "//xla/backends/cpu/runtime:convolution_lib",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",  # build_cleaner: keep
         "@eigen_archive//:eigen3",

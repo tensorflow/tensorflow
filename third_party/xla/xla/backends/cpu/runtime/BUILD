@@ -22,8 +22,8 @@ package_group(
 filegroup(
     name = "runtime_srcs",
     srcs = [
-        "convolution_thunk_f16.cc",
-        "convolution_thunk_f32.cc",
+        "convolution_lib_f16.cc",
+        "convolution_lib_f32.cc",
         "rng_state_lib.cc",
         "sort_lib.cc",
     ],
@@ -33,7 +33,7 @@ filegroup(
 filegroup(
     name = "runtime_hdrs",
     srcs = [
-        "convolution_thunk_internal.h",
+        "convolution_lib.h",
         "kernel_c_api.h",
         "rng_state_lib.h",
         "sort_lib.h",
@@ -393,20 +393,22 @@ cc_library(
 )
 
 cc_library(
-    name = "convolution_thunk_internal",
+    name = "convolution_lib",
     srcs = [
-        "convolution_thunk_f16.cc",
-        "convolution_thunk_f32.cc",
+        "convolution_lib_f16.cc",
+        "convolution_lib_f32.cc",
     ],
-    hdrs = ["convolution_thunk_internal.h"],
+    hdrs = ["convolution_lib.h"],
     copts = runtime_copts(),
     visibility = internal_visibility([":friends"]),
     deps = [
-        ":work_queue",
+        "//xla/backends/cpu/runtime:work_queue",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
-        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -415,10 +417,9 @@ cc_library(
     name = "convolution_thunk",
     srcs = ["convolution_thunk.cc"],
     hdrs = ["convolution_thunk.h"],
-    copts = runtime_copts(),
     deps = [
         ":convolution_dims",
-        ":convolution_thunk_internal",
+        ":convolution_lib",
         ":thunk",
         "//xla:executable_run_options",
         "//xla:shape_util",

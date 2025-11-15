@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_THUNK_INTERNAL_H_
-#define XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_THUNK_INTERNAL_H_
+#ifndef XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_LIB_H_
+#define XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_LIB_H_
 
 #include <algorithm>
 #include <cstddef>
@@ -22,11 +22,13 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "xla/backends/cpu/runtime/work_queue.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/logging.h"
 
 #define EIGEN_USE_THREADS
 #include "Eigen/Core"
@@ -34,7 +36,46 @@ limitations under the License.
 
 namespace xla::cpu::internal {
 
-constexpr auto kMaxConvMatrixSize = static_cast<size_t>(8) << 30;  // 8 GiB
+// Done callback is called when the Convolution computation is complete.
+using DoneCallback = absl::AnyInvocable<void()>;
+
+template <typename ScalarType>
+void EigenConv2D(const Eigen::ThreadPoolDevice* device, ScalarType* out,
+                 const ScalarType* lhs, const ScalarType* rhs,
+                 Eigen::Index input_batch, Eigen::Index input_x,
+                 Eigen::Index input_y, Eigen::Index input_channels,
+                 Eigen::Index kernel_x, Eigen::Index kernel_y,
+                 Eigen::Index kernel_channels, Eigen::Index kernel_filters,
+                 Eigen::Index output_x, Eigen::Index output_y,
+                 Eigen::Index x_stride, Eigen::Index y_stride,
+                 Eigen::Index padding_x_before, Eigen::Index padding_x_after,
+                 Eigen::Index padding_y_before, Eigen::Index padding_y_after,
+                 Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
+                 Eigen::Index rhs_x_dilation, Eigen::Index rhs_y_dilation,
+                 Eigen::Index feature_group_count, DoneCallback done);
+
+template <typename ScalarType>
+void EigenConv3D(const Eigen::ThreadPoolDevice* device, ScalarType* out,
+                 const ScalarType* lhs, const ScalarType* rhs,
+                 Eigen::Index input_batch, Eigen::Index input_x,
+                 Eigen::Index input_y, Eigen::Index input_z,
+                 Eigen::Index input_channels, Eigen::Index kernel_x,
+                 Eigen::Index kernel_y, Eigen::Index kernel_z,
+                 Eigen::Index kernel_channels, Eigen::Index kernel_filters,
+                 Eigen::Index output_x, Eigen::Index output_y,
+                 Eigen::Index output_z, Eigen::Index x_stride,
+                 Eigen::Index y_stride, Eigen::Index z_stride,
+                 Eigen::Index padding_x_before, Eigen::Index padding_x_after,
+                 Eigen::Index padding_y_before, Eigen::Index padding_y_after,
+                 Eigen::Index padding_z_before, Eigen::Index padding_z_after,
+                 Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
+                 Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,
+                 Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,
+                 Eigen::Index feature_group_count, DoneCallback done);
+
+//===----------------------------------------------------------------------===//
+// Convolution 2D implementation details.
+//===----------------------------------------------------------------------===//
 
 // Returns in 'out_data' (assumes to be zero-initialized) image patch in storage
 // order (width, height, depth), constructed from patches in 'conv_matrix',
@@ -95,23 +136,48 @@ void Pack2DPatches(const T* conv_matrix, const int depth, const int height,
   }
 }
 
+template <typename ScalarType>
+bool CanUseCustomTransposedConv(
+    Eigen::Index input_batch, Eigen::Index input_x, Eigen::Index input_y,
+    Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_filters,
+    Eigen::Index output_x, Eigen::Index output_y, Eigen::Index x_stride,
+    Eigen::Index y_stride, Eigen::Index lhs_x_dilation,
+    Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
+    Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count) {
+  // Total spatial dimensions.
+  const int input_image_size = input_x * input_y;
+  const int kernel_total_size = kernel_x * kernel_y * kernel_filters;
+
+  // Don't use custom transposed convolutions with intermediate buffers.
+  constexpr auto kMaxConvMatrixSize = static_cast<size_t>(8) << 30;  // 8 GiB
+
+  // Intermediate buffer (convolution matrix)
+  const size_t buffer_size = input_batch * input_image_size * kernel_total_size;
+  if (buffer_size * sizeof(ScalarType) > kMaxConvMatrixSize) {
+    return false;
+  }
+
+  return (lhs_x_dilation > 1 || lhs_y_dilation > 1) && rhs_x_dilation == 1 &&
+         rhs_y_dilation == 1 && feature_group_count == 1 && x_stride == 1 &&
+         y_stride == 1;
+}
+
 // This implementation is based on TF algorithm with parallel contraction.
 // TODO(adambanas): There are other variants of this algorithm, 10% performance
 // improvement was observed on 1D case when not using parallel contraction.
 // Explore these alternatives.
 // TODO(adambanas): Add support for feature group count.
-template <typename EigenDevice, typename ScalarType>
-bool EigenTransposedConv2D(
-    const EigenDevice& device, ScalarType* out, ScalarType* lhs,
-    ScalarType* rhs, Eigen::Index input_batch, Eigen::Index input_x,
-    Eigen::Index input_y, Eigen::Index input_channels, Eigen::Index kernel_x,
-    Eigen::Index kernel_y, Eigen::Index kernel_channels,
+template <typename ScalarType>
+void EigenTransposedConv2D(
+    const Eigen::ThreadPoolDevice* device, ScalarType* out,
+    const ScalarType* lhs, const ScalarType* rhs, Eigen::Index input_batch,
+    Eigen::Index input_x, Eigen::Index input_y, Eigen::Index input_channels,
+    Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_channels,
     Eigen::Index kernel_filters, Eigen::Index output_x, Eigen::Index output_y,
     Eigen::Index padding_x_before, Eigen::Index padding_x_after,
     Eigen::Index padding_y_before, Eigen::Index padding_y_after,
     Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
-    tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
-    bool use_thunk_runtime) {
+    DoneCallback done) {
   // Grouped convolutions are not supported yet.
   CHECK(kernel_channels == input_channels);
 
@@ -133,15 +199,7 @@ bool EigenTransposedConv2D(
 
   // Intermediate buffer (convolution matrix)
   const size_t buffer_size = input_batch * input_image_size * kernel_total_size;
-  if (buffer_size * sizeof(ScalarType) > kMaxConvMatrixSize) {
-    LOG(WARNING)
-        << "Falling back to generic convolution implementation, because custom "
-           "transposed convolution algorithm needs too much memory ("
-        << buffer_size * sizeof(ScalarType)
-        << " bytes, exceeding the threshold of " << kMaxConvMatrixSize
-        << " bytes).";
-    return false;
-  }
+
   auto conv_matrix = std::make_unique<ScalarType[]>(buffer_size);
   ScalarType* conv_matrix_data = conv_matrix.get();
 
@@ -163,17 +221,6 @@ bool EigenTransposedConv2D(
   ConstTensorMap2D A(lhs, input_batch * input_image_size, input_channels);
   ConstTensorMap3D B(rhs, kernel_x * kernel_y, kernel_channels, kernel_filters);
 
-  // Use concurrent execution if we have a thread pool device.
-  constexpr bool use_thread_pool =
-      std::is_same_v<EigenDevice, Eigen::ThreadPoolDevice>;
-
-  // For thunk runtime, `count_down` must be provided only if we use a thread
-  // pool device. This check is not true for classic runtime which does not
-  // support async execution.
-  if (use_thunk_runtime) {
-    CHECK_EQ(use_thread_pool, static_cast<bool>(count_down));  // Crash OK
-  }
-
   const int input_offset = input_image_size * kernel_total_size;
   const int output_offset = output_image_size * kernel_filters;
 
@@ -181,7 +228,8 @@ bool EigenTransposedConv2D(
   // NOTE: The ownership of the conv_matrix is transferred to the lambda without
   // data copy or reallocation. Thanks to that, conv_matrix_data pointer remains
   // valid, and that is important because 'C' matrix is referencing it.
-  auto pack_patches = [=, conv_matrix = std::move(conv_matrix)]() mutable {
+  auto pack_patches = [=, conv_matrix = std::move(conv_matrix),
+                       done = std::move(done)]() mutable {
     // Using local pointers to buffers, because lambda is not mutable.
     const ScalarType* conv_matrix_data = conv_matrix.get();
     ScalarType* local_out_data = out_data;
@@ -197,11 +245,8 @@ bool EigenTransposedConv2D(
       local_out_data += output_offset;
     }
 
-    // If `count_down` is provided, we need to count it down after the work is
-    // done.
-    if (count_down) {
-      count_down.CountDown();
-    }
+    // Signal completion of the work once the patches are packed.
+    done();
   };
 
   // Molds the output of the contraction into the shape expected by packing
@@ -213,44 +258,31 @@ bool EigenTransposedConv2D(
   post_contract_dims[0] = input_batch * input_image_size;
   post_contract_dims[1] = kernel_total_size;
 
-  if (count_down) {
-    // Schedule the work in the thread pool and return.
-    C.device(device, std::move(pack_patches)) =
+  if (device != nullptr) {
+    C.device(*device, std::move(pack_patches)) =
         A.contract(B, contract_dims).reshape(post_contract_dims);
   } else {
-    // Run synchronously in the current thread.
-    C.device(device) = A.contract(B, contract_dims).reshape(post_contract_dims);
+    C = A.contract(B, contract_dims).reshape(post_contract_dims);
     pack_patches();
   }
-  return true;
-}
-
-inline bool CanUseCustomTransposedConv(
-    Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index lhs_x_dilation,
-    Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
-    Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count) {
-  return (lhs_x_dilation > 1 || lhs_y_dilation > 1) && rhs_x_dilation == 1 &&
-         rhs_y_dilation == 1 && feature_group_count == 1 && x_stride == 1 &&
-         y_stride == 1;
 }
 
 // Algorithm that works for all types of 2D convolutions. Even though it works
 // for transposed convolutions, the custom algorithm should be used whenever
 // applicable, because it is faster.
-template <bool is_grouped, typename EigenDevice, typename ScalarType>
+template <bool is_grouped, typename ScalarType>
 void EigenGenericConv2D(
-    const EigenDevice& device, ScalarType* out, ScalarType* lhs,
-    ScalarType* rhs, Eigen::Index input_batch, Eigen::Index input_x,
-    Eigen::Index input_y, Eigen::Index input_channels, Eigen::Index kernel_x,
-    Eigen::Index kernel_y, Eigen::Index kernel_channels,
+    const Eigen::ThreadPoolDevice* device, ScalarType* out,
+    const ScalarType* lhs, const ScalarType* rhs, Eigen::Index input_batch,
+    Eigen::Index input_x, Eigen::Index input_y, Eigen::Index input_channels,
+    Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_channels,
     Eigen::Index kernel_filters, Eigen::Index output_x, Eigen::Index output_y,
     Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index padding_x_before,
     Eigen::Index padding_x_after, Eigen::Index padding_y_before,
     Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,
     Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
     Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,
-    tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
-    bool use_thunk_runtime) {
+    DoneCallback done) {
   // For non-grouped convolutions, we can optimize Eigen expressions and avoid
   // introducing an extra dimension of size `1`.
   if constexpr (!is_grouped) {
@@ -348,26 +380,15 @@ void EigenGenericConv2D(
     return std::make_pair(output, convolved);
   };
 
-  // Use concurrent execution if we have a thread pool device.
-  constexpr bool use_thread_pool =
-      std::is_same_v<EigenDevice, Eigen::ThreadPoolDevice>;
-
-  // For thunk runtime, `count_down` must be provided only if we use a thread
-  // pool device. This check is not true for classic runtime which does not
-  // support async execution.
-  if (use_thunk_runtime) {
-    CHECK_EQ(use_thread_pool, static_cast<bool>(count_down));  // Crash OK
-  }
-
   // For non-grouped convolutions, we need to execute only one Eigen expression.
   if constexpr (!is_grouped) {
     auto [output, convolved] = convolve();
 
-    if (count_down) {
-      auto on_done = [count_down]() mutable { count_down.CountDown(); };
-      output.device(device, std::move(on_done)) = convolved;
+    if (device != nullptr) {
+      output.device(*device, std::move(done)) = convolved;
     } else {
-      output.device(device) = convolved;
+      output = convolved;
+      done();
     }
 
     return;
@@ -375,78 +396,64 @@ void EigenGenericConv2D(
 
   // For grouped convolutions, we need to execute multiple Eigen expressions and
   // we might use thread pool to run them concurrently.
-  if constexpr (use_thread_pool) {
+  if (device != nullptr) {
     // Although we schedule at most one tasks for each thread, individual
     // convolution might also schedule more tasks into the same thread pool.
-    auto max_tasks = static_cast<Eigen::Index>(device.numThreads());
+    auto max_tasks = static_cast<Eigen::Index>(device->numThreads());
     auto task_size = Eigen::numext::div_ceil(feature_group_count, max_tasks);
     auto num_tasks = Eigen::numext::div_ceil(feature_group_count, task_size);
 
-    if (use_thunk_runtime) {
-      Worker::Parallelize(
-          device.getPool(), /*num_workers=*/num_tasks, num_tasks,
-          [=, &device](Eigen::Index task_index) mutable {
-            Eigen::Index start = task_index * task_size;
-            Eigen::Index end = std::min(start + task_size, feature_group_count);
-            for (Eigen::Index i = start; i < end; ++i) {
-              auto on_done = [count_down]() mutable { count_down.CountDown(); };
-              auto [output, convolved] = convolve_group(i);
-              output.device(device, std::move(on_done)) = convolved;
-            }
-          });
-    } else {
-      tsl::BlockUntilReady(Worker::Parallelize(
-          device.getPool(), /*num_workers=*/num_tasks, num_tasks,
-          [=, &device](Eigen::Index task_index) {
-            Eigen::Index start = task_index * task_size;
-            Eigen::Index end = std::min(start + task_size, feature_group_count);
-            for (Eigen::Index i = start; i < end; ++i) {
-              auto [output, convolved] = convolve_group(i);
-              output.device(device) = convolved;
-            }
-          }));
-    }
+    // Signal done callback when all feature groups are done.
+    tsl::CountDownAsyncValueRef<tsl::Chain> count_down(feature_group_count);
+    count_down.AsPtr().AndThen([done = std::move(done)]() mutable { done(); });
+
+    Worker::Parallelize(
+        device->getPool(), /*num_workers=*/num_tasks, num_tasks,
+        [=](Eigen::Index task_index) {
+          Eigen::Index start = task_index * task_size;
+          Eigen::Index end = std::min(start + task_size, feature_group_count);
+          for (Eigen::Index i = start; i < end; ++i) {
+            auto on_done = [count_down]() mutable { count_down.CountDown(); };
+            auto [output, convolved] = convolve_group(i);
+            output.device(*device, std::move(on_done)) = convolved;
+          }
+        });
 
   } else {
     // Convolve all feature groups sequentially in the caller thread.
     for (Eigen::Index i = 0; i < feature_group_count; ++i) {
       auto [output, convolved] = convolve_group(i);
-      output.device(device) = convolved;
+      output = convolved;
     }
+    done();
   }
 }
 
-// TODO(ezhulenev): Make internal implementation a private static method of
-// ConvolutionThunk (for consistency with DotThunk). Today we keep it as a
-// free function to use it in the legacy XLA CPU runtime.
-template <typename EigenDevice, typename ScalarType>
-void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
-                 ScalarType* rhs, Eigen::Index input_batch,
-                 Eigen::Index input_x, Eigen::Index input_y,
-                 Eigen::Index input_channels, Eigen::Index kernel_x,
-                 Eigen::Index kernel_y, Eigen::Index kernel_channels,
-                 Eigen::Index kernel_filters, Eigen::Index output_x,
-                 Eigen::Index output_y, Eigen::Index x_stride,
-                 Eigen::Index y_stride, Eigen::Index padding_x_before,
-                 Eigen::Index padding_x_after, Eigen::Index padding_y_before,
-                 Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,
-                 Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
-                 Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,
-                 tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
-                 bool use_thunk_runtime) {
-  DCHECK(!count_down || (feature_group_count == count_down.count()));
-
-  if (CanUseCustomTransposedConv(x_stride, y_stride, lhs_x_dilation,
-                                 lhs_y_dilation, rhs_x_dilation, rhs_y_dilation,
-                                 feature_group_count)) {
-    if (EigenTransposedConv2D(device, out, lhs, rhs, input_batch, input_x,
-                              input_y, input_channels, kernel_x, kernel_y,
-                              kernel_channels, kernel_filters, output_x,
-                              output_y, padding_x_before, padding_x_after,
-                              padding_y_before, padding_y_after, lhs_x_dilation,
-                              lhs_y_dilation, count_down, use_thunk_runtime)) {
-      return;
-    }
+template <typename ScalarType>
+void EigenConv2D(const Eigen::ThreadPoolDevice* device, ScalarType* out,
+                 const ScalarType* lhs, const ScalarType* rhs,
+                 Eigen::Index input_batch, Eigen::Index input_x,
+                 Eigen::Index input_y, Eigen::Index input_channels,
+                 Eigen::Index kernel_x, Eigen::Index kernel_y,
+                 Eigen::Index kernel_channels, Eigen::Index kernel_filters,
+                 Eigen::Index output_x, Eigen::Index output_y,
+                 Eigen::Index x_stride, Eigen::Index y_stride,
+                 Eigen::Index padding_x_before, Eigen::Index padding_x_after,
+                 Eigen::Index padding_y_before, Eigen::Index padding_y_after,
+                 Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
+                 Eigen::Index rhs_x_dilation, Eigen::Index rhs_y_dilation,
+                 Eigen::Index feature_group_count, DoneCallback done) {
+  if (CanUseCustomTransposedConv<ScalarType>(
+          input_batch, input_x, input_y, kernel_x, kernel_y, kernel_filters,
+          output_x, output_y, x_stride, y_stride, lhs_x_dilation,
+          lhs_y_dilation, rhs_x_dilation, rhs_y_dilation,
+          feature_group_count)) {
+    EigenTransposedConv2D(device, out, lhs, rhs, input_batch, input_x, input_y,
+                          input_channels, kernel_x, kernel_y, kernel_channels,
+                          kernel_filters, output_x, output_y, padding_x_before,
+                          padding_x_after, padding_y_before, padding_y_after,
+                          lhs_x_dilation, lhs_y_dilation, std::move(done));
+    return;
   }
 
   if (feature_group_count == 1) {
@@ -455,8 +462,7 @@ void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
         kernel_x, kernel_y, kernel_channels, kernel_filters, output_x, output_y,
         x_stride, y_stride, padding_x_before, padding_x_after, padding_y_before,
         padding_y_after, lhs_x_dilation, lhs_y_dilation, rhs_x_dilation,
-        rhs_y_dilation, feature_group_count, std::move(count_down),
-        use_thunk_runtime);
+        rhs_y_dilation, feature_group_count, std::move(done));
 
   } else {
     EigenGenericConv2D</*is_grouped=*/true>(
@@ -464,31 +470,32 @@ void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
         kernel_x, kernel_y, kernel_channels, kernel_filters, output_x, output_y,
         x_stride, y_stride, padding_x_before, padding_x_after, padding_y_before,
         padding_y_after, lhs_x_dilation, lhs_y_dilation, rhs_x_dilation,
-        rhs_y_dilation, feature_group_count, std::move(count_down),
-        use_thunk_runtime);
+        rhs_y_dilation, feature_group_count, std::move(done));
   }
 }
 
-template <typename EigenDevice, typename ScalarType>
-void EigenConv3D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
-                 ScalarType* rhs, Eigen::Index input_batch,
-                 Eigen::Index input_x, Eigen::Index input_y,
-                 Eigen::Index input_z, Eigen::Index input_channels,
-                 Eigen::Index kernel_x, Eigen::Index kernel_y,
-                 Eigen::Index kernel_z, Eigen::Index kernel_channels,
-                 Eigen::Index kernel_filters, Eigen::Index output_x,
-                 Eigen::Index output_y, Eigen::Index output_z,
-                 Eigen::Index x_stride, Eigen::Index y_stride,
-                 Eigen::Index z_stride, Eigen::Index padding_x_before,
-                 Eigen::Index padding_x_after, Eigen::Index padding_y_before,
-                 Eigen::Index padding_y_after, Eigen::Index padding_z_before,
-                 Eigen::Index padding_z_after, Eigen::Index lhs_x_dilation,
-                 Eigen::Index lhs_y_dilation, Eigen::Index lhs_z_dilation,
-                 Eigen::Index rhs_x_dilation, Eigen::Index rhs_y_dilation,
-                 Eigen::Index rhs_z_dilation, Eigen::Index feature_group_count,
-                 tsl::CountDownAsyncValueRef<tsl::Chain> count_down) {
-  DCHECK(!count_down || (feature_group_count == count_down.count()));
+//===----------------------------------------------------------------------===//
+// Convolution 3D implementation details.
+//===----------------------------------------------------------------------===//
 
+template <typename ScalarType>
+void EigenConv3D(const Eigen::ThreadPoolDevice* device, ScalarType* out,
+                 const ScalarType* lhs, const ScalarType* rhs,
+                 Eigen::Index input_batch, Eigen::Index input_x,
+                 Eigen::Index input_y, Eigen::Index input_z,
+                 Eigen::Index input_channels, Eigen::Index kernel_x,
+                 Eigen::Index kernel_y, Eigen::Index kernel_z,
+                 Eigen::Index kernel_channels, Eigen::Index kernel_filters,
+                 Eigen::Index output_x, Eigen::Index output_y,
+                 Eigen::Index output_z, Eigen::Index x_stride,
+                 Eigen::Index y_stride, Eigen::Index z_stride,
+                 Eigen::Index padding_x_before, Eigen::Index padding_x_after,
+                 Eigen::Index padding_y_before, Eigen::Index padding_y_after,
+                 Eigen::Index padding_z_before, Eigen::Index padding_z_after,
+                 Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
+                 Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,
+                 Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,
+                 Eigen::Index feature_group_count, DoneCallback done) {
   using ConstTType =
       Eigen::TensorMap<Eigen::Tensor<const ScalarType, 5, Eigen::RowMajor>,
                        Eigen::Aligned>;
@@ -542,6 +549,10 @@ void EigenConv3D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
   kernel_dims[1] = feature_group_count;
   kernel_dims[2] = kernel_filters / feature_group_count;
 
+  // Signal done callback when all feature groups are done.
+  tsl::CountDownAsyncValueRef<tsl::Chain> count_down(feature_group_count);
+  count_down.AsPtr().AndThen([done = std::move(done)]() mutable { done(); });
+
   for (Eigen::Index i = 0; i < feature_group_count; ++i) {
     // The dimension order must be flipped when passed to Eigen.
     auto input_chip = input.reshape(input_reshaped_dims).chip(i, 4);
@@ -560,99 +571,95 @@ void EigenConv3D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
             .reshape(post_contract_dims);
 
     auto output_reshaped = output.reshape(output_reshaped_dims).chip(i, 4);
-    if (count_down) {
+
+    if (device != nullptr) {
       auto on_done = [count_down]() mutable { count_down.CountDown(); };
-      output_reshaped.device(device, std::move(on_done)) = convolved;
+      output_reshaped.device(*device, std::move(on_done)) = convolved;
     } else {
-      output_reshaped.device(device) = convolved;
+      output_reshaped = convolved;
+      count_down.CountDown();
     }
   }
 }
 
-// Extern Conv2D template for all supported devices and data types.
-#define CONV2D_EXTERN_TEMPLATE(DEVICE, SCALAR_TYPE)                        \
-  extern template void EigenConv2D<DEVICE, SCALAR_TYPE>(                   \
-      const DEVICE& device, SCALAR_TYPE* out, SCALAR_TYPE* lhs,            \
-      SCALAR_TYPE* rhs, Eigen::Index input_batch, Eigen::Index input_x,    \
-      Eigen::Index input_y, Eigen::Index input_channels,                   \
-      Eigen::Index kernel_x, Eigen::Index kernel_y,                        \
-      Eigen::Index kernel_channels, Eigen::Index kernel_filters,           \
-      Eigen::Index output_x, Eigen::Index output_y, Eigen::Index x_stride, \
-      Eigen::Index y_stride, Eigen::Index padding_x_before,                \
-      Eigen::Index padding_x_after, Eigen::Index padding_y_before,         \
-      Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,           \
-      Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,            \
-      Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,       \
-      tsl::CountDownAsyncValueRef<tsl::Chain> count_down,                  \
-      bool use_thunk_runtime)
-
-CONV2D_EXTERN_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
-CONV2D_EXTERN_TEMPLATE(Eigen::DefaultDevice, float);
-CONV2D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, Eigen::half);
-CONV2D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, float);
-
-#undef CONV2D_EXTERN_TEMPLATE
-
-// Extern Conv3D template for all supported devices and data types.
-#define CONV3D_EXTERN_TEMPLATE(DEVICE, SCALAR_TYPE)                            \
-  extern template void EigenConv3D<DEVICE, SCALAR_TYPE>(                       \
-      const DEVICE& device, SCALAR_TYPE* out, SCALAR_TYPE* lhs,                \
-      SCALAR_TYPE* rhs, Eigen::Index input_batch, Eigen::Index input_x,        \
-      Eigen::Index input_y, Eigen::Index input_z, Eigen::Index input_channels, \
-      Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_z,     \
-      Eigen::Index kernel_channels, Eigen::Index kernel_filters,               \
-      Eigen::Index output_x, Eigen::Index output_y, Eigen::Index output_z,     \
-      Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index z_stride,     \
-      Eigen::Index padding_x_before, Eigen::Index padding_x_after,             \
-      Eigen::Index padding_y_before, Eigen::Index padding_y_after,             \
-      Eigen::Index padding_z_before, Eigen::Index padding_z_after,             \
-      Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,                \
-      Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,                \
-      Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,                \
-      Eigen::Index feature_group_count,                                        \
-      tsl::CountDownAsyncValueRef<tsl::Chain> count_down)
-
-CONV3D_EXTERN_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
-CONV3D_EXTERN_TEMPLATE(Eigen::DefaultDevice, float);
-CONV3D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, Eigen::half);
-CONV3D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, float);
-
-#undef CONV3D_EXTERN_TEMPLATE
-
 }  // namespace xla::cpu::internal
 
-#define CONV2D_INSTANTIATE_TEMPLATE(DEVICE, SCALAR_TYPE)                   \
-  template void xla::cpu::internal::EigenConv2D<DEVICE, SCALAR_TYPE>(      \
-      const DEVICE& device, SCALAR_TYPE* out, SCALAR_TYPE* lhs,            \
-      SCALAR_TYPE* rhs, Eigen::Index input_batch, Eigen::Index input_x,    \
-      Eigen::Index input_y, Eigen::Index input_channels,                   \
-      Eigen::Index kernel_x, Eigen::Index kernel_y,                        \
-      Eigen::Index kernel_channels, Eigen::Index kernel_filters,           \
-      Eigen::Index output_x, Eigen::Index output_y, Eigen::Index x_stride, \
-      Eigen::Index y_stride, Eigen::Index padding_x_before,                \
-      Eigen::Index padding_x_after, Eigen::Index padding_y_before,         \
-      Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,           \
-      Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,            \
-      Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,       \
-      tsl::CountDownAsyncValueRef<tsl::Chain> count_down,                  \
-      bool use_thunk_runtime)
+// Define Conv2D template for all supported data types.
+#define XLA_CPU_DECLARE_CONV2D(SCALAR_TYPE)                                 \
+  extern template void xla::cpu::internal::EigenConv2D<SCALAR_TYPE>(        \
+      const Eigen::ThreadPoolDevice* device, SCALAR_TYPE* out,              \
+      const SCALAR_TYPE* lhs, const SCALAR_TYPE* rhs,                       \
+      Eigen::Index input_batch, Eigen::Index input_x, Eigen::Index input_y, \
+      Eigen::Index input_channels, Eigen::Index kernel_x,                   \
+      Eigen::Index kernel_y, Eigen::Index kernel_channels,                  \
+      Eigen::Index kernel_filters, Eigen::Index output_x,                   \
+      Eigen::Index output_y, Eigen::Index x_stride, Eigen::Index y_stride,  \
+      Eigen::Index padding_x_before, Eigen::Index padding_x_after,          \
+      Eigen::Index padding_y_before, Eigen::Index padding_y_after,          \
+      Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,             \
+      Eigen::Index rhs_x_dilation, Eigen::Index rhs_y_dilation,             \
+      Eigen::Index feature_group_count, DoneCallback done)
 
-#define CONV3D_INSTANTIATE_TEMPLATE(DEVICE, SCALAR_TYPE)                       \
-  template void xla::cpu::internal::EigenConv3D<DEVICE, SCALAR_TYPE>(          \
-      const DEVICE& device, SCALAR_TYPE* out, SCALAR_TYPE* lhs,                \
-      SCALAR_TYPE* rhs, Eigen::Index input_batch, Eigen::Index input_x,        \
-      Eigen::Index input_y, Eigen::Index input_z, Eigen::Index input_channels, \
-      Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_z,     \
-      Eigen::Index kernel_channels, Eigen::Index kernel_filters,               \
-      Eigen::Index output_x, Eigen::Index output_y, Eigen::Index output_z,     \
-      Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index z_stride,     \
-      Eigen::Index padding_x_before, Eigen::Index padding_x_after,             \
-      Eigen::Index padding_y_before, Eigen::Index padding_y_after,             \
-      Eigen::Index padding_z_before, Eigen::Index padding_z_after,             \
-      Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,                \
-      Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,                \
-      Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,                \
-      Eigen::Index feature_group_count,                                        \
-      tsl::CountDownAsyncValueRef<tsl::Chain> count_down)
+XLA_CPU_DECLARE_CONV2D(Eigen::half);
+XLA_CPU_DECLARE_CONV2D(float);
 
-#endif  // XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_THUNK_INTERNAL_H_
+#undef XLA_CPU_DECLARE_CONV2D
+
+// Define Conv3D template for all supported data types.
+#define XLA_CPU_DECLARE_CONV3D(SCALAR_TYPE)                                 \
+  extern template void xla::cpu::internal::EigenConv3D<SCALAR_TYPE>(        \
+      const Eigen::ThreadPoolDevice* device, SCALAR_TYPE* out,              \
+      const SCALAR_TYPE* lhs, const SCALAR_TYPE* rhs,                       \
+      Eigen::Index input_batch, Eigen::Index input_x, Eigen::Index input_y, \
+      Eigen::Index input_z, Eigen::Index input_channels,                    \
+      Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_z,  \
+      Eigen::Index kernel_channels, Eigen::Index kernel_filters,            \
+      Eigen::Index output_x, Eigen::Index output_y, Eigen::Index output_z,  \
+      Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index z_stride,  \
+      Eigen::Index padding_x_before, Eigen::Index padding_x_after,          \
+      Eigen::Index padding_y_before, Eigen::Index padding_y_after,          \
+      Eigen::Index padding_z_before, Eigen::Index padding_z_after,          \
+      Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,             \
+      Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,             \
+      Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,             \
+      Eigen::Index feature_group_count, DoneCallback done)
+
+XLA_CPU_DECLARE_CONV3D(Eigen::half);
+XLA_CPU_DECLARE_CONV3D(float);
+
+#undef XLA_CPU_DECLARE_CONV3D
+
+#define XLA_CPU_DEFINE_CONV2D(SCALAR_TYPE)                                  \
+  template void xla::cpu::internal::EigenConv2D<SCALAR_TYPE>(               \
+      const Eigen::ThreadPoolDevice* device, SCALAR_TYPE* out,              \
+      const SCALAR_TYPE* lhs, const SCALAR_TYPE* rhs,                       \
+      Eigen::Index input_batch, Eigen::Index input_x, Eigen::Index input_y, \
+      Eigen::Index input_channels, Eigen::Index kernel_x,                   \
+      Eigen::Index kernel_y, Eigen::Index kernel_channels,                  \
+      Eigen::Index kernel_filters, Eigen::Index output_x,                   \
+      Eigen::Index output_y, Eigen::Index x_stride, Eigen::Index y_stride,  \
+      Eigen::Index padding_x_before, Eigen::Index padding_x_after,          \
+      Eigen::Index padding_y_before, Eigen::Index padding_y_after,          \
+      Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,             \
+      Eigen::Index rhs_x_dilation, Eigen::Index rhs_y_dilation,             \
+      Eigen::Index feature_group_count, DoneCallback done)
+
+#define XLA_CPU_DEFINE_CONV3D(SCALAR_TYPE)                                  \
+  template void xla::cpu::internal::EigenConv3D<SCALAR_TYPE>(               \
+      const Eigen::ThreadPoolDevice* device, SCALAR_TYPE* out,              \
+      const SCALAR_TYPE* lhs, const SCALAR_TYPE* rhs,                       \
+      Eigen::Index input_batch, Eigen::Index input_x, Eigen::Index input_y, \
+      Eigen::Index input_z, Eigen::Index input_channels,                    \
+      Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_z,  \
+      Eigen::Index kernel_channels, Eigen::Index kernel_filters,            \
+      Eigen::Index output_x, Eigen::Index output_y, Eigen::Index output_z,  \
+      Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index z_stride,  \
+      Eigen::Index padding_x_before, Eigen::Index padding_x_after,          \
+      Eigen::Index padding_y_before, Eigen::Index padding_y_after,          \
+      Eigen::Index padding_z_before, Eigen::Index padding_z_after,          \
+      Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,             \
+      Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,             \
+      Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,             \
+      Eigen::Index feature_group_count, DoneCallback done)
+
+#endif  // XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_LIB_H_
