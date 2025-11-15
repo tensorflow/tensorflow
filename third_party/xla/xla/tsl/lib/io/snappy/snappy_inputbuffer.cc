@@ -86,7 +86,7 @@ size_t SnappyInputBuffer::ReadBytesFromCache(size_t bytes_to_read,
 
 absl::Status SnappyInputBuffer::Inflate() {
   // Read length of compressed block.
-  uint32 compressed_block_length;
+  uint32_t compressed_block_length;
   TF_RETURN_IF_ERROR(ReadCompressedBlockLength(&compressed_block_length));
 
   // If the entire block is not in cache do a read from file.
@@ -130,7 +130,7 @@ absl::Status SnappyInputBuffer::Inflate() {
   return absl::OkStatus();
 }
 
-absl::Status SnappyInputBuffer::ReadCompressedBlockLength(uint32* length) {
+absl::Status SnappyInputBuffer::ReadCompressedBlockLength(uint32_t* length) {
   *length = 0;
   size_t bytes_to_read = 4;
   while (bytes_to_read > 0) {
