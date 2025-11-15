@@ -158,11 +158,11 @@ bool SparseTensor::IndicesValidMatrix32BitFastPath() const {
   DCHECK_EQ(shape_.size(), 2);
   DCHECK_EQ(order_[0], 0);
   DCHECK_EQ(order_[1], 1);
-  DCHECK_LE(shape_ptr[0], std::numeric_limits<int32>::max());
-  DCHECK_LE(shape_ptr[1], std::numeric_limits<int32>::max());
+  DCHECK_LE(shape_ptr[0], std::numeric_limits<int32_t>::max());
+  DCHECK_LE(shape_ptr[1], std::numeric_limits<int32_t>::max());
 
-  const int32_t max_rows = static_cast<int32>(shape_ptr[0]);
-  const int32_t max_cols = static_cast<int32>(shape_ptr[1]);
+  const int32_t max_rows = static_cast<int32_t>(shape_ptr[0]);
+  const int32_t max_cols = static_cast<int32_t>(shape_ptr[1]);
 
   // We maintain separate bools for each validation predicate to enable
   // vectorization across loop iterations.
@@ -178,12 +178,12 @@ bool SparseTensor::IndicesValidMatrix32BitFastPath() const {
   // Each row has two int64 elements, but we use an int32 pointer to access
   // the low and high 32 bits of each element separately. This means that our
   // stride per row is 4 elements.
-  const int32* const index_base_ptr =
-      reinterpret_cast<const int32*>(ix_t.data());
+  const int32_t* const index_base_ptr =
+      reinterpret_cast<const int32_t*>(ix_t.data());
   const size_t kInt32ElementsPerRow = 4;
 
   for (std::size_t n = 0; n < ix_t.dimension(0); ++n) {
-    const int32* const index_ptr = index_base_ptr + n * kInt32ElementsPerRow;
+    const int32_t* const index_ptr = index_base_ptr + n * kInt32ElementsPerRow;
 
     // Unpack the values on the current row of the indices matrix.
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -250,7 +250,7 @@ absl::Status SparseTensor::IndicesValidHelper() const {
       }
     }
     if (TF_PREDICT_FALSE(!valid || !increasing || !different)) {
-      string index = absl::StrCat("indices[", n, "] = [");
+      std::string index = absl::StrCat("indices[", n, "] = [");
       for (int di = 0; di < dims_; ++di) {
         absl::StrAppend(&index, ix_t(n, di), di < dims_ - 1 ? "," : "]");
       }
@@ -296,8 +296,8 @@ absl::Status SparseTensor::IndicesValid() const {
         return absl::OkStatus();
       }
     } else if (shape_.size() == 2 &&
-               shape_[0] <= std::numeric_limits<int32>::max() &&
-               shape_[1] <= std::numeric_limits<int32>::max()) {
+               shape_[0] <= std::numeric_limits<int32_t>::max() &&
+               shape_[1] <= std::numeric_limits<int32_t>::max()) {
       if (IndicesValidMatrix32BitFastPath()) {
         return absl::OkStatus();
       }
