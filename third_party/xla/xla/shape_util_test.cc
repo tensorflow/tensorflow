@@ -1022,6 +1022,24 @@ TEST(ShapeUtilTest, HasDegenerateDimensions) {
       ShapeUtil::HasDegenerateDimensions(ShapeUtil::MakeShape(F32, {3, 0, 5})));
 }
 
+TEST(ShapeUtilTest, PermuteDimensionsIgnoringLayout) {
+  {
+    Shape s =
+        ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 100, 1000}, {2, 1, 0});
+    Shape permuted = ShapeUtil::PermuteDimensionsIgnoringLayout({1, 2, 0}, s);
+    EXPECT_EQ(permuted, ShapeUtil::MakeShapeWithDenseLayout(
+                            F32, {100, 1000, 10}, {2, 1, 0}));
+  }
+  {
+    Shape s = ShapeUtil::MakeShape(F32, {10, 100, 1000});
+    LayoutUtil::ClearLayout(&s);
+    Shape permuted = ShapeUtil::PermuteDimensionsIgnoringLayout({1, 2, 0}, s);
+    Shape expected = ShapeUtil::MakeShape(F32, {100, 1000, 10});
+    LayoutUtil::ClearLayout(&expected);
+    EXPECT_EQ(permuted, expected);
+  }
+}
+
 TEST(ShapeUtilTest, PermuteDimensionsLayout) {
   std::vector<int64_t> layout(3);
   std::iota(layout.begin(), layout.end(), 0);
