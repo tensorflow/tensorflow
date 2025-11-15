@@ -310,6 +310,7 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
 
     OP_REQUIRES_VALUE(xla::Shape embedding_table_shape, ctx,
                       ctx->InputXlaShape("embedding_table"));
+    const int32_t vocab_size = embedding_table_shape.dimensions()[0];
     const int32_t feature_width = embedding_table_shape.dimensions(1);
 
     OP_REQUIRES_OK(
@@ -377,6 +378,17 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
           {"_xla_quantization_num_buckets_value",
            absl::StrCat(quantization_config_num_buckets_.value())});
     }
+    auto& attr_map = *new_frontend_attributes.mutable_map();
+    attr_map["_xla_table_name"] = table_name_;
+    attr_map["_xla_vocab_size"] = absl::StrCat(vocab_size);
+    attr_map["_xla_feature_width"] = absl::StrCat(feature_width);
+    attr_map["_xla_sample_count"] = absl::StrCat(input_size_);
+    attr_map["_xla_max_ids_per_partition"] =
+        absl::StrCat(max_ids_per_partition);
+    attr_map["_xla_max_unique_ids_per_partition"] =
+        absl::StrCat(max_unique_ids_per_partition);
+    attr_map["_xla_sharding_strategy"] = "mod";
+    attr_map["_xla_enable_full_hbm_sort"] = "false";
     builder->SetFrontendAttributes(new_frontend_attributes);
 
     xla::XlaOp result =
@@ -385,7 +397,6 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
                          sorted_gains, num_minibatches_per_physical_sparse_core,
                          embedding_table, activation_init},
                         activation_shape);
-
     // Embedding activation.
     ctx->SetOutput(0, result);
   }
