@@ -19,10 +19,8 @@ limitations under the License.
 
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
+#include "grpcpp/completion_queue.h"
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/rpc/client/profiler_client_test_util.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 
@@ -45,11 +43,18 @@ TEST(RemoteProfilerSession, Simple) {
   absl::Time approx_start = absl::Now();
   absl::Time deadline = approx_start + max_duration;
 
+  ::grpc::CompletionQueue cq;
   auto remote_session =
-      RemoteProfilerSession::Create(service_addr, deadline, request);
+      RemoteProfilerSession::Create(service_addr, deadline, request, &cq, 0);
+
+  bool ok = false;
+  void* got_tag = nullptr;
+  bool success = cq.Next(&got_tag, &ok);
+  EXPECT_TRUE(success);
+  EXPECT_TRUE(ok);
 
   absl::Status status;
-  auto response = remote_session->WaitForCompletion(status);
+  auto response = remote_session->HandleCompletion(status, got_tag, ok);
   absl::Duration elapsed = absl::Now() - approx_start;
   // At end of session this evaluates to true still.
   EXPECT_TRUE(status.ok());
@@ -70,8 +75,9 @@ TEST(RemoteProfilerSession, WaitNotCalled) {
   absl::Time approx_start = absl::Now();
   absl::Time deadline = approx_start + max_duration;
 
+  ::grpc::CompletionQueue cq;
   auto remote_session =
-      RemoteProfilerSession::Create(service_addr, deadline, request);
+      RemoteProfilerSession::Create(service_addr, deadline, request, &cq, 0);
   absl::Duration elapsed = absl::Now() - approx_start;
 
   EXPECT_THAT(elapsed, DurationApproxLess(max_duration));
@@ -83,10 +89,19 @@ TEST(RemoteProfilerSession, Timeout) {
   std::string service_addr;
   auto server = StartServer(duration, &service_addr, &request);
   // Expect this to fail immediately since deadline was set to the past,
+  ::grpc::CompletionQueue cq;
   auto remote_session =
-      RemoteProfilerSession::Create(service_addr, absl::Now(), request);
+      RemoteProfilerSession::Create(service_addr, absl::Now(), request, &cq, 0);
+
+  void* got_tag = nullptr;
+  bool ok = false;
+  bool success = cq.Next(&got_tag, &ok);
+  EXPECT_TRUE(success);
+  EXPECT_TRUE(ok);
+
   absl::Status status;
-  auto response = remote_session->WaitForCompletion(status);
+  auto response = remote_session->HandleCompletion(status, got_tag, ok);
+
   // At end of session we will have a timeout error.
   EXPECT_TRUE(absl::IsDeadlineExceeded(status));
   // True because there was no workload traced and subsequently no XEvents.
@@ -106,10 +121,17 @@ TEST(RemoteProfilerSession, LongDeadline) {
   absl::Duration max_duration = duration + grace;
   const absl::Time deadline = approx_start + max_duration;
 
+  ::grpc::CompletionQueue cq;
   auto remote_session =
-      RemoteProfilerSession::Create(service_addr, deadline, request);
+      RemoteProfilerSession::Create(service_addr, deadline, request, &cq, 0);
+  bool ok = false;
+  void* got_tag = nullptr;
+  bool success = cq.Next(&got_tag, &ok);
+  EXPECT_TRUE(success);
+  EXPECT_TRUE(ok);
+
   absl::Status status;
-  auto response = remote_session->WaitForCompletion(status);
+  auto response = remote_session->HandleCompletion(status, got_tag, ok);
   absl::Duration elapsed = absl::Now() - approx_start;
   // At end of session this evaluates to true still.
   EXPECT_TRUE(status.ok());
@@ -133,10 +155,17 @@ TEST(RemoteProfilerSession, LongDuration) {
   absl::Duration max_duration = duration + grace;
   const absl::Time deadline = approx_start + max_duration;
 
+  ::grpc::CompletionQueue cq;
   auto remote_session =
-      RemoteProfilerSession::Create(service_addr, deadline, request);
+      RemoteProfilerSession::Create(service_addr, deadline, request, &cq, 0);
+  bool ok = false;
+  void* got_tag = nullptr;
+  bool success = cq.Next(&got_tag, &ok);
+  EXPECT_TRUE(success);
+  EXPECT_TRUE(ok);
+
   absl::Status status;
-  auto response = remote_session->WaitForCompletion(status);
+  auto response = remote_session->HandleCompletion(status, got_tag, ok);
   absl::Duration elapsed = absl::Now() - approx_start;
   // At end of session this evaluates to true still.
   EXPECT_TRUE(status.ok());

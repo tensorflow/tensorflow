@@ -15,20 +15,18 @@ limitations under the License.
 
 #include "xla/tsl/profiler/rpc/client/remote_profiler_session_manager.h"
 
-#include <cstddef>
+#include <cstdint>
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/env_time.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/rpc/client/profiler_client.h"
-#include "xla/tsl/profiler/utils/time_utils.h"
 
 namespace tsl {
 namespace profiler {
@@ -64,6 +62,7 @@ RemoteProfilerSessionManager::RemoteProfilerSessionManager(
 
 RemoteProfilerSessionManager::~RemoteProfilerSessionManager() {
   VLOG(2) << "Destroying RemoteProfilerSessionManager.";
+  cq_.Shutdown();
 }
 
 absl::Status RemoteProfilerSessionManager::Init() {
@@ -87,13 +86,14 @@ absl::Status RemoteProfilerSessionManager::Init() {
   clients_.reserve(options_.service_addresses_size());
 
   ProfileRequest request = request_;
-  for (auto& service_address : options_.service_addresses()) {
+  for (int32_t idx = 0; idx < options_.service_addresses_size(); ++idx) {
+    auto& service_address = options_.service_addresses(idx);
     std::string resolved_service_address = resolver_(service_address);
     request.set_host_name(resolved_service_address);
 
     // Creation also issues Profile RPC asynchronously.
     auto client = RemoteProfilerSession::Create(resolved_service_address,
-                                                deadline, request);
+                                                deadline, request, &cq_, idx);
     clients_.push_back(std::move(client));
   }
 
@@ -107,13 +107,36 @@ RemoteProfilerSessionManager::WaitForCompletion() {
   std::vector<RemoteProfilerSessionManager::Response> remote_responses(
       clients_.size());
 
-  for (int32_t idx = 0; idx < clients_.size(); ++idx) {
-    auto& remote_response = remote_responses[idx];
-    auto* client = clients_[idx].get();
-    remote_response.profile_response =
-        client->WaitForCompletion(remote_response.status);
-    remote_response.service_address = std::string(client->GetServiceAddress());
+  for (int32_t req_cnt = 0; req_cnt < clients_.size(); ++req_cnt) {
+    void* got_tag = nullptr;
+    bool ok = false;
+    bool success = cq_.Next(&got_tag, &ok);
+
+    if (!success) {
+      LOG(ERROR) << "Completion queue drained after processing " << req_cnt
+                 << " of " << clients_.size() << " clients";
+      break;
+    }
+    if (!ok) {
+      remote_responses[req_cnt].status = absl::InternalError(absl::StrCat(
+          "Missing or invalid event from completion queue, got_tag: ",
+          reinterpret_cast<int64_t>(got_tag),
+          " got_tag:0 means either nullptr or a client_id:0"));
+      LOG(ERROR) << "Missing or invalid event from completion queue, got_tag: "
+                 << reinterpret_cast<int64_t>(got_tag)
+                 << ". got_tag:0 means either nullptr or a client_id:0";
+      continue;
+    }
+    int64_t client_id = reinterpret_cast<int64_t>(got_tag);
+    auto* client = clients_[client_id].get();
+    remote_responses[req_cnt].profile_response = client->HandleCompletion(
+        remote_responses[req_cnt].status, got_tag, true);
+    remote_responses[req_cnt].service_address =
+        std::string(client->GetServiceAddress());
   }
+  LOG(INFO) << "Completed waiting for completion of " << clients_.size()
+            << " clients";
+
   return remote_responses;
 }
 
