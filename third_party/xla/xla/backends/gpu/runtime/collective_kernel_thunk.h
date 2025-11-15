@@ -20,6 +20,7 @@ limitations under the License.*/
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -59,7 +60,7 @@ class CollectiveKernelThunk : public Thunk {
 
   CollectiveKernelThunk(ThunkInfo info, CollectiveConfig collective_config,
                         ReductionKind reduction_kind, bool is_async,
-                        absl::Span<const CollectiveThunk::Buffer> buffers,
+                        std::vector<CollectiveThunk::Buffer> buffers,
                         bool is_collective_kernel_enabled,
                         absl::string_view kernel_name = "",
                         bool is_multimem_enabled = false)
@@ -69,7 +70,7 @@ class CollectiveKernelThunk : public Thunk {
         collective_config_(std::move(collective_config)),
         reduction_kind_(reduction_kind),
         kernel_name_(kernel_name),
-        buffers_(buffers),
+        buffers_(std::move(buffers)),
         is_multimem_enabled_(is_multimem_enabled) {
     per_stream_state_.reserve(kMaxNumExecutors);
   }
@@ -168,7 +169,7 @@ class CollectiveKernelThunk : public Thunk {
   // Must match the kernel name in the generated PTX kernel.
   const std::string kernel_name_;
   // Reference to the buffer related information required for the collective.
-  absl::Span<const CollectiveThunk::Buffer> buffers_;
+  std::vector<CollectiveThunk::Buffer> buffers_;
 
   std::unique_ptr<stream_executor::gpu::GpuExecutor::MulticastMemory>
       multicast_memory_;
