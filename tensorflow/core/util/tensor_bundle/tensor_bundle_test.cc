@@ -1298,7 +1298,7 @@ BENCHMARK(BM_BundleAlignment)->ArgPair(4096, 1048576);
 
 static void BM_BundleWriterSmallTensor(::testing::benchmark::State& state) {
   const int64_t bytes = state.range(0);
-  Tensor t = Constant(static_cast<int8>('a'), TensorShape{bytes});
+  Tensor t = Constant(static_cast<int8_t>('a'), TensorShape{bytes});
   BundleWriter writer(Env::Default(), Prefix("foo"));
   int suffix = 0;
   for (auto s : state) {
