@@ -2011,9 +2011,8 @@ int64_t MsaAlgorithm::MaxScopedMemoryOffset() {
   const std::vector<HloInstruction*>& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
   int64_t max_reserved_scoped_memory = 0;
-  for (BreadthFirstMidpointIterator it(0, instruction_sequence.size() - 1);
-       !it.End(); it.Next()) {
-    HloInstruction* instruction = instruction_sequence[it.value()];
+  for (int64_t i = 0; i < instruction_sequence.size(); ++i) {
+    HloInstruction* instruction = instruction_sequence[i];
     int64_t reserved_scoped_memory =
         std::min(options_.reserved_scoped_memory_fn(
                      instruction, /*operands_in_alternate_memory=*/{},
@@ -2908,6 +2907,36 @@ void MsaAlgorithm::ColocateAndFinalizeValuesAliasedToNewBlockPrefetches(
   MarkRepackAllocationBlocksColocated(colocations);
 }
 
+void MsaAlgorithm::ReserveAlternateMemoryForScopedMemoryAllocations() {
+  int64_t size = MaxScopedMemoryOffset();
+  int start = 0;
+  int end =
+      hlo_live_range_.flattened_instruction_sequence().instructions().size() -
+      1;
+  MsaBufferInterval interval;
+  interval.buffer = nullptr;
+  interval.size = size;
+  interval.start = start;
+  interval.end = end;
+  interval.need_allocation = true;
+  HeapSimulator::Chunk chunk_candidate =
+      FindChunkCandidate(interval, /*preferred_offset=*/0);
+  CHECK_EQ(chunk_candidate.offset, 0);
+  CHECK_EQ(chunk_candidate.size, size);
+  CommitChunk(interval, chunk_candidate);
+}
+
+void MsaAlgorithm::FreeAlternateMemoryForScopedMemoryAllocations() {
+  int64_t size = MaxScopedMemoryOffset();
+  int start = 0;
+  int end =
+      hlo_live_range_.flattened_instruction_sequence().instructions().size() -
+      1;
+  HeapSimulator::Chunk chunk =
+      HeapSimulator::Chunk::FromOffsetSize(/*offset=*/0, /*size=*/size);
+  interval_tree_.Remove(start, end, chunk);
+}
+
 absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   // Note: Memory Space Assignment creates a HeapSimulator and passes an
   // MsaAlgorithm object to it. buffer_intervals_ is populated by calling the
@@ -2920,10 +2949,17 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
           << (options_.sliced_prefetch_options.max_slices() >= 2 ? "enabled"
                                                                  : "disabled");
 
-  AllocateReservedScopedAllocations();
+  // Reserve alternate memory for scoped memory allocations before block
+  // prefetches are allocated strictly above the MaxScopedMemoryOffset().
+  ReserveAlternateMemoryForScopedMemoryAllocations();
 
   TF_RETURN_IF_ERROR(AllocateAndScheduleExistingBlockPrefetches());
   TF_RETURN_IF_ERROR(CreateNewBlockPrefetches());
+
+  // Free the alternate memory reserved for scoped memory allocations before
+  // allocating the scoped memory allocations.
+  FreeAlternateMemoryForScopedMemoryAllocations();
+  AllocateReservedScopedAllocations();
 
   std::vector<MsaBufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
@@ -5067,12 +5103,6 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
 void MsaAlgorithm::AllocateReservedScopedAllocations() {
   const std::vector<HloInstruction*>& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
-  if (options_.allocate_reserved_scoped_memory_at_same_offset) {
-    // If we are co-locating scoped allocations, then we need to make sure that
-    // the repack allocation blocks are empty, because we mark all the repack
-    // allocation blocks as co-located in a loop below.
-    CHECK(repack_allocation_blocks_.empty());
-  }
   for (BreadthFirstMidpointIterator it(0, instruction_sequence.size() - 1);
        !it.End(); it.Next()) {
     HloInstruction* instruction = instruction_sequence[it.value()];

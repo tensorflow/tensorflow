@@ -1234,6 +1234,13 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   bool IsPositionColoredInDefaultMemoryAtTime(const HloPosition& position,
                                               int64_t time) const;
 
+  // Reserves a chunk in alternate memory of size MaxScopedMemoryOffset() for
+  // the entire program duration for scoped memory allocations.
+  void ReserveAlternateMemoryForScopedMemoryAllocations();
+
+  // Frees the alternate memory reserved for scoped memory allocations.
+  void FreeAlternateMemoryForScopedMemoryAllocations();
+
   HloModule* module_ = nullptr;
   AllocationSequence* allocations_;
   // Edge time indices store start and end times allocations in alternate
