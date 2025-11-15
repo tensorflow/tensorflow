@@ -18,7 +18,9 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "third_party/protobuf/text_format.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/function.h"
