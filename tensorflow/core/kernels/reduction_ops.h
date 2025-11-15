@@ -114,12 +114,12 @@ struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
     }                                                                         \
   }
 
-CASTING_SPECIALIZATION(uint8, uint64);
-CASTING_SPECIALIZATION(uint16, uint64);
-CASTING_SPECIALIZATION(uint32, uint64);
-CASTING_SPECIALIZATION(int8, int64_t);
-CASTING_SPECIALIZATION(int16, int64_t);
-CASTING_SPECIALIZATION(int32, int64_t);
+CASTING_SPECIALIZATION(uint8_t, uint64_t);
+CASTING_SPECIALIZATION(uint16_t, uint64_t);
+CASTING_SPECIALIZATION(uint32_t, uint64_t);
+CASTING_SPECIALIZATION(int8_t, int64_t);
+CASTING_SPECIALIZATION(int16_t, int64_t);
+CASTING_SPECIALIZATION(int32_t, int64_t);
 CASTING_SPECIALIZATION(bfloat16, float);
 #undef CASTING_SPECIALIZATION
 

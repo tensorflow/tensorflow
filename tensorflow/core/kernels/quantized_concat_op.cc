@@ -183,7 +183,7 @@ class QuantizedConcatOp : public OpKernel {
         errors::InvalidArgument(
             "Concat dim tensor should be a scalar integer, but got shape ",
             concat_dim_tensor->shape().DebugString()));
-    const int32_t concat_dim = concat_dim_tensor->scalar<int32>()();
+    const int32_t concat_dim = concat_dim_tensor->scalar<int32_t>()();
     OpInputList values;
     OP_REQUIRES_OK(context, context->input_list("values", &values));
     const size_t N = values.size();

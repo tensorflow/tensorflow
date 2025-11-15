@@ -40,8 +40,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 // nullptr, they provide the input; otherwise `gen` provides the input.
 template <class Distribution>
 struct FillPhiloxRandom<CPUDevice, Distribution> {
-  void operator()(OpKernelContext* ctx, const CPUDevice& d, const uint64* key,
-                  const uint64* counter, random::PhiloxRandom gen,
+  void operator()(OpKernelContext* ctx, const CPUDevice& d, const uint64_t* key,
+                  const uint64_t* counter, random::PhiloxRandom gen,
                   typename Distribution::ResultElementType* data, int64_t size,
                   Distribution dist);
 };

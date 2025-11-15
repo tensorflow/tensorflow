@@ -82,10 +82,10 @@ bool RecordYielder::ShouldFinish(const absl::Status& s) {
   return stop_ || !status_.ok();
 }
 
-static absl::Status MatchFiles(const string& patterns,
-                               std::vector<string>* filenames) {
+static absl::Status MatchFiles(const std::string& patterns,
+                               std::vector<std::string>* filenames) {
   for (const auto& file_pattern : str_util::Split(patterns, ',')) {
-    std::vector<string> tmp_filenames;
+    std::vector<std::string> tmp_filenames;
     TF_RETURN_IF_ERROR(
         Env::Default()->GetMatchingPaths(file_pattern, &tmp_filenames));
     filenames->insert(filenames->end(),
@@ -102,7 +102,7 @@ void RecordYielder::MainLoop() {
     num_records_added_in_epoch_ = 0;
 
     // Finds all files.
-    std::vector<string> filenames;
+    std::vector<std::string> filenames;
     absl::Status s = MatchFiles(opts_.file_pattern, &filenames);
 
     if (filenames.empty()) {
@@ -121,7 +121,7 @@ void RecordYielder::MainLoop() {
     std::shuffle(filenames.begin(), filenames.end(), shuffle_rnd);
 
     // Left-shift the filename list.
-    const std::vector<string>::size_type num = filenames.size();
+    const std::vector<std::string>::size_type num = filenames.size();
     int64_t shift;
     if (0 <= opts_.file_shuffle_shift_ratio &&
         opts_.file_shuffle_shift_ratio < 1) {
@@ -136,7 +136,8 @@ void RecordYielder::MainLoop() {
     for (int i = 0; i < N; ++i) {
       Shard* shard = &shards[i];
       shard->index = i;
-      for (std::vector<string>::size_type j = i; j < filenames.size(); j += N) {
+      for (std::vector<std::string>::size_type j = i; j < filenames.size();
+           j += N) {
         shard->filenames.push_back(filenames[j]);
       }
       thread_->Schedule([this, shard]() { ShardLoop(shard); });
@@ -172,7 +173,7 @@ void RecordYielder::MainLoop() {
   main_loop_done_.Notify();
 }
 
-bool RecordYielder::Add(std::vector<string>* values) {
+bool RecordYielder::Add(std::vector<std::string>* values) {
   mutex_lock l(mu_);
   while (!BufNotFull()) {
     buf_not_full_.wait(l);
@@ -197,9 +198,9 @@ bool RecordYielder::Add(std::vector<string>* values) {
 }
 
 void RecordYielder::ShardLoop(Shard* shard) {
-  std::vector<string> values;
+  std::vector<std::string> values;
   const int64_t kRecords = 16;
-  for (const string& filename : shard->filenames) {
+  for (const std::string& filename : shard->filenames) {
     std::unique_ptr<RandomAccessFile> file;
     if (ShouldFinish(absl::OkStatus())) break;
     absl::Status s = Env::Default()->NewRandomAccessFile(filename, &file);
@@ -211,7 +212,7 @@ void RecordYielder::ShardLoop(Shard* shard) {
         io::RecordReaderOptions::CreateRecordReaderOptions(
             opts_.compression_type);
     io::RecordReader rdr(file.get(), options);
-    uint64 offset = 0;
+    uint64_t offset = 0;
     tstring record;
     while (true) {
       absl::Status s = rdr.ReadRecord(&offset, &record);

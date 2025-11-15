@@ -44,10 +44,10 @@ TensorShape ReductionHelper::shuffled_shape() {
   return shape;
 }
 
-absl::InlinedVector<int32, 8> ReductionHelper::permutation() {
+absl::InlinedVector<int32_t, 8> ReductionHelper::permutation() {
   const int dims = data_reshape_.size();
   const int unreduced_dims = (dims + !reduce_first_axis_) / 2;
-  absl::InlinedVector<int32, 8> perm(dims);
+  absl::InlinedVector<int32_t, 8> perm(dims);
   for (int i = 0; i < unreduced_dims; i++) {
     perm[i] = 2 * i + reduce_first_axis_;
   }
@@ -84,7 +84,7 @@ absl::Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
   // bitmap[i] indicates whether to reduce data along i-th axis.
   absl::InlinedVector<bool, 4> bitmap(data.dims(), false);
   if (axis.dtype() == DT_INT32) {
-    TF_RETURN_IF_ERROR(SimplifyHelper<int32>(data, axis, bitmap));
+    TF_RETURN_IF_ERROR(SimplifyHelper<int32_t>(data, axis, bitmap));
   } else {
     TF_RETURN_IF_ERROR(SimplifyHelper<int64_t>(data, axis, bitmap));
   }

@@ -157,7 +157,7 @@ class RandomGammaOp : public OpKernel {
                     shape_t.DebugString()));
     TensorShape samples_shape;
     if (shape_t.dtype() == DataType::DT_INT32) {
-      auto vec = shape_t.flat<int32>();
+      auto vec = shape_t.flat<int32_t>();
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(vec.data(), vec.size(),
                                                       &samples_shape));
     } else if (shape_t.dtype() == DataType::DT_INT64) {
