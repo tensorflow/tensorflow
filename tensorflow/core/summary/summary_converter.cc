@@ -72,7 +72,7 @@ absl::Status TensorValueAt(Tensor t, int64_t i, T* out) {
 #undef COMPLEX_CASE
 }
 
-typedef Eigen::Tensor<uint8, 2, Eigen::RowMajor> Uint8Image;
+typedef Eigen::Tensor<uint8_t, 2, Eigen::RowMajor> Uint8Image;
 
 // Add the sequence of images specified by ith_image to the summary.
 //
@@ -80,8 +80,8 @@ typedef Eigen::Tensor<uint8, 2, Eigen::RowMajor> Uint8Image;
 // differently in the float and uint8 cases: the float case needs a temporary
 // buffer which can be shared across calls to ith_image, but the uint8 case
 // does not.
-absl::Status AddImages(const string& tag, int max_images, int batch_size, int w,
-                       int h, int depth,
+absl::Status AddImages(const std::string& tag, int max_images, int batch_size,
+                       int w, int h, int depth,
                        const std::function<Uint8Image(int)>& ith_image,
                        Summary* s) {
   const int N = std::min<int>(max_images, batch_size);
@@ -118,7 +118,7 @@ absl::Status AddImages(const string& tag, int max_images, int batch_size, int w,
 template <class T>
 void NormalizeFloatImage(int hw, int depth,
                          typename TTypes<T>::ConstMatrix values,
-                         typename TTypes<uint8>::ConstVec bad_color,
+                         typename TTypes<uint8_t>::ConstVec bad_color,
                          Uint8Image* image) {
   if (!image->size()) return;  // Nothing to do for empty images
 
@@ -178,8 +178,8 @@ void NormalizeFloatImage(int hw, int depth,
       }
     }
     if (finite) {
-      image->chip<0>(i) =
-          (values.template chip<0>(i) * scale + offset).template cast<uint8>();
+      image->chip<0>(i) = (values.template chip<0>(i) * scale + offset)
+                              .template cast<uint8_t>();
     } else {
       image->chip<0>(i) = bad_color;
     }
@@ -189,7 +189,7 @@ void NormalizeFloatImage(int hw, int depth,
 template <class T>
 absl::Status NormalizeAndAddImages(const Tensor& tensor, int max_images, int h,
                                    int w, int hw, int depth, int batch_size,
-                                   const string& base_tag,
+                                   const std::string& base_tag,
                                    Tensor bad_color_tensor, Summary* s) {
   // For float and half images, nans and infs are replaced with bad_color.
   if (bad_color_tensor.dim_size(0) < depth) {
@@ -197,8 +197,8 @@ absl::Status NormalizeAndAddImages(const Tensor& tensor, int max_images, int h,
         "expected depth <= bad_color.size, got depth = ", depth,
         ", bad_color.size = ", bad_color_tensor.dim_size(0));
   }
-  auto bad_color_full = bad_color_tensor.vec<uint8>();
-  typename TTypes<uint8>::ConstVec bad_color(bad_color_full.data(), depth);
+  auto bad_color_full = bad_color_tensor.vec<uint8_t>();
+  typename TTypes<uint8_t>::ConstVec bad_color(bad_color_full.data(), depth);
 
   // Float images must be scaled and translated.
   Uint8Image image(hw, depth);
@@ -214,7 +214,7 @@ absl::Status NormalizeAndAddImages(const Tensor& tensor, int max_images, int h,
 
 }  // namespace
 
-absl::Status AddTensorAsScalarToSummary(const Tensor& t, const string& tag,
+absl::Status AddTensorAsScalarToSummary(const Tensor& t, const std::string& tag,
                                         Summary* s) {
   Summary::Value* v = s->add_value();
   v->set_tag(tag);
@@ -224,8 +224,8 @@ absl::Status AddTensorAsScalarToSummary(const Tensor& t, const string& tag,
   return absl::OkStatus();
 }
 
-absl::Status AddTensorAsHistogramToSummary(const Tensor& t, const string& tag,
-                                           Summary* s) {
+absl::Status AddTensorAsHistogramToSummary(const Tensor& t,
+                                           const std::string& tag, Summary* s) {
   Summary::Value* v = s->add_value();
   v->set_tag(tag);
   histogram::Histogram histo;
@@ -244,9 +244,9 @@ absl::Status AddTensorAsHistogramToSummary(const Tensor& t, const string& tag,
   return absl::OkStatus();
 }
 
-absl::Status AddTensorAsImageToSummary(const Tensor& tensor, const string& tag,
-                                       int max_images, const Tensor& bad_color,
-                                       Summary* s) {
+absl::Status AddTensorAsImageToSummary(const Tensor& tensor,
+                                       const std::string& tag, int max_images,
+                                       const Tensor& bad_color, Summary* s) {
   if (!(tensor.dims() == 4 &&
         (tensor.dim_size(3) == 1 || tensor.dim_size(3) == 3 ||
          tensor.dim_size(3) == 4))) {
@@ -269,8 +269,8 @@ absl::Status AddTensorAsImageToSummary(const Tensor& tensor, const string& tag,
   if (tensor.dtype() == DT_UINT8) {
     // For uint8 input, no normalization is necessary
     auto ith_image = [&tensor, batch_size, hw, depth](int i) {
-      auto values = tensor.shaped<uint8, 3>({batch_size, hw, depth});
-      return typename TTypes<uint8>::ConstMatrix(
+      auto values = tensor.shaped<uint8_t, 3>({batch_size, hw, depth});
+      return typename TTypes<uint8_t>::ConstMatrix(
           &values(i, 0, 0), Eigen::DSizes<Eigen::DenseIndex, 2>(hw, depth));
     };
     TF_RETURN_IF_ERROR(
@@ -293,9 +293,9 @@ absl::Status AddTensorAsImageToSummary(const Tensor& tensor, const string& tag,
   return absl::OkStatus();
 }
 
-absl::Status AddTensorAsAudioToSummary(const Tensor& tensor, const string& tag,
-                                       int max_outputs, float sample_rate,
-                                       Summary* s) {
+absl::Status AddTensorAsAudioToSummary(const Tensor& tensor,
+                                       const std::string& tag, int max_outputs,
+                                       float sample_rate, Summary* s) {
   if (sample_rate <= 0.0f) {
     return errors::InvalidArgument("sample_rate must be > 0");
   }

@@ -110,7 +110,7 @@ void Vacuum(const char* path) {
 }
 
 int main(int argc, char* argv[]) {
-  string usage = Flags::Usage(argv[0], {});
+  std::string usage = Flags::Usage(argv[0], {});
   bool parse_result = Flags::Parse(&argc, argv, {});
   if (!parse_result) {
     std::cerr << "The vacuum tool rebuilds SQLite database files created by\n"

@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-constexpr uint32 kTensorboardSqliteApplicationId = 0xfeedabee;
+constexpr uint32_t kTensorboardSqliteApplicationId = 0xfeedabee;
 
 /// \brief Creates TensorBoard SQLite tables and indexes.
 ///

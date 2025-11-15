@@ -34,9 +34,10 @@ namespace tensorflow {
 /// the future if support for other DBs is added to core.
 ///
 /// The result holds a new reference to db.
-absl::Status CreateSummaryDbWriter(Sqlite* db, const string& experiment_name,
-                                   const string& run_name,
-                                   const string& user_name, Env* env,
+absl::Status CreateSummaryDbWriter(Sqlite* db,
+                                   const std::string& experiment_name,
+                                   const std::string& run_name,
+                                   const std::string& user_name, Env* env,
                                    SummaryWriterInterface** result);
 
 }  // namespace tensorflow

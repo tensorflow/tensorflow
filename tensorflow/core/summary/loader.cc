@@ -33,9 +33,9 @@ namespace tensorflow {
 namespace {
 
 template <typename T>
-string AddCommas(T n) {
+std::string AddCommas(T n) {
   static_assert(std::is_integral<T>::value, "is_integral");
-  string s = strings::StrCat(n);
+  std::string s = strings::StrCat(n);
   if (s.size() > 3) {
     int extra = s.size() / 3 - (s.size() % 3 == 0 ? 1 : 0);
     s.append(extra, 'X');
@@ -52,11 +52,11 @@ string AddCommas(T n) {
 }
 
 int main(int argc, char* argv[]) {
-  string path;
-  string events;
-  string experiment_name;
-  string run_name;
-  string user_name;
+  std::string path;
+  std::string events;
+  std::string experiment_name;
+  std::string run_name;
+  std::string user_name;
   std::vector<Flag> flag_list = {
       Flag("db", &path, "Path of SQLite DB file"),
       Flag("events", &events, "TensorFlow record proto event log file"),
@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
       Flag("run_name", &run_name, "The DB run_name value"),
       Flag("user_name", &user_name, "The DB user_name value"),
   };
-  string usage = Flags::Usage(argv[0], flag_list);
+  std::string usage = Flags::Usage(argv[0], flag_list);
   bool parse_result = Flags::Parse(&argc, argv, flag_list);
   if (!parse_result || path.empty()) {
     std::cerr << "The loader tool imports tf.Event record files, created by\n"
@@ -99,9 +99,9 @@ int main(int argc, char* argv[]) {
   TF_CHECK_OK(env->NewRandomAccessFile(events, &file));
   io::RecordReader reader(file.get());
 
-  uint64 start = env->NowMicros();
-  uint64 records = 0;
-  uint64 offset = 0;
+  uint64_t start = env->NowMicros();
+  uint64_t records = 0;
+  uint64_t offset = 0;
   tstring record;
   while (true) {
     std::unique_ptr<Event> event = std::unique_ptr<Event>(new Event);
@@ -116,9 +116,10 @@ int main(int argc, char* argv[]) {
     TF_CHECK_OK(db_writer->WriteEvent(std::move(event)));
     ++records;
   }
-  uint64 elapsed = env->NowMicros() - start;
-  uint64 bps = (elapsed == 0 ? offset : static_cast<uint64>(
-                                            offset / (elapsed / 1000000.0)));
+  uint64_t elapsed = env->NowMicros() - start;
+  uint64_t bps =
+      (elapsed == 0 ? offset
+                    : static_cast<uint64_t>(offset / (elapsed / 1000000.0)));
   LOG(INFO) << "Loaded " << AddCommas(offset) << " bytes with "
             << AddCommas(records) << " records at " << AddCommas(bps) << " bps";
   return 0;
