@@ -112,6 +112,15 @@ class KernelArguments {
     return arg_slices;
   }
 
+  std::vector<Shape> GetArgumentBufferShapes() const {
+    std::vector<Shape> arg_shapes;
+    arg_shapes.reserve(args_.size());
+    for (const KernelArgument& arg : args_) {
+      arg_shapes.push_back(arg.shape());
+    }
+    return arg_shapes;
+  }
+
   std::vector<bool> GetArgumentOutputFlags() const {
     std::vector<bool> output_flags;
     output_flags.reserve(args_.size());

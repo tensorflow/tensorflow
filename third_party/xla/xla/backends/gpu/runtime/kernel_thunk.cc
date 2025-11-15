@@ -62,16 +62,16 @@ namespace gpu {
 
 Thunk::BufferUses BufferUseFromKernelArguments(
     absl::Span<const BufferAllocation::Slice> args,
-    const std::vector<bool>& written) {
+    absl::Span<const Shape> shapes, const std::vector<bool>& written) {
   Thunk::BufferUses buffers;
   buffers.reserve(args.size());
   for (int i = 0; i < args.size(); ++i) {
     // We assume that any buffer is either an input or an output of the
     // kernel, and inout buffers are represented as 2 separate arguments.
     if (written[i]) {
-      buffers.push_back(BufferUse::Write(args[i]));
+      buffers.push_back(BufferUse::Write(args[i], shapes[i]));
     } else {
-      buffers.push_back(BufferUse::Read(args[i]));
+      buffers.push_back(BufferUse::Read(args[i], shapes[i]));
     }
   }
   return buffers;
@@ -89,6 +89,7 @@ KernelThunk::KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
                          stream_executor::gpu::TmaMetadata tma_metadata)
     : Thunk(Kind::kKernel, std::move(thunk_info)),
       args_(kernel_arguments.GetArgumentBufferSlices()),
+      args_shape_(kernel_arguments.GetArgumentBufferShapes()),
       written_(kernel_arguments.GetArgumentOutputFlags()),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
@@ -308,7 +309,8 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 }
 
 Thunk::BufferUses KernelThunk::buffer_uses() const {
-  return BufferUseFromKernelArguments(absl::MakeConstSpan(args_), written_);
+  return BufferUseFromKernelArguments(
+      absl::MakeConstSpan(args_), absl::MakeConstSpan(args_shape_), written_);
 }
 
 //===----------------------------------------------------------------------===//
@@ -321,6 +323,7 @@ CustomKernelThunk::CustomKernelThunk(
     : Thunk(Kind::kCustomKernel,
             Thunk::ThunkInfo::WithProfileAnnotation(instr, thunk_id)),
       args_(kernel_arguments.GetArgumentBufferSlices()),
+      args_shape_(kernel_arguments.GetArgumentBufferShapes()),
       written_(kernel_arguments.GetArgumentOutputFlags()),
       custom_kernel_(std::move(custom_kernel)) {}
 
@@ -380,7 +383,8 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 }
 
 Thunk::BufferUses CustomKernelThunk::buffer_uses() const {
-  return BufferUseFromKernelArguments(absl::MakeConstSpan(args_), written_);
+  return BufferUseFromKernelArguments(
+      absl::MakeConstSpan(args_), absl::MakeConstSpan(args_shape_), written_);
 }
 
 }  // namespace gpu

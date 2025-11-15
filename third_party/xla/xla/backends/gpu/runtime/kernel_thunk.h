@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -116,6 +117,7 @@ class KernelThunk : public Thunk {
  private:
   // Buffer slices passed to the kernel as arguments.
   std::vector<BufferAllocation::Slice> args_;
+  std::vector<Shape> args_shape_;
 
   // args_[i] is written iff (written_[i] == true).
   std::vector<bool> written_;
@@ -181,6 +183,7 @@ class CustomKernelThunk : public Thunk {
  private:
   // Buffer slices passed to the kernel as arguments.
   std::vector<BufferAllocation::Slice> args_;
+  std::vector<Shape> args_shape_;
 
   // args_[i] is written iff (written_[i] == true).
   std::vector<bool> written_;
