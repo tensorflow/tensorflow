@@ -30,8 +30,6 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-using ::tsl::testing::StatusIs;
-
 TEST(AutoScalerTest, GetOptimalNumberOfWorkersInitialState) {
   AutoScaler auto_scaler;
   EXPECT_EQ(auto_scaler.GetOptimalNumberOfWorkers(), std::nullopt);
