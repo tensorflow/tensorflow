@@ -2750,6 +2750,7 @@ xla_cc_test(
         ":stream_executor_util",
         "//xla:autotuning_proto_cc",
         "//xla/service:hlo_module_config",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "//xla/tsl/util/proto:proto_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
