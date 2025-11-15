@@ -24,12 +24,12 @@ namespace tensorflow {
 namespace grappler {
 namespace utils {
 
-const bool IsCommutativeOp(const string& op) {
+const bool IsCommutativeOp(const std::string& op) {
   // TODO(intel-tf): Add more ops to this list if needed.
-  std::vector<string> op_list = str_util::Split(op, '|');
-  static const auto* commutative_ops = new absl::flat_hash_set<string>(
+  std::vector<std::string> op_list = str_util::Split(op, '|');
+  static const auto* commutative_ops = new absl::flat_hash_set<std::string>(
       {"Add", "AddV2", "Mul", "Maximum", "SquaredDifference"});
-  for (const string& op_ : op_list) {
+  for (const std::string& op_ : op_list) {
     if (commutative_ops->contains(op_)) return true;
   }
   return false;
@@ -39,11 +39,11 @@ const bool IsCommutativeOp(const string& op) {
 // registered op in tensorflow and may have multiple ops separated by '|'.
 // op2 is an op name in the computation graph and
 // is always one of the registered ops in tensorflow.
-bool IsSame(string op1, string op2) {
+bool IsSame(std::string op1, std::string op2) {
   if (op1 == "*") return true;
 
-  std::vector<string> op1_list = str_util::Split(op1, '|');
-  for (const string& op_1 : op1_list) {
+  std::vector<std::string> op1_list = str_util::Split(op1, '|');
+  for (const std::string& op_1 : op1_list) {
     if (op_1 == op2) return true;
   }
 
@@ -75,8 +75,8 @@ bool SubGraphMatcher<MatchingDirection::kFollowInputs>::DoesOpTypePatternMatch(
   } else {
     // The op field string of current pattern might express an op among multiple
     // op types (mutually exclusive) separated by '|'.
-    std::vector<string> op_list = str_util::Split(pattern.op, '|');
-    for (const string& op : op_list) {
+    std::vector<std::string> op_list = str_util::Split(pattern.op, '|');
+    for (const std::string& op : op_list) {
       if (node_view->node()->op() == op) {
         op_type_matched = true;
         break;
@@ -138,7 +138,7 @@ bool SubGraphMatcher<MatchingDirection::kFollowInputs>::DoesOpTypePatternMatch(
       // match unless we look two level down the graphs.
       std::vector<int> pattern_child_indices(num_children);
       std::iota(pattern_child_indices.begin(), pattern_child_indices.end(), 0);
-      string op_name = pattern.op;
+      std::string op_name = pattern.op;
       if (IsCommutativeOp(op_name) && num_children == 2) {
         MutableNodeView* graph_child0_node_view =
             graph_view_->GetNode(graph_children[0].node_index());
@@ -174,8 +174,8 @@ bool SubGraphMatcher<MatchingDirection::kFollowInputs>::DoesOpTypePatternMatch(
 template <>
 bool SubGraphMatcher<MatchingDirection::kFollowInputs>::GetMatchedNodes(
     const OpTypePattern& pattern,
-    const std::unordered_set<string>& nodes_to_preserve,
-    MutableNodeView* node_view, std::map<string, int>* matched_nodes_map,
+    const std::unordered_set<std::string>& nodes_to_preserve,
+    MutableNodeView* node_view, std::map<std::string, int>* matched_nodes_map,
     std::set<int>* remove_node_indices) {
   bool found_match = false;
   match_ = std::make_unique<NodeViewMatch>();
