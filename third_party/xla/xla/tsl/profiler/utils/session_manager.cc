@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/session_manager.h"
 
 #include <algorithm>
+#include <climits>
 #include <string>
 #include <variant>
 #include <vector>
@@ -143,6 +144,40 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
             options.mutable_profiler_options()->set_session_id(value);
           },
           nullptr);
+    } else if (key == "tracemark_lower") {
+      SetOption<int>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, int value) {
+            if (value > INT_MAX) {
+              LOG(WARNING) << "tracemark_lower value is too large: " << value
+                           << ", setting to INT_MAX";
+              value = INT_MAX;
+            }
+            options->mutable_advanced_configuration()->insert(
+                {"tracemark_lower",
+                 tensorflow::ProfileOptions::AdvancedConfigValue()});
+            options->mutable_advanced_configuration()
+                ->at("tracemark_lower")
+                .set_int64_value(value);
+          },
+          options.mutable_profiler_options());
+    } else if (key == "tracemark_upper") {
+      SetOption<int>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, int value) {
+            if (value > INT_MAX) {
+              LOG(WARNING) << "tracemark_upper value is too large: " << value
+                           << ", setting to INT_MAX";
+              value = INT_MAX;
+            }
+            options->mutable_advanced_configuration()->insert(
+                {"tracemark_upper",
+                 tensorflow::ProfileOptions::AdvancedConfigValue()});
+            options->mutable_advanced_configuration()
+                ->at("tracemark_upper")
+                .set_int64_value(value);
+          },
+          options.mutable_profiler_options());
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }
