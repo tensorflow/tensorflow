@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
@@ -39,32 +40,49 @@ absl::Status EnsureTritonSupportsComputeCapability(
     const se::GpuComputeCapability& gpu_compute_capability);
 
 // Return `CodegenDecision`'s equivalent of `true` if the parameter instruction
-// is supported by the Triton emitters for the given compute capability. Note
-// that this function makes no assumption about what happens if
-// `FloatNormalization` is run, unlike the legacy Triton utils.
+// is supported by the Triton emitters for the given compute capability/
+// `is_fused_computation` indicates that fusions are already formed and
+// we should run additional checks for them.
 //
+// TODO(b/393299275): remove this comment.
 // Note: this function is entirely dissociated from the legacy Triton emitters.
 // If you intend to add a feature to the legacy Triton emitters (which you
 // probably shouldn't), use `legacy_triton::IsTritonSupportedInstruction`
 // instead.
 CodegenDecision IsTritonSupportedInstruction(
-    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
+    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version,
+    bool is_fused_computation = true);
 
 // Returns `CodegenDecision`'s equivalent of `true` if all the instructions in
 // the parameter computation are supported by the Triton emitters for the given
 // compute capability.
+// `is_fused_computation` indicates that fusions are already formed and
+// we should run additional checks for them.
 //
+// TODO(b/393299275): remove this comment.
 // This function has the same caveats as `IsTritonSupportedInstruction` as
 // defined in the present namespace.
 CodegenDecision IsTritonSupportedComputation(
     const HloComputation& computation,
-    const se::GpuComputeCapability& gpu_compute_capability);
+    const se::GpuComputeCapability& gpu_compute_capability,
+    bool is_fused_computation = true);
 
 // Returns `true` if the parameter computation is a Triton fused computation,
 // i.e. the calling fusion instruction has `FusionKind::kCustom` and
 // `backend_config<gpu::GpuBackendConfig>()` with `kind` set to
 // `kTritonGemmFusionKind`.
 bool IsTritonFusedComputation(const HloComputation& computation);
+
+// Checks elementwise operation against unary, binary, and ternary elementwise
+// operations supported by the legacy Triton emitters assuming that
+// FloatNormalization will be run later.
+// TODO(b/393299275): check if we can expand the set of supported operations
+// as generic emitter can handle more operations.
+bool IsTritonSupportedElementwiseUpToFloatNormalization(
+    HloOpcode opcode, PrimitiveType element_type);
+
+CodegenDecision IsTritonSupportedDynamicSlice(
+    const HloDynamicSliceInstruction& instr);
 
 namespace internal {
 // TODO(b/363981282): Remove the function below once all ops are tested via
