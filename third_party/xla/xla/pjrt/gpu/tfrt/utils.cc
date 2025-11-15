@@ -938,8 +938,7 @@ void EnqueueWorkWhenReady(
   });
 }
 
-absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
-GetLatestIncarnations(
+absl::flat_hash_map<GlobalDeviceId, IncarnationId> GetLatestIncarnations(
     absl::Span<PjRtDevice* const> devices,
     const absl::flat_hash_map<int, IncarnationId>& incarnations) {
   // Map every device to its incarnation.
@@ -948,7 +947,9 @@ GetLatestIncarnations(
     int task_id = device->process_index();
     auto it = incarnations.find(task_id);
     if (it == incarnations.end()) {
-      return FailedPrecondition("Incarnation for task %d not found", task_id);
+      // The task might be dead.
+      LOG(WARNING) << "Incarnation for task " << task_id << " not found";
+      continue;
     }
     GlobalDeviceId device_id(device->global_device_id().value());
     device_incarnations[device_id] = it->second;
