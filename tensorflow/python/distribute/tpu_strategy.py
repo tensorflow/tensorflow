@@ -931,10 +931,12 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     self._logical_device_stack = [0]
 
+    self._exit_handler = None
     if context.executing_eagerly():
       # In async remote eager, we want to sync the executors before exiting the
       # program.
-      atexit.register(context.async_wait)
+      self._exit_handler = context.async_wait
+      atexit.register(self._exit_handler)
 
     # Flag to turn on VariablePolicy. Var policy is deprecated because there is
     # another effort unifying DistributedVariables (see values_v2.py). SPMD XLA
@@ -955,6 +957,12 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # This is a flag to enable data reorder which is used
     # to match IteratorGetNext's device with the TPUExecute device.
     self._enable_data_reorder = False
+
+  def unregister_exit_handler(self):
+    """Unregister the exit handler."""
+    if self._exit_handler:
+      atexit.unregister(self._exit_handler)
+      self._exit_handler = None
 
   def _place_input_on_local_cpu_devices(self):
     """Place input on local CPU devices.
