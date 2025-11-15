@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -300,9 +301,9 @@ TEST(ConditionalThunkTest, TransformAllNestedThunks) {
       Thunk::ThunkInfo(), slice, std::move(branch_thunks),
       /*branch_index_is_bool=*/false);
 
-  conditional_thunk->TransformAllNestedThunks([](auto) {
+  TF_EXPECT_OK(conditional_thunk->TransformAllNestedThunks([](auto) {
     return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());
-  });
+  }));
 
   EXPECT_THAT(conditional_thunk->branch_thunks(), SizeIs(2));
   EXPECT_THAT(conditional_thunk->branch_thunks()[0]->thunks(), SizeIs(1));
