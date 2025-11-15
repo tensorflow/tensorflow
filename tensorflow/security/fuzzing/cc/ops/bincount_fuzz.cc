@@ -27,7 +27,7 @@ namespace tensorflow {
 namespace fuzzing {
 
 // Creates FuzzBincount class that wraps a single operation node session.
-class FuzzBincount : public FuzzSession<Tensor, int32, Tensor> {
+class FuzzBincount : public FuzzSession<Tensor, int32_t, Tensor> {
   void BuildGraph(const Scope& scope) override {
     auto arr = tensorflow::ops::Placeholder(scope.WithOpName("arr"), DT_INT32);
     auto size =
@@ -36,10 +36,10 @@ class FuzzBincount : public FuzzSession<Tensor, int32, Tensor> {
         tensorflow::ops::Placeholder(scope.WithOpName("weights"), DT_INT32);
     tensorflow::ops::Bincount(scope.WithOpName("output"), arr, size, weights);
   }
-  void FuzzImpl(const Tensor& arr, const int32& nbins,
+  void FuzzImpl(const Tensor& arr, const int32_t& nbins,
                 const Tensor& weights) final {
     Tensor size(DT_INT32, {});
-    size.flat<int32>()(0) = nbins;
+    size.flat<int32_t>()(0) = nbins;
 
     absl::Status s = RunInputsWithStatus(
         {{"arr", arr}, {"size", size}, {"weights", weights}});
@@ -58,7 +58,7 @@ FUZZ_TEST_F(FuzzBincount, Fuzz)
                                                     /*dim_lower_bound=*/0,
                                                     /*dim_upper_bound=*/10),
                                                 fuzztest::Just(DT_INT32)),
-                 fuzztest::InRange<int32>(0, 10),
+                 fuzztest::InRange<int32_t>(0, 10),
                  fuzzing::AnyValidNumericTensor(fuzzing::AnyValidTensorShape(
                                                     /*max_rank=*/5,
                                                     /*dim_lower_bound=*/0,
