@@ -13,9 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 # Sourcing this enables Bazel remote cache (public, read-only)
-# The cache configs are different for MacOS and Linux
-if [[ $(uname -s) == "Darwin" ]]; then
-  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_macos_cache"
-else
-  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_cache"
-fi
+# The cache configs are different for MacOS, Linux, and Windows
+case "$(uname -s)" in
+  "Darwin")
+    TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_macos_cache"
+    ;;
+  "Linux")
+    TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_cache"
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_windows_cache"
+    ;;
+esac
