@@ -885,12 +885,13 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::CreateErrorBuffer(
   // Create a dummy buffer because the rest of the code expects a buffer
   // regardless of whether the definition event is an error.
   TF_ASSIGN_OR_RETURN(
-      auto buffer,
-      CpuDeviceMemory::Allocate(ShapeUtil::ByteSizeOf(shape), *allocator_));
+      auto raw_buffer,
+      CpuRawBuffer::Allocate(memory_space, ShapeUtil::ByteSizeOf(shape),
+                             *allocator_));
   return std::make_unique<CommonPjRtBufferImpl>(
       shape,
       std::make_unique<TrackedCpuDeviceBuffer>(
-          /*owns_buffers=*/true, std::move(buffer),
+          /*owns_buffers=*/true, std::move(raw_buffer),
           absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>{
               tsl::AsyncValueRef<CpuEvent>(
                   tsl::MakeErrorAsyncValueRef(std::move(error)))}),
@@ -983,13 +984,13 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::DefineBuffer(
     definition_events.push_back(
         tsl::down_cast<CpuTrackedDeviceEvent*>(ev.get())->event());
   }
+  auto memory_space = raw_buffer->memory_space();
   return std::unique_ptr<PjRtBuffer>(std::make_unique<CommonPjRtBufferImpl>(
       on_device_shape,
       std::make_unique<TrackedCpuDeviceBuffer>(
-          /*owns_buffers=*/raw_buffer_is_mutable,
-          tsl::down_cast<CpuRawBuffer*>(raw_buffer.get())->buffer(),
+          /*owns_buffers=*/raw_buffer_is_mutable, std::move(raw_buffer),
           ShapeUtil::ByteSizeOf(on_device_shape), std::move(definition_events)),
-      raw_buffer->memory_space()));
+      memory_space));
 }
 
 absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
@@ -1825,6 +1826,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
   // Create output buffers.
   const Shape& result_shape = cpu_executable_->result_shape();
   std::vector<std::unique_ptr<PjRtBuffer>> res;
+  auto* memory_space = *device->default_memory_space();
   if (result_shape.IsTuple()) {
     res.reserve(result_buffers_info.size());
     for (int i = 0; i < result_buffers_info.size(); ++i) {
@@ -1834,11 +1836,12 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
       auto leaf_tracked_device_buffer =
           std::make_unique<TrackedCpuDeviceBuffer>(
               result_buffers_info[i].owns_buffer,
-              std::move(result_buffers_info[i].buffer),
+              tsl::MakeRef<CpuRawBuffer>(
+                  memory_space, std::move(result_buffers_info[i].buffer)),
               result_buffers_info[i].buffer_size, std::move(definition_events));
       auto leaf_buffer = std::make_unique<CommonPjRtBufferImpl>(
           result_shape.tuple_shapes(i), std::move(leaf_tracked_device_buffer),
-          *device->default_memory_space());
+          memory_space);
       res.push_back(std::move(leaf_buffer));
     }
   } else {
@@ -1846,12 +1849,12 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
     // Program execution writes to output buffers so it's a definition event.
     auto tracked_device_buffer = std::make_unique<TrackedCpuDeviceBuffer>(
         result_buffers_info[0].owns_buffer,
-        std::move(result_buffers_info[0].buffer),
+        tsl::MakeRef<CpuRawBuffer>(memory_space,
+                                   std::move(result_buffers_info[0].buffer)),
         result_buffers_info[0].buffer_size,
         /*definition_event=*/execute_event);
     auto output_buffer = std::make_unique<CommonPjRtBufferImpl>(
-        result_shape, std::move(tracked_device_buffer),
-        *device->default_memory_space());
+        result_shape, std::move(tracked_device_buffer), memory_space);
     res.push_back(std::move(output_buffer));
   }
 

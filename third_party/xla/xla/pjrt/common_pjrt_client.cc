@@ -248,8 +248,7 @@ CommonPjRtClient::CreateAliasBuffer(const Shape& shape,
           std::move(buffer_promise)(status).IgnoreError();
           return status;
         }
-        auto status = std::move(buffer_promise)(
-            hold.buffer()->GetRawBuffer(memory_space));
+        auto status = std::move(buffer_promise)(hold.buffer()->raw_buffer());
         if (!status.ok()) {
           definition_event_promise->SetError(status);
           return status;
@@ -1022,7 +1021,7 @@ CommonPjRtBufferImpl::AcquireExternalReference() {
     tsl::RCReference<CommonPjRtRawBuffer> raw_buffer_;
   };
 
-  auto raw_buffer = hold.buffer()->GetRawBuffer(memory_space_);
+  auto raw_buffer = hold.buffer()->raw_buffer();
   return std::unique_ptr<ExternalReference>(
       std::make_unique<ScopedHoldAsExternalReference>(std::move(hold),
                                                       std::move(raw_buffer)));
@@ -1242,7 +1241,7 @@ CommonPjRtBufferImpl::ReleaseDeviceMemoryOwnership(
   std::unique_ptr<PjRtBuffer::ExternalReference> ref;
   if (device_buffer) {
     ref = std::make_unique<RawBufferAsExternalReference>(
-        device_buffer->GetRawBuffer(memory_space_));
+        device_buffer->raw_buffer());
   }
   return ref;
 }
