@@ -54,7 +54,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
@@ -92,7 +92,7 @@ class TestBufferIntervalComparator : public BufferIntervalComparator {
   MsaBufferIntervalCompare compare_method_;
 };
 
-class MemorySpaceAssignmentTestBase : public HloTestBase {
+class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
  protected:
   // We use the following two memory space values to describe the default (slow
   // and large) and alternate (fast and small) memory spaces.
