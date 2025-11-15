@@ -41,21 +41,21 @@ class FunctionApiInfo {
 
   absl::Status Init(const FunctionDef& function_def);
 
-  const string& interface_name() const;
-  const string& preferred_device() const;
+  const std::string& interface_name() const;
+  const std::string& preferred_device() const;
   const FunctionType function_type() const;
-  const string& pairing_function_name() const;
+  const std::string& pairing_function_name() const;
   const DataTypeVector& input_arg_dtypes() const;
   const DataTypeVector& output_arg_dtypes() const;
 
  private:
-  string interface_name_;
-  string preferred_device_;
+  std::string interface_name_;
+  std::string preferred_device_;
   FunctionType function_type_;
   // The pairing function is used to pair between forward and backward function,
   // which will be useful during function swapping. Inference function won't
   // have pairing function.
-  string pairing_function_name_;
+  std::string pairing_function_name_;
   // The following two attributes are useful for forward and backward functions.
   DataTypeVector input_arg_dtypes_;
   DataTypeVector output_arg_dtypes_;
@@ -78,23 +78,27 @@ class FunctionLibraryApiInfo {
   absl::Status Init(const FunctionDefLibrary& function_library);
 
   absl::Status GetEquivalentImplementations(
-      const string& function_name, std::vector<string>* other_functions) const;
+      const std::string& function_name,
+      std::vector<std::string>* other_functions) const;
 
-  const FunctionApiInfo* GetApiInfo(const string& function_name) const;
+  const FunctionApiInfo* GetApiInfo(const std::string& function_name) const;
   bool empty() const { return func_info_.empty(); }
   std::size_t size() const { return func_info_.size(); }
 
  private:
   // Map between function name to function details.
-  std::unordered_map<string, std::unique_ptr<FunctionApiInfo>> func_info_;
+  std::unordered_map<std::string, std::unique_ptr<FunctionApiInfo>> func_info_;
 
   // Map between interface name to function names.
   // Forward/backward function pair usually have different signatures between
   // each other since forward function could produce extra internal state as
   // output, and backward will take those extra state as inputs.
-  absl::flat_hash_map<string, std::vector<string>> intf_to_inference_funcs_;
-  absl::flat_hash_map<string, std::vector<string>> intf_to_forward_funcs_;
-  absl::flat_hash_map<string, std::vector<string>> intf_to_backward_funcs_;
+  absl::flat_hash_map<std::string, std::vector<std::string>>
+      intf_to_inference_funcs_;
+  absl::flat_hash_map<std::string, std::vector<std::string>>
+      intf_to_forward_funcs_;
+  absl::flat_hash_map<std::string, std::vector<std::string>>
+      intf_to_backward_funcs_;
 
   FunctionLibraryApiInfo(const FunctionLibraryApiInfo&) = delete;
   void operator=(const FunctionLibraryApiInfo&) = delete;
