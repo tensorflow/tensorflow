@@ -48,7 +48,7 @@ class FunctionalizeCondTest : public ::testing::Test {
     return fc_->state_map_.GetCondId(state);
   }
 
-  string GetString(const StateMap::StateMap::CondId id) {
+  std::string GetString(const StateMap::StateMap::CondId id) {
     return fc_->state_map_.CondStateToString(id);
   }
 
