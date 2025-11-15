@@ -25,16 +25,16 @@ namespace {
 
 class TestTime : public EnvTime {
  public:
-  uint64 GetOverridableNowNanos() const override {
+  uint64_t GetOverridableNowNanos() const override {
     return now_micros_ * kMicrosToNanos;
   }
 
-  void SetTime(uint64 now_micros) { now_micros_ = now_micros; }
+  void SetTime(uint64_t now_micros) { now_micros_ = now_micros; }
 
   void AdvanceSeconds(int64_t secs) { now_micros_ += secs * kSecondsToMicros; }
 
  private:
-  uint64 now_micros_ = 1234567890000000ULL;
+  uint64_t now_micros_ = 1234567890000000ULL;
 };
 
 class GcsThrottleTest : public ::testing::Test {
