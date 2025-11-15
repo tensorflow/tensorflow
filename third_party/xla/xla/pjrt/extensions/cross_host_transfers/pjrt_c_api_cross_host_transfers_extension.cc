@@ -16,13 +16,16 @@ limitations under the License.
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -128,6 +131,50 @@ static xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
   };
 }
 }  // namespace
+
+PJRT_Transfers_CrossHostRecvNotifierInfo CppCrossHostRecvNotifierToC(
+    const PJRT_Api* c_api, xla::PjRtCrossHostRecvNotifier cpp_notifier) {
+  using CrossHostRecvNotifierFunction =
+      std::function<void(PJRT_Error*, const char**, size_t*, size_t)>;
+  auto notifier_function = new CrossHostRecvNotifierFunction(
+      [cpp_notifier = std::move(cpp_notifier), c_api](
+          PJRT_Error* error, const char** serialized_descriptors,
+          size_t* descriptors_sizes, size_t num_descriptors) {
+        if (error != nullptr) {
+          absl::Status state = ::pjrt::PjrtErrorToStatus(error, c_api);
+          return cpp_notifier(std::move(state));
+        }
+        xla::PjRtCrossHostRecvState state;
+        state.descriptors.reserve(num_descriptors);
+        for (int i = 0; i < num_descriptors; ++i) {
+          xla::PjRtCrossHostRecvDescriptors descriptors;
+          descriptors.serialized_descriptors.push_back(
+              std::string(serialized_descriptors[i], descriptors_sizes[i]));
+          state.descriptors.push_back(std::move(descriptors));
+        }
+
+        // TODO(emilyaf): Support cancellation.
+        xla::PjRtCrossHostSendCancelNotifier cancel_notifier =
+            [](absl::string_view, absl::Status,
+               std::function<void(absl::Status)>) {
+              LOG(FATAL) << "MakeCrossHostReceiveBuffers: Cancellation is not "
+                            "supported in PJRT C API.";
+            };
+        state.cancel_notifier = cancel_notifier;
+        return cpp_notifier(std::move(state));
+      });
+  return PJRT_Transfers_CrossHostRecvNotifierInfo{
+      /*user_arg=*/notifier_function,
+      /*notifier=*/
+      [](PJRT_Error* error, const char** serialized_descriptors,
+         size_t* descriptors_sizes, size_t num_descriptors, void* user_arg) {
+        CrossHostRecvNotifierFunction* notifier_fn =
+            reinterpret_cast<CrossHostRecvNotifierFunction*>(user_arg);
+        (*notifier_fn)(error, serialized_descriptors, descriptors_sizes,
+                       num_descriptors);
+        delete notifier_fn;
+      }};
+}
 
 PJRT_Error* PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers(
     PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args* args) {

@@ -151,6 +151,8 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_CrossHostTransfers_Extension,
 namespace pjrt {
 PJRT_CrossHostTransfers_Extension CreateCrossHostTransfersExtension(
     PJRT_Extension_Base* next = nullptr);
+PJRT_Transfers_CrossHostRecvNotifierInfo CppCrossHostRecvNotifierToC(
+    const PJRT_Api* c_api, xla::PjRtCrossHostRecvNotifier cpp_notifier);
 }  // namespace pjrt
 
 #endif  // XLA_PJRT_EXTENSIONS_CROSS_HOST_TRANSFERS_PJRT_C_API_CROSS_HOST_TRANSFERS_EXTENSION_H_
