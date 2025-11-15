@@ -2,8 +2,6 @@
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
 
-BitcodeLibraryInfo = provider(fields = ["bc_file"])
-
 def _bitcode_library_impl(ctx):
     """Implements a bitcode library rule."""
     srcs = ctx.files.srcs
@@ -19,20 +17,21 @@ def _bitcode_library_impl(ctx):
             out = ctx.actions.declare_file(src.basename + ".bc")
             bc_outputs.append(out)
 
-            extra_flags = ctx.attr.file_specific_flags.get(src.basename, "")
+            extra_flags = ctx.attr.file_specific_flags.get(src.basename, [])
             include_flags = ["-I{}".format(dir) for dir in include_dirs]
             include_flags += ["-I{}".format(ctx.files._clang_header[0].dirname)]
             include_flags += ["-I{}".format(ctx.files._clang_includes[0].dirname)]
+
+            # https://github.com/ROCm/llvm-project/blob/679865ee84553d564ad0551d878196e58c9d03f3/amd/device-libs/cmake/OCL.cmake#L33
             args = [
-                "-x",
-                "cl",
-                "--target=amdgcn-amd-amdhsa",
-                "-emit-llvm",
                 "-fcolor-diagnostics",
                 "-Werror",
                 "-Wno-error=atomic-alignment",
+                "-x",
+                "cl",
                 "-Xclang",
                 "-cl-std=CL2.0",
+                "--target=amdgcn-amd-amdhsa",
                 "-fvisibility=hidden",
                 "-fomit-frame-pointer",
                 "-Xclang",
@@ -47,16 +46,17 @@ def _bitcode_library_impl(ctx):
                 "-cl-no-stdinc",
                 "-Xclang",
                 "-mcode-object-version=none",
+                "-emit-llvm",
                 "-c",
-            ] + include_flags + [src.path, "-o", out.path] + extra_flags.split(" ")
+            ] + include_flags + [src.path, "-o", out.path] + extra_flags
 
             ctx.actions.run(
                 executable = ctx.executable._clang,
                 inputs = [src] + hdrs + ctx.files._clang_includes + ctx.files._clang_header,
                 outputs = [out],
                 arguments = args,
-                progress_message = "Compiling {} → bitcode".format(src.basename),
-                mnemonic = "RocmBitCodeCompile",
+                progress_message = "Compiling {} to bitcode".format(src.basename),
+                mnemonic = "BitcodeCompile",
             )
 
         elif src.path.endswith(".ll"):
@@ -71,7 +71,7 @@ def _bitcode_library_impl(ctx):
         outputs = [prelink_out],
         arguments = [f.path for f in bc_outputs] + ["-o", prelink_out.path],
         progress_message = "Linking {} bitcode files".format(ctx.label.name),
-        mnemonic = "RocmBitCodeLink",
+        mnemonic = "BitcodeLink",
     )
 
     # Internalize symbols (llvm-link + -internalize)
@@ -82,7 +82,7 @@ def _bitcode_library_impl(ctx):
         outputs = [internalize_out],
         arguments = ["-internalize", "-only-needed", prelink_out.path, "-o", internalize_out.path],
         progress_message = "Internalizing symbols for {}".format(ctx.label.name),
-        mnemonic = "RocmBitCodeInternalizingSymbols",
+        mnemonic = "BitcodeInternalizeSymbols",
     )
 
     # Strip unnecessary metadata
@@ -93,7 +93,7 @@ def _bitcode_library_impl(ctx):
         outputs = [strip_out],
         arguments = ["-passes=strip", "-o", strip_out.path, internalize_out.path],
         progress_message = "Stripping {}".format(ctx.label.name),
-        mnemonic = "RocmBitCodeStripping",
+        mnemonic = "BitcodeStrip",
     )
 
     # Final preparation of bitcode (custom prepare_builtins tool)
@@ -104,12 +104,11 @@ def _bitcode_library_impl(ctx):
         outputs = [final_bc],
         arguments = [strip_out.path, "-o", final_bc.path],
         progress_message = "Preparing final bitcode for {}".format(ctx.label.name),
-        mnemonic = "RocmBitCodeFinalize",
+        mnemonic = "BitcodeFinalize",
     )
 
     return [
         DefaultInfo(files = depset([final_bc])),
-        BitcodeLibraryInfo(bc_file = final_bc),
     ]
 
 bitcode_library = rule(
@@ -117,7 +116,7 @@ bitcode_library = rule(
     attrs = {
         "srcs": attr.label_list(allow_files = [".cl", ".ll"]),
         "hdrs": attr.label_list(allow_files = [".h"]),
-        "file_specific_flags": attr.string_dict(),
+        "file_specific_flags": attr.string_list_dict(),
         "_clang": attr.label(
             default = Label("@llvm-project//clang:clang"),
             executable = True,
