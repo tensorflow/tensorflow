@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
