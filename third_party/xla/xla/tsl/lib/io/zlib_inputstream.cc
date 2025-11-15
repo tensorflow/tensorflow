@@ -250,7 +250,8 @@ absl::Status ZlibInputStream::Inflate() {
   // not fatal and `inflate` can be called again with more input and output
   // space to continue inflating.
   if (error != Z_OK && error != Z_STREAM_END && error != Z_BUF_ERROR) {
-    string error_string = absl::StrCat("inflate() failed with error ", error);
+    std::string error_string =
+        absl::StrCat("inflate() failed with error ", error);
     if (z_stream_def_->stream->msg != nullptr) {
       absl::StrAppend(&error_string, ": ", z_stream_def_->stream->msg);
     }
