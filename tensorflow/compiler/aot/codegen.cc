@@ -708,7 +708,7 @@ absl::Status ExtendRewrites(
   if (HasThunkKind(aot_thunks->proto().thunk_sequence(),
                    xla::cpu::ThunkProto::kTopKThunk)) {
     runtime_specific_includes.push_back(
-        R"(#include "xla/service/cpu/runtime_topk.h")");
+        R"(#include "xla/backends/cpu/runtime/topk_lib.h")");
   }
 
   TF_ASSIGN_OR_RETURN(

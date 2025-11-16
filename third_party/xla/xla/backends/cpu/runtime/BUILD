@@ -1172,17 +1172,28 @@ cc_library(
 )
 
 cc_library(
+    name = "topk_lib",
+    hdrs = ["topk_lib.h"],
+    deps = [
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/numeric:bits",
+    ],
+)
+
+cc_library(
     name = "topk_thunk",
     srcs = ["topk_thunk.cc"],
     hdrs = ["topk_thunk.h"],
     deps = [
         ":thunk",
+        ":topk_lib",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
-        "//xla/service/cpu:runtime_topk",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
     ],
