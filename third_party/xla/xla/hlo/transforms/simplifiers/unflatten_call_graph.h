@@ -16,22 +16,13 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_SIMPLIFIERS_UNFLATTEN_CALL_GRAPH_H_
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_UNFLATTEN_CALL_GRAPH_H_
 
-#include <cstdint>
-#include <memory>
-#include <string>
-#include <vector>
-
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/hlo/utils/concurrency/tsl_task_executor.h"
 
 namespace xla {
 
@@ -40,12 +31,8 @@ namespace xla {
 // Only computations called by kCall instructions will be unflattened.
 class UnflattenCallGraph : public HloModulePass {
  public:
-  UnflattenCallGraph()
-      : print_options_(HloPrintOptions::Canonical()
-                           .set_print_ids(false)
-                           .set_print_metadata(true)
-                           .set_print_backend_config(true)),
-        task_executor_(std::make_unique<xla::concurrency::TslTaskExecutor>()) {}
+  explicit UnflattenCallGraph(bool check_hash_collision = false)
+      : check_hash_collision_(check_hash_collision) {}
 
   absl::string_view name() const override { return "unflatten-call-graph"; }
 
@@ -57,30 +44,11 @@ class UnflattenCallGraph : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  // Struct to hold the result of hashing a computation.
-  struct ComputationHashResult {
-    uint64_t hash;
-    std::string fingerprint;
-    HloComputation* computation;
-  };
-
-  // Hashes computations to produce a fingerprint and hash value.
-  // Uses canonical HLO text without IDs for stable, content-based hashing.
-  absl::StatusOr<std::vector<ComputationHashResult>> HashComputations(
-      const absl::flat_hash_set<HloComputation*>& called_computations);
-
-  // Verifies that computations with the same hash are identical to prevent
-  // incorrect merging due to hash collisions, using progressively more
-  // expensive checks.
-  absl::Status ValidateComputationHashes(
-      const std::vector<ComputationHashResult>& hash_results,
-      const absl::flat_hash_map<uint64_t, const ComputationHashResult*>&
-          hash_to_canonical);
-
-  HloPrintOptions print_options_;
-  // Thread pool used for parallelizing computation hashing and collision
-  // detection.
-  std::unique_ptr<xla::concurrency::TslTaskExecutor> task_executor_;
+  // Whether to check for hash collisions. If true, the pass will check that
+  // computations with the same hash are identical to prevent incorrect merging
+  // due to hash collisions. This is expensive, so it should only be enabled
+  // when hash collisions are suspected.
+  bool check_hash_collision_;
 };
 
 }  // namespace xla
