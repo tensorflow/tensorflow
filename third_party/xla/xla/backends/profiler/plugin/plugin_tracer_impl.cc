@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/backends/profiler/plugin/profiler_error.h"
 #include "xla/tsl/platform/logging.h"
