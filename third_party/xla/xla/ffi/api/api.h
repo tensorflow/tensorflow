@@ -2150,12 +2150,6 @@ auto DictionaryDecoder(Members... m) {
 // Helper macro for registering FFI implementations
 //===----------------------------------------------------------------------===//
 
-#if (defined(__GNUC__) || defined(__APPLE__)) && !defined(SWIG)  // GCC-style
-#define XLA_FFI_ATTRIBUTE_UNUSED __attribute__((unused))
-#else  // Non-GCC equivalents
-#define XLA_FFI_ATTRIBUTE_UNUSED
-#endif
-
 // In all macros below we use captureless lambda to function pointer conversion
 // to create a static XLA_FFI_Handler function pointer variable.
 
@@ -2203,7 +2197,7 @@ auto DictionaryDecoder(Members... m) {
 #define XLA_FFI_REGISTER_HANDLER_(API, NAME, PLATFORM, FUNC, N, ...) \
   XLA_FFI_REGISTER_HANDLER__(API, NAME, PLATFORM, FUNC, N, ##__VA_ARGS__)
 #define XLA_FFI_REGISTER_HANDLER__(API, NAME, PLATFORM, FUNC, N, ...)       \
-  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error*                      \
+  [[maybe_unused]] static const XLA_FFI_Error*                              \
       xla_ffi_static_handler_##N##_registered_ = [] {                       \
         return ::xla::ffi::Ffi::RegisterStaticHandler(API, NAME, PLATFORM,  \
                                                       FUNC, ##__VA_ARGS__); \

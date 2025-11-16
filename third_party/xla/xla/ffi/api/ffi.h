@@ -1527,7 +1527,7 @@ constexpr XLA_FFI_TypeInfo MakeTypeInfo() {
 #define XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, TYPE_INFO, N) \
   XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, TYPE_INFO, N)
 #define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, TYPE_INFO, N)              \
-  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error*                         \
+  [[maybe_unused]] static const XLA_FFI_Error*                                 \
       xla_ffi_type_##N##_registered_ = [] {                                    \
         return ::xla::ffi::Ffi::RegisterTypeId(API, NAME, TYPE_ID, TYPE_INFO); \
       }()
