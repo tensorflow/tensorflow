@@ -1250,15 +1250,18 @@ ENTRY main {
       backend_config={"fusion_backend_config":{kind:"__cudnn$fusion"}}
 })";
   EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(
+CHECK: "intermediate_data_type": "FLOAT"
 CHECK: "nodes"
 CHECK: {
 CHECK: "block_size": [{{[[:space:]]*32[[:space:]]*}}]
+CHECK: "compute_data_type": "FLOAT"
 CHECK: "X": "lhs"
 CHECK: "scale": "lhs_scale"
 CHECK: "Y": "result_lhs_dq"
 CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
 CHECK: {
 CHECK: "block_size": [{{[[:space:]]*32[[:space:]]*}}]
+CHECK: "compute_data_type": "FLOAT"
 CHECK: "X": "rhs"
 CHECK: "scale": "rhs_scale"
 CHECK: "Y": "result_rhs_dq"
