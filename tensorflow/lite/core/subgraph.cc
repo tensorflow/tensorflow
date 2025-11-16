@@ -991,8 +991,7 @@ TfLiteStatus Subgraph::AllocateTensors(InliningStrategy auto_inline) {
   // Restore delegation state if applicable.
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
 
-  if (options_ && options_->GetShloCompositeInlining() &&
-      auto_inline == InliningStrategy::kAutoInline &&
+  if (auto_inline == InliningStrategy::kAutoInline &&
       !IsDelegationSkippable() && !IsFullyDelegated()) {
     TF_LITE_ENSURE_STATUS(InlineCompositeNodes());
   }
