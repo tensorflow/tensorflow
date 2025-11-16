@@ -408,6 +408,18 @@ FusionPlanAndRequirements BuildFusionPlanTowardOperands(
       continue;
     }
 
+    // TODO(b/393299275): this check cannot be replaced by a
+    // `IsTritonSupportedComputation` because we will do some rewrites
+    // later that might change the decision. For example 'scaled-dot-rewriter'
+    // replaces unsupported F8E8M0FNU with u8. We should have a more principled
+    // way check if we will be able to emit the triton code for the fusion.
+    if (original_hlo.opcode() == HloOpcode::kDynamicSlice) {
+      // TODO(b/417172838): support dynamic slice op.
+      fusion_builder.SetShouldFuseNode(node_id, false);
+      LOG(INFO) << "Not fusing dynamic slice: " << original_hlo.ToString();
+      continue;
+    }
+
     auto opt_result = GetOperandDimOrdersAndCombinedReqsIfProfitable(
         original_hlo, dim_order, properties, gpu_version, combined_reqs);
     if (!opt_result.has_value()) {
