@@ -26,7 +26,7 @@ namespace tsl {
 
 namespace {
 
-string TestData() {
+std::string TestData() {
   return io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform", "cloud",
                       "testdata");
 }
@@ -35,16 +35,16 @@ class FakeEnv : public EnvWrapper {
  public:
   FakeEnv() : EnvWrapper(Env::Default()) {}
 
-  uint64 NowSeconds() const override { return now; }
-  uint64 now = 10000;
+  uint64_t NowSeconds() const override { return now; }
+  uint64_t now = 10000;
 };
 
 class FakeOAuthClient : public OAuthClient {
  public:
   absl::Status GetTokenFromServiceAccountJson(
       Json::Value json, absl::string_view oauth_server_uri,
-      absl::string_view scope, string* token,
-      uint64* expiration_timestamp_sec) override {
+      absl::string_view scope, std::string* token,
+      uint64_t* expiration_timestamp_sec) override {
     provided_credentials_json = json;
     *token = return_token;
     *expiration_timestamp_sec = return_expiration_timestamp;
@@ -53,16 +53,16 @@ class FakeOAuthClient : public OAuthClient {
 
   /// Retrieves a bearer token using a refresh token.
   absl::Status GetTokenFromRefreshTokenJson(
-      Json::Value json, absl::string_view oauth_server_uri, string* token,
-      uint64* expiration_timestamp_sec) override {
+      Json::Value json, absl::string_view oauth_server_uri, std::string* token,
+      uint64_t* expiration_timestamp_sec) override {
     provided_credentials_json = json;
     *token = return_token;
     *expiration_timestamp_sec = return_expiration_timestamp;
     return absl::OkStatus();
   }
 
-  string return_token;
-  uint64 return_expiration_timestamp;
+  std::string return_token;
+  uint64_t return_expiration_timestamp;
   Json::Value provided_credentials_json;
 };
 
@@ -103,7 +103,7 @@ TEST_F(GoogleAuthProviderTest, EnvironmentVariable_Caching) {
   oauth_client->return_token = "fake-token";
   oauth_client->return_expiration_timestamp = env.NowSeconds() + 3600;
 
-  string token;
+  std::string token;
   TF_EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("fake-token", token);
   EXPECT_EQ("fake_key_id",
@@ -139,7 +139,7 @@ TEST_F(GoogleAuthProviderTest, GCloudRefreshToken) {
   oauth_client->return_token = "fake-token";
   oauth_client->return_expiration_timestamp = env.NowSeconds() + 3600;
 
-  string token;
+  std::string token;
   TF_EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("fake-token", token);
   EXPECT_EQ("fake-refresh-token",
@@ -185,7 +185,7 @@ TEST_F(GoogleAuthProviderTest, RunningOnGCE) {
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
                               metadataClient, &env);
 
-  string token;
+  std::string token;
   TF_EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("fake-gce-token", token);
 
@@ -213,7 +213,7 @@ TEST_F(GoogleAuthProviderTest, OverrideForTesting) {
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
                               metadataClient, &env);
 
-  string token;
+  std::string token;
   TF_EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("tokenForTesting", token);
 }
@@ -235,7 +235,7 @@ TEST_F(GoogleAuthProviderTest, NothingAvailable) {
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
                               metadataClient, &env);
 
-  string token;
+  std::string token;
   TF_EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("", token);
 }
@@ -250,7 +250,7 @@ TEST_F(GoogleAuthProviderTest, NoGceCheckEnvironmentVariable) {
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
                               nullptr, &env);
 
-  string token;
+  std::string token;
   TF_EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("", token);
 

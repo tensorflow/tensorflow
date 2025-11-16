@@ -46,12 +46,12 @@ class RamFileBlockCache : public FileBlockCache {
   /// cache is constructed. The returned Status should be OK as long as the
   /// read from the remote filesystem succeeded (similar to the semantics of the
   /// read(2) system call).
-  typedef std::function<absl::Status(const string& filename, size_t offset,
+  typedef std::function<absl::Status(const std::string& filename, size_t offset,
                                      size_t buffer_size, char* buffer,
                                      size_t* bytes_transferred)>
       BlockFetcher;
 
-  RamFileBlockCache(size_t block_size, size_t max_bytes, uint64 max_staleness,
+  RamFileBlockCache(size_t block_size, size_t max_bytes, uint64_t max_staleness,
                     BlockFetcher block_fetcher, Env* env = Env::Default())
       : block_size_(block_size),
         max_bytes_(max_bytes),
@@ -89,19 +89,19 @@ class RamFileBlockCache : public FileBlockCache {
   ///    placed in `out`.
   /// 4) OK otherwise (i.e. the read succeeded, and at least one byte was placed
   ///    in `out`).
-  absl::Status Read(const string& filename, size_t offset, size_t n,
+  absl::Status Read(const std::string& filename, size_t offset, size_t n,
                     char* buffer, size_t* bytes_transferred) override;
 
   // Validate the given file signature with the existing file signature in the
   // cache. Returns true if the signature doesn't change or the file doesn't
   // exist before. If the signature changes, update the existing signature with
   // the new one and remove the file from cache.
-  bool ValidateAndUpdateFileSignature(const string& filename,
+  bool ValidateAndUpdateFileSignature(const std::string& filename,
                                       int64_t file_signature) override
       TF_LOCKS_EXCLUDED(mu_);
 
   /// Remove all cached blocks for `filename`.
-  void RemoveFile(const string& filename) override TF_LOCKS_EXCLUDED(mu_);
+  void RemoveFile(const std::string& filename) override TF_LOCKS_EXCLUDED(mu_);
 
   /// Remove all cached data.
   void Flush() override TF_LOCKS_EXCLUDED(mu_);
@@ -109,7 +109,7 @@ class RamFileBlockCache : public FileBlockCache {
   /// Accessors for cache parameters.
   size_t block_size() const override { return block_size_; }
   size_t max_bytes() const override { return max_bytes_; }
-  uint64 max_staleness() const override { return max_staleness_; }
+  uint64_t max_staleness() const override { return max_staleness_; }
 
   /// The current size (in bytes) of the cache.
   size_t CacheSize() const override TF_LOCKS_EXCLUDED(mu_);
@@ -127,7 +127,7 @@ class RamFileBlockCache : public FileBlockCache {
   /// The maximum number of bytes (sum of block sizes) allowed in the LRU cache.
   const size_t max_bytes_;
   /// The maximum staleness of any block in the LRU cache, in seconds.
-  const uint64 max_staleness_;
+  const uint64_t max_staleness_;
   /// The callback to read a block from the underlying filesystem.
   const BlockFetcher block_fetcher_;
   /// The Env from which we read timestamps.
@@ -136,7 +136,7 @@ class RamFileBlockCache : public FileBlockCache {
   /// \brief The key type for the file block cache.
   ///
   /// The file block cache key is a {filename, offset} pair.
-  typedef std::pair<string, size_t> Key;
+  typedef std::pair<std::string, size_t> Key;
 
   /// \brief The state of a block.
   ///
@@ -175,7 +175,7 @@ class RamFileBlockCache : public FileBlockCache {
     /// A list iterator pointing to the block's position in the LRA list.
     std::list<Key>::iterator lra_iterator;
     /// The timestamp (seconds since epoch) at which the block was cached.
-    uint64 timestamp;
+    uint64_t timestamp;
     /// Mutex to guard state variable
     absl::Mutex mu;
     /// The state of the block.
@@ -209,7 +209,7 @@ class RamFileBlockCache : public FileBlockCache {
       TF_LOCKS_EXCLUDED(mu_);
 
   /// Remove all blocks of a file, with mu_ already held.
-  void RemoveFile_Locked(const string& filename)
+  void RemoveFile_Locked(const std::string& filename)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Remove the block `entry` from the block map and LRU list, and update the
@@ -243,7 +243,7 @@ class RamFileBlockCache : public FileBlockCache {
   size_t cache_size_ TF_GUARDED_BY(mu_) = 0;
 
   // A filename->file_signature map.
-  std::map<string, int64_t> file_signature_map_ TF_GUARDED_BY(mu_);
+  std::map<std::string, int64_t> file_signature_map_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tsl
