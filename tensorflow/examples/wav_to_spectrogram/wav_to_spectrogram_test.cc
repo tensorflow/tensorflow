@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/examples/wav_to_spectrogram/wav_to_spectrogram.h"
 
+#include <string>
+
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/wav/wav_io.h"
