@@ -408,6 +408,17 @@ FusionPlanAndRequirements BuildFusionPlanTowardOperands(
       continue;
     }
 
+    // TODO(b/393299275): this check cannot be replaced by a check against
+    // `IsTritonSupportedComputation` because we are going to do some rewrites
+    // later, for example 'scaled-dot-rewriter' replaces unsupported F8E8M0FNU
+    // with u8. Yet, we should have a more principled way check if we will
+    // be able to emit the triton code for the fusion.
+    if (original_hlo.opcode() == HloOpcode::kDynamicSlice) {
+      // TODO(b/417172838): support dynamic slice op.
+      fusion_builder.SetShouldFuseNode(node_id, false);
+      continue;
+    }
+
     auto opt_result = GetOperandDimOrdersAndCombinedReqsIfProfitable(
         original_hlo, dim_order, properties, gpu_version, combined_reqs);
     if (!opt_result.has_value()) {
@@ -704,8 +715,8 @@ absl::StatusOr<Decision> CreateDotFusion(
     std::vector<HloInstruction*>& fusion_inputs,
     HloInstruction** fusion_output_ptr) {
   VLOG(5) << dot.ToString();
-  if (CodegenDecision is_supported =
-          legacy_triton::IsTritonSupportedInstruction(dot, gpu_version);
+  if (CodegenDecision is_supported = IsTritonSupportedInstruction(
+          dot, gpu_version, /*is_fused_computation=*/false);
       !is_supported) {
     VLOG(3) << is_supported.Explain();
     return Decision::Deny(is_supported.Explain());
