@@ -1278,10 +1278,13 @@ class ReadySetLt {
     HloGraphNode* bn = b.node;
     // Schedule according to ForceEarly.
     CMP_PROPERTY(GetForceEarly(), "kForceEarly");
-    // Schedule according to highest ForceDelay first.
+    // Schedule according to ForceDelay, if exactly one of the two instructions
+    // has ForceDelay set.
+    CMP_EXPLICIT(!an->GetForceDelay(), !bn->GetForceDelay(), "kForceDelay");
+    // Schedule according to highest ForceDelay first, if both instructions
+    // have ForceDelay set.
     CMP_EXPLICIT(-an->GetForceDelayPriority(), -bn->GetForceDelayPriority(),
                  "kForceDelayPriority");
-    CMP_EXPLICIT(!an->GetForceDelay(), !bn->GetForceDelay(), "kForceDelay");
     // Use the preference value (comes from a heuristic) to choose between
     // the two candidates. If two preferences are the same regular LHS logic
     // will run as usual, we take advantage of this fact when initializing
