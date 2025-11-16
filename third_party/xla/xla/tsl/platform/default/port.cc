@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <new>
+
 #include "absl/base/internal/sysinfo.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/profile_utils/cpu_utils.h"
@@ -249,28 +251,31 @@ double NominalCPUFrequency() {
 namespace tsl {
 namespace port {
 
-void* AlignedMalloc(size_t size, int minimum_alignment) {
+void* AlignedMalloc(size_t size, std::align_val_t minimum_alignment) {
+  const size_t alignment = static_cast<size_t>(minimum_alignment);
 #if defined(__ANDROID__)
-  return memalign(minimum_alignment, size);
+  return memalign(alignment, size);
 #else  // !defined(__ANDROID__)
-  void* ptr = nullptr;
   // posix_memalign requires that the requested alignment be at least
   // sizeof(void*). In this case, fall back on malloc which should return
   // memory aligned to at least the size of a pointer.
-  const int required_alignment = sizeof(void*);
-  if (minimum_alignment < required_alignment) return Malloc(size);
-  int err = posix_memalign(&ptr, minimum_alignment, size);
+  constexpr int kRequiredAlignment = sizeof(void*);
+  if (alignment < kRequiredAlignment) {
+    return Malloc(size);
+  }
+  void* ptr = nullptr;
+  int err = posix_memalign(&ptr, alignment, size);
   if (err != 0) {
     return nullptr;
-  } else {
-    return ptr;
   }
+  return ptr;
 #endif
 }
 
 void AlignedFree(void* aligned_memory) { Free(aligned_memory); }
 
-void AlignedSizedFree(void* aligned_memory, size_t alignment, size_t size) {
+void AlignedSizedFree(void* aligned_memory, size_t size,
+                      std::align_val_t alignment) {
   (void)alignment;
   (void)size;
 

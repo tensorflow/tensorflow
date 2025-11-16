@@ -359,6 +359,7 @@ cc_library(
         "//xla/tsl/platform:types",
         "//xla/tsl/platform/profile_utils:profile_utils_cpu_utils",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/platform",
         "@snappy",
     ] + select({

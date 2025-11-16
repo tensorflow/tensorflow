@@ -199,6 +199,7 @@ cc_library(
         "//xla/tsl/platform:dynamic_annotations",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/platform",
         "@snappy",
     ],

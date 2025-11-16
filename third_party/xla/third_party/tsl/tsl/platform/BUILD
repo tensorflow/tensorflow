@@ -688,6 +688,7 @@ cc_library(
     ],
     deps = tf_windows_aware_platform_deps("platform_port") + [
         ":platform",
+        "@com_google_absl//absl/base:core_headers",
         "@local_xla//xla/tsl/platform:byte_order",
         "@local_xla//xla/tsl/platform:dynamic_annotations",
         "@local_xla//xla/tsl/platform:types",
