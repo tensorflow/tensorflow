@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "mlir/Support/LLVM.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "mlir-c/IR.h"  // from @llvm-project
 #include "mlir/Bindings/Python/NanobindAdaptors.h"  // from @llvm-project  // IWYU pragma: keep
