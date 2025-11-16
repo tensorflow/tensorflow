@@ -1,4 +1,4 @@
-/* Copyright 2020 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,27 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/runtime_topk.h"
+#ifndef XLA_BACKENDS_CPU_RUNTIME_TOPK_LIB_H_
+#define XLA_BACKENDS_CPU_RUNTIME_TOPK_LIB_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <limits>
 #include <numeric>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/base/dynamic_annotations.h"
 
+namespace xla::cpu::internal {
+
 template <typename T>
-static void TopK(int64_t batch_size, int64_t input_size, int64_t k,
-                 const T* values, T* out_values, int32_t* out_indices) {
-  // 'values' is managed by the JIT code, so msan can't tell they are
-  // initialized.
+void TopK(int64_t batch_size, int64_t input_size, int64_t k, const T* values,
+          T* out_values, int32_t* out_indices) {
+  // values is managed by the JIT code, so msan can't tell they are initialized.
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(values,
                                       input_size * batch_size * sizeof(T));
-  static constexpr auto convert_to_int = [](T value) {
+
+  auto convert_to_int = [](T value) {
     uint32_t x = absl::bit_cast<uint32_t>(value);
     return static_cast<int32_t>(x) < 0 ? std::numeric_limits<int32_t>::max() - x
                                        : x;
@@ -47,7 +49,7 @@ static void TopK(int64_t batch_size, int64_t input_size, int64_t k,
 
     auto kth_element = temp_indices.begin() + k;
     std::partial_sort(temp_indices.begin(), kth_element, temp_indices.end(),
-                      [values_batch](size_t i1, size_t i2) {
+                      [&](size_t i1, size_t i2) {
                         // Do the comparison in integers to enforce a total
                         // order of -NaN < -Inf < -0 < +0 < +Inf < +NaN.
                         int32_t v1 = convert_to_int(values_batch[i1]);
@@ -67,8 +69,6 @@ static void TopK(int64_t batch_size, int64_t input_size, int64_t k,
   }
 }
 
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TopKF32(
-    int64_t batch_size, int64_t input_size, int64_t k, const float* values,
-    float* out_values, int32_t* out_indices) {
-  TopK(batch_size, input_size, k, values, out_values, out_indices);
-}
+}  // namespace xla::cpu::internal
+
+#endif  // XLA_BACKENDS_CPU_RUNTIME_TOPK_LIB_H_
