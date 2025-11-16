@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/runtime/dot_dims.h"
+#include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
@@ -71,7 +72,6 @@ DotThunk::DotThunk(Info info, DotDimensionNumbers dot_dimensions,
 
 tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
     const ExecuteParams& params) {
-
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase lhs_data,
       params.buffer_allocations->GetDeviceAddress(dot_slices_.lhs_buffer));
@@ -169,13 +169,17 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
 
   auto dispatch = [&](auto lhs_type, auto rhs_type, auto out_type) {
     for (int64_t i = 0; i < dot_shape_.batch_size; ++i) {
-      TypedMatMul<decltype(lhs_type), decltype(rhs_type), decltype(out_type)>(
+      using LhsType = decltype(lhs_type);
+      using RhsType = decltype(rhs_type);
+      using OutType = decltype(out_type);
+      internal::TypedMatMul<LhsType, RhsType, OutType>(
           params.intra_op_threadpool, batch_ptr(out, out_stride, i),
           batch_ptr(lhs, lhs_stride, i), batch_ptr(rhs, rhs_stride, i), m, n, k,
           transpose_lhs, transpose_rhs,
           [state]() mutable { state.CountDown(); });
     }
   };
+
   auto dispatch_same_type = [&](auto type_tag) {
     dispatch(type_tag, type_tag, type_tag);
   };
@@ -205,7 +209,7 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
         dispatch_same_type(std::complex<double>{});
         break;
       default:
-        absl::string_view type_name = PrimitiveType_Name(lhs_dtype);
+        auto type_name = primitive_util::LowercasePrimitiveTypeName(lhs_dtype);
         return Unimplemented(
             "Unsupported element type for DotThunk::Execute: %s x %s = %s",
             type_name, type_name, type_name);

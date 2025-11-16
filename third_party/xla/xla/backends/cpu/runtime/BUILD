@@ -732,20 +732,32 @@ cc_library(
 )
 
 cc_library(
-    name = "dot_thunk",
+    name = "dot_lib",
     srcs = [
-        "dot_thunk.cc",
-        "dot_thunk_c128.cc",
-        "dot_thunk_c64.cc",
-        "dot_thunk_f16.cc",
-        "dot_thunk_f32.cc",
-        "dot_thunk_f64.cc",
-        "dot_thunk_s32.cc",
-        "dot_thunk_s8.cc",
+        "dot_lib_c128.cc",
+        "dot_lib_c64.cc",
+        "dot_lib_f16.cc",
+        "dot_lib_f32.cc",
+        "dot_lib_f64.cc",
+        "dot_lib_s32.cc",
+        "dot_lib_s8.cc",
     ],
+    hdrs = ["dot_lib.h"],
+    deps = [
+        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_library(
+    name = "dot_thunk",
+    srcs = ["dot_thunk.cc"],
     hdrs = ["dot_thunk.h"],
     deps = [
         ":dot_dims",
+        ":dot_lib",
         ":thunk",
         "//xla:shape_util",
         "//xla:types",
@@ -754,7 +766,6 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
