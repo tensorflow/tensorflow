@@ -1468,7 +1468,7 @@ def split(state, num):
   state = _key2seed(state)
   try:
     states = stateless_random_ops.stateless_split(state, num)
-  except AttributeError as e:  # pylint: disable=unused-variable
+  except AttributeError:  # pylint: disable=unused-variable
     # TODO(afrozm): For TF < 2.3 we need to do this. Delete once 2.3 launches.
     states = stateless_split(state, num)
   states = array_ops_stack.unstack(states, num)

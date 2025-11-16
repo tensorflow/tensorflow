@@ -22,7 +22,6 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
-import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 prefix_path = "tensorflow/core/lib"

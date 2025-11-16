@@ -25,7 +25,6 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import nn_impl
 # The following import is required to register the gradient function
-from tensorflow.python.ops.nn_grad import _FusedBatchNormV3Grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 

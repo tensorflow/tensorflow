@@ -31,7 +31,6 @@ from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework.weak_tensor import WeakTensor
-from tensorflow.python.ops import weak_tensor_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import weak_tensor_test_util
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays

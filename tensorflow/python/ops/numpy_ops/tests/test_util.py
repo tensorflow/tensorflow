@@ -17,14 +17,11 @@ from contextlib import contextmanager
 import functools
 from functools import partial
 import re
-import itertools as it
-import os
 from typing import Dict, Sequence, Union
 import unittest
 import warnings
 import zlib
 
-from absl.testing import absltest
 from absl.testing import parameterized
 
 import numpy as onp

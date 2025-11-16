@@ -40,7 +40,6 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops.nn_impl import _compute_sampled_logits
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test as test_lib

@@ -15,7 +15,6 @@
 """Wraps TFLite Converter interface with python lazy loader."""
 # We need to import pywrap_tensorflow prior to the converter wrapper.
 # pylint: disable=invalid-import-order,g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.compiler.mlir.lite.python import _pywrap_converter_api
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 

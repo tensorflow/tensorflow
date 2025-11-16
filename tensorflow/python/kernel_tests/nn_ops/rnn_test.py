@@ -37,10 +37,6 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_lib
-import tensorflow.python.ops.data_flow_grad  # pylint: disable=unused-import
-import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
-import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
-import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
 

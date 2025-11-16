@@ -25,7 +25,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_rnn_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import rnn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 

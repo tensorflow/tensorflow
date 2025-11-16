@@ -22,7 +22,6 @@ import os
 from typing_extensions import Self
 
 from tensorflow.core.framework import variable_pb2
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

@@ -16,7 +16,6 @@
 
 import ctypes
 # importing hashlib to avoid a linkage issue. refer b/372709714
-import hashlib
 import sys
 import traceback
 

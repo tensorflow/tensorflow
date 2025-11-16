@@ -24,7 +24,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import gradients_impl
-import tensorflow.python.ops.data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 

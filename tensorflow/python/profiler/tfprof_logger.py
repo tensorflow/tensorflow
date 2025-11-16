@@ -24,7 +24,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import gfile
-from tensorflow.python.profiler.internal import flops_registry  # pylint: disable=unused-import
 from tensorflow.python.util.tf_export import tf_export
 
 TRAINABLE_VARIABLES = '_trainable_variables'
@@ -39,7 +38,7 @@ def _fill_missing_graph_shape(graph, run_meta):
         continue
       try:
         op = graph.get_operation_by_name(node_stat.node_name)
-      except KeyError as e:
+      except KeyError:
         # Graph doesn't contains the node_stat, usually RecvTensor.
         continue
       if len(node_stat.output) != len(op.outputs):

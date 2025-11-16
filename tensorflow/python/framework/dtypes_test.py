@@ -438,7 +438,6 @@ class TypesTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         continue
       dtype = dtypes.DType(enum)
       self.assertEqual(repr(dtype), "tf." + name)
-      import tensorflow as tf
       dtype2 = eval(repr(dtype))
       self.assertEqual(type(dtype2), dtypes.DType)
       self.assertEqual(dtype, dtype2)

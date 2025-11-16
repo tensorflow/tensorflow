@@ -125,7 +125,7 @@ def get_node_compute_dtype(node):
           return "unknown"
       else:
         return _convert_dtype_id_to_str(precision_val.type)
-    except Exception as e:
+    except Exception:
       continue
 
 

@@ -15,9 +15,7 @@
 """Reads Summaries from and writes Summaries to event files."""
 
 # pylint: disable=unused-import
-from tensorflow.python.summary.summary_iterator import summary_iterator
 from tensorflow.python.summary.writer.writer import FileWriter as _FileWriter
-from tensorflow.python.summary.writer.writer_cache import FileWriterCache as SummaryWriterCache
 # pylint: enable=unused-import
 from tensorflow.python.util.deprecation import deprecated
 

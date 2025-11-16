@@ -18,7 +18,6 @@ API docstring: tensorflow.errors
 """
 
 # pylint: disable=unused-import
-from tensorflow.python.framework import errors_impl as _impl
 # pylint: enable=unused-import
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import

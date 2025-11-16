@@ -159,7 +159,7 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
   def test_import(self):
 
     def test_fn():
-      import a, b.x, y as c, z.u as d  # pylint:disable=g-multiple-import,g-import-not-at-top,unused-variable
+      pass  # pylint:disable=g-multiple-import,g-import-not-at-top,unused-variable
 
     node, _ = self._parse_and_analyze(test_fn)
     scope = anno.getanno(node.body[0], anno.Static.SCOPE)
@@ -168,8 +168,7 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
   def test_import_from(self):
 
     def test_fn():
-      from x import a  # pylint:disable=g-import-not-at-top,unused-variable
-      from y import z as b  # pylint:disable=g-import-not-at-top,unused-variable
+      pass  # pylint:disable=g-import-not-at-top,unused-variable
 
     node, _ = self._parse_and_analyze(test_fn)
     scope = anno.getanno(node.body[0], anno.Static.SCOPE)

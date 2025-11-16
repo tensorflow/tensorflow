@@ -707,7 +707,7 @@ class FunctionTest(xla_test.XLATestCase):
   @test_util.disable_mlir_bridge('MLIR does not support resource update for'
                                  ' signature with compile-time constant.')
   def testUniqueDifferentSizes(self):
-    if not 'gpu' in self.device.lower():
+    if 'gpu' not in self.device.lower():
       self.skipTest('Currently works only on GPU')
 
     with ops.device('device:{}:0'.format(self.device)):

@@ -305,7 +305,6 @@ class MapStageTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testOrdering(self):
-    import random
 
     with ops.Graph().as_default() as g:
       with ops.device('/cpu:0'):

@@ -29,7 +29,6 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import while_loop
 # pylint: disable=unused-import
-from tensorflow.python.ops.gen_functional_ops import remote_call
 # pylint: enable=unused-import
 from tensorflow.python.ops.gen_functional_ops import symbolic_gradient
 from tensorflow.python.util import deprecation

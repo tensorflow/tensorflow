@@ -17,14 +17,11 @@
 # pylint: disable=unused-import
 import contextlib
 import gc
-import sys
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import tf_should_use
 
 

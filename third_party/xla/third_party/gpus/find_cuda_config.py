@@ -150,7 +150,7 @@ def _get_ld_config_paths():
 def _get_default_cuda_paths(cuda_version):
   if not cuda_version:
     cuda_version = "*"
-  elif not "." in cuda_version:
+  elif "." not in cuda_version:
     cuda_version = cuda_version + ".*"
 
   if _is_windows():

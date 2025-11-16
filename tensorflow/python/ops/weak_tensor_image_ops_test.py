@@ -22,7 +22,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.weak_tensor import WeakTensor
 from tensorflow.python.ops import image_ops
-from tensorflow.python.ops import weak_tensor_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import weak_tensor_test_util
 from tensorflow.python.platform import test
 

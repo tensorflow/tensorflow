@@ -686,7 +686,7 @@ class CommandHandlerRegistry:
       output = handler(argv, screen_info=screen_info)
     except CommandLineExit as e:
       raise e
-    except SystemExit as e:
+    except SystemExit:
       # Special case for syntax errors caught by argparse.
       lines = ["Syntax error for command: %s" % prefix,
                "For help, do \"help %s\"" % prefix]

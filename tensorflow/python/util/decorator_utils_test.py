@@ -18,7 +18,6 @@
 import functools
 
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import decorator_utils
 
 

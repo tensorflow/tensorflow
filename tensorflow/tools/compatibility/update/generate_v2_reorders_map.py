@@ -23,7 +23,6 @@ To update reorders_v2.py, run:
 from absl import app
 import tensorflow as tf
 
-from tensorflow import python as tf_python  # pylint: disable=unused-import
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_export

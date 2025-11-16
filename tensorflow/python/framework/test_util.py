@@ -84,7 +84,6 @@ from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 
 
-from tensorflow.python.ops.ragged import ragged_ops  # pylint: disable=unused-import
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import _pywrap_stacktrace_handler
@@ -3317,7 +3316,7 @@ class TensorFlowTestCase(googletest.TestCase):
             atol=atol,
             msg="Mismatched value: a%s is different from b%s. %s" %
             (path_str, path_str, msg))
-      except (ValueError, TypeError, NotImplementedError) as e:
+      except (ValueError, TypeError, NotImplementedError):
         if len(a) != len(b):
           raise ValueError(
               "Mismatched length: a%s has %d items, but b%s has %d items. %s" %

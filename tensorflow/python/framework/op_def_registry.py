@@ -19,7 +19,6 @@ import threading
 
 from tensorflow.core.framework import op_def_pb2
 # pylint: disable=invalid-import-order,g-bad-import-order, wildcard-import, unused-import
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import _op_def_registry
 
 # The cache amortizes ProtoBuf serialization/deserialization overhead

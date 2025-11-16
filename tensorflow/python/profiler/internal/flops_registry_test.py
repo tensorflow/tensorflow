@@ -19,7 +19,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.profiler.internal import flops_registry  # pylint: disable=unused-import
 
 
 class FlopsRegistryTest(test.TestCase):

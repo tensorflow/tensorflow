@@ -16,7 +16,6 @@
 """
 
 from tensorflow.python.distribute.cluster_resolver.tpu.tpu_cluster_resolver import initialize_tpu_system
-from tensorflow.python.distribute.cluster_resolver.tpu.tpu_cluster_resolver import is_running_in_gce  # pylint: disable=unused-import
 from tensorflow.python.distribute.cluster_resolver.tpu.tpu_cluster_resolver import shutdown_tpu_system
 from tensorflow.python.distribute.cluster_resolver.tpu.tpu_cluster_resolver import TPUClusterResolver
 from tensorflow.python.util.tf_export import tf_export

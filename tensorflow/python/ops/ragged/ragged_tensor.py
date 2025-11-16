@@ -3146,4 +3146,3 @@ RaggedOrDense = typing.Union[Ragged, core_types.TensorLike]
 # RaggedTensor must import ragged_ops to ensure that all dispatched ragged ops
 # are registered. Ragged ops import RaggedTensor, so import at bottom of the
 # file to avoid a partially-initialized module error.
-from tensorflow.python.ops.ragged import ragged_ops  # pylint: disable=unused-import, g-bad-import-order, g-import-not-at-top

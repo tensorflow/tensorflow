@@ -19,6 +19,4 @@ SavedModel load/restore operations.
 """
 
 # pylint: disable=unused-import
-from tensorflow.python.saved_model.main_op_impl import main_op
-from tensorflow.python.saved_model.main_op_impl import main_op_with_restore
 # pylint: enable=unused-import

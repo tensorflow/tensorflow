@@ -30,7 +30,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.weak_tensor import WeakTensor
 from tensorflow.python.ops import gradients_impl
-from tensorflow.python.ops import weak_tensor_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import weak_tensor_test_util
 from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.platform import test

@@ -19,10 +19,7 @@
 import collections
 import enum
 
-import numpy as np
 
-from tensorflow.python.eager import context
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import strict_mode
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util

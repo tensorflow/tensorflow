@@ -15,7 +15,6 @@
 """Config functions for TF NumPy."""
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import weak_tensor_ops  # pylint: disable=unused-import
 from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.ops.numpy_ops import np_math_ops
 from tensorflow.python.platform import tf_logging

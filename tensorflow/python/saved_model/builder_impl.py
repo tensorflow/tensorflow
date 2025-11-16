@@ -28,7 +28,6 @@ from tensorflow.python.framework import tensor
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.saved_model import fingerprinting_utils
 from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model.pywrap_saved_model import constants

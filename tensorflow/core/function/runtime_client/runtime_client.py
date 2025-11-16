@@ -15,7 +15,6 @@
 """Low level TF runtime client."""
 
 # TF oddity: this import loads TF-specific dynamic libraries.
-from tensorflow.python import pywrap_tensorflow  # pylint:disable=g-bad-import-order,unused-import
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.function.runtime_client import runtime_client_pybind

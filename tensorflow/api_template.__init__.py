@@ -37,7 +37,6 @@ import sys as _sys
 _os.environ.setdefault("ENABLE_RUNTIME_UPTIME_TELEMETRY", "1")
 
 # Do not remove this line; See https://github.com/tensorflow/tensorflow/issues/42596
-from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.util.lazy_loader import KerasLazyLoader as _KerasLazyLoader
 
@@ -67,7 +66,7 @@ elif _tf_api_dir not in __path__:
 # Load tensorflow-io-gcs-filesystem if enabled
 if (_os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "true" or
     _os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "1"):
-  import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
+  pass
 
 # Lazy-load Keras v2/3.
 _tf_uses_legacy_keras = (
@@ -92,7 +91,6 @@ _major_api_version = 2
 # running under pip.
 # TODO(gunan): Find a better location for this code snippet.
 from tensorflow.python.framework import load_library as _ll
-from tensorflow.python.lib.io import file_io as _fi
 
 # Get sitepackages directories for the python installation.
 _site_packages_dirs = []

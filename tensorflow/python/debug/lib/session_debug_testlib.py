@@ -47,7 +47,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
-import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent

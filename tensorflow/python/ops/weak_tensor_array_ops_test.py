@@ -24,7 +24,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
 
-from tensorflow.python.ops import weak_tensor_ops  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 

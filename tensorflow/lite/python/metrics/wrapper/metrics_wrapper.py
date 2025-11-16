@@ -16,7 +16,6 @@
 
 from tensorflow.compiler.mlir.lite.metrics import converter_error_data_pb2
 from tensorflow.compiler.mlir.lite.python import wrap_converter
-from tensorflow.lite.python.metrics._pywrap_tensorflow_lite_metrics_wrapper import MetricsWrapper  # pylint: disable=unused-import
 
 
 def retrieve_collected_errors():

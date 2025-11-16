@@ -1245,7 +1245,7 @@ class AstToCfgTest(test.TestCase):
     def test_fn(a):
       try:
         a = 1
-      except Exception1 as e:  # pylint:disable=undefined-variable,unused-variable
+      except Exception1:  # pylint:disable=undefined-variable,unused-variable
         a = 2
       return a
 
@@ -1272,7 +1272,7 @@ class AstToCfgTest(test.TestCase):
     def test_fn(a):
       try:
         a = 1
-      except (Exception1, Exception2) as e:  # pylint:disable=undefined-variable,unused-variable
+      except (Exception1, Exception2):  # pylint:disable=undefined-variable,unused-variable
         a = 2
       return a
 

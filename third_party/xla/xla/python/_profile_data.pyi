@@ -14,7 +14,7 @@
 # ==============================================================================
 """Utilities for visiting program execution data."""
 
-from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple
+from typing import Any, Iterator, Optional, Tuple
 
 
 class ProfileData:

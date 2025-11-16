@@ -42,7 +42,6 @@ from tensorflow.core.protobuf import config_pb2
 # pywrap_tensorflow must be imported first to avoid protobuf issues.
 # (b/143110113)
 # pylint: disable=invalid-import-order,g-bad-import-order,unused-import
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import pywrap_tfe
 # pylint: enable=invalid-import-order,g-bad-import-order,unused-import
 from tensorflow.python import tf2

@@ -18,7 +18,6 @@
 import tensorflow as tf
 
 
-from tensorflow.examples.adding_an_op import zero_out_grad_2  # pylint: disable=unused-import
 from tensorflow.examples.adding_an_op import zero_out_op_2
 
 
