@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -139,17 +140,26 @@ class LowerTruncF32BF16FPattern
       mlir::arith::TruncFOp op,
       mlir::PatternRewriter& rewriter) const override {
     auto src = op.getOperand();
-    auto dst_ty = mlir::cast<mlir::FloatType>(op.getType());
+    auto dst_ty = op.getType();
 
-    if (!mlir::isa<mlir::Float32Type>(src.getType()) ||
-        !mlir::isa<mlir::BFloat16Type>(dst_ty)) {
+    if (!mlir::isa<mlir::Float32Type>(
+            mlir::getElementTypeOrSelf(src.getType())) ||
+        !mlir::isa<mlir::BFloat16Type>(mlir::getElementTypeOrSelf(dst_ty))) {
       return rewriter.notifyMatchFailure(op, "Not f32 -> bf16");
+    }
+
+    if (auto vec_type = mlir::dyn_cast<mlir::VectorType>(src.getType());
+        vec_type && vec_type.getRank() != 1) {
+      // These will later be converted to loops of 1D vectors but will then miss
+      // the XLA intrinsic lowering.
+      op->emitWarning() << "Missed XLA intrinsic lowering as vector rank != 1.";
+      return rewriter.notifyMatchFailure(op, "Vector rank is not 1.");
     }
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
-    Type src_type = Type::S(F32);
-    Type dst_type = Type::S(BF16);
+    auto src_type = Type::TypeFromIrType(src.getType());
+    auto dst_type = Type::TypeFromIrType(dst_ty);
     auto f32_to_bf16_decl =
         codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
             rewriter, module_op_, src_type, dst_type);
@@ -171,6 +181,13 @@ class LowerIntrinsicPattern : public mlir::OpRewritePattern<Op> {
 
   mlir::LogicalResult matchAndRewrite(
       Op op, mlir::PatternRewriter& rewriter) const override {
+    if (auto vec_type = mlir::dyn_cast<mlir::VectorType>(op.getType());
+        vec_type && vec_type.getRank() != 1) {
+      // These will later be converted to loops of 1D vectors but will then miss
+      // the XLA intrinsic lowering.
+      op->emitWarning() << "Missed XLA intrinsic lowering as vector rank != 1.";
+      return rewriter.notifyMatchFailure(op, "Vector rank is not 1.");
+    }
     Type type = Type::TypeFromIrType(op.getType());
     mlir::StringAttr features =
         module_op_->getAttrOfType<mlir::StringAttr>("mhlo.cpu_features");

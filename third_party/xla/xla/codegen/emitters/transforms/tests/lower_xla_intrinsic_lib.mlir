@@ -54,6 +54,19 @@ module {
 // -----
 
 module {
+  // CHECK-LABEL: @trunc
+  func.func @trunc_vector(%input: vector<8xf32>) -> vector<8xbf16> {
+    // CHECK-SAME: (%[[ARG:.*]]: vector<8xf32>) -> vector<8xbf16>
+    // CHECK: %[[TRUNC_CALL:.*]] = call @local_xla.fptrunc.v8f32.to.v8bf16(%[[ARG]])
+    %truncated = arith.truncf %input : vector<8xf32> to vector<8xbf16>
+    // CHECK: return %[[TRUNC_CALL]]
+    func.return %truncated : vector<8xbf16>
+  }
+}
+
+// -----
+
+module {
   func.func @erf32(%arg0: f32) -> f32 {
     %ret = math.erf %arg0 : f32
     return %ret : f32

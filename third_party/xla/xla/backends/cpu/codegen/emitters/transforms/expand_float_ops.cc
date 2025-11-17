@@ -17,17 +17,17 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/strings/string_view.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -35,8 +35,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/codegen/emitters/implicit_arith_op_builder.h"
-#include "xla/mlir/utils/type_util.h"
 
 namespace xla::cpu {
 
@@ -48,33 +46,31 @@ namespace {
 
 namespace ma = ::mlir::arith;
 
-mlir::func::FuncOp GetOrInsertDeclaration(mlir::PatternRewriter& rewriter,
-                                          mlir::ModuleOp& module_op,
-                                          absl::string_view name,
-                                          mlir::FunctionType func_type) {
-  // Check if the function already exists
-  if (auto func = module_op.lookupSymbol<mlir::func::FuncOp>(name)) {
-    // Ensure the existing function has the correct type
-    if (func.getFunctionType() == func_type) {
-      return func;
+mlir::Value EmitBF16ToF32(mlir::Type dst_ty, mlir::Value in,
+                          mlir::ImplicitLocOpBuilder& b) {
+  auto get_type = [&](mlir::Type element_type) -> mlir::Type {
+    if (auto vector_type = mlir::dyn_cast<mlir::VectorType>(in.getType())) {
+      return vector_type.clone(element_type);
     }
+    return element_type;
+  };
+
+  mlir::Type i16_type = get_type(b.getI16Type());
+  mlir::Type i32_type = get_type(b.getI32Type());
+
+  mlir::Value i16 = ma::BitcastOp::create(b, i16_type, in);
+  mlir::Value i32 = ma::ExtUIOp::create(b, i32_type, i16);
+
+  mlir::TypedAttr shift_attr = b.getI32IntegerAttr(16);
+  if (auto vector_type = mlir::dyn_cast<mlir::VectorType>(in.getType())) {
+    shift_attr = mlir::SplatElementsAttr::get(
+        mlir::cast<mlir::ShapedType>(i32_type), shift_attr);
   }
+  mlir::Value shift_const =
+      mlir::arith::ConstantOp::create(b, i32_type, shift_attr);
 
-  // If not found or type mismatch, create the declaration
-  mlir::PatternRewriter::InsertionGuard insertGuard(rewriter);
-  rewriter.setInsertionPointToStart(module_op.getBody());
-
-  auto func_decl =
-      rewriter.create<mlir::func::FuncOp>(module_op.getLoc(), name, func_type);
-  func_decl.setPrivate();
-  return func_decl;
-}
-
-mlir::Value EmitBF16ToF32(mlir::Value in, mlir::ImplicitLocOpBuilder& b) {
-  mlir::Value i16 = b.create<ma::BitcastOp>(b.getI16Type(), in);
-  emitters::ImplicitArithOpBuilder i32(
-      b.create<ma::ExtUIOp>(b.getI32Type(), i16), &b);
-  return b.create<ma::BitcastOp>(b.getType<mlir::Float32Type>(), i32 << 16);
+  mlir::Value i32_shl = mlir::arith::ShLIOp::create(b, i32, shift_const);
+  return ma::BitcastOp::create(b, dst_ty, i32_shl);
 }
 
 struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
@@ -83,13 +79,14 @@ struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
   mlir::LogicalResult matchAndRewrite(
       ma::ExtFOp op, mlir::PatternRewriter& rewriter) const override {
     auto src = op.getOperand();
-    auto dst_ty = mlir::cast<mlir::FloatType>(op.getType());
+    auto dst_ty = op.getType();
 
     mlir::ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
 
-    if (mlir::isa<mlir::BFloat16Type>(src.getType()) &&
-        mlir::isa<mlir::Float32Type>(dst_ty)) {
-      rewriter.replaceOp(op, EmitBF16ToF32(src, builder));
+    if (mlir::isa<mlir::BFloat16Type>(
+            mlir::getElementTypeOrSelf(src.getType())) &&
+        mlir::isa<mlir::Float32Type>(mlir::getElementTypeOrSelf(dst_ty))) {
+      rewriter.replaceOp(op, EmitBF16ToF32(dst_ty, src, builder));
       return mlir::success();
     }
 
