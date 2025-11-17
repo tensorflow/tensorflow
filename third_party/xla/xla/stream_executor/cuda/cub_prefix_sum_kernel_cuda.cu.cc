@@ -121,6 +121,9 @@ __global__ void PrefixSum(const void* data_in, void* data_out,
   }
 
 // Floating point types.
+#ifdef CUB_TYPE_BF16
+XLA_CUB_PREFIX_SUM_KERNEL_SPEC(BF16, __nv_bfloat16)
+#endif
 #ifdef CUB_TYPE_F16
 XLA_CUB_PREFIX_SUM_KERNEL_SPEC(F16, __half)
 #endif
@@ -167,6 +170,9 @@ XLA_CUB_PREFIX_SUM_KERNEL_SPEC(U64, uint64_t)
       se::gpu::PrefixSum##primitive_type##Kernel, kCudaPlatformId, \
       GetPrefixSum##primitive_type##KernelSpec)
 
+#ifdef CUB_TYPE_BF16
+REGISTER_PREFIX_SUM_KERNEL(BF16)
+#endif
 #ifdef CUB_TYPE_F16
 REGISTER_PREFIX_SUM_KERNEL(F16)
 #endif

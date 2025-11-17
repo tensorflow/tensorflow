@@ -600,6 +600,7 @@ xla_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
+    shard_count = 15,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
