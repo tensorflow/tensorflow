@@ -166,6 +166,43 @@ TEST_F(GpuIrEmitterUnnestedTest,
                      /*match_optimized_ir=*/false);
 }
 
+TEST_F(GpuIrEmitterUnnestedTest, EmitTritonCustomCallParseErrorHasEscapedIr) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Triton support is only enabled for Ampere GPUs and up.";
+  }
+
+  // Tests that MLIR IR with invalid unicode characters is escaped correctly
+  // on error.
+  constexpr absl::string_view kMlirIrInvalidUnicode = "ML\xef";
+
+  HloComputation::Builder computation_builder(TestName());
+
+  // Create parameters and custom call in the computation builder.
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
+
+  HloInstruction* param_0 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
+
+  HloInstruction* param_1 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
+
+  computation_builder.AddInstruction(CreateTritonCustomCall(
+      tuple_shape, param_0, param_1, kMlirIrInvalidUnicode, kCallName));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(computation_builder.Build());
+
+  auto result =
+      CompileToExecutable(std::move(module), /*run_optimization_passes=*/true);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("Failed to parse Triton module"));
+
+  // Verify that the error message contains the escaped IR.
+  EXPECT_THAT(result.status().message(), HasSubstr("input ir: \"ML\\xef\""));
+}
+
 TEST_F(GpuIrEmitterUnnestedTest,
        EmitTritonCustomCallWithCorrectKernelParamAttributes) {
   if (!GetCudaComputeCapability().IsAtLeastAmpere()) {

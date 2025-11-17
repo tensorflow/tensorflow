@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -1400,7 +1401,7 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
         return absl::InvalidArgumentError(
             absl::StrCat("Failed to parse Triton module: ",
                          diagnostic_handler.ConsumeStatus().message(),
-                         "\ninput ir: ", call.ir));
+                         "\ninput ir: \"", absl::CHexEscape(call.ir), "\""));
       }
     }
 
