@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if !defined(PLATFORM_WINDOWS)
 #include <dlfcn.h>
+#endif
 
 #include <iostream>
 
@@ -22,6 +24,10 @@ limitations under the License.
 typedef const PJRT_Api* (*GetPjrtApi_Func)();
 
 int main() {
+#if defined(PLATFORM_WINDOWS)
+  std::cerr << "Error: Windows is not supported." << std::endl;
+  return 1;
+#else
   // 1. Open the shared object
   const char* so_path = std::getenv("PJRT_PLUGIN_PATH");
   std::cout << "so_path: " << so_path << std::endl;
@@ -54,4 +60,5 @@ int main() {
   }
 
   return 0;
+#endif
 }

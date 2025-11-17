@@ -5,7 +5,7 @@ load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
 )
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_windows", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -369,6 +369,7 @@ cc_library(
     name = "hlo_replication_analysis",
     srcs = ["hlo_replication_analysis.cc"],
     hdrs = ["hlo_replication_analysis.h"],
+    local_defines = if_windows(["PLATFORM_WINDOWS"]),
     deps = [
         "//xla:shape_tree",
         "//xla:shape_util",

@@ -15,14 +15,19 @@ limitations under the License.
 
 #include "xla/stream_executor/tpu/tpu_initialize_util.h"
 
+#if !defined(PLATFORM_WINDOWS)
 #include <dirent.h>
 #include <dlfcn.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#else
+#include <io.h>
+#include <windows.h>
+#endif
 #include <fcntl.h>
 #include <stdlib.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <cstdint>
 #include <cstring>
@@ -84,6 +89,7 @@ const char* GetTpuDriverFile() {
 // This function gets pid of a process and checks if that process is using tpu.
 // It is not able to check processes that are owned by another user.
 bool IsTpuUsed(int64_t pid) {
+#if !defined(PLATFORM_WINDOWS)
   std::string path = absl::StrCat("/proc/", pid, "/fd");
   DIR* raw_fd_dir = opendir(path.c_str());
   if (!raw_fd_dir) {
@@ -103,6 +109,7 @@ bool IsTpuUsed(int64_t pid) {
     if (line != tpu_dev_path) continue;
     return true;
   }
+#endif
   return false;
 }
 
@@ -112,6 +119,7 @@ bool IsTpuUsed(int64_t pid) {
 // TODO (shahrokhi) use tensorflow/core/platform/filesystem (GetChildren) for
 // this.
 absl::StatusOr<int64_t> FindLibtpuProcess() {
+#if !defined(PLATFORM_WINDOWS)
   DIR* proc = opendir("/proc");
 
   if (proc == nullptr) {
@@ -129,11 +137,14 @@ absl::StatusOr<int64_t> FindLibtpuProcess() {
     }
   }
   return absl::NotFoundError("did not find which pid uses the libtpu.so");
+#endif
+  return absl::AbortedError("TPU is not supported on Windows platform");
 }
 
 }  // namespace
 
 absl::Status TryAcquireTpuLock() {
+#if !defined(PLATFORM_WINDOWS)
   static absl::Mutex* const mu = new absl::Mutex();
   absl::MutexLock l(*mu);
 
@@ -212,6 +223,9 @@ absl::Status TryAcquireTpuLock() {
   }
   libtpu_acquired = true;
   return absl::OkStatus();
+#else
+  return absl::AbortedError("TPU is not supported on Windows platform");
+#endif
 }
 
 std::pair<std::vector<std::string>, std::vector<const char*>>

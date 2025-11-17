@@ -1,7 +1,7 @@
 # Description: StreamExecutor Interface for TPUs
 
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_windows", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -544,6 +544,7 @@ cc_library(
     hdrs = [
         "tpu_initialize_util.h",
     ],
+    local_defines = if_windows(["PLATFORM_WINDOWS"]),
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/log",

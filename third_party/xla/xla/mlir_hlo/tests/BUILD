@@ -27,11 +27,60 @@ package(
         tags = [
             "nomsan",  # The execution engine doesn't work with msan, see b/248097619.
         ],
-        deps = ["@pypi//lit"],
         deps = ["@pypi//lit"],  # copybara:comment
     )
-    for src in glob(["**/*.mlir"])
+    for src in glob(
+        ["**/*.mlir"],
+        # On Windows platform, lit_test creates the file
+        # "xla/mlir_hlo/tests/sink-constants-to-control-flow.mlir.test" for two test targets:
+        # //xla/mlir_hlo/tests:Dialect/mhlo/sink-constants-to-control-flow.mlir.test and
+        # //xla/mlir_hlo/tests:stablehlo_ext/sink-constants-to-control-flow.mlir.test.
+        # To fix that, we create separate test targets for each file.
+        exclude = ["**/sink-constants-to-control-flow.mlir"],
+    )
 ]
+
+lit_test(
+    name = "stablehlo_ext_sink-constants-to-control-flow.mlir.test",
+    srcs = ["stablehlo_ext/sink-constants-to-control-flow.mlir"],
+    data = [
+        "lit.cfg.py",
+        "lit.site.cfg.py",
+        "//xla/mlir_hlo:mlir-hlo-opt",
+        "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:count",
+        "@llvm-project//llvm:not",
+        "@llvm-project//mlir:libmlir_c_runner_utils.so",
+        "@llvm-project//mlir:libmlir_runner_utils.so",
+        "@llvm-project//mlir:mlir-runner",
+    ],
+    # copybara:uncomment driver = "@llvm-project//mlir:run_lit",
+    tags = [
+        "nomsan",  # The execution engine doesn't work with msan, see b/248097619.
+    ],
+    deps = ["@pypi//lit"],  # copybara:comment
+)
+
+lit_test(
+    name = "mhlo_sink-constants-to-control-flow.mlir.test",
+    srcs = ["Dialect/mhlo/sink-constants-to-control-flow.mlir"],
+    data = [
+        "lit.cfg.py",
+        "lit.site.cfg.py",
+        "//xla/mlir_hlo:mlir-hlo-opt",
+        "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:count",
+        "@llvm-project//llvm:not",
+        "@llvm-project//mlir:libmlir_c_runner_utils.so",
+        "@llvm-project//mlir:libmlir_runner_utils.so",
+        "@llvm-project//mlir:mlir-runner",
+    ],
+    # copybara:uncomment driver = "@llvm-project//mlir:run_lit",
+    tags = [
+        "nomsan",  # The execution engine doesn't work with msan, see b/248097619.
+    ],
+    deps = ["@pypi//lit"],  # copybara:comment
+)
 
 cc_library(
     name = "capi_test",
