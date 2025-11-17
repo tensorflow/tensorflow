@@ -667,7 +667,7 @@ TEST_F(AutotunerTest, ExcludeCublasConfig) {
   EXPECT_CALL(*backend, Compile(_, _))
       .WillOnce(Return(std::unique_ptr<Executable>()))
       .WillOnce(Return(std::unique_ptr<Executable>()));
-  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("cublas"));
+  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("Cublas_fission"));
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend));
 
