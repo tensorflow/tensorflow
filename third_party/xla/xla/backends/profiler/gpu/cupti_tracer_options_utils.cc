@@ -70,6 +70,10 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
                           collector_options.max_annotation_strings = value;
                         }));
 
+  TF_RETURN_IF_ERROR(SetValue<bool>(
+      profile_options, "gpu_dump_graph_node_mapping", input_keys,
+      [&](bool value) { collector_options.dump_graph_nope_mapping = value; }));
+
   TF_RETURN_IF_ERROR(SetValue<int64_t>(
       profile_options, "gpu_num_chips_to_profile_per_task", input_keys,
       [&](int64_t value) {
