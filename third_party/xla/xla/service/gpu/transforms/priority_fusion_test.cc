@@ -218,17 +218,19 @@ CHECK-NEXT: ROOT %{{.*}} = (f32[512]{0}, s32[512]{0}) tuple(%[[FUSION_F32]], %[[
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseBitWidthChangingBitcast) {
-  EXPECT_TRUE(RunAndCheckHloRewrite(R"(
-e {
-  a = s8[3,5,2]{2,1,0} parameter(0)
-  n = s8[3,5,2]{2,1,0} negate(a)
-  b = s16[3,5]{1,0} bitcast(n)
-  m = s16[3,5]{1,0} multiply(b, b)
-})",
-                                    std::move(priority_fusion_),
-                                    /*expect_change=*/false)
-                  .status()
-                  .ok());
+  // `neg` is the producer that could be fused with `bitcast` and `mul`, but
+  // since `bitcast` changes the bit width, we don't fuse it.
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    ENTRY main {
+      p0 = s8[3,5,2]{2,1,0} parameter(0)
+      neg = s8[3,5,2]{2,1,0} negate(p0)
+      bitcast = s16[3,5]{1,0} bitcast(neg)
+      mul = s8[3,5,2]{2,1,0} add(neg, neg)
+      ROOT result = (s16[3,5]{1,0}, s8[3,5,2]{2,1,0}) tuple(bitcast, mul)
+    })");
+
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(PriorityFusionTest, FuseConvertIntoReduce) {
