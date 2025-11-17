@@ -16,16 +16,17 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
@@ -118,25 +119,15 @@ AllReduceReduceScatterThunkBase::AllReduceReduceScatterThunkBase(
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
-AllReduceStartThunk::AllReduceStartThunk(ThunkInfo thunk_info,
-                                         const HloAllReduceInstruction* inst,
-                                         std::vector<Buffer> buffers,
-                                         bool p2p_memcpy_enabled)
+AllReduceStartThunk::AllReduceStartThunk(
+    ThunkInfo thunk_info, const HloAllReduceInstruction* inst,
+    std::vector<Buffer> buffers,
+    std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk,
+    bool p2p_memcpy_enabled)
     : AllReduceReduceScatterThunkBase(
           Thunk::kAllReduceStart, thunk_info, GetAllReduceConfigInst(inst),
           std::move(buffers), IsGPUSyncCollective(*inst)),
-      collective_kernel_thunk_{
-          thunk_info,
-          config_.config,
-          config_.reduction_kind,
-          IsAsync(),
-          buffers_,
-          /*is_collective_kernel_enabled=*/
-          inst->GetModule()
-              ->config()
-              .debug_options()
-              .xla_gpu_unsupported_use_all_reduce_one_shot_kernel(),
-      } {}
+      collective_kernel_thunk_(std::move(collective_kernel_thunk)) {}
 
 absl::Status AllReduceStartThunk::CheckImplementable(
     const HloAllReduceInstruction* inst, int64_t replica_count,
@@ -154,7 +145,7 @@ CollectiveOpGroupMode AllReduceStartThunk::GetGroupMode(
 absl::Status AllReduceStartThunk::Prepare(
     const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Prepare(params, resource_requests));
-  return collective_kernel_thunk_.Prepare(params, resource_requests);
+  return collective_kernel_thunk_->Prepare(params, resource_requests);
 }
 
 absl::Status AllReduceStartThunk::Initialize(const InitializeParams& params) {
@@ -163,10 +154,10 @@ absl::Status AllReduceStartThunk::Initialize(const InitializeParams& params) {
       GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, config()));
   TF_ASSIGN_OR_RETURN(bool use_collective_kernel,
-                      collective_kernel_thunk_.IsSupported(
+                      collective_kernel_thunk_->IsSupported(
                           clique_key, params.collective_cliques));
   if (use_collective_kernel) {
-    TF_RETURN_IF_ERROR(collective_kernel_thunk_.Initialize(params));
+    TF_RETURN_IF_ERROR(collective_kernel_thunk_->Initialize(params));
   }
   return absl::OkStatus();
 }
@@ -180,11 +171,11 @@ absl::StatusOr<bool> AllReduceStartThunk::RunCollective(
                              config_.config.operand_element_type));
 
   TF_ASSIGN_OR_RETURN(bool use_collective_kernel,
-                      collective_kernel_thunk_.IsSupported(
+                      collective_kernel_thunk_->IsSupported(
                           comm_handle.clique_key, params.collective_cliques));
 
   if (use_collective_kernel) {
-    TF_RETURN_IF_ERROR(collective_kernel_thunk_.ExecuteOnStream(params));
+    TF_RETURN_IF_ERROR(collective_kernel_thunk_->ExecuteOnStream(params));
     return false;  // No need for "first" invocation to rendezvous when not
                    // using nccl.
   }

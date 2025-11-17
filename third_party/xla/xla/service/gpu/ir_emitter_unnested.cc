@@ -25,6 +25,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -78,6 +79,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
+#include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
@@ -157,6 +159,7 @@ limitations under the License.
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/triton_call.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -193,6 +196,39 @@ bool IsHostExecuteCustomCall(const HloInstruction& hlo) {
          hlo.custom_call_target() ==
              "HostExecute";  // TODO: this constant string should be shared with
                              // the TPU one
+}
+
+template <typename ThunkType>
+static constexpr bool kRequiresCollectiveKernelThunk =
+    std::is_constructible_v<ThunkType, Thunk::ThunkInfo,
+                            const HloAllReduceInstruction*,
+                            std::vector<CollectiveThunk::Buffer>,
+                            std::unique_ptr<CollectiveKernelThunk>,
+                            /*p2p_memcpy_enabled=*/bool>;
+
+// The signature of this function would change to absl::Status once we lift the
+// CollectiveKernelThunk out as a top level thunk. It would then become a member
+// function of IrEmitterUnnested.
+// As it stands now the collective kernel thunk is wrapped inside other
+// collective thunks such as AllReduceStart. So this function is only
+// responsible for emitting the collective kernel thunk and its dependencies.
+// If nullptr is returned it means that the collective kernel thunk could not be
+// emitted. This is not an error.
+absl::StatusOr<std::unique_ptr<CollectiveKernelThunk>>
+EmitCollectiveKernelThunk(IrEmitterContext* ir_emitter_context,
+                          const CallGraph* call_graph,
+                          Thunk::ThunkInfo thunk_info,
+                          std::vector<CollectiveThunk::Buffer> buffers,
+                          const HloAllReduceInstruction* instr,
+                          const AllReduceConfig& config) {
+  return std::make_unique<CollectiveKernelThunk>(
+      thunk_info, config.config, config.reduction_kind,
+      /*is_async=*/!IsGPUSyncCollective(*instr), std::move(buffers),
+      /*is_collective_kernel_enabled=*/
+      instr->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_unsupported_use_all_reduce_one_shot_kernel());
 }
 
 }  // namespace
@@ -2098,9 +2134,25 @@ absl::Status IrEmitterUnnested::EmitCollectiveThunk(
     if (ir_emitter_context_->debug_options().xla_syntax_sugar_async_ops()) {
       thunk_info.profile_annotation = async_start->name();
     }
-    auto thunk = std::make_unique<CollectiveThunkType>(
-        thunk_info, inst, /*buffers=*/std::move(buffers),
-        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
+    std::unique_ptr<CollectiveThunkType> thunk;
+    // TODO(b/828435206) Remove this constexpr once collective kernel thunk is
+    // lifted out of the all reduce thunk.
+    if constexpr (kRequiresCollectiveKernelThunk<CollectiveThunkType>) {
+      TF_ASSIGN_OR_RETURN(
+          auto collective_kernel_thunk,
+          EmitCollectiveKernelThunk(ir_emitter_context_, call_graph_.get(),
+                                    thunk_info, buffers,
+                                    Cast<HloAllReduceInstruction>(inst),
+                                    GetAllReduceConfigInst(inst)));
+      thunk = std::make_unique<CollectiveThunkType>(
+          thunk_info, inst, /*buffers=*/std::move(buffers),
+          std::move(collective_kernel_thunk),
+          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
+    } else {
+      thunk = std::make_unique<CollectiveThunkType>(
+          thunk_info, inst, /*buffers=*/std::move(buffers),
+          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
+    }
     GetCollectivesAsyncEvents().insert({async_start, thunk->async_events()});
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();
