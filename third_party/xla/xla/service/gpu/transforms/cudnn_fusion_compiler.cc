@@ -386,8 +386,10 @@ class ConvDimensionAdapter {
                         fusion.backend_config<GpuBackendConfig>());
     const FusionBackendConfig& fusion_backend_config =
         gpu_config.fusion_backend_config();
-    if (!fusion_backend_config.has_cudnn_fusion_config()) {
-      VLOG(3) << "Can't find cudnn fusion config for cudnn conv fusion.";
+    if (!fusion_backend_config.has_cudnn_fusion_config() ||
+        !fusion_backend_config.cudnn_fusion_config().has_kind()) {
+      VLOG(3) << "Can't find cudnn fusion config or conv kind for cudnn conv "
+                 "fusion.";
       return std::nullopt;
     }
     CuDnnFusionConfig_Kind conv_kind =
