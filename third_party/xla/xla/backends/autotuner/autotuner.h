@@ -46,6 +46,8 @@ namespace xla {
 struct AutotuneConfig {
   // Whether to check the correctness of the output buffers and OOM reads on
   // Input Buffers.
+  // Correctness check is only performed when a trustable reference output is
+  // available.
   bool check_buffers = true;
   // Relative tolerance for correctness check.
   float relative_tolerance = 1e-6;
@@ -197,7 +199,7 @@ class Autotuner {
   absl::StatusOr<ConfigResult> PickBestConfig(
       std::vector<ConfigResult>& results);
 
-  absl::StatusOr<ScopedShapedBuffer> GetReferenceOutput(
+  std::optional<ScopedShapedBuffer> GetReferenceOutput(
       std::vector<ExecutableCandidate>& candidates,
       InputBuffers& input_buffers);
 
