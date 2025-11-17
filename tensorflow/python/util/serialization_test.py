@@ -22,14 +22,16 @@ from tensorflow.python.util import serialization
 
 
 class SerializationTests(test.TestCase):
-
-  def test_serialize_shape(self):
-    round_trip = json.loads(json.dumps(
-        tensor_shape.TensorShape([None, 2, 3]),
-        default=serialization.get_json_type))
-    self.assertIs(round_trip[0], None)
-    self.assertEqual(round_trip[1], 2)
+    def test_serialize_shape(self):
+        round_trip = json.loads(
+            json.dumps(
+                tensor_shape.TensorShape([None, 2, 3]),
+                default=serialization.get_json_type,
+            )
+        )
+        self.assertIs(round_trip[0], None)
+        self.assertEqual(round_trip[1], 2)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

@@ -48,47 +48,47 @@ def _split_and_write(
     max_size: int,
     export_files: Sequence[str],
 ):
-  """Writes the .pb, .pbtxt and .cpb files for a SavedModel."""
-  constants.debug_set_max_size(max_size)
+    """Writes the .pb, .pbtxt and .cpb files for a SavedModel."""
+    constants.debug_set_max_size(max_size)
 
-  if "pbtxt" in export_files:
-    output_path = f"{path}.pbtxt"
-    file_io.write_string_to_file(output_path, str(saved_model))
-    logging.info("  %s written", output_path)
-  if "pb" in export_files:
-    output_path = f"{path}.pb"
-    file_io.write_string_to_file(output_path, saved_model.SerializeToString())
-    logging.info("  %s written", output_path)
-  if "cpb" in export_files:
-    splitter = split_saved_model.SavedModelSplitter(saved_model)
-    splitter.write(path)
-    chunks, _ = splitter.split()
-    if len(chunks) > 1:
-      logging.info("  %s.cpb written", path)
-    else:
-      raise RuntimeError(
-          "For some reason this graph was not chunked, so a .cpb file was not"
-          " produced. Raising an error since this should not be the case."
-      )
+    if "pbtxt" in export_files:
+        output_path = f"{path}.pbtxt"
+        file_io.write_string_to_file(output_path, str(saved_model))
+        logging.info("  %s written", output_path)
+    if "pb" in export_files:
+        output_path = f"{path}.pb"
+        file_io.write_string_to_file(output_path, saved_model.SerializeToString())
+        logging.info("  %s written", output_path)
+    if "cpb" in export_files:
+        splitter = split_saved_model.SavedModelSplitter(saved_model)
+        splitter.write(path)
+        chunks, _ = splitter.split()
+        if len(chunks) > 1:
+            logging.info("  %s.cpb written", path)
+        else:
+            raise RuntimeError(
+                "For some reason this graph was not chunked, so a .cpb file was not"
+                " produced. Raising an error since this should not be the case."
+            )
 
 
 def split_standard(path: str, export_files: Sequence[str]):
-  """Splits a standard SavedModel."""
-  fn1 = [100, 100, 100]
-  fn2 = [100, 500]
-  fn3 = [100]
-  fn4 = [100, 100]
+    """Splits a standard SavedModel."""
+    fn1 = [100, 100, 100]
+    fn2 = [100, 500]
+    fn3 = [100]
+    fn4 = [100, 100]
 
-  max_size = 500
-  constants.debug_set_max_size(max_size)
+    max_size = 500
+    constants.debug_set_max_size(max_size)
 
-  graph_def = test_util.make_graph_def_with_constant_nodes(
-      STANDARD_SIZES, fn1=fn1, fn2=fn2, fn3=fn3, fn4=fn4
-  )
-  proto = saved_model_pb2.SavedModel()
-  proto.meta_graphs.add().graph_def.CopyFrom(graph_def)
+    graph_def = test_util.make_graph_def_with_constant_nodes(
+        STANDARD_SIZES, fn1=fn1, fn2=fn2, fn3=fn3, fn4=fn4
+    )
+    proto = saved_model_pb2.SavedModel()
+    proto.meta_graphs.add().graph_def.CopyFrom(graph_def)
 
-  _split_and_write(path, proto, max_size, export_files)
+    _split_and_write(path, proto, max_size, export_files)
 
 
 VALID_SAVED_MODEL_TYPES = {
@@ -103,8 +103,7 @@ SAVED_MODEL_TYPES = flags.DEFINE_multi_string(
     "saved_model_type",
     "all",
     help=(
-        "Type(s) of saved model to export. Valid types: all, "
-        f"{ALL_SAVED_MODEL_TYPES}"
+        f"Type(s) of saved model to export. Valid types: all, {ALL_SAVED_MODEL_TYPES}"
     ),
 )
 EXPORT_FILES = flags.DEFINE_multi_string(
@@ -115,31 +114,31 @@ EXPORT_FILES = flags.DEFINE_multi_string(
 
 
 def main(argv: Sequence[str]) -> None:
-  if len(argv) > 1:
-    raise app.UsageError("Too many command-line arguments.")
+    if len(argv) > 1:
+        raise app.UsageError("Too many command-line arguments.")
 
-  if "all" in EXPORT_FILES.value:
-    export_files = ["pb", "pbtxt", "cpb"]
-  else:
-    export_files = EXPORT_FILES.value
+    if "all" in EXPORT_FILES.value:
+        export_files = ["pb", "pbtxt", "cpb"]
+    else:
+        export_files = EXPORT_FILES.value
 
-  if "all" in SAVED_MODEL_TYPES.value:
-    saved_model_types = VALID_SAVED_MODEL_TYPES.keys()
-  else:
-    saved_model_types = SAVED_MODEL_TYPES.value
+    if "all" in SAVED_MODEL_TYPES.value:
+        saved_model_types = VALID_SAVED_MODEL_TYPES.keys()
+    else:
+        saved_model_types = SAVED_MODEL_TYPES.value
 
-  for v in saved_model_types:
-    if v not in VALID_SAVED_MODEL_TYPES:
-      raise ValueError(
-          "Invalid flag passed to `saved_model_type`: "
-          f"{v}\nValid saved model types:"
-          f" {ALL_SAVED_MODEL_TYPES}"
-      )
+    for v in saved_model_types:
+        if v not in VALID_SAVED_MODEL_TYPES:
+            raise ValueError(
+                "Invalid flag passed to `saved_model_type`: "
+                f"{v}\nValid saved model types:"
+                f" {ALL_SAVED_MODEL_TYPES}"
+            )
 
-    logging.info("Generating saved model %s", v)
-    f = VALID_SAVED_MODEL_TYPES[v]
-    f(os.path.join(SPLITTER_TESTDATA_PATH.value, v), export_files)
+        logging.info("Generating saved model %s", v)
+        f = VALID_SAVED_MODEL_TYPES[v]
+        f(os.path.join(SPLITTER_TESTDATA_PATH.value, v), export_files)
 
 
 if __name__ == "__main__":
-  app.run(main)
+    app.run(main)

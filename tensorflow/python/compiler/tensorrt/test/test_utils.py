@@ -21,29 +21,29 @@ from contextlib import contextmanager
 
 @contextmanager
 def experimental_feature_scope(feature_name):
-  """Creates a context manager to enable the given experimental feature.
+    """Creates a context manager to enable the given experimental feature.
 
-  This helper function creates a context manager setting up an experimental
-  feature temporarily.
+    This helper function creates a context manager setting up an experimental
+    feature temporarily.
 
-  Example:
+    Example:
 
-  ```python
-  with self._experimental_feature_scope("feature_1"):
-    do_smthg()
-  ```
+    ```python
+    with self._experimental_feature_scope("feature_1"):
+      do_smthg()
+    ```
 
-  Args:
-    feature_name: Name of the feature being tested for activation.
-  """
+    Args:
+      feature_name: Name of the feature being tested for activation.
+    """
 
-  env_varname = "TF_TRT_EXPERIMENTAL_FEATURES"
-  env_value_bckp = os.environ.get(env_varname, default="")
+    env_varname = "TF_TRT_EXPERIMENTAL_FEATURES"
+    env_value_bckp = os.environ.get(env_varname, default="")
 
-  exp_features = env_value_bckp.split(",")
-  os.environ[env_varname] = ",".join(list(set(exp_features + [feature_name])))
+    exp_features = env_value_bckp.split(",")
+    os.environ[env_varname] = ",".join(list(set(exp_features + [feature_name])))
 
-  try:
-    yield
-  finally:
-    os.environ[env_varname] = env_value_bckp
+    try:
+        yield
+    finally:
+        os.environ[env_varname] = env_value_bckp

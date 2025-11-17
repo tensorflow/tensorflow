@@ -33,214 +33,227 @@ from tensorflow.python.platform import test
 
 
 class GPUBinaryOpsTest(test.TestCase):
+    def _compareGPU(self, x, y, np_func, tf_func):
+        with self.cached_session():
+            inx = ops.convert_to_tensor(x)
+            iny = ops.convert_to_tensor(y)
+            out = tf_func(inx, iny)
+            tf_gpu = self.evaluate(out)
 
-  def _compareGPU(self, x, y, np_func, tf_func):
-    with self.cached_session():
-      inx = ops.convert_to_tensor(x)
-      iny = ops.convert_to_tensor(y)
-      out = tf_func(inx, iny)
-      tf_gpu = self.evaluate(out)
+        with self.cached_session(use_gpu=False):
+            inx = ops.convert_to_tensor(x)
+            iny = ops.convert_to_tensor(y)
+            out = tf_func(inx, iny)
+            tf_cpu = self.evaluate(out)
 
-    with self.cached_session(use_gpu=False):
-      inx = ops.convert_to_tensor(x)
-      iny = ops.convert_to_tensor(y)
-      out = tf_func(inx, iny)
-      tf_cpu = self.evaluate(out)
+        self.assertAllClose(tf_cpu, tf_gpu)
 
-    self.assertAllClose(tf_cpu, tf_gpu)
+    def testFloatBasic(self):
+        x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float32)  # pylint: disable=too-many-function-args
+        y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float32)  # pylint: disable=too-many-function-args
+        self._compareGPU(x, y, np.add, math_ops.add)
+        self._compareGPU(x, y, np.subtract, math_ops.subtract)
+        self._compareGPU(x, y, np.multiply, math_ops.multiply)
+        self._compareGPU(x, y + 0.1, np.true_divide, math_ops.truediv)
+        self._compareGPU(x, y + 0.1, np.floor_divide, math_ops.floordiv)
+        self._compareGPU(x, y, np.power, math_ops.pow)
 
-  def testFloatBasic(self):
-    x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float32)  # pylint: disable=too-many-function-args
-    y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float32)  # pylint: disable=too-many-function-args
-    self._compareGPU(x, y, np.add, math_ops.add)
-    self._compareGPU(x, y, np.subtract, math_ops.subtract)
-    self._compareGPU(x, y, np.multiply, math_ops.multiply)
-    self._compareGPU(x, y + 0.1, np.true_divide, math_ops.truediv)
-    self._compareGPU(x, y + 0.1, np.floor_divide, math_ops.floordiv)
-    self._compareGPU(x, y, np.power, math_ops.pow)
+    def testFloatWithBCast(self):
+        x = np.linspace(-5, 20, 15).reshape(3, 5).astype(np.float32)
+        y = np.linspace(20, -5, 30).reshape(2, 3, 5).astype(np.float32)  # pylint: disable=too-many-function-args
+        self._compareGPU(x, y, np.add, math_ops.add)
+        self._compareGPU(x, y, np.subtract, math_ops.subtract)
+        self._compareGPU(x, y, np.multiply, math_ops.multiply)
+        self._compareGPU(x, y + 0.1, np.true_divide, math_ops.truediv)
 
-  def testFloatWithBCast(self):
-    x = np.linspace(-5, 20, 15).reshape(3, 5).astype(np.float32)
-    y = np.linspace(20, -5, 30).reshape(2, 3, 5).astype(np.float32)  # pylint: disable=too-many-function-args
-    self._compareGPU(x, y, np.add, math_ops.add)
-    self._compareGPU(x, y, np.subtract, math_ops.subtract)
-    self._compareGPU(x, y, np.multiply, math_ops.multiply)
-    self._compareGPU(x, y + 0.1, np.true_divide, math_ops.truediv)
+    def testDoubleBasic(self):
+        x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float64)  # pylint: disable=too-many-function-args
+        y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float64)  # pylint: disable=too-many-function-args
+        self._compareGPU(x, y, np.add, math_ops.add)
+        self._compareGPU(x, y, np.subtract, math_ops.subtract)
+        self._compareGPU(x, y, np.multiply, math_ops.multiply)
+        self._compareGPU(x, y + 0.1, np.true_divide, math_ops.truediv)
 
-  def testDoubleBasic(self):
-    x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float64)  # pylint: disable=too-many-function-args
-    y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float64)  # pylint: disable=too-many-function-args
-    self._compareGPU(x, y, np.add, math_ops.add)
-    self._compareGPU(x, y, np.subtract, math_ops.subtract)
-    self._compareGPU(x, y, np.multiply, math_ops.multiply)
-    self._compareGPU(x, y + 0.1, np.true_divide, math_ops.truediv)
-
-  def testDoubleWithBCast(self):
-    x = np.linspace(-5, 20, 15).reshape(3, 5).astype(np.float64)
-    y = np.linspace(20, -5, 30).reshape(2, 3, 5).astype(np.float64)  # pylint: disable=too-many-function-args
-    self._compareGPU(x, y, np.add, math_ops.add)
-    self._compareGPU(x, y, np.subtract, math_ops.subtract)
-    self._compareGPU(x, y, np.multiply, math_ops.multiply)
-    self._compareGPU(x, y + 0.1, np.true_divide, math_ops.truediv)
+    def testDoubleWithBCast(self):
+        x = np.linspace(-5, 20, 15).reshape(3, 5).astype(np.float64)
+        y = np.linspace(20, -5, 30).reshape(2, 3, 5).astype(np.float64)  # pylint: disable=too-many-function-args
+        self._compareGPU(x, y, np.add, math_ops.add)
+        self._compareGPU(x, y, np.subtract, math_ops.subtract)
+        self._compareGPU(x, y, np.multiply, math_ops.multiply)
+        self._compareGPU(x, y + 0.1, np.true_divide, math_ops.truediv)
 
 
 class MathBuiltinUnaryTest(test.TestCase):
+    def _compare(self, x, np_func, tf_func, use_gpu):
+        np_out = np_func(x)
+        with self.cached_session(use_gpu=use_gpu) as sess:
+            inx = ops.convert_to_tensor(x)
+            ofunc = tf_func(inx)
+            tf_out = self.evaluate(ofunc)
+        self.assertAllClose(np_out, tf_out)
 
-  def _compare(self, x, np_func, tf_func, use_gpu):
-    np_out = np_func(x)
-    with self.cached_session(use_gpu=use_gpu) as sess:
-      inx = ops.convert_to_tensor(x)
-      ofunc = tf_func(inx)
-      tf_out = self.evaluate(ofunc)
-    self.assertAllClose(np_out, tf_out)
+    def _inv(self, x):
+        return 1.0 / x
 
-  def _inv(self, x):
-    return 1.0 / x
+    def _rsqrt(self, x):
+        return self._inv(np.sqrt(x))
 
-  def _rsqrt(self, x):
-    return self._inv(np.sqrt(x))
+    def _testDtype(self, dtype, use_gpu):
+        data = (np.arange(-3, 3) / 4.0).reshape([1, 3, 2]).astype(dtype)
+        data_gt_1 = data + 2  # for x > 1
+        self._compare(data, np.abs, math_ops.abs, use_gpu)
+        self._compare(data, np.arccos, math_ops.acos, use_gpu)
+        self._compare(data, np.arcsin, math_ops.asin, use_gpu)
+        self._compare(data, np.arcsinh, math_ops.asinh, use_gpu)
+        self._compare(data_gt_1, np.arccosh, math_ops.acosh, use_gpu)
+        self._compare(data, np.arctan, math_ops.atan, use_gpu)
+        self._compare(data, np.ceil, math_ops.ceil, use_gpu)
+        self._compare(data, np.cos, math_ops.cos, use_gpu)
+        self._compare(data, np.cosh, math_ops.cosh, use_gpu)
+        self._compare(data, np.exp, math_ops.exp, use_gpu)
+        self._compare(data, np.floor, math_ops.floor, use_gpu)
+        self._compare(data, np.log, math_ops.log, use_gpu)
+        self._compare(data, np.log1p, math_ops.log1p, use_gpu)
+        self._compare(data, np.negative, math_ops.negative, use_gpu)
+        self._compare(data, self._rsqrt, math_ops.rsqrt, use_gpu)
+        self._compare(data, np.sin, math_ops.sin, use_gpu)
+        self._compare(data, np.sinh, math_ops.sinh, use_gpu)
+        self._compare(data, np.sqrt, math_ops.sqrt, use_gpu)
+        self._compare(data, np.square, math_ops.square, use_gpu)
+        self._compare(data, np.tan, math_ops.tan, use_gpu)
+        self._compare(data, np.tanh, math_ops.tanh, use_gpu)
+        self._compare(data, np.arctanh, math_ops.atanh, use_gpu)
 
-  def _testDtype(self, dtype, use_gpu):
-    data = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(dtype)
-    data_gt_1 = data + 2 # for x > 1
-    self._compare(data, np.abs, math_ops.abs, use_gpu)
-    self._compare(data, np.arccos, math_ops.acos, use_gpu)
-    self._compare(data, np.arcsin, math_ops.asin, use_gpu)
-    self._compare(data, np.arcsinh, math_ops.asinh, use_gpu)
-    self._compare(data_gt_1, np.arccosh, math_ops.acosh, use_gpu)
-    self._compare(data, np.arctan, math_ops.atan, use_gpu)
-    self._compare(data, np.ceil, math_ops.ceil, use_gpu)
-    self._compare(data, np.cos, math_ops.cos, use_gpu)
-    self._compare(data, np.cosh, math_ops.cosh, use_gpu)
-    self._compare(data, np.exp, math_ops.exp, use_gpu)
-    self._compare(data, np.floor, math_ops.floor, use_gpu)
-    self._compare(data, np.log, math_ops.log, use_gpu)
-    self._compare(data, np.log1p, math_ops.log1p, use_gpu)
-    self._compare(data, np.negative, math_ops.negative, use_gpu)
-    self._compare(data, self._rsqrt, math_ops.rsqrt, use_gpu)
-    self._compare(data, np.sin, math_ops.sin, use_gpu)
-    self._compare(data, np.sinh, math_ops.sinh, use_gpu)
-    self._compare(data, np.sqrt, math_ops.sqrt, use_gpu)
-    self._compare(data, np.square, math_ops.square, use_gpu)
-    self._compare(data, np.tan, math_ops.tan, use_gpu)
-    self._compare(data, np.tanh, math_ops.tanh, use_gpu)
-    self._compare(data, np.arctanh, math_ops.atanh, use_gpu)
+    def testTypes(self):
+        for dtype in [np.float32]:
+            self._testDtype(dtype, use_gpu=True)
 
-  def testTypes(self):
-    for dtype in [np.float32]:
-      self._testDtype(dtype, use_gpu=True)
+    def testFloorDivide(self):
+        x = (
+            (1 + np.linspace(0, 5, np.prod([1, 3, 2])))
+            .astype(np.float32)
+            .reshape([1, 3, 2])
+        )
+        y = (
+            (1 + np.linspace(0, 5, np.prod([1, 3, 2])))
+            .astype(np.float32)
+            .reshape([1, 3, 2])
+        )
 
-  def testFloorDivide(self):
-    x = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
-        [1, 3, 2])
-    y = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
-        [1, 3, 2])
+        np_out = np.floor_divide(x, y + 0.1)
 
-    np_out = np.floor_divide(x, y + 0.1)
+        with self.session():
+            inx = ops.convert_to_tensor(x)
+            iny = ops.convert_to_tensor(y + 0.1)
+            ofunc = inx / iny
+            out_func2 = math_ops.floor(ofunc)
+            tf_out = self.evaluate(out_func2)
 
-    with self.session():
-      inx = ops.convert_to_tensor(x)
-      iny = ops.convert_to_tensor(y + 0.1)
-      ofunc = inx / iny
-      out_func2 = math_ops.floor(ofunc)
-      tf_out = self.evaluate(out_func2)
-
-    self.assertAllClose(np_out, tf_out)
+        self.assertAllClose(np_out, tf_out)
 
 
 class BroadcastSimpleTest(test.TestCase):
+    def _GetGradientArgs(self, xs, ys):
+        return self.evaluate(broadcast_gradient_args(xs, ys))
 
-  def _GetGradientArgs(self, xs, ys):
-    return self.evaluate(broadcast_gradient_args(xs, ys))
+    def testBroadcast(self):
+        r0, r1 = self._GetGradientArgs([2, 3, 5], [1])
+        self.assertAllEqual(r0, [])
+        self.assertAllEqual(r1, [0, 1, 2])
 
-  def testBroadcast(self):
-    r0, r1 = self._GetGradientArgs([2, 3, 5], [1])
-    self.assertAllEqual(r0, [])
-    self.assertAllEqual(r1, [0, 1, 2])
+    _GRAD_TOL = {dtypes.float32: 1e-3}
 
-  _GRAD_TOL = {dtypes.float32: 1e-3}
+    def _compareGpu(self, x, y, np_func, tf_func):
+        np_ans = np_func(x, y)
+        with self.cached_session():
+            inx = ops.convert_to_tensor(x)
+            iny = ops.convert_to_tensor(y)
+            out = tf_func(inx, iny)
+            tf_gpu = self.evaluate(out)
+        self.assertAllClose(np_ans, tf_gpu)
+        self.assertShapeEqual(np_ans, out)
+        # TODO(zhifengc/ke): make gradient checker work on GPU.
 
-  def _compareGpu(self, x, y, np_func, tf_func):
-    np_ans = np_func(x, y)
-    with self.cached_session():
-      inx = ops.convert_to_tensor(x)
-      iny = ops.convert_to_tensor(y)
-      out = tf_func(inx, iny)
-      tf_gpu = self.evaluate(out)
-    self.assertAllClose(np_ans, tf_gpu)
-    self.assertShapeEqual(np_ans, out)
-    # TODO(zhifengc/ke): make gradient checker work on GPU.
+    def testGradient(self):
+        x1 = (
+            (1 + np.linspace(0, 5, np.prod([1, 3, 2])))
+            .astype(np.float32)
+            .reshape([1, 3, 2])
+        )
+        x2 = (
+            (1 + np.linspace(0, 5, np.prod([1, 3, 2])))
+            .astype(np.float32)
+            .reshape([1, 3, 2])
+        )
 
-  def testGradient(self):
-    x1 = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
-        [1, 3, 2])
-    x2 = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
-        [1, 3, 2])
+        def div_x1(x1):
+            return math_ops.truediv(x1, x2) * math_ops.cast(1.1, dtype=x1.dtype)
 
-    def div_x1(x1):
-      return math_ops.truediv(x1, x2) * math_ops.cast(1.1, dtype=x1.dtype)
+        def div_x2(x2):
+            return math_ops.truediv(x1, x2) * math_ops.cast(1.1, dtype=x2.dtype)
 
-    def div_x2(x2):
-      return math_ops.truediv(x1, x2) * math_ops.cast(1.1, dtype=x2.dtype)
+        with self.cached_session():
+            err = gradient_checker_v2.max_error(
+                *gradient_checker_v2.compute_gradient(div_x1, [x1])
+            )
+            self.assertLess(err, self._GRAD_TOL[dtypes.as_dtype(x1.dtype)])
 
-    with self.cached_session():
-      err = gradient_checker_v2.max_error(*gradient_checker_v2.compute_gradient(
-          div_x1, [x1]))
-      self.assertLess(err, self._GRAD_TOL[dtypes.as_dtype(x1.dtype)])
+            err = gradient_checker_v2.max_error(
+                *gradient_checker_v2.compute_gradient(div_x2, [x2])
+            )
+            self.assertLess(err, self._GRAD_TOL[dtypes.as_dtype(x2.dtype)])
 
-      err = gradient_checker_v2.max_error(*gradient_checker_v2.compute_gradient(
-          div_x2, [x2]))
-      self.assertLess(err, self._GRAD_TOL[dtypes.as_dtype(x2.dtype)])
-
-    self._compareGpu(x1, x2, np.true_divide, math_ops.truediv)
-    self._compareGpu(x1, x2 + 0.1, np.floor_divide, math_ops.floordiv)
+        self._compareGpu(x1, x2, np.true_divide, math_ops.truediv)
+        self._compareGpu(x1, x2 + 0.1, np.floor_divide, math_ops.floordiv)
 
 
 class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
-  """Tests concurrent sessions executing on the same GPU."""
+    """Tests concurrent sessions executing on the same GPU."""
 
-  def _run_session(self, session, results):
-    n_iterations = 500
-    with session as s:
-      data = variables.Variable(1.0)
-      with ops.device('/device:GPU:0'):
-        random_seed.set_random_seed(1)
-        matrix1 = variables.Variable(
-            random_ops.truncated_normal([1024, 1]), name='matrix1')
-        matrix2 = variables.Variable(
-            random_ops.truncated_normal([1, 1024]), name='matrix2')
-        x1 = math_ops.multiply(data, matrix1, name='x1')
-        x3 = math_ops.matmul(x1, math_ops.matmul(matrix2, matrix1))
-        x4 = math_ops.matmul(array_ops.transpose(x3), x3, name='x4')
-        s.run(variables.global_variables_initializer())
+    def _run_session(self, session, results):
+        n_iterations = 500
+        with session as s:
+            data = variables.Variable(1.0)
+            with ops.device("/device:GPU:0"):
+                random_seed.set_random_seed(1)
+                matrix1 = variables.Variable(
+                    random_ops.truncated_normal([1024, 1]), name="matrix1"
+                )
+                matrix2 = variables.Variable(
+                    random_ops.truncated_normal([1, 1024]), name="matrix2"
+                )
+                x1 = math_ops.multiply(data, matrix1, name="x1")
+                x3 = math_ops.matmul(x1, math_ops.matmul(matrix2, matrix1))
+                x4 = math_ops.matmul(array_ops.transpose(x3), x3, name="x4")
+                s.run(variables.global_variables_initializer())
 
-        for _ in range(n_iterations):
-          value = s.run(x4)
-          results.add(value.flat[0])
-          if len(results) != 1:
-            break
+                for _ in range(n_iterations):
+                    value = s.run(x4)
+                    results.add(value.flat[0])
+                    if len(results) != 1:
+                        break
 
-  @test_util.run_v1_only('b/126596827 needs graph mode in multiple threads')
-  def testConcurrentSessions(self):
-    n_threads = 4
-    threads = []
-    results = []
-    for _ in range(n_threads):
-      session = self.session(graph=ops.Graph(), use_gpu=True)
-      results.append(set())
-      args = (session, results[-1])
-      threads.append(threading.Thread(target=self._run_session, args=args))
+    @test_util.run_v1_only("b/126596827 needs graph mode in multiple threads")
+    def testConcurrentSessions(self):
+        n_threads = 4
+        threads = []
+        results = []
+        for _ in range(n_threads):
+            session = self.session(graph=ops.Graph(), use_gpu=True)
+            results.append(set())
+            args = (session, results[-1])
+            threads.append(threading.Thread(target=self._run_session, args=args))
 
-    for thread in threads:
-      thread.start()
-    for thread in threads:
-      thread.join()
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
 
-    flat_results = set(itertools.chain(*results))
-    self.assertEqual(1,
-                     len(flat_results),
-                     'Expected single value, got %r' % flat_results)
+        flat_results = set(itertools.chain(*results))
+        self.assertEqual(
+            1, len(flat_results), "Expected single value, got %r" % flat_results
+        )
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

@@ -21,20 +21,21 @@ from tensorflow.python.platform import test
 
 
 class IndexedSlicesTest(test.TestCase):
+    def testCompositeTensorGradient(self):
+        i = indexed_slices.IndexedSlices(
+            values=constant_op.constant([[1.0, 2.0]]),
+            indices=constant_op.constant([1]),
+            dense_shape=[3, 2],
+        )
+        gradient_components = composite_tensor_gradient.get_flat_tensors_for_gradients(
+            [i]
+        )
+        self.assertAllEqual(gradient_components, [i])
 
-  def testCompositeTensorGradient(self):
-    i = indexed_slices.IndexedSlices(values=constant_op.constant([[1., 2.]]),
-                                     indices=constant_op.constant([1]),
-                                     dense_shape=[3, 2])
-    gradient_components = (
-        composite_tensor_gradient.get_flat_tensors_for_gradients([i]))
-    self.assertAllEqual(gradient_components, [i])
-
-    t = [3., 4.]
-    result = (
-        composite_tensor_gradient.replace_flat_tensors_for_gradients([i], [t]))
-    self.assertAllEqual(result, [t])
+        t = [3.0, 4.0]
+        result = composite_tensor_gradient.replace_flat_tensors_for_gradients([i], [t])
+        self.assertAllEqual(result, [t])
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

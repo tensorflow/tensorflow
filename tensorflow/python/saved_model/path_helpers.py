@@ -21,62 +21,68 @@ from tensorflow.python.util import compat
 
 
 def get_or_create_variables_dir(export_dir):
-  """Return variables sub-directory, or create one if it doesn't exist."""
-  variables_dir = get_variables_dir(export_dir)
-  file_io.recursive_create_dir(variables_dir)
-  return variables_dir
+    """Return variables sub-directory, or create one if it doesn't exist."""
+    variables_dir = get_variables_dir(export_dir)
+    file_io.recursive_create_dir(variables_dir)
+    return variables_dir
 
 
 def get_variables_dir(export_dir):
-  """Return variables sub-directory in the SavedModel."""
-  return file_io.join(
-      compat.as_text(export_dir), compat.as_text(constants.VARIABLES_DIRECTORY))
+    """Return variables sub-directory in the SavedModel."""
+    return file_io.join(
+        compat.as_text(export_dir), compat.as_text(constants.VARIABLES_DIRECTORY)
+    )
 
 
 def get_variables_path(export_dir):
-  """Return the variables path, used as the prefix for checkpoint files."""
-  return file_io.join(
-      compat.as_text(get_variables_dir(export_dir)),
-      compat.as_text(constants.VARIABLES_FILENAME))
+    """Return the variables path, used as the prefix for checkpoint files."""
+    return file_io.join(
+        compat.as_text(get_variables_dir(export_dir)),
+        compat.as_text(constants.VARIABLES_FILENAME),
+    )
 
 
 def get_or_create_assets_dir(export_dir):
-  """Return assets sub-directory, or create one if it doesn't exist."""
-  assets_destination_dir = get_assets_dir(export_dir)
+    """Return assets sub-directory, or create one if it doesn't exist."""
+    assets_destination_dir = get_assets_dir(export_dir)
 
-  file_io.recursive_create_dir(assets_destination_dir)
+    file_io.recursive_create_dir(assets_destination_dir)
 
-  return assets_destination_dir
+    return assets_destination_dir
 
 
 def get_assets_dir(export_dir):
-  """Return path to asset directory in the SavedModel."""
-  return file_io.join(
-      compat.as_text(export_dir), compat.as_text(constants.ASSETS_DIRECTORY))
+    """Return path to asset directory in the SavedModel."""
+    return file_io.join(
+        compat.as_text(export_dir), compat.as_text(constants.ASSETS_DIRECTORY)
+    )
 
 
 def get_or_create_debug_dir(export_dir):
-  """Returns path to the debug sub-directory, creating if it does not exist."""
-  debug_dir = get_debug_dir(export_dir)
+    """Returns path to the debug sub-directory, creating if it does not exist."""
+    debug_dir = get_debug_dir(export_dir)
 
-  file_io.recursive_create_dir(debug_dir)
+    file_io.recursive_create_dir(debug_dir)
 
-  return debug_dir
+    return debug_dir
 
 
 def get_saved_model_pbtxt_path(export_dir):
-  return file_io.join(
-      compat.as_bytes(compat.path_to_str(export_dir)),
-      compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT))
+    return file_io.join(
+        compat.as_bytes(compat.path_to_str(export_dir)),
+        compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT),
+    )
 
 
 def get_saved_model_pb_path(export_dir):
-  return file_io.join(
-      compat.as_bytes(compat.path_to_str(export_dir)),
-      compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
+    return file_io.join(
+        compat.as_bytes(compat.path_to_str(export_dir)),
+        compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB),
+    )
 
 
 def get_debug_dir(export_dir):
-  """Returns path to the debug sub-directory in the SavedModel."""
-  return file_io.join(
-      compat.as_text(export_dir), compat.as_text(constants.DEBUG_DIRECTORY))
+    """Returns path to the debug sub-directory in the SavedModel."""
+    return file_io.join(
+        compat.as_text(export_dir), compat.as_text(constants.DEBUG_DIRECTORY)
+    )

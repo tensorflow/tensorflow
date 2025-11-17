@@ -24,11 +24,10 @@ from xla.codegen.testlib import utilities as base_utilities
 
 
 class LoopFusionTest(parameterized.TestCase):
+    def test_basic_add_sub(self):
+        dtype = np.dtype(np.float32)
 
-  def test_basic_add_sub(self):
-    dtype = np.dtype(np.float32)
-
-    hlo = """
+        hlo = """
       HloModule test_module
 
       fusion_computation {
@@ -50,52 +49,46 @@ class LoopFusionTest(parameterized.TestCase):
       }
     """
 
-    hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
-    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
-    mlir_context = testlib_cpu.MLIRContext()
-    symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
-    kernel_definition = testlib_cpu.emit_fusion_kernel(
-        mlir_context,
-        symbolic_expr_context,
-        hlo_module.get_root_instruction(),
-        buffer_assignment,
-    )
+        hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
+        jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+        mlir_context = testlib_cpu.MLIRContext()
+        symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
+        kernel_definition = testlib_cpu.emit_fusion_kernel(
+            mlir_context,
+            symbolic_expr_context,
+            hlo_module.get_root_instruction(),
+            buffer_assignment,
+        )
 
-    kernel_runner = testlib_cpu.KernelRunner.create(
-        kernel_definition, jit_compiler
-    )
-    operand_shape = (100, 200)
+        kernel_runner = testlib_cpu.KernelRunner.create(kernel_definition, jit_compiler)
+        operand_shape = (100, 200)
 
-    param_0 = base_utilities.create_literal_from_np(
-        np.random.rand(*operand_shape).astype(dtype)
-    )
-    param_1 = base_utilities.create_literal_from_np(
-        np.random.rand(*operand_shape).astype(dtype)
-    )
-    param_2 = base_utilities.create_literal_from_np(
-        np.random.rand(*operand_shape).astype(dtype)
-    )
+        param_0 = base_utilities.create_literal_from_np(
+            np.random.rand(*operand_shape).astype(dtype)
+        )
+        param_1 = base_utilities.create_literal_from_np(
+            np.random.rand(*operand_shape).astype(dtype)
+        )
+        param_2 = base_utilities.create_literal_from_np(
+            np.random.rand(*operand_shape).astype(dtype)
+        )
 
-    result_0 = base_utilities.create_literal_from_np(
-        np.zeros(operand_shape, dtype)
-    )
-    result_1 = base_utilities.create_literal_from_np(
-        np.zeros(operand_shape, dtype)
-    )
+        result_0 = base_utilities.create_literal_from_np(np.zeros(operand_shape, dtype))
+        result_1 = base_utilities.create_literal_from_np(np.zeros(operand_shape, dtype))
 
-    kernel_runner.call([param_0, param_1, param_2, result_0, result_1])
+        kernel_runner.call([param_0, param_1, param_2, result_0, result_1])
 
-    np.testing.assert_array_almost_equal(
-        np.asarray(result_0), np.add(param_0, param_1)
-    )
-    np.testing.assert_array_almost_equal(
-        np.asarray(result_1), np.subtract(np.add(param_0, param_1), param_2)
-    )
+        np.testing.assert_array_almost_equal(
+            np.asarray(result_0), np.add(param_0, param_1)
+        )
+        np.testing.assert_array_almost_equal(
+            np.asarray(result_1), np.subtract(np.add(param_0, param_1), param_2)
+        )
 
-  def test_convert_f32_bf16_f32(self):
-    dtype = np.dtype(np.float32)
+    def test_convert_f32_bf16_f32(self):
+        dtype = np.dtype(np.float32)
 
-    hlo = """
+        hlo = """
       HloModule test_module
 
       fusion_computation {
@@ -112,46 +105,42 @@ class LoopFusionTest(parameterized.TestCase):
       }
     """
 
-    hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
-    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
-    mlir_context = testlib_cpu.MLIRContext()
-    symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
-    kernel_definition = testlib_cpu.emit_fusion_kernel(
-        mlir_context,
-        symbolic_expr_context,
-        hlo_module.get_root_instruction(),
-        buffer_assignment,
-    )
+        hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
+        jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+        mlir_context = testlib_cpu.MLIRContext()
+        symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
+        kernel_definition = testlib_cpu.emit_fusion_kernel(
+            mlir_context,
+            symbolic_expr_context,
+            hlo_module.get_root_instruction(),
+            buffer_assignment,
+        )
 
-    kernel_runner = testlib_cpu.KernelRunner.create(
-        kernel_definition, jit_compiler
-    )
-    operand_shape = (300, 500)
+        kernel_runner = testlib_cpu.KernelRunner.create(kernel_definition, jit_compiler)
+        operand_shape = (300, 500)
 
-    # np.rand produces values in the range [0, 1).
-    # Bias and scale it to get more representative values.
-    param = base_utilities.create_literal_from_np(
-        (np.random.rand(*operand_shape).astype(dtype) - 0.5) * 1e9
-    )
-    # Also make sure inf is preserved.
-    np.asarray(param)[0, 0] = np.inf
+        # np.rand produces values in the range [0, 1).
+        # Bias and scale it to get more representative values.
+        param = base_utilities.create_literal_from_np(
+            (np.random.rand(*operand_shape).astype(dtype) - 0.5) * 1e9
+        )
+        # Also make sure inf is preserved.
+        np.asarray(param)[0, 0] = np.inf
 
-    result = base_utilities.create_literal_from_np(
-        np.zeros(operand_shape, dtype)
-    )
+        result = base_utilities.create_literal_from_np(np.zeros(operand_shape, dtype))
 
-    kernel_runner.call([param, result])
+        kernel_runner.call([param, result])
 
-    # Based on the 7-bit fraction of bf16.
-    bf_16_rtol = 2**-8
-    np.testing.assert_allclose(result, param, rtol=bf_16_rtol)
+        # Based on the 7-bit fraction of bf16.
+        bf_16_rtol = 2**-8
+        np.testing.assert_allclose(result, param, rtol=bf_16_rtol)
 
-  # Check that user provided nans and nans produced by internal ops are
-  # preserved.
-  def test_convert_f32_bf16_f32_nan(self):
-    dtype = np.dtype(np.float32)
+    # Check that user provided nans and nans produced by internal ops are
+    # preserved.
+    def test_convert_f32_bf16_f32_nan(self):
+        dtype = np.dtype(np.float32)
 
-    hlo = """
+        hlo = """
       HloModule test_module
 
       fusion_computation {
@@ -169,47 +158,41 @@ class LoopFusionTest(parameterized.TestCase):
       }
     """
 
-    hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
-    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
-    mlir_context = testlib_cpu.MLIRContext()
-    symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
-    kernel_definition = testlib_cpu.emit_fusion_kernel(
-        mlir_context,
-        symbolic_expr_context,
-        hlo_module.get_root_instruction(),
-        buffer_assignment,
-    )
+        hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
+        jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+        mlir_context = testlib_cpu.MLIRContext()
+        symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
+        kernel_definition = testlib_cpu.emit_fusion_kernel(
+            mlir_context,
+            symbolic_expr_context,
+            hlo_module.get_root_instruction(),
+            buffer_assignment,
+        )
 
-    kernel_runner = testlib_cpu.KernelRunner.create(
-        kernel_definition, jit_compiler
-    )
-    operand_shape = (3,)
+        kernel_runner = testlib_cpu.KernelRunner.create(kernel_definition, jit_compiler)
+        operand_shape = (3,)
 
-    param = base_utilities.create_literal_from_np(
-        np.ndarray(operand_shape, dtype)
-    )
-    np_param = np.asarray(param)
-    np_param[0] = 1
-    np_param[1] = 0
-    np_param[2] = np.nan
+        param = base_utilities.create_literal_from_np(np.ndarray(operand_shape, dtype))
+        np_param = np.asarray(param)
+        np_param[0] = 1
+        np_param[1] = 0
+        np_param[2] = np.nan
 
-    result = base_utilities.create_literal_from_np(
-        np.zeros(operand_shape, dtype)
-    )
+        result = base_utilities.create_literal_from_np(np.zeros(operand_shape, dtype))
 
-    kernel_runner.call([param, result])
+        kernel_runner.call([param, result])
 
-    np_result = np.asarray(result)
+        np_result = np.asarray(result)
 
-    self.assertEqual(np_result[0], 1)
-    self.assertTrue(np.isnan(np_result[1]))
-    self.assertTrue(np.isnan(np_result[2]))
+        self.assertEqual(np_result[0], 1)
+        self.assertTrue(np.isnan(np_result[1]))
+        self.assertTrue(np.isnan(np_result[2]))
 
-  # Check that a constant with a layout is respected.
-  def test_constant_with_layout(self):
-    dtype = np.dtype(np.float32)
+    # Check that a constant with a layout is respected.
+    def test_constant_with_layout(self):
+        dtype = np.dtype(np.float32)
 
-    hlo = """
+        hlo = """
       HloModule test_module
 
       fusion_computation {
@@ -223,40 +206,37 @@ class LoopFusionTest(parameterized.TestCase):
       }
     """
 
-    hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
-    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
-    mlir_context = testlib_cpu.MLIRContext()
-    symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
-    kernel_definition = testlib_cpu.emit_fusion_kernel(
-        mlir_context,
-        symbolic_expr_context,
-        hlo_module.get_root_instruction(),
-        buffer_assignment,
-    )
+        hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
+        jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+        mlir_context = testlib_cpu.MLIRContext()
+        symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
+        kernel_definition = testlib_cpu.emit_fusion_kernel(
+            mlir_context,
+            symbolic_expr_context,
+            hlo_module.get_root_instruction(),
+            buffer_assignment,
+        )
 
-    kernel_runner = testlib_cpu.KernelRunner.create(
-        kernel_definition, jit_compiler
-    )
-    shape = (2, 2)
+        kernel_runner = testlib_cpu.KernelRunner.create(kernel_definition, jit_compiler)
+        shape = (2, 2)
 
-    result = base_utilities.create_literal_from_np(np.zeros(shape, dtype))
+        result = base_utilities.create_literal_from_np(np.zeros(shape, dtype))
 
-    kernel_runner.call([result])
+        kernel_runner.call([result])
 
-    np_result = np.asarray(result)
+        np_result = np.asarray(result)
 
-    self.assertEqual(np_result[0, 0], 0)
-    self.assertEqual(np_result[0, 1], 1)
-    self.assertEqual(np_result[1, 0], 2)
-    self.assertEqual(np_result[1, 1], 3)
+        self.assertEqual(np_result[0, 0], 0)
+        self.assertEqual(np_result[0, 1], 1)
+        self.assertEqual(np_result[1, 0], 2)
+        self.assertEqual(np_result[1, 1], 3)
 
 
 class FusionEmitterTest(parameterized.TestCase):
+    def test_exp_nan_dce(self):
+        dtype = np.dtype(np.float64)
 
-  def test_exp_nan_dce(self):
-    dtype = np.dtype(np.float64)
-
-    hlo = """
+        hlo = """
       HloModule test_module
 
       fusion_computation {
@@ -274,42 +254,36 @@ class FusionEmitterTest(parameterized.TestCase):
       }
     """
 
-    hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
-    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
-    mlir_context = testlib_cpu.MLIRContext()
-    symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
-    kernel_definition = testlib_cpu.emit_fusion_kernel(
-        mlir_context,
-        symbolic_expr_context,
-        hlo_module.get_root_instruction(),
-        buffer_assignment,
-    )
+        hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
+        jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+        mlir_context = testlib_cpu.MLIRContext()
+        symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
+        kernel_definition = testlib_cpu.emit_fusion_kernel(
+            mlir_context,
+            symbolic_expr_context,
+            hlo_module.get_root_instruction(),
+            buffer_assignment,
+        )
 
-    kernel_runner = testlib_cpu.KernelRunner.create(
-        kernel_definition, jit_compiler
-    )
-    operand_shape = (3,)
+        kernel_runner = testlib_cpu.KernelRunner.create(kernel_definition, jit_compiler)
+        operand_shape = (3,)
 
-    param = base_utilities.create_literal_from_np(
-        np.ndarray(operand_shape, dtype)
-    )
-    np_param = np.asarray(param)
-    np_param[0] = 1
-    np_param[1] = 0
-    np_param[2] = np.nan
+        param = base_utilities.create_literal_from_np(np.ndarray(operand_shape, dtype))
+        np_param = np.asarray(param)
+        np_param[0] = 1
+        np_param[1] = 0
+        np_param[2] = np.nan
 
-    result = base_utilities.create_literal_from_np(
-        np.zeros(operand_shape, dtype)
-    )
+        result = base_utilities.create_literal_from_np(np.zeros(operand_shape, dtype))
 
-    kernel_runner.call([param, result])
+        kernel_runner.call([param, result])
 
-    np_result = np.asarray(result)
+        np_result = np.asarray(result)
 
-    self.assertAlmostEqual(np_result[0], np.exp(1))
-    self.assertAlmostEqual(np_result[1], np.exp(0))
-    self.assertTrue(np.isnan(np_result[2]))
+        self.assertAlmostEqual(np_result[0], np.exp(1))
+        self.assertAlmostEqual(np_result[1], np.exp(0))
+        self.assertTrue(np.isnan(np_result[2]))
 
 
 if __name__ == "__main__":
-  absltest.main()
+    absltest.main()

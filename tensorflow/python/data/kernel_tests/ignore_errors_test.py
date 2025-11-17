@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.ignore_errors`."""
+
 import os
 import sys
 
@@ -36,151 +37,161 @@ _NUMPY_RANDOM_SEED = 42
 
 
 class IgnoreErrorsTest(test_base.DatasetTestBase, parameterized.TestCase):
+    @combinations.generate(test_base.default_test_combinations())
+    def testMapIgnoreError(self):
+        components = np.array([1.0, 2.0, 3.0, np.nan, 5.0]).astype(np.float32)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testMapIgnoreError(self):
-    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+        dataset = (
+            dataset_ops.Dataset.from_tensor_slices(components)
+            .map(lambda x: array_ops.check_numerics(x, "message"))
+            .ignore_errors()
+        )
+        get_next = self.getNext(dataset)
 
-    dataset = (
-        dataset_ops.Dataset.from_tensor_slices(components).map(
-            lambda x: array_ops.check_numerics(x, "message")).ignore_errors())
-    get_next = self.getNext(dataset)
+        for x in [1.0, 2.0, 3.0, 5.0]:
+            self.assertEqual(x, self.evaluate(get_next()))
+        with self.assertRaises(errors.OutOfRangeError):
+            self.evaluate(get_next())
 
-    for x in [1., 2., 3., 5.]:
-      self.assertEqual(x, self.evaluate(get_next()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
+    @combinations.generate(test_base.default_test_combinations())
+    def testIgnoreError_withLogWarning(self):
+        components = np.array([1.0, 2.0, 3.0, np.nan, 5.0]).astype(np.float32)
+        dataset = (
+            dataset_ops.Dataset.from_tensor_slices(components)
+            .map(lambda x: array_ops.check_numerics(x, "message"))
+            .ignore_errors(log_warning=True)
+        )
+        get_next = self.getNext(dataset)
+        with self.captureWritesToStream(sys.stderr) as logged:
+            for x in [1.0, 2.0, 3.0]:
+                self.assertEqual(x, self.evaluate(get_next()))
+            self.assertEqual(5.0, self.evaluate(get_next()))
+        expected = "Tensor had NaN values"
+        self.assertIn((expected), logged.contents())
+        with self.assertRaises(errors.OutOfRangeError):
+            self.evaluate(get_next())
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testIgnoreError_withLogWarning(self):
-    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
-    dataset = (
-        dataset_ops.Dataset.from_tensor_slices(components).map(
-            lambda x: array_ops.check_numerics(x, "message")).ignore_errors(
-                log_warning=True))
-    get_next = self.getNext(dataset)
-    with self.captureWritesToStream(sys.stderr) as logged:
-      for x in [1., 2., 3.]:
-        self.assertEqual(x, self.evaluate(get_next()))
-      self.assertEqual(5., self.evaluate(get_next()))
-    expected = "Tensor had NaN values"
-    self.assertIn((expected), logged.contents())
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
+    @combinations.generate(test_base.default_test_combinations())
+    def testParallelMapIgnoreError(self):
+        components = np.array([1.0, 2.0, 3.0, np.nan, 5.0]).astype(np.float32)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testParallelMapIgnoreError(self):
-    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+        dataset = (
+            dataset_ops.Dataset.from_tensor_slices(components)
+            .map(lambda x: array_ops.check_numerics(x, "message"), num_parallel_calls=2)
+            .prefetch(2)
+            .ignore_errors()
+        )
+        get_next = self.getNext(dataset)
 
-    dataset = (
-        dataset_ops.Dataset.from_tensor_slices(components).map(
-            lambda x: array_ops.check_numerics(x, "message"),
-            num_parallel_calls=2).prefetch(2).ignore_errors())
-    get_next = self.getNext(dataset)
+        for x in [1.0, 2.0, 3.0, 5.0]:
+            self.assertEqual(x, self.evaluate(get_next()))
+        with self.assertRaises(errors.OutOfRangeError):
+            self.evaluate(get_next())
 
-    for x in [1., 2., 3., 5.]:
-      self.assertEqual(x, self.evaluate(get_next()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
+    @combinations.generate(test_base.default_test_combinations())
+    def testReadFileIgnoreError(self):
+        def write_string_to_file(value, filename):
+            with open(filename, "w") as f:
+                f.write(value)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testReadFileIgnoreError(self):
+        filenames = [
+            os.path.join(self.get_temp_dir(), "file_%d.txt" % i) for i in range(5)
+        ]
+        for filename in filenames:
+            write_string_to_file(filename, filename)
 
-    def write_string_to_file(value, filename):
-      with open(filename, "w") as f:
-        f.write(value)
+        dataset = (
+            dataset_ops.Dataset.from_tensor_slices(filenames)
+            .map(io_ops.read_file, num_parallel_calls=2)
+            .prefetch(2)
+            .ignore_errors()
+        )
+        get_next = self.getNext(dataset)
 
-    filenames = [
-        os.path.join(self.get_temp_dir(), "file_%d.txt" % i) for i in range(5)
-    ]
-    for filename in filenames:
-      write_string_to_file(filename, filename)
+        # All of the files are present.
+        for filename in filenames:
+            self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next()))
+        with self.assertRaises(errors.OutOfRangeError):
+            self.evaluate(get_next())
 
-    dataset = (
-        dataset_ops.Dataset.from_tensor_slices(filenames).map(
-            io_ops.read_file, num_parallel_calls=2).prefetch(2).ignore_errors())
-    get_next = self.getNext(dataset)
+        # Delete one of the files.
+        os.remove(filenames[0])
 
-    # All of the files are present.
-    for filename in filenames:
-      self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
+        # Attempting to read filenames[0] will fail, but ignore_errors()
+        # will catch the error.
+        get_next = self.getNext(dataset)
+        for filename in filenames[1:]:
+            self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next()))
+        with self.assertRaises(errors.OutOfRangeError):
+            self.evaluate(get_next())
 
-    # Delete one of the files.
-    os.remove(filenames[0])
+    @combinations.generate(test_base.default_test_combinations())
+    def testTFRecordDatasetIgnoreError(self):
+        filenames = []
+        for i in range(5):
+            fn = os.path.join(self.get_temp_dir(), "tf_record.%d.txt" % i)
+            filenames.append(fn)
+            writer = python_io.TFRecordWriter(fn)
+            for _ in range(10):
+                writer.write(b"record")
+            writer.close()
+            # Append corrupted data
+            with open(fn, "a") as f:
+                f.write("corrupted data")
 
-    # Attempting to read filenames[0] will fail, but ignore_errors()
-    # will catch the error.
-    get_next = self.getNext(dataset)
-    for filename in filenames[1:]:
-      self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
+        dataset = readers.TFRecordDataset(filenames).ignore_errors()
+        get_next = self.getNext(dataset)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testTFRecordDatasetIgnoreError(self):
-    filenames = []
-    for i in range(5):
-      fn = os.path.join(self.get_temp_dir(), "tf_record.%d.txt" % i)
-      filenames.append(fn)
-      writer = python_io.TFRecordWriter(fn)
-      for _ in range(10):
-        writer.write(b"record")
-      writer.close()
-      # Append corrupted data
-      with open(fn, "a") as f:
-        f.write("corrupted data")
+        # All of the files are present.
+        for _ in filenames:
+            for _ in range(10):
+                self.assertEqual(b"record", self.evaluate(get_next()))
+        with self.assertRaises(errors.OutOfRangeError):
+            self.evaluate(get_next())
 
-    dataset = readers.TFRecordDataset(filenames).ignore_errors()
-    get_next = self.getNext(dataset)
+    @combinations.generate(test_base.default_test_combinations())
+    def testZipIgnoreError(self):
+        a = dataset_ops.Dataset.from_tensor_slices([1.0, 2.0, 0.0, 4.0])
+        b = a.map(lambda x: array_ops.check_numerics(1.0 / x, "error"))
 
-    # All of the files are present.
-    for _ in filenames:
-      for _ in range(10):
-        self.assertEqual(b"record", self.evaluate(get_next()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
+        dataset = dataset_ops.Dataset.zip((b, a)).ignore_errors()
+        get_next = self.getNext(dataset)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testZipIgnoreError(self):
-    a = dataset_ops.Dataset.from_tensor_slices([1., 2., 0., 4.])
-    b = a.map(lambda x: array_ops.check_numerics(1. / x, "error"))
+        for x in [1.0, 2.0, 4.0]:
+            self.assertEqual((1.0 / x, x), self.evaluate(get_next()))
+        with self.assertRaises(errors.OutOfRangeError):
+            self.evaluate(get_next())
 
-    dataset = dataset_ops.Dataset.zip((b, a)).ignore_errors()
-    get_next = self.getNext(dataset)
-
-    for x in [1., 2., 4.]:
-      self.assertEqual((1. / x, x), self.evaluate(get_next()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testCardinality(self):
-    ds = dataset_ops.Dataset.range(10).ignore_errors()
-    self.assertEqual(self.evaluate(ds.cardinality()), dataset_ops.UNKNOWN)
+    @combinations.generate(test_base.default_test_combinations())
+    def testCardinality(self):
+        ds = dataset_ops.Dataset.range(10).ignore_errors()
+        self.assertEqual(self.evaluate(ds.cardinality()), dataset_ops.UNKNOWN)
 
 
-class IgnoreErrorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                 parameterized.TestCase):
+class IgnoreErrorsCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase
+):
+    def _build_ds(self):
+        components = np.array([1.0, 2.0, 3.0, np.nan, 5.0]).astype(np.float32)
 
-  def _build_ds(self):
-    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+        dataset = dataset_ops.Dataset.from_tensor_slices(components)
+        dataset = dataset.map(lambda x: array_ops.check_numerics(x, "message"))
+        dataset = dataset.ignore_errors()
+        options = options_lib.Options()
+        options.experimental_external_state_policy = (
+            options_lib.ExternalStatePolicy.IGNORE
+        )
+        return dataset.with_options(options)
 
-    dataset = dataset_ops.Dataset.from_tensor_slices(components)
-    dataset = dataset.map(lambda x: array_ops.check_numerics(x, "message"))
-    dataset = dataset.ignore_errors()
-    options = options_lib.Options()
-    options.experimental_external_state_policy = (
-        options_lib.ExternalStatePolicy.IGNORE)
-    return dataset.with_options(options)
-
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
-    verify_fn(self, self._build_ds, num_outputs=4)
+    @combinations.generate(
+        combinations.times(
+            test_base.default_test_combinations(),
+            checkpoint_test_base.default_test_combinations(),
+        )
+    )
+    def test(self, verify_fn):
+        verify_fn(self, self._build_ds, num_outputs=4)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

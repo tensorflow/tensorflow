@@ -20,6 +20,7 @@ def savedmodel_to_stablehlo(
     tag_names: list[str] = ["serve"],
     input_arg_shapes_str: str = "",
 ) -> bytes: ...
+
 # LINT.ThenChange()
 
 # LINT.IfChange(tensorflow_module_to_stablehlo)
@@ -27,4 +28,5 @@ def tensorflow_module_to_stablehlo(
     module: str,
     input_arg_shapes_str: str = "",
 ) -> bytes: ...
+
 # LINT.ThenChange()

@@ -16,50 +16,49 @@
 
 
 def simple_function(x):
-  """Docstring."""
-  return x  # comment
+    """Docstring."""
+    return x  # comment
 
 
 def nested_functions(x):
-  """Docstring."""
+    """Docstring."""
 
-  def inner_fn(y):
-    return y
+    def inner_fn(y):
+        return y
 
-  return inner_fn(x)
+    return inner_fn(x)
 
 
 def function_with_print():
-  print('foo')
+    print("foo")
 
 
 simple_lambda = lambda: None
 
 
 class SimpleClass(object):
+    def simple_method(self):
+        return self
 
-  def simple_method(self):
-    return self
-
-  def method_with_print(self):
-    print('foo')
+    def method_with_print(self):
+        print("foo")
 
 
 def function_with_multiline_call(x):
-  """Docstring."""
-  return range(
-      x,
-      x + 1,
-  )
+    """Docstring."""
+    return range(
+        x,
+        x + 1,
+    )
 
 
 def basic_decorator(f):
-  return f
+    return f
 
 
 @basic_decorator
 @basic_decorator
 def decorated_function(x):
-  if x > 0:
-    return 1
-  return 2
+    if x > 0:
+        return 1
+    return 2

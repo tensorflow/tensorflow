@@ -26,10 +26,8 @@ GlobalPythonEagerContext = runtime_client_pybind.GlobalPythonEagerContext
 
 # TODO(mdan): Map without adapters once pybind11_protobuf available
 class Runtime(runtime_client_pybind.Runtime):
+    def GetFunctionProto(self, name: str) -> function_pb2.FunctionDef:
+        return function_pb2.FunctionDef.FromString(self.GetFunctionProtoString(name))
 
-  def GetFunctionProto(self, name: str) -> function_pb2.FunctionDef:
-    return function_pb2.FunctionDef.FromString(
-        self.GetFunctionProtoString(name))
-
-  def CreateFunction(self, function_def: function_pb2.FunctionDef):
-    self.CreateFunctionFromString(function_def.SerializeToString())
+    def CreateFunction(self, function_def: function_pb2.FunctionDef):
+        self.CreateFunctionFromString(function_def.SerializeToString())

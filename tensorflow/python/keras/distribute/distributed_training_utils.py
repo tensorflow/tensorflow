@@ -25,41 +25,42 @@ from tensorflow.python.ops import variables
 # core MirroredStrategy only. Remove this check when contrib MirroredStrategy is
 # no longer needed.
 def global_batch_size_supported(distribution_strategy):
-  return distribution_strategy.extended._global_batch_size  # pylint: disable=protected-access
+    return distribution_strategy.extended._global_batch_size  # pylint: disable=protected-access
 
 
 def call_replica_local_fn(fn, *args, **kwargs):
-  """Call a function that uses replica-local variables.
+    """Call a function that uses replica-local variables.
 
-  This function correctly handles calling `fn` in a cross-replica
-  context.
+    This function correctly handles calling `fn` in a cross-replica
+    context.
 
-  Args:
-    fn: The function to call.
-    *args: Positional arguments to the `fn`.
-    **kwargs: Keyword argument to `fn`.
+    Args:
+      fn: The function to call.
+      *args: Positional arguments to the `fn`.
+      **kwargs: Keyword argument to `fn`.
 
-  Returns:
-    The result of calling `fn`.
-  """
-  # TODO(b/132666209): Remove this function when we support assign_*
-  # for replica-local variables.
-  strategy = None
-  if 'strategy' in kwargs:
-    strategy = kwargs.pop('strategy')
-  else:
-    if distribute_lib.has_strategy():
-      strategy = distribute_lib.get_strategy()
+    Returns:
+      The result of calling `fn`.
+    """
+    # TODO(b/132666209): Remove this function when we support assign_*
+    # for replica-local variables.
+    strategy = None
+    if "strategy" in kwargs:
+        strategy = kwargs.pop("strategy")
+    else:
+        if distribute_lib.has_strategy():
+            strategy = distribute_lib.get_strategy()
 
-  # TODO(b/120571621): TPUStrategy does not implement replica-local variables.
-  is_tpu = backend.is_tpu_strategy(strategy)
-  if ((not is_tpu) and strategy and distribute_lib.in_cross_replica_context()):
-    with strategy.scope():
-      return strategy.extended.call_for_each_replica(fn, args, kwargs)
-  return fn(*args, **kwargs)
+    # TODO(b/120571621): TPUStrategy does not implement replica-local variables.
+    is_tpu = backend.is_tpu_strategy(strategy)
+    if (not is_tpu) and strategy and distribute_lib.in_cross_replica_context():
+        with strategy.scope():
+            return strategy.extended.call_for_each_replica(fn, args, kwargs)
+    return fn(*args, **kwargs)
 
 
 def is_distributed_variable(v):
-  """Returns whether `v` is a distributed variable."""
-  return (isinstance(v, values_lib.DistributedValues) and
-          isinstance(v, variables.Variable))
+    """Returns whether `v` is a distributed variable."""
+    return isinstance(v, values_lib.DistributedValues) and isinstance(
+        v, variables.Variable
+    )

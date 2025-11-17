@@ -22,67 +22,67 @@ from tensorflow.python.util.tf_export import tf_export
 
 # TODO(b/149584798): add tests for non-tf.data functionality.
 class NoneTensor(composite_tensor.CompositeTensor):
-  """Composite tensor representation for `None` value."""
+    """Composite tensor representation for `None` value."""
 
-  @property
-  def _type_spec(self):
-    return NoneTensorSpec()
+    @property
+    def _type_spec(self):
+        return NoneTensorSpec()
 
 
 # TODO(b/149584798): add tests for non-tf.data functionality.
 @tf_export("NoneTensorSpec")
 @type_spec_registry.register("tf.NoneTensorSpec")
 class NoneTensorSpec(type_spec.BatchableTypeSpec):
-  """Type specification for `None` value."""
+    """Type specification for `None` value."""
 
-  @property
-  def value_type(self):
-    return NoneTensor
+    @property
+    def value_type(self):
+        return NoneTensor
 
-  def _serialize(self):
-    return ()
+    def _serialize(self):
+        return ()
 
-  @property
-  def _component_specs(self):
-    return []
+    @property
+    def _component_specs(self):
+        return []
 
-  def _to_components(self, value):
-    return []
+    def _to_components(self, value):
+        return []
 
-  def _from_components(self, components):
-    return
+    def _from_components(self, components):
+        return
 
-  def _to_tensor_list(self, value):
-    return []
+    def _to_tensor_list(self, value):
+        return []
 
-  @staticmethod
-  def from_value(value):
-    return NoneTensorSpec()
+    @staticmethod
+    def from_value(value):
+        return NoneTensorSpec()
 
-  def _batch(self, batch_size):
-    return NoneTensorSpec()
+    def _batch(self, batch_size):
+        return NoneTensorSpec()
 
-  def _unbatch(self):
-    return NoneTensorSpec()
+    def _unbatch(self):
+        return NoneTensorSpec()
 
-  def _to_batched_tensor_list(self, value):
-    return []
+    def _to_batched_tensor_list(self, value):
+        return []
 
-  def _to_legacy_output_types(self):
-    return self
+    def _to_legacy_output_types(self):
+        return self
 
-  def _to_legacy_output_shapes(self):
-    return self
+    def _to_legacy_output_shapes(self):
+        return self
 
-  def _to_legacy_output_classes(self):
-    return self
+    def _to_legacy_output_classes(self):
+        return self
 
-  def most_specific_compatible_shape(self, other):
-    if type(self) is not type(other):
-      raise ValueError("No `TypeSpec` is compatible with both {} and {}".format(
-          self, other))
-    return self
+    def most_specific_compatible_shape(self, other):
+        if type(self) is not type(other):
+            raise ValueError(
+                "No `TypeSpec` is compatible with both {} and {}".format(self, other)
+            )
+        return self
 
 
-type_spec.register_type_spec_from_value_converter(type(None),
-                                                  NoneTensorSpec.from_value)
+type_spec.register_type_spec_from_value_converter(type(None), NoneTensorSpec.from_value)

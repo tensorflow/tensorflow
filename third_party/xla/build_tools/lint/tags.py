@@ -21,6 +21,7 @@ https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/build.proto
 but this is not possible due to XLA's old protobuf version. So we parse by hand
 instead.
 """
+
 import logging
 import sys
 from typing import Set
@@ -55,8 +56,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     ),
     # GPU tags
     "requires-gpu": (
-        "Test requires GPU to execute. Fallback if neither CUDA nor ROCm is"
-        " specified."
+        "Test requires GPU to execute. Fallback if neither CUDA nor ROCm is specified."
     ),
     "requires-gpu-amd": "Test requires AMD GPU to execute",
     "requires-gpu-intel": "Test requires Intel GPU to execute",
@@ -99,37 +99,37 @@ _TAGS_TO_DOCUMENTATION_MAP = {
 
 
 def get_tags_from_line(line: str) -> Set[str]:
-  if line.strip().startswith("tags = "):
-    tags_list = line[10:-3]  # "tag1", "tag2"
-    if tags_list.strip():
-      # Remove extraneous quotes, tags like `-broken` used in test_suites,
-      # and split on ", "
-      return {tag.strip('-"') for tag in tags_list.split(", ")}
+    if line.strip().startswith("tags = "):
+        tags_list = line[10:-3]  # "tag1", "tag2"
+        if tags_list.strip():
+            # Remove extraneous quotes, tags like `-broken` used in test_suites,
+            # and split on ", "
+            return {tag.strip('-"') for tag in tags_list.split(", ")}
 
-  return set()
+    return set()
 
 
 def main():
-  logging.basicConfig()
-  logging.getLogger().setLevel(logging.INFO)
+    logging.basicConfig()
+    logging.getLogger().setLevel(logging.INFO)
 
-  tags = set.union(*(get_tags_from_line(line) for line in sys.stdin))
+    tags = set.union(*(get_tags_from_line(line) for line in sys.stdin))
 
-  logging.info(str(tags))
+    logging.info(str(tags))
 
-  if undocumented_tags := tags - _TAGS_TO_DOCUMENTATION_MAP.keys():
-    raise ValueError(
-        f"Tag(s) {undocumented_tags} are undocumented! Please document them in"
-        " `build_tools/lint/tags.py`."
-    )
+    if undocumented_tags := tags - _TAGS_TO_DOCUMENTATION_MAP.keys():
+        raise ValueError(
+            f"Tag(s) {undocumented_tags} are undocumented! Please document them in"
+            " `build_tools/lint/tags.py`."
+        )
 
-  if unused_but_documented_tags := _TAGS_TO_DOCUMENTATION_MAP.keys() - tags:
-    logging.info(
-        "The following tags are documented but unused: %s. Do we expect they'll"
-        " be used in the future?",
-        str(unused_but_documented_tags),
-    )
+    if unused_but_documented_tags := _TAGS_TO_DOCUMENTATION_MAP.keys() - tags:
+        logging.info(
+            "The following tags are documented but unused: %s. Do we expect they'll"
+            " be used in the future?",
+            str(unused_but_documented_tags),
+        )
 
 
 if __name__ == "__main__":
-  main()
+    main()

@@ -25,22 +25,21 @@ from tensorflow.python.platform import googletest
 
 
 class UniqueTest(xla_test.XLATestCase):
-
-  def testNegativeAxis(self):
-    """Verifies that an axis with negative index is converted to positive."""
-    with self.session() as session:
-      with self.test_scope():
-        px = array_ops.placeholder(dtypes.float32, [2, 1, 1], name="x")
-        axis = constant_op.constant([-1], dtype=dtypes.int32)
-        output = gen_array_ops.unique_v2(px, axis)
-      result = session.run(
-          output, {px: np.array([[[-2.0]], [[10.0]]], dtype=np.float32)}
-      )
-      self.assertAllEqual(
-          result.y, np.array([[[-2.0]], [[10.0]]], dtype=np.float32)
-      )
-      self.assertAllEqual(result.idx, np.array([0], dtype=np.int32))
+    def testNegativeAxis(self):
+        """Verifies that an axis with negative index is converted to positive."""
+        with self.session() as session:
+            with self.test_scope():
+                px = array_ops.placeholder(dtypes.float32, [2, 1, 1], name="x")
+                axis = constant_op.constant([-1], dtype=dtypes.int32)
+                output = gen_array_ops.unique_v2(px, axis)
+            result = session.run(
+                output, {px: np.array([[[-2.0]], [[10.0]]], dtype=np.float32)}
+            )
+            self.assertAllEqual(
+                result.y, np.array([[[-2.0]], [[10.0]]], dtype=np.float32)
+            )
+            self.assertAllEqual(result.idx, np.array([0], dtype=np.int32))
 
 
 if __name__ == "__main__":
-  googletest.main()
+    googletest.main()

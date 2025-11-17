@@ -22,28 +22,30 @@ from tensorflow.python.platform import test
 
 
 class UtilsTest(test.TestCase, parameterized.TestCase):
+    def setUp(self):
+        super(UtilsTest, self).setUp()
+        self._old_np_doc_form = np_utils.get_np_doc_form()
+        self._old_is_sig_mismatch_an_error = np_utils.is_sig_mismatch_an_error()
 
-  def setUp(self):
-    super(UtilsTest, self).setUp()
-    self._old_np_doc_form = np_utils.get_np_doc_form()
-    self._old_is_sig_mismatch_an_error = np_utils.is_sig_mismatch_an_error()
+    def tearDown(self):
+        np_utils.set_np_doc_form(self._old_np_doc_form)
+        np_utils.set_is_sig_mismatch_an_error(self._old_is_sig_mismatch_an_error)
+        super(UtilsTest, self).tearDown()
 
-  def tearDown(self):
-    np_utils.set_np_doc_form(self._old_np_doc_form)
-    np_utils.set_is_sig_mismatch_an_error(self._old_is_sig_mismatch_an_error)
-    super(UtilsTest, self).tearDown()
+    # pylint: disable=unused-argument
+    def testNpDocInlined(self):
+        def np_fun(x, y, z):
+            """np_fun docstring."""
+            return
 
-  # pylint: disable=unused-argument
-  def testNpDocInlined(self):
-    def np_fun(x, y, z):
-      """np_fun docstring."""
-      return
-    np_utils.set_np_doc_form('inlined')
-    @np_utils.np_doc(None, np_fun=np_fun, unsupported_params=['x'])
-    def f(x, z):
-      """f docstring."""
-      return
-    expected = """TensorFlow variant of NumPy's `np_fun`.
+        np_utils.set_np_doc_form("inlined")
+
+        @np_utils.np_doc(None, np_fun=np_fun, unsupported_params=["x"])
+        def f(x, z):
+            """f docstring."""
+            return
+
+        expected = """TensorFlow variant of NumPy's `np_fun`.
 
 Unsupported arguments: `x`, `y`.
 
@@ -52,136 +54,156 @@ f docstring.
 Documentation for `numpy.np_fun`:
 
 np_fun docstring."""
-    self.assertEqual(expected, f.__doc__)
+        self.assertEqual(expected, f.__doc__)
 
-  @parameterized.named_parameters([
-      (version, version, link) for version, link in  # pylint: disable=g-complex-comprehension
-      [('dev',
-        'https://numpy.org/devdocs/reference/generated/numpy.np_fun.html'),
-       ('stable',
-        'https://numpy.org/doc/stable/reference/generated/numpy.np_fun.html'),
-       ('1.16',
-        'https://numpy.org/doc/1.16/reference/generated/numpy.np_fun.html')
-      ]])
-  def testNpDocLink(self, version, link):
-    def np_fun(x, y, z):
-      """np_fun docstring."""
-      return
-    np_utils.set_np_doc_form(version)
-    @np_utils.np_doc(None, np_fun=np_fun, unsupported_params=['x'])
-    def f(x, z):
-      """f docstring."""
-      return
-    expected = """TensorFlow variant of NumPy's `np_fun`.
+    @parameterized.named_parameters(
+        [
+            (version, version, link)
+            for version, link in [  # pylint: disable=g-complex-comprehension
+                (
+                    "dev",
+                    "https://numpy.org/devdocs/reference/generated/numpy.np_fun.html",
+                ),
+                (
+                    "stable",
+                    "https://numpy.org/doc/stable/reference/generated/numpy.np_fun.html",
+                ),
+                (
+                    "1.16",
+                    "https://numpy.org/doc/1.16/reference/generated/numpy.np_fun.html",
+                ),
+            ]
+        ]
+    )
+    def testNpDocLink(self, version, link):
+        def np_fun(x, y, z):
+            """np_fun docstring."""
+            return
+
+        np_utils.set_np_doc_form(version)
+
+        @np_utils.np_doc(None, np_fun=np_fun, unsupported_params=["x"])
+        def f(x, z):
+            """f docstring."""
+            return
+
+        expected = """TensorFlow variant of NumPy's `np_fun`.
 
 Unsupported arguments: `x`, `y`.
 
 f docstring.
 
 See the NumPy documentation for [`numpy.np_fun`](%s)."""
-    expected = expected % (link)
-    self.assertEqual(expected, f.__doc__)
+        expected = expected % (link)
+        self.assertEqual(expected, f.__doc__)
 
-  @parameterized.parameters([None, 1, 'a', '1a', '1.1a', '1.1.1a'])
-  def testNpDocInvalid(self, invalid_flag):
-    def np_fun(x, y, z):
-      """np_fun docstring."""
-      return
-    np_utils.set_np_doc_form(invalid_flag)
-    @np_utils.np_doc(None, np_fun=np_fun, unsupported_params=['x'])
-    def f(x, z):
-      """f docstring."""
-      return
-    expected = """TensorFlow variant of NumPy's `np_fun`.
+    @parameterized.parameters([None, 1, "a", "1a", "1.1a", "1.1.1a"])
+    def testNpDocInvalid(self, invalid_flag):
+        def np_fun(x, y, z):
+            """np_fun docstring."""
+            return
+
+        np_utils.set_np_doc_form(invalid_flag)
+
+        @np_utils.np_doc(None, np_fun=np_fun, unsupported_params=["x"])
+        def f(x, z):
+            """f docstring."""
+            return
+
+        expected = """TensorFlow variant of NumPy's `np_fun`.
 
 Unsupported arguments: `x`, `y`.
 
 f docstring.
 
 """
-    self.assertEqual(expected, f.__doc__)
+        self.assertEqual(expected, f.__doc__)
 
-  def testNpDocName(self):
-    np_utils.set_np_doc_form('inlined')
-    @np_utils.np_doc('foo')
-    def f():
-      """f docstring."""
-      return
-    expected = """TensorFlow variant of NumPy's `foo`.
+    def testNpDocName(self):
+        np_utils.set_np_doc_form("inlined")
+
+        @np_utils.np_doc("foo")
+        def f():
+            """f docstring."""
+            return
+
+        expected = """TensorFlow variant of NumPy's `foo`.
 
 f docstring.
 
 """
-    self.assertEqual(expected, f.__doc__)
+        self.assertEqual(expected, f.__doc__)
 
-  def testDtypeOfTensorLikeClass(self):
+    def testDtypeOfTensorLikeClass(self):
+        class TensorLike:
+            def __init__(self, dtype):
+                self._dtype = dtype
 
-    class TensorLike:
+            @property
+            def is_tensor_like(self):
+                return True
 
-      def __init__(self, dtype):
-        self._dtype = dtype
+            @property
+            def dtype(self):
+                return self._dtype
 
-      @property
-      def is_tensor_like(self):
-        return True
+        t = TensorLike(dtypes.float32)
+        self.assertEqual(np_utils._maybe_get_dtype(t), dtypes.float32)
 
-      @property
-      def dtype(self):
-        return self._dtype
+    # pylint: disable=unused-variable
+    def testSigMismatchIsError(self):
+        """Tests that signature mismatch is an error (when configured so)."""
+        if not np_utils._supports_signature():
+            self.skipTest("inspect.signature not supported")
 
-    t = TensorLike(dtypes.float32)
-    self.assertEqual(np_utils._maybe_get_dtype(t), dtypes.float32)
+        np_utils.set_is_sig_mismatch_an_error(True)
 
-  # pylint: disable=unused-variable
-  def testSigMismatchIsError(self):
-    """Tests that signature mismatch is an error (when configured so)."""
-    if not np_utils._supports_signature():
-      self.skipTest('inspect.signature not supported')
+        def np_fun(x, y=1, **kwargs):
+            return
 
-    np_utils.set_is_sig_mismatch_an_error(True)
+        with self.assertRaisesRegex(TypeError, "Cannot find parameter"):
 
-    def np_fun(x, y=1, **kwargs):
-      return
+            @np_utils.np_doc(None, np_fun=np_fun)
+            def f1(a):
+                return
 
-    with self.assertRaisesRegex(TypeError, 'Cannot find parameter'):
-      @np_utils.np_doc(None, np_fun=np_fun)
-      def f1(a):
-        return
+        with self.assertRaisesRegex(TypeError, "is of kind"):
 
-    with self.assertRaisesRegex(TypeError, 'is of kind'):
-      @np_utils.np_doc(None, np_fun=np_fun)
-      def f2(x, kwargs):
-        return
+            @np_utils.np_doc(None, np_fun=np_fun)
+            def f2(x, kwargs):
+                return
 
-    with self.assertRaisesRegex(
-        TypeError, 'Parameter y should have a default value'):
-      @np_utils.np_doc(None, np_fun=np_fun)
-      def f3(x, y):
-        return
+        with self.assertRaisesRegex(
+            TypeError, "Parameter y should have a default value"
+        ):
 
-  def testSigMismatchIsNotError(self):
-    """Tests that signature mismatch is not an error (when configured so)."""
-    np_utils.set_is_sig_mismatch_an_error(False)
+            @np_utils.np_doc(None, np_fun=np_fun)
+            def f3(x, y):
+                return
 
-    def np_fun(x, y=1, **kwargs):
-      return
+    def testSigMismatchIsNotError(self):
+        """Tests that signature mismatch is not an error (when configured so)."""
+        np_utils.set_is_sig_mismatch_an_error(False)
 
-    # The following functions all have signature mismatches, but they shouldn't
-    # throw errors when is_sig_mismatch_an_error() is False.
+        def np_fun(x, y=1, **kwargs):
+            return
 
-    @np_utils.np_doc(None, np_fun=np_fun)
-    def f1(a):
-      return
+        # The following functions all have signature mismatches, but they shouldn't
+        # throw errors when is_sig_mismatch_an_error() is False.
 
-    def f2(x, kwargs):
-      return
+        @np_utils.np_doc(None, np_fun=np_fun)
+        def f1(a):
+            return
 
-    @np_utils.np_doc(None, np_fun=np_fun)
-    def f3(x, y):
-      return
+        def f2(x, kwargs):
+            return
 
-  # pylint: enable=unused-variable
+        @np_utils.np_doc(None, np_fun=np_fun)
+        def f3(x, y):
+            return
+
+    # pylint: enable=unused-variable
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

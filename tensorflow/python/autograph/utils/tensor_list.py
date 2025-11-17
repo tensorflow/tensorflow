@@ -20,45 +20,45 @@ from tensorflow.python.ops import tensor_array_ops
 
 
 def dynamic_list_append(target, element):
-  """Converts a list append call inline."""
-  if isinstance(target, tensor_array_ops.TensorArray):
-    return target.write(target.size(), element)
-  # TODO(mdan): What's the right way to check this?
-  # TODO(mdan): We may not need this branch.
-  # It may be possible to use TensorList alone if the loop body will not
-  # require wrapping it, although we'd have to think about an autoboxing
-  # mechanism for lists received as parameter.
-  if isinstance(target, tensor.Tensor):
-    return list_ops.tensor_list_push_back(target, element)
+    """Converts a list append call inline."""
+    if isinstance(target, tensor_array_ops.TensorArray):
+        return target.write(target.size(), element)
+    # TODO(mdan): What's the right way to check this?
+    # TODO(mdan): We may not need this branch.
+    # It may be possible to use TensorList alone if the loop body will not
+    # require wrapping it, although we'd have to think about an autoboxing
+    # mechanism for lists received as parameter.
+    if isinstance(target, tensor.Tensor):
+        return list_ops.tensor_list_push_back(target, element)
 
-  # Python targets (including TensorList): fallback to their original append.
-  target.append(element)
-  return target
+    # Python targets (including TensorList): fallback to their original append.
+    target.append(element)
+    return target
 
 
 class TensorList(object):
-  """Tensor list wrapper API-compatible with Python built-in list."""
+    """Tensor list wrapper API-compatible with Python built-in list."""
 
-  def __init__(self, shape, dtype):
-    self.dtype = dtype
-    self.shape = shape
-    self.clear()
+    def __init__(self, shape, dtype):
+        self.dtype = dtype
+        self.shape = shape
+        self.clear()
 
-  def append(self, value):
-    self.list_ = list_ops.tensor_list_push_back(self.list_, value)
+    def append(self, value):
+        self.list_ = list_ops.tensor_list_push_back(self.list_, value)
 
-  def pop(self):
-    self.list_, value = list_ops.tensor_list_pop_back(self.list_, self.dtype)
-    return value
+    def pop(self):
+        self.list_, value = list_ops.tensor_list_pop_back(self.list_, self.dtype)
+        return value
 
-  def clear(self):
-    self.list_ = list_ops.empty_tensor_list(self.shape, self.dtype)
+    def clear(self):
+        self.list_ = list_ops.empty_tensor_list(self.shape, self.dtype)
 
-  def count(self):
-    return list_ops.tensor_list_length(self.list_)
+    def count(self):
+        return list_ops.tensor_list_length(self.list_)
 
-  def __getitem__(self, key):
-    return list_ops.tensor_list_get_item(self.list_, key, self.dtype)
+    def __getitem__(self, key):
+        return list_ops.tensor_list_get_item(self.list_, key, self.dtype)
 
-  def __setitem__(self, key, value):
-    self.list_ = list_ops.tensor_list_set_item(self.list_, key, value)
+    def __setitem__(self, key, value):
+        self.list_ = list_ops.tensor_list_set_item(self.list_, key, value)

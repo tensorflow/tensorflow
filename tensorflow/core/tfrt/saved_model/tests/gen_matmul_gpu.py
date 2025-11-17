@@ -30,39 +30,41 @@ from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import save_options
 
-flags.DEFINE_string('saved_model_path', '', 'Path to save the model to.')
+flags.DEFINE_string("saved_model_path", "", "Path to save the model to.")
 FLAGS = flags.FLAGS
 
 
 class ToyModule(module.Module):
-  """Defines a toy module."""
+    """Defines a toy module."""
 
-  def __init__(self):
-    super(ToyModule, self).__init__()
-    self.w = variables.Variable(
-        constant_op.constant([[1.0], [2.0], [3.0]]), name='w')
+    def __init__(self):
+        super(ToyModule, self).__init__()
+        self.w = variables.Variable(
+            constant_op.constant([[1.0], [2.0], [3.0]]), name="w"
+        )
 
-  @def_function.function(input_signature=[
-      tensor_spec.TensorSpec([1, 3], dtypes.float32, name='input')
-  ])
-  def toy(self, x):
-    with ops.device('/gpu:0'):
-      r = math_ops.matmul(x, self.w, name='result')
-    return r
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([1, 3], dtypes.float32, name="input")]
+    )
+    def toy(self, x):
+        with ops.device("/gpu:0"):
+            r = math_ops.matmul(x, self.w, name="result")
+        return r
 
 
 def main(argv):
-  if len(argv) > 1:
-    raise app.UsageError('Too many command-line arguments.')
+    if len(argv) > 1:
+        raise app.UsageError("Too many command-line arguments.")
 
-  v2_compat.enable_v2_behavior()
+    v2_compat.enable_v2_behavior()
 
-  save.save(
-      ToyModule(),
-      FLAGS.saved_model_path,
-      options=save_options.SaveOptions(save_debug_info=False))
-  logging.info('Saved model to: %s', FLAGS.saved_model_path)
+    save.save(
+        ToyModule(),
+        FLAGS.saved_model_path,
+        options=save_options.SaveOptions(save_debug_info=False),
+    )
+    logging.info("Saved model to: %s", FLAGS.saved_model_path)
 
 
-if __name__ == '__main__':
-  app.run(main)
+if __name__ == "__main__":
+    app.run(main)

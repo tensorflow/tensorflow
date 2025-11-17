@@ -21,6 +21,4 @@ from tensorflow.python.ops.linalg.sparse.sparse_csr_matrix_grad import *
 from tensorflow.python.ops.linalg.sparse.sparse_csr_matrix_ops import *
 # pylint: enable=wildcard-import
 
-__all__ = [
-    'conjugate_gradient'
-]
+__all__ = ["conjugate_gradient"]

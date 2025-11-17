@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A Dual Coordinate Ascent optimizer library for training fast linear models.
-"""
+"""A Dual Coordinate Ascent optimizer library for training fast linear models."""
 
 # pylint: disable=g-bad-name
 from tensorflow.python.framework import ops

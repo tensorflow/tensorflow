@@ -49,22 +49,22 @@ TENSOR_HANDLE_KEY = get_tensor_handle_key()
 # Disable pylint invalid name warnings for legacy functions.
 # pylint: disable=invalid-name
 def TF_NewSessionOptions(target=None, config=None):
-  # NOTE: target and config are validated in the session constructor.
-  opts = _TF_NewSessionOptions()
-  if target is not None:
-    _TF_SetTarget(opts, target)
-  if config is not None:
-    config_str = config.SerializeToString()
-    _TF_SetConfig(opts, config_str)
-  return opts
+    # NOTE: target and config are validated in the session constructor.
+    opts = _TF_NewSessionOptions()
+    if target is not None:
+        _TF_SetTarget(opts, target)
+    if config is not None:
+        config_str = config.SerializeToString()
+        _TF_SetConfig(opts, config_str)
+    return opts
 
 
 # Disable pylind undefined-variable as the variable is exported in the shared
 # object via pybind11.
 # pylint: disable=undefined-variable
 def TF_Reset(target, containers=None, config=None):
-  opts = TF_NewSessionOptions(target=target, config=config)
-  try:
-    TF_Reset_wrapper(opts, containers)
-  finally:
-    TF_DeleteSessionOptions(opts)
+    opts = TF_NewSessionOptions(target=target, config=config)
+    try:
+        TF_Reset_wrapper(opts, containers)
+    finally:
+        TF_DeleteSessionOptions(opts)

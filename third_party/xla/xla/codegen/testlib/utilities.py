@@ -23,22 +23,22 @@ from xla.python import xla_extension
 
 
 def create_scalar_literal(value, dtype: np.dtype) -> xla_extension.Literal:
-  shape = xla_extension.Shape.scalar_shape(dtype)
-  literal = xla_extension.Literal(shape)
-  np.copyto(np.asarray(literal), value)
-  return literal
+    shape = xla_extension.Shape.scalar_shape(dtype)
+    literal = xla_extension.Literal(shape)
+    np.copyto(np.asarray(literal), value)
+    return literal
 
 
 def create_literal_from_np(
     array: np.ndarray, layout: Optional[list[int]] = None
 ) -> xla_extension.Literal:
-  if np.ndim(array) == 0:
-    return create_scalar_literal(array.item(), array.dtype)
+    if np.ndim(array) == 0:
+        return create_scalar_literal(array.item(), array.dtype)
 
-  shape = xla_extension.Shape.array_shape(array.dtype, array.shape, layout)
-  literal = xla_extension.Literal(shape)
-  np.copyto(np.asarray(literal), array)
-  return literal
+    shape = xla_extension.Shape.array_shape(array.dtype, array.shape, layout)
+    literal = xla_extension.Literal(shape)
+    np.copyto(np.asarray(literal), array)
+    return literal
 
 
 # Intentionally rexport-ed to be avalable in the public API.

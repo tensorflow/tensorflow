@@ -54,173 +54,172 @@ import numpy as _np
 from tensorflow.python.util.tf_export import tf_export
 
 
-def as_bytes(bytes_or_text, encoding='utf-8'):
-  """Converts `bytearray`, `bytes`, or unicode python input types to `bytes`.
+def as_bytes(bytes_or_text, encoding="utf-8"):
+    """Converts `bytearray`, `bytes`, or unicode python input types to `bytes`.
 
-  Uses utf-8 encoding for text by default.
+    Uses utf-8 encoding for text by default.
 
-  Args:
-    bytes_or_text: A `bytearray`, `bytes`, `str`, or `unicode` object.
-    encoding: A string indicating the charset for encoding unicode.
+    Args:
+      bytes_or_text: A `bytearray`, `bytes`, `str`, or `unicode` object.
+      encoding: A string indicating the charset for encoding unicode.
 
-  Returns:
-    A `bytes` object.
+    Returns:
+      A `bytes` object.
 
-  Raises:
-    TypeError: If `bytes_or_text` is not a binary or unicode string.
-  """
-  # Validate encoding, a LookupError will be raised if invalid.
-  encoding = codecs.lookup(encoding).name
-  if isinstance(bytes_or_text, bytearray):
-    return bytes(bytes_or_text)
-  elif isinstance(bytes_or_text, str):
-    return bytes_or_text.encode(encoding)
-  elif isinstance(bytes_or_text, bytes):
-    return bytes_or_text
-  else:
-    raise TypeError('Expected binary or unicode string, got %r' %
-                    (bytes_or_text,))
-
-
-def as_text(bytes_or_text, encoding='utf-8'):
-  """Converts any string-like python input types to unicode.
-
-  Returns the input as a unicode string. Uses utf-8 encoding for text
-  by default.
-
-  Args:
-    bytes_or_text: A `bytes`, `str`, or `unicode` object.
-    encoding: A string indicating the charset for decoding unicode.
-
-  Returns:
-    A `unicode` (Python 2) or `str` (Python 3) object.
-
-  Raises:
-    TypeError: If `bytes_or_text` is not a binary or unicode string.
-  """
-  # Validate encoding, a LookupError will be raised if invalid.
-  encoding = codecs.lookup(encoding).name
-  if isinstance(bytes_or_text, str):
-    return bytes_or_text
-  elif isinstance(bytes_or_text, bytes):
-    return bytes_or_text.decode(encoding)
-  else:
-    raise TypeError('Expected binary or unicode string, got %r' % bytes_or_text)
+    Raises:
+      TypeError: If `bytes_or_text` is not a binary or unicode string.
+    """
+    # Validate encoding, a LookupError will be raised if invalid.
+    encoding = codecs.lookup(encoding).name
+    if isinstance(bytes_or_text, bytearray):
+        return bytes(bytes_or_text)
+    elif isinstance(bytes_or_text, str):
+        return bytes_or_text.encode(encoding)
+    elif isinstance(bytes_or_text, bytes):
+        return bytes_or_text
+    else:
+        raise TypeError("Expected binary or unicode string, got %r" % (bytes_or_text,))
 
 
-def as_str(bytes_or_text, encoding='utf-8'):
-  """Acts as an alias for the `as_text` function..
+def as_text(bytes_or_text, encoding="utf-8"):
+    """Converts any string-like python input types to unicode.
 
-  Args:
-    bytes_or_text: The input value to be converted. A bytes or unicode object.
-    encoding: Optional string. The encoding to use if bytes_or_text is a bytes
-      object. Defaults to 'utf-8'.
+    Returns the input as a unicode string. Uses utf-8 encoding for text
+    by default.
 
-  Returns:
-    A unicode string.
+    Args:
+      bytes_or_text: A `bytes`, `str`, or `unicode` object.
+      encoding: A string indicating the charset for decoding unicode.
 
-  Raises:
-    TypeError: If bytes_or_text is not a bytes or unicode object.
-    UnicodeDecodeError: If bytes_or_text is a bytes object and cannot be
-                        decoded using the specified encoding.
-  """
-  return as_text(bytes_or_text, encoding)
+    Returns:
+      A `unicode` (Python 2) or `str` (Python 3) object.
 
-tf_export('compat.as_text')(as_text)
-tf_export('compat.as_bytes')(as_bytes)
-tf_export('compat.as_str')(as_str)
-
-
-@tf_export('compat.as_str_any')
-def as_str_any(value, encoding='utf-8'):
-  """Converts input to `str` type.
-
-     Uses `str(value)`, except for `bytes` typed inputs, which are converted
-     using `as_str`.
-
-  Args:
-    value: A object that can be converted to `str`.
-    encoding: Encoding for `bytes` typed inputs.
-
-  Returns:
-    A `str` object.
-  """
-  if isinstance(value, bytes):
-    return as_str(value, encoding=encoding)
-  else:
-    return str(value)
+    Raises:
+      TypeError: If `bytes_or_text` is not a binary or unicode string.
+    """
+    # Validate encoding, a LookupError will be raised if invalid.
+    encoding = codecs.lookup(encoding).name
+    if isinstance(bytes_or_text, str):
+        return bytes_or_text
+    elif isinstance(bytes_or_text, bytes):
+        return bytes_or_text.decode(encoding)
+    else:
+        raise TypeError("Expected binary or unicode string, got %r" % bytes_or_text)
 
 
-@tf_export('compat.path_to_str')
+def as_str(bytes_or_text, encoding="utf-8"):
+    """Acts as an alias for the `as_text` function..
+
+    Args:
+      bytes_or_text: The input value to be converted. A bytes or unicode object.
+      encoding: Optional string. The encoding to use if bytes_or_text is a bytes
+        object. Defaults to 'utf-8'.
+
+    Returns:
+      A unicode string.
+
+    Raises:
+      TypeError: If bytes_or_text is not a bytes or unicode object.
+      UnicodeDecodeError: If bytes_or_text is a bytes object and cannot be
+                          decoded using the specified encoding.
+    """
+    return as_text(bytes_or_text, encoding)
+
+
+tf_export("compat.as_text")(as_text)
+tf_export("compat.as_bytes")(as_bytes)
+tf_export("compat.as_str")(as_str)
+
+
+@tf_export("compat.as_str_any")
+def as_str_any(value, encoding="utf-8"):
+    """Converts input to `str` type.
+
+       Uses `str(value)`, except for `bytes` typed inputs, which are converted
+       using `as_str`.
+
+    Args:
+      value: A object that can be converted to `str`.
+      encoding: Encoding for `bytes` typed inputs.
+
+    Returns:
+      A `str` object.
+    """
+    if isinstance(value, bytes):
+        return as_str(value, encoding=encoding)
+    else:
+        return str(value)
+
+
+@tf_export("compat.path_to_str")
 def path_to_str(path):
-  r"""Converts input which is a `PathLike` object to `str` type.
+    r"""Converts input which is a `PathLike` object to `str` type.
 
-  Converts from any python constant representation of a `PathLike` object to
-  a string. If the input is not a `PathLike` object, simply returns the input.
+    Converts from any python constant representation of a `PathLike` object to
+    a string. If the input is not a `PathLike` object, simply returns the input.
 
-  Args:
-    path: An object that can be converted to path representation.
+    Args:
+      path: An object that can be converted to path representation.
 
-  Returns:
-    A `str` object.
+    Returns:
+      A `str` object.
 
-  Usage:
-    In case a simplified `str` version of the path is needed from an
-    `os.PathLike` object.
+    Usage:
+      In case a simplified `str` version of the path is needed from an
+      `os.PathLike` object.
 
-  Examples:
-  ```python
-  $ tf.compat.path_to_str('C:\XYZ\tensorflow\./.././tensorflow')
-  'C:\XYZ\tensorflow\./.././tensorflow' # Windows OS
-  $ tf.compat.path_to_str(Path('C:\XYZ\tensorflow\./.././tensorflow'))
-  'C:\XYZ\tensorflow\..\tensorflow' # Windows OS
-  $ tf.compat.path_to_str(Path('./corpus'))
-  'corpus' # Linux OS
-  $ tf.compat.path_to_str('./.././Corpus')
-  './.././Corpus' # Linux OS
-  $ tf.compat.path_to_str(Path('./.././Corpus'))
-  '../Corpus' # Linux OS
-  $ tf.compat.path_to_str(Path('./..////../'))
-  '../..' # Linux OS
+    Examples:
+    ```python
+    $ tf.compat.path_to_str('C:\XYZ\tensorflow\./.././tensorflow')
+    'C:\XYZ\tensorflow\./.././tensorflow' # Windows OS
+    $ tf.compat.path_to_str(Path('C:\XYZ\tensorflow\./.././tensorflow'))
+    'C:\XYZ\tensorflow\..\tensorflow' # Windows OS
+    $ tf.compat.path_to_str(Path('./corpus'))
+    'corpus' # Linux OS
+    $ tf.compat.path_to_str('./.././Corpus')
+    './.././Corpus' # Linux OS
+    $ tf.compat.path_to_str(Path('./.././Corpus'))
+    '../Corpus' # Linux OS
+    $ tf.compat.path_to_str(Path('./..////../'))
+    '../..' # Linux OS
 
-  ```
-  """
-  if hasattr(path, '__fspath__'):
-    path = as_str_any(path.__fspath__())
-  return path
+    ```
+    """
+    if hasattr(path, "__fspath__"):
+        path = as_str_any(path.__fspath__())
+    return path
 
 
 def path_to_bytes(path):
-  r"""Converts input which is a `PathLike` object to `bytes`.
+    r"""Converts input which is a `PathLike` object to `bytes`.
 
-  Converts from any python constant representation of a `PathLike` object
-  or `str` to bytes.
+    Converts from any python constant representation of a `PathLike` object
+    or `str` to bytes.
 
-  Args:
-    path: An object that can be converted to path representation.
+    Args:
+      path: An object that can be converted to path representation.
 
-  Returns:
-    A `bytes` object.
+    Returns:
+      A `bytes` object.
 
-  Usage:
-    In case a simplified `bytes` version of the path is needed from an
-    `os.PathLike` object.
-  """
-  if hasattr(path, '__fspath__'):
-    path = path.__fspath__()
-  return as_bytes(path)
+    Usage:
+      In case a simplified `bytes` version of the path is needed from an
+      `os.PathLike` object.
+    """
+    if hasattr(path, "__fspath__"):
+        path = path.__fspath__()
+    return as_bytes(path)
 
 
 # Numpy 1.8 scalars don't inherit from numbers.Integral in Python 3, so we
 # need to check them specifically.  The same goes from Real and Complex.
 integral_types = (_numbers.Integral, _np.integer)
-tf_export('compat.integral_types').export_constant(__name__, 'integral_types')
+tf_export("compat.integral_types").export_constant(__name__, "integral_types")
 real_types = (_numbers.Real, _np.integer, _np.floating)
-tf_export('compat.real_types').export_constant(__name__, 'real_types')
+tf_export("compat.real_types").export_constant(__name__, "real_types")
 complex_types = (_numbers.Complex, _np.number)
-tf_export('compat.complex_types').export_constant(__name__, 'complex_types')
+tf_export("compat.complex_types").export_constant(__name__, "complex_types")
 
 # Either bytes or text.
 bytes_or_text_types = (bytes, str)
-tf_export('compat.bytes_or_text_types').export_constant(__name__,
-                                                        'bytes_or_text_types')
+tf_export("compat.bytes_or_text_types").export_constant(__name__, "bytes_or_text_types")

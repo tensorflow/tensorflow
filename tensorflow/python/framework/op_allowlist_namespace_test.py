@@ -19,12 +19,11 @@ from tensorflow.python.platform import googletest
 
 
 class OpAllowlistNamespaceTest(googletest.TestCase):
-
-  def testOpAllowListNamespace(self):
-    """Test that the building of the python wrapper worked."""
-    op = test_namespace_ops.namespace_test_string_output
-    self.assertIsNotNone(op)
+    def testOpAllowListNamespace(self):
+        """Test that the building of the python wrapper worked."""
+        op = test_namespace_ops.namespace_test_string_output
+        self.assertIsNotNone(op)
 
 
 if __name__ == "__main__":
-  googletest.main()
+    googletest.main()

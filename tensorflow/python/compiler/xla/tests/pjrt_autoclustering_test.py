@@ -28,47 +28,45 @@ from tensorflow.python.ops import math_ops
 
 
 class PjrtAutoclusteringTest(test.TestCase):
+    def test_xla_compile_and_run_on_gpu_device(self):
+        if not test.is_gpu_available() or not test.is_built_with_gpu_support():
+            test.skipTest("Test only applicable on GPU")
 
-  def test_xla_compile_and_run_on_gpu_device(self):
+        @def_function.function
+        def arithmetic(x):
+            return 2 * x + 1
 
-    if not test.is_gpu_available() or not test.is_built_with_gpu_support():
-      test.skipTest("Test only applicable on GPU")
+        @def_function.function
+        def conditional(x):
+            # cond uses switch and merge, which are not supported by XLA based on
+            # https://docs.google.com/spreadsheets/d/1H8AIDdnlyyaWZOYN3WpBVNOmGOS_M8OyF7IA7kL3fjk/edit?resourcekey=0-I-mIp472YuK8FuBa5Zmzmg#gid=139369773
+            return cond.cond(math_ops.reduce_sum(x) < 5, lambda: x + x, lambda: x)
 
-    @def_function.function
-    def arithmetic(x):
-      return 2 * x + 1
+        @def_function.function
+        def func(x, y):
+            return (arithmetic(x) + conditional(y) ** 2) / 2
 
-    @def_function.function
-    def conditional(x):
-      # cond uses switch and merge, which are not supported by XLA based on
-      # https://docs.google.com/spreadsheets/d/1H8AIDdnlyyaWZOYN3WpBVNOmGOS_M8OyF7IA7kL3fjk/edit?resourcekey=0-I-mIp472YuK8FuBa5Zmzmg#gid=139369773
-      return cond.cond(math_ops.reduce_sum(x) < 5, lambda: x + x, lambda: x)
+        i1 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
 
-    @def_function.function
-    def func(x, y):
-      return (arithmetic(x) + conditional(y) ** 2) / 2
+        # Simple case: all ops supported by XLA
+        with ops.device("/device:GPU:0"):
+            with context.collect_graphs(optimized=True) as graphs:
+                result = arithmetic(i1)
+        self.assertAllClose(result.numpy(), [[3.0, 5.0], [7.0, 9.0]], atol=1e-05)
+        graph_ops = [n.op for n in graphs[0].node]
+        self.assertContainsSubset(["_XlaCompile", "_XlaRun"], graph_ops)
 
-    i1 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-
-    # Simple case: all ops supported by XLA
-    with ops.device("/device:GPU:0"):
-      with context.collect_graphs(optimized=True) as graphs:
-        result = arithmetic(i1)
-    self.assertAllClose(result.numpy(), [[3.0, 5.0], [7.0, 9.0]], atol=1e-05)
-    graph_ops = [n.op for n in graphs[0].node]
-    self.assertContainsSubset(["_XlaCompile", "_XlaRun"], graph_ops)
-
-    # Complex case: includes ops not supported by XLA (switch and merge)
-    i2 = constant_op.constant([[5.0, 6.0], [7.0, 8.0]])
-    with ops.device("/device:GPU:0"):
-      with context.collect_graphs(optimized=True) as graphs:
-        result = func(i1, i2)
-    self.assertAllClose(result.numpy(), [[14.0, 20.5], [28, 36.5]], atol=1e-05)
-    graph_ops = [n.op for n in graphs[0].node]
-    self.assertContainsSubset(["_XlaCompile", "_XlaRun"], graph_ops)
-    # because of the cond, not all ops can be combined into a single _XlaCompile
-    self.assertGreater(graph_ops.count("_XlaCompile"), 1)
+        # Complex case: includes ops not supported by XLA (switch and merge)
+        i2 = constant_op.constant([[5.0, 6.0], [7.0, 8.0]])
+        with ops.device("/device:GPU:0"):
+            with context.collect_graphs(optimized=True) as graphs:
+                result = func(i1, i2)
+        self.assertAllClose(result.numpy(), [[14.0, 20.5], [28, 36.5]], atol=1e-05)
+        graph_ops = [n.op for n in graphs[0].node]
+        self.assertContainsSubset(["_XlaCompile", "_XlaRun"], graph_ops)
+        # because of the cond, not all ops can be combined into a single _XlaCompile
+        self.assertGreater(graph_ops.count("_XlaCompile"), 1)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

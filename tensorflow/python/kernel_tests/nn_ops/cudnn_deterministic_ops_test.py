@@ -21,9 +21,9 @@ from tensorflow.python.platform import test
 
 ConvolutionTest = cudnn_deterministic_base.ConvolutionTest
 
-if __name__ == '__main__':
-  # TODO(reedwm): Merge this file with cudnn_deterministic_base.py.
-  config.enable_op_determinism()
+if __name__ == "__main__":
+    # TODO(reedwm): Merge this file with cudnn_deterministic_base.py.
+    config.enable_op_determinism()
 
-  os.environ['TF_DETERMINISTIC_OPS'] = '1'
-  test.main()
+    os.environ["TF_DETERMINISTIC_OPS"] = "1"
+    test.main()

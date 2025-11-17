@@ -24,30 +24,30 @@ from tensorflow.python.platform import googletest
 
 
 class TfrtSessionPythonTest(test_util.TensorFlowTestCase):
+    def setUp(self):
+        super(TfrtSessionPythonTest, self).setUp()
+        self._config = config_pb2.ConfigProto(
+            experimental=config_pb2.ConfigProto.Experimental(use_tfrt=True)
+        )
 
-  def setUp(self):
-    super(TfrtSessionPythonTest, self).setUp()
-    self._config = config_pb2.ConfigProto(
-        experimental=config_pb2.ConfigProto.Experimental(use_tfrt=True))
+    def testUseExistingGraph(self):
+        with ops.Graph().as_default() as g, ops.device("/cpu:0"):
+            a = constant_op.constant(6.0, shape=[1, 1])
+            b = constant_op.constant(7.0, shape=[1, 1])
+            c = math_ops.matmul(a, b, name="matmul")
+        with session.Session(graph=g, config=self._config):
+            result = c.eval()
+            self.assertAllEqual(result, [[42.0]])
 
-  def testUseExistingGraph(self):
-    with ops.Graph().as_default() as g, ops.device('/cpu:0'):
-      a = constant_op.constant(6.0, shape=[1, 1])
-      b = constant_op.constant(7.0, shape=[1, 1])
-      c = math_ops.matmul(a, b, name='matmul')
-    with session.Session(graph=g, config=self._config):
-      result = c.eval()
-      self.assertAllEqual(result, [[42.0]])
-
-  def testUseDefaultGraph(self):
-    with ops.Graph().as_default(), ops.device('/cpu:0'):
-      a = constant_op.constant(6.0, shape=[1, 1])
-      b = constant_op.constant(7.0, shape=[1, 1])
-      c = math_ops.matmul(a, b, name='matmul')
-      with session.Session(config=self._config):
-        result = c.eval()
-        self.assertAllEqual(result, [[42.0]])
+    def testUseDefaultGraph(self):
+        with ops.Graph().as_default(), ops.device("/cpu:0"):
+            a = constant_op.constant(6.0, shape=[1, 1])
+            b = constant_op.constant(7.0, shape=[1, 1])
+            c = math_ops.matmul(a, b, name="matmul")
+            with session.Session(config=self._config):
+                result = c.eval()
+                self.assertAllEqual(result, [[42.0]])
 
 
-if __name__ == '__main__':
-  googletest.main()
+if __name__ == "__main__":
+    googletest.main()

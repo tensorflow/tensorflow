@@ -36,66 +36,72 @@ from tensorflow.python.saved_model import saved_model
 
 
 def _gen_uninitialized_variable(base_dir):
-  """Generates a saved model with an uninitialized variable."""
+    """Generates a saved model with an uninitialized variable."""
 
-  class SubModule(module.Module):
-    """A module with an UninitializedVariable."""
+    class SubModule(module.Module):
+        """A module with an UninitializedVariable."""
 
-    def __init__(self):
-      self.uninitialized_variable = resource_variable_ops.UninitializedVariable(
-          name="uninitialized_variable", dtype=dtypes.int64)
+        def __init__(self):
+            self.uninitialized_variable = resource_variable_ops.UninitializedVariable(
+                name="uninitialized_variable", dtype=dtypes.int64
+            )
 
-  class Module(module.Module):
-    """A module with an UninitializedVariable."""
+    class Module(module.Module):
+        """A module with an UninitializedVariable."""
 
-    def __init__(self):
-      super(Module, self).__init__()
-      self.sub_module = SubModule()
-      self.initialized_variable = variables.Variable(
-          1.0, name="initialized_variable")
-      # An UninitializedVariable with the same name as the variable in the
-      # SubModule, but with a different type.
-      self.uninitialized_variable = resource_variable_ops.UninitializedVariable(
-          name="uninitialized_variable", dtype=dtypes.float32)
+        def __init__(self):
+            super(Module, self).__init__()
+            self.sub_module = SubModule()
+            self.initialized_variable = variables.Variable(
+                1.0, name="initialized_variable"
+            )
+            # An UninitializedVariable with the same name as the variable in the
+            # SubModule, but with a different type.
+            self.uninitialized_variable = resource_variable_ops.UninitializedVariable(
+                name="uninitialized_variable", dtype=dtypes.float32
+            )
 
-    @def_function.function(
-        input_signature=[tensor_spec.TensorSpec((), dtypes.float32)])
-    def compute(self, value):
-      return self.initialized_variable + value
+        @def_function.function(
+            input_signature=[tensor_spec.TensorSpec((), dtypes.float32)]
+        )
+        def compute(self, value):
+            return self.initialized_variable + value
 
-  to_save = Module()
-  saved_model.save(
-      to_save, export_dir=os.path.join(base_dir, "UninitializedVariable"))
+    to_save = Module()
+    saved_model.save(
+        to_save, export_dir=os.path.join(base_dir, "UninitializedVariable")
+    )
 
 
 def _gen_simple_while_loop(base_dir):
-  """Generates a saved model with a while loop."""
+    """Generates a saved model with a while loop."""
 
-  class Module(module.Module):
-    """A module with a while loop."""
+    class Module(module.Module):
+        """A module with a while loop."""
 
-    @def_function.function(
-        input_signature=[tensor_spec.TensorSpec((), dtypes.float32)])
-    def compute(self, value):
-      acc, _ = while_loop.while_loop(
-          cond=lambda acc, i: i > 0,
-          body=lambda acc, i: (acc + i, i - 1),
-          loop_vars=(constant_op.constant(0.0), value))
-      return acc
+        @def_function.function(
+            input_signature=[tensor_spec.TensorSpec((), dtypes.float32)]
+        )
+        def compute(self, value):
+            acc, _ = while_loop.while_loop(
+                cond=lambda acc, i: i > 0,
+                body=lambda acc, i: (acc + i, i - 1),
+                loop_vars=(constant_op.constant(0.0), value),
+            )
+            return acc
 
-  to_save = Module()
-  saved_model.save(
-      to_save, export_dir=os.path.join(base_dir, "SimpleWhileLoop"))
+    to_save = Module()
+    saved_model.save(to_save, export_dir=os.path.join(base_dir, "SimpleWhileLoop"))
 
 
 def main(args):
-  if len(args) != 2:
-    raise app.UsageError("Expected one argument (base_dir).")
-  _, base_dir = args
-  _gen_uninitialized_variable(base_dir)
-  _gen_simple_while_loop(base_dir)
+    if len(args) != 2:
+        raise app.UsageError("Expected one argument (base_dir).")
+    _, base_dir = args
+    _gen_uninitialized_variable(base_dir)
+    _gen_simple_while_loop(base_dir)
 
 
 if __name__ == "__main__":
-  v2_compat.enable_v2_behavior()
-  app.run(main)
+    v2_compat.enable_v2_behavior()
+    app.run(main)

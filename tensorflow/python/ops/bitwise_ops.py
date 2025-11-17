@@ -19,6 +19,7 @@ API docstring: tensorflow.bitwise
 """
 
 from tensorflow.python.framework import ops
+
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_bitwise_ops import *

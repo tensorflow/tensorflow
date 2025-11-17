@@ -41,6 +41,7 @@ from tensorflow.python.ops.array_ops import *  # pylint: disable=redefined-built
 from tensorflow.python.ops.check_ops import *
 from tensorflow.python.ops.clip_ops import *
 from tensorflow.python.ops.special_math_ops import *
+
 # TODO(vrv): Switch to import * once we're okay with exposing the module.
 from tensorflow.python.ops.cond import cond
 from tensorflow.python.ops.confusion_matrix import confusion_matrix
@@ -49,6 +50,7 @@ from tensorflow.python.ops.control_flow_case import case
 from tensorflow.python.ops.control_flow_ops import group
 from tensorflow.python.ops.control_flow_ops import no_op
 from tensorflow.python.ops.control_flow_ops import tuple  # pylint: disable=redefined-builtin
+
 # pylint: enable=redefined-builtin
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.ops.while_loop import while_loop
@@ -101,6 +103,7 @@ from tensorflow.python.ops.state_ops import scatter_max
 from tensorflow.python.ops.state_ops import scatter_update
 from tensorflow.python.ops.state_ops import scatter_nd_add
 from tensorflow.python.ops.state_ops import scatter_nd_sub
+
 # TODO(simister): Re-enable once binary size increase due to scatter_nd
 # ops is under control.
 # from tensorflow.python.ops.state_ops import scatter_nd_mul

@@ -14,6 +14,7 @@
 # ==============================================================================
 
 """GradientDescent for TensorFlow."""
+
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_training_ops
@@ -25,58 +26,63 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export(v1=["train.GradientDescentOptimizer"])
 class GradientDescentOptimizer(optimizer.Optimizer):
-  """Optimizer that implements the gradient descent algorithm.
-  """
+    """Optimizer that implements the gradient descent algorithm."""
 
-  def __init__(self, learning_rate, use_locking=False, name="GradientDescent"):
-    """Construct a new gradient descent optimizer.
+    def __init__(self, learning_rate, use_locking=False, name="GradientDescent"):
+        """Construct a new gradient descent optimizer.
 
-    Args:
-      learning_rate: A Tensor or a floating point value.  The learning
-        rate to use.
-      use_locking: If True use locks for update operations.
-      name: Optional name prefix for the operations created when applying
-        gradients. Defaults to "GradientDescent".
+        Args:
+          learning_rate: A Tensor or a floating point value.  The learning
+            rate to use.
+          use_locking: If True use locks for update operations.
+          name: Optional name prefix for the operations created when applying
+            gradients. Defaults to "GradientDescent".
 
-    @compatibility(eager)
-    When eager execution is enabled, `learning_rate` can be a callable that
-    takes no arguments and returns the actual value to use. This can be useful
-    for changing these values across different invocations of optimizer
-    functions.
-    @end_compatibility
-    """
-    super(GradientDescentOptimizer, self).__init__(use_locking, name)
-    self._learning_rate = learning_rate
-    self._learning_rate_tensor = None
+        @compatibility(eager)
+        When eager execution is enabled, `learning_rate` can be a callable that
+        takes no arguments and returns the actual value to use. This can be useful
+        for changing these values across different invocations of optimizer
+        functions.
+        @end_compatibility
+        """
+        super(GradientDescentOptimizer, self).__init__(use_locking, name)
+        self._learning_rate = learning_rate
+        self._learning_rate_tensor = None
 
-  def _apply_dense(self, grad, var):
-    return gen_training_ops.apply_gradient_descent(
-        var,
-        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
-        grad,
-        use_locking=self._use_locking).op
+    def _apply_dense(self, grad, var):
+        return gen_training_ops.apply_gradient_descent(
+            var,
+            math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+            grad,
+            use_locking=self._use_locking,
+        ).op
 
-  def _resource_apply_dense(self, grad, handle):
-    return gen_training_ops.resource_apply_gradient_descent(
-        handle.handle, math_ops.cast(self._learning_rate_tensor,
-                                     grad.dtype.base_dtype),
-        grad, use_locking=self._use_locking)
+    def _resource_apply_dense(self, grad, handle):
+        return gen_training_ops.resource_apply_gradient_descent(
+            handle.handle,
+            math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
+            grad,
+            use_locking=self._use_locking,
+        )
 
-  def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
-    return resource_variable_ops.resource_scatter_add(
-        handle.handle,
-        indices,
-        -grad * math_ops.cast(self._learning_rate_tensor,
-                              grad.dtype.base_dtype))
+    def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
+        return resource_variable_ops.resource_scatter_add(
+            handle.handle,
+            indices,
+            -grad * math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
+        )
 
-  def _apply_sparse_duplicate_indices(self, grad, var):
-    delta = indexed_slices.IndexedSlices(
-        grad.values *
-        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
-        grad.indices, grad.dense_shape)
-    return var.scatter_sub(delta, use_locking=self._use_locking)
+    def _apply_sparse_duplicate_indices(self, grad, var):
+        delta = indexed_slices.IndexedSlices(
+            grad.values
+            * math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+            grad.indices,
+            grad.dense_shape,
+        )
+        return var.scatter_sub(delta, use_locking=self._use_locking)
 
-  def _prepare(self):
-    learning_rate = self._call_if_callable(self._learning_rate)
-    self._learning_rate_tensor = ops.convert_to_tensor(
-        learning_rate, name="learning_rate")
+    def _prepare(self):
+        learning_rate = self._call_if_callable(self._learning_rate)
+        self._learning_rate_tensor = ops.convert_to_tensor(
+            learning_rate, name="learning_rate"
+        )

@@ -19,5 +19,4 @@
 from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.util import deprecation
 
-__getattr__ = deprecation.deprecate_moved_module(
-    __name__, functional_saver, "2.11")
+__getattr__ = deprecation.deprecate_moved_module(__name__, functional_saver, "2.11")

@@ -27,7 +27,9 @@ from tensorflow.python.framework.sparse_tensor import SparseTensor
 from tensorflow.python.framework.sparse_tensor import SparseTensorValue
 
 # Utilities used when building a Graph.
-from tensorflow.python.framework.indexed_slices import convert_to_tensor_or_indexed_slices
+from tensorflow.python.framework.indexed_slices import (
+    convert_to_tensor_or_indexed_slices,
+)
 from tensorflow.python.framework.ops import device
 from tensorflow.python.framework.ops import container
 from tensorflow.python.framework.ops import name_scope
@@ -59,7 +61,9 @@ from tensorflow.python.framework.tensor_shape import Dimension
 from tensorflow.python.framework.tensor_shape import TensorShape
 
 # Needed when interfacing tensorflow to new array libraries
-from tensorflow.python.framework.tensor_conversion_registry import register_tensor_conversion_function
+from tensorflow.python.framework.tensor_conversion_registry import (
+    register_tensor_conversion_function,
+)
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import

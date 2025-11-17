@@ -25,79 +25,72 @@ from tensorflow.python.platform import test
 
 
 class IteratorModelOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
+    @combinations.generate(test_base.v2_eager_only_combinations())
+    def test_get_model_proto_not_empty(self):
+        options = dataset_ops.options_lib.Options()
+        options.autotune.enabled = True
 
-  @combinations.generate(test_base.v2_eager_only_combinations())
-  def test_get_model_proto_not_empty(self):
-    options = dataset_ops.options_lib.Options()
-    options.autotune.enabled = True
+        dataset = dataset_ops.Dataset.range(100000)
+        dataset = dataset.map(lambda x: ("tf.data", "is the best ML data loader."))
+        dataset = dataset.batch(5, drop_remainder=True, num_parallel_calls=1)
+        dataset = dataset.with_options(options)
 
-    dataset = dataset_ops.Dataset.range(100000)
-    dataset = dataset.map(lambda x: ("tf.data", "is the best ML data loader."))
-    dataset = dataset.batch(5, drop_remainder=True, num_parallel_calls=1)
-    dataset = dataset.with_options(options)
+        iterator = iter(dataset)
+        model_proto = iterator_model_ops.get_model_proto(iterator)
+        dataset_names = set(model_proto.nodes[key].name for key in model_proto.nodes)
 
-    iterator = iter(dataset)
-    model_proto = iterator_model_ops.get_model_proto(iterator)
-    dataset_names = set(
-        model_proto.nodes[key].name for key in model_proto.nodes
-    )
+        self.assertNotEmpty(
+            dataset_names,
+            "The model proto from the iterator should contain at least 1 dataset op.",
+        )
 
-    self.assertNotEmpty(
-        dataset_names,
-        "The model proto from the iterator should contain at least 1"
-        " dataset op.",
-    )
+    @combinations.generate(test_base.v2_eager_only_combinations())
+    def test_get_model_proto_error_when_autotune_not_enabled(self):
+        options = dataset_ops.options_lib.Options()
+        options.autotune.enabled = False
 
-  @combinations.generate(test_base.v2_eager_only_combinations())
-  def test_get_model_proto_error_when_autotune_not_enabled(self):
-    options = dataset_ops.options_lib.Options()
-    options.autotune.enabled = False
+        dataset = dataset_ops.Dataset.range(100000)
+        dataset = dataset.map(lambda x: ("tf.data", "is the best ML data loader."))
+        dataset = dataset.batch(5, drop_remainder=True, num_parallel_calls=1)
+        dataset = dataset.with_options(options)
 
-    dataset = dataset_ops.Dataset.range(100000)
-    dataset = dataset.map(lambda x: ("tf.data", "is the best ML data loader."))
-    dataset = dataset.batch(5, drop_remainder=True, num_parallel_calls=1)
-    dataset = dataset.with_options(options)
+        iterator = iter(dataset)
 
-    iterator = iter(dataset)
+        with self.assertRaisesRegex(
+            errors_impl.NotFoundError,
+            "Did you disable autotune",
+        ):
+            _ = iterator_model_ops.get_model_proto(iterator)
 
-    with self.assertRaisesRegex(
-        errors_impl.NotFoundError,
-        "Did you disable autotune",
-    ):
-      _ = iterator_model_ops.get_model_proto(iterator)
+    @combinations.generate(test_base.v2_eager_only_combinations())
+    def test_get_model_proto_from_numpy_iterator(self):
+        options = dataset_ops.options_lib.Options()
+        options.autotune.enabled = True
 
-  @combinations.generate(test_base.v2_eager_only_combinations())
-  def test_get_model_proto_from_numpy_iterator(self):
-    options = dataset_ops.options_lib.Options()
-    options.autotune.enabled = True
+        dataset = dataset_ops.Dataset.range(100000)
+        dataset = dataset.map(lambda x: ("tf.data", "is the best ML data loader."))
+        dataset = dataset.batch(5, drop_remainder=True, num_parallel_calls=1)
+        dataset = dataset.with_options(options)
 
-    dataset = dataset_ops.Dataset.range(100000)
-    dataset = dataset.map(lambda x: ("tf.data", "is the best ML data loader."))
-    dataset = dataset.batch(5, drop_remainder=True, num_parallel_calls=1)
-    dataset = dataset.with_options(options)
+        iterator = dataset.as_numpy_iterator()
 
-    iterator = dataset.as_numpy_iterator()
+        model_proto = iterator_model_ops.get_model_proto(iterator)
+        dataset_names = set(model_proto.nodes[key].name for key in model_proto.nodes)
 
-    model_proto = iterator_model_ops.get_model_proto(iterator)
-    dataset_names = set(
-        model_proto.nodes[key].name for key in model_proto.nodes
-    )
+        self.assertNotEmpty(
+            dataset_names,
+            "The model proto from the iterator should contain at least 1 dataset op.",
+        )
 
-    self.assertNotEmpty(
-        dataset_names,
-        "The model proto from the iterator should contain at least 1"
-        " dataset op.",
-    )
+    @combinations.generate(test_base.graph_only_combinations())
+    def test_get_model_proto_unsupported_in_graph_mode(self):
+        dataset = dataset_ops.Dataset.range(100000)
 
-  @combinations.generate(test_base.graph_only_combinations())
-  def test_get_model_proto_unsupported_in_graph_mode(self):
-    dataset = dataset_ops.Dataset.range(100000)
-
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
-    with self.session():
-      with self.assertRaises(ValueError):
-        _ = iterator_model_ops.get_model_proto(iterator)
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
+        with self.session():
+            with self.assertRaises(ValueError):
+                _ = iterator_model_ops.get_model_proto(iterator)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

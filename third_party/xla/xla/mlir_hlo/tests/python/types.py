@@ -21,14 +21,14 @@ from mlir.dialects import mhlo
 
 
 def run(f):
-  with ir.Context() as context:
-    mhlo.register_mhlo_dialect(context)
-    f()
-  return f
+    with ir.Context() as context:
+        mhlo.register_mhlo_dialect(context)
+        f()
+    return f
 
 
 @run
 def test_token_type():
-  token_type = mhlo.TokenType.get()
-  assert token_type is not None
-  assert str(token_type) == "!mhlo.token"
+    token_type = mhlo.TokenType.get()
+    assert token_type is not None
+    assert str(token_type) == "!mhlo.token"

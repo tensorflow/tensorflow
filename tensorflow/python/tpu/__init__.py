@@ -18,5 +18,5 @@
 import os
 from tensorflow.python.framework import versions
 
-os.environ['TPU_ML_PLATFORM'] = 'Tensorflow'
-os.environ['TPU_ML_PLATFORM_VERSION'] = versions.__version__
+os.environ["TPU_ML_PLATFORM"] = "Tensorflow"
+os.environ["TPU_ML_PLATFORM_VERSION"] = versions.__version__

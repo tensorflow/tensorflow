@@ -21,22 +21,20 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common
 
 
 class ReferencesParent(tf.Module):
-
-  def __init__(self, parent):
-    super(ReferencesParent, self).__init__()
-    self.parent = parent
-    # CHECK: tf_saved_model.global_tensor
-    # CHECK-SAME: tf_saved_model.exported_names = ["child.my_variable"]
-    self.my_variable = tf.Variable(3.)
+    def __init__(self, parent):
+        super(ReferencesParent, self).__init__()
+        self.parent = parent
+        # CHECK: tf_saved_model.global_tensor
+        # CHECK-SAME: tf_saved_model.exported_names = ["child.my_variable"]
+        self.my_variable = tf.Variable(3.0)
 
 
 # Creates a cyclic object graph.
 class TestModule(tf.Module):
+    def __init__(self):
+        super(TestModule, self).__init__()
+        self.child = ReferencesParent(self)
 
-  def __init__(self):
-    super(TestModule, self).__init__()
-    self.child = ReferencesParent(self)
 
-
-if __name__ == '__main__':
-  common.do_test(TestModule)
+if __name__ == "__main__":
+    common.do_test(TestModule)

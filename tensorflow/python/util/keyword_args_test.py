@@ -19,30 +19,26 @@ from tensorflow.python.util import keyword_args
 
 
 class KeywordArgsTest(test.TestCase):
+    def test_keyword_args_only(self):
+        def func_without_decorator(a, b):
+            return a + b
 
-  def test_keyword_args_only(self):
+        @keyword_args.keyword_args_only
+        def func_with_decorator(a, b):
+            return func_without_decorator(a, b)
 
-    def func_without_decorator(a, b):
-      return a + b
+        self.assertEqual(3, func_without_decorator(1, 2))
+        self.assertEqual(3, func_without_decorator(a=1, b=2))
+        self.assertEqual(3, func_with_decorator(a=1, b=2))
 
-    @keyword_args.keyword_args_only
-    def func_with_decorator(a, b):
-      return func_without_decorator(a, b)
+        # Providing non-keyword args should fail.
+        with self.assertRaisesRegex(ValueError, "only accepts keyword arguments"):
+            self.assertEqual(3, func_with_decorator(1, 2))
 
-    self.assertEqual(3, func_without_decorator(1, 2))
-    self.assertEqual(3, func_without_decorator(a=1, b=2))
-    self.assertEqual(3, func_with_decorator(a=1, b=2))
-
-    # Providing non-keyword args should fail.
-    with self.assertRaisesRegex(
-        ValueError, "only accepts keyword arguments"):
-      self.assertEqual(3, func_with_decorator(1, 2))
-
-    # Partially providing keyword args should fail.
-    with self.assertRaisesRegex(
-        ValueError, "only accepts keyword arguments"):
-      self.assertEqual(3, func_with_decorator(1, b=2))
+        # Partially providing keyword args should fail.
+        with self.assertRaisesRegex(ValueError, "only accepts keyword arguments"):
+            self.assertEqual(3, func_with_decorator(1, b=2))
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

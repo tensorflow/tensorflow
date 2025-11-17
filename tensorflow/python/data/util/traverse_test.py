@@ -28,96 +28,105 @@ from tensorflow.python.platform import test
 
 
 class _TestDataset(dataset_ops.UnaryUnchangedStructureDataset):
-
-  def __init__(self, input_dataset):
-    self._input_dataset = input_dataset
-    temp_variant_tensor = gen_dataset_ops.prefetch_dataset(
-        input_dataset._variant_tensor,
-        buffer_size=1,
-        **self._flat_structure)
-    variant_tensor = gen_dataset_ops.model_dataset(
-        temp_variant_tensor, **self._flat_structure)
-    super(_TestDataset, self).__init__(input_dataset, variant_tensor)
+    def __init__(self, input_dataset):
+        self._input_dataset = input_dataset
+        temp_variant_tensor = gen_dataset_ops.prefetch_dataset(
+            input_dataset._variant_tensor, buffer_size=1, **self._flat_structure
+        )
+        variant_tensor = gen_dataset_ops.model_dataset(
+            temp_variant_tensor, **self._flat_structure
+        )
+        super(_TestDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class TraverseTest(test_base.DatasetTestBase, parameterized.TestCase):
+    @combinations.generate(test_base.graph_only_combinations())
+    def testOnlySource(self):
+        ds = dataset_ops.Dataset.range(10)
+        variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds)
+        self.assertAllEqual(["RangeDataset"], [x.name for x in variant_tensor_ops])
 
-  @combinations.generate(test_base.graph_only_combinations())
-  def testOnlySource(self):
-    ds = dataset_ops.Dataset.range(10)
-    variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds)
-    self.assertAllEqual(["RangeDataset"], [x.name for x in variant_tensor_ops])
+    @combinations.generate(test_base.graph_only_combinations())
+    def testSimplePipeline(self):
+        ds = dataset_ops.Dataset.range(10).map(math_ops.square)
+        variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds)
+        self.assertSetEqual(
+            set(["MapDataset", "RangeDataset"]), set(x.name for x in variant_tensor_ops)
+        )
 
-  @combinations.generate(test_base.graph_only_combinations())
-  def testSimplePipeline(self):
-    ds = dataset_ops.Dataset.range(10).map(math_ops.square)
-    variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds)
-    self.assertSetEqual(
-        set(["MapDataset", "RangeDataset"]),
-        set(x.name for x in variant_tensor_ops))
+    @combinations.generate(test_base.graph_only_combinations())
+    def testConcat(self):
+        ds1 = dataset_ops.Dataset.range(10)
+        ds2 = dataset_ops.Dataset.range(10)
+        ds = ds1.concatenate(ds2)
+        variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds)
+        self.assertSetEqual(
+            set(["ConcatenateDataset", "RangeDataset", "RangeDataset_1"]),
+            set(x.name for x in variant_tensor_ops),
+        )
 
-  @combinations.generate(test_base.graph_only_combinations())
-  def testConcat(self):
-    ds1 = dataset_ops.Dataset.range(10)
-    ds2 = dataset_ops.Dataset.range(10)
-    ds = ds1.concatenate(ds2)
-    variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds)
-    self.assertSetEqual(
-        set(["ConcatenateDataset", "RangeDataset", "RangeDataset_1"]),
-        set(x.name for x in variant_tensor_ops))
+    @combinations.generate(test_base.graph_only_combinations())
+    def testZip(self):
+        ds1 = dataset_ops.Dataset.range(10)
+        ds2 = dataset_ops.Dataset.range(10)
+        ds = dataset_ops.Dataset.zip((ds1, ds2))
+        variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds)
+        self.assertSetEqual(
+            set(["ZipDataset", "RangeDataset", "RangeDataset_1"]),
+            set(x.name for x in variant_tensor_ops),
+        )
 
-  @combinations.generate(test_base.graph_only_combinations())
-  def testZip(self):
-    ds1 = dataset_ops.Dataset.range(10)
-    ds2 = dataset_ops.Dataset.range(10)
-    ds = dataset_ops.Dataset.zip((ds1, ds2))
-    variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds)
-    self.assertSetEqual(
-        set(["ZipDataset", "RangeDataset", "RangeDataset_1"]),
-        set(x.name for x in variant_tensor_ops))
+    @combinations.generate(test_base.graph_only_combinations())
+    def testMultipleVariantTensors(self):
+        ds = dataset_ops.Dataset.range(10)
+        ds = _TestDataset(ds)
+        variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds)
+        self.assertSetEqual(
+            set(["RangeDataset", "ModelDataset", "PrefetchDataset"]),
+            set(x.name for x in variant_tensor_ops),
+        )
 
-  @combinations.generate(test_base.graph_only_combinations())
-  def testMultipleVariantTensors(self):
-    ds = dataset_ops.Dataset.range(10)
-    ds = _TestDataset(ds)
-    variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds)
-    self.assertSetEqual(
-        set(["RangeDataset", "ModelDataset", "PrefetchDataset"]),
-        set(x.name for x in variant_tensor_ops))
+    @combinations.generate(test_base.graph_only_combinations())
+    def testFlatMap(self):
+        ds1 = dataset_ops.Dataset.range(10).repeat(10)
 
-  @combinations.generate(test_base.graph_only_combinations())
-  def testFlatMap(self):
-    ds1 = dataset_ops.Dataset.range(10).repeat(10)
+        def map_fn(ds):
+            def _map(x):
+                return ds.batch(x)
 
-    def map_fn(ds):
+            return _map
 
-      def _map(x):
-        return ds.batch(x)
+        ds2 = dataset_ops.Dataset.range(20).prefetch(1)
+        ds2 = ds2.flat_map(map_fn(ds1))
+        variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds2)
+        self.assertSetEqual(
+            set(
+                [
+                    "FlatMapDataset",
+                    "PrefetchDataset",
+                    "RepeatDataset",
+                    "RangeDataset",
+                    "RangeDataset_1",
+                ]
+            ),
+            set(x.name for x in variant_tensor_ops),
+        )
 
-      return _map
-
-    ds2 = dataset_ops.Dataset.range(20).prefetch(1)
-    ds2 = ds2.flat_map(map_fn(ds1))
-    variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds2)
-    self.assertSetEqual(
-        set([
-            "FlatMapDataset", "PrefetchDataset", "RepeatDataset",
-            "RangeDataset", "RangeDataset_1"
-        ]), set(x.name for x in variant_tensor_ops))
-
-  @combinations.generate(test_base.graph_only_combinations())
-  def testTfDataService(self):
-    ds = dataset_ops.Dataset.range(10)
-    ds = ds.apply(
-        data_service_ops.distribute("parallel_epochs", "grpc://foo:0"))
-    ops = traverse.obtain_capture_by_value_ops(ds)
-    data_service_dataset_op = ("DataServiceDatasetV4"
-                               if compat.forward_compatible(2022, 8, 31) else
-                               "DataServiceDatasetV3")
-    self.assertContainsSubset(
-        ["RangeDataset", data_service_dataset_op, "DummyIterationCounter"],
-        set(x.name for x in ops))
+    @combinations.generate(test_base.graph_only_combinations())
+    def testTfDataService(self):
+        ds = dataset_ops.Dataset.range(10)
+        ds = ds.apply(data_service_ops.distribute("parallel_epochs", "grpc://foo:0"))
+        ops = traverse.obtain_capture_by_value_ops(ds)
+        data_service_dataset_op = (
+            "DataServiceDatasetV4"
+            if compat.forward_compatible(2022, 8, 31)
+            else "DataServiceDatasetV3"
+        )
+        self.assertContainsSubset(
+            ["RangeDataset", data_service_dataset_op, "DummyIterationCounter"],
+            set(x.name for x in ops),
+        )
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

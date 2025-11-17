@@ -27,83 +27,81 @@ from tensorflow.python.platform import test
 
 
 class ByRefCaptureTest(test.TestCase, parameterized.TestCase):
+    @combinations.generate(combinations.combine(val_type=[int, constant_op.constant]))
+    def test_direct_capture_mutation(self, val_type):
+        x = val_type(1)
 
-  @combinations.generate(
-      combinations.combine(val_type=[int, constant_op.constant]))
-  def test_direct_capture_mutation(self, val_type):
-    x = val_type(1)
+        @def_function.function
+        def f():
+            graph = ops.get_default_graph()
+            cap_x = graph._experimental_capture_side_input_by_ref("x", lambda: x)
+            return cap_x + 1
 
-    @def_function.function
-    def f():
-      graph = ops.get_default_graph()
-      cap_x = graph._experimental_capture_side_input_by_ref("x", lambda: x)
-      return cap_x + 1
+        self.assertEqual(f(), 2)
+        x = val_type(2)
+        self.assertEqual(f(), 3)
 
-    self.assertEqual(f(), 2)
-    x = val_type(2)
-    self.assertEqual(f(), 3)
+    @unittest.skip("By ref capture API does not work for nested tf.function.")
+    def test_capture_in_nested_function(self):
+        x = constant_op.constant(1)
 
-  @unittest.skip("By ref capture API does not work for nested tf.function.")
-  def test_capture_in_nested_function(self):
-    x = constant_op.constant(1)
+        @def_function.function
+        def f():
+            graph = ops.get_default_graph()
+            # Capture the same x for the outer tf.function
+            graph._experimental_capture_side_input_by_ref("x", lambda: x)
 
-    @def_function.function
-    def f():
-      graph = ops.get_default_graph()
-      # Capture the same x for the outer tf.function
-      graph._experimental_capture_side_input_by_ref("x", lambda: x)
+            @def_function.function
+            def g():
+                graph = ops.get_default_graph()
+                cap_x = graph._experimental_capture_side_input_by_ref("xx", lambda: x)
+                return cap_x + 100
 
-      @def_function.function
-      def g():
-        graph = ops.get_default_graph()
-        cap_x = graph._experimental_capture_side_input_by_ref("xx", lambda: x)
-        return cap_x + 100
+            return g()
 
-      return g()
+        self.assertEqual(f(), 2)
+        x = constant_op.constant(2)
+        self.assertEqual(f(), 102)
 
-    self.assertEqual(f(), 2)
-    x = constant_op.constant(2)
-    self.assertEqual(f(), 102)
+    def test_capture_in_outer_function(self):
+        x = 1
 
-  def test_capture_in_outer_function(self):
-    x = 1
+        def g():
+            graph = ops.get_default_graph()
+            cap_x = graph._experimental_capture_side_input_by_ref("x", lambda: x)
+            return cap_x + 1
 
-    def g():
-      graph = ops.get_default_graph()
-      cap_x = graph._experimental_capture_side_input_by_ref("x", lambda: x)
-      return cap_x + 1
+        @def_function.function
+        def f():
+            return g()
 
-    @def_function.function
-    def f():
-      return g()
+        self.assertEqual(f(), 2)
+        x = 2
+        self.assertEqual(f(), 3)
 
-    self.assertEqual(f(), 2)
-    x = 2
-    self.assertEqual(f(), 3)
+    @unittest.skip("By ref capture API does not work for nested tf.function.")
+    def test_capture_in_outer_tf_function(self):
+        x = 1
 
-  @unittest.skip("By ref capture API does not work for nested tf.function.")
-  def test_capture_in_outer_tf_function(self):
-    x = 1
+        @def_function.function
+        def g():
+            graph = ops.get_default_graph()
+            cap_x = graph._experimental_capture_side_input_by_ref("x", lambda: x)
+            return cap_x + 1
 
-    @def_function.function
-    def g():
-      graph = ops.get_default_graph()
-      cap_x = graph._experimental_capture_side_input_by_ref("x", lambda: x)
-      return cap_x + 1
+        @def_function.function
+        def f():
+            # Call `_experimental_capture_side_input_by_ref` so that the outer
+            # tf.function will retrace when needed.
+            graph = ops.get_default_graph()
+            graph._experimental_capture_side_input_by_ref("x", lambda: x)
+            return g()
 
-    @def_function.function
-    def f():
-      # Call `_experimental_capture_side_input_by_ref` so that the outer
-      # tf.function will retrace when needed.
-      graph = ops.get_default_graph()
-      graph._experimental_capture_side_input_by_ref("x", lambda: x)
-      return g()
-
-    self.assertEqual(f(), 2)
-    x = 2
-    self.assertEqual(f(), 3)
+        self.assertEqual(f(), 2)
+        x = 2
+        self.assertEqual(f(), 3)
 
 
 if __name__ == "__main__":
-  v2_compat.enable_v2_behavior()
-  test.main()
+    v2_compat.enable_v2_behavior()
+    test.main()

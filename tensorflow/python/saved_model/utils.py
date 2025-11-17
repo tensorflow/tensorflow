@@ -16,6 +16,7 @@
 
 Utility functions to assist with setup and construction of the SavedModel proto.
 """
+
 # pylint: disable=unused-import
 from tensorflow.python.saved_model.utils_impl import build_tensor_info
 from tensorflow.python.saved_model.utils_impl import build_tensor_info_from_op

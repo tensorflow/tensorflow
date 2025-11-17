@@ -31,88 +31,89 @@ from local_xla.xla import xla_data_pb2
 #
 # TODO(eliben): figure out how to avoid knowing the extra Python type and the
 # astype cast when writing into Literals.
-TypeConversionRecord = collections.namedtuple('TypeConversionRecord', [
-    'primitive_type', 'numpy_dtype', 'literal_field_name', 'literal_field_type'
-])
+TypeConversionRecord = collections.namedtuple(
+    "TypeConversionRecord",
+    ["primitive_type", "numpy_dtype", "literal_field_name", "literal_field_type"],
+)
 
 # Maps from XLA primitive types to TypeConversionRecord.
 MAP_XLA_TYPE_TO_RECORD = {
     xla_data_pb2.BF16: TypeConversionRecord(
         primitive_type=xla_data_pb2.BF16,
         numpy_dtype=_md.bfloat16,
-        literal_field_name='bf16s',
+        literal_field_name="bf16s",
         literal_field_type=float,
     ),
     xla_data_pb2.F16: TypeConversionRecord(
         primitive_type=xla_data_pb2.F16,
         numpy_dtype=_np.float16,
-        literal_field_name='f16s',
+        literal_field_name="f16s",
         literal_field_type=float,
     ),
     xla_data_pb2.F32: TypeConversionRecord(
         primitive_type=xla_data_pb2.F32,
         numpy_dtype=_np.float32,
-        literal_field_name='f32s',
+        literal_field_name="f32s",
         literal_field_type=float,
     ),
     xla_data_pb2.F64: TypeConversionRecord(
         primitive_type=xla_data_pb2.F64,
         numpy_dtype=_np.float64,
-        literal_field_name='f64s',
+        literal_field_name="f64s",
         literal_field_type=float,
     ),
     xla_data_pb2.S8: TypeConversionRecord(
         primitive_type=xla_data_pb2.S8,
         numpy_dtype=_np.int8,
-        literal_field_name='s8s',
+        literal_field_name="s8s",
         literal_field_type=int,
     ),
     xla_data_pb2.S16: TypeConversionRecord(
         primitive_type=xla_data_pb2.S16,
         numpy_dtype=_np.int16,
-        literal_field_name='s16s',
+        literal_field_name="s16s",
         literal_field_type=int,
     ),
     xla_data_pb2.S32: TypeConversionRecord(
         primitive_type=xla_data_pb2.S32,
         numpy_dtype=_np.int32,
-        literal_field_name='s32s',
+        literal_field_name="s32s",
         literal_field_type=int,
     ),
     xla_data_pb2.S64: TypeConversionRecord(
         primitive_type=xla_data_pb2.S64,
         numpy_dtype=_np.int64,
-        literal_field_name='s64s',
+        literal_field_name="s64s",
         literal_field_type=int,
     ),
     xla_data_pb2.U8: TypeConversionRecord(
         primitive_type=xla_data_pb2.U8,
         numpy_dtype=_np.uint8,
-        literal_field_name='s8s',
+        literal_field_name="s8s",
         literal_field_type=int,
     ),
     xla_data_pb2.U16: TypeConversionRecord(
         primitive_type=xla_data_pb2.U16,
         numpy_dtype=_np.uint16,
-        literal_field_name='s16s',
+        literal_field_name="s16s",
         literal_field_type=int,
     ),
     xla_data_pb2.U32: TypeConversionRecord(
         primitive_type=xla_data_pb2.U32,
         numpy_dtype=_np.uint32,
-        literal_field_name='s32s',
+        literal_field_name="s32s",
         literal_field_type=int,
     ),
     xla_data_pb2.U64: TypeConversionRecord(
         primitive_type=xla_data_pb2.U64,
         numpy_dtype=_np.uint64,
-        literal_field_name='s64s',
+        literal_field_name="s64s",
         literal_field_type=int,
     ),
     xla_data_pb2.PRED: TypeConversionRecord(
         primitive_type=xla_data_pb2.PRED,
         numpy_dtype=_np.bool_,
-        literal_field_name='preds',
+        literal_field_name="preds",
         literal_field_type=bool,
     ),
 }

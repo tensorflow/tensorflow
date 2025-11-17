@@ -22,112 +22,101 @@ from tensorflow.python.platform import test
 
 
 class DirectivesTest(converter_testing.TestCase):
+    def test_local_target(self):
+        def f():
+            l = []
+            string_var = 0
+            directives.set_element_type(l, "a", string_var)
 
-  def test_local_target(self):
+        _, node, _ = self.transform(f, directives_converter, include_ast=True)
 
-    def f():
-      l = []
-      string_var = 0
-      directives.set_element_type(l, 'a', string_var)
+        (def_,) = anno.getanno(node.body[0].targets[0], anno.Static.DEFINITIONS)
+        d = def_.directives[directives.set_element_type]
+        self.assertEqual(d["dtype"].value, "a")
+        self.assertEqual(d["shape"].id, "string_var")
 
-    _, node, _ = self.transform(f, directives_converter, include_ast=True)
+    def test_argument_target(self):
+        def f(a):
+            directives.set_element_type(a, 1, shape=2)
+            pass
 
-    def_, = anno.getanno(node.body[0].targets[0],
-                         anno.Static.DEFINITIONS)
-    d = def_.directives[directives.set_element_type]
-    self.assertEqual(d['dtype'].value, 'a')
-    self.assertEqual(d['shape'].id, 'string_var')
+        _, node, _ = self.transform(f, directives_converter, include_ast=True)
 
-  def test_argument_target(self):
+        (def_,) = anno.getanno(node.args.args[0], anno.Static.DEFINITIONS)
+        d = def_.directives[directives.set_element_type]
+        self.assertEqual(d["dtype"].value, 1)
+        self.assertEqual(d["shape"].value, 2)
 
-    def f(a):
-      directives.set_element_type(a, 1, shape=2)
-      pass
+    def test_loop_target(self):
+        def f():
+            a = True
+            while True:
+                directives.set_loop_options(parallel_iterations=10, back_prop=a)  # pylint: disable=unexpected-keyword-arg
+                pass
 
-    _, node, _ = self.transform(f, directives_converter, include_ast=True)
+        _, node, _ = self.transform(f, directives_converter, include_ast=True)
 
-    def_, = anno.getanno(node.args.args[0], anno.Static.DEFINITIONS)
-    d = def_.directives[directives.set_element_type]
-    self.assertEqual(d['dtype'].value, 1)
-    self.assertEqual(d['shape'].value, 2)
+        d = anno.getanno(node.body[1], anno.Basic.DIRECTIVES)
+        d = d[directives.set_loop_options]
+        self.assertEqual(d["parallel_iterations"].value, 10)
+        self.assertEqual(d["back_prop"].id, "a")
+        self.assertNotIn("swap_memory", d)
 
-  def test_loop_target(self):
+    def test_loop_target_no_loop(self):
+        def f():
+            directives.set_loop_options()
+            pass
 
-    def f():
-      a = True
-      while True:
-        directives.set_loop_options(parallel_iterations=10, back_prop=a)  # pylint: disable=unexpected-keyword-arg
-        pass
+        with self.assertRaisesRegex(ValueError, "must be used inside a statement"):
+            self.transform(f, directives_converter, include_ast=True)
 
-    _, node, _ = self.transform(f, directives_converter, include_ast=True)
+    def test_loop_target_not_first(self):
+        def f():
+            a = 1
+            while True:
+                a = 2
+                directives.set_loop_options(parallel_iterations=10, back_prop=a)  # pylint: disable=unexpected-keyword-arg
 
-    d = anno.getanno(node.body[1], anno.Basic.DIRECTIVES)
-    d = d[directives.set_loop_options]
-    self.assertEqual(d['parallel_iterations'].value, 10)
-    self.assertEqual(d['back_prop'].id, 'a')
-    self.assertNotIn('swap_memory', d)
+        with self.assertRaisesRegex(ValueError, "must be the first statement"):
+            self.transform(f, directives_converter, include_ast=True)
 
-  def test_loop_target_no_loop(self):
+    def test_value_verification_does_not_trigger_properties(self):
+        self_test = self
 
-    def f():
-      directives.set_loop_options()
-      pass
+        class TestClass(object):
+            @property
+            def b(self):
+                self_test.fail("This should never be evaluated")
 
-    with self.assertRaisesRegex(ValueError, 'must be used inside a statement'):
-      self.transform(f, directives_converter, include_ast=True)
+        tc = TestClass()
 
-  def test_loop_target_not_first(self):
+        def f():
+            return tc.b + 1
 
-    def f():
-      a = 1
-      while True:
-        a = 2
-        directives.set_loop_options(parallel_iterations=10, back_prop=a)  # pylint: disable=unexpected-keyword-arg
+        _, node, _ = self.transform(f, directives_converter, include_ast=True)
 
-    with self.assertRaisesRegex(ValueError, 'must be the first statement'):
-      self.transform(f, directives_converter, include_ast=True)
+        self.assertIsNotNone(node)
 
-  def test_value_verification_does_not_trigger_properties(self):
+    def test_value_verification_does_not_trigger_getattr(self):
+        class TestClass(object):
+            def __init__(self):
+                self.getattr_called = False
 
-    self_test = self
+            def __getattr__(self, _):
+                # Note: seems that any exception raised here is absorbed by hasattr.
+                # So we can't call test.fail or raise.
+                self.getattr_called = True
 
-    class TestClass(object):
+        tc = TestClass()
 
-      @property
-      def b(self):
-        self_test.fail('This should never be evaluated')
+        def f():
+            return tc.b + 1
 
-    tc = TestClass()
+        _, node, _ = self.transform(f, directives_converter, include_ast=True)
 
-    def f():
-      return tc.b + 1
-
-    _, node, _ = self.transform(f, directives_converter, include_ast=True)
-
-    self.assertIsNotNone(node)
-
-  def test_value_verification_does_not_trigger_getattr(self):
-
-    class TestClass(object):
-
-      def __init__(self):
-        self.getattr_called = False
-
-      def __getattr__(self, _):
-        # Note: seems that any exception raised here is absorbed by hasattr.
-        # So we can't call test.fail or raise.
-        self.getattr_called = True
-
-    tc = TestClass()
-
-    def f():
-      return tc.b + 1
-
-    _, node, _ = self.transform(f, directives_converter, include_ast=True)
-
-    self.assertIsNotNone(node)
-    self.assertFalse(tc.getattr_called)
+        self.assertIsNotNone(node)
+        self.assertFalse(tc.getattr_called)
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

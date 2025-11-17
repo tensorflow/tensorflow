@@ -23,61 +23,62 @@ from tensorflow.python.tpu.tests import tpu_embedding_base_test
 
 
 class TPUEmbeddingTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
+    def test_build_incorrect_output_shapes(self):
+        _, mid_level_api, _ = self._create_strategy_and_mid_level("sgd")
+        # Output shapes is set in the mid_level_api, but build with incorrect output
+        # shapes.
+        mid_level_api._output_shapes = [TensorShape((2, 4)) for _ in range(3)]
 
-  def test_build_incorrect_output_shapes(self):
-    _, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
-    # Output shapes is set in the mid_level_api, but build with incorrect output
-    # shapes.
-    mid_level_api._output_shapes = [TensorShape((2, 4)) for _ in range(3)]
+        with self.assertRaisesRegex(
+            ValueError, "Inconsistent shape founded for input feature"
+        ):
+            mid_level_api.build([TensorShape([1, 1, 1]) for _ in range(3)])
 
-    with self.assertRaisesRegex(ValueError,
-                                'Inconsistent shape founded for input feature'):
-      mid_level_api.build([TensorShape([1, 1, 1]) for _ in range(3)])
+    def test_enqueue_incorrect_shape_feature(self):
+        strategy, mid_level_api, _ = self._create_strategy_and_mid_level("sgd")
 
-  def test_enqueue_incorrect_shape_feature(self):
-    strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
+        sparse = self._create_high_dimensional_sparse_dataset(strategy)
+        sparse_iter = iter(
+            strategy.experimental_distribute_dataset(
+                sparse,
+                options=distribute_lib.InputOptions(experimental_fetch_to_device=False),
+            )
+        )
 
-    sparse = self._create_high_dimensional_sparse_dataset(strategy)
-    sparse_iter = iter(
-        strategy.experimental_distribute_dataset(
-            sparse,
-            options=distribute_lib.InputOptions(
-                experimental_fetch_to_device=False)))
+        mid_level_api._output_shapes = [TensorShape((1, 1)) for _ in range(3)]
+        # The output shape passed to build method is consistent.
+        mid_level_api.build([TensorShape([1, 1, 1]) for _ in range(3)])
 
-    mid_level_api._output_shapes = [TensorShape((1, 1)) for _ in range(3)]
-    # The output shape passed to build method is consistent.
-    mid_level_api.build([TensorShape([1, 1, 1]) for _ in range(3)])
+        @def_function.function
+        def test_fn():
+            def step():
+                return mid_level_api.dequeue()
 
-    @def_function.function
-    def test_fn():
+            mid_level_api.enqueue(next(sparse_iter), training=False)
+            return strategy.run(step)
 
-      def step():
-        return mid_level_api.dequeue()
+        # Enqueued tensor has shape inconsistent with the output shape setting.
+        with self.assertRaisesRegex(
+            ValueError, "Inconsistent shape founded for input feature"
+        ):
+            test_fn()
 
-      mid_level_api.enqueue(next(sparse_iter), training=False)
-      return strategy.run(step)
+    def test_not_fully_defined_output_shapes_in_feature_config(self):
+        _, mid_level_api, _ = self._create_strategy_and_mid_level("sgd")
 
-    # Enqueued tensor has shape inconsistent with the output shape setting.
-    with self.assertRaisesRegex(ValueError,
-                                'Inconsistent shape founded for input feature'):
-      test_fn()
+        # Feature config sets undefined output shapes
+        mid_level_api._output_shapes = [TensorShape(None) for _ in range(3)]
+        with self.assertRaisesRegex(ValueError, "Input Feature"):
+            mid_level_api.build()
 
-  def test_not_fully_defined_output_shapes_in_feature_config(self):
-    _, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
+    def test_not_fully_defined_output_shapes_for_build(self):
+        _, mid_level_api, _ = self._create_strategy_and_mid_level("sgd")
 
-    # Feature config sets undefined output shapes
-    mid_level_api._output_shapes = [TensorShape(None) for _ in range(3)]
-    with self.assertRaisesRegex(ValueError, 'Input Feature'):
-      mid_level_api.build()
-
-  def test_not_fully_defined_output_shapes_for_build(self):
-    _, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
-
-    # Build with undefined output shape
-    with self.assertRaisesRegex(ValueError, 'Input Feature'):
-      mid_level_api.build([TensorShape([1, None, None]) for _ in range(3)])
+        # Build with undefined output shape
+        with self.assertRaisesRegex(ValueError, "Input Feature"):
+            mid_level_api.build([TensorShape([1, None, None]) for _ in range(3)])
 
 
-if __name__ == '__main__':
-  v2_compat.enable_v2_behavior()
-  test.main()
+if __name__ == "__main__":
+    v2_compat.enable_v2_behavior()
+    test.main()

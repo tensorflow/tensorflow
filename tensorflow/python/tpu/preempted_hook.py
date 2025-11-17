@@ -25,65 +25,68 @@ from tensorflow.python.training import session_run_hook
 
 
 class CloudTPUPreemptedHook(session_run_hook.SessionRunHook):
-  """The SessionRunHook for preemptible Cloud TPUs.
+    """The SessionRunHook for preemptible Cloud TPUs.
 
-  This is an implementation of SessionRunHook for the pre-emptible Google Cloud
-  TPU service. It attempts to close the session if the TPU is preempted, and
-  exits the coordinator process if the session cannot be closed.
-  """
+    This is an implementation of SessionRunHook for the pre-emptible Google Cloud
+    TPU service. It attempts to close the session if the TPU is preempted, and
+    exits the coordinator process if the session cannot be closed.
+    """
 
-  def __init__(self, cluster):
-    self._cluster = cluster
+    def __init__(self, cluster):
+        self._cluster = cluster
 
-  def after_create_session(self, session, coord):
-    if tpu_cluster_resolver.is_running_in_gce():
-      self._tpu_poller = _TPUPollingThread(self._cluster, session)
-      self._tpu_poller.start()
+    def after_create_session(self, session, coord):
+        if tpu_cluster_resolver.is_running_in_gce():
+            self._tpu_poller = _TPUPollingThread(self._cluster, session)
+            self._tpu_poller.start()
 
-  def end(self, session):
-    self._tpu_poller.stop()
+    def end(self, session):
+        self._tpu_poller.stop()
 
 
 class _TPUPollingThread(threading.Thread):
-  """A thread that polls the state of a TPU node.
+    """A thread that polls the state of a TPU node.
 
-  When the node transitions into a TERMINAL state (PREEMPTED, TERMINATED)
-  that's considered as not recoverable by the underlying infrastructure,
-  it attempts to close the session, and exits the entire process if the
-  session.close() stucks.
-  """
+    When the node transitions into a TERMINAL state (PREEMPTED, TERMINATED)
+    that's considered as not recoverable by the underlying infrastructure,
+    it attempts to close the session, and exits the entire process if the
+    session.close() stucks.
+    """
 
-  def __init__(self, cluster, session):
-    super(_TPUPollingThread, self).__init__()
+    def __init__(self, cluster, session):
+        super(_TPUPollingThread, self).__init__()
 
-    self.daemon = True
-    self._running = True
-    self._session_closed = False
-    self._cluster = cluster
-    self._session = session
-    self._interval = 30
+        self.daemon = True
+        self._running = True
+        self._session_closed = False
+        self._cluster = cluster
+        self._session = session
+        self._interval = 30
 
-    # Some of the Google API libraries are quite chatty, so disable them.
-    for name in ['googleapiclient.discovery', 'oauth2client.client']:
-      _logging.getLogger(name).setLevel(_logging.WARNING)
+        # Some of the Google API libraries are quite chatty, so disable them.
+        for name in ["googleapiclient.discovery", "oauth2client.client"]:
+            _logging.getLogger(name).setLevel(_logging.WARNING)
 
-  def stop(self):
-    self._running = False
-    self._session_closed = True
-    self.join()
+    def stop(self):
+        self._running = False
+        self._session_closed = True
+        self.join()
 
-  def run(self):
-    if not tpu_cluster_resolver.is_running_in_gce():
-      logging.warning(
-          'TPUPollingThread is running in a non-GCE environment, exiting...')
-      self._running = False
-      return
+    def run(self):
+        if not tpu_cluster_resolver.is_running_in_gce():
+            logging.warning(
+                "TPUPollingThread is running in a non-GCE environment, exiting..."
+            )
+            self._running = False
+            return
 
-    while self._running:
-      recoverable = self._cluster._cloud_tpu_client.recoverable()  # pylint: disable=protected-access
-      if not recoverable:
-        logging.warning(
-            'TPUPollingThread found TPU %s in state %s',
-            self._cluster._tpu, self._cluster._cloud_tpu_client.state())  # pylint: disable=protected-access
-        os._exit(1)  # pylint: disable=protected-access
-      time.sleep(self._interval)
+        while self._running:
+            recoverable = self._cluster._cloud_tpu_client.recoverable()  # pylint: disable=protected-access
+            if not recoverable:
+                logging.warning(
+                    "TPUPollingThread found TPU %s in state %s",
+                    self._cluster._tpu,
+                    self._cluster._cloud_tpu_client.state(),
+                )  # pylint: disable=protected-access
+                os._exit(1)  # pylint: disable=protected-access
+            time.sleep(self._interval)

@@ -13,8 +13,8 @@
 # limitations under the License.
 # =============================================================================
 
-"""Contains the convolutional layer classes and their functional aliases.
-"""
+"""Contains the convolutional layer classes and their functional aliases."""
+
 from tensorflow.python.keras.legacy_tf_layers import convolutional
 
 Conv1D = convolutional.Conv1D

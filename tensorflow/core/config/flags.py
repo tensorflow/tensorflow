@@ -23,7 +23,7 @@ FLAGS = None
 
 
 def config():
-  global FLAGS
-  if FLAGS is None:
-    FLAGS = flags_pybind.Flags()
-  return FLAGS
+    global FLAGS
+    if FLAGS is None:
+        FLAGS = flags_pybind.Flags()
+    return FLAGS

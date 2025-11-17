@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Module for constructing RNN Cells."""
+
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.rnn_cell_impl import *

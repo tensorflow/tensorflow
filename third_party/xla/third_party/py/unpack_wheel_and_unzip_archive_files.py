@@ -48,21 +48,19 @@ def copy_file(
     src_file: str,
     dst_dir: str,
 ) -> None:
-  """Copy a file to the destination directory.
+    """Copy a file to the destination directory.
 
-  Args:
-    src_file: file to be copied
-    dst_dir: destination directory
-  """
+    Args:
+      src_file: file to be copied
+      dst_dir: destination directory
+    """
 
-  src_dirname = os.path.dirname(src_file)
-  site_packages = "site-packages"
-  site_packages_ind = (
-      src_dirname.rfind(site_packages) + len(site_packages) + 1
-  )
-  dest_dir_path = os.path.join(dst_dir, src_dirname[site_packages_ind:])
-  os.makedirs(dest_dir_path, exist_ok=True)
-  shutil.copy(src_file, dest_dir_path)
+    src_dirname = os.path.dirname(src_file)
+    site_packages = "site-packages"
+    site_packages_ind = src_dirname.rfind(site_packages) + len(site_packages) + 1
+    dest_dir_path = os.path.join(dst_dir, src_dirname[site_packages_ind:])
+    os.makedirs(dest_dir_path, exist_ok=True)
+    shutil.copy(src_file, dest_dir_path)
 
 
 def prepare_outputs(
@@ -71,24 +69,24 @@ def prepare_outputs(
     wheel_files: list[str],
     output_dir: str,
 ) -> None:
-  """Create the output directory and copy/extract the sources to it.
+    """Create the output directory and copy/extract the sources to it.
 
-  Args:
-    wheel: path to the wheel file to extract
-    wheel_files: paths to additional wheel files to copy to the output directory
-    zip_files: paths to additional zip files to extract to the output directory
-    output_dir: target directory where files are copied to.
-  """
-  with zipfile.ZipFile(wheel, "r") as zip_ref:
-    zip_ref.extractall(output_dir)
-  if zip_files:
-    for archive in zip_files:
-      with zipfile.ZipFile(archive, "r") as zip_ref:
+    Args:
+      wheel: path to the wheel file to extract
+      wheel_files: paths to additional wheel files to copy to the output directory
+      zip_files: paths to additional zip files to extract to the output directory
+      output_dir: target directory where files are copied to.
+    """
+    with zipfile.ZipFile(wheel, "r") as zip_ref:
         zip_ref.extractall(output_dir)
+    if zip_files:
+        for archive in zip_files:
+            with zipfile.ZipFile(archive, "r") as zip_ref:
+                zip_ref.extractall(output_dir)
 
-  if wheel_files:
-    for f in wheel_files:
-      copy_file(f, output_dir)
+    if wheel_files:
+        for f in wheel_files:
+            copy_file(f, output_dir)
 
 
 os.makedirs(args.output_dir, exist_ok=True)

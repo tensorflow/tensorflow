@@ -22,15 +22,15 @@ _default_ctx_stack = thread_local_stack.ThreadLocalStack()
 
 
 def get_default():
-  """Returns the default execution context."""
-  return _default_ctx_stack.peek()
+    """Returns the default execution context."""
+    return _default_ctx_stack.peek()
 
 
 @contextlib.contextmanager
 def set_default(ctx):
-  """Returns a contextmanager with `ctx` as the default execution context."""
-  try:
-    _default_ctx_stack.push(ctx)
-    yield
-  finally:
-    _default_ctx_stack.pop()
+    """Returns a contextmanager with `ctx` as the default execution context."""
+    try:
+        _default_ctx_stack.push(ctx)
+        yield
+    finally:
+        _default_ctx_stack.pop()

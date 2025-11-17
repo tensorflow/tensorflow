@@ -27,44 +27,44 @@ from tensorflow.python.util import tf_inspect
 
 
 class LazyLoaderTest(test.TestCase):
+    def testDocTestDoesNotLoad(self):
+        module = types.ModuleType("mytestmodule")
+        module.foo = lazy_loader.LazyLoader("foo", module.__dict__, "os.path")
 
-  def testDocTestDoesNotLoad(self):
-    module = types.ModuleType("mytestmodule")
-    module.foo = lazy_loader.LazyLoader("foo", module.__dict__, "os.path")
+        self.assertIsInstance(module.foo, lazy_loader.LazyLoader)
 
-    self.assertIsInstance(module.foo, lazy_loader.LazyLoader)
+        finder = doctest.DocTestFinder()
+        finder.find(module)
 
-    finder = doctest.DocTestFinder()
-    finder.find(module)
+        self.assertIsInstance(module.foo, lazy_loader.LazyLoader)
 
-    self.assertIsInstance(module.foo, lazy_loader.LazyLoader)
+    @test.mock.patch.object(logging, "warning", autospec=True)
+    def testLazyLoaderMock(self, mock_warning):
+        name = LazyLoaderTest.__module__
+        lazy_loader_module = lazy_loader.LazyLoader(
+            "lazy_loader_module", globals(), name, warning="Test warning."
+        )
 
-  @test.mock.patch.object(logging, "warning", autospec=True)
-  def testLazyLoaderMock(self, mock_warning):
-    name = LazyLoaderTest.__module__
-    lazy_loader_module = lazy_loader.LazyLoader(
-        "lazy_loader_module", globals(), name, warning="Test warning.")
+        self.assertEqual(0, mock_warning.call_count)
+        lazy_loader_module.foo = 0
+        self.assertEqual(1, mock_warning.call_count)
+        foo = lazy_loader_module.foo
+        self.assertEqual(1, mock_warning.call_count)
 
-    self.assertEqual(0, mock_warning.call_count)
-    lazy_loader_module.foo = 0
-    self.assertEqual(1, mock_warning.call_count)
-    foo = lazy_loader_module.foo
-    self.assertEqual(1, mock_warning.call_count)
-
-    # Check that values stayed the same
-    self.assertEqual(lazy_loader_module.foo, foo)
+        # Check that values stayed the same
+        self.assertEqual(lazy_loader_module.foo, foo)
 
 
 class PickleTest(test.TestCase):
-
-  def testPickleLazyLoader(self):
-    name = PickleTest.__module__  # Try to pickle current module.
-    lazy_loader_module = lazy_loader.LazyLoader(
-        "lazy_loader_module", globals(), name)
-    restored = pickle.loads(pickle.dumps(lazy_loader_module))
-    self.assertEqual(restored.__name__, name)
-    self.assertIsNotNone(restored.PickleTest)
+    def testPickleLazyLoader(self):
+        name = PickleTest.__module__  # Try to pickle current module.
+        lazy_loader_module = lazy_loader.LazyLoader(
+            "lazy_loader_module", globals(), name
+        )
+        restored = pickle.loads(pickle.dumps(lazy_loader_module))
+        self.assertEqual(restored.__name__, name)
+        self.assertIsNotNone(restored.PickleTest)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

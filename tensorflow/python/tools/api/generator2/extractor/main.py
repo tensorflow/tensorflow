@@ -18,5 +18,5 @@ from absl import app
 
 from tensorflow.python.tools.api.generator2.extractor import extractor
 
-if __name__ == '__main__':
-  app.run(extractor.main)
+if __name__ == "__main__":
+    app.run(extractor.main)

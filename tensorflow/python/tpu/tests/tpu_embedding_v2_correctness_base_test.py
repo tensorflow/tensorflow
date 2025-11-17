@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for TPU Embeddings mid level API on TPU."""
+
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import backprop
@@ -22,87 +23,97 @@ from tensorflow.python.platform import test
 from tensorflow.python.tpu.tests import tpu_embedding_base_test
 
 
-class TPUEmbeddingCorrectnessBaseTest(
-    tpu_embedding_base_test.TPUEmbeddingBaseTest):
+class TPUEmbeddingCorrectnessBaseTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
+    def _test_embedding(self, optimizer_name, training, sparse, is_high_dimensional):
+        strategy, mid_level_api, optimizer = self._create_strategy_and_mid_level(
+            optimizer_name
+        )
 
-  def _test_embedding(self, optimizer_name, training, sparse,
-                      is_high_dimensional):
-    strategy, mid_level_api, optimizer = (
-        self._create_strategy_and_mid_level(optimizer_name))
-
-    if sparse:
-      if is_high_dimensional:
-        dataset = self._create_high_dimensional_sparse_dataset(strategy)
-      else:
-        dataset = self._create_sparse_dataset(strategy)
-    else:
-      if is_high_dimensional:
-        dataset = self._create_high_dimensional_sparse_dataset(strategy)
-      else:
-        dataset = self._create_ragged_dataset(strategy)
-
-    if is_high_dimensional:
-      if sparse:
-        mid_level_api.build([
-            TensorShape([self.batch_size, self.data_batch_size, 2]),
-            TensorShape([self.batch_size, self.data_batch_size, 2]),
-            TensorShape([self.batch_size, self.data_batch_size, 3]),
-        ])
-      else:
-        mid_level_api.build([
-            TensorShape([self.batch_size, self.data_batch_size, None]),
-            TensorShape([self.batch_size, self.data_batch_size, None]),
-            TensorShape([self.batch_size, self.data_batch_size, None]),
-        ])
-
-    dist = strategy.experimental_distribute_dataset(
-        dataset,
-        options=distribute_lib.InputOptions(experimental_fetch_to_device=False))
-    dist_iter = iter(dist)
-
-    @def_function.function
-    def test_fn():
-
-      def step():
-        """Create and run computation that returns the embedding activations."""
-        if not training:
-          activations = mid_level_api.dequeue()
-          total_loss = self._get_total_loss_tensor(activations)
-          ret_val = [total_loss] + list(activations)
-          return ret_val
+        if sparse:
+            if is_high_dimensional:
+                dataset = self._create_high_dimensional_sparse_dataset(strategy)
+            else:
+                dataset = self._create_sparse_dataset(strategy)
         else:
-          with backprop.GradientTape() as tape:
-            activations = mid_level_api.dequeue()
-            tape.watch(activations)
-            total_loss = self._get_total_loss_tensor(activations)
-            loss_per_replica = total_loss / strategy.num_replicas_in_sync
-          gradients = tape.gradient(loss_per_replica, activations)
-          mid_level_api.apply_gradients(gradients)
-        ret_val = [total_loss] + list(activations)
-        return ret_val
+            if is_high_dimensional:
+                dataset = self._create_high_dimensional_sparse_dataset(strategy)
+            else:
+                dataset = self._create_ragged_dataset(strategy)
 
-      mid_level_api.enqueue(next(dist_iter), training=training)
-      result = strategy.run(step)
-      return result
+        if is_high_dimensional:
+            if sparse:
+                mid_level_api.build(
+                    [
+                        TensorShape([self.batch_size, self.data_batch_size, 2]),
+                        TensorShape([self.batch_size, self.data_batch_size, 2]),
+                        TensorShape([self.batch_size, self.data_batch_size, 3]),
+                    ]
+                )
+            else:
+                mid_level_api.build(
+                    [
+                        TensorShape([self.batch_size, self.data_batch_size, None]),
+                        TensorShape([self.batch_size, self.data_batch_size, None]),
+                        TensorShape([self.batch_size, self.data_batch_size, None]),
+                    ]
+                )
 
-    # Run model.
-    shard_out_val = test_fn()
+        dist = strategy.experimental_distribute_dataset(
+            dataset,
+            options=distribute_lib.InputOptions(experimental_fetch_to_device=False),
+        )
+        dist_iter = iter(dist)
 
-    # Retrieve TPU weights to CPU.
-    mid_level_api._retrieve_variables()
+        @def_function.function
+        def test_fn():
+            def step():
+                """Create and run computation that returns the embedding activations."""
+                if not training:
+                    activations = mid_level_api.dequeue()
+                    total_loss = self._get_total_loss_tensor(activations)
+                    ret_val = [total_loss] + list(activations)
+                    return ret_val
+                else:
+                    with backprop.GradientTape() as tape:
+                        activations = mid_level_api.dequeue()
+                        tape.watch(activations)
+                        total_loss = self._get_total_loss_tensor(activations)
+                        loss_per_replica = total_loss / strategy.num_replicas_in_sync
+                    gradients = tape.gradient(loss_per_replica, activations)
+                    mid_level_api.apply_gradients(gradients)
+                ret_val = [total_loss] + list(activations)
+                return ret_val
 
-    # Compute sparse tensors for global batch.
-    if is_high_dimensional:
-      input_data = next(
-          iter(self._create_high_dimensional_sparse_dataset(strategy)))
-    else:
-      input_data = next(iter(self._create_sparse_dataset(strategy)))
+            mid_level_api.enqueue(next(dist_iter), training=training)
+            result = strategy.run(step)
+            return result
 
-    # Check results.
-    self._check_results(strategy, shard_out_val, training, input_data,
-                        mid_level_api._variables, optimizer,
-                        is_high_dimensional)
+        # Run model.
+        shard_out_val = test_fn()
 
-if __name__ == '__main__':
-  v2_compat.enable_v2_behavior()
-  test.main()
+        # Retrieve TPU weights to CPU.
+        mid_level_api._retrieve_variables()
+
+        # Compute sparse tensors for global batch.
+        if is_high_dimensional:
+            input_data = next(
+                iter(self._create_high_dimensional_sparse_dataset(strategy))
+            )
+        else:
+            input_data = next(iter(self._create_sparse_dataset(strategy)))
+
+        # Check results.
+        self._check_results(
+            strategy,
+            shard_out_val,
+            training,
+            input_data,
+            mid_level_api._variables,
+            optimizer,
+            is_high_dimensional,
+        )
+
+
+if __name__ == "__main__":
+    v2_compat.enable_v2_behavior()
+    test.main()

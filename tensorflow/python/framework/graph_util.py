@@ -18,7 +18,6 @@
 API docstring: tensorflow.graph_util
 """
 
-
 # pylint: disable=unused-import
 from tensorflow.python.framework.graph_util_impl import extract_sub_graph
 from tensorflow.python.framework.graph_util_impl import graph_defs_equal

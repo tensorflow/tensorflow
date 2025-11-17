@@ -24,15 +24,14 @@ from tensorflow.python.autograph.tests import reference_test_base
 
 
 def f():
-  np.random.seed(1)
-  return 2 * np.random.binomial(1, 0.5, size=(10,)) - 1
+    np.random.seed(1)
+    return 2 * np.random.binomial(1, 0.5, size=(10,)) - 1
 
 
 class ReferenceTest(reference_test_base.TestCase):
+    def test_basic(self):
+        self.assertFunctionMatchesEager(f)
 
-  def test_basic(self):
-    self.assertFunctionMatchesEager(f)
 
-
-if __name__ == '__main__':
-  tf.test.main()
+if __name__ == "__main__":
+    tf.test.main()

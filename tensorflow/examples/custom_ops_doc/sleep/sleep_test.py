@@ -19,44 +19,45 @@ import time
 import tensorflow as tf
 
 from tensorflow.examples.custom_ops_doc.sleep import sleep_op
+
 # This pylint disable is only needed for internal google users
 from tensorflow.python.framework import errors_impl  # pylint: disable=g-direct-tensorflow-import
 
 
 class SleepTest(tf.test.TestCase):
+    def _check_sleep(self, op):
+        """Check that one sleep op works in isolation.
 
-  def _check_sleep(self, op):
-    """Check that one sleep op works in isolation.
+        See sleep_bin.py for an example of how the synchronous and asynchronous
+        sleep ops differ in behavior.
 
-    See sleep_bin.py for an example of how the synchronous and asynchronous
-    sleep ops differ in behavior.
+        Args:
+          op: The sleep op, either sleep_op.SyncSleep or sleep_op.AsyncSleep.
+        """
+        delay = 0.3  # delay in seconds
+        start_t = time.time()
+        func = tf.function(lambda: op(delay))
+        results = self.evaluate(func())
+        end_t = time.time()
+        delta_t = end_t - start_t
+        self.assertEqual(results.shape, tuple())
+        self.assertGreater(delta_t, 0.9 * delay)
 
-    Args:
-      op: The sleep op, either sleep_op.SyncSleep or sleep_op.AsyncSleep.
-    """
-    delay = 0.3  # delay in seconds
-    start_t = time.time()
-    func = tf.function(lambda: op(delay))
-    results = self.evaluate(func())
-    end_t = time.time()
-    delta_t = end_t - start_t
-    self.assertEqual(results.shape, tuple())
-    self.assertGreater(delta_t, 0.9 * delay)
+    def test_sync_sleep(self):
+        self._check_sleep(sleep_op.SyncSleep)
 
-  def test_sync_sleep(self):
-    self._check_sleep(sleep_op.SyncSleep)
+    def test_async_sleep(self):
+        self._check_sleep(sleep_op.AsyncSleep)
 
-  def test_async_sleep(self):
-    self._check_sleep(sleep_op.AsyncSleep)
-
-  def test_async_sleep_error(self):
-    # It is import that ComputeAsync() calls its done() callback if it returns
-    # early due to an error.
-    func = tf.function(lambda: sleep_op.AsyncSleep(-1.0))
-    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                'Input `delay` must be non-negative.'):
-      self.evaluate(func())
+    def test_async_sleep_error(self):
+        # It is import that ComputeAsync() calls its done() callback if it returns
+        # early due to an error.
+        func = tf.function(lambda: sleep_op.AsyncSleep(-1.0))
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError, "Input `delay` must be non-negative."
+        ):
+            self.evaluate(func())
 
 
-if __name__ == '__main__':
-  tf.test.main()
+if __name__ == "__main__":
+    tf.test.main()

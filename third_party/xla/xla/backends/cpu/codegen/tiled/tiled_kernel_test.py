@@ -27,15 +27,14 @@ create_literal = testlib_utilities.create_literal_from_np
 
 
 class InputSpec:
-
-  def __init__(self, shape: tuple[int, ...], input_value):
-    self.shape = shape
-    self.input_value = input_value
+    def __init__(self, shape: tuple[int, ...], input_value):
+        self.shape = shape
+        self.input_value = input_value
 
 
 def get_random_array(shape: tuple[int, ...], dtype: np.dtype) -> np.ndarray:
-  rng = np.random.default_rng()
-  return rng.uniform(low=-5, high=5, size=shape).astype(dtype)
+    rng = np.random.default_rng()
+    return rng.uniform(low=-5, high=5, size=shape).astype(dtype)
 
 
 def compare_kernel(
@@ -48,45 +47,42 @@ def compare_kernel(
     expected_output: Callable[[np.ndarray, ...], np.ndarray],
     maxulp: Optional[int] = None,
 ) -> None:
-  mlir_emitter = cpu_testlib.MlirTestKernelEmitter(
-      ir, kernel_name, (num_workgroups, 1, 1)
-  )
-  kernel_definition = mlir_emitter.emit_kernel_definition()
-
-  runner = cpu_testlib.KernelRunner.create(
-      kernel_definition,
-      cpu_testlib.JitCompiler(base_testlib.HloModuleConfig()),
-  )
-
-  # Simply use a all-ones arrays as inputs to make it easy to debug the kernel
-  # unless random inputs are requested.
-  def get_input(spec: InputSpec):
-    if spec.input_value is None:
-      return get_random_array(spec.shape, dtype)
-    return np.full(shape=spec.shape, fill_value=spec.input_value, dtype=dtype)
-
-  inputs = [get_input(spec) for spec in input_specs]
-
-  input_tensors = [create_literal(input) for input in inputs]
-  # Use a random array as the output to ensure all values are written to.
-  output_tensor = create_literal(get_random_array(output_shape, dtype))
-  runner.call(input_tensors + [output_tensor])
-
-  output_np = np.asarray(output_tensor)
-  expected_output_np = expected_output(*inputs)
-  if maxulp is None:
-    np.testing.assert_array_equal(output_np, expected_output_np)
-  else:
-    np.testing.assert_array_max_ulp(
-        output_np, expected_output_np, maxulp=maxulp
+    mlir_emitter = cpu_testlib.MlirTestKernelEmitter(
+        ir, kernel_name, (num_workgroups, 1, 1)
     )
+    kernel_definition = mlir_emitter.emit_kernel_definition()
+
+    runner = cpu_testlib.KernelRunner.create(
+        kernel_definition,
+        cpu_testlib.JitCompiler(base_testlib.HloModuleConfig()),
+    )
+
+    # Simply use a all-ones arrays as inputs to make it easy to debug the kernel
+    # unless random inputs are requested.
+    def get_input(spec: InputSpec):
+        if spec.input_value is None:
+            return get_random_array(spec.shape, dtype)
+        return np.full(shape=spec.shape, fill_value=spec.input_value, dtype=dtype)
+
+    inputs = [get_input(spec) for spec in input_specs]
+
+    input_tensors = [create_literal(input) for input in inputs]
+    # Use a random array as the output to ensure all values are written to.
+    output_tensor = create_literal(get_random_array(output_shape, dtype))
+    runner.call(input_tensors + [output_tensor])
+
+    output_np = np.asarray(output_tensor)
+    expected_output_np = expected_output(*inputs)
+    if maxulp is None:
+        np.testing.assert_array_equal(output_np, expected_output_np)
+    else:
+        np.testing.assert_array_max_ulp(output_np, expected_output_np, maxulp=maxulp)
 
 
 class XtileLoweringTest(absltest.TestCase):
-
-  def test_slice(self):
-    # Check that masked extract / insert works.
-    ir = """
+    def test_slice(self):
+        # Check that masked extract / insert works.
+        ir = """
       module @tiled_slice {
         xtile.entry_func @tiled_slice(
             %input: memref<5x5xf32>,
@@ -101,18 +97,18 @@ class XtileLoweringTest(absltest.TestCase):
       }
     """
 
-    compare_kernel(
-        ir,
-        "tiled_slice",
-        1,
-        [InputSpec((5, 5), 1)],
-        (5, 5),
-        np.float32,
-        lambda arg: arg.transpose(),
-    )
+        compare_kernel(
+            ir,
+            "tiled_slice",
+            1,
+            [InputSpec((5, 5), 1)],
+            (5, 5),
+            np.float32,
+            lambda arg: arg.transpose(),
+        )
 
-  def test_strided(self):
-    ir = """
+    def test_strided(self):
+        ir = """
       module @tiled_slice {
         xtile.entry_func @tiled_slice(
             %input: memref<64x64xf32>,
@@ -125,18 +121,18 @@ class XtileLoweringTest(absltest.TestCase):
       }
     """
 
-    compare_kernel(
-        ir,
-        "tiled_slice",
-        1,
-        [InputSpec((64, 64), 1)],
-        (4, 32),
-        np.float32,
-        lambda arg: arg[::21, ::2],
-    )
+        compare_kernel(
+            ir,
+            "tiled_slice",
+            1,
+            [InputSpec((64, 64), 1)],
+            (4, 32),
+            np.float32,
+            lambda arg: arg[::21, ::2],
+        )
 
-  def test_transpose(self):
-    ir = """
+    def test_transpose(self):
+        ir = """
       module @tiled_transpose {
         xtile.entry_func @tiled_transpose(
             %input: memref<4096x4096xf32>,
@@ -152,18 +148,18 @@ class XtileLoweringTest(absltest.TestCase):
       }
     """
 
-    compare_kernel(
-        ir,
-        "tiled_transpose",
-        8,
-        [InputSpec((4096, 4096), 1)],
-        (4096, 4096),
-        np.float32,
-        lambda arg: arg.transpose(),
-    )
+        compare_kernel(
+            ir,
+            "tiled_transpose",
+            8,
+            [InputSpec((4096, 4096), 1)],
+            (4096, 4096),
+            np.float32,
+            lambda arg: arg.transpose(),
+        )
 
-  def test_add_tranpose(self):
-    ir = """
+    def test_add_tranpose(self):
+        ir = """
       module @add_tranpose {
         xtile.entry_func @add_tranpose(
             %input: memref<4096x4096xf32>,
@@ -181,18 +177,18 @@ class XtileLoweringTest(absltest.TestCase):
       }
     """
 
-    compare_kernel(
-        ir,
-        "add_tranpose",
-        8,
-        [InputSpec((4096, 4096), 1)],
-        (4096, 4096),
-        np.float32,
-        lambda arg: arg + arg.transpose(),
-    )
+        compare_kernel(
+            ir,
+            "add_tranpose",
+            8,
+            [InputSpec((4096, 4096), 1)],
+            (4096, 4096),
+            np.float32,
+            lambda arg: arg + arg.transpose(),
+        )
 
-  def test_dot_single_tile(self):
-    ir = """
+    def test_dot_single_tile(self):
+        ir = """
       module @dot_single_tile {
         xtile.entry_func @dot_single_tile(
             %lhs: memref<8x16xf32>,
@@ -209,19 +205,19 @@ class XtileLoweringTest(absltest.TestCase):
       }
     """
 
-    compare_kernel(
-        ir,
-        "dot_single_tile",
-        1,
-        [InputSpec((8, 16), 1), InputSpec((16, 8), 1)],
-        (8, 8),
-        np.float32,
-        lambda lhs, rhs: lhs @ rhs,
-        maxulp=5,
-    )
+        compare_kernel(
+            ir,
+            "dot_single_tile",
+            1,
+            [InputSpec((8, 16), 1), InputSpec((16, 8), 1)],
+            (8, 8),
+            np.float32,
+            lambda lhs, rhs: lhs @ rhs,
+            maxulp=5,
+        )
 
-  def test_dot_scalar_output(self):
-    ir = """
+    def test_dot_scalar_output(self):
+        ir = """
       module @test_dot_scalar_output {
         xtile.entry_func @test_dot_scalar_output(
             %lhs: memref<8x16xf32>,
@@ -238,19 +234,19 @@ class XtileLoweringTest(absltest.TestCase):
       }
     """
 
-    compare_kernel(
-        ir,
-        "test_dot_scalar_output",
-        1,
-        [InputSpec((8, 16), 1), InputSpec((16, 8), 1)],
-        (),
-        np.float32,
-        lambda lhs, rhs: np.tensordot(lhs, rhs, axes=[[1, 0], [0, 1]]),
-        maxulp=8,
-    )
+        compare_kernel(
+            ir,
+            "test_dot_scalar_output",
+            1,
+            [InputSpec((8, 16), 1), InputSpec((16, 8), 1)],
+            (),
+            np.float32,
+            lambda lhs, rhs: np.tensordot(lhs, rhs, axes=[[1, 0], [0, 1]]),
+            maxulp=8,
+        )
 
-  def test_dot_fusion_single_tile(self):
-    ir = """
+    def test_dot_fusion_single_tile(self):
+        ir = """
       module @dot_fusion_single_tile {
         xtile.entry_func @dot_fusion_single_tile(
             %lhs_0: memref<8x16xf32>,
@@ -271,19 +267,19 @@ class XtileLoweringTest(absltest.TestCase):
       }
     """
 
-    compare_kernel(
-        ir,
-        "dot_fusion_single_tile",
-        1,
-        [InputSpec((8, 16), 1), InputSpec((8, 16), 1), InputSpec((16, 1), 1)],
-        (8, 1),
-        np.float32,
-        lambda lhs_0, lhs_1, rhs: np.tanh((lhs_0 + lhs_1) @ rhs),
-        maxulp=5,
-    )
+        compare_kernel(
+            ir,
+            "dot_fusion_single_tile",
+            1,
+            [InputSpec((8, 16), 1), InputSpec((8, 16), 1), InputSpec((16, 1), 1)],
+            (8, 1),
+            np.float32,
+            lambda lhs_0, lhs_1, rhs: np.tanh((lhs_0 + lhs_1) @ rhs),
+            maxulp=5,
+        )
 
-  def test_reduction_add_inner(self):
-    ir = """
+    def test_reduction_add_inner(self):
+        ir = """
       module @reduction_add_inner {
         xtile.entry_func @reduction_add_inner(
             %input: memref<1024x32xf32>,
@@ -308,18 +304,18 @@ class XtileLoweringTest(absltest.TestCase):
       }
     """
 
-    compare_kernel(
-        ir,
-        "reduction_add_inner",
-        4,
-        [InputSpec((1024, 32), 1), InputSpec((1,), 0)],
-        (1024,),
-        np.int32,
-        lambda input, init: np.sum(input, axis=1) + init,
-    )
+        compare_kernel(
+            ir,
+            "reduction_add_inner",
+            4,
+            [InputSpec((1024, 32), 1), InputSpec((1,), 0)],
+            (1024,),
+            np.int32,
+            lambda input, init: np.sum(input, axis=1) + init,
+        )
 
-  def test_reduction_add_outer(self):
-    ir = """
+    def test_reduction_add_outer(self):
+        ir = """
       module @reduction_add_outer {
         xtile.entry_func @reduction_add_outer(
             %input: memref<1024x32xf32>,
@@ -344,18 +340,18 @@ class XtileLoweringTest(absltest.TestCase):
       }
     """
 
-    compare_kernel(
-        ir,
-        "reduction_add_outer",
-        4,
-        [InputSpec((1024, 32), 1), InputSpec((1,), 0)],
-        (32,),
-        np.float32,
-        lambda input, init: np.sum(input, axis=0),
-    )
+        compare_kernel(
+            ir,
+            "reduction_add_outer",
+            4,
+            [InputSpec((1024, 32), 1), InputSpec((1,), 0)],
+            (32,),
+            np.float32,
+            lambda input, init: np.sum(input, axis=0),
+        )
 
-  def test_reduction_middle(self):
-    ir = """
+    def test_reduction_middle(self):
+        ir = """
       module @reduction_add_middle {
         xtile.entry_func @reduction_add_middle(
             %input: memref<8x4x2xf32>,
@@ -377,18 +373,18 @@ class XtileLoweringTest(absltest.TestCase):
       }
     """
 
-    compare_kernel(
-        ir,
-        "reduction_add_middle",
-        1,
-        [InputSpec((8, 4, 2), 1), InputSpec((1,), 0)],
-        (8, 2),
-        np.float32,
-        lambda input, init: np.sum(input, axis=1),
-    )
+        compare_kernel(
+            ir,
+            "reduction_add_middle",
+            1,
+            [InputSpec((8, 4, 2), 1), InputSpec((1,), 0)],
+            (8, 2),
+            np.float32,
+            lambda input, init: np.sum(input, axis=1),
+        )
 
-  def test_reduction_outer_inner(self):
-    ir = """
+    def test_reduction_outer_inner(self):
+        ir = """
       module @reduction_add_outer_inner {
         xtile.entry_func @reduction_add_outer_inner(
             %input: memref<8x4x2xf32>,
@@ -410,18 +406,18 @@ class XtileLoweringTest(absltest.TestCase):
       }
     """
 
-    compare_kernel(
-        ir,
-        "reduction_add_outer_inner",
-        1,
-        [InputSpec((8, 4, 2), 1), InputSpec((1,), 0)],
-        (4,),
-        np.float32,
-        lambda input, init: np.sum(input, axis=(0, 2)),
-    )
+        compare_kernel(
+            ir,
+            "reduction_add_outer_inner",
+            1,
+            [InputSpec((8, 4, 2), 1), InputSpec((1,), 0)],
+            (4,),
+            np.float32,
+            lambda input, init: np.sum(input, axis=(0, 2)),
+        )
 
-  def test_broadcast_in_dim_inner(self):
-    ir = """
+    def test_broadcast_in_dim_inner(self):
+        ir = """
       module @broadcast_in_dim_inner {
         xtile.entry_func @broadcast_in_dim_inner(
             %input: memref<4xf32>,
@@ -435,18 +431,18 @@ class XtileLoweringTest(absltest.TestCase):
       }
     """
 
-    compare_kernel(
-        ir,
-        "broadcast_in_dim_inner",
-        1,
-        [InputSpec((4,), None)],
-        (32, 4),
-        np.float32,
-        lambda input: np.broadcast_to(input, (32, 4)),
-    )
+        compare_kernel(
+            ir,
+            "broadcast_in_dim_inner",
+            1,
+            [InputSpec((4,), None)],
+            (32, 4),
+            np.float32,
+            lambda input: np.broadcast_to(input, (32, 4)),
+        )
 
-  def test_broadcast_in_dim_outer(self):
-    ir = """
+    def test_broadcast_in_dim_outer(self):
+        ir = """
       module @broadcast_in_dim_outer {
         xtile.entry_func @broadcast_in_dim_outer(
             %input: memref<4xf32>,
@@ -460,16 +456,16 @@ class XtileLoweringTest(absltest.TestCase):
       }
     """
 
-    compare_kernel(
-        ir,
-        "broadcast_in_dim_outer",
-        1,
-        [InputSpec((4,), None)],
-        (4, 32),
-        np.float32,
-        lambda input: np.transpose(np.broadcast_to(input, (32, 4))),
-    )
+        compare_kernel(
+            ir,
+            "broadcast_in_dim_outer",
+            1,
+            [InputSpec((4,), None)],
+            (4, 32),
+            np.float32,
+            lambda input: np.transpose(np.broadcast_to(input, (32, 4))),
+        )
 
 
 if __name__ == "__main__":
-  absltest.main()
+    absltest.main()

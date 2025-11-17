@@ -19,46 +19,46 @@ from tensorflow.tools.common import public_api
 
 
 class PublicApiTest(googletest.TestCase):
+    class TestVisitor(object):
+        def __init__(self):
+            self.symbols = set()
+            self.last_parent = None
+            self.last_children = None
 
-  class TestVisitor(object):
+        def __call__(self, path, parent, children):
+            self.symbols.add(path)
+            self.last_parent = parent
+            self.last_children = list(children)  # Make a copy to preserve state.
 
-    def __init__(self):
-      self.symbols = set()
-      self.last_parent = None
-      self.last_children = None
+    def test_call_forward(self):
+        visitor = self.TestVisitor()
+        children = [("name1", "thing1"), ("name2", "thing2")]
+        public_api.PublicAPIVisitor(visitor)("test", "dummy", children)
+        self.assertEqual(set(["test"]), visitor.symbols)
+        self.assertEqual("dummy", visitor.last_parent)
+        self.assertEqual(
+            [("name1", "thing1"), ("name2", "thing2")], visitor.last_children
+        )
 
-    def __call__(self, path, parent, children):
-      self.symbols.add(path)
-      self.last_parent = parent
-      self.last_children = list(children)  # Make a copy to preserve state.
+    def test_private_child_removal(self):
+        visitor = self.TestVisitor()
+        children = [("name1", "thing1"), ("_name2", "thing2")]
+        public_api.PublicAPIVisitor(visitor)("test", "dummy", children)
+        # Make sure the private symbols are removed before the visitor is called.
+        self.assertEqual([("name1", "thing1")], visitor.last_children)
+        self.assertEqual([("name1", "thing1")], children)
 
-  def test_call_forward(self):
-    visitor = self.TestVisitor()
-    children = [('name1', 'thing1'), ('name2', 'thing2')]
-    public_api.PublicAPIVisitor(visitor)('test', 'dummy', children)
-    self.assertEqual(set(['test']), visitor.symbols)
-    self.assertEqual('dummy', visitor.last_parent)
-    self.assertEqual([('name1', 'thing1'), ('name2', 'thing2')],
-                     visitor.last_children)
-
-  def test_private_child_removal(self):
-    visitor = self.TestVisitor()
-    children = [('name1', 'thing1'), ('_name2', 'thing2')]
-    public_api.PublicAPIVisitor(visitor)('test', 'dummy', children)
-    # Make sure the private symbols are removed before the visitor is called.
-    self.assertEqual([('name1', 'thing1')], visitor.last_children)
-    self.assertEqual([('name1', 'thing1')], children)
-
-  def test_no_descent_child_removal(self):
-    visitor = self.TestVisitor()
-    children = [('name1', 'thing1'), ('mock', 'thing2')]
-    public_api.PublicAPIVisitor(visitor)('test', 'dummy', children)
-    # Make sure not-to-be-descended-into symbols are removed after the visitor
-    # is called.
-    self.assertEqual([('name1', 'thing1'), ('mock', 'thing2')],
-                     visitor.last_children)
-    self.assertEqual([('name1', 'thing1')], children)
+    def test_no_descent_child_removal(self):
+        visitor = self.TestVisitor()
+        children = [("name1", "thing1"), ("mock", "thing2")]
+        public_api.PublicAPIVisitor(visitor)("test", "dummy", children)
+        # Make sure not-to-be-descended-into symbols are removed after the visitor
+        # is called.
+        self.assertEqual(
+            [("name1", "thing1"), ("mock", "thing2")], visitor.last_children
+        )
+        self.assertEqual([("name1", "thing1")], children)
 
 
-if __name__ == '__main__':
-  googletest.main()
+if __name__ == "__main__":
+    googletest.main()

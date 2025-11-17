@@ -27,34 +27,32 @@ from tensorflow.python.platform import test
 
 @tf_test_util.run_all_in_graph_and_eager_modes
 class WindowOpsTest(test.TestCase, parameterized.TestCase):
-
-  @parameterized.parameters(
-      # Only float32 is supported.
-      (window_ops.hann_window, 10, False, dtypes.float32),
-      (window_ops.hann_window, 10, True, dtypes.float32),
-      (window_ops.hamming_window, 10, False, dtypes.float32),
-      (window_ops.hamming_window, 10, True, dtypes.float32),
-      (window_ops.vorbis_window, 12, None, dtypes.float32),
-  )
-  def test_tflite_convert(self, window_fn, window_length, periodic, dtype):
-
-    def fn(window_length):
-      try:
-        return window_fn(window_length, periodic=periodic, dtype=dtype)
-      except TypeError:
-        return window_fn(window_length, dtype=dtype)
-
-    tflite_model = test_util.tflite_convert(
-        fn, [tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32)]
+    @parameterized.parameters(
+        # Only float32 is supported.
+        (window_ops.hann_window, 10, False, dtypes.float32),
+        (window_ops.hann_window, 10, True, dtypes.float32),
+        (window_ops.hamming_window, 10, False, dtypes.float32),
+        (window_ops.hamming_window, 10, True, dtypes.float32),
+        (window_ops.vorbis_window, 12, None, dtypes.float32),
     )
-    window_length = np.array(window_length).astype(np.int32)
-    (actual_output,) = test_util.evaluate_tflite_model(
-        tflite_model, [window_length]
-    )
+    def test_tflite_convert(self, window_fn, window_length, periodic, dtype):
+        def fn(window_length):
+            try:
+                return window_fn(window_length, periodic=periodic, dtype=dtype)
+            except TypeError:
+                return window_fn(window_length, dtype=dtype)
 
-    expected_output = self.evaluate(fn(window_length))
-    self.assertAllClose(actual_output, expected_output, rtol=1e-6, atol=1e-6)
+        tflite_model = test_util.tflite_convert(
+            fn, [tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32)]
+        )
+        window_length = np.array(window_length).astype(np.int32)
+        (actual_output,) = test_util.evaluate_tflite_model(
+            tflite_model, [window_length]
+        )
+
+        expected_output = self.evaluate(fn(window_length))
+        self.assertAllClose(actual_output, expected_output, rtol=1e-6, atol=1e-6)
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

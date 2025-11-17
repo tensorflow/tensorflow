@@ -25,24 +25,24 @@ from tensorflow.lite.python import lite
     ]
 )
 def func(a, b):
-  c = a + b
-  d = c + a
-  e = d + a
-  f = e + a
-  return c, f
+    c = a + b
+    d = c + a
+    e = d + a
+    f = e + a
+    return c, f
 
 
 def main():
-  converter = lite.TFLiteConverter.from_concrete_functions(
-      [func.get_concrete_function()]
-  )
-  converter.target_spec = lite.TargetSpec()
-  tflite_model = converter.convert()
-  model_path = '/tmp/intermediate_tensor_output.tflite'
-  with open(model_path, 'wb') as f:
-    f.write(tflite_model)
-  print(f'TFLite model {model_path} is generated.\n')
+    converter = lite.TFLiteConverter.from_concrete_functions(
+        [func.get_concrete_function()]
+    )
+    converter.target_spec = lite.TargetSpec()
+    tflite_model = converter.convert()
+    model_path = "/tmp/intermediate_tensor_output.tflite"
+    with open(model_path, "wb") as f:
+        f.write(tflite_model)
+    print(f"TFLite model {model_path} is generated.\n")
 
 
-if __name__ == '__main__':
-  main()
+if __name__ == "__main__":
+    main()

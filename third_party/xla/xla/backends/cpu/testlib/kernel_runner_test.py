@@ -24,9 +24,8 @@ create_literal = testlib_utilities.create_literal_from_np
 
 
 class LLvmKernelRunnerTest(absltest.TestCase):
-
-  def test_llvm_ir_kernel_runner(self):
-    ir = """
+    def test_llvm_ir_kernel_runner(self):
+        ir = """
         %struct.XLA_CPU_KernelCallFrame = type { ptr, ptr, i64, ptr }
         %struct.XLA_CPU_KernelArg = type { ptr, i64 }
         ; c = a + b (per thread)
@@ -52,28 +51,25 @@ class LLvmKernelRunnerTest(absltest.TestCase):
           ret ptr null
         }
     """
-    llvm_emitter = cpu_testlib.LlvmTestKernelEmitter(
-        ir, "LlvmAddI32", (4, 1, 1)
-    )
+        llvm_emitter = cpu_testlib.LlvmTestKernelEmitter(ir, "LlvmAddI32", (4, 1, 1))
 
-    kernel_definition = llvm_emitter.emit_kernel_definition()
+        kernel_definition = llvm_emitter.emit_kernel_definition()
 
-    runner = cpu_testlib.KernelRunner.create(
-        kernel_definition,
-        cpu_testlib.JitCompiler(base_testlib.HloModuleConfig()),
-    )
-    a = create_literal(np.array([1, 2, 3, 4], dtype=np.int32))
-    b = create_literal(np.array([5, 6, 7, 8], dtype=np.int32))
-    c = create_literal(np.array([0, 0, 0, 0], dtype=np.int32))
-    runner.call([a, b, c])
+        runner = cpu_testlib.KernelRunner.create(
+            kernel_definition,
+            cpu_testlib.JitCompiler(base_testlib.HloModuleConfig()),
+        )
+        a = create_literal(np.array([1, 2, 3, 4], dtype=np.int32))
+        b = create_literal(np.array([5, 6, 7, 8], dtype=np.int32))
+        c = create_literal(np.array([0, 0, 0, 0], dtype=np.int32))
+        runner.call([a, b, c])
 
-    np.testing.assert_array_equal(np.asarray(c), np.asarray(a) + np.asarray(b))
+        np.testing.assert_array_equal(np.asarray(c), np.asarray(a) + np.asarray(b))
 
 
 class MlirKernelRunnerTest(absltest.TestCase):
-
-  def test_mlir_kernel_runner(self):
-    ir = """
+    def test_mlir_kernel_runner(self):
+        ir = """
       #indexing_map = #xla.indexing_map<"()[s0, s1] -> (s0, s1), domain: s0 in [0, 1023], s1 in [0, 31]">
       module attributes {dlti.dl_spec = #dlti.dl_spec<index = 32 : i32>} {
         func.func
@@ -104,22 +100,22 @@ class MlirKernelRunnerTest(absltest.TestCase):
         }
       }
     """
-    mlir_emitter = cpu_testlib.MlirTestKernelEmitter(ir, "sum", (1, 1, 1))
+        mlir_emitter = cpu_testlib.MlirTestKernelEmitter(ir, "sum", (1, 1, 1))
 
-    kernel_definition = mlir_emitter.emit_kernel_definition()
+        kernel_definition = mlir_emitter.emit_kernel_definition()
 
-    runner = cpu_testlib.KernelRunner.create(
-        kernel_definition,
-        cpu_testlib.JitCompiler(base_testlib.HloModuleConfig()),
-    )
-    input_tensor = create_literal(np.ones([1024, 32], dtype=np.float32))
-    output_sum = create_literal(np.zeros([1], dtype=np.float32))
-    runner.call([input_tensor, output_sum])
+        runner = cpu_testlib.KernelRunner.create(
+            kernel_definition,
+            cpu_testlib.JitCompiler(base_testlib.HloModuleConfig()),
+        )
+        input_tensor = create_literal(np.ones([1024, 32], dtype=np.float32))
+        output_sum = create_literal(np.zeros([1], dtype=np.float32))
+        runner.call([input_tensor, output_sum])
 
-    np.testing.assert_array_equal(
-        np.asarray(output_sum).item(), np.asarray(input_tensor).sum()
-    )
+        np.testing.assert_array_equal(
+            np.asarray(output_sum).item(), np.asarray(input_tensor).sum()
+        )
 
 
 if __name__ == "__main__":
-  absltest.main()
+    absltest.main()

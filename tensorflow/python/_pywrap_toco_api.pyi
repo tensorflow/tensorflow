@@ -13,4 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-def TocoConvert(model_flags_proto_txt_raw: object, toco_flags_proto_txt_raw: object, input_contents_txt_raw: object, extended_return: bool = ...) -> object: ...
+def TocoConvert(
+    model_flags_proto_txt_raw: object,
+    toco_flags_proto_txt_raw: object,
+    input_contents_txt_raw: object,
+    extended_return: bool = ...,
+) -> object: ...

@@ -27,93 +27,92 @@ from tensorflow.python.util import traceback_utils
 
 
 class TracebackUtilsTest(test.TestCase):
+    def assert_trace_line_count(self, fn, count, filtering_enabled=True):
+        trace_line_count = -1
+        if filtering_enabled:
+            traceback_utils.enable_traceback_filtering()
+        else:
+            traceback_utils.disable_traceback_filtering()
+        self.assertEqual(
+            traceback_utils.is_traceback_filtering_enabled(), filtering_enabled
+        )
+        try:
+            fn()
+        except Exception as e:  # pylint: disable=broad-except
+            # We must count lines rather than frames because autograph transforms
+            # stack frames into a single large string
+            trace = "\n".join(traceback.format_tb(e.__traceback__))
+            trace_line_count = len(trace.split("\n"))
 
-  def assert_trace_line_count(self, fn, count, filtering_enabled=True):
-    trace_line_count = -1
-    if filtering_enabled:
-      traceback_utils.enable_traceback_filtering()
-    else:
-      traceback_utils.disable_traceback_filtering()
-    self.assertEqual(
-        traceback_utils.is_traceback_filtering_enabled(), filtering_enabled)
-    try:
-      fn()
-    except Exception as e:  # pylint: disable=broad-except
-      # We must count lines rather than frames because autograph transforms
-      # stack frames into a single large string
-      trace = '\n'.join(traceback.format_tb(e.__traceback__))
-      trace_line_count = len(trace.split('\n'))
+        self.assertGreater(trace_line_count, 0)
 
-    self.assertGreater(trace_line_count, 0)
+        if filtering_enabled:
+            if sys.version_info >= (3, 13):
+                self.assertLessEqual(trace_line_count, count)
+            else:
+                self.assertLess(trace_line_count, count)
+        else:
+            self.assertGreater(trace_line_count, count)
 
-    if filtering_enabled:
-      if sys.version_info >= (3, 13):
-        self.assertLessEqual(trace_line_count, count)
-      else:
-        self.assertLess(trace_line_count, count)
-    else:
-      self.assertGreater(trace_line_count, count)
+    def test_eager_add(self):
+        def fn():
+            x = array_ops.zeros((2, 3))
+            y = array_ops.zeros((2, 4))
+            _ = x + y
 
-  def test_eager_add(self):
+        self.assert_trace_line_count(fn, count=15, filtering_enabled=True)
+        self.assert_trace_line_count(fn, count=25, filtering_enabled=False)
 
-    def fn():
-      x = array_ops.zeros((2, 3))
-      y = array_ops.zeros((2, 4))
-      _ = x + y
+    def test_tfn_add(self):
+        @def_function.function
+        def fn():
+            x = array_ops.zeros((2, 3))
+            y = array_ops.zeros((2, 4))
+            return x + y
 
-    self.assert_trace_line_count(fn, count=15, filtering_enabled=True)
-    self.assert_trace_line_count(fn, count=25, filtering_enabled=False)
+        self.assert_trace_line_count(fn, count=10, filtering_enabled=True)
+        self.assert_trace_line_count(fn, count=25, filtering_enabled=False)
 
-  def test_tfn_add(self):
-    @def_function.function
-    def fn():
-      x = array_ops.zeros((2, 3))
-      y = array_ops.zeros((2, 4))
-      return x + y
+    def test_tfn_div(self):
+        @def_function.function
+        def wrapped_fn(x):
+            return x / 0.0
 
-    self.assert_trace_line_count(fn, count=10, filtering_enabled=True)
-    self.assert_trace_line_count(fn, count=25, filtering_enabled=False)
+        def fn():
+            wrapped_fn(0.5)
 
-  def test_tfn_div(self):
-    @def_function.function
-    def wrapped_fn(x):
-      return x / 0.
+        self.assert_trace_line_count(fn, count=15, filtering_enabled=True)
+        self.assert_trace_line_count(fn, count=30, filtering_enabled=False)
 
-    def fn():
-      wrapped_fn(0.5)
+    def test_eager_argmax(self):
+        def fn():
+            _ = math_ops.argmax([0, 1], axis=2)
 
-    self.assert_trace_line_count(fn, count=15, filtering_enabled=True)
-    self.assert_trace_line_count(fn, count=30, filtering_enabled=False)
+        self.assert_trace_line_count(fn, count=15, filtering_enabled=True)
+        self.assert_trace_line_count(fn, count=30, filtering_enabled=False)
 
-  def test_eager_argmax(self):
-    def fn():
-      _ = math_ops.argmax([0, 1], axis=2)
+    def test_tfn_argmax(self):
+        @def_function.function
+        def wrapped_fn(x):
+            return math_ops.argmax(x, axis=2)
 
-    self.assert_trace_line_count(fn, count=15, filtering_enabled=True)
-    self.assert_trace_line_count(fn, count=30, filtering_enabled=False)
+        def fn():
+            wrapped_fn([0, 1])
 
-  def test_tfn_argmax(self):
-    @def_function.function
-    def wrapped_fn(x):
-      return math_ops.argmax(x, axis=2)
+        if sys.version_info >= (3, 13):
+            self.assert_trace_line_count(fn, count=16, filtering_enabled=True)
+        else:
+            self.assert_trace_line_count(fn, count=15, filtering_enabled=True)
+        self.assert_trace_line_count(fn, count=25, filtering_enabled=False)
 
-    def fn():
-      wrapped_fn([0, 1])
+    def test_variable_constructor(self):
+        def fn():
+            _ = variables.Variable()
 
-    if sys.version_info >= (3, 13):
-      self.assert_trace_line_count(fn, count=16, filtering_enabled=True)
-    else:
-      self.assert_trace_line_count(fn, count=15, filtering_enabled=True)
-    self.assert_trace_line_count(fn, count=25, filtering_enabled=False)
-
-  def test_variable_constructor(self):
-    def fn():
-      _ = variables.Variable()
-
-    self.assert_trace_line_count(fn, count=15, filtering_enabled=True)
-    self.assert_trace_line_count(fn, count=30, filtering_enabled=False)
+        self.assert_trace_line_count(fn, count=15, filtering_enabled=True)
+        self.assert_trace_line_count(fn, count=30, filtering_enabled=False)
 
 
-if __name__ == '__main__':
-  ops.enable_eager_execution()
-  test.main()
+if __name__ == "__main__":
+    ops.enable_eager_execution()
+    test.main()

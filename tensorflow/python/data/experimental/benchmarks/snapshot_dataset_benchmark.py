@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmarks for `tf.data.experimental.snapshot()`."""
+
 import os
 import shutil
 
@@ -24,177 +25,190 @@ from tensorflow.python.platform import test
 
 
 class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
-  """Benchmarks for `tf.data.experimental.snapshot()`."""
+    """Benchmarks for `tf.data.experimental.snapshot()`."""
 
-  def _makeSnapshotDirectory(self):
-    tmp_dir = test.get_temp_dir()
-    tmp_dir = os.path.join(tmp_dir, "snapshot")
-    if os.path.exists(tmp_dir):
-      shutil.rmtree(tmp_dir)
-    os.mkdir(tmp_dir)
-    return tmp_dir
+    def _makeSnapshotDirectory(self):
+        tmp_dir = test.get_temp_dir()
+        tmp_dir = os.path.join(tmp_dir, "snapshot")
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir)
+        os.mkdir(tmp_dir)
+        return tmp_dir
 
-  def _createSimpleDataset(self,
-                           num_elements,
-                           tmp_dir=None,
-                           compression=snapshot.COMPRESSION_NONE):
-    if not tmp_dir:
-      tmp_dir = self._makeSnapshotDirectory()
+    def _createSimpleDataset(
+        self, num_elements, tmp_dir=None, compression=snapshot.COMPRESSION_NONE
+    ):
+        if not tmp_dir:
+            tmp_dir = self._makeSnapshotDirectory()
 
-    dataset = dataset_ops.Dataset.from_tensor_slices([1.0])
-    dataset = dataset.map(
-        lambda x: gen_array_ops.broadcast_to(x, [50, 50, 3]))
-    dataset = dataset.repeat(num_elements)
-    dataset = dataset.apply(
-        snapshot.legacy_snapshot(tmp_dir, compression=compression))
+        dataset = dataset_ops.Dataset.from_tensor_slices([1.0])
+        dataset = dataset.map(lambda x: gen_array_ops.broadcast_to(x, [50, 50, 3]))
+        dataset = dataset.repeat(num_elements)
+        dataset = dataset.apply(
+            snapshot.legacy_snapshot(tmp_dir, compression=compression)
+        )
 
-    return dataset
+        return dataset
 
-  def benchmarkWriteSnapshotGzipCompression(self):
-    num_elements = 500000
-    dataset = self._createSimpleDataset(
-        num_elements=num_elements, compression=snapshot.COMPRESSION_GZIP)
+    def benchmarkWriteSnapshotGzipCompression(self):
+        num_elements = 500000
+        dataset = self._createSimpleDataset(
+            num_elements=num_elements, compression=snapshot.COMPRESSION_GZIP
+        )
 
-    self.run_and_report_benchmark(
-        dataset=dataset,
-        num_elements=num_elements,
-        name="write_gzip",
-        warmup=False,
-        extras={
-            "model_name": "snapshot.benchmark.1",
-            "parameters": "%d" % num_elements,
-        },
-        iters=1)
+        self.run_and_report_benchmark(
+            dataset=dataset,
+            num_elements=num_elements,
+            name="write_gzip",
+            warmup=False,
+            extras={
+                "model_name": "snapshot.benchmark.1",
+                "parameters": "%d" % num_elements,
+            },
+            iters=1,
+        )
 
-  def benchmarkWriteSnapshotSnappyCompression(self):
-    num_elements = 500000
-    dataset = self._createSimpleDataset(
-        num_elements=num_elements, compression=snapshot.COMPRESSION_SNAPPY)
+    def benchmarkWriteSnapshotSnappyCompression(self):
+        num_elements = 500000
+        dataset = self._createSimpleDataset(
+            num_elements=num_elements, compression=snapshot.COMPRESSION_SNAPPY
+        )
 
-    self.run_and_report_benchmark(
-        dataset=dataset,
-        num_elements=num_elements,
-        name="write_snappy",
-        warmup=False,
-        extras={
-            "model_name": "snapshot.benchmark.2",
-            "parameters": "%d" % num_elements,
-        },
-        iters=1)
+        self.run_and_report_benchmark(
+            dataset=dataset,
+            num_elements=num_elements,
+            name="write_snappy",
+            warmup=False,
+            extras={
+                "model_name": "snapshot.benchmark.2",
+                "parameters": "%d" % num_elements,
+            },
+            iters=1,
+        )
 
-  def benchmarkWriteSnapshotSimple(self):
-    num_elements = 500000
-    dataset = self._createSimpleDataset(num_elements=num_elements)
+    def benchmarkWriteSnapshotSimple(self):
+        num_elements = 500000
+        dataset = self._createSimpleDataset(num_elements=num_elements)
 
-    # We only run one iteration here because running multiple iterations will
-    # cause the later iterations to simply read from the already written
-    # snapshot rather than write a new one.
-    self.run_and_report_benchmark(
-        dataset=dataset,
-        num_elements=num_elements,
-        name="write_simple",
-        warmup=False,
-        extras={
-            "model_name": "snapshot.benchmark.3",
-            "parameters": "%d" % num_elements,
-        },
-        iters=1)
+        # We only run one iteration here because running multiple iterations will
+        # cause the later iterations to simply read from the already written
+        # snapshot rather than write a new one.
+        self.run_and_report_benchmark(
+            dataset=dataset,
+            num_elements=num_elements,
+            name="write_simple",
+            warmup=False,
+            extras={
+                "model_name": "snapshot.benchmark.3",
+                "parameters": "%d" % num_elements,
+            },
+            iters=1,
+        )
 
-  def benchmarkPassthroughSnapshotSimple(self):
-    num_elements = 100000
-    tmp_dir = self._makeSnapshotDirectory()
-    dataset = self._createSimpleDataset(
-        num_elements=num_elements, tmp_dir=tmp_dir)
+    def benchmarkPassthroughSnapshotSimple(self):
+        num_elements = 100000
+        tmp_dir = self._makeSnapshotDirectory()
+        dataset = self._createSimpleDataset(num_elements=num_elements, tmp_dir=tmp_dir)
 
-    # Consume only 1 element, thus making sure we don't finalize.
-    self.run_benchmark(
-        dataset=dataset,
-        num_elements=1,
-        iters=1,
-        warmup=False,
-        apply_default_optimizations=True)
-    # Now run the actual benchmarks and report them
-    self.run_and_report_benchmark(
-        dataset=dataset,
-        num_elements=num_elements,
-        name="passthrough_simple",
-        extras={
-            "model_name": "snapshot.benchmark.4",
-            "parameters": "%d" % num_elements,
-        },
-    )
+        # Consume only 1 element, thus making sure we don't finalize.
+        self.run_benchmark(
+            dataset=dataset,
+            num_elements=1,
+            iters=1,
+            warmup=False,
+            apply_default_optimizations=True,
+        )
+        # Now run the actual benchmarks and report them
+        self.run_and_report_benchmark(
+            dataset=dataset,
+            num_elements=num_elements,
+            name="passthrough_simple",
+            extras={
+                "model_name": "snapshot.benchmark.4",
+                "parameters": "%d" % num_elements,
+            },
+        )
 
-  def benchmarkReadSnapshotSimple(self):
-    num_elements = 100000
-    tmp_dir = self._makeSnapshotDirectory()
-    dataset = self._createSimpleDataset(
-        num_elements=num_elements, tmp_dir=tmp_dir)
+    def benchmarkReadSnapshotSimple(self):
+        num_elements = 100000
+        tmp_dir = self._makeSnapshotDirectory()
+        dataset = self._createSimpleDataset(num_elements=num_elements, tmp_dir=tmp_dir)
 
-    # consume all the elements to let snapshot write things to disk
-    self.run_benchmark(
-        dataset=dataset,
-        num_elements=num_elements,
-        iters=1,
-        warmup=False,
-        apply_default_optimizations=True)
-    # Now run the actual benchmarks and report them
-    self.run_and_report_benchmark(
-        dataset=dataset,
-        num_elements=num_elements,
-        name="read_simple",
-        extras={
-            "model_name": "snapshot.benchmark.5",
-            "parameters": "%d" % num_elements,
-        })
+        # consume all the elements to let snapshot write things to disk
+        self.run_benchmark(
+            dataset=dataset,
+            num_elements=num_elements,
+            iters=1,
+            warmup=False,
+            apply_default_optimizations=True,
+        )
+        # Now run the actual benchmarks and report them
+        self.run_and_report_benchmark(
+            dataset=dataset,
+            num_elements=num_elements,
+            name="read_simple",
+            extras={
+                "model_name": "snapshot.benchmark.5",
+                "parameters": "%d" % num_elements,
+            },
+        )
 
-  def benchmarkReadSnapshotGzipCompression(self):
-    num_elements = 100000
-    tmp_dir = self._makeSnapshotDirectory()
-    dataset = self._createSimpleDataset(
-        num_elements=num_elements,
-        tmp_dir=tmp_dir,
-        compression=snapshot.COMPRESSION_GZIP)
+    def benchmarkReadSnapshotGzipCompression(self):
+        num_elements = 100000
+        tmp_dir = self._makeSnapshotDirectory()
+        dataset = self._createSimpleDataset(
+            num_elements=num_elements,
+            tmp_dir=tmp_dir,
+            compression=snapshot.COMPRESSION_GZIP,
+        )
 
-    # consume all the elements to let snapshot write things to disk
-    self.run_benchmark(
-        dataset=dataset,
-        num_elements=num_elements,
-        iters=1,
-        warmup=False,
-        apply_default_optimizations=True)
-    # Now run the actual benchmarks and report them
-    self.run_and_report_benchmark(
-        dataset=dataset, num_elements=num_elements, name="read_gzip",
-        extras={
-            "model_name": "snapshot.benchmark.6",
-            "parameters": "%d" % num_elements,
-        })
+        # consume all the elements to let snapshot write things to disk
+        self.run_benchmark(
+            dataset=dataset,
+            num_elements=num_elements,
+            iters=1,
+            warmup=False,
+            apply_default_optimizations=True,
+        )
+        # Now run the actual benchmarks and report them
+        self.run_and_report_benchmark(
+            dataset=dataset,
+            num_elements=num_elements,
+            name="read_gzip",
+            extras={
+                "model_name": "snapshot.benchmark.6",
+                "parameters": "%d" % num_elements,
+            },
+        )
 
-  def benchmarkReadSnapshotSnappyCompression(self):
-    num_elements = 100000
-    tmp_dir = self._makeSnapshotDirectory()
-    dataset = self._createSimpleDataset(
-        num_elements=num_elements,
-        tmp_dir=tmp_dir,
-        compression=snapshot.COMPRESSION_SNAPPY)
+    def benchmarkReadSnapshotSnappyCompression(self):
+        num_elements = 100000
+        tmp_dir = self._makeSnapshotDirectory()
+        dataset = self._createSimpleDataset(
+            num_elements=num_elements,
+            tmp_dir=tmp_dir,
+            compression=snapshot.COMPRESSION_SNAPPY,
+        )
 
-    # consume all the elements to let snapshot write things to disk
-    self.run_benchmark(
-        dataset=dataset,
-        num_elements=num_elements,
-        iters=1,
-        warmup=False,
-        apply_default_optimizations=True)
-    # Now run the actual benchmarks and report them
-    self.run_and_report_benchmark(
-        dataset=dataset,
-        num_elements=num_elements,
-        name="read_snappy",
-        extras={
-            "model_name": "snapshot.benchmark.7",
-            "parameters": "%d" % num_elements,
-        })
+        # consume all the elements to let snapshot write things to disk
+        self.run_benchmark(
+            dataset=dataset,
+            num_elements=num_elements,
+            iters=1,
+            warmup=False,
+            apply_default_optimizations=True,
+        )
+        # Now run the actual benchmarks and report them
+        self.run_and_report_benchmark(
+            dataset=dataset,
+            num_elements=num_elements,
+            name="read_snappy",
+            extras={
+                "model_name": "snapshot.benchmark.7",
+                "parameters": "%d" % num_elements,
+            },
+        )
 
 
 if __name__ == "__main__":
-  benchmark_base.test.main()
+    benchmark_base.test.main()

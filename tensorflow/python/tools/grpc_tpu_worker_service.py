@@ -27,11 +27,11 @@ from pathlib import Path
 
 
 def get_sys_path():
-  return ":".join(sys.path)
+    return ":".join(sys.path)
 
 
 def get_username():
-  return os.environ.get("USER")
+    return os.environ.get("USER")
 
 
 username = get_username()
@@ -59,47 +59,45 @@ SERVICE_NAME = "grpc_tpu_worker.service"
 
 
 def create_systemd_service_file(service_content, service_name):
-  with open(service_name, "w") as file:
-    file.write(service_content)
-  print(f"Service file {service_name} created")
+    with open(service_name, "w") as file:
+        file.write(service_content)
+    print(f"Service file {service_name} created")
 
 
 def move_file_to_systemd(service_name):
-  user_systemd_dir = Path.home() / ".config" / "systemd" / "user"
-  if not user_systemd_dir.exists():
-    user_systemd_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Created directory {user_systemd_dir}")
+    user_systemd_dir = Path.home() / ".config" / "systemd" / "user"
+    if not user_systemd_dir.exists():
+        user_systemd_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Created directory {user_systemd_dir}")
 
-  source_file = Path(service_name)
-  dest_file = user_systemd_dir / service_name
-  shutil.move(str(source_file), str(dest_file))
-  print(f"Service file moved to {dest_file}")
+    source_file = Path(service_name)
+    dest_file = user_systemd_dir / service_name
+    shutil.move(str(source_file), str(dest_file))
+    print(f"Service file moved to {dest_file}")
 
 
 def enable_start_service(service_name):
-  commands = [
-      ["systemctl", "--user", "import-environment"],
-      ["systemctl", "--user", "daemon-reload"],
-      ["systemctl", "--user", "enable", service_name],
-      ["systemctl", "--user", "start", service_name],
-  ]
-  for command in commands:
-    subprocess.run(command, check=True)
-    print(f"Executed: {' '.join(command)}")
+    commands = [
+        ["systemctl", "--user", "import-environment"],
+        ["systemctl", "--user", "daemon-reload"],
+        ["systemctl", "--user", "enable", service_name],
+        ["systemctl", "--user", "start", service_name],
+    ]
+    for command in commands:
+        subprocess.run(command, check=True)
+        print(f"Executed: {' '.join(command)}")
 
 
 def run():
-  service_file_path = (
-      Path.home() / ".config" / "systemd" / "user" / SERVICE_NAME
-  )
-  if service_file_path.exists():
-    print(f"Service file {service_file_path} already exists")
-    sys.exit(1)
-  else:
-    create_systemd_service_file(SERVICE_FILE_CONTENT, SERVICE_NAME)
-    move_file_to_systemd(SERVICE_NAME)
-    enable_start_service(SERVICE_NAME)
+    service_file_path = Path.home() / ".config" / "systemd" / "user" / SERVICE_NAME
+    if service_file_path.exists():
+        print(f"Service file {service_file_path} already exists")
+        sys.exit(1)
+    else:
+        create_systemd_service_file(SERVICE_FILE_CONTENT, SERVICE_NAME)
+        move_file_to_systemd(SERVICE_NAME)
+        enable_start_service(SERVICE_NAME)
 
 
 if __name__ == "__main__":
-  run()
+    run()

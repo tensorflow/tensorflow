@@ -26,83 +26,82 @@ from tensorflow.python.saved_model.pywrap_saved_model import metrics
 
 
 class CheckpointMetricTests(test.TestCase):
+    def _get_write_histogram_proto(self, api_label):
+        proto_bytes = metrics.GetCheckpointWriteDurations(api_label=api_label)
+        histogram_proto = summary_pb2.HistogramProto()
+        histogram_proto.ParseFromString(proto_bytes)
+        return histogram_proto
 
-  def _get_write_histogram_proto(self, api_label):
-    proto_bytes = metrics.GetCheckpointWriteDurations(api_label=api_label)
-    histogram_proto = summary_pb2.HistogramProto()
-    histogram_proto.ParseFromString(proto_bytes)
-    return histogram_proto
+    def _get_read_histogram_proto(self, api_label):
+        proto_bytes = metrics.GetCheckpointReadDurations(api_label=api_label)
+        histogram_proto = summary_pb2.HistogramProto()
+        histogram_proto.ParseFromString(proto_bytes)
+        return histogram_proto
 
-  def _get_read_histogram_proto(self, api_label):
-    proto_bytes = metrics.GetCheckpointReadDurations(api_label=api_label)
-    histogram_proto = summary_pb2.HistogramProto()
-    histogram_proto.ParseFromString(proto_bytes)
-    return histogram_proto
+    def _get_time_saved(self, api_label):
+        return metrics.GetTrainingTimeSaved(api_label=api_label)
 
-  def _get_time_saved(self, api_label):
-    return metrics.GetTrainingTimeSaved(api_label=api_label)
+    def _get_checkpoint_size(self, api_label, filesize):
+        return metrics.GetCheckpointSize(api_label=api_label, filesize=filesize)
 
-  def _get_checkpoint_size(self, api_label, filesize):
-    return metrics.GetCheckpointSize(api_label=api_label, filesize=filesize)
+    def test_metrics_v2(self):
+        api_label = util._CHECKPOINT_V2
+        prefix = os.path.join(self.get_temp_dir(), "ckpt")
 
-  def test_metrics_v2(self):
-    api_label = util._CHECKPOINT_V2
-    prefix = os.path.join(self.get_temp_dir(), 'ckpt')
+        with context.eager_mode():
+            ckpt = util.Checkpoint(v=variables_lib.Variable(1.0))
+            self.assertEqual(self._get_time_saved(api_label), 0.0)
+            self.assertEqual(self._get_write_histogram_proto(api_label).num, 0.0)
 
-    with context.eager_mode():
-      ckpt = util.Checkpoint(v=variables_lib.Variable(1.))
-      self.assertEqual(self._get_time_saved(api_label), 0.0)
-      self.assertEqual(self._get_write_histogram_proto(api_label).num, 0.0)
+            for i in range(3):
+                time_saved = self._get_time_saved(api_label)
+                time.sleep(1)
+                ckpt_path = ckpt.write(file_prefix=prefix)
+                filesize = util._get_checkpoint_size(ckpt_path)
+                self.assertEqual(self._get_checkpoint_size(api_label, filesize), i + 1)
+                self.assertGreater(self._get_time_saved(api_label), time_saved)
 
-      for i in range(3):
+        self.assertEqual(self._get_write_histogram_proto(api_label).num, 3.0)
+        self.assertEqual(self._get_read_histogram_proto(api_label).num, 0.0)
+
         time_saved = self._get_time_saved(api_label)
-        time.sleep(1)
-        ckpt_path = ckpt.write(file_prefix=prefix)
-        filesize = util._get_checkpoint_size(ckpt_path)
-        self.assertEqual(self._get_checkpoint_size(api_label, filesize), i + 1)
-        self.assertGreater(self._get_time_saved(api_label), time_saved)
+        with context.eager_mode():
+            ckpt.restore(ckpt_path)
+        self.assertEqual(self._get_read_histogram_proto(api_label).num, 1.0)
+        # Restoring a checkpoint in the same "job" does not increase training time
+        # saved.
+        self.assertEqual(self._get_time_saved(api_label), time_saved)
 
-    self.assertEqual(self._get_write_histogram_proto(api_label).num, 3.0)
-    self.assertEqual(self._get_read_histogram_proto(api_label).num, 0.0)
+    def test_metrics_v1(self):
+        api_label = util._CHECKPOINT_V1
+        prefix = os.path.join(self.get_temp_dir(), "ckpt")
 
-    time_saved = self._get_time_saved(api_label)
-    with context.eager_mode():
-      ckpt.restore(ckpt_path)
-    self.assertEqual(self._get_read_histogram_proto(api_label).num, 1.0)
-    # Restoring a checkpoint in the same "job" does not increase training time
-    # saved.
-    self.assertEqual(self._get_time_saved(api_label), time_saved)
+        with self.cached_session():
+            ckpt = util.CheckpointV1()
+            v = variables_lib.Variable(1.0)
+            self.evaluate(v.initializer)
+            ckpt.v = v
+            self.assertEqual(self._get_time_saved(api_label), 0.0)
+            self.assertEqual(self._get_write_histogram_proto(api_label).num, 0.0)
 
-  def test_metrics_v1(self):
-    api_label = util._CHECKPOINT_V1
-    prefix = os.path.join(self.get_temp_dir(), 'ckpt')
+            for i in range(3):
+                time_saved = self._get_time_saved(api_label)
+                time.sleep(1)
+                ckpt_path = ckpt.write(file_prefix=prefix)
+                filesize = util._get_checkpoint_size(ckpt_path)
+                self.assertEqual(self._get_checkpoint_size(api_label, filesize), i + 1)
+                self.assertGreater(self._get_time_saved(api_label), time_saved)
 
-    with self.cached_session():
-      ckpt = util.CheckpointV1()
-      v = variables_lib.Variable(1.)
-      self.evaluate(v.initializer)
-      ckpt.v = v
-      self.assertEqual(self._get_time_saved(api_label), 0.0)
-      self.assertEqual(self._get_write_histogram_proto(api_label).num, 0.0)
+        self.assertEqual(self._get_write_histogram_proto(api_label).num, 3.0)
 
-      for i in range(3):
+        self.assertEqual(self._get_read_histogram_proto(api_label).num, 0.0)
         time_saved = self._get_time_saved(api_label)
-        time.sleep(1)
-        ckpt_path = ckpt.write(file_prefix=prefix)
-        filesize = util._get_checkpoint_size(ckpt_path)
-        self.assertEqual(self._get_checkpoint_size(api_label, filesize), i + 1)
-        self.assertGreater(self._get_time_saved(api_label), time_saved)
-
-    self.assertEqual(self._get_write_histogram_proto(api_label).num, 3.0)
-
-    self.assertEqual(self._get_read_histogram_proto(api_label).num, 0.0)
-    time_saved = self._get_time_saved(api_label)
-    ckpt.restore(ckpt_path)
-    self.assertEqual(self._get_read_histogram_proto(api_label).num, 1.0)
-    # Restoring a checkpoint in the same "job" does not increase training time
-    # saved.
-    self.assertEqual(self._get_time_saved(api_label), time_saved)
+        ckpt.restore(ckpt_path)
+        self.assertEqual(self._get_read_histogram_proto(api_label).num, 1.0)
+        # Restoring a checkpoint in the same "job" does not increase training time
+        # saved.
+        self.assertEqual(self._get_time_saved(api_label), time_saved)
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

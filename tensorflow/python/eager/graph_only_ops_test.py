@@ -25,16 +25,15 @@ from tensorflow.python.platform import test
 
 
 class GraphOnlyOpsTest(test_util.TensorFlowTestCase):
+    def testGraphPlaceholder(self):
+        with ops.Graph().as_default():
+            x_tf = graph_only_ops.graph_placeholder(dtypes.int32, shape=(1,))
+            y_tf = math_ops.square(x_tf)
+            with self.cached_session() as sess:
+                x = np.array([42])
+                y = sess.run(y_tf, feed_dict={x_tf: np.array([42])})
+                self.assertAllClose(np.square(x), y)
 
-  def testGraphPlaceholder(self):
-    with ops.Graph().as_default():
-      x_tf = graph_only_ops.graph_placeholder(dtypes.int32, shape=(1,))
-      y_tf = math_ops.square(x_tf)
-      with self.cached_session() as sess:
-        x = np.array([42])
-        y = sess.run(y_tf, feed_dict={x_tf: np.array([42])})
-        self.assertAllClose(np.square(x), y)
 
-
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

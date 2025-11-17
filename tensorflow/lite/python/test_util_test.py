@@ -22,18 +22,18 @@ from tensorflow.python.platform import test
 
 
 class TestUtilTest(test_util.TensorFlowTestCase):
+    def testBuiltinOp(self):
+        model_path = resource_loader.get_path_to_datafile("../testdata/add.bin")
+        op_set = tflite_test_util.get_ops_list(gfile.GFile(model_path, "rb").read())
+        self.assertCountEqual(op_set, ["ADD"])
 
-  def testBuiltinOp(self):
-    model_path = resource_loader.get_path_to_datafile('../testdata/add.bin')
-    op_set = tflite_test_util.get_ops_list(gfile.GFile(model_path, 'rb').read())
-    self.assertCountEqual(op_set, ['ADD'])
-
-  def testFlexOp(self):
-    model_path = resource_loader.get_path_to_datafile(
-        '../testdata/softplus_flex.bin')
-    op_set = tflite_test_util.get_ops_list(gfile.GFile(model_path, 'rb').read())
-    self.assertCountEqual(op_set, ['FlexSoftplus'])
+    def testFlexOp(self):
+        model_path = resource_loader.get_path_to_datafile(
+            "../testdata/softplus_flex.bin"
+        )
+        op_set = tflite_test_util.get_ops_list(gfile.GFile(model_path, "rb").read())
+        self.assertCountEqual(op_set, ["FlexSoftplus"])
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

@@ -23,6 +23,7 @@ To update the goldens associated with this file, run:
   ```PYTHONDONTWRITEBYTECODE=1 python3 build.py \
       --dump_commands > golden_commands.txt```
 """
+
 import argparse
 import dataclasses
 import enum
@@ -64,198 +65,194 @@ _XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
     "//xla/tools/multihost_hlo_runner:hlo_runner_main_gpu",
     "//xla/tools:compute_xspace_stats_main_gpu",
 )
-_KOKORO_ARTIFACTS_DIR = os.environ.get(
-    "KOKORO_ARTIFACTS_DIR", "$KOKORO_ARTIFACTS_DIR"
-)
+_KOKORO_ARTIFACTS_DIR = os.environ.get("KOKORO_ARTIFACTS_DIR", "$KOKORO_ARTIFACTS_DIR")
 _GITHUB_WORKSPACE = os.environ.get("GITHUB_WORKSPACE", "$GITHUB_WORKSPACE")
 
 
-def retry(
-    args: List[str], delay_seconds: int = 15, retries: int = 3
-) -> List[str]:
-  # Possibly a slight abuse of `parallel` as nothing happens in parallel, just
-  # retries with delay if the command fails.
-  # pyformat:disable
-  return [
-      "parallel", "--ungroup",
-      "--retries", str(retries),
-      "--delay", str(delay_seconds),
-      "--nonall",
-      "--", *args,
-  ]
+def retry(args: List[str], delay_seconds: int = 15, retries: int = 3) -> List[str]:
+    # Possibly a slight abuse of `parallel` as nothing happens in parallel, just
+    # retries with delay if the command fails.
+    # pyformat:disable
+    return [
+        "parallel",
+        "--ungroup",
+        "--retries",
+        str(retries),
+        "--delay",
+        str(delay_seconds),
+        "--nonall",
+        "--",
+        *args,
+    ]
 
 
 def sh(args, check=True, **kwargs):
-  logging.info("Starting process: %s", " ".join(args))
-  return subprocess.run(args, check=check, **kwargs)
+    logging.info("Starting process: %s", " ".join(args))
+    return subprocess.run(args, check=check, **kwargs)
 
 
 def _dict_to_cli_options(d: Dict[str, Any]) -> List[str]:
-  # pylint: disable=g-bool-id-comparison
-  return [f"--{k}" if v is True else f"--{k}={v}" for k, v in d.items()]
+    # pylint: disable=g-bool-id-comparison
+    return [f"--{k}" if v is True else f"--{k}={v}" for k, v in d.items()]
 
 
 def _write_to_sponge_config(key, value) -> None:
-  with open("custom_sponge_config.csv", "a") as f:
-    f.write(f"{key},{value}\n")
+    with open("custom_sponge_config.csv", "a") as f:
+        f.write(f"{key},{value}\n")
 
 
 class BuildType(enum.Enum):
-  """Enum representing all types of builds.
+    """Enum representing all types of builds.
 
-  Should be named as `REPO,OS,HOST_TYPE,BACKEND,GPU_TYPE,CI_TYPE`.
-  """
+    Should be named as `REPO,OS,HOST_TYPE,BACKEND,GPU_TYPE,CI_TYPE`.
+    """
 
-  XLA_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS = enum.auto()
+    XLA_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+    XLA_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS = enum.auto()
+    XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
+    XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
+    XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS = enum.auto()
 
-  # Presubmit builds for regression testing.
-  XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_L4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_L4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_A4_224_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_L4_16_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_L4_48_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+    # Presubmit builds for regression testing.
+    XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+    XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+    XLA_LINUX_X86_GPU_L4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+    XLA_LINUX_X86_GPU_L4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+    XLA_LINUX_X86_GPU_A4_224_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+    XLA_LINUX_X86_GPU_L4_16_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+    XLA_LINUX_X86_GPU_L4_48_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
+    XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
 
-  XLA_MACOS_X86_CPU_KOKORO = enum.auto()
-  XLA_MACOS_ARM64_CPU_KOKORO = enum.auto()
+    XLA_MACOS_X86_CPU_KOKORO = enum.auto()
+    XLA_MACOS_ARM64_CPU_KOKORO = enum.auto()
 
-  JAX_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
-  JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
+    JAX_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+    JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
 
-  TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
-  TENSORFLOW_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
+    TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+    TENSORFLOW_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
 
-  @classmethod
-  def from_str(cls, s):
-    try:
-      return cls[s.replace(" ", "_").upper()]
-    except KeyError:
-      # Sloppy looking exception handling, but argparse will catch ValueError
-      # and give a pleasant error message. KeyError would not work here.
-      raise ValueError  # pylint: disable=raise-missing-from
+    @classmethod
+    def from_str(cls, s):
+        try:
+            return cls[s.replace(" ", "_").upper()]
+        except KeyError:
+            # Sloppy looking exception handling, but argparse will catch ValueError
+            # and give a pleasant error message. KeyError would not work here.
+            raise ValueError  # pylint: disable=raise-missing-from
 
 
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
 class Build:
-  """Class representing a build of XLA."""
+    """Class representing a build of XLA."""
 
-  _builds: ClassVar[Dict[BuildType, "Build"]] = {}
+    _builds: ClassVar[Dict[BuildType, "Build"]] = {}
 
-  type_: BuildType
-  repo: str
-  target_patterns: Tuple[str, ...]
-  subcommand: str = "test"
-  configs: Tuple[str, ...] = ()
-  build_tag_filters: Tuple[str, ...] = ()
-  test_tag_filters: Tuple[str, ...] = ()
-  action_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
-  test_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
-  repo_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
-  override_repository: Dict[str, str] = dataclasses.field(default_factory=dict)
-  options: Dict[str, Any] = dataclasses.field(default_factory=dict)
-  extra_setup_commands: Tuple[List[str], ...] = ()
+    type_: BuildType
+    repo: str
+    target_patterns: Tuple[str, ...]
+    subcommand: str = "test"
+    configs: Tuple[str, ...] = ()
+    build_tag_filters: Tuple[str, ...] = ()
+    test_tag_filters: Tuple[str, ...] = ()
+    action_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
+    test_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
+    repo_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
+    override_repository: Dict[str, str] = dataclasses.field(default_factory=dict)
+    options: Dict[str, Any] = dataclasses.field(default_factory=dict)
+    extra_setup_commands: Tuple[List[str], ...] = ()
 
-  def __post_init__(self):
-    # pylint: disable=protected-access
-    assert (
-        self.type_ not in self.__class__._builds
-    ), "Can't have multiple builds of same BuildType!"
-    assert (
-        self.repo == "openxla/xla" or self.override_repository
-    ), "Must override repo if repo under test isn't XLA!"
-    self.__class__._builds[self.type_] = self
+    def __post_init__(self):
+        # pylint: disable=protected-access
+        assert self.type_ not in self.__class__._builds, (
+            "Can't have multiple builds of same BuildType!"
+        )
+        assert self.repo == "openxla/xla" or self.override_repository, (
+            "Must override repo if repo under test isn't XLA!"
+        )
+        self.__class__._builds[self.type_] = self
 
-  @classmethod
-  def all_builds(cls):
-    return cls._builds
+    @classmethod
+    def all_builds(cls):
+        return cls._builds
 
-  def bazel_command(
-      self, subcommand: str = "test", extra_options: Tuple[str, ...] = ()
-  ) -> List[str]:
-    """Returns a bazel test command for this build.
+    def bazel_command(
+        self, subcommand: str = "test", extra_options: Tuple[str, ...] = ()
+    ) -> List[str]:
+        """Returns a bazel test command for this build.
 
-    Args:
-      subcommand: The subcommand to give to bazel. `test` by default.
-      extra_options: Extra options. For now just used to pass in `--nobuild`.
+        Args:
+          subcommand: The subcommand to give to bazel. `test` by default.
+          extra_options: Extra options. For now just used to pass in `--nobuild`.
 
-    Returns: List of command line arguments
-    """
-    options = _dict_to_cli_options(self.options)
-    configs = [f"--config={config}" for config in self.configs]
-    build_tag_filters = (
-        f"--build_tag_filters={','.join(self.build_tag_filters)}"
-    )
-    test_tag_filters = f"--test_tag_filters={','.join(self.test_tag_filters)}"
-    action_env = [f"--action_env={k}={v}" for k, v in self.action_env.items()]
-    test_env = [f"--test_env={k}={v}" for k, v in self.test_env.items()]
-    repo_env = [f"--repo_env={k}={v}" for k, v in self.repo_env.items()]
-    override_repository = [
-        f"--override_repository={k}={v}"
-        for k, v in self.override_repository.items()
-    ]
+        Returns: List of command line arguments
+        """
+        options = _dict_to_cli_options(self.options)
+        configs = [f"--config={config}" for config in self.configs]
+        build_tag_filters = f"--build_tag_filters={','.join(self.build_tag_filters)}"
+        test_tag_filters = f"--test_tag_filters={','.join(self.test_tag_filters)}"
+        action_env = [f"--action_env={k}={v}" for k, v in self.action_env.items()]
+        test_env = [f"--test_env={k}={v}" for k, v in self.test_env.items()]
+        repo_env = [f"--repo_env={k}={v}" for k, v in self.repo_env.items()]
+        override_repository = [
+            f"--override_repository={k}={v}"
+            for k, v in self.override_repository.items()
+        ]
 
-    tag_filters = [build_tag_filters, test_tag_filters]
-    all_options = (
-        tag_filters
-        + configs
-        + action_env
-        + test_env
-        + repo_env
-        + override_repository
-        + options
-        + list(extra_options)
-    )
-    return ["bazel", subcommand, *all_options, "--", *self.target_patterns]
+        tag_filters = [build_tag_filters, test_tag_filters]
+        all_options = (
+            tag_filters
+            + configs
+            + action_env
+            + test_env
+            + repo_env
+            + override_repository
+            + options
+            + list(extra_options)
+        )
+        return ["bazel", subcommand, *all_options, "--", *self.target_patterns]
 
-  def commands(self) -> List[List[str]]:
-    """Returns list of commands for a build."""
-    cmds = []
+    def commands(self) -> List[List[str]]:
+        """Returns list of commands for a build."""
+        cmds = []
 
-    cmds.extend(self.extra_setup_commands)
+        cmds.extend(self.extra_setup_commands)
 
-    # We really want `bazel fetch` here, but it uses `bazel query` and not
-    # `cquery`, which means that it fails due to config issues that aren't
-    # problems in practice.
-    # TODO(ddunleavy): Remove the condition here. Need to get parallel on the
-    # MacOS VM.
-    macos_build = (
-        self.type_ == BuildType.XLA_MACOS_X86_CPU_KOKORO
-        or self.type_ == BuildType.XLA_MACOS_ARM64_CPU_KOKORO
-    )
-    if not macos_build:
-      cmds.append(
-          retry(
-              self.bazel_command(
-                  subcommand="build", extra_options=("--nobuild",)
-              )
-          )
-      )
-    cmds.append(self.bazel_command(subcommand=self.subcommand))
-    cmds.append(["bazel", "analyze-profile", "profile.json.gz"])
+        # We really want `bazel fetch` here, but it uses `bazel query` and not
+        # `cquery`, which means that it fails due to config issues that aren't
+        # problems in practice.
+        # TODO(ddunleavy): Remove the condition here. Need to get parallel on the
+        # MacOS VM.
+        macos_build = (
+            self.type_ == BuildType.XLA_MACOS_X86_CPU_KOKORO
+            or self.type_ == BuildType.XLA_MACOS_ARM64_CPU_KOKORO
+        )
+        if not macos_build:
+            cmds.append(
+                retry(
+                    self.bazel_command(subcommand="build", extra_options=("--nobuild",))
+                )
+            )
+        cmds.append(self.bazel_command(subcommand=self.subcommand))
+        cmds.append(["bazel", "analyze-profile", "profile.json.gz"])
 
-    return cmds
+        return cmds
 
 
 def _tag_filters_for_compute_capability(
     compute_capability: int,
 ) -> Tuple[str, ...]:
-  """Returns the tag filters for the given compute capability."""
-  tag_filters = (f"requires-gpu-sm{compute_capability}-only",)
-  for cc in (60, 70, 80, 90, 100):
-    if compute_capability >= cc:
-      tag_filters += (f"requires-gpu-sm{cc}",)
-    else:
-      tag_filters += (f"-requires-gpu-sm{cc}",)
-      tag_filters += (f"-requires-gpu-sm{cc}-only",)
-  tag_filters += ("-requires-gpu-amd",)
-  tag_filters += ("-requires-gpu-intel",)
-  return tag_filters
+    """Returns the tag filters for the given compute capability."""
+    tag_filters = (f"requires-gpu-sm{compute_capability}-only",)
+    for cc in (60, 70, 80, 90, 100):
+        if compute_capability >= cc:
+            tag_filters += (f"requires-gpu-sm{cc}",)
+        else:
+            tag_filters += (f"-requires-gpu-sm{cc}",)
+            tag_filters += (f"-requires-gpu-sm{cc}-only",)
+    tag_filters += ("-requires-gpu-amd",)
+    tag_filters += ("-requires-gpu-intel",)
+    return tag_filters
 
 
 def nvidia_gpu_build_with_compute_capability(
@@ -264,35 +261,35 @@ def nvidia_gpu_build_with_compute_capability(
     configs: Tuple[str, ...],
     compute_capability: int,
 ) -> Build:
-  extra_gpu_tags = _tag_filters_for_compute_capability(compute_capability)
-  return Build(
-      type_=type_,
-      repo="openxla/xla",
-      target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
-      configs=configs,
-      test_tag_filters=(
-          "-no_oss",
-          "requires-gpu-nvidia",
-          "gpu",
-          "-rocm-only",
-          "-oneapi-only",
-      )
-      + extra_gpu_tags,
-      build_tag_filters=(
-          "-no_oss",
-          "requires-gpu-nvidia",
-          "gpu",
-          "-rocm-only",
-          "-oneapi-only",
-      ),
-      options={
-          "run_under": "//build_tools/ci:parallel_gpu_execute",
-          "//xla/tsl:ci_build": True,
-          **_DEFAULT_BAZEL_OPTIONS,
-      },
-      repo_env={"TF_CUDA_COMPUTE_CAPABILITIES": f"{compute_capability/10}"},
-      extra_setup_commands=(["nvidia-smi"],),
-  )
+    extra_gpu_tags = _tag_filters_for_compute_capability(compute_capability)
+    return Build(
+        type_=type_,
+        repo="openxla/xla",
+        target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
+        configs=configs,
+        test_tag_filters=(
+            "-no_oss",
+            "requires-gpu-nvidia",
+            "gpu",
+            "-rocm-only",
+            "-oneapi-only",
+        )
+        + extra_gpu_tags,
+        build_tag_filters=(
+            "-no_oss",
+            "requires-gpu-nvidia",
+            "gpu",
+            "-rocm-only",
+            "-oneapi-only",
+        ),
+        options={
+            "run_under": "//build_tools/ci:parallel_gpu_execute",
+            "//xla/tsl:ci_build": True,
+            **_DEFAULT_BAZEL_OPTIONS,
+        },
+        repo_env={"TF_CUDA_COMPUTE_CAPABILITIES": f"{compute_capability / 10}"},
+        extra_setup_commands=(["nvidia-smi"],),
+    )
 
 
 cpu_x86_tag_filter = (
@@ -781,14 +778,26 @@ Build(
         [
             "find",
             f"{_GITHUB_WORKSPACE}/openxla/xla",
-            "-type", "f",
-            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
+            "-type",
+            "f",
+            "-exec",
+            "sed",
+            "-i",
+            "s/@local_xla/@local_xla/g",
+            "{}",
+            "+",
         ],
         [
             "find",
             f"{_GITHUB_WORKSPACE}/openxla/xla",
-            "-type", "f",
-            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+            "-type",
+            "f",
+            "-exec",
+            "sed",
+            "-i",
+            "s/@local_tsl/@local_tsl/g",
+            "{}",
+            "+",
         ],
     ),
 )
@@ -829,14 +838,26 @@ Build(
         [
             "find",
             f"{_GITHUB_WORKSPACE}/openxla/xla",
-            "-type", "f",
-            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
+            "-type",
+            "f",
+            "-exec",
+            "sed",
+            "-i",
+            "s/@local_xla/@local_xla/g",
+            "{}",
+            "+",
         ],
         [
             "find",
             f"{_GITHUB_WORKSPACE}/openxla/xla",
-            "-type", "f",
-            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+            "-type",
+            "f",
+            "-exec",
+            "sed",
+            "-i",
+            "s/@local_tsl/@local_tsl/g",
+            "{}",
+            "+",
         ],
         ["nvidia-smi"],
     ),
@@ -844,45 +865,45 @@ Build(
 
 
 def dump_all_build_commands():
-  """Used to generate what commands are run for each build."""
-  # Awkward workaround b/c Build instances are not hashable
-  for build in sorted(Build.all_builds().values(), key=lambda b: str(b.type_)):
-    sys.stdout.write(f"# BEGIN {build.type_}\n")
-    for cmd in build.commands():
-      sys.stdout.write(" ".join(cmd) + "\n")
-    sys.stdout.write(f"# END {build.type_}\n")
+    """Used to generate what commands are run for each build."""
+    # Awkward workaround b/c Build instances are not hashable
+    for build in sorted(Build.all_builds().values(), key=lambda b: str(b.type_)):
+        sys.stdout.write(f"# BEGIN {build.type_}\n")
+        for cmd in build.commands():
+            sys.stdout.write(" ".join(cmd) + "\n")
+        sys.stdout.write(f"# END {build.type_}\n")
 
 
 def _parse_args():
-  """Defines flags and parses args."""
-  parser = argparse.ArgumentParser(allow_abbrev=False)
-  group = parser.add_mutually_exclusive_group(required=True)
-  group.add_argument(
-      "--build",
-      type=BuildType.from_str,
-      choices=list(BuildType),
-  )
-  group.add_argument(
-      "--dump_commands",
-      action="store_true",
-  )
+    """Defines flags and parses args."""
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--build",
+        type=BuildType.from_str,
+        choices=list(BuildType),
+    )
+    group.add_argument(
+        "--dump_commands",
+        action="store_true",
+    )
 
-  return parser.parse_args()
+    return parser.parse_args()
 
 
 def main():
-  logging.basicConfig()
-  logging.getLogger().setLevel(logging.INFO)
+    logging.basicConfig()
+    logging.getLogger().setLevel(logging.INFO)
 
-  args = _parse_args()
+    args = _parse_args()
 
-  if args.dump_commands:
-    dump_all_build_commands()
-    return
-  else:
-    for cmd in Build.all_builds()[args.build].commands():
-      sh(cmd)
+    if args.dump_commands:
+        dump_all_build_commands()
+        return
+    else:
+        for cmd in Build.all_builds()[args.build].commands():
+            sh(cmd)
 
 
 if __name__ == "__main__":
-  main()
+    main()

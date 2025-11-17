@@ -20,5 +20,4 @@ For testing `deprecation.deprecate_moved_module`.
 from tensorflow.python.util import deprecated_module_new
 from tensorflow.python.util import deprecation
 
-__getattr__ = deprecation.deprecate_moved_module(
-    __name__, deprecated_module_new, "2.9")
+__getattr__ = deprecation.deprecate_moved_module(__name__, deprecated_module_new, "2.9")

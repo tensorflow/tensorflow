@@ -22,7 +22,8 @@ import tensorflow as tf
 from tensorflow.python.platform import resource_loader
 
 _sleep_module = tf.load_op_library(
-    resource_loader.get_path_to_datafile("sleep_kernel.so"))
+    resource_loader.get_path_to_datafile("sleep_kernel.so")
+)
 
 examples_async_sleep = _sleep_module.examples_async_sleep
 examples_sync_sleep = _sleep_module.examples_sync_sleep
@@ -34,36 +35,36 @@ examples_sync_sleep = _sleep_module.examples_sync_sleep
 # that allows a wider variety of non-breaking future changes than are possible
 # with the generated wrapper alone. Having this wrapper is optional.
 def AsyncSleep(delay, name=None):
-  """Pause for `delay` seconds (which need not be an integer).
+    """Pause for `delay` seconds (which need not be an integer).
 
-  This is an asynchronous (non-blocking) version of a sleep op. It includes
-  any time spent being blocked by another thread in `delay`. If it is blocked
-  for a fraction of the time specified by `delay`, it only calls `sleep`
-  (actually `usleep`) only for the remainder. If it is blocked for the full
-  time specified by `delay` or more, it returns without explicitly calling
-  `sleep`.
+    This is an asynchronous (non-blocking) version of a sleep op. It includes
+    any time spent being blocked by another thread in `delay`. If it is blocked
+    for a fraction of the time specified by `delay`, it only calls `sleep`
+    (actually `usleep`) only for the remainder. If it is blocked for the full
+    time specified by `delay` or more, it returns without explicitly calling
+    `sleep`.
 
-  Args:
-    delay: tf.Tensor which is a scalar of type float.
-    name: An optional name for the op.
+    Args:
+      delay: tf.Tensor which is a scalar of type float.
+      name: An optional name for the op.
 
-  Returns:
-    The `delay` value.
-  """
-  return examples_async_sleep(delay=delay, name=name)
+    Returns:
+      The `delay` value.
+    """
+    return examples_async_sleep(delay=delay, name=name)
 
 
 def SyncSleep(delay, name=None):
-  """Pause for `delay` seconds (which need not be an integer).
+    """Pause for `delay` seconds (which need not be an integer).
 
-  This is a synchronous (blocking) version of a sleep op. It's purpose is
-  to be contrasted with Examples>AsyncSleep.
+    This is a synchronous (blocking) version of a sleep op. It's purpose is
+    to be contrasted with Examples>AsyncSleep.
 
-  Args:
-    delay: tf.Tensor which is a scalar of type float.
-    name: An optional name for the op.
+    Args:
+      delay: tf.Tensor which is a scalar of type float.
+      name: An optional name for the op.
 
-  Returns:
-    The `delay` value.
-  """
-  return examples_sync_sleep(delay=delay, name=name)
+    Returns:
+      The `delay` value.
+    """
+    return examples_sync_sleep(delay=delay, name=name)

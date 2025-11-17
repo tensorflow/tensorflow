@@ -19,102 +19,99 @@ from tensorflow.python.platform import test
 
 
 class RaggedFeatureTest(test.TestCase):
-
-  def test_validate_and_recreate_partition_row_splits(self):
-    """Tests _validate_and_recreate_partition with RowSplits."""
-    partition_types = parsing_config.RaggedFeature._PARTITION_TYPES
-    partition = parsing_config.RaggedFeature.RowSplits(key="test_key")
-    recreated_partition = (
-        parsing_config.RaggedFeature._validate_and_recreate_partition(
-            partition, partition_types
+    def test_validate_and_recreate_partition_row_splits(self):
+        """Tests _validate_and_recreate_partition with RowSplits."""
+        partition_types = parsing_config.RaggedFeature._PARTITION_TYPES
+        partition = parsing_config.RaggedFeature.RowSplits(key="test_key")
+        recreated_partition = (
+            parsing_config.RaggedFeature._validate_and_recreate_partition(
+                partition, partition_types
+            )
         )
-    )
-    self.assertIsInstance(
-        recreated_partition, parsing_config.RaggedFeature.RowSplits
-    )
-    self.assertEqual(recreated_partition.key, "test_key")
-
-  def test_validate_and_recreate_partition_row_lengths(self):
-    """Tests _validate_and_recreate_partition with RowLengths."""
-    partition_types = parsing_config.RaggedFeature._PARTITION_TYPES
-    partition = parsing_config.RaggedFeature.RowLengths(key="test_key2")
-    recreated_partition = (
-        parsing_config.RaggedFeature._validate_and_recreate_partition(
-            partition, partition_types
+        self.assertIsInstance(
+            recreated_partition, parsing_config.RaggedFeature.RowSplits
         )
-    )
-    self.assertIsInstance(
-        recreated_partition, parsing_config.RaggedFeature.RowLengths
-    )
-    self.assertEqual(recreated_partition.key, "test_key2")
+        self.assertEqual(recreated_partition.key, "test_key")
 
-  def test_validate_and_recreate_partition_uniform_row_length(self):
-    """Tests _validate_and_recreate_partition with UniformRowLength."""
-    partition_types = parsing_config.RaggedFeature._PARTITION_TYPES
-    partition = parsing_config.RaggedFeature.UniformRowLength(length=5)
-    recreated_partition = (
-        parsing_config.RaggedFeature._validate_and_recreate_partition(
-            partition, partition_types
+    def test_validate_and_recreate_partition_row_lengths(self):
+        """Tests _validate_and_recreate_partition with RowLengths."""
+        partition_types = parsing_config.RaggedFeature._PARTITION_TYPES
+        partition = parsing_config.RaggedFeature.RowLengths(key="test_key2")
+        recreated_partition = (
+            parsing_config.RaggedFeature._validate_and_recreate_partition(
+                partition, partition_types
+            )
         )
-    )
-    self.assertIsInstance(
-        recreated_partition, parsing_config.RaggedFeature.UniformRowLength
-    )
-    self.assertEqual(recreated_partition.length, 5)
+        self.assertIsInstance(
+            recreated_partition, parsing_config.RaggedFeature.RowLengths
+        )
+        self.assertEqual(recreated_partition.key, "test_key2")
 
-  def test_validate_and_recreate_partition_invalid(self):
-    """Tests _validate_and_recreate_partition with an invalid partition type."""
-    partition_types = parsing_config.RaggedFeature._PARTITION_TYPES
+    def test_validate_and_recreate_partition_uniform_row_length(self):
+        """Tests _validate_and_recreate_partition with UniformRowLength."""
+        partition_types = parsing_config.RaggedFeature._PARTITION_TYPES
+        partition = parsing_config.RaggedFeature.UniformRowLength(length=5)
+        recreated_partition = (
+            parsing_config.RaggedFeature._validate_and_recreate_partition(
+                partition, partition_types
+            )
+        )
+        self.assertIsInstance(
+            recreated_partition, parsing_config.RaggedFeature.UniformRowLength
+        )
+        self.assertEqual(recreated_partition.length, 5)
 
-    class InvalidPartition:
+    def test_validate_and_recreate_partition_invalid(self):
+        """Tests _validate_and_recreate_partition with an invalid partition type."""
+        partition_types = parsing_config.RaggedFeature._PARTITION_TYPES
 
-      def __init__(self, key):
-        self.key = key
+        class InvalidPartition:
+            def __init__(self, key):
+                self.key = key
 
-    partition = InvalidPartition(key="invalid_key")
-    with self.assertRaisesRegex(
-        TypeError, "cannot be cast to any of the partition"
-    ):
-      parsing_config.RaggedFeature._validate_and_recreate_partition(
-          partition, partition_types
-      )
+        partition = InvalidPartition(key="invalid_key")
+        with self.assertRaisesRegex(
+            TypeError, "cannot be cast to any of the partition"
+        ):
+            parsing_config.RaggedFeature._validate_and_recreate_partition(
+                partition, partition_types
+            )
 
-  def test_ragged_feature_new_with_valid_partitions(self):
-    """Tests RaggedFeature constructor with valid partitions."""
-    partitions = [
-        parsing_config.RaggedFeature.RowSplits(key="s1"),
-        parsing_config.RaggedFeature.UniformRowLength(length=3),
-    ]
-    feature = parsing_config.RaggedFeature(
-        dtype=dtypes.int64, partitions=partitions
-    )
-    self.assertEqual(feature.dtype, dtypes.int64)
-    self.assertLen(feature.partitions, 2)
-    self.assertIsInstance(
-        feature.partitions[0], parsing_config.RaggedFeature.RowSplits
-    )
-    self.assertEqual(feature.partitions[0].key, "s1")
-    self.assertIsInstance(
-        feature.partitions[1], parsing_config.RaggedFeature.UniformRowLength
-    )
-    self.assertEqual(feature.partitions[1].length, 3)
+    def test_ragged_feature_new_with_valid_partitions(self):
+        """Tests RaggedFeature constructor with valid partitions."""
+        partitions = [
+            parsing_config.RaggedFeature.RowSplits(key="s1"),
+            parsing_config.RaggedFeature.UniformRowLength(length=3),
+        ]
+        feature = parsing_config.RaggedFeature(
+            dtype=dtypes.int64, partitions=partitions
+        )
+        self.assertEqual(feature.dtype, dtypes.int64)
+        self.assertLen(feature.partitions, 2)
+        self.assertIsInstance(
+            feature.partitions[0], parsing_config.RaggedFeature.RowSplits
+        )
+        self.assertEqual(feature.partitions[0].key, "s1")
+        self.assertIsInstance(
+            feature.partitions[1], parsing_config.RaggedFeature.UniformRowLength
+        )
+        self.assertEqual(feature.partitions[1].length, 3)
 
-  def test_ragged_feature_new_with_invalid_partitions(self):
-    """Tests RaggedFeature constructor with invalid partitions."""
+    def test_ragged_feature_new_with_invalid_partitions(self):
+        """Tests RaggedFeature constructor with invalid partitions."""
 
-    class InvalidPartition:
+        class InvalidPartition:
+            def __init__(self, key):
+                self.key = key
 
-      def __init__(self, key):
-        self.key = key
-
-    partitions = [
-        InvalidPartition(key="invalid_key"),
-    ]
-    with self.assertRaisesRegex(
-        TypeError, "cannot be cast to any of the partition"
-    ):
-      parsing_config.RaggedFeature(dtype=dtypes.int64, partitions=partitions)
+        partitions = [
+            InvalidPartition(key="invalid_key"),
+        ]
+        with self.assertRaisesRegex(
+            TypeError, "cannot be cast to any of the partition"
+        ):
+            parsing_config.RaggedFeature(dtype=dtypes.int64, partitions=partitions)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

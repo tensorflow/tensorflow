@@ -23,27 +23,28 @@ from tensorflow.examples.adding_an_op import zero_out_op_2
 
 
 class ZeroOut2Test(tf.test.TestCase):
+    def test(self):
+        result = zero_out_op_2.zero_out([5, 4, 3, 2, 1])
+        self.assertAllEqual(result, [5, 0, 0, 0, 0])
 
-  def test(self):
-    result = zero_out_op_2.zero_out([5, 4, 3, 2, 1])
-    self.assertAllEqual(result, [5, 0, 0, 0, 0])
+    def test_2d(self):
+        result = zero_out_op_2.zero_out([[6, 5, 4], [3, 2, 1]])
+        self.assertAllEqual(result, [[6, 0, 0], [0, 0, 0]])
 
-  def test_2d(self):
-    result = zero_out_op_2.zero_out([[6, 5, 4], [3, 2, 1]])
-    self.assertAllEqual(result, [[6, 0, 0], [0, 0, 0]])
+    def test_grad(self):
+        x = tf.constant([5, 4, 3, 2, 1], dtype=tf.float32)
+        theoretical, numerical = tf.test.compute_gradient(
+            zero_out_op_2.zero_out, tuple([x])
+        )
+        self.assertAllClose(theoretical, numerical)
 
-  def test_grad(self):
-    x = tf.constant([5, 4, 3, 2, 1], dtype=tf.float32)
-    theoretical, numerical = tf.test.compute_gradient(zero_out_op_2.zero_out,
-                                                      tuple([x]))
-    self.assertAllClose(theoretical, numerical)
-
-  def test_grad_2d(self):
-    x = tf.constant([[6, 5, 4], [3, 2, 1]], dtype=tf.float32)
-    theoretical, numerical = tf.test.compute_gradient(zero_out_op_2.zero_out,
-                                                      tuple([x]))
-    self.assertAllClose(theoretical, numerical)
+    def test_grad_2d(self):
+        x = tf.constant([[6, 5, 4], [3, 2, 1]], dtype=tf.float32)
+        theoretical, numerical = tf.test.compute_gradient(
+            zero_out_op_2.zero_out, tuple([x])
+        )
+        self.assertAllClose(theoretical, numerical)
 
 
-if __name__ == '__main__':
-  tf.test.main()
+if __name__ == "__main__":
+    tf.test.main()

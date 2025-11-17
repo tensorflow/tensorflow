@@ -23,15 +23,14 @@ from tensorflow.python.autograph.tests import reference_test_base
 
 
 def core_tf_call(x):
-  return x * tf.constant(2)
+    return x * tf.constant(2)
 
 
 class ReferenceTest(reference_test_base.TestCase):
+    def test_basic(self):
+        self.assertFunctionMatchesEager(core_tf_call, 1)
+        self.assertFunctionMatchesEager(core_tf_call, tf.constant(1))
 
-  def test_basic(self):
-    self.assertFunctionMatchesEager(core_tf_call, 1)
-    self.assertFunctionMatchesEager(core_tf_call, tf.constant(1))
 
-
-if __name__ == '__main__':
-  tf.test.main()
+if __name__ == "__main__":
+    tf.test.main()

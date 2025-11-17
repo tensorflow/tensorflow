@@ -21,102 +21,101 @@ from tensorflow.python.platform import test
 
 
 class CompatTest(test.TestCase):
+    def _compatibility_date(self):
+        date = compat._FORWARD_COMPATIBILITY_HORIZON  # pylint: disable=protected-access
+        return (date.year, date.month, date.day)
 
-  def _compatibility_date(self):
-    date = compat._FORWARD_COMPATIBILITY_HORIZON  # pylint: disable=protected-access
-    return (date.year, date.month, date.day)
+    def _n_days_after(self, n):
+        date = compat._FORWARD_COMPATIBILITY_HORIZON + datetime.timedelta(days=n)  # pylint: disable=protected-access
+        return (date.year, date.month, date.day)
 
-  def _n_days_after(self, n):
-    date = compat._FORWARD_COMPATIBILITY_HORIZON + datetime.timedelta(days=n)  # pylint: disable=protected-access
-    return (date.year, date.month, date.day)
+    def test_basic(self):
+        compatibility_date = self._compatibility_date()
+        one_day_before = self._n_days_after(-1)
+        self.assertTrue(compat.forward_compatible(*one_day_before))
+        self.assertFalse(compat.forward_compatible(*compatibility_date))
 
-  def test_basic(self):
-    compatibility_date = self._compatibility_date()
-    one_day_before = self._n_days_after(-1)
-    self.assertTrue(compat.forward_compatible(*one_day_before))
-    self.assertFalse(compat.forward_compatible(*compatibility_date))
+    def test_past(self):
+        with compat.forward_compatibility_horizon(2018, 9, 18):
+            self.assertTrue(compat.forward_compatible(2020, 4, 4))
 
-  def test_past(self):
-    with compat.forward_compatibility_horizon(2018, 9, 18):
-      self.assertTrue(compat.forward_compatible(2020, 4, 4))
+    def test_decorator(self):
+        compatibility_date = self._compatibility_date()
+        one_day_after = self._n_days_after(1)
+        with compat.forward_compatibility_horizon(*one_day_after):
+            self.assertTrue(compat.forward_compatible(*compatibility_date))
+            self.assertFalse(compat.forward_compatible(*one_day_after))
 
-  def test_decorator(self):
-    compatibility_date = self._compatibility_date()
-    one_day_after = self._n_days_after(1)
-    with compat.forward_compatibility_horizon(*one_day_after):
-      self.assertTrue(compat.forward_compatible(*compatibility_date))
-      self.assertFalse(compat.forward_compatible(*one_day_after))
+        # After exiting context manager, value should be reset.
+        self.assertFalse(compat.forward_compatible(*compatibility_date))
 
-    # After exiting context manager, value should be reset.
-    self.assertFalse(compat.forward_compatible(*compatibility_date))
+    def test_decorator_with_failure(self):
+        compatibility_date = self._compatibility_date()
+        one_day_after = self._n_days_after(1)
 
-  def test_decorator_with_failure(self):
-    compatibility_date = self._compatibility_date()
-    one_day_after = self._n_days_after(1)
+        class DummyError(Exception):
+            pass
 
-    class DummyError(Exception):
-      pass
+        try:
+            with compat.forward_compatibility_horizon(*one_day_after):
+                raise DummyError()
+        except DummyError:
+            pass  # silence DummyError
 
-    try:
-      with compat.forward_compatibility_horizon(*one_day_after):
-        raise DummyError()
-    except DummyError:
-      pass  # silence DummyError
+        # After exiting context manager, value should be reset.
+        self.assertFalse(compat.forward_compatible(*compatibility_date))
 
-    # After exiting context manager, value should be reset.
-    self.assertFalse(compat.forward_compatible(*compatibility_date))
+    def test_environment_override(self):
+        var_name = "TF_FORWARD_COMPATIBILITY_DELTA_DAYS"
 
-  def test_environment_override(self):
-    var_name = 'TF_FORWARD_COMPATIBILITY_DELTA_DAYS'
+        def remove_os_environment_var():
+            try:
+                del os.environ[var_name]
+            except KeyError:
+                pass
 
-    def remove_os_environment_var():
-      try:
+        self.addCleanup(remove_os_environment_var)
+
+        compatibility_date = self._compatibility_date()
+        one_day_before = self._n_days_after(-1)
+        one_day_after = self._n_days_after(1)
+        ten_days_after = self._n_days_after(10)
+        nine_days_after = self._n_days_after(9)
+
+        self.assertTrue(compat.forward_compatible(*one_day_before))
+        self.assertFalse(compat.forward_compatible(*compatibility_date))
+        self.assertFalse(compat.forward_compatible(*one_day_after))
+        self.assertFalse(compat.forward_compatible(*nine_days_after))
+        self.assertFalse(compat.forward_compatible(*ten_days_after))
+
+        os.environ[var_name] = "10"
+        compat._update_forward_compatibility_date_number()
+        self.assertTrue(compat.forward_compatible(*one_day_before))
+        self.assertTrue(compat.forward_compatible(*compatibility_date))
+        self.assertTrue(compat.forward_compatible(*one_day_after))
+        self.assertTrue(compat.forward_compatible(*nine_days_after))
+        self.assertFalse(compat.forward_compatible(*ten_days_after))
+
         del os.environ[var_name]
-      except KeyError:
-        pass
+        compat._update_forward_compatibility_date_number()
+        self.assertTrue(compat.forward_compatible(*one_day_before))
+        self.assertFalse(compat.forward_compatible(*compatibility_date))
+        self.assertFalse(compat.forward_compatible(*one_day_after))
+        self.assertFalse(compat.forward_compatible(*nine_days_after))
+        self.assertFalse(compat.forward_compatible(*ten_days_after))
 
-    self.addCleanup(remove_os_environment_var)
-
-    compatibility_date = self._compatibility_date()
-    one_day_before = self._n_days_after(-1)
-    one_day_after = self._n_days_after(1)
-    ten_days_after = self._n_days_after(10)
-    nine_days_after = self._n_days_after(9)
-
-    self.assertTrue(compat.forward_compatible(*one_day_before))
-    self.assertFalse(compat.forward_compatible(*compatibility_date))
-    self.assertFalse(compat.forward_compatible(*one_day_after))
-    self.assertFalse(compat.forward_compatible(*nine_days_after))
-    self.assertFalse(compat.forward_compatible(*ten_days_after))
-
-    os.environ[var_name] = '10'
-    compat._update_forward_compatibility_date_number()
-    self.assertTrue(compat.forward_compatible(*one_day_before))
-    self.assertTrue(compat.forward_compatible(*compatibility_date))
-    self.assertTrue(compat.forward_compatible(*one_day_after))
-    self.assertTrue(compat.forward_compatible(*nine_days_after))
-    self.assertFalse(compat.forward_compatible(*ten_days_after))
-
-    del os.environ[var_name]
-    compat._update_forward_compatibility_date_number()
-    self.assertTrue(compat.forward_compatible(*one_day_before))
-    self.assertFalse(compat.forward_compatible(*compatibility_date))
-    self.assertFalse(compat.forward_compatible(*one_day_after))
-    self.assertFalse(compat.forward_compatible(*nine_days_after))
-    self.assertFalse(compat.forward_compatible(*ten_days_after))
-
-    # Now test interaction between environment variable and context func.
-    os.environ[var_name] = '10'
-    compat._update_forward_compatibility_date_number()
-    self.assertTrue(compat.forward_compatible(*one_day_after))
-    with compat.forward_compatibility_horizon(*one_day_after):
-      self.assertTrue(compat.forward_compatible(*one_day_before))
-      self.assertTrue(compat.forward_compatible(*compatibility_date))
-      self.assertFalse(compat.forward_compatible(*one_day_after))
-      self.assertFalse(compat.forward_compatible(*nine_days_after))
-      self.assertFalse(compat.forward_compatible(*ten_days_after))
-    self.assertTrue(compat.forward_compatible(*one_day_after))
+        # Now test interaction between environment variable and context func.
+        os.environ[var_name] = "10"
+        compat._update_forward_compatibility_date_number()
+        self.assertTrue(compat.forward_compatible(*one_day_after))
+        with compat.forward_compatibility_horizon(*one_day_after):
+            self.assertTrue(compat.forward_compatible(*one_day_before))
+            self.assertTrue(compat.forward_compatible(*compatibility_date))
+            self.assertFalse(compat.forward_compatible(*one_day_after))
+            self.assertFalse(compat.forward_compatible(*nine_days_after))
+            self.assertFalse(compat.forward_compatible(*ten_days_after))
+        self.assertTrue(compat.forward_compatible(*one_day_after))
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

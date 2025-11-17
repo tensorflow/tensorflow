@@ -44,18 +44,16 @@ from tensorflow.python.util.tf_export import tf_export
 
 _did_connect_to_cluster = False
 _topology = None
-CollectiveAllReduceExtended = (
-    collective_all_reduce_strategy.CollectiveAllReduceExtended
-)
+CollectiveAllReduceExtended = collective_all_reduce_strategy.CollectiveAllReduceExtended
 
 
 def _version_chooser(tf1_cls, tf2_cls):
-  def creator(*args, **kwargs):
-    if tf2.enabled():
-      return tf2_cls(*args, **kwargs)
-    return tf1_cls(*args, **kwargs)
+    def creator(*args, **kwargs):
+        if tf2.enabled():
+            return tf2_cls(*args, **kwargs)
+        return tf1_cls(*args, **kwargs)
 
-  return creator
+    return creator
 
 
 MirroredStrategy = _version_chooser(
@@ -69,9 +67,7 @@ OneDeviceStrategy = _version_chooser(
     one_device_lib.OneDeviceStrategyV1, one_device_lib.OneDeviceStrategy
 )
 # Only V2 CollectiveAllReduceStrategy combinations are supported.
-CollectiveAllReduceStrategy = (
-    collective_all_reduce_strategy.CollectiveAllReduceStrategy
-)
+CollectiveAllReduceStrategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy
 
 
 # pylint: disable=missing-docstring
@@ -80,149 +76,147 @@ def _get_tpu_strategy_creator(
     use_single_core=False,
     enable_packed_variable=False,
     enable_spmd_xla_paritioning=False,
-    **kwargs
+    **kwargs,
 ):
-  def _create_tpu_strategy():
-    FLAGS = flags.FLAGS  # pylint: disable=invalid-name
-    global _did_connect_to_cluster
-    global _topology
+    def _create_tpu_strategy():
+        FLAGS = flags.FLAGS  # pylint: disable=invalid-name
+        global _did_connect_to_cluster
+        global _topology
 
-    try:
-      # Attempt to locally discover the TPU. This will fail for Cloud TPU, in
-      # which case we fall back to the values passed as flags.
-      resolver = tpu_cluster_resolver.TPUClusterResolver()
-      did_automatically_resolve = True
-    except ValueError:
-      did_automatically_resolve = False
+        try:
+            # Attempt to locally discover the TPU. This will fail for Cloud TPU, in
+            # which case we fall back to the values passed as flags.
+            resolver = tpu_cluster_resolver.TPUClusterResolver()
+            did_automatically_resolve = True
+        except ValueError:
+            did_automatically_resolve = False
 
-      # These flags will be defined by tpu_test_wrapper.py.
-      resolver = tpu_cluster_resolver.TPUClusterResolver(
-          tpu=hasattr(FLAGS, "tpu") and FLAGS.tpu or "",
-          zone=hasattr(FLAGS, "zone") and FLAGS.zone or None,
-          project=hasattr(FLAGS, "project") and FLAGS.project or None,
-      )
+            # These flags will be defined by tpu_test_wrapper.py.
+            resolver = tpu_cluster_resolver.TPUClusterResolver(
+                tpu=hasattr(FLAGS, "tpu") and FLAGS.tpu or "",
+                zone=hasattr(FLAGS, "zone") and FLAGS.zone or None,
+                project=hasattr(FLAGS, "project") and FLAGS.project or None,
+            )
 
-    # Only connect once per process, rather than per test method.
-    if not _did_connect_to_cluster:
-      if getattr(FLAGS, "tpu", "") or did_automatically_resolve:
-        remote.connect_to_cluster(resolver)
-        _did_connect_to_cluster = True
-      _topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
+        # Only connect once per process, rather than per test method.
+        if not _did_connect_to_cluster:
+            if getattr(FLAGS, "tpu", "") or did_automatically_resolve:
+                remote.connect_to_cluster(resolver)
+                _did_connect_to_cluster = True
+            _topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
 
-    device_assignment = None
-    if use_single_core:
-      device_assignment = device_assignment_lib.DeviceAssignment(
-          _topology,
-          core_assignment=device_assignment_lib.SINGLE_CORE_ASSIGNMENT,
-      )
+        device_assignment = None
+        if use_single_core:
+            device_assignment = device_assignment_lib.DeviceAssignment(
+                _topology,
+                core_assignment=device_assignment_lib.SINGLE_CORE_ASSIGNMENT,
+            )
 
-    # Steps per run is only supported in TF 1.x
-    if tf2.enabled():
-      strategy = tpu_lib.TPUStrategyV2(
-          resolver,
-          device_assignment,
-          experimental_spmd_xla_partitioning=enable_spmd_xla_paritioning,
-          **kwargs
-      )
-    else:
-      strategy = tpu_lib.TPUStrategyV1(
-          resolver, steps_per_run, device_assignment, **kwargs
-      )
-    if enable_packed_variable and enable_spmd_xla_paritioning:
-      raise ValueError("Packed Variable is not compatible with SPMD mode")
-    strategy._enable_packed_variable_in_eager_mode = (  # pylint: disable=protected-access
-        enable_packed_variable
-    )
-    return strategy
+        # Steps per run is only supported in TF 1.x
+        if tf2.enabled():
+            strategy = tpu_lib.TPUStrategyV2(
+                resolver,
+                device_assignment,
+                experimental_spmd_xla_partitioning=enable_spmd_xla_paritioning,
+                **kwargs,
+            )
+        else:
+            strategy = tpu_lib.TPUStrategyV1(
+                resolver, steps_per_run, device_assignment, **kwargs
+            )
+        if enable_packed_variable and enable_spmd_xla_paritioning:
+            raise ValueError("Packed Variable is not compatible with SPMD mode")
+        strategy._enable_packed_variable_in_eager_mode = (  # pylint: disable=protected-access
+            enable_packed_variable
+        )
+        return strategy
 
-  return _create_tpu_strategy
+    return _create_tpu_strategy
 
 
 def _mirrored_strategy_with_collective_key_base(devices):
-  required_cpus_nums = sum(
-      1
-      for d in devices
-      if tf_device.DeviceSpec.from_string(d).device_type == "CPU"
-  )
+    required_cpus_nums = sum(
+        1 for d in devices if tf_device.DeviceSpec.from_string(d).device_type == "CPU"
+    )
 
-  # If required virtual CPUs are not setup yet, config the logical devices.
-  if required_cpus_nums > len(context.context().list_logical_devices("CPU")):
-    context._reset_context()  # pylint: disable=protected-access
-    test_util.set_logical_devices_to_at_least("CPU", required_cpus_nums)
+    # If required virtual CPUs are not setup yet, config the logical devices.
+    if required_cpus_nums > len(context.context().list_logical_devices("CPU")):
+        context._reset_context()  # pylint: disable=protected-access
+        test_util.set_logical_devices_to_at_least("CPU", required_cpus_nums)
 
-  # Increase collective base key to avoid key collision across subtests.
-  mirrored_lib.MirroredStrategyV1._collective_key_base += 100000
-  mirrored_lib.MirroredStrategy._collective_key_base += 100000
-  return MirroredStrategy(devices)
+    # Increase collective base key to avoid key collision across subtests.
+    mirrored_lib.MirroredStrategyV1._collective_key_base += 100000
+    mirrored_lib.MirroredStrategy._collective_key_base += 100000
+    return MirroredStrategy(devices)
 
 
 def _mirrored_strategy_with_no_merge_call(devices):
-  mirrored_lib.MirroredStrategyV1._collective_key_base += 100000
-  mirrored_lib.MirroredStrategy._collective_key_base += 100000
-  out = MirroredStrategy(devices)
-  # Stub out merge call usage.
-  out.extended._use_merge_call = lambda: False  # pylint: disable=protected-access
-  return out
+    mirrored_lib.MirroredStrategyV1._collective_key_base += 100000
+    mirrored_lib.MirroredStrategy._collective_key_base += 100000
+    out = MirroredStrategy(devices)
+    # Stub out merge call usage.
+    out.extended._use_merge_call = lambda: False  # pylint: disable=protected-access
+    return out
 
 
 def _get_multi_worker_mirrored_creator(required_gpus, use_merge_call=True):
-  def _create_multi_worker_mirrored():
-    tf_config = cluster_resolver.TFConfigClusterResolver()
-    master = tf_config.master()
-    if tf_config.rpc_layer:
-      # Strip off the rpc_layer suffix.
-      master = master[len("%s://" % tf_config.rpc_layer) :]
-    resolver = cluster_resolver.SimpleClusterResolver(
-        cluster_spec=tf_config.cluster_spec(),
-        task_type=tf_config.task_type,
-        task_id=tf_config.task_id,
-        master=master,
-        environment=tf_config.environment,
-        num_accelerators={"GPU": required_gpus},
-        rpc_layer=tf_config.rpc_layer or "grpc",
-    )
-    # Disable health check and coordination service. We don't have a reliable
-    # way to shutdown the strategy (and thus the strategy health check or
-    # coordination service heartbeat) at the end of a test. Turning on the
-    # strategy health check or coordination service heartbeat causes some
-    # flakiness since we re-create part of the server when creating a strategy,
-    # and our tests are capable of handling failures.
-    CollectiveAllReduceExtended._enable_check_health = (  # pylint: disable=protected-access
-        False
-    )
-    context.context().configure_coordination_service(service_type="")
-    # Always create the strategy in eager mode so that it starts the server and
-    # configures the eager context. The eager context can no longer be
-    # configured after initialization.
-    with context.eager_mode():
-      strategy = CollectiveAllReduceStrategy(cluster_resolver=resolver)
+    def _create_multi_worker_mirrored():
+        tf_config = cluster_resolver.TFConfigClusterResolver()
+        master = tf_config.master()
+        if tf_config.rpc_layer:
+            # Strip off the rpc_layer suffix.
+            master = master[len("%s://" % tf_config.rpc_layer) :]
+        resolver = cluster_resolver.SimpleClusterResolver(
+            cluster_spec=tf_config.cluster_spec(),
+            task_type=tf_config.task_type,
+            task_id=tf_config.task_id,
+            master=master,
+            environment=tf_config.environment,
+            num_accelerators={"GPU": required_gpus},
+            rpc_layer=tf_config.rpc_layer or "grpc",
+        )
+        # Disable health check and coordination service. We don't have a reliable
+        # way to shutdown the strategy (and thus the strategy health check or
+        # coordination service heartbeat) at the end of a test. Turning on the
+        # strategy health check or coordination service heartbeat causes some
+        # flakiness since we re-create part of the server when creating a strategy,
+        # and our tests are capable of handling failures.
+        CollectiveAllReduceExtended._enable_check_health = (  # pylint: disable=protected-access
+            False
+        )
+        context.context().configure_coordination_service(service_type="")
+        # Always create the strategy in eager mode so that it starts the server and
+        # configures the eager context. The eager context can no longer be
+        # configured after initialization.
+        with context.eager_mode():
+            strategy = CollectiveAllReduceStrategy(cluster_resolver=resolver)
 
-    if not use_merge_call:
-      strategy.extended._use_merge_call = lambda: False  # pylint: disable=protected-access
-    # TODO(b/152320929): Wait for the cluster before proceeding, otherwise
-    # collectives may hang if any worker launches collectives before the chief
-    # creates the strategy.
-    try:
-      multi_process_runner.get_barrier().wait()
-    except ValueError:
-      # If the creator is called in the main process,
-      # multi_process_runner.get_barrier() raises ValueError, which is safe to
-      # ignore.
-      pass
-    return strategy
+        if not use_merge_call:
+            strategy.extended._use_merge_call = lambda: False  # pylint: disable=protected-access
+        # TODO(b/152320929): Wait for the cluster before proceeding, otherwise
+        # collectives may hang if any worker launches collectives before the chief
+        # creates the strategy.
+        try:
+            multi_process_runner.get_barrier().wait()
+        except ValueError:
+            # If the creator is called in the main process,
+            # multi_process_runner.get_barrier() raises ValueError, which is safe to
+            # ignore.
+            pass
+        return strategy
 
-  def skip_if_cannot_start_grpc_server():
-    try:
-      return _create_multi_worker_mirrored()
-    except errors.UnknownError as e:
-      if "Could not start gRPC server" in e.message and (
-          len(sys.argv) >= 1 and "bazel" in sys.argv[0]
-      ):
-        raise unittest.SkipTest("Cannot start std servers.")
-      else:
-        raise
+    def skip_if_cannot_start_grpc_server():
+        try:
+            return _create_multi_worker_mirrored()
+        except errors.UnknownError as e:
+            if "Could not start gRPC server" in e.message and (
+                len(sys.argv) >= 1 and "bazel" in sys.argv[0]
+            ):
+                raise unittest.SkipTest("Cannot start std servers.")
+            else:
+                raise
 
-  return skip_if_cannot_start_grpc_server
+    return skip_if_cannot_start_grpc_server
 
 
 # Due to b/195615322, FixedShardsPartitioner will wrongly partition
@@ -240,107 +234,105 @@ def _get_ps_strategy_creator(
     required_gpus=0,
     variable_partitioner=DEFAULT_PARTITIONER,
 ):
-  def _create_ps_strategy(resolver, variable_partitioner):
-    return parameter_server_strategy_v2.ParameterServerStrategyV2(
-        resolver, variable_partitioner=variable_partitioner
-    )
+    def _create_ps_strategy(resolver, variable_partitioner):
+        return parameter_server_strategy_v2.ParameterServerStrategyV2(
+            resolver, variable_partitioner=variable_partitioner
+        )
 
-  def _create_parameter_server():
-    if framework_test_util.is_xla_enabled():
-      # To address test failures resulting in XLA with MultiProcessRunner,
-      # continue to use in-process cluster for XLA tests.
-      cluster_def = multi_worker_test_base.create_in_process_cluster(
-          num_workers=num_workers, num_ps=num_ps, rpc_layer="grpc"
-      )
-      resolver = cluster_resolver.SimpleClusterResolver(
-          server_lib.ClusterSpec(cluster_def),
-          num_accelerators={"GPU": required_gpus},
-          rpc_layer="grpc",
-      )
-      return _create_ps_strategy(resolver, variable_partitioner)
-    else:
-      tf_config = cluster_resolver.TFConfigClusterResolver()
-      cluster_def = tf_config.cluster_spec().as_dict()
-      if not cluster_def:
-        # When MultiProcessRunner cluster is used, the cluster is not created
-        # initially when the decorator is called. When the test runs, initially
-        # this method is invoked via decorator before setting up the
-        # MultiProcessRunner with worker and ps in the combinations.py. After
-        # setup is done, the subprocess invokes this method again to get
-        # strategy object. We return None strategy when the main thread invokes
-        # this method before setting up cluster.
-        # Returning None is fine here, since this thread will proceed to create
-        # MultiProcessRunner and invoke tests with decorator inside
-        # subprocesses.
-        return None
-      # MultiProcessRunner is already setup and this method is invoked from a
-      # subprocess running the actual test.
-      resolver = cluster_resolver.SimpleClusterResolver(
-          server_lib.ClusterSpec(cluster_def),
-          num_accelerators={"GPU": required_gpus},
-          task_type=tf_config.task_type,
-          task_id=tf_config.task_id,
-          environment=tf_config.environment,
-          rpc_layer=tf_config.rpc_layer or "grpc",
-      )
-      if tf_config.task_type in ("worker", "ps"):
-        worker_config = config_pb2.ConfigProto()
-        worker_config.inter_op_parallelism_threads = 4  # max num_workers + 1
+    def _create_parameter_server():
+        if framework_test_util.is_xla_enabled():
+            # To address test failures resulting in XLA with MultiProcessRunner,
+            # continue to use in-process cluster for XLA tests.
+            cluster_def = multi_worker_test_base.create_in_process_cluster(
+                num_workers=num_workers, num_ps=num_ps, rpc_layer="grpc"
+            )
+            resolver = cluster_resolver.SimpleClusterResolver(
+                server_lib.ClusterSpec(cluster_def),
+                num_accelerators={"GPU": required_gpus},
+                rpc_layer="grpc",
+            )
+            return _create_ps_strategy(resolver, variable_partitioner)
+        else:
+            tf_config = cluster_resolver.TFConfigClusterResolver()
+            cluster_def = tf_config.cluster_spec().as_dict()
+            if not cluster_def:
+                # When MultiProcessRunner cluster is used, the cluster is not created
+                # initially when the decorator is called. When the test runs, initially
+                # this method is invoked via decorator before setting up the
+                # MultiProcessRunner with worker and ps in the combinations.py. After
+                # setup is done, the subprocess invokes this method again to get
+                # strategy object. We return None strategy when the main thread invokes
+                # this method before setting up cluster.
+                # Returning None is fine here, since this thread will proceed to create
+                # MultiProcessRunner and invoke tests with decorator inside
+                # subprocesses.
+                return None
+            # MultiProcessRunner is already setup and this method is invoked from a
+            # subprocess running the actual test.
+            resolver = cluster_resolver.SimpleClusterResolver(
+                server_lib.ClusterSpec(cluster_def),
+                num_accelerators={"GPU": required_gpus},
+                task_type=tf_config.task_type,
+                task_id=tf_config.task_id,
+                environment=tf_config.environment,
+                rpc_layer=tf_config.rpc_layer or "grpc",
+            )
+            if tf_config.task_type in ("worker", "ps"):
+                worker_config = config_pb2.ConfigProto()
+                worker_config.inter_op_parallelism_threads = 4  # max num_workers + 1
 
-        try:
-          server = server_lib.Server(
-              cluster_def,
-              job_name=tf_config.task_type,
-              task_index=tf_config.task_id,
-              protocol="grpc",
-              config=worker_config,
-          )
-        except errors.UnknownError as e:
-          if "Could not start gRPC server" in e.message:
-            raise unittest.SkipTest("Cannot start std servers.")
-          else:
-            raise
+                try:
+                    server = server_lib.Server(
+                        cluster_def,
+                        job_name=tf_config.task_type,
+                        task_index=tf_config.task_id,
+                        protocol="grpc",
+                        config=worker_config,
+                    )
+                except errors.UnknownError as e:
+                    if "Could not start gRPC server" in e.message:
+                        raise unittest.SkipTest("Cannot start std servers.")
+                    else:
+                        raise
 
-        # Blocking the process that starts a server from exiting.
-        server.join()
+                # Blocking the process that starts a server from exiting.
+                server.join()
 
-      return _create_ps_strategy(resolver, variable_partitioner)
+            return _create_ps_strategy(resolver, variable_partitioner)
 
-  return _create_parameter_server
+    return _create_parameter_server
 
 
-def _deferred_pool_runner(
-    has_chief, num_workers, initializer=None, share_gpu=True
-):
-  """Returns a callable that returns the pool runner.
+def _deferred_pool_runner(has_chief, num_workers, initializer=None, share_gpu=True):
+    """Returns a callable that returns the pool runner.
 
-  It creates the pool runner only upon first invocation. This avoids creating it
-  when this file is imported.
+    It creates the pool runner only upon first invocation. This avoids creating it
+    when this file is imported.
 
-  Args:
-    has_chief: whether there should be a chief.
-    num_workers: the number of workers excluding the chief.
-    initializer: initializer of each process.
-    share_gpu: whether to share GPU between the workers.
+    Args:
+      has_chief: whether there should be a chief.
+      num_workers: the number of workers excluding the chief.
+      initializer: initializer of each process.
+      share_gpu: whether to share GPU between the workers.
 
-  Returns:
-    A callable that returns the runner.
-  """
+    Returns:
+      A callable that returns the runner.
+    """
 
-  container = []
+    container = []
 
-  def get_or_create():
-    if not container:
-      cluster_spec = multi_worker_test_base.create_cluster_spec(
-          has_chief=has_chief, num_workers=num_workers, num_ps=0, has_eval=False
-      )
-      runner = multi_process_runner.MultiProcessPoolRunner(
-          cluster_spec, initializer=initializer, share_gpu=share_gpu
-      )
-      container.append(runner)
-    return container[0]
+    def get_or_create():
+        if not container:
+            cluster_spec = multi_worker_test_base.create_cluster_spec(
+                has_chief=has_chief, num_workers=num_workers, num_ps=0, has_eval=False
+            )
+            runner = multi_process_runner.MultiProcessPoolRunner(
+                cluster_spec, initializer=initializer, share_gpu=share_gpu
+            )
+            container.append(runner)
+        return container[0]
 
-  return get_or_create
+    return get_or_create
 
 
 # We need to create the strategy in the initializer to start the server before
@@ -397,9 +389,7 @@ tpu_strategy_packed_var = combinations.NamedDistribution(
 )
 tpu_strategy_spmd = combinations.NamedDistribution(
     "TPUUseSPMD",
-    _get_tpu_strategy_creator(
-        steps_per_run=2, enable_spmd_xla_paritioning=True
-    ),
+    _get_tpu_strategy_creator(steps_per_run=2, enable_spmd_xla_paritioning=True),
     required_tpu=True,
 )
 tpu_strategy_one_step = combinations.NamedDistribution(
@@ -456,12 +446,10 @@ mirrored_strategy_with_cpu_1_and_2 = combinations.NamedDistribution(
     "Mirrored2CPU",
     lambda: _mirrored_strategy_with_collective_key_base(["/cpu:1", "/cpu:2"]),
 )
-mirrored_strategy_with_cpu_1_and_2.__doc__ = (
-    """Mirrored strategy with 2 virtual CPUs.
+mirrored_strategy_with_cpu_1_and_2.__doc__ = """Mirrored strategy with 2 virtual CPUs.
 
     Should set up logical devices before use
     """
-)
 central_storage_strategy_with_two_gpus = combinations.NamedDistribution(
     "CentralStorage2GPUs",
     lambda: CentralStorageStrategy(["/gpu:0", "/gpu:1"]),
@@ -539,19 +527,19 @@ def parameter_server_strategy_fn(
     required_gpus=0,
     variable_partitioner=DEFAULT_PARTITIONER,
 ):
-  return combinations.NamedDistribution(
-      name,
-      _get_ps_strategy_creator(
-          num_workers=num_workers,
-          num_ps=num_ps,
-          required_gpus=required_gpus,
-          variable_partitioner=variable_partitioner,
-      ),
-      required_gpus=required_gpus,
-      num_workers=num_workers,
-      has_chief=True,
-      num_ps=num_ps,
-  )
+    return combinations.NamedDistribution(
+        name,
+        _get_ps_strategy_creator(
+            num_workers=num_workers,
+            num_ps=num_ps,
+            required_gpus=required_gpus,
+            variable_partitioner=variable_partitioner,
+        ),
+        required_gpus=required_gpus,
+        num_workers=num_workers,
+        has_chief=True,
+        num_ps=num_ps,
+    )
 
 
 parameter_server_strategy_3worker_2ps_cpu = parameter_server_strategy_fn(
@@ -572,7 +560,7 @@ graph_and_eager_modes = ["graph", "eager"]
 
 # TODO(crccw): remove after tf-nightly picks up the new API.
 def set_virtual_cpus_to_at_least(num_virtual_cpus):
-  test_util.set_logical_devices_to_at_least("CPU", num_virtual_cpus)
+    test_util.set_logical_devices_to_at_least("CPU", num_virtual_cpus)
 
 
 strategies_minus_tpu = [
@@ -634,36 +622,35 @@ multiworker_strategies = [
 
 
 def strategy_minus_tpu_combinations():
-  return combinations.combine(
-      distribution=strategies_minus_tpu, mode=["graph", "eager"]
-  )
+    return combinations.combine(
+        distribution=strategies_minus_tpu, mode=["graph", "eager"]
+    )
 
 
 def tpu_strategy_combinations():
-  return combinations.combine(distribution=tpu_strategies, mode=["graph"])
+    return combinations.combine(distribution=tpu_strategies, mode=["graph"])
 
 
 def all_strategy_combinations():
-  return strategy_minus_tpu_combinations() + tpu_strategy_combinations()
+    return strategy_minus_tpu_combinations() + tpu_strategy_combinations()
 
 
 def all_strategy_minus_default_and_tpu_combinations():
-  return combinations.combine(
-      distribution=[
-          one_device_strategy,
-          one_device_strategy_gpu,
-          mirrored_strategy_with_gpu_and_cpu,
-          mirrored_strategy_with_two_gpus,
-      ],
-      mode=["graph", "eager"],
-  )
+    return combinations.combine(
+        distribution=[
+            one_device_strategy,
+            one_device_strategy_gpu,
+            mirrored_strategy_with_gpu_and_cpu,
+            mirrored_strategy_with_two_gpus,
+        ],
+        mode=["graph", "eager"],
+    )
 
 
 def all_strategy_combinations_minus_default():
-  return (
-      all_strategy_minus_default_and_tpu_combinations()
-      + tpu_strategy_combinations()
-  )
+    return (
+        all_strategy_minus_default_and_tpu_combinations() + tpu_strategy_combinations()
+    )
 
 
 tf_export(
@@ -729,9 +716,9 @@ tf_export(
 tf_export(
     "__internal__.distribute.combinations.one_device_strategy_gpu", v1=[]
 ).export_constant(__name__, "one_device_strategy_gpu")
-tf_export(
-    "__internal__.distribute.combinations.tpu_strategy", v1=[]
-).export_constant(__name__, "tpu_strategy")
+tf_export("__internal__.distribute.combinations.tpu_strategy", v1=[]).export_constant(
+    __name__, "tpu_strategy"
+)
 tf_export(
     "__internal__.distribute.combinations.parameter_server_strategy_3worker_2ps_cpu",
     v1=[],

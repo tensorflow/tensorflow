@@ -23,89 +23,86 @@ from tensorflow.python.platform import test
 
 
 def dataset_fn_test_cases():
-  cases = [
-      ("range1", lambda: dataset_ops.Dataset.range(10)),
-      (
-          "flat_map1",
-          lambda: dataset_ops.Dataset.range(10).flat_map(
-              dataset_ops.Dataset.range
-          ),
-      ),
-      ("tfrecord1", lambda: readers.TFRecordDataset(["f1.txt", "f2.txt"])),
-      (
-          "tfrecord2",
-          lambda: readers.TFRecordDataset(["f1.txt", "f2.txt"]).repeat(2),
-      ),
-  ]
+    cases = [
+        ("range1", lambda: dataset_ops.Dataset.range(10)),
+        (
+            "flat_map1",
+            lambda: dataset_ops.Dataset.range(10).flat_map(dataset_ops.Dataset.range),
+        ),
+        ("tfrecord1", lambda: readers.TFRecordDataset(["f1.txt", "f2.txt"])),
+        (
+            "tfrecord2",
+            lambda: readers.TFRecordDataset(["f1.txt", "f2.txt"]).repeat(2),
+        ),
+    ]
 
-  named_cases = []
-  for case in cases:
-    name, dataset_fn = case
-    named_cases.append(combinations.NamedObject(name=name, obj=dataset_fn))
+    named_cases = []
+    for case in cases:
+        name, dataset_fn = case
+        named_cases.append(combinations.NamedObject(name=name, obj=dataset_fn))
 
-  return combinations.combine(dataset_fn=named_cases)
+    return combinations.combine(dataset_fn=named_cases)
 
 
 def dataset_pair_fn_test_cases():
-  dataset = dataset_ops.Dataset
+    dataset = dataset_ops.Dataset
 
-  cases = [
-      ("range1", lambda: (dataset.range(10), dataset.range(11))),
-      (
-          "flat_map1",
-          lambda: (
-              dataset.range(10).flat_map(dataset.range),
-              dataset.range(10).flat_map(lambda x: dataset.range(x + 1)),
-          ),
-      ),
-      (
-          "tfrecord1",
-          lambda: (
-              readers.TFRecordDataset(["f1.txt", "f2.txt"]),
-              readers.TFRecordDataset(["f1.txt", "f3.txt"]),
-          ),
-      ),
-      (
-          "tfrecord2",
-          lambda: (
-              readers.TFRecordDataset(["f1.txt", "f2.txt"]).repeat(2),
-              readers.TFRecordDataset(["f1.txt", "f3.txt"]).repeat(2),
-          ),
-      ),
-  ]
+    cases = [
+        ("range1", lambda: (dataset.range(10), dataset.range(11))),
+        (
+            "flat_map1",
+            lambda: (
+                dataset.range(10).flat_map(dataset.range),
+                dataset.range(10).flat_map(lambda x: dataset.range(x + 1)),
+            ),
+        ),
+        (
+            "tfrecord1",
+            lambda: (
+                readers.TFRecordDataset(["f1.txt", "f2.txt"]),
+                readers.TFRecordDataset(["f1.txt", "f3.txt"]),
+            ),
+        ),
+        (
+            "tfrecord2",
+            lambda: (
+                readers.TFRecordDataset(["f1.txt", "f2.txt"]).repeat(2),
+                readers.TFRecordDataset(["f1.txt", "f3.txt"]).repeat(2),
+            ),
+        ),
+    ]
 
-  named_cases = []
-  for case in cases:
-    name, dataset_pair_fn = case
-    named_cases.append(combinations.NamedObject(name=name, obj=dataset_pair_fn))
+    named_cases = []
+    for case in cases:
+        name, dataset_pair_fn = case
+        named_cases.append(combinations.NamedObject(name=name, obj=dataset_pair_fn))
 
-  return combinations.combine(dataset_pair_fn=named_cases)
+    return combinations.combine(dataset_pair_fn=named_cases)
 
 
 class FingerprintTest(test_base.DatasetTestBase, parameterized.TestCase):
+    @combinations.generate(
+        combinations.times(
+            test_base.default_test_combinations(), dataset_fn_test_cases()
+        )
+    )
+    def testSameDatasetSameFingerprint(self, dataset_fn):
+        fingerprint1 = self.evaluate(dataset_fn().fingerprint())
+        fingerprint2 = self.evaluate(dataset_fn().fingerprint())
+        self.assertEqual(fingerprint1, fingerprint2)
 
-  @combinations.generate(
-      combinations.times(
-          test_base.default_test_combinations(), dataset_fn_test_cases()
-      )
-  )
-  def testSameDatasetSameFingerprint(self, dataset_fn):
-    fingerprint1 = self.evaluate(dataset_fn().fingerprint())
-    fingerprint2 = self.evaluate(dataset_fn().fingerprint())
-    self.assertEqual(fingerprint1, fingerprint2)
-
-  @combinations.generate(
-      combinations.times(
-          test_base.default_test_combinations(),
-          dataset_pair_fn_test_cases(),
-      )
-  )
-  def testDifferentDatasetDifferentFingerprint(self, dataset_pair_fn):
-    lhs, rhs = dataset_pair_fn()
-    lhs_fingerprint = self.evaluate(lhs.fingerprint())
-    rhs_fingerprint = self.evaluate(rhs.fingerprint())
-    self.assertNotEqual(lhs_fingerprint, rhs_fingerprint)
+    @combinations.generate(
+        combinations.times(
+            test_base.default_test_combinations(),
+            dataset_pair_fn_test_cases(),
+        )
+    )
+    def testDifferentDatasetDifferentFingerprint(self, dataset_pair_fn):
+        lhs, rhs = dataset_pair_fn()
+        lhs_fingerprint = self.evaluate(lhs.fingerprint())
+        rhs_fingerprint = self.evaluate(rhs.fingerprint())
+        self.assertNotEqual(lhs_fingerprint, rhs_fingerprint)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

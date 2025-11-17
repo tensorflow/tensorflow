@@ -46,34 +46,37 @@ s = z3.Solver()
 s.add(z3.Extract(FLOAT_TY().sbits() - 1, 0, z3.fpToIEEEBV(c)) == 0)
 
 for rm in [z3.RTZ(), z3.RNE()]:
-  z3.set_default_rounding_mode(rm)
-  before = a * c + b * c
-  after = (a + b) * c
+    z3.set_default_rounding_mode(rm)
+    before = a * c + b * c
+    after = (a + b) * c
 
-  # Check that before == after, allowing that 0 == -0.
-  s.add(
-      z3.Not(
-          z3.Or(
-              before == after,  #
-              z3.And(z3.fpIsZero(before), z3.fpIsZero(after)))))
+    # Check that before == after, allowing that 0 == -0.
+    s.add(
+        z3.Not(
+            z3.Or(
+                before == after,  #
+                z3.And(z3.fpIsZero(before), z3.fpIsZero(after)),
+            )
+        )
+    )
 
-  for x in [
-      (a * c),
-      (b * c),
-      (a + b),
-  ]:
-    s.add(z3.Not(z3.fpIsSubnormal(x)))
-    s.add(z3.Not(z3.fpIsZero(x)))
-    s.add(z3.Not(z3.fpIsInf(x)))
+    for x in [
+        (a * c),
+        (b * c),
+        (a + b),
+    ]:
+        s.add(z3.Not(z3.fpIsSubnormal(x)))
+        s.add(z3.Not(z3.fpIsZero(x)))
+        s.add(z3.Not(z3.fpIsInf(x)))
 
 if s.check() == z3.sat:
-  m = s.model()
-  print("Counterexample found!")
-  print(m)
-  print("a*c:       ", z3.simplify(m[a] * m[c]))
-  print("b*c:       ", z3.simplify(m[b] * m[c]))
-  print("a+b:       ", z3.simplify(m[a] + m[b]))
-  print("a*c + b*c: ", z3.simplify(m[a] * m[c] + m[b] * m[c]))
-  print("(a+b) * c: ", z3.simplify((m[a] + m[b]) * m[c]))
+    m = s.model()
+    print("Counterexample found!")
+    print(m)
+    print("a*c:       ", z3.simplify(m[a] * m[c]))
+    print("b*c:       ", z3.simplify(m[b] * m[c]))
+    print("a+b:       ", z3.simplify(m[a] + m[b]))
+    print("a*c + b*c: ", z3.simplify(m[a] * m[c] + m[b] * m[c]))
+    print("(a+b) * c: ", z3.simplify((m[a] + m[b]) * m[c]))
 else:
-  print("Proved!")
+    print("Proved!")

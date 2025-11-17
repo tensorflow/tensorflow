@@ -19,18 +19,17 @@ from xla.hlo.experimental.auto_sharding import auto_sharding_python_extension
 
 
 class AutoShardingPythonExtensionTest(absltest.TestCase):
+    def test_register(self):
+        self.assertFalse(auto_sharding_python_extension.is_registered())
+        auto_sharding_python_extension.register()
+        self.assertTrue(auto_sharding_python_extension.is_registered())
 
-  def test_register(self):
-    self.assertFalse(auto_sharding_python_extension.is_registered())
-    auto_sharding_python_extension.register()
-    self.assertTrue(auto_sharding_python_extension.is_registered())
-
-  def test_clear(self):
-    auto_sharding_python_extension.register()
-    self.assertTrue(auto_sharding_python_extension.is_registered())
-    auto_sharding_python_extension.clear()
-    self.assertFalse(auto_sharding_python_extension.is_registered())
+    def test_clear(self):
+        auto_sharding_python_extension.register()
+        self.assertTrue(auto_sharding_python_extension.is_registered())
+        auto_sharding_python_extension.clear()
+        self.assertFalse(auto_sharding_python_extension.is_registered())
 
 
-if __name__ == '__main__':
-  absltest.main()
+if __name__ == "__main__":
+    absltest.main()
