@@ -18,5 +18,5 @@ from absl import app
 
 from tensorflow.python.tools.api.generator2.generator import generator
 
-if __name__ == '__main__':
-  app.run(generator.main)
+if __name__ == "__main__":
+    app.run(generator.main)

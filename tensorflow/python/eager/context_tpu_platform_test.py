@@ -23,25 +23,24 @@ from tensorflow.python.platform import test
 
 
 class ContextTpuPlatformTest(test.TestCase, parameterized.TestCase):
-
-  @parameterized.named_parameters(
-      [(f'_{stage}', stage) for stage in ['hlo', 'hlo_serialized']]
-  )
-  def testGetCompilerIrWithVariable(self, stage):
-    with ops.device('TPU:0'):
-      v = variables.Variable(1.0)
-
-    @def_function.function(jit_compile=True)
-    def test_func(x):
-      return x * v
-
-    a = constant_op.constant(1.0)
-    result = test_func.experimental_get_compiler_ir(a)(
-        stage=stage, platform_name='TPU'
+    @parameterized.named_parameters(
+        [(f"_{stage}", stage) for stage in ["hlo", "hlo_serialized"]]
     )
-    self.assertNotEmpty(result)
+    def testGetCompilerIrWithVariable(self, stage):
+        with ops.device("TPU:0"):
+            v = variables.Variable(1.0)
+
+        @def_function.function(jit_compile=True)
+        def test_func(x):
+            return x * v
+
+        a = constant_op.constant(1.0)
+        result = test_func.experimental_get_compiler_ir(a)(
+            stage=stage, platform_name="TPU"
+        )
+        self.assertNotEmpty(result)
 
 
-if __name__ == '__main__':
-  ops.enable_eager_execution()
-  test.main()
+if __name__ == "__main__":
+    ops.enable_eager_execution()
+    test.main()

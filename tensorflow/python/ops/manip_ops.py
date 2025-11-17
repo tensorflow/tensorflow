@@ -24,11 +24,11 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=protected-access
-@tf_export('roll', v1=['roll', 'manip.roll'])
+@tf_export("roll", v1=["roll", "manip.roll"])
 @dispatch.add_dispatch_support
-@deprecation.deprecated_endpoints('manip.roll')
+@deprecation.deprecated_endpoints("manip.roll")
 def roll(input, shift, axis, name=None):  # pylint: disable=redefined-builtin
-  return _gen_manip_ops.roll(input, shift, axis, name)
+    return _gen_manip_ops.roll(input, shift, axis, name)
 
 
 roll.__doc__ = _gen_manip_ops.roll.__doc__

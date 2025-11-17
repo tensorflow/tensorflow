@@ -19,30 +19,30 @@ import time
 
 
 def parse_args():
-  """Arguments parser."""
-  parser = argparse.ArgumentParser(
-      description="Helper for TensorFlow version calculation",
-      fromfile_prefix_chars="@",
-  )
-  parser.add_argument(
-      "--wheel-type",
-      required=True,
-      choices=["nightly", "release"],
-      help="Type of the wheel",
-  )
-  parser.add_argument("--wheel-version", required=True, help="Wheel version")
-  return parser.parse_args()
+    """Arguments parser."""
+    parser = argparse.ArgumentParser(
+        description="Helper for TensorFlow version calculation",
+        fromfile_prefix_chars="@",
+    )
+    parser.add_argument(
+        "--wheel-type",
+        required=True,
+        choices=["nightly", "release"],
+        help="Type of the wheel",
+    )
+    parser.add_argument("--wheel-version", required=True, help="Wheel version")
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
-  args = parse_args()
-  tensorflow_version_suffix = ""
-  if args.wheel_type == "nightly":
-    tensorflow_version_suffix = "-dev{}".format(time.strftime("%Y%m%d"))
+    args = parse_args()
+    tensorflow_version_suffix = ""
+    if args.wheel_type == "nightly":
+        tensorflow_version_suffix = "-dev{}".format(time.strftime("%Y%m%d"))
 
-  print(
-      '"{wheel_version}{tensorflow_version_suffix}"'.format(
-          wheel_version=args.wheel_version,
-          tensorflow_version_suffix=tensorflow_version_suffix,
-      )
-  )
+    print(
+        '"{wheel_version}{tensorflow_version_suffix}"'.format(
+            wheel_version=args.wheel_version,
+            tensorflow_version_suffix=tensorflow_version_suffix,
+        )
+    )

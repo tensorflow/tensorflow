@@ -28,59 +28,59 @@ from tensorflow.python.profiler import pprof_profiler
 
 
 class PprofProfilerTest(test.TestCase):
+    def testDataEmpty(self):
+        output_dir = test.get_temp_dir()
+        run_metadata = config_pb2.RunMetadata()
+        graph = test.mock.MagicMock()
+        graph.get_operations.return_value = []
 
-  def testDataEmpty(self):
-    output_dir = test.get_temp_dir()
-    run_metadata = config_pb2.RunMetadata()
-    graph = test.mock.MagicMock()
-    graph.get_operations.return_value = []
+        profiles = pprof_profiler.get_profiles(graph, run_metadata)
+        self.assertEqual(0, len(profiles))
+        profile_files = pprof_profiler.profile(graph, run_metadata, output_dir)
+        self.assertEqual(0, len(profile_files))
 
-    profiles = pprof_profiler.get_profiles(graph, run_metadata)
-    self.assertEqual(0, len(profiles))
-    profile_files = pprof_profiler.profile(
-        graph, run_metadata, output_dir)
-    self.assertEqual(0, len(profile_files))
+    def testRunMetadataEmpty(self):
+        output_dir = test.get_temp_dir()
+        run_metadata = config_pb2.RunMetadata()
+        graph = test.mock.MagicMock()
+        op1 = test.mock.MagicMock()
+        op1.name = "Add/123"
+        op1.traceback = [("a/b/file1", 10, "some_var")]
+        op1.type = "add"
+        graph.get_operations.return_value = [op1]
 
-  def testRunMetadataEmpty(self):
-    output_dir = test.get_temp_dir()
-    run_metadata = config_pb2.RunMetadata()
-    graph = test.mock.MagicMock()
-    op1 = test.mock.MagicMock()
-    op1.name = 'Add/123'
-    op1.traceback = [('a/b/file1', 10, 'some_var')]
-    op1.type = 'add'
-    graph.get_operations.return_value = [op1]
+        profiles = pprof_profiler.get_profiles(graph, run_metadata)
+        self.assertEqual(0, len(profiles))
+        profile_files = pprof_profiler.profile(graph, run_metadata, output_dir)
+        self.assertEqual(0, len(profile_files))
 
-    profiles = pprof_profiler.get_profiles(graph, run_metadata)
-    self.assertEqual(0, len(profiles))
-    profile_files = pprof_profiler.profile(
-        graph, run_metadata, output_dir)
-    self.assertEqual(0, len(profile_files))
+    def testValidProfile(self):
+        output_dir = test.get_temp_dir()
+        run_metadata = config_pb2.RunMetadata()
 
-  def testValidProfile(self):
-    output_dir = test.get_temp_dir()
-    run_metadata = config_pb2.RunMetadata()
+        node1 = step_stats_pb2.NodeExecStats(
+            node_name="Add/123",
+            op_start_rel_micros=3,
+            op_end_rel_micros=5,
+            all_end_rel_micros=4,
+        )
 
-    node1 = step_stats_pb2.NodeExecStats(
-        node_name='Add/123',
-        op_start_rel_micros=3,
-        op_end_rel_micros=5,
-        all_end_rel_micros=4)
+        run_metadata = config_pb2.RunMetadata()
+        device1 = run_metadata.step_stats.dev_stats.add()
+        device1.device = "deviceA"
+        device1.node_stats.extend([node1])
 
-    run_metadata = config_pb2.RunMetadata()
-    device1 = run_metadata.step_stats.dev_stats.add()
-    device1.device = 'deviceA'
-    device1.node_stats.extend([node1])
+        graph = test.mock.MagicMock()
+        op1 = test.mock.MagicMock()
+        op1.name = "Add/123"
+        op1.traceback = [
+            ("a/b/file1", 10, "apply_op", "abc"),
+            ("a/c/file2", 12, "my_op", "def"),
+        ]
+        op1.type = "add"
+        graph.get_operations.return_value = [op1]
 
-    graph = test.mock.MagicMock()
-    op1 = test.mock.MagicMock()
-    op1.name = 'Add/123'
-    op1.traceback = [
-        ('a/b/file1', 10, 'apply_op', 'abc'), ('a/c/file2', 12, 'my_op', 'def')]
-    op1.type = 'add'
-    graph.get_operations.return_value = [op1]
-
-    expected_proto = """sample_type {
+        expected_proto = """sample_type {
   type: 5
   unit: 5
 }
@@ -117,46 +117,45 @@ string_table: "op_time"
 string_table: "Device 1 of 1: deviceA"
 comment: 9
 """
-    # Test with protos
-    profiles = pprof_profiler.get_profiles(graph, run_metadata)
-    self.assertEqual(1, len(profiles))
-    self.assertTrue('deviceA' in profiles)
-    self.assertEqual(expected_proto, str(profiles['deviceA']))
-    # Test with files
-    profile_files = pprof_profiler.profile(
-        graph, run_metadata, output_dir)
-    self.assertEqual(1, len(profile_files))
-    with gzip.open(profile_files[0]) as profile_file:
-      profile_contents = profile_file.read()
-      profile = profile_pb2.Profile()
-      profile.ParseFromString(profile_contents)
-      self.assertEqual(expected_proto, str(profile))
+        # Test with protos
+        profiles = pprof_profiler.get_profiles(graph, run_metadata)
+        self.assertEqual(1, len(profiles))
+        self.assertTrue("deviceA" in profiles)
+        self.assertEqual(expected_proto, str(profiles["deviceA"]))
+        # Test with files
+        profile_files = pprof_profiler.profile(graph, run_metadata, output_dir)
+        self.assertEqual(1, len(profile_files))
+        with gzip.open(profile_files[0]) as profile_file:
+            profile_contents = profile_file.read()
+            profile = profile_pb2.Profile()
+            profile.ParseFromString(profile_contents)
+            self.assertEqual(expected_proto, str(profile))
 
-  @test_util.run_v1_only('b/120545219')
-  def testProfileWithWhileLoop(self):
-    options = config_pb2.RunOptions()
-    options.trace_level = config_pb2.RunOptions.FULL_TRACE
-    run_metadata = config_pb2.RunMetadata()
+    @test_util.run_v1_only("b/120545219")
+    def testProfileWithWhileLoop(self):
+        options = config_pb2.RunOptions()
+        options.trace_level = config_pb2.RunOptions.FULL_TRACE
+        run_metadata = config_pb2.RunMetadata()
 
-    num_iters = 5
-    with self.cached_session() as sess:
-      i = constant_op.constant(0)
-      c = lambda i: math_ops.less(i, num_iters)
-      b = lambda i: math_ops.add(i, 1)
-      r = while_loop.while_loop(c, b, [i])
-      sess.run(r, options=options, run_metadata=run_metadata)
-      profiles = pprof_profiler.get_profiles(sess.graph, run_metadata)
-      self.assertEqual(1, len(profiles))
-      profile = next(iter(profiles.values()))
-      add_samples = []  # Samples for the while/Add node
-      for sample in profile.sample:
-        if profile.string_table[sample.label[0].str] == 'while/Add':
-          add_samples.append(sample)
-      # Values for same nodes are aggregated.
-      self.assertEqual(1, len(add_samples))
-      # Value of "count" should be equal to number of iterations.
-      self.assertEqual(num_iters, add_samples[0].value[0])
+        num_iters = 5
+        with self.cached_session() as sess:
+            i = constant_op.constant(0)
+            c = lambda i: math_ops.less(i, num_iters)
+            b = lambda i: math_ops.add(i, 1)
+            r = while_loop.while_loop(c, b, [i])
+            sess.run(r, options=options, run_metadata=run_metadata)
+            profiles = pprof_profiler.get_profiles(sess.graph, run_metadata)
+            self.assertEqual(1, len(profiles))
+            profile = next(iter(profiles.values()))
+            add_samples = []  # Samples for the while/Add node
+            for sample in profile.sample:
+                if profile.string_table[sample.label[0].str] == "while/Add":
+                    add_samples.append(sample)
+            # Values for same nodes are aggregated.
+            self.assertEqual(1, len(add_samples))
+            # Value of "count" should be equal to number of iterations.
+            self.assertEqual(num_iters, add_samples[0].value[0])
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

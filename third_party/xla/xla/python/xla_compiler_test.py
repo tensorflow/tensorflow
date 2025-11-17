@@ -20,10 +20,10 @@ from xla.python import xla_extension
 
 
 def create_random_array(shape, dtype: np.dtype) -> np.ndarray:
-  if np.issubdtype(dtype, np.complexfloating):
-    return np.random.rand(*shape).astype(dtype) + 1j * np.random.rand(*shape)
-  else:
-    return np.random.rand(*shape).astype(dtype)
+    if np.issubdtype(dtype, np.complexfloating):
+        return np.random.rand(*shape).astype(dtype) + 1j * np.random.rand(*shape)
+    else:
+        return np.random.rand(*shape).astype(dtype)
 
 
 @parameterized.parameters(
@@ -43,41 +43,38 @@ def create_random_array(shape, dtype: np.dtype) -> np.ndarray:
     np.complex128,
 )
 class ConstructLiteralTest(parameterized.TestCase):
+    def test_create_literal_from_ndarray_rank_1(self, dtype):
+        input_array = create_random_array([10], dtype)
+        shape = xla_extension.Shape.array_shape(input_array.dtype, input_array.shape)
+        literal = xla_extension.Literal(shape)
+        # use `np.asarray` to ensure that the array is a view into the literal.
+        array = np.asarray(literal)
+        np.copyto(array, input_array)
+        # Intentionally check against `np.array(literal)` instead of `array`
+        # to ensure that the underlying literal is actually updated and not some
+        # rebinding to a new object. (This also exersises the copy functionality)
+        np.testing.assert_array_equal(np.array(literal), input_array)
 
-  def test_create_literal_from_ndarray_rank_1(self, dtype):
-    input_array = create_random_array([10], dtype)
-    shape = xla_extension.Shape.array_shape(
-        input_array.dtype, input_array.shape
-    )
-    literal = xla_extension.Literal(shape)
-    # use `np.asarray` to ensure that the array is a view into the literal.
-    array = np.asarray(literal)
-    np.copyto(array, input_array)
-    # Intentionally check against `np.array(literal)` instead of `array`
-    # to ensure that the underlying literal is actually updated and not some
-    # rebinding to a new object. (This also exersises the copy functionality)
-    np.testing.assert_array_equal(np.array(literal), input_array)
+    def test_create_literal_from_ndarray_rank_2(self, dtype):
+        input_array = create_random_array([20, 5], dtype)
+        shape = xla_extension.Shape.array_shape(
+            input_array.dtype, input_array.shape, [1, 0]
+        )
+        literal = xla_extension.Literal(shape)
+        array = np.asarray(literal)
+        np.copyto(array, input_array)
+        np.testing.assert_array_equal(np.array(literal), input_array)
 
-  def test_create_literal_from_ndarray_rank_2(self, dtype):
-    input_array = create_random_array([20, 5], dtype)
-    shape = xla_extension.Shape.array_shape(
-        input_array.dtype, input_array.shape, [1, 0]
-    )
-    literal = xla_extension.Literal(shape)
-    array = np.asarray(literal)
-    np.copyto(array, input_array)
-    np.testing.assert_array_equal(np.array(literal), input_array)
-
-  def test_create_literal_from_ndarray_rank_2_reverse_layout(self, dtype):
-    input_array = create_random_array([25, 4], dtype)
-    shape = xla_extension.Shape.array_shape(
-        input_array.dtype, input_array.shape, [0, 1]
-    )
-    literal = xla_extension.Literal(shape)
-    array = np.asarray(literal)
-    np.copyto(array, input_array)
-    np.testing.assert_array_equal(np.array(literal), input_array)
+    def test_create_literal_from_ndarray_rank_2_reverse_layout(self, dtype):
+        input_array = create_random_array([25, 4], dtype)
+        shape = xla_extension.Shape.array_shape(
+            input_array.dtype, input_array.shape, [0, 1]
+        )
+        literal = xla_extension.Literal(shape)
+        array = np.asarray(literal)
+        np.copyto(array, input_array)
+        np.testing.assert_array_equal(np.array(literal), input_array)
 
 
 if __name__ == "__main__":
-  absltest.main()
+    absltest.main()

@@ -27,11 +27,11 @@ from tensorflow.examples.custom_ops_doc.multiplex_4 import model_using_multiplex
 
 
 def main(argv):
-  del argv  # not used
-  path = 'model_using_multiplex'
-  result = model_using_multiplex.load_and_use(path)
-  print('Result:', result)
+    del argv  # not used
+    path = "model_using_multiplex"
+    result = model_using_multiplex.load_and_use(path)
+    print("Result:", result)
 
 
-if __name__ == '__main__':
-  app.run(main)
+if __name__ == "__main__":
+    app.run(main)

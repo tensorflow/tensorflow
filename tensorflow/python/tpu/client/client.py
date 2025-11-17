@@ -26,413 +26,440 @@ from absl import flags
 
 _GOOGLE_API_CLIENT_INSTALLED = True
 try:
-  from googleapiclient import discovery  # pylint: disable=g-import-not-at-top
-  from oauth2client import client  # pylint: disable=g-import-not-at-top
+    from googleapiclient import discovery  # pylint: disable=g-import-not-at-top
+    from oauth2client import client  # pylint: disable=g-import-not-at-top
 except ImportError:
-  _GOOGLE_API_CLIENT_INSTALLED = False
+    _GOOGLE_API_CLIENT_INSTALLED = False
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_bool('runtime_oom_exit', True,
-                  'Exit the script when the TPU runtime is OOM.')
-flags.DEFINE_bool('hbm_oom_exit', True,
-                  'Exit the script when the TPU HBM is OOM.')
+flags.DEFINE_bool(
+    "runtime_oom_exit", True, "Exit the script when the TPU runtime is OOM."
+)
+flags.DEFINE_bool("hbm_oom_exit", True, "Exit the script when the TPU HBM is OOM.")
 
-_GKE_ENV_VARIABLE = 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'
-_DEFAULT_TPUCONFIG_VARIABLE = 'TPU_CONFIG'
-_ENDPOINTS_SEPARATOR = ','
-_DEFAULT_ENV_VARIABLE = 'TPU_NAME'
-_DISCOVERY_SERVICE_URL_ENV_VARIABLE = 'TPU_API_DISCOVERY_URL'
-_GCE_METADATA_URL_ENV_VARIABLE = 'GCE_METADATA_IP'
-_GCE_METADATA_ENDPOINT_ENV_VARIABLE = 'GCE_METADATA_HOST'
-_DEFAULT_ENDPOINT_PORT = '8470'
+_GKE_ENV_VARIABLE = "KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS"
+_DEFAULT_TPUCONFIG_VARIABLE = "TPU_CONFIG"
+_ENDPOINTS_SEPARATOR = ","
+_DEFAULT_ENV_VARIABLE = "TPU_NAME"
+_DISCOVERY_SERVICE_URL_ENV_VARIABLE = "TPU_API_DISCOVERY_URL"
+_GCE_METADATA_URL_ENV_VARIABLE = "GCE_METADATA_IP"
+_GCE_METADATA_ENDPOINT_ENV_VARIABLE = "GCE_METADATA_HOST"
+_DEFAULT_ENDPOINT_PORT = "8470"
 _OOM_EVENT_COOL_TIME_SEC = 90
-_VERSION_SWITCHER_ENDPOINT = 'http://{}:8475/requestversion'
+_VERSION_SWITCHER_ENDPOINT = "http://{}:8475/requestversion"
 
 
 def _utcnow():
-  """A wrapper function around datetime.datetime.utcnow.
+    """A wrapper function around datetime.datetime.utcnow.
 
-  This function is created for unit testing purpose. It's not easy to do
-  StubOutWithMock with datetime.datetime package.
+    This function is created for unit testing purpose. It's not easy to do
+    StubOutWithMock with datetime.datetime package.
 
-  Returns:
-    datetime.datetime
-  """
-  return datetime.datetime.utcnow()
+    Returns:
+      datetime.datetime
+    """
+    return datetime.datetime.utcnow()
 
 
 def _environment_discovery_url():
-  return os.environ.get(_DISCOVERY_SERVICE_URL_ENV_VARIABLE)
+    return os.environ.get(_DISCOVERY_SERVICE_URL_ENV_VARIABLE)
 
 
 def _gce_metadata_endpoint():
-  endpoint = os.environ.get(_GCE_METADATA_ENDPOINT_ENV_VARIABLE)
-  if not endpoint:
-    endpoint = os.environ.get(
-        _GCE_METADATA_URL_ENV_VARIABLE, 'metadata.google.internal'
-    )
-  return 'http://' + endpoint
+    endpoint = os.environ.get(_GCE_METADATA_ENDPOINT_ENV_VARIABLE)
+    if not endpoint:
+        endpoint = os.environ.get(
+            _GCE_METADATA_URL_ENV_VARIABLE, "metadata.google.internal"
+        )
+    return "http://" + endpoint
 
 
 def _request_compute_metadata(path):
-  req = urllib.request.Request(
-      '%s/computeMetadata/v1/%s' % (_gce_metadata_endpoint(), path),
-      headers={'Metadata-Flavor': 'Google'})
-  resp = urllib.request.urlopen(req)
-  return _as_text(resp.read())
+    req = urllib.request.Request(
+        "%s/computeMetadata/v1/%s" % (_gce_metadata_endpoint(), path),
+        headers={"Metadata-Flavor": "Google"},
+    )
+    resp = urllib.request.urlopen(req)
+    return _as_text(resp.read())
 
 
 def _environment_var_to_network_endpoints(endpoints):
-  """Yields a dict with ip address and port."""
-  for endpoint in endpoints.split(','):
-    grpc_prefix = 'grpc://'
-    if endpoint.startswith(grpc_prefix):
-      endpoint = endpoint.split(grpc_prefix)[1]
-    parts = endpoint.split(':')
-    ip_address = parts[0]
-    port = _DEFAULT_ENDPOINT_PORT
-    if len(parts) > 1:
-      port = parts[1]
-    yield {
-        'ipAddress': ip_address,
-        'port': port
-    }
+    """Yields a dict with ip address and port."""
+    for endpoint in endpoints.split(","):
+        grpc_prefix = "grpc://"
+        if endpoint.startswith(grpc_prefix):
+            endpoint = endpoint.split(grpc_prefix)[1]
+        parts = endpoint.split(":")
+        ip_address = parts[0]
+        port = _DEFAULT_ENDPOINT_PORT
+        if len(parts) > 1:
+            port = parts[1]
+        yield {"ipAddress": ip_address, "port": port}
 
 
 def _get_tpu_node_config():
-  tpu_config_env = os.environ.get(_DEFAULT_TPUCONFIG_VARIABLE)
-  if tpu_config_env:
-    return json.loads(tpu_config_env)
-  return None
+    tpu_config_env = os.environ.get(_DEFAULT_TPUCONFIG_VARIABLE)
+    if tpu_config_env:
+        return json.loads(tpu_config_env)
+    return None
 
 
 def _get_tpu_name(tpu):
-  if tpu:
-    return tpu
+    if tpu:
+        return tpu
 
-  for e in [_GKE_ENV_VARIABLE, _DEFAULT_ENV_VARIABLE]:
-    if e in os.environ:
-      return os.environ[e]
-  return None
+    for e in [_GKE_ENV_VARIABLE, _DEFAULT_ENV_VARIABLE]:
+        if e in os.environ:
+            return os.environ[e]
+    return None
 
 
 def _as_text(s):
-  if isinstance(s, bytes):
-    return s.decode('utf-8')
-  return s
+    if isinstance(s, bytes):
+        return s.decode("utf-8")
+    return s
 
 
 class Client:
-  """Client for working with the Cloud TPU API.
+    """Client for working with the Cloud TPU API.
 
-  This client is intended to be used for resolving tpu name to ip addresses.
+    This client is intended to be used for resolving tpu name to ip addresses.
 
-  It's recommended to use this library as a contextlib to utilize all
-  functionality.
-  """
-
-  def __init__(self,
-               tpu=None,
-               zone=None,
-               project=None,
-               credentials='default',
-               service=None,
-               discovery_url=None):
-    if isinstance(tpu, list):
-      if not tpu:
-        raise ValueError('At least one TPU must be specified.')
-      if len(tpu) != 1:
-        raise NotImplementedError(
-            'Using multiple TPUs in a single session is not yet implemented')
-      tpu = tpu[0]
-
-    tpu = _get_tpu_name(tpu)
-
-    if tpu is None:
-      tpu_node_config = _get_tpu_node_config()
-      if tpu_node_config:
-        tpu = tpu_node_config.get('tpu_node_name')
-        project = project or tpu_node_config.get('project')
-        zone = zone or tpu_node_config.get('zone')
-      else:
-        raise ValueError('Please provide a TPU Name to connect to.')
-
-    self._tpu = _as_text(tpu)
-
-    self._use_api = not self._tpu.startswith('grpc://')
-    self._service = service
-
-    self._credentials = None
-    self._project = None
-    self._zone = None
-    self._discovery_url = None
-    if self._use_api:
-      if credentials != 'default':
-        self._credentials = credentials
-      # Automatically detect project and zone if unspecified.
-      if project:
-        self._project = _as_text(project)
-      else:
-        self._project = _request_compute_metadata('project/project-id')
-      if zone:
-        self._zone = _as_text(zone)
-      else:
-        zone_path = _request_compute_metadata('instance/zone')
-        self._zone = zone_path.split('/')[-1]
-      self._discovery_url = _environment_discovery_url() or discovery_url
-
-  def _symptom_msg(self, msg):
-    """Return the structured Symptom message."""
-    return 'Symptom: ' + msg
-
-  def _oom_event(self, symptoms):
-    """Check if a runtime OOM event is reported."""
-    if not symptoms:
-      return False
-    for symptom in reversed(symptoms):
-      if symptom['symptomType'] != 'OUT_OF_MEMORY':
-        continue
-      oom_datetime_str = symptom['createTime'].split('.')[0]
-      oom_datetime = datetime.datetime.strptime(oom_datetime_str,
-                                                '%Y-%m-%dT%H:%M:%S')
-      time_diff = _utcnow() - oom_datetime
-      if time_diff < datetime.timedelta(seconds=_OOM_EVENT_COOL_TIME_SEC):
-        logging.warning(
-            self._symptom_msg(
-                'a recent runtime OOM has occurred ~{} seconds ago. The model '
-                'script will terminate automatically. To prevent future OOM '
-                'events, please consider reducing the model size. To disable this '
-                'behavior, set flag --runtime_oom_exit=false when starting the '
-                'script.'.format(time_diff.seconds)))
-        return True
-    return False
-
-  def _hbm_oom_event(self, symptoms):
-    """Check if a HBM OOM event is reported."""
-    if not symptoms:
-      return False
-    for symptom in reversed(symptoms):
-      if symptom['symptomType'] != 'HBM_OUT_OF_MEMORY':
-        continue
-      oom_datetime_str = symptom['createTime'].split('.')[0]
-      oom_datetime = datetime.datetime.strptime(oom_datetime_str,
-                                                '%Y-%m-%dT%H:%M:%S')
-      time_diff = _utcnow() - oom_datetime
-      if time_diff < datetime.timedelta(seconds=_OOM_EVENT_COOL_TIME_SEC):
-        logging.warning(
-            self._symptom_msg(
-                'a recent HBM OOM has occurred ~{} seconds ago. The model '
-                'script will terminate automatically. To prevent future HBM OOM '
-                'events, please consider reducing the model size. To disable this '
-                'behavior, set flag --hbm_oom_exit=false when starting the '
-                'script.'.format(time_diff.seconds)))
-        return True
-    return False
-
-  def _tpu_service(self):
-    """Creates a new Cloud TPU API object.
-
-    This works around an issue where the underlying HTTP connection sometimes
-    times out when the script has been running for too long. Other methods in
-    this object call this method to get a new API object whenever they need
-    to communicate with the Cloud API.
-
-    Raises:
-      RuntimeError: If the dependent Python packages are missing.
-
-    Returns:
-      A Google Cloud TPU API object.
+    It's recommended to use this library as a contextlib to utilize all
+    functionality.
     """
-    if self._service:
-      return self._service
 
-    if not _GOOGLE_API_CLIENT_INSTALLED:
-      raise RuntimeError('Missing runtime dependency on the Google API client. '
-                         'Run `pip install cloud-tpu-client` to fix.')
+    def __init__(
+        self,
+        tpu=None,
+        zone=None,
+        project=None,
+        credentials="default",
+        service=None,
+        discovery_url=None,
+    ):
+        if isinstance(tpu, list):
+            if not tpu:
+                raise ValueError("At least one TPU must be specified.")
+            if len(tpu) != 1:
+                raise NotImplementedError(
+                    "Using multiple TPUs in a single session is not yet implemented"
+                )
+            tpu = tpu[0]
 
-    credentials = self._credentials
-    if credentials is None or credentials == 'default':
-      credentials = client.GoogleCredentials.get_application_default()
+        tpu = _get_tpu_name(tpu)
 
-    if self._discovery_url:
-      return discovery.build(
-          'tpu',
-          'v1',
-          credentials=credentials,
-          discoveryServiceUrl=self._discovery_url,
-          cache_discovery=False)
-    else:
-      return discovery.build(
-          'tpu', 'v1', credentials=credentials, cache_discovery=False)
+        if tpu is None:
+            tpu_node_config = _get_tpu_node_config()
+            if tpu_node_config:
+                tpu = tpu_node_config.get("tpu_node_name")
+                project = project or tpu_node_config.get("project")
+                zone = zone or tpu_node_config.get("zone")
+            else:
+                raise ValueError("Please provide a TPU Name to connect to.")
 
-  def _full_name(self):
-    """Returns the full Cloud name for this TPU."""
-    return 'projects/%s/locations/%s/nodes/%s' % (
-        self._project, self._zone, self._tpu)
+        self._tpu = _as_text(tpu)
 
-  def _fetch_cloud_tpu_metadata(self):
-    """Returns the TPU metadata object from the TPU Get API call."""
-    service = self._tpu_service()
-    try:
-      r = service.projects().locations().nodes().get(name=self._full_name())
-      return r.execute()
-    except Exception as e:
-      raise ValueError("Could not lookup TPU metadata from name '%s'. Please "
-                       'doublecheck the tpu argument in the TPUClusterResolver '
-                       'constructor. Exception: %s' % (self._tpu, e))
+        self._use_api = not self._tpu.startswith("grpc://")
+        self._service = service
 
-  def _get_tpu_property(self, key):
-    if self._use_api:
-      metadata = self._fetch_cloud_tpu_metadata()
-      return metadata.get(key)
+        self._credentials = None
+        self._project = None
+        self._zone = None
+        self._discovery_url = None
+        if self._use_api:
+            if credentials != "default":
+                self._credentials = credentials
+            # Automatically detect project and zone if unspecified.
+            if project:
+                self._project = _as_text(project)
+            else:
+                self._project = _request_compute_metadata("project/project-id")
+            if zone:
+                self._zone = _as_text(zone)
+            else:
+                zone_path = _request_compute_metadata("instance/zone")
+                self._zone = zone_path.split("/")[-1]
+            self._discovery_url = _environment_discovery_url() or discovery_url
 
-    return None
+    def _symptom_msg(self, msg):
+        """Return the structured Symptom message."""
+        return "Symptom: " + msg
 
-  def __enter__(self):
-    self._open = True
+    def _oom_event(self, symptoms):
+        """Check if a runtime OOM event is reported."""
+        if not symptoms:
+            return False
+        for symptom in reversed(symptoms):
+            if symptom["symptomType"] != "OUT_OF_MEMORY":
+                continue
+            oom_datetime_str = symptom["createTime"].split(".")[0]
+            oom_datetime = datetime.datetime.strptime(
+                oom_datetime_str, "%Y-%m-%dT%H:%M:%S"
+            )
+            time_diff = _utcnow() - oom_datetime
+            if time_diff < datetime.timedelta(seconds=_OOM_EVENT_COOL_TIME_SEC):
+                logging.warning(
+                    self._symptom_msg(
+                        "a recent runtime OOM has occurred ~{} seconds ago. The model "
+                        "script will terminate automatically. To prevent future OOM "
+                        "events, please consider reducing the model size. To disable this "
+                        "behavior, set flag --runtime_oom_exit=false when starting the "
+                        "script.".format(time_diff.seconds)
+                    )
+                )
+                return True
+        return False
 
-  def __exit__(self, type, value, traceback):  # pylint: disable=redefined-builtin
-    del type, value, traceback
+    def _hbm_oom_event(self, symptoms):
+        """Check if a HBM OOM event is reported."""
+        if not symptoms:
+            return False
+        for symptom in reversed(symptoms):
+            if symptom["symptomType"] != "HBM_OUT_OF_MEMORY":
+                continue
+            oom_datetime_str = symptom["createTime"].split(".")[0]
+            oom_datetime = datetime.datetime.strptime(
+                oom_datetime_str, "%Y-%m-%dT%H:%M:%S"
+            )
+            time_diff = _utcnow() - oom_datetime
+            if time_diff < datetime.timedelta(seconds=_OOM_EVENT_COOL_TIME_SEC):
+                logging.warning(
+                    self._symptom_msg(
+                        "a recent HBM OOM has occurred ~{} seconds ago. The model "
+                        "script will terminate automatically. To prevent future HBM OOM "
+                        "events, please consider reducing the model size. To disable this "
+                        "behavior, set flag --hbm_oom_exit=false when starting the "
+                        "script.".format(time_diff.seconds)
+                    )
+                )
+                return True
+        return False
 
-  def recoverable(self):
-    """Returns true if the TPU is in a state where training should eventually resume.
+    def _tpu_service(self):
+        """Creates a new Cloud TPU API object.
 
-    If false the TPU is in a unrecoverable state and should be recreated.
-    """
-    state = self.state()
-    symptoms = self.symptoms()
-    if state and state in ['TERMINATED', 'PREEMPTED']:
-      return False
-    elif FLAGS.runtime_oom_exit and self._oom_event(symptoms):
-      return False
-    elif FLAGS.hbm_oom_exit and self._hbm_oom_event(symptoms):
-      return False
-    return True
+        This works around an issue where the underlying HTTP connection sometimes
+        times out when the script has been running for too long. Other methods in
+        this object call this method to get a new API object whenever they need
+        to communicate with the Cloud API.
 
-  def symptoms(self):
-    """Return Cloud TPU Symptoms of the TPU."""
-    return self._get_tpu_property('symptoms')
+        Raises:
+          RuntimeError: If the dependent Python packages are missing.
 
-  def state(self):
-    """Return state of the TPU."""
-    return self._get_tpu_property('state')
+        Returns:
+          A Google Cloud TPU API object.
+        """
+        if self._service:
+            return self._service
 
-  def health(self):
-    """Return health of the TPU."""
-    return self._get_tpu_property('health')
+        if not _GOOGLE_API_CLIENT_INSTALLED:
+            raise RuntimeError(
+                "Missing runtime dependency on the Google API client. "
+                "Run `pip install cloud-tpu-client` to fix."
+            )
 
-  def runtime_version(self):
-    """Return runtime version of the TPU."""
+        credentials = self._credentials
+        if credentials is None or credentials == "default":
+            credentials = client.GoogleCredentials.get_application_default()
 
-    if not self._use_api:
-      # Fallback on getting version directly from TPU.
-      url = _VERSION_SWITCHER_ENDPOINT.format(
-          self.network_endpoints()[0]['ipAddress'])
-      try:
-        req = urllib.request.Request(url)
-        resp = urllib.request.urlopen(req)
-        version_details = json.loads(resp.read())
-        return version_details.get('currentVersion')
-      except urllib.error.HTTPError as e:
-        status_code = e.code
-        if status_code == 404:
-          return None
+        if self._discovery_url:
+            return discovery.build(
+                "tpu",
+                "v1",
+                credentials=credentials,
+                discoveryServiceUrl=self._discovery_url,
+                cache_discovery=False,
+            )
         else:
-          raise e
-    return self._get_tpu_property('tensorflowVersion')
+            return discovery.build(
+                "tpu", "v1", credentials=credentials, cache_discovery=False
+            )
 
-  def accelerator_type(self):
-    """Return accelerator type of the TPU."""
-    return self._get_tpu_property('acceleratorType')
+    def _full_name(self):
+        """Returns the full Cloud name for this TPU."""
+        return "projects/%s/locations/%s/nodes/%s" % (
+            self._project,
+            self._zone,
+            self._tpu,
+        )
 
-  def api_available(self):
-    """Return if the Cloud TPU API is available, if not certain features will not work."""
-    return self._use_api
+    def _fetch_cloud_tpu_metadata(self):
+        """Returns the TPU metadata object from the TPU Get API call."""
+        service = self._tpu_service()
+        try:
+            r = service.projects().locations().nodes().get(name=self._full_name())
+            return r.execute()
+        except Exception as e:
+            raise ValueError(
+                "Could not lookup TPU metadata from name '%s'. Please "
+                "doublecheck the tpu argument in the TPUClusterResolver "
+                "constructor. Exception: %s" % (self._tpu, e)
+            )
 
-  def name(self):
-    """Return the name of the tpu, or the ip address if name is not provided."""
-    return self._tpu
+    def _get_tpu_property(self, key):
+        if self._use_api:
+            metadata = self._fetch_cloud_tpu_metadata()
+            return metadata.get(key)
 
-  def get_local_ip(self):
-    """Return the local ip address of the Google Cloud VM the workload is running on."""
-    return _request_compute_metadata('instance/network-interfaces/0/ip')
+        return None
 
-  def network_endpoints(self):
-    """Return a list of tpu endpoints."""
-    if not self._use_api:
-      return list(_environment_var_to_network_endpoints(self._tpu))
-    response = self._fetch_cloud_tpu_metadata()
+    def __enter__(self):
+        self._open = True
 
-    if response.get('state') != 'READY':
-      raise RuntimeError('TPU "%s" is not yet ready; state: "%s"' %
-                         (self._tpu, response.get('state')))
-    if 'networkEndpoints' in response:
-      return response['networkEndpoints']
-    else:
-      return [{'ipAddress': response['ipAddress'], 'port': response['port']}]
+    def __exit__(self, type, value, traceback):  # pylint: disable=redefined-builtin
+        del type, value, traceback
 
-  def wait_for_healthy(self, timeout_s=1200, interval=30):
-    """Wait for TPU to become healthy or raise error if timeout reached.
+    def recoverable(self):
+        """Returns true if the TPU is in a state where training should eventually resume.
 
-    Args:
-      timeout_s (int): The timeout in seconds for waiting TPU to become healthy.
-      interval (int): The interval in seconds to poll the TPU for health.
+        If false the TPU is in a unrecoverable state and should be recreated.
+        """
+        state = self.state()
+        symptoms = self.symptoms()
+        if state and state in ["TERMINATED", "PREEMPTED"]:
+            return False
+        elif FLAGS.runtime_oom_exit and self._oom_event(symptoms):
+            return False
+        elif FLAGS.hbm_oom_exit and self._hbm_oom_event(symptoms):
+            return False
+        return True
 
-    Raises:
-      RuntimeError: If the TPU doesn't become healthy by the timeout.
-    """
-    timeout = time.time() + timeout_s
-    while self.health() != 'HEALTHY':
-      logging.warning(
-          ('Waiting for TPU "%s" with state "%s" '
-           'and health "%s" to become healthy'),
-          self.name(), self.state(), self.health())
-      if time.time() + interval > timeout:
-        raise RuntimeError(
-            'Timed out waiting for TPU "%s" to become healthy' % self.name())
-      time.sleep(interval)
+    def symptoms(self):
+        """Return Cloud TPU Symptoms of the TPU."""
+        return self._get_tpu_property("symptoms")
 
-    logging.warning('TPU "%s" is healthy.', self.name())
+    def state(self):
+        """Return state of the TPU."""
+        return self._get_tpu_property("state")
 
-  def configure_tpu_version(self, version, restart_type='always'):
-    """Configure TPU software version.
+    def health(self):
+        """Return health of the TPU."""
+        return self._get_tpu_property("health")
 
-    Args:
-      version (string): Version of software to configure the TPU with.
-      restart_type (string): Restart behaviour when switching versions,
-        defaults to always restart. Options are 'always', 'ifNeeded'.
+    def runtime_version(self):
+        """Return runtime version of the TPU."""
 
-    """
+        if not self._use_api:
+            # Fallback on getting version directly from TPU.
+            url = _VERSION_SWITCHER_ENDPOINT.format(
+                self.network_endpoints()[0]["ipAddress"]
+            )
+            try:
+                req = urllib.request.Request(url)
+                resp = urllib.request.urlopen(req)
+                version_details = json.loads(resp.read())
+                return version_details.get("currentVersion")
+            except urllib.error.HTTPError as e:
+                status_code = e.code
+                if status_code == 404:
+                    return None
+                else:
+                    raise e
+        return self._get_tpu_property("tensorflowVersion")
 
-    def configure_worker(worker):
-      """Configure individual TPU worker.
+    def accelerator_type(self):
+        """Return accelerator type of the TPU."""
+        return self._get_tpu_property("acceleratorType")
 
-      Args:
-        worker: A dict with the field ipAddress where the configure request will
-          be sent.
-      """
-      ip_address = worker['ipAddress']
-      url = (_VERSION_SWITCHER_ENDPOINT + '/{}?restartType={}').format(
-          ip_address, version, restart_type)
-      req = urllib.request.Request(url, data=b'')
-      try:
-        urllib.request.urlopen(req)
-      except urllib.error.HTTPError as e:
-        status_code = e.code
-        if status_code == 404:
-          raise Exception(
-              'Tensorflow version {} is not available on Cloud TPU, '
-              'try a previous nightly version or refer to '
-              'https://cloud.google.com/tpu/docs/release-notes for '
-              'the latest official version.'.format(version))
+    def api_available(self):
+        """Return if the Cloud TPU API is available, if not certain features will not work."""
+        return self._use_api
+
+    def name(self):
+        """Return the name of the tpu, or the ip address if name is not provided."""
+        return self._tpu
+
+    def get_local_ip(self):
+        """Return the local ip address of the Google Cloud VM the workload is running on."""
+        return _request_compute_metadata("instance/network-interfaces/0/ip")
+
+    def network_endpoints(self):
+        """Return a list of tpu endpoints."""
+        if not self._use_api:
+            return list(_environment_var_to_network_endpoints(self._tpu))
+        response = self._fetch_cloud_tpu_metadata()
+
+        if response.get("state") != "READY":
+            raise RuntimeError(
+                'TPU "%s" is not yet ready; state: "%s"'
+                % (self._tpu, response.get("state"))
+            )
+        if "networkEndpoints" in response:
+            return response["networkEndpoints"]
         else:
-          raise Exception('Failed to configure worker {}'.format(ip_address))
+            return [{"ipAddress": response["ipAddress"], "port": response["port"]}]
 
-    workers = self.network_endpoints()
+    def wait_for_healthy(self, timeout_s=1200, interval=30):
+        """Wait for TPU to become healthy or raise error if timeout reached.
 
-    with futures.ThreadPoolExecutor(max_workers=len(workers)) as executor:
-      results = executor.map(configure_worker, workers)
-      for result in results:
-        if result:
-          result.result()
+        Args:
+          timeout_s (int): The timeout in seconds for waiting TPU to become healthy.
+          interval (int): The interval in seconds to poll the TPU for health.
+
+        Raises:
+          RuntimeError: If the TPU doesn't become healthy by the timeout.
+        """
+        timeout = time.time() + timeout_s
+        while self.health() != "HEALTHY":
+            logging.warning(
+                (
+                    'Waiting for TPU "%s" with state "%s" '
+                    'and health "%s" to become healthy'
+                ),
+                self.name(),
+                self.state(),
+                self.health(),
+            )
+            if time.time() + interval > timeout:
+                raise RuntimeError(
+                    'Timed out waiting for TPU "%s" to become healthy' % self.name()
+                )
+            time.sleep(interval)
+
+        logging.warning('TPU "%s" is healthy.', self.name())
+
+    def configure_tpu_version(self, version, restart_type="always"):
+        """Configure TPU software version.
+
+        Args:
+          version (string): Version of software to configure the TPU with.
+          restart_type (string): Restart behaviour when switching versions,
+            defaults to always restart. Options are 'always', 'ifNeeded'.
+
+        """
+
+        def configure_worker(worker):
+            """Configure individual TPU worker.
+
+            Args:
+              worker: A dict with the field ipAddress where the configure request will
+                be sent.
+            """
+            ip_address = worker["ipAddress"]
+            url = (_VERSION_SWITCHER_ENDPOINT + "/{}?restartType={}").format(
+                ip_address, version, restart_type
+            )
+            req = urllib.request.Request(url, data=b"")
+            try:
+                urllib.request.urlopen(req)
+            except urllib.error.HTTPError as e:
+                status_code = e.code
+                if status_code == 404:
+                    raise Exception(
+                        "Tensorflow version {} is not available on Cloud TPU, "
+                        "try a previous nightly version or refer to "
+                        "https://cloud.google.com/tpu/docs/release-notes for "
+                        "the latest official version.".format(version)
+                    )
+                else:
+                    raise Exception("Failed to configure worker {}".format(ip_address))
+
+        workers = self.network_endpoints()
+
+        with futures.ThreadPoolExecutor(max_workers=len(workers)) as executor:
+            results = executor.map(configure_worker, workers)
+            for result in results:
+                if result:
+                    result.result()

@@ -22,45 +22,46 @@ from tensorflow.python.platform import test
 
 
 class ContextCrossPlatformTpuTest(test.TestCase, parameterized.TestCase):
-
-  @parameterized.named_parameters(
-      [(f'_{stage}', stage) for stage in ['hlo', 'hlo_serialized']]
-  )
-  def testGetCompilerIrOnGpuPlatform(self, stage):
-    @def_function.function(jit_compile=True)
-    def test_func(x):
-      return 2.0 * x
-
-    a = constant_op.constant(1.0)
-    result = test_func.experimental_get_compiler_ir(a)(
-        stage=stage, platform_name='GPU'
+    @parameterized.named_parameters(
+        [(f"_{stage}", stage) for stage in ["hlo", "hlo_serialized"]]
     )
-    self.assertNotEmpty(result)
+    def testGetCompilerIrOnGpuPlatform(self, stage):
+        @def_function.function(jit_compile=True)
+        def test_func(x):
+            return 2.0 * x
 
-  @parameterized.named_parameters([
-      (f'_{stage}', stage)
-      for stage in [
-          'optimized_hlo',
-          'optimized_hlo_serialized',
-          'optimized_hlo_proto_serialized',
-          'optimized_hlo_dot',
-      ]
-  ])
-  def testGetCompilerIrOnGpuPlatformOptimizedHlo(self, stage):
-    @def_function.function(jit_compile=True)
-    def test_func(x):
-      return 2.0 * x
+        a = constant_op.constant(1.0)
+        result = test_func.experimental_get_compiler_ir(a)(
+            stage=stage, platform_name="GPU"
+        )
+        self.assertNotEmpty(result)
 
-    a = constant_op.constant(1.0)
-    with self.assertRaisesRegex(
-        ValueError,
-        'GetCompilerIr with requested stage is not supported on this device',
-    ):
-      _ = test_func.experimental_get_compiler_ir(a)(
-          stage=stage, platform_name='GPU'
-      )
+    @parameterized.named_parameters(
+        [
+            (f"_{stage}", stage)
+            for stage in [
+                "optimized_hlo",
+                "optimized_hlo_serialized",
+                "optimized_hlo_proto_serialized",
+                "optimized_hlo_dot",
+            ]
+        ]
+    )
+    def testGetCompilerIrOnGpuPlatformOptimizedHlo(self, stage):
+        @def_function.function(jit_compile=True)
+        def test_func(x):
+            return 2.0 * x
+
+        a = constant_op.constant(1.0)
+        with self.assertRaisesRegex(
+            ValueError,
+            "GetCompilerIr with requested stage is not supported on this device",
+        ):
+            _ = test_func.experimental_get_compiler_ir(a)(
+                stage=stage, platform_name="GPU"
+            )
 
 
-if __name__ == '__main__':
-  ops.enable_eager_execution()
-  test.main()
+if __name__ == "__main__":
+    ops.enable_eager_execution()
+    test.main()

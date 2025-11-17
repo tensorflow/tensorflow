@@ -13,13 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 """Utils for testing registered objects."""
+
 from tensorflow.python.saved_model.registration import registration as registration_lib
 # pylint: disable=protected-access
 
 
 def get_all_registered_serializables():
-  return registration_lib._class_registry.get_registrations()
+    return registration_lib._class_registry.get_registrations()
 
 
 def get_all_registered_checkpoint_savers():
-  return registration_lib._saver_registry.get_registrations()
+    return registration_lib._saver_registry.get_registrations()

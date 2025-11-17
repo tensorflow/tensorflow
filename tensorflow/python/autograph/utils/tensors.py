@@ -26,24 +26,22 @@ from tensorflow.python.ops import tensor_array_ops
 
 
 def is_dense_tensor(t):
-  # TODO(mdan): Resolve this inconsistency.
-  return (tensor_util.is_tf_type(t) and
-          not isinstance(t, sparse_tensor.SparseTensor))
+    # TODO(mdan): Resolve this inconsistency.
+    return tensor_util.is_tf_type(t) and not isinstance(t, sparse_tensor.SparseTensor)
 
 
 def is_tensor_array(t):
-  return isinstance(t, tensor_array_ops.TensorArray)
+    return isinstance(t, tensor_array_ops.TensorArray)
 
 
 def is_tensor_list(t):
-  # TODO(mdan): This is just a heuristic.
-  # With TF lacking support for templated types, this is unfortunately the
-  # closest we can get right now. A dedicated op ought to be possible to
-  # construct.
-  return (tensor_util.is_tf_type(t) and t.dtype == dtypes.variant and
-          not t.shape.ndims)
+    # TODO(mdan): This is just a heuristic.
+    # With TF lacking support for templated types, this is unfortunately the
+    # closest we can get right now. A dedicated op ought to be possible to
+    # construct.
+    return tensor_util.is_tf_type(t) and t.dtype == dtypes.variant and not t.shape.ndims
 
 
 def is_range_tensor(t):
-  """Returns True if a tensor is the result of a tf.range op. Best effort."""
-  return tensor_util.is_tf_type(t) and hasattr(t, 'op') and t.op.type == 'Range'
+    """Returns True if a tensor is the result of a tf.range op. Best effort."""
+    return tensor_util.is_tf_type(t) and hasattr(t, "op") and t.op.type == "Range"

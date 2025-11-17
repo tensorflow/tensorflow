@@ -22,7 +22,14 @@ TF_LITE_OK: TfLiteStatus
 
 class FormatConverterFp32:
     @overload
-    def __init__(self, arg0: list[int], arg1: list[int], arg2: list[TfLiteDimensionType], arg3: list[int], arg4: list[int]) -> None: ...
+    def __init__(
+        self,
+        arg0: list[int],
+        arg1: list[int],
+        arg2: list[TfLiteDimensionType],
+        arg3: list[int],
+        arg4: list[int],
+    ) -> None: ...
     @overload
     def __init__(self, arg0: list[int], arg1: TfLiteSparsity) -> None: ...
     def DenseToSparse(self, arg0) -> TfLiteStatus: ...

@@ -44,6 +44,7 @@ from tensorflow.python.util.lazy_loader import KerasLazyLoader as _KerasLazyLoad
 # Make sure code inside the TensorFlow codebase can use tf2.enabled() at import.
 _os.environ["TF2_BEHAVIOR"] = "1"
 from tensorflow.python import tf2 as _tf2
+
 _tf2.enable()
 
 # API IMPORTS PLACEHOLDER
@@ -58,32 +59,38 @@ _tf_api_dir = _os.path.dirname(_os.path.dirname(_API_MODULE.__file__))
 _current_module = _sys.modules[__name__]
 
 if not hasattr(_current_module, "__path__"):
-  __path__ = [_tf_api_dir]
+    __path__ = [_tf_api_dir]
 elif _tf_api_dir not in __path__:
-  __path__.append(_tf_api_dir)
+    __path__.append(_tf_api_dir)
 
 # Hook external TensorFlow modules.
 
 # Load tensorflow-io-gcs-filesystem if enabled
-if (_os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "true" or
-    _os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "1"):
-  import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
+if (
+    _os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "true"
+    or _os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "1"
+):
+    import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
 
 # Lazy-load Keras v2/3.
-_tf_uses_legacy_keras = (
-    _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"))
+_tf_uses_legacy_keras = _os.environ.get("TF_USE_LEGACY_KERAS", None) in (
+    "true",
+    "True",
+    "1",
+)
 setattr(_current_module, "keras", _KerasLazyLoader(globals()))
 _module_dir = _module_util.get_parent_dir_for_name("keras._tf_keras.keras")
 _current_module.__path__ = [_module_dir] + _current_module.__path__
 if _tf_uses_legacy_keras:
-  _module_dir = _module_util.get_parent_dir_for_name("tf_keras.api._v2.keras")
+    _module_dir = _module_util.get_parent_dir_for_name("tf_keras.api._v2.keras")
 else:
-  _module_dir = _module_util.get_parent_dir_for_name("keras.api._v2.keras")
+    _module_dir = _module_util.get_parent_dir_for_name("keras.api._v2.keras")
 _current_module.__path__ = [_module_dir] + _current_module.__path__
 
 
 # Enable TF2 behaviors
 from tensorflow.python.compat import v2_compat as _compat
+
 _compat.enable_v2_behavior()
 _major_api_version = 2
 
@@ -97,53 +104,52 @@ from tensorflow.python.lib.io import file_io as _fi
 # Get sitepackages directories for the python installation.
 _site_packages_dirs = []
 if _site.ENABLE_USER_SITE and _site.USER_SITE is not None:
-  _site_packages_dirs += [_site.USER_SITE]
+    _site_packages_dirs += [_site.USER_SITE]
 _site_packages_dirs += [p for p in _sys.path if "site-packages" in p]
 if "getsitepackages" in dir(_site):
-  _site_packages_dirs += _site.getsitepackages()
+    _site_packages_dirs += _site.getsitepackages()
 
 for _scheme in _sysconfig.get_scheme_names():
-  for _name in ["purelib", "platlib"]:
-    _site_packages_dirs += [_sysconfig.get_path(_name, _scheme)]
+    for _name in ["purelib", "platlib"]:
+        _site_packages_dirs += [_sysconfig.get_path(_name, _scheme)]
 
 _site_packages_dirs = list(set(_site_packages_dirs))
 
 # Find the location of this exact file.
 _current_file_location = _inspect.getfile(_inspect.currentframe())
 
+
 def _running_from_pip_package():
-  return any(
-      _current_file_location.startswith(dir_) for dir_ in _site_packages_dirs)
+    return any(_current_file_location.startswith(dir_) for dir_ in _site_packages_dirs)
+
 
 if _running_from_pip_package():
-  # TODO(gunan): Add sanity checks to loaded modules here.
+    # TODO(gunan): Add sanity checks to loaded modules here.
 
-  # Load first party dynamic kernels.
-  _tf_dir = _os.path.dirname(_current_file_location)
-  _kernel_dir = _os.path.join(_tf_dir, "core", "kernels")
-  if _os.path.exists(_kernel_dir):
-    _ll.load_library(_kernel_dir)
+    # Load first party dynamic kernels.
+    _tf_dir = _os.path.dirname(_current_file_location)
+    _kernel_dir = _os.path.join(_tf_dir, "core", "kernels")
+    if _os.path.exists(_kernel_dir):
+        _ll.load_library(_kernel_dir)
 
-  # Load third party dynamic kernels.
-  for _s in _site_packages_dirs:
-    _plugin_dir = _os.path.join(_s, "tensorflow-plugins")
-    if _os.path.exists(_plugin_dir):
-      _ll.load_library(_plugin_dir)
-      # Load Pluggable Device Library
-      _ll.load_pluggable_device_library(_plugin_dir)
+    # Load third party dynamic kernels.
+    for _s in _site_packages_dirs:
+        _plugin_dir = _os.path.join(_s, "tensorflow-plugins")
+        if _os.path.exists(_plugin_dir):
+            _ll.load_library(_plugin_dir)
+            # Load Pluggable Device Library
+            _ll.load_pluggable_device_library(_plugin_dir)
 
 if _os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH", ""):
-  _ll.load_pluggable_device_library(
-      _os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH")
-  )
+    _ll.load_pluggable_device_library(_os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH"))
 
 # Add Keras module aliases
 _losses = _KerasLazyLoader(globals(), submodule="losses", name="losses")
 _metrics = _KerasLazyLoader(globals(), submodule="metrics", name="metrics")
-_optimizers = _KerasLazyLoader(
-    globals(), submodule="optimizers", name="optimizers")
+_optimizers = _KerasLazyLoader(globals(), submodule="optimizers", name="optimizers")
 _initializers = _KerasLazyLoader(
-    globals(), submodule="initializers", name="initializers")
+    globals(), submodule="initializers", name="initializers"
+)
 setattr(_current_module, "losses", _losses)
 setattr(_current_module, "metrics", _metrics)
 setattr(_current_module, "optimizers", _optimizers)
@@ -155,12 +161,12 @@ setattr(_current_module, "initializers", _initializers)
 # SavedModel registry.
 # See b/196254385 for more details.
 try:
-  if _tf_uses_legacy_keras:
-    importlib.import_module("tf_keras.src.optimizers")
-  else:
-    importlib.import_module("keras.src.optimizers")
+    if _tf_uses_legacy_keras:
+        importlib.import_module("tf_keras.src.optimizers")
+    else:
+        importlib.import_module("keras.src.optimizers")
 except (ImportError, AttributeError):
-  pass
+    pass
 
 del importlib
 
@@ -170,16 +176,16 @@ del importlib
 # does not have "python", "core" directories. Then, it will be copied
 # to tensorflow/ which does have these two directories.
 try:
-  del python
+    del python
 except NameError:
-  pass
+    pass
 try:
-  del core
+    del core
 except NameError:
-  pass
+    pass
 try:
-  del compiler
+    del compiler
 except NameError:
-  pass
+    pass
 
 # __all__ PLACEHOLDER

@@ -36,65 +36,67 @@ from tensorflow.python.training import warm_starting_util as ws_util
 
 
 class WarmStartingUtilWithDistributionStrategyTest(
-    test.TestCase, parameterized.TestCase):
+    test.TestCase, parameterized.TestCase
+):
+    @combinations.generate(
+        combinations.combine(
+            distribution=[
+                strategy_combinations.default_strategy,
+                strategy_combinations.one_device_strategy,
+                strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+                strategy_combinations.mirrored_strategy_with_two_gpus,
+                strategy_combinations.mirrored_strategy_with_two_gpus_no_merge_call,
+            ],
+            save_with_distribution=[True, False],
+            restore_with_distribution=[True, False],
+            mode=["graph"],
+        )
+    )
+    def testWarmStart(
+        self, distribution, save_with_distribution, restore_with_distribution
+    ):
+        var_name = "v"
+        original_value = [[1.0, 2.0], [3.0, 4.0]]
 
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.default_strategy,
-              strategy_combinations.one_device_strategy,
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.mirrored_strategy_with_two_gpus,
-              strategy_combinations
-              .mirrored_strategy_with_two_gpus_no_merge_call,
-          ],
-          save_with_distribution=[True, False],
-          restore_with_distribution=[True, False],
-          mode=["graph"]))
-  def testWarmStart(self, distribution, save_with_distribution,
-                    restore_with_distribution):
+        # Create variable and save checkpoint from which to warm-start.
+        def create_var(g):
+            with self.session(graph=g) as sess:
+                var = variable_scope.get_variable(var_name, initializer=original_value)
+                sess.run(variables.global_variables_initializer())
+                saver = saver_lib.Saver()
+                ckpt_prefix = os.path.join(self.get_temp_dir(), "model")
+                saver.save(sess, ckpt_prefix, global_step=0)
+                return var, sess.run(var)
 
-    var_name = "v"
-    original_value = [[1., 2.], [3., 4.]]
+        if save_with_distribution:
+            with ops.Graph().as_default() as g, distribution.scope():
+                _, prev_init_val = create_var(g)
+        else:
+            with ops.Graph().as_default() as g:
+                _, prev_init_val = create_var(g)
 
-    # Create variable and save checkpoint from which to warm-start.
-    def create_var(g):
-      with self.session(graph=g) as sess:
-        var = variable_scope.get_variable(var_name, initializer=original_value)
-        sess.run(variables.global_variables_initializer())
-        saver = saver_lib.Saver()
-        ckpt_prefix = os.path.join(self.get_temp_dir(), "model")
-        saver.save(sess, ckpt_prefix, global_step=0)
-        return var, sess.run(var)
+        # Verify we initialized the values correctly.
+        self.assertAllEqual(original_value, prev_init_val)
 
-    if save_with_distribution:
-      with ops.Graph().as_default() as g, distribution.scope():
-        _, prev_init_val = create_var(g)
-    else:
-      with ops.Graph().as_default() as g:
-        _, prev_init_val = create_var(g)
+        def warm_start(g):
+            with self.session(graph=g) as sess:
+                # Initialize with zeros.
+                var = variable_scope.get_variable(
+                    var_name, initializer=[[0.0, 0.0], [0.0, 0.0]]
+                )
+                ws_util.warm_start(self.get_temp_dir())
+                sess.run(variables.global_variables_initializer())
+                # Verify weights were correctly warm-started to previous values.
+                self.assertAllEqual(original_value, self.evaluate(var))
 
-    # Verify we initialized the values correctly.
-    self.assertAllEqual(original_value, prev_init_val)
-
-    def warm_start(g):
-      with self.session(graph=g) as sess:
-        # Initialize with zeros.
-        var = variable_scope.get_variable(
-            var_name, initializer=[[0., 0.], [0., 0.]])
-        ws_util.warm_start(self.get_temp_dir())
-        sess.run(variables.global_variables_initializer())
-        # Verify weights were correctly warm-started to previous values.
-        self.assertAllEqual(original_value, self.evaluate(var))
-
-    # Warm start in a new graph.
-    if restore_with_distribution:
-      with ops.Graph().as_default() as g, distribution.scope():
-        warm_start(g)
-    else:
-      with ops.Graph().as_default() as g:
-        warm_start(g)
+        # Warm start in a new graph.
+        if restore_with_distribution:
+            with ops.Graph().as_default() as g, distribution.scope():
+                warm_start(g)
+        else:
+            with ops.Graph().as_default() as g:
+                warm_start(g)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

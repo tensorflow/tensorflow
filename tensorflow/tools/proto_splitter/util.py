@@ -25,17 +25,17 @@ _BYTE_UNITS = [(1, "B"), (1 << 10, "KiB"), (1 << 20, "MiB"), (1 << 30, "GiB")]
 
 
 def format_bytes(b: int) -> str:
-  """Formats bytes into a human-readable string."""
-  for i in range(1, len(_BYTE_UNITS)):
-    if b < _BYTE_UNITS[i][0]:
-      n = f"{b / _BYTE_UNITS[i-1][0]:.2f}"
-      units = _BYTE_UNITS[i - 1][1]
-      break
-  else:
-    n = f"{b / _BYTE_UNITS[-1][0]:.2f}"
-    units = _BYTE_UNITS[-1][1]
-  n = n.rstrip("0").rstrip(".")
-  return f"{n}{units}"
+    """Formats bytes into a human-readable string."""
+    for i in range(1, len(_BYTE_UNITS)):
+        if b < _BYTE_UNITS[i][0]:
+            n = f"{b / _BYTE_UNITS[i - 1][0]:.2f}"
+            units = _BYTE_UNITS[i - 1][1]
+            break
+    else:
+        n = f"{b / _BYTE_UNITS[-1][0]:.2f}"
+        units = _BYTE_UNITS[-1][1]
+    n = n.rstrip("0").rstrip(".")
+    return f"{n}{units}"
 
 
 FieldTypes = Union[str, int, bool, Sequence[Union[str, int, bool]]]
@@ -44,147 +44,147 @@ FieldTypes = Union[str, int, bool, Sequence[Union[str, int, bool]]]
 def get_field(
     proto: message.Message, fields: FieldTypes
 ) -> tuple[Any, Optional[descriptor.FieldDescriptor]]:
-  """Returns the field and field descriptor from the proto.
+    """Returns the field and field descriptor from the proto.
 
-  Args:
-    proto: Parent proto of any message type.
-    fields: List of string/int/map key fields, e.g. ["nodes", "attr", "value"]
-      can represent `proto.nodes.attr["value"]`.
+    Args:
+      proto: Parent proto of any message type.
+      fields: List of string/int/map key fields, e.g. ["nodes", "attr", "value"]
+        can represent `proto.nodes.attr["value"]`.
 
-  Returns:
-    Tuple of (
-      Field in the proto or `None` if none are found,
-      Field descriptor
-    )
-  """
-  field_proto = proto
-  field_desc = None
-  for field_proto, field_desc, _, _ in _walk_fields(proto, fields):
-    pass
-  return field_proto, field_desc
+    Returns:
+      Tuple of (
+        Field in the proto or `None` if none are found,
+        Field descriptor
+      )
+    """
+    field_proto = proto
+    field_desc = None
+    for field_proto, field_desc, _, _ in _walk_fields(proto, fields):
+        pass
+    return field_proto, field_desc
 
 
 def get_field_tag(
     proto: message.Message, fields: FieldTypes
 ) -> Sequence[chunk_pb2.FieldIndex]:
-  """Generates FieldIndex proto for a nested field within a proto.
+    """Generates FieldIndex proto for a nested field within a proto.
 
-  Args:
-    proto: Parent proto of any message type.
-    fields: List of string/int/map key fields, e.g. ["nodes", "attr", "value"]
-      can represent `proto.nodes.attr["value"]`.
+    Args:
+      proto: Parent proto of any message type.
+      fields: List of string/int/map key fields, e.g. ["nodes", "attr", "value"]
+        can represent `proto.nodes.attr["value"]`.
 
-  Returns:
-    A list of FieldIndex protos with the same length as `fields`.
-  """
-  field_tags = []
-  for _, field_desc, map_key, list_index in _walk_fields(proto, fields):
-    field_tags.append(chunk_pb2.FieldIndex(field=field_desc.number))
-    if map_key is not None:
-      key_type = field_desc.message_type.fields_by_name["key"].type
-      field_tags.append(
-          chunk_pb2.FieldIndex(map_key=_map_key_proto(key_type, map_key))
-      )
-    elif list_index is not None:
-      field_tags.append(chunk_pb2.FieldIndex(index=list_index))
-  return field_tags
+    Returns:
+      A list of FieldIndex protos with the same length as `fields`.
+    """
+    field_tags = []
+    for _, field_desc, map_key, list_index in _walk_fields(proto, fields):
+        field_tags.append(chunk_pb2.FieldIndex(field=field_desc.number))
+        if map_key is not None:
+            key_type = field_desc.message_type.fields_by_name["key"].type
+            field_tags.append(
+                chunk_pb2.FieldIndex(map_key=_map_key_proto(key_type, map_key))
+            )
+        elif list_index is not None:
+            field_tags.append(chunk_pb2.FieldIndex(index=list_index))
+    return field_tags
 
 
 def _walk_fields(proto: message.Message, fields: FieldTypes):
-  """Yields fields in a proto.
+    """Yields fields in a proto.
 
-  Args:
-    proto: Parent proto of any message type.
-    fields: List of string/int/map key fields, e.g. ["nodes", "attr", "value"]
-      can represent `proto.nodes.attr["value"]`.
+    Args:
+      proto: Parent proto of any message type.
+      fields: List of string/int/map key fields, e.g. ["nodes", "attr", "value"]
+        can represent `proto.nodes.attr["value"]`.
 
-  Yields:
-    Tuple of (
-      Field in the proto or `None` if none are found,
-      Field descriptor,
-      Key into this map field (or None),
-      Index into this repeated field (or None))
-  """
-  if not isinstance(fields, list):
-    fields = [fields]
+    Yields:
+      Tuple of (
+        Field in the proto or `None` if none are found,
+        Field descriptor,
+        Key into this map field (or None),
+        Index into this repeated field (or None))
+    """
+    if not isinstance(fields, list):
+        fields = [fields]
 
-  field_proto = proto
-  parent_desc = proto.DESCRIPTOR
-  i = 0
-  while i < len(fields):
-    field = fields[i]
-    field_desc = None
-    map_key = None
-    index = None
+    field_proto = proto
+    parent_desc = proto.DESCRIPTOR
+    i = 0
+    while i < len(fields):
+        field = fields[i]
+        field_desc = None
+        map_key = None
+        index = None
 
-    if parent_desc is None:
-      raise ValueError(
-          f"Unable to find fields: {fields} in proto of type {type(proto)}."
-      )
+        if parent_desc is None:
+            raise ValueError(
+                f"Unable to find fields: {fields} in proto of type {type(proto)}."
+            )
 
-    if isinstance(field, int):
-      try:
-        field_desc = parent_desc.fields_by_number[field]
-      except KeyError:
-        raise KeyError(  # pylint:disable=raise-missing-from
-            f"Unable to find field number {field} in {parent_desc.full_name}. "
-            f"Valid field numbers: {parent_desc.fields_by_number.keys()}"
-        )
-    elif isinstance(field, str):
-      try:
-        field_desc = parent_desc.fields_by_name[field]
-      except KeyError:
-        raise KeyError(  # pylint:disable=raise-missing-from
-            f"Unable to find field '{field}' in {parent_desc.full_name}. "
-            f"Valid field names: {parent_desc.fields_by_name.keys()}"
-        )
-    else:  # bool (only expected as map key)
-      raise TypeError("Unexpected bool found in field list.")
+        if isinstance(field, int):
+            try:
+                field_desc = parent_desc.fields_by_number[field]
+            except KeyError:
+                raise KeyError(  # pylint:disable=raise-missing-from
+                    f"Unable to find field number {field} in {parent_desc.full_name}. "
+                    f"Valid field numbers: {parent_desc.fields_by_number.keys()}"
+                )
+        elif isinstance(field, str):
+            try:
+                field_desc = parent_desc.fields_by_name[field]
+            except KeyError:
+                raise KeyError(  # pylint:disable=raise-missing-from
+                    f"Unable to find field '{field}' in {parent_desc.full_name}. "
+                    f"Valid field names: {parent_desc.fields_by_name.keys()}"
+                )
+        else:  # bool (only expected as map key)
+            raise TypeError("Unexpected bool found in field list.")
 
-    i += 1
-    parent_desc = field_desc.message_type
-    if field_proto is not None:
-      field_proto = getattr(field_proto, field_desc.name)
+        i += 1
+        parent_desc = field_desc.message_type
+        if field_proto is not None:
+            field_proto = getattr(field_proto, field_desc.name)
 
-    # Handle special fields types (map key and list index).
-    if _is_map(parent_desc) and i < len(fields):
-      # Next field is the map key.
-      map_key = fields[i]
+        # Handle special fields types (map key and list index).
+        if _is_map(parent_desc) and i < len(fields):
+            # Next field is the map key.
+            map_key = fields[i]
 
-      try:
-        field_proto = field_proto[map_key] if field_proto is not None else None
-      except KeyError:
-        field_proto = None
-      i += 1
+            try:
+                field_proto = field_proto[map_key] if field_proto is not None else None
+            except KeyError:
+                field_proto = None
+            i += 1
 
-      if i < len(fields):
-        # The next field must be from the Value Message.
-        value_desc = parent_desc.fields_by_name["value"]
-        assert value_desc.message_type is not None
-        parent_desc = value_desc.message_type
+            if i < len(fields):
+                # The next field must be from the Value Message.
+                value_desc = parent_desc.fields_by_name["value"]
+                assert value_desc.message_type is not None
+                parent_desc = value_desc.message_type
 
-    elif is_repeated(field_desc) and i < len(fields):
-      # The next field is the index within the list.
-      index = fields[i]
-      try:
-        field_proto = field_proto[index] if field_proto is not None else None
-      except IndexError:
-        field_proto = None
-      i += 1
+        elif is_repeated(field_desc) and i < len(fields):
+            # The next field is the index within the list.
+            index = fields[i]
+            try:
+                field_proto = field_proto[index] if field_proto is not None else None
+            except IndexError:
+                field_proto = None
+            i += 1
 
-    yield field_proto, field_desc, map_key, index
+        yield field_proto, field_desc, map_key, index
 
 
 def _is_map(desc: descriptor.Descriptor) -> bool:
-  return desc.GetOptions().map_entry if desc is not None else False
+    return desc.GetOptions().map_entry if desc is not None else False
 
 
 def is_repeated(field_desc: descriptor.FieldDescriptor) -> bool:
-  # copybara:uncomment_begin(google-only)
-  # return field_desc.is_repeated
-  # copybara:uncomment_end_and_comment_begin
-  return field_desc.label == descriptor.FieldDescriptor.LABEL_REPEATED
-  # copybara:comment_end
+    # copybara:uncomment_begin(google-only)
+    # return field_desc.is_repeated
+    # copybara:uncomment_end_and_comment_begin
+    return field_desc.label == descriptor.FieldDescriptor.LABEL_REPEATED
+    # copybara:comment_end
 
 
 _FIELD_DESC = descriptor.FieldDescriptor
@@ -199,5 +199,5 @@ _MAP_KEY = {
 
 
 def _map_key_proto(key_type, key):
-  """Returns MapKey proto for a key of key_type."""
-  return _MAP_KEY[key_type](key)
+    """Returns MapKey proto for a key of key_type."""
+    return _MAP_KEY[key_type](key)

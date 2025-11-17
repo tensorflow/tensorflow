@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Readline-Based Command-Line Interface of TensorFlow Debugger (tfdbg)."""
+
 import readline
 
 from tensorflow.python.debug.cli import base_ui
@@ -20,102 +21,104 @@ from tensorflow.python.debug.cli import debugger_cli_common
 
 
 class ReadlineUI(base_ui.BaseUI):
-  """Readline-based Command-line UI."""
+    """Readline-based Command-line UI."""
 
-  def __init__(self, on_ui_exit=None, config=None):
-    base_ui.BaseUI.__init__(self, on_ui_exit=on_ui_exit, config=config)
-    self._init_input()
+    def __init__(self, on_ui_exit=None, config=None):
+        base_ui.BaseUI.__init__(self, on_ui_exit=on_ui_exit, config=config)
+        self._init_input()
 
-  def _init_input(self):
-    readline.parse_and_bind("set editing-mode emacs")
+    def _init_input(self):
+        readline.parse_and_bind("set editing-mode emacs")
 
-    # Disable default readline delimiter in order to receive the full text
-    # (not just the last word) in the completer.
-    readline.set_completer_delims("\n")
-    readline.set_completer(self._readline_complete)
-    readline.parse_and_bind("tab: complete")
+        # Disable default readline delimiter in order to receive the full text
+        # (not just the last word) in the completer.
+        readline.set_completer_delims("\n")
+        readline.set_completer(self._readline_complete)
+        readline.parse_and_bind("tab: complete")
 
-    self._input = input
+        self._input = input
 
-  def _readline_complete(self, text, state):
-    context, prefix, except_last_word = self._analyze_tab_complete_input(text)
-    candidates, _ = self._tab_completion_registry.get_completions(context,
-                                                                  prefix)
-    candidates = [(except_last_word + candidate) for candidate in candidates]
-    return candidates[state]
+    def _readline_complete(self, text, state):
+        context, prefix, except_last_word = self._analyze_tab_complete_input(text)
+        candidates, _ = self._tab_completion_registry.get_completions(context, prefix)
+        candidates = [(except_last_word + candidate) for candidate in candidates]
+        return candidates[state]
 
-  def run_ui(self,
-             init_command=None,
-             title=None,
-             title_color=None,
-             enable_mouse_on_start=True):
-    """Run the CLI: See the doc of base_ui.BaseUI.run_ui for more details."""
+    def run_ui(
+        self,
+        init_command=None,
+        title=None,
+        title_color=None,
+        enable_mouse_on_start=True,
+    ):
+        """Run the CLI: See the doc of base_ui.BaseUI.run_ui for more details."""
 
-    print(title)
+        print(title)
 
-    if init_command is not None:
-      self._dispatch_command(init_command)
+        if init_command is not None:
+            self._dispatch_command(init_command)
 
-    exit_token = self._ui_loop()
+        exit_token = self._ui_loop()
 
-    if self._on_ui_exit:
-      self._on_ui_exit()
+        if self._on_ui_exit:
+            self._on_ui_exit()
 
-    return exit_token
-
-  def _ui_loop(self):
-    while True:
-      command = self._get_user_command()
-
-      exit_token = self._dispatch_command(command)
-      if exit_token is not None:
         return exit_token
 
-  def _get_user_command(self):
-    print("")
-    return self._input(self.CLI_PROMPT).strip()
+    def _ui_loop(self):
+        while True:
+            command = self._get_user_command()
 
-  def _dispatch_command(self, command):
-    """Dispatch user command.
+            exit_token = self._dispatch_command(command)
+            if exit_token is not None:
+                return exit_token
 
-    Args:
-      command: (str) Command to dispatch.
+    def _get_user_command(self):
+        print("")
+        return self._input(self.CLI_PROMPT).strip()
 
-    Returns:
-      An exit token object. None value means that the UI loop should not exit.
-      A non-None value means the UI loop should exit.
-    """
+    def _dispatch_command(self, command):
+        """Dispatch user command.
 
-    if command in self.CLI_EXIT_COMMANDS:
-      # Explicit user command-triggered exit: EXPLICIT_USER_EXIT as the exit
-      # token.
-      return debugger_cli_common.EXPLICIT_USER_EXIT
+        Args:
+          command: (str) Command to dispatch.
 
-    try:
-      prefix, args, output_file_path = self._parse_command(command)
-    except SyntaxError as e:
-      print(str(e))
-      return
+        Returns:
+          An exit token object. None value means that the UI loop should not exit.
+          A non-None value means the UI loop should exit.
+        """
 
-    if self._command_handler_registry.is_registered(prefix):
-      try:
-        screen_output = self._command_handler_registry.dispatch_command(
-            prefix, args, screen_info=None)
-      except debugger_cli_common.CommandLineExit as e:
-        return e.exit_token
-    else:
-      screen_output = debugger_cli_common.RichTextLines([
-          self.ERROR_MESSAGE_PREFIX + "Invalid command prefix \"%s\"" % prefix
-      ])
+        if command in self.CLI_EXIT_COMMANDS:
+            # Explicit user command-triggered exit: EXPLICIT_USER_EXIT as the exit
+            # token.
+            return debugger_cli_common.EXPLICIT_USER_EXIT
 
-    self._display_output(screen_output)
-    if output_file_path:
-      try:
-        screen_output.write_to_file(output_file_path)
-        print("Wrote output to %s" % output_file_path)
-      except Exception:  # pylint: disable=broad-except
-        print("Failed to write output to %s" % output_file_path)
+        try:
+            prefix, args, output_file_path = self._parse_command(command)
+        except SyntaxError as e:
+            print(str(e))
+            return
 
-  def _display_output(self, screen_output):
-    for line in screen_output.lines:
-      print(line)
+        if self._command_handler_registry.is_registered(prefix):
+            try:
+                screen_output = self._command_handler_registry.dispatch_command(
+                    prefix, args, screen_info=None
+                )
+            except debugger_cli_common.CommandLineExit as e:
+                return e.exit_token
+        else:
+            screen_output = debugger_cli_common.RichTextLines(
+                [self.ERROR_MESSAGE_PREFIX + 'Invalid command prefix "%s"' % prefix]
+            )
+
+        self._display_output(screen_output)
+        if output_file_path:
+            try:
+                screen_output.write_to_file(output_file_path)
+                print("Wrote output to %s" % output_file_path)
+            except Exception:  # pylint: disable=broad-except
+                print("Failed to write output to %s" % output_file_path)
+
+    def _display_output(self, screen_output):
+        for line in screen_output.lines:
+            print(line)

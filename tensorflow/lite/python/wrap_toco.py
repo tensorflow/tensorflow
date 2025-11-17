@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Wraps toco interface with python lazy loader."""
+
 # We need to import pywrap_tensorflow prior to the toco wrapper.
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
@@ -24,10 +25,10 @@ def wrapped_toco_convert(
     toco_flags_str,
     input_data_str,
 ):
-  """Wraps TocoConvert with lazy loader."""
-  return _pywrap_toco_api.TocoConvert(
-      model_flags_str,
-      toco_flags_str,
-      input_data_str,
-      False,  # extended_return
-  )
+    """Wraps TocoConvert with lazy loader."""
+    return _pywrap_toco_api.TocoConvert(
+        model_flags_str,
+        toco_flags_str,
+        input_data_str,
+        False,  # extended_return
+    )

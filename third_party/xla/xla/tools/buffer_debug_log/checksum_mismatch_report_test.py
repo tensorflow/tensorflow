@@ -21,10 +21,9 @@ from xla.tools.buffer_debug_log import checksum_mismatch_report
 
 
 class ChecksumMismatchReportTest(absltest.TestCase):
-
-  def test_from_protos_loads_metadata(self):
-    test_log = ""
-    test_metadata = """
+    def test_from_protos_loads_metadata(self):
+        test_log = ""
+        test_metadata = """
 thunk_metadata {
   thunk_info {
     thunk_id: 100
@@ -40,36 +39,36 @@ thunk_metadata {
   thunk_kind: "kConv"
 }
 """
-    log_proto = text_format.Parse(
-        test_log, buffer_debug_log_pb2.BufferDebugLogProto()
-    )
-    metadata_proto = text_format.Parse(
-        test_metadata,
-        thunk_pb2.ThunkMetadataListProto(),
-    )
+        log_proto = text_format.Parse(
+            test_log, buffer_debug_log_pb2.BufferDebugLogProto()
+        )
+        metadata_proto = text_format.Parse(
+            test_metadata,
+            thunk_pb2.ThunkMetadataListProto(),
+        )
 
-    report = checksum_mismatch_report.ChecksumMismatchReport.from_protos(
-        {0: log_proto}, metadata_proto
-    )
+        report = checksum_mismatch_report.ChecksumMismatchReport.from_protos(
+            {0: log_proto}, metadata_proto
+        )
 
-    self.assertEqual(
-        report.thunk_metadata,
-        {
-            100: checksum_mismatch_report.ThunkMetadata(
-                thunk_id=100,
-                thunk_kind="kGemm",
-                profile_annotation="thunk1",
-            ),
-            101: checksum_mismatch_report.ThunkMetadata(
-                thunk_id=101,
-                thunk_kind="kConv",
-                profile_annotation="thunk2",
-            ),
-        },
-    )
+        self.assertEqual(
+            report.thunk_metadata,
+            {
+                100: checksum_mismatch_report.ThunkMetadata(
+                    thunk_id=100,
+                    thunk_kind="kGemm",
+                    profile_annotation="thunk1",
+                ),
+                101: checksum_mismatch_report.ThunkMetadata(
+                    thunk_id=101,
+                    thunk_kind="kConv",
+                    profile_annotation="thunk2",
+                ),
+            },
+        )
 
-  def test_from_protos_finds_mismatches_in_single_proto(self):
-    test_log = """
+    def test_from_protos_finds_mismatches_in_single_proto(self):
+        test_log = """
 entries {
   thunk_id: 100
   execution_id: 10
@@ -99,35 +98,35 @@ entries {
   checksum: 33333333
 }
 """
-    test_metadata = ""
-    log_proto = text_format.Parse(
-        test_log, buffer_debug_log_pb2.BufferDebugLogProto()
-    )
-    metadata_proto = text_format.Parse(
-        test_metadata,
-        thunk_pb2.ThunkMetadataListProto(),
-    )
+        test_metadata = ""
+        log_proto = text_format.Parse(
+            test_log, buffer_debug_log_pb2.BufferDebugLogProto()
+        )
+        metadata_proto = text_format.Parse(
+            test_metadata,
+            thunk_pb2.ThunkMetadataListProto(),
+        )
 
-    report = checksum_mismatch_report.ChecksumMismatchReport.from_protos(
-        {0: log_proto}, metadata_proto
-    )
+        report = checksum_mismatch_report.ChecksumMismatchReport.from_protos(
+            {0: log_proto}, metadata_proto
+        )
 
-    self.assertEqual(
-        report.mismatches,
-        {
-            # thunk ID
-            100: {
-                # input checksums
-                checksum_mismatch_report.BufferChecksums({0: 11111111}): {
-                    # output buffer index => checksums
-                    1: {22222222, 33333333},
+        self.assertEqual(
+            report.mismatches,
+            {
+                # thunk ID
+                100: {
+                    # input checksums
+                    checksum_mismatch_report.BufferChecksums({0: 11111111}): {
+                        # output buffer index => checksums
+                        1: {22222222, 33333333},
+                    },
                 },
             },
-        },
-    )
+        )
 
-  def test_from_protos_finds_mismatches_in_multiple_protos(self):
-    test_log_template = """
+    def test_from_protos_finds_mismatches_in_multiple_protos(self):
+        test_log_template = """
 entries {{
   thunk_id: 100
   execution_id: 10
@@ -143,42 +142,42 @@ entries {{
   checksum: {output_checksum}
 }}
 """
-    test_logs = [
-        test_log_template.format(output_checksum=checksum)
-        for checksum in [22222222, 33333333]
-    ]
-    test_metadata = ""
-    log_protos = {
-        module_id: text_format.Parse(
-            test_log, buffer_debug_log_pb2.BufferDebugLogProto()
+        test_logs = [
+            test_log_template.format(output_checksum=checksum)
+            for checksum in [22222222, 33333333]
+        ]
+        test_metadata = ""
+        log_protos = {
+            module_id: text_format.Parse(
+                test_log, buffer_debug_log_pb2.BufferDebugLogProto()
+            )
+            for module_id, test_log in enumerate(test_logs)
+        }
+        metadata_proto = text_format.Parse(
+            test_metadata,
+            thunk_pb2.ThunkMetadataListProto(),
         )
-        for module_id, test_log in enumerate(test_logs)
-    }
-    metadata_proto = text_format.Parse(
-        test_metadata,
-        thunk_pb2.ThunkMetadataListProto(),
-    )
 
-    report = checksum_mismatch_report.ChecksumMismatchReport.from_protos(
-        log_protos, metadata_proto
-    )
+        report = checksum_mismatch_report.ChecksumMismatchReport.from_protos(
+            log_protos, metadata_proto
+        )
 
-    self.assertEqual(
-        report.mismatches,
-        {
-            # thunk ID
-            100: {
-                # input checksums
-                checksum_mismatch_report.BufferChecksums({0: 11111111}): {
-                    # output buffer index => checksums
-                    1: {22222222, 33333333},
+        self.assertEqual(
+            report.mismatches,
+            {
+                # thunk ID
+                100: {
+                    # input checksums
+                    checksum_mismatch_report.BufferChecksums({0: 11111111}): {
+                        # output buffer index => checksums
+                        1: {22222222, 33333333},
+                    },
                 },
             },
-        },
-    )
+        )
 
-  def test_from_protos_does_not_include_consistent_executions(self):
-    test_log = """
+    def test_from_protos_does_not_include_consistent_executions(self):
+        test_log = """
 entries {
   thunk_id: 100
   execution_id: 10
@@ -208,21 +207,21 @@ entries {
   checksum: 22222222
 }
 """
-    test_metadata = ""
-    log_proto = text_format.Parse(
-        test_log, buffer_debug_log_pb2.BufferDebugLogProto()
-    )
-    metadata_proto = text_format.Parse(
-        test_metadata,
-        thunk_pb2.ThunkMetadataListProto(),
-    )
+        test_metadata = ""
+        log_proto = text_format.Parse(
+            test_log, buffer_debug_log_pb2.BufferDebugLogProto()
+        )
+        metadata_proto = text_format.Parse(
+            test_metadata,
+            thunk_pb2.ThunkMetadataListProto(),
+        )
 
-    report = checksum_mismatch_report.ChecksumMismatchReport.from_protos(
-        {0: log_proto}, metadata_proto
-    )
+        report = checksum_mismatch_report.ChecksumMismatchReport.from_protos(
+            {0: log_proto}, metadata_proto
+        )
 
-    self.assertEmpty(report.mismatches)
+        self.assertEmpty(report.mismatches)
 
 
 if __name__ == "__main__":
-  absltest.main()
+    absltest.main()

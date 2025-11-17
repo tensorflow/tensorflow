@@ -20,13 +20,11 @@ from tensorflow.python.framework import tensor_conversion_registry
 # Factory function for tensor conversion for builtins. Import constant_op.py
 # in-line so that it is only imported when it is needed. This file is imported
 # at TF import time, thus that helps reduce import slowness.
-def _constant_tensor_conversion_function(
-    v, dtype=None, name=None, as_ref=False
-):
-  from tensorflow.python.framework import constant_op  # pylint: disable=g-import-not-at-top
+def _constant_tensor_conversion_function(v, dtype=None, name=None, as_ref=False):
+    from tensorflow.python.framework import constant_op  # pylint: disable=g-import-not-at-top
 
-  _ = as_ref
-  return constant_op.constant(v, dtype=dtype, name=name)
+    _ = as_ref
+    return constant_op.constant(v, dtype=dtype, name=name)
 
 
 # Register the conversion function for the "unconvertible" types

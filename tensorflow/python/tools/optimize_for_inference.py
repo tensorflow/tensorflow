@@ -72,106 +72,106 @@ FLAGS = None
 
 
 def main(unused_args):
-  if not gfile.Exists(FLAGS.input):
-    print("Input graph file '" + FLAGS.input + "' does not exist!")
-    return -1
+    if not gfile.Exists(FLAGS.input):
+        print("Input graph file '" + FLAGS.input + "' does not exist!")
+        return -1
 
-  input_graph_def = graph_pb2.GraphDef()
-  with gfile.Open(FLAGS.input, "rb") as f:
-    data = f.read()
+    input_graph_def = graph_pb2.GraphDef()
+    with gfile.Open(FLAGS.input, "rb") as f:
+        data = f.read()
+        if FLAGS.frozen_graph:
+            input_graph_def.ParseFromString(data)
+        else:
+            text_format.Merge(data.decode("utf-8"), input_graph_def)
+
+    output_graph_def = optimize_for_inference_lib.optimize_for_inference(
+        input_graph_def,
+        FLAGS.input_names.split(","),
+        FLAGS.output_names.split(","),
+        _parse_placeholder_types(FLAGS.placeholder_type_enum),
+        FLAGS.toco_compatible,
+        FLAGS.placeholder_to_const_names.split(","),
+    )
+
     if FLAGS.frozen_graph:
-      input_graph_def.ParseFromString(data)
+        f = gfile.GFile(FLAGS.output, "w")
+        f.write(output_graph_def.SerializeToString())
     else:
-      text_format.Merge(data.decode("utf-8"), input_graph_def)
-
-  output_graph_def = optimize_for_inference_lib.optimize_for_inference(
-      input_graph_def,
-      FLAGS.input_names.split(","),
-      FLAGS.output_names.split(","),
-      _parse_placeholder_types(FLAGS.placeholder_type_enum),
-      FLAGS.toco_compatible,
-      FLAGS.placeholder_to_const_names.split(","),
-  )
-
-  if FLAGS.frozen_graph:
-    f = gfile.GFile(FLAGS.output, "w")
-    f.write(output_graph_def.SerializeToString())
-  else:
-    graph_io.write_graph(output_graph_def,
-                         os.path.dirname(FLAGS.output),
-                         os.path.basename(FLAGS.output))
-  return 0
+        graph_io.write_graph(
+            output_graph_def,
+            os.path.dirname(FLAGS.output),
+            os.path.basename(FLAGS.output),
+        )
+    return 0
 
 
 def _parse_placeholder_types(values):
-  """Extracts placeholder types from a comma separate list."""
-  values = [int(value) for value in values.split(",")]
-  return values if len(values) > 1 else values[0]
+    """Extracts placeholder types from a comma separate list."""
+    values = [int(value) for value in values.split(",")]
+    return values if len(values) > 1 else values[0]
 
 
 def parse_args():
-  """Parses command line arguments."""
-  parser = argparse.ArgumentParser()
-  parser.register("type", "bool", lambda v: v.lower() == "true")
-  parser.add_argument(
-      "--input",
-      type=str,
-      default="",
-      help="TensorFlow \'GraphDef\' file to load.")
-  parser.add_argument(
-      "--output",
-      type=str,
-      default="",
-      help="File to save the output graph to.")
-  parser.add_argument(
-      "--input_names",
-      type=str,
-      default="",
-      help="Input node names, comma separated.")
-  parser.add_argument(
-      "--output_names",
-      type=str,
-      default="",
-      help="Output node names, comma separated.")
-  parser.add_argument(
-      "--frozen_graph",
-      nargs="?",
-      const=True,
-      type="bool",
-      default=True,
-      help="""\
+    """Parses command line arguments."""
+    parser = argparse.ArgumentParser()
+    parser.register("type", "bool", lambda v: v.lower() == "true")
+    parser.add_argument(
+        "--input", type=str, default="", help="TensorFlow 'GraphDef' file to load."
+    )
+    parser.add_argument(
+        "--output", type=str, default="", help="File to save the output graph to."
+    )
+    parser.add_argument(
+        "--input_names", type=str, default="", help="Input node names, comma separated."
+    )
+    parser.add_argument(
+        "--output_names",
+        type=str,
+        default="",
+        help="Output node names, comma separated.",
+    )
+    parser.add_argument(
+        "--frozen_graph",
+        nargs="?",
+        const=True,
+        type="bool",
+        default=True,
+        help="""\
       If true, the input graph is a binary frozen GraphDef
       file; if false, it is a text GraphDef proto file.\
-      """)
-  parser.add_argument(
-      "--placeholder_type_enum",
-      type=str,
-      default=str(dtypes.float32.as_datatype_enum),
-      help="""\
+      """,
+    )
+    parser.add_argument(
+        "--placeholder_type_enum",
+        type=str,
+        default=str(dtypes.float32.as_datatype_enum),
+        help="""\
       The AttrValue enum to use for placeholders.
       Or a comma separated list, one value for each placeholder.\
-      """)
-  parser.add_argument(
-      "--toco_compatible",
-      type=bool,
-      default=False,
-      help="""\
+      """,
+    )
+    parser.add_argument(
+        "--toco_compatible",
+        type=bool,
+        default=False,
+        help="""\
       If true, only use ops compatible with Tensorflow
       Lite Optimizing Converter.\
-      """)
-  parser.add_argument(
-      "--placeholder_to_const_names",
-      type=str,
-      default="",
-      help="""\
+      """,
+    )
+    parser.add_argument(
+        "--placeholder_to_const_names",
+        type=str,
+        default="",
+        help="""\
       List of PlaceholderWithDefault or Placeholder node names and
       their new value to be converted to Constant node, comma separated.
       eg: --placeholder_to_const_names=phase_train=False\
       """,
-  )
-  return parser.parse_known_args()
+    )
+    return parser.parse_known_args()
 
 
 if __name__ == "__main__":
-  FLAGS, unparsed = parse_args()
-  app.run(main=main, argv=[sys.argv[0]] + unparsed)
+    FLAGS, unparsed = parse_args()
+    app.run(main=main, argv=[sys.argv[0]] + unparsed)

@@ -18,11 +18,10 @@ from tensorflow.python.platform import tf_logging as logging
 
 
 class EventLoaderTest(googletest.TestCase):
-
-  def test_log(self):
-    # Just check that logging works without raising an exception.
-    logging.error("test log message")
+    def test_log(self):
+        # Just check that logging works without raising an exception.
+        logging.error("test log message")
 
 
 if __name__ == "__main__":
-  googletest.main()
+    googletest.main()

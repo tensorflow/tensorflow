@@ -28,99 +28,97 @@ from tensorflow.python.platform import test
 
 
 def allowlist(f):
-  """Helper that marks a callable as whtelitisted."""
-  if 'allowlisted_module_for_testing' not in sys.modules:
-    allowlisted_mod = types.ModuleType('allowlisted_module_for_testing')
-    sys.modules['allowlisted_module_for_testing'] = allowlisted_mod
-    config.CONVERSION_RULES = (
-        (config.DoNotConvert('allowlisted_module_for_testing'),) +
-        config.CONVERSION_RULES)
+    """Helper that marks a callable as whtelitisted."""
+    if "allowlisted_module_for_testing" not in sys.modules:
+        allowlisted_mod = types.ModuleType("allowlisted_module_for_testing")
+        sys.modules["allowlisted_module_for_testing"] = allowlisted_mod
+        config.CONVERSION_RULES = (
+            config.DoNotConvert("allowlisted_module_for_testing"),
+        ) + config.CONVERSION_RULES
 
-  f.__module__ = 'allowlisted_module_for_testing'
+    f.__module__ = "allowlisted_module_for_testing"
 
 
 def is_inside_generated_code():
-  """Tests whether the caller is generated code. Implementation-specific."""
-  frame = inspect.currentframe()
-  try:
-    frame = frame.f_back
+    """Tests whether the caller is generated code. Implementation-specific."""
+    frame = inspect.currentframe()
+    try:
+        frame = frame.f_back
 
-    internal_stack_functions = ('converted_call', '_call_unconverted')
-    # Walk up the stack until we're out of the internal functions.
-    while (frame is not None and
-           frame.f_code.co_name in internal_stack_functions):
-      frame = frame.f_back
-    if frame is None:
-      return False
+        internal_stack_functions = ("converted_call", "_call_unconverted")
+        # Walk up the stack until we're out of the internal functions.
+        while frame is not None and frame.f_code.co_name in internal_stack_functions:
+            frame = frame.f_back
+        if frame is None:
+            return False
 
-    return 'ag__' in frame.f_locals
-  finally:
-    del frame
+        return "ag__" in frame.f_locals
+    finally:
+        del frame
 
 
 class TestingTranspiler(api.PyToTF):
-  """Testing version that only applies given transformations."""
+    """Testing version that only applies given transformations."""
 
-  def __init__(self, converters, ag_overrides):
-    super(TestingTranspiler, self).__init__()
-    if isinstance(converters, (list, tuple)):
-      self._converters = converters
-    else:
-      self._converters = (converters,)
-    self.transformed_ast = None
-    self._ag_overrides = ag_overrides
+    def __init__(self, converters, ag_overrides):
+        super(TestingTranspiler, self).__init__()
+        if isinstance(converters, (list, tuple)):
+            self._converters = converters
+        else:
+            self._converters = (converters,)
+        self.transformed_ast = None
+        self._ag_overrides = ag_overrides
 
-  def get_extra_locals(self):
-    retval = super(TestingTranspiler, self).get_extra_locals()
-    if self._ag_overrides:
-      modified_ag = types.ModuleType('fake_autograph')
-      modified_ag.__dict__.update(retval['ag__'].__dict__)
-      modified_ag.__dict__.update(self._ag_overrides)
-      retval['ag__'] = modified_ag
-    return retval
+    def get_extra_locals(self):
+        retval = super(TestingTranspiler, self).get_extra_locals()
+        if self._ag_overrides:
+            modified_ag = types.ModuleType("fake_autograph")
+            modified_ag.__dict__.update(retval["ag__"].__dict__)
+            modified_ag.__dict__.update(self._ag_overrides)
+            retval["ag__"] = modified_ag
+        return retval
 
-  def transform_ast(self, node, ctx):
-    node = self.initial_analysis(node, ctx)
+    def transform_ast(self, node, ctx):
+        node = self.initial_analysis(node, ctx)
 
-    for c in self._converters:
-      node = c.transform(node, ctx)
+        for c in self._converters:
+            node = c.transform(node, ctx)
 
-    self.transformed_ast = node
-    self.transform_ctx = ctx
-    return node
+        self.transformed_ast = node
+        self.transform_ctx = ctx
+        return node
 
 
 class TestCase(test.TestCase):
-  """Base class for unit tests in this module. Contains relevant utilities."""
+    """Base class for unit tests in this module. Contains relevant utilities."""
 
-  def setUp(self):
-    # AutoGraph tests must run in graph mode to properly test control flow.
-    self.graph = ops.Graph().as_default()
-    self.graph.__enter__()
+    def setUp(self):
+        # AutoGraph tests must run in graph mode to properly test control flow.
+        self.graph = ops.Graph().as_default()
+        self.graph.__enter__()
 
-  def tearDown(self):
-    self.graph.__exit__(None, None, None)
+    def tearDown(self):
+        self.graph.__exit__(None, None, None)
 
-  @contextlib.contextmanager
-  def assertPrints(self, expected_result):
-    try:
-      out_capturer = io.StringIO()
-      sys.stdout = out_capturer
-      yield
-      self.assertEqual(out_capturer.getvalue(), expected_result)
-    finally:
-      sys.stdout = sys.__stdout__
+    @contextlib.contextmanager
+    def assertPrints(self, expected_result):
+        try:
+            out_capturer = io.StringIO()
+            sys.stdout = out_capturer
+            yield
+            self.assertEqual(out_capturer.getvalue(), expected_result)
+        finally:
+            sys.stdout = sys.__stdout__
 
-  def transform(
-      self, f, converter_module, include_ast=False, ag_overrides=None):
-    program_ctx = converter.ProgramContext(
-        options=converter.ConversionOptions(recursive=True),
-        autograph_module=api)
+    def transform(self, f, converter_module, include_ast=False, ag_overrides=None):
+        program_ctx = converter.ProgramContext(
+            options=converter.ConversionOptions(recursive=True), autograph_module=api
+        )
 
-    tr = TestingTranspiler(converter_module, ag_overrides)
-    transformed, _, _ = tr.transform_function(f, program_ctx)
+        tr = TestingTranspiler(converter_module, ag_overrides)
+        transformed, _, _ = tr.transform_function(f, program_ctx)
 
-    if include_ast:
-      return transformed, tr.transformed_ast, tr.transform_ctx
+        if include_ast:
+            return transformed, tr.transformed_ast, tr.transform_ctx
 
-    return transformed
+        return transformed

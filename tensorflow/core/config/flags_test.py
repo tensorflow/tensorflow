@@ -19,29 +19,28 @@ from tensorflow.python.platform import test
 
 
 class FlagsTest(test.TestCase):
+    def test_experiment_flag(self):
+        self.assertTrue(flags.config().test_only_experiment_1.value())
+        self.assertFalse(flags.config().test_only_experiment_2.value())
 
-  def test_experiment_flag(self):
-    self.assertTrue(flags.config().test_only_experiment_1.value())
-    self.assertFalse(flags.config().test_only_experiment_2.value())
+        flags.config().test_only_experiment_1.reset(False)
+        flags.config().test_only_experiment_2.reset(True)
 
-    flags.config().test_only_experiment_1.reset(False)
-    flags.config().test_only_experiment_2.reset(True)
+        self.assertFalse(flags.config().test_only_experiment_1.value())
+        self.assertTrue(flags.config().test_only_experiment_2.value())
 
-    self.assertFalse(flags.config().test_only_experiment_1.value())
-    self.assertTrue(flags.config().test_only_experiment_2.value())
+    def test_flags_singleton(self):
+        flags.config().test_only_experiment_1.reset(False)
+        self.assertFalse(flags.config().test_only_experiment_1.value())
 
-  def test_flags_singleton(self):
-    flags.config().test_only_experiment_1.reset(False)
-    self.assertFalse(flags.config().test_only_experiment_1.value())
+        # Get second reference to underlying Flags singleton.
+        flag = flags.flags_pybind.Flags()
+        flag.test_only_experiment_1.reset(True)
 
-    # Get second reference to underlying Flags singleton.
-    flag = flags.flags_pybind.Flags()
-    flag.test_only_experiment_1.reset(True)
-
-    # check that both references are correctly updated.
-    self.assertTrue(flags.config().test_only_experiment_1.value())
-    self.assertTrue(flag.test_only_experiment_1.value())
+        # check that both references are correctly updated.
+        self.assertTrue(flags.config().test_only_experiment_1.value())
+        self.assertTrue(flag.test_only_experiment_1.value())
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

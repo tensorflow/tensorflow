@@ -13,16 +13,17 @@
 # limitations under the License.
 # ============================================================================
 """Test utils for python tests in XLA."""
+
 import os
 import pathlib
 
 
 def xla_src_root() -> pathlib.Path:
-  """Gets the path to the root of the XLA source tree."""
-  is_oss = "BAZEL_TEST" in os.environ
-  test_srcdir = os.environ["TEST_SRCDIR"]
-  test_workspace = os.environ["TEST_WORKSPACE"]
-  if is_oss:
-    return pathlib.Path(test_srcdir) / test_workspace
-  else:
-    return pathlib.Path(test_srcdir) / test_workspace / "third_party" / "xla"
+    """Gets the path to the root of the XLA source tree."""
+    is_oss = "BAZEL_TEST" in os.environ
+    test_srcdir = os.environ["TEST_SRCDIR"]
+    test_workspace = os.environ["TEST_WORKSPACE"]
+    if is_oss:
+        return pathlib.Path(test_srcdir) / test_workspace
+    else:
+        return pathlib.Path(test_srcdir) / test_workspace / "third_party" / "xla"

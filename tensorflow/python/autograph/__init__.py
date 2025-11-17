@@ -34,24 +34,24 @@ from tensorflow.python.util.all_util import remove_undocumented
 # TODO(mdan): Revisit this list once we finalize the generated code mechanism.
 _allowed_symbols = [
     # Main API
-    'AutoGraphError',
-    'ConversionOptions',
-    'Feature',
-    'StackTraceMapper',
-    'convert',
-    'converted_call',
-    'do_not_convert',
-    'to_code',
-    'to_graph',
+    "AutoGraphError",
+    "ConversionOptions",
+    "Feature",
+    "StackTraceMapper",
+    "convert",
+    "converted_call",
+    "do_not_convert",
+    "to_code",
+    "to_graph",
     # Overloaded operators
-    'operators',
+    "operators",
     # Python language "extensions"
-    'set_element_type',
-    'set_loop_options',
-    'stack',
-    'tensor_list',
+    "set_element_type",
+    "set_loop_options",
+    "stack",
+    "tensor_list",
     # Utilities: to be removed
-    'utils',
+    "utils",
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

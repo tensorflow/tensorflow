@@ -29,19 +29,26 @@ from tensorflow.python.training.adagrad_da import AdagradDAOptimizer
 from tensorflow.python.training.proximal_adagrad import ProximalAdagradOptimizer
 from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer
-from tensorflow.python.training.experimental.loss_scale_optimizer import MixedPrecisionLossScaleOptimizer
-from tensorflow.python.training.experimental.mixed_precision import enable_mixed_precision_graph_rewrite_v1
+from tensorflow.python.training.experimental.loss_scale_optimizer import (
+    MixedPrecisionLossScaleOptimizer,
+)
+from tensorflow.python.training.experimental.mixed_precision import (
+    enable_mixed_precision_graph_rewrite_v1,
+)
 from tensorflow.python.training.momentum import MomentumOptimizer
 from tensorflow.python.training.moving_averages import ExponentialMovingAverage
 from tensorflow.python.training.optimizer import Optimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
-from tensorflow.python.training.proximal_gradient_descent import ProximalGradientDescentOptimizer
+from tensorflow.python.training.proximal_gradient_descent import (
+    ProximalGradientDescentOptimizer,
+)
 from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizer
 
 # Utility classes for training.
 from tensorflow.python.training.coordinator import Coordinator
 from tensorflow.python.training.coordinator import LooperThread
+
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.training.queue_runner import *
@@ -51,14 +58,18 @@ from tensorflow.python.training import input as _input
 from tensorflow.python.training.input import *  # pylint: disable=redefined-builtin
 # pylint: enable=wildcard-import
 
-from tensorflow.python.training.basic_session_run_hooks import get_or_create_steps_per_run_variable
+from tensorflow.python.training.basic_session_run_hooks import (
+    get_or_create_steps_per_run_variable,
+)
 from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
 from tensorflow.python.training.basic_session_run_hooks import LoggingTensorHook
 from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook
 from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverHook
 from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverListener
 from tensorflow.python.training.basic_session_run_hooks import StepCounterHook
-from tensorflow.python.training.basic_session_run_hooks import NanLossDuringTrainingError
+from tensorflow.python.training.basic_session_run_hooks import (
+    NanLossDuringTrainingError,
+)
 from tensorflow.python.training.basic_session_run_hooks import NanTensorHook
 from tensorflow.python.training.basic_session_run_hooks import SummarySaverHook
 from tensorflow.python.training.basic_session_run_hooks import GlobalStepWaiterHook
@@ -84,7 +95,9 @@ from tensorflow.python.training.monitored_session import MonitoredSession
 from tensorflow.python.training.monitored_session import SingularMonitoredSession
 from tensorflow.python.training.saver import Saver
 from tensorflow.python.checkpoint.checkpoint_management import checkpoint_exists
-from tensorflow.python.checkpoint.checkpoint_management import generate_checkpoint_state_proto
+from tensorflow.python.checkpoint.checkpoint_management import (
+    generate_checkpoint_state_proto,
+)
 from tensorflow.python.checkpoint.checkpoint_management import get_checkpoint_mtimes
 from tensorflow.python.checkpoint.checkpoint_management import get_checkpoint_state
 from tensorflow.python.checkpoint.checkpoint_management import latest_checkpoint

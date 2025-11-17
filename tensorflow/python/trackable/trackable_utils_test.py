@@ -19,36 +19,36 @@ from tensorflow.python.trackable import trackable_utils
 
 
 class TrackableUtilsTest(test.TestCase):
+    def test_order_by_dependency(self):
+        """Tests order_by_dependency correctness."""
 
-  def test_order_by_dependency(self):
-    """Tests order_by_dependency correctness."""
+        # Visual graph (vertical lines point down, so 1 depends on 2):
+        #    1
+        #  /   \
+        # 2 --> 3 <-- 4
+        #       |
+        #       5
+        # One possible order: [5, 3, 4, 2, 1]
+        dependencies = {1: [2, 3], 2: [3], 3: [5], 4: [3], 5: []}
 
-    # Visual graph (vertical lines point down, so 1 depends on 2):
-    #    1
-    #  /   \
-    # 2 --> 3 <-- 4
-    #       |
-    #       5
-    # One possible order: [5, 3, 4, 2, 1]
-    dependencies = {1: [2, 3], 2: [3], 3: [5], 4: [3], 5: []}
+        sorted_arr = list(trackable_utils.order_by_dependency(dependencies))
+        indices = {x: sorted_arr.index(x) for x in range(1, 6)}
+        self.assertEqual(indices[5], 0)
+        self.assertEqual(indices[3], 1)
+        self.assertGreater(indices[1], indices[2])  # 2 must appear before 1
 
-    sorted_arr = list(trackable_utils.order_by_dependency(dependencies))
-    indices = {x: sorted_arr.index(x) for x in range(1, 6)}
-    self.assertEqual(indices[5], 0)
-    self.assertEqual(indices[3], 1)
-    self.assertGreater(indices[1], indices[2])  # 2 must appear before 1
+    def test_order_by_no_dependency(self):
+        sorted_arr = list(
+            trackable_utils.order_by_dependency({x: [] for x in range(15)})
+        )
+        self.assertEqual(set(sorted_arr), set(range(15)))
 
-  def test_order_by_no_dependency(self):
-    sorted_arr = list(trackable_utils.order_by_dependency(
-        {x: [] for x in range(15)}))
-    self.assertEqual(set(sorted_arr), set(range(15)))
-
-  def test_order_by_dependency_invalid_map(self):
-    with self.assertRaisesRegex(
-        ValueError, "Found values in the dependency map which are not keys"):
-      trackable_utils.order_by_dependency({1: [2]})
+    def test_order_by_dependency_invalid_map(self):
+        with self.assertRaisesRegex(
+            ValueError, "Found values in the dependency map which are not keys"
+        ):
+            trackable_utils.order_by_dependency({1: [2]})
 
 
 if __name__ == "__main__":
-  test.main()
-
+    test.main()

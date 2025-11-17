@@ -27,134 +27,171 @@ from tensorflow.python.util import compat
 
 
 class ConvertTest(test_base.DatasetTestBase, parameterized.TestCase):
+    @combinations.generate(test_base.default_test_combinations())
+    def testInteger(self):
+        resp = convert.optional_param_to_tensor("foo", 3)
+        self.assertEqual(3, self.evaluate(resp))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testInteger(self):
-    resp = convert.optional_param_to_tensor("foo", 3)
-    self.assertEqual(3, self.evaluate(resp))
+    @combinations.generate(test_base.default_test_combinations())
+    def testIntegerDefault(self):
+        resp = convert.optional_param_to_tensor("foo", None)
+        self.assertEqual(0, self.evaluate(resp))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testIntegerDefault(self):
-    resp = convert.optional_param_to_tensor("foo", None)
-    self.assertEqual(0, self.evaluate(resp))
+    @combinations.generate(test_base.default_test_combinations())
+    def testStringDefault(self):
+        resp = convert.optional_param_to_tensor("bar", None, "default", dtypes.string)
+        self.assertEqual(compat.as_bytes("default"), self.evaluate(resp))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testStringDefault(self):
-    resp = convert.optional_param_to_tensor("bar", None, "default",
-                                            dtypes.string)
-    self.assertEqual(compat.as_bytes("default"), self.evaluate(resp))
+    @combinations.generate(test_base.default_test_combinations())
+    def testString(self):
+        resp = convert.optional_param_to_tensor(
+            "bar", "value", "default", dtypes.string
+        )
+        self.assertEqual(compat.as_bytes("value"), self.evaluate(resp))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testString(self):
-    resp = convert.optional_param_to_tensor("bar", "value", "default",
-                                            dtypes.string)
-    self.assertEqual(compat.as_bytes("value"), self.evaluate(resp))
+    @combinations.generate(test_base.default_test_combinations())
+    def testPartialShapeToTensorKnownDimension(self):
+        self.assertAllEqual(
+            [1],
+            self.evaluate(
+                convert.partial_shape_to_tensor(tensor_shape.TensorShape([1]))
+            ),
+        )
+        self.assertAllEqual([1], self.evaluate(convert.partial_shape_to_tensor((1,))))
+        self.assertAllEqual([1], self.evaluate(convert.partial_shape_to_tensor([1])))
+        self.assertAllEqual(
+            [1],
+            self.evaluate(
+                convert.partial_shape_to_tensor(
+                    constant_op.constant([1], dtype=dtypes.int64)
+                )
+            ),
+        )
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testPartialShapeToTensorKnownDimension(self):
-    self.assertAllEqual([1],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor(
-                                tensor_shape.TensorShape([1]))))
-    self.assertAllEqual([1], self.evaluate(
-        convert.partial_shape_to_tensor((1,))))
-    self.assertAllEqual([1], self.evaluate(
-        convert.partial_shape_to_tensor([1])))
-    self.assertAllEqual([1],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor(
-                                constant_op.constant([1], dtype=dtypes.int64))))
+    @combinations.generate(test_base.graph_only_combinations())
+    def testPartialShapeToTensorUnknownDimension(self):
+        self.assertAllEqual(
+            [-1],
+            self.evaluate(
+                convert.partial_shape_to_tensor(tensor_shape.TensorShape([None]))
+            ),
+        )
+        self.assertAllEqual(
+            [-1], self.evaluate(convert.partial_shape_to_tensor((None,)))
+        )
+        self.assertAllEqual(
+            [-1], self.evaluate(convert.partial_shape_to_tensor([None]))
+        )
+        self.assertAllEqual([-1], self.evaluate(convert.partial_shape_to_tensor([-1])))
+        self.assertAllEqual(
+            [-1],
+            self.evaluate(
+                convert.partial_shape_to_tensor(
+                    constant_op.constant([-1], dtype=dtypes.int64)
+                )
+            ),
+        )
 
-  @combinations.generate(test_base.graph_only_combinations())
-  def testPartialShapeToTensorUnknownDimension(self):
-    self.assertAllEqual([-1],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor(
-                                tensor_shape.TensorShape([None]))))
-    self.assertAllEqual([-1],
-                        self.evaluate(convert.partial_shape_to_tensor((None,))))
-    self.assertAllEqual([-1],
-                        self.evaluate(convert.partial_shape_to_tensor([None])))
-    self.assertAllEqual([-1],
-                        self.evaluate(convert.partial_shape_to_tensor([-1])))
-    self.assertAllEqual([-1],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor(
-                                constant_op.constant([-1],
-                                                     dtype=dtypes.int64))))
+        with self.assertRaisesRegex(
+            ValueError,
+            r"The given shape .* must be a 1-D tensor of `tf.int64` "
+            r"values, but the shape was \(2, 2\).",
+        ):
+            convert.partial_shape_to_tensor(
+                constant_op.constant([[1, 1], [1, 1]], dtype=dtypes.int64)
+            )
 
-    with self.assertRaisesRegex(
-        ValueError, r"The given shape .* must be a 1-D tensor of `tf.int64` "
-        r"values, but the shape was \(2, 2\)."):
-      convert.partial_shape_to_tensor(constant_op.constant(
-          [[1, 1], [1, 1]], dtype=dtypes.int64))
+        with self.assertRaisesRegex(
+            TypeError,
+            r"The given shape .* must be a 1-D tensor of `tf.int64` "
+            r"values, but the element type was float32.",
+        ):
+            convert.partial_shape_to_tensor(constant_op.constant([1.0, 1.0]))
 
-    with self.assertRaisesRegex(
-        TypeError, r"The given shape .* must be a 1-D tensor of `tf.int64` "
-        r"values, but the element type was float32."):
-      convert.partial_shape_to_tensor(constant_op.constant([1., 1.]))
+    @combinations.generate(test_base.default_test_combinations())
+    def testPartialShapeToTensorMultipleDimensions(self):
+        self.assertAllEqual(
+            [3, 6],
+            self.evaluate(
+                convert.partial_shape_to_tensor(tensor_shape.TensorShape([3, 6]))
+            ),
+        )
+        self.assertAllEqual(
+            [3, 6], self.evaluate(convert.partial_shape_to_tensor((3, 6)))
+        )
+        self.assertAllEqual(
+            [3, 6], self.evaluate(convert.partial_shape_to_tensor([3, 6]))
+        )
+        self.assertAllEqual(
+            [3, 6],
+            self.evaluate(
+                convert.partial_shape_to_tensor(
+                    constant_op.constant([3, 6], dtype=dtypes.int64)
+                )
+            ),
+        )
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testPartialShapeToTensorMultipleDimensions(self):
-    self.assertAllEqual([3, 6],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor(
-                                tensor_shape.TensorShape([3, 6]))))
-    self.assertAllEqual([3, 6],
-                        self.evaluate(convert.partial_shape_to_tensor((3, 6))))
-    self.assertAllEqual([3, 6],
-                        self.evaluate(convert.partial_shape_to_tensor([3, 6])))
-    self.assertAllEqual([3, 6],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor(
-                                constant_op.constant([3, 6],
-                                                     dtype=dtypes.int64))))
+        self.assertAllEqual(
+            [3, -1],
+            self.evaluate(
+                convert.partial_shape_to_tensor(tensor_shape.TensorShape([3, None]))
+            ),
+        )
+        self.assertAllEqual(
+            [3, -1], self.evaluate(convert.partial_shape_to_tensor((3, None)))
+        )
+        self.assertAllEqual(
+            [3, -1], self.evaluate(convert.partial_shape_to_tensor([3, None]))
+        )
+        self.assertAllEqual(
+            [3, -1],
+            self.evaluate(
+                convert.partial_shape_to_tensor(
+                    constant_op.constant([3, -1], dtype=dtypes.int64)
+                )
+            ),
+        )
 
-    self.assertAllEqual([3, -1],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor(
-                                tensor_shape.TensorShape([3, None]))))
-    self.assertAllEqual([3, -1],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor((3, None))))
-    self.assertAllEqual([3, -1],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor([3, None])))
-    self.assertAllEqual([3, -1],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor(
-                                constant_op.constant([3, -1],
-                                                     dtype=dtypes.int64))))
+        self.assertAllEqual(
+            [-1, -1],
+            self.evaluate(
+                convert.partial_shape_to_tensor(tensor_shape.TensorShape([None, None]))
+            ),
+        )
+        self.assertAllEqual(
+            [-1, -1], self.evaluate(convert.partial_shape_to_tensor((None, None)))
+        )
+        self.assertAllEqual(
+            [-1, -1], self.evaluate(convert.partial_shape_to_tensor([None, None]))
+        )
+        self.assertAllEqual(
+            [-1, -1],
+            self.evaluate(
+                convert.partial_shape_to_tensor(
+                    constant_op.constant([-1, -1], dtype=dtypes.int64)
+                )
+            ),
+        )
 
-    self.assertAllEqual([-1, -1],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor(
-                                tensor_shape.TensorShape([None, None]))))
-    self.assertAllEqual([-1, -1],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor((None, None))))
-    self.assertAllEqual([-1, -1],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor([None, None])))
-    self.assertAllEqual([-1, -1],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor(
-                                constant_op.constant([-1, -1],
-                                                     dtype=dtypes.int64))))
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testPartialShapeToTensorScalar(self):
-    self.assertAllEqual([],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor(
-                                tensor_shape.TensorShape([]))))
-    self.assertAllEqual([], self.evaluate(convert.partial_shape_to_tensor(())))
-    self.assertAllEqual([], self.evaluate(convert.partial_shape_to_tensor([])))
-    self.assertAllEqual([],
-                        self.evaluate(
-                            convert.partial_shape_to_tensor(
-                                constant_op.constant([], dtype=dtypes.int64))))
+    @combinations.generate(test_base.default_test_combinations())
+    def testPartialShapeToTensorScalar(self):
+        self.assertAllEqual(
+            [],
+            self.evaluate(
+                convert.partial_shape_to_tensor(tensor_shape.TensorShape([]))
+            ),
+        )
+        self.assertAllEqual([], self.evaluate(convert.partial_shape_to_tensor(())))
+        self.assertAllEqual([], self.evaluate(convert.partial_shape_to_tensor([])))
+        self.assertAllEqual(
+            [],
+            self.evaluate(
+                convert.partial_shape_to_tensor(
+                    constant_op.constant([], dtype=dtypes.int64)
+                )
+            ),
+        )
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

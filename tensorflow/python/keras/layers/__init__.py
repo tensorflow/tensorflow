@@ -141,19 +141,20 @@ from tensorflow.python.keras.layers.recurrent import PeepholeLSTMCell
 from tensorflow.python.keras.layers.recurrent import SimpleRNN
 
 if tf2.enabled():
-  from tensorflow.python.keras.layers.recurrent import GRU as GRUV1
-  from tensorflow.python.keras.layers.recurrent import GRUCell as GRUCellV1
-  from tensorflow.python.keras.layers.recurrent import LSTM as LSTMV1
-  from tensorflow.python.keras.layers.recurrent import LSTMCell as LSTMCellV1
+    from tensorflow.python.keras.layers.recurrent import GRU as GRUV1
+    from tensorflow.python.keras.layers.recurrent import GRUCell as GRUCellV1
+    from tensorflow.python.keras.layers.recurrent import LSTM as LSTMV1
+    from tensorflow.python.keras.layers.recurrent import LSTMCell as LSTMCellV1
 else:
-  from tensorflow.python.keras.layers.recurrent import GRU
-  from tensorflow.python.keras.layers.recurrent import GRUCell
-  from tensorflow.python.keras.layers.recurrent import LSTM
-  from tensorflow.python.keras.layers.recurrent import LSTMCell
-  GRUV1 = GRU
-  GRUCellV1 = GRUCell
-  LSTMV1 = LSTM
-  LSTMCellV1 = LSTMCell
+    from tensorflow.python.keras.layers.recurrent import GRU
+    from tensorflow.python.keras.layers.recurrent import GRUCell
+    from tensorflow.python.keras.layers.recurrent import LSTM
+    from tensorflow.python.keras.layers.recurrent import LSTMCell
+
+    GRUV1 = GRU
+    GRUCellV1 = GRUCell
+    LSTMV1 = LSTM
+    LSTMCellV1 = LSTMCell
 
 # Convolutional-recurrent layers.
 from tensorflow.python.keras.layers.convolutional_recurrent import ConvLSTM2D
@@ -170,18 +171,18 @@ from tensorflow.python.keras.layers.serialization import serialize
 
 
 class VersionAwareLayers(object):
-  """Utility to be used internally to access layers in a V1/V2-aware fashion.
+    """Utility to be used internally to access layers in a V1/V2-aware fashion.
 
-  When using layers within the Keras codebase, under the constraint that
-  e.g. `layers.BatchNormalization` should be the `BatchNormalization` version
-  corresponding to the current runtime (TF1 or TF2), do not simply access
-  `layers.BatchNormalization` since it would ignore e.g. an early
-  `compat.v2.disable_v2_behavior()` call. Instead, use an instance
-  of `VersionAwareLayers` (which you can use just like the `layers` module).
-  """
+    When using layers within the Keras codebase, under the constraint that
+    e.g. `layers.BatchNormalization` should be the `BatchNormalization` version
+    corresponding to the current runtime (TF1 or TF2), do not simply access
+    `layers.BatchNormalization` since it would ignore e.g. an early
+    `compat.v2.disable_v2_behavior()` call. Instead, use an instance
+    of `VersionAwareLayers` (which you can use just like the `layers` module).
+    """
 
-  def __getattr__(self, name):
-    serialization.populate_deserializable_objects()
-    if name in serialization.LOCAL.ALL_OBJECTS:
-      return serialization.LOCAL.ALL_OBJECTS[name]
-    return super(VersionAwareLayers, self).__getattr__(name)
+    def __getattr__(self, name):
+        serialization.populate_deserializable_objects()
+        if name in serialization.LOCAL.ALL_OBJECTS:
+            return serialization.LOCAL.ALL_OBJECTS[name]
+        return super(VersionAwareLayers, self).__getattr__(name)

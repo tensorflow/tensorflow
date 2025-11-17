@@ -51,9 +51,9 @@ for env in [
     "GCOV_PREFIX",
     "GCOV_PREFIX_STRIP",
 ] + extra_env_flags:
-  value = os.environ.get(env)
-  if value:
-    config.environment[env] = value
+    value = os.environ.get(env)
+    if value:
+        config.environment[env] = value
 
 
 # Use the most preferred temp directory.
@@ -63,12 +63,14 @@ config.test_exec_root = (
     or os.path.join(tempfile.gettempdir(), "lit")
 )
 
-config.substitutions.extend([
-    ("%PYTHON", os.getenv("PYTHON", sys.executable) or ""),
-])
+config.substitutions.extend(
+    [
+        ("%PYTHON", os.getenv("PYTHON", sys.executable) or ""),
+    ]
+)
 
 if lit_config.params.get("PTX") == "GCN":
-  config.available_features.add("IS_ROCM")
+    config.available_features.add("IS_ROCM")
 
 
 # Include additional substitutions that may be defined via params

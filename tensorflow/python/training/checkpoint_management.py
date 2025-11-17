@@ -16,11 +16,9 @@
 # pylint: disable=invalid-name
 """Save and restore variables."""
 
-
 # TODO(kathywu): Delete this file after all imports have been moved to the path
 # below.
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.util import deprecation
 
-__getattr__ = deprecation.deprecate_moved_module(
-    __name__, checkpoint_management, "2.9")
+__getattr__ = deprecation.deprecate_moved_module(__name__, checkpoint_management, "2.9")

@@ -20,8 +20,8 @@ _worker_context = threading.local()
 
 
 def get_current_worker_context():
-  """Returns the current task context."""
-  try:
-    return _worker_context.current
-  except AttributeError:
-    return None
+    """Returns the current task context."""
+    try:
+        return _worker_context.current
+    except AttributeError:
+        return None

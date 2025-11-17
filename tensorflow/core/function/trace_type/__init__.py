@@ -34,5 +34,9 @@ from tensorflow.core.function.trace_type.serialization import serialize
 from tensorflow.core.function.trace_type.serialization import SerializedTraceType
 from tensorflow.core.function.trace_type.trace_type_builder import from_value
 from tensorflow.core.function.trace_type.trace_type_builder import InternalCastContext
-from tensorflow.core.function.trace_type.trace_type_builder import InternalPlaceholderContext
-from tensorflow.core.function.trace_type.trace_type_builder import InternalTracingContext
+from tensorflow.core.function.trace_type.trace_type_builder import (
+    InternalPlaceholderContext,
+)
+from tensorflow.core.function.trace_type.trace_type_builder import (
+    InternalTracingContext,
+)

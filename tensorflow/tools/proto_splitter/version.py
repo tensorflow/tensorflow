@@ -25,8 +25,8 @@ _BAD_VERSIONS = ()
 
 
 def get_current_join_version() -> int:
-  return _JOIN_VERSION
+    return _JOIN_VERSION
 
 
 def get_bad_versions() -> tuple[int, ...]:
-  return _BAD_VERSIONS
+    return _BAD_VERSIONS

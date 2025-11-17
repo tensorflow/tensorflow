@@ -22,12 +22,11 @@ from tensorflow.python.platform import test
 
 
 class EncodeProtoOpTest(test_base.EncodeProtoOpTestBase):
+    def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
+        super(EncodeProtoOpTest, self).__init__(
+            encode_module=proto_ops, decode_module=proto_ops, methodName=methodName
+        )
 
-  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
-    super(EncodeProtoOpTest, self).__init__(encode_module=proto_ops,
-                                            decode_module=proto_ops,
-                                            methodName=methodName)
 
-
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

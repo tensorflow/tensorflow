@@ -23,8 +23,8 @@ NodeAnno = annos.NodeAnno
 
 
 class LivenessAnalyzerTest(liveness_test.LivenessAnalyzerTestBase):
-  """Tests which can only run in Python 3."""
+    """Tests which can only run in Python 3."""
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

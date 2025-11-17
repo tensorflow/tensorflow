@@ -22,6 +22,6 @@ from tsl.profiler.protobuf.trace_events_pb2 import *
 # pylint: enable=wildcard-import,unused-import
 
 
-_allowed_symbols = ['Trace', 'Resource', 'Device', 'TraceEvent']
+_allowed_symbols = ["Trace", "Resource", "Device", "TraceEvent"]
 
 remove_undocumented(__name__, _allowed_symbols)

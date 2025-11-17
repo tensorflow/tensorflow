@@ -21,43 +21,44 @@ from tensorflow.python.keras.saving.saved_model import save_impl
 
 
 class ModelSavedModelSaver(layer_serialization.LayerSavedModelSaver):
-  """Model SavedModel serialization."""
+    """Model SavedModel serialization."""
 
-  @property
-  def object_identifier(self):
-    return constants.MODEL_IDENTIFIER
+    @property
+    def object_identifier(self):
+        return constants.MODEL_IDENTIFIER
 
-  def _python_properties_internal(self):
-    metadata = super(ModelSavedModelSaver, self)._python_properties_internal()
-    # Network stateful property is dependent on the child layers.
-    metadata.pop('stateful')
-    metadata['is_graph_network'] = self.obj._is_graph_network  # pylint: disable=protected-access
-    metadata['save_spec'] = self.obj._get_save_spec(dynamic_batch=False)  # pylint: disable=protected-access
+    def _python_properties_internal(self):
+        metadata = super(ModelSavedModelSaver, self)._python_properties_internal()
+        # Network stateful property is dependent on the child layers.
+        metadata.pop("stateful")
+        metadata["is_graph_network"] = self.obj._is_graph_network  # pylint: disable=protected-access
+        metadata["save_spec"] = self.obj._get_save_spec(dynamic_batch=False)  # pylint: disable=protected-access
 
-    metadata.update(
-        saving_utils.model_metadata(
-            self.obj, include_optimizer=True, require_config=False))
-    return metadata
+        metadata.update(
+            saving_utils.model_metadata(
+                self.obj, include_optimizer=True, require_config=False
+            )
+        )
+        return metadata
 
-  def _get_serialized_attributes_internal(self, serialization_cache):
-    default_signature = None
+    def _get_serialized_attributes_internal(self, serialization_cache):
+        default_signature = None
 
-    # Create a default signature function if this is the only object in the
-    # cache (i.e. this is the root level object).
-    if len(serialization_cache[constants.KERAS_CACHE_KEY]) == 1:
-      default_signature = save_impl.default_save_signature(self.obj)
+        # Create a default signature function if this is the only object in the
+        # cache (i.e. this is the root level object).
+        if len(serialization_cache[constants.KERAS_CACHE_KEY]) == 1:
+            default_signature = save_impl.default_save_signature(self.obj)
 
-    # Other than the default signature function, all other attributes match with
-    # the ones serialized by Layer.
-    objects, functions = (
-        super(ModelSavedModelSaver, self)._get_serialized_attributes_internal(
-            serialization_cache))
-    functions['_default_save_signature'] = default_signature
-    return objects, functions
+        # Other than the default signature function, all other attributes match with
+        # the ones serialized by Layer.
+        objects, functions = super(
+            ModelSavedModelSaver, self
+        )._get_serialized_attributes_internal(serialization_cache)
+        functions["_default_save_signature"] = default_signature
+        return objects, functions
 
 
 class SequentialSavedModelSaver(ModelSavedModelSaver):
-
-  @property
-  def object_identifier(self):
-    return constants.SEQUENTIAL_IDENTIFIER
+    @property
+    def object_identifier(self):
+        return constants.SEQUENTIAL_IDENTIFIER

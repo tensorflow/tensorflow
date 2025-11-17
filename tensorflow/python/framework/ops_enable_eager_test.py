@@ -20,31 +20,30 @@ from tensorflow.python.platform import googletest
 
 
 class OpsEnableAndDisableEagerTest(googletest.TestCase):
+    def setUp(self):
+        super().setUp()
+        # test for enable eager test
+        ops.enable_eager_execution()
+        self.assertTrue(context.executing_eagerly())
 
-  def setUp(self):
-    super().setUp()
-    # test for enable eager test
-    ops.enable_eager_execution()
-    self.assertTrue(context.executing_eagerly())
+        # Calling enable eager execution a second time should not cause an error.
+        ops.enable_eager_execution()
+        self.assertTrue(context.executing_eagerly())
 
-    # Calling enable eager execution a second time should not cause an error.
-    ops.enable_eager_execution()
-    self.assertTrue(context.executing_eagerly())
+    def testEnableDisableEagerExecution(self):
+        # The entirety of the test runs in setUp/tearDown methods
+        pass
 
-  def testEnableDisableEagerExecution(self):
-    # The entirety of the test runs in setUp/tearDown methods
-    pass
+    def tearDown(self):
+        super().tearDown()
+        # test for disable eager test
+        ops.disable_eager_execution()
+        self.assertFalse(context.executing_eagerly())
 
-  def tearDown(self):
-    super().tearDown()
-    # test for disable eager test
-    ops.disable_eager_execution()
-    self.assertFalse(context.executing_eagerly())
-
-    # Calling disable eager execution a second time should not cause an error.
-    ops.disable_eager_execution()
-    self.assertFalse(context.executing_eagerly())
+        # Calling disable eager execution a second time should not cause an error.
+        ops.disable_eager_execution()
+        self.assertFalse(context.executing_eagerly())
 
 
-if __name__ == '__main__':
-  googletest.main()
+if __name__ == "__main__":
+    googletest.main()

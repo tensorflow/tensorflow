@@ -19,41 +19,43 @@ import os
 
 
 def path_to_string(path):
-  """Convert `PathLike` objects to their string representation.
+    """Convert `PathLike` objects to their string representation.
 
-  If given a non-string typed path object, converts it to its string
-  representation.
+    If given a non-string typed path object, converts it to its string
+    representation.
 
-  If the object passed to `path` is not among the above, then it is
-  returned unchanged. This allows e.g. passthrough of file objects
-  through this function.
+    If the object passed to `path` is not among the above, then it is
+    returned unchanged. This allows e.g. passthrough of file objects
+    through this function.
 
-  Args:
-    path: `PathLike` object that represents a path
+    Args:
+      path: `PathLike` object that represents a path
 
-  Returns:
-    A string representation of the path argument, if Python support exists.
-  """
-  if isinstance(path, os.PathLike):
-    return os.fspath(path)
-  return path
+    Returns:
+      A string representation of the path argument, if Python support exists.
+    """
+    if isinstance(path, os.PathLike):
+        return os.fspath(path)
+    return path
 
 
 def ask_to_proceed_with_overwrite(filepath):
-  """Produces a prompt asking about overwriting a file.
+    """Produces a prompt asking about overwriting a file.
 
-  Args:
-      filepath: the path to the file to be overwritten.
+    Args:
+        filepath: the path to the file to be overwritten.
 
-  Returns:
-      True if we can proceed with overwrite, False otherwise.
-  """
-  overwrite = input('[WARNING] %s already exists - overwrite? '
-                    '[y/n]' % (filepath)).strip().lower()
-  while overwrite not in ('y', 'n'):
-    overwrite = input('Enter "y" (overwrite) or "n" '
-                      '(cancel).').strip().lower()
-  if overwrite == 'n':
-    return False
-  print('[TIP] Next time specify overwrite=True!')
-  return True
+    Returns:
+        True if we can proceed with overwrite, False otherwise.
+    """
+    overwrite = (
+        input("[WARNING] %s already exists - overwrite? [y/n]" % (filepath))
+        .strip()
+        .lower()
+    )
+    while overwrite not in ("y", "n"):
+        overwrite = input('Enter "y" (overwrite) or "n" (cancel).').strip().lower()
+    if overwrite == "n":
+        return False
+    print("[TIP] Next time specify overwrite=True!")
+    return True

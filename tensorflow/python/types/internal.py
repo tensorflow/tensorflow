@@ -20,42 +20,42 @@ These types should not be exported. External code should not rely on these.
 
 # TODO(mdan): Is this strictly needed? Only ops.py really uses it.
 class NativeObject(object):
-  """Types natively supported by various TF operations.
+    """Types natively supported by various TF operations.
 
-  The most notable example of NativeObject is Tensor.
-  """
+    The most notable example of NativeObject is Tensor.
+    """
 
 
 class TypeSpec(object):
-  """Interface for internal isinstance checks to framework/type_spec.py.
+    """Interface for internal isinstance checks to framework/type_spec.py.
 
-  This helps to avoid circular dependencies.
-  """
+    This helps to avoid circular dependencies.
+    """
 
 
 class TensorSpec(object):
-  """Interface for internal isinstance checks to framework/tensor_spec.py.
+    """Interface for internal isinstance checks to framework/tensor_spec.py.
 
-  This helps to avoid circular dependencies.
-  """
+    This helps to avoid circular dependencies.
+    """
 
 
 class IndexedSlices(object):
-  """Interface for internal isinstance checks to framework/indexed_slices.py.
+    """Interface for internal isinstance checks to framework/indexed_slices.py.
 
-  This helps to avoid circular dependencies.
-  """
+    This helps to avoid circular dependencies.
+    """
 
 
 class RaggedTensor(object):
-  """Interface for internal isinstance checks to ops/ragged/ragged_tensor.py.
+    """Interface for internal isinstance checks to ops/ragged/ragged_tensor.py.
 
-  This helps to avoid circular dependencies.
-  """
+    This helps to avoid circular dependencies.
+    """
 
 
 class RaggedTensorSpec(object):
-  """Interface for internal isinstance checks to ops/ragged/ragged_tensor.py.
+    """Interface for internal isinstance checks to ops/ragged/ragged_tensor.py.
 
-  This helps to avoid circular dependencies.
-  """
+    This helps to avoid circular dependencies.
+    """

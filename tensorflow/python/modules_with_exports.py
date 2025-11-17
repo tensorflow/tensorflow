@@ -69,8 +69,10 @@ from tensorflow.python.eager import remote
 
 # Check whether TF2_BEHAVIOR is turned on.
 from tensorflow.python import tf2 as _tf2
+
 _tf2_gauge = _monitoring.BoolGauge(
-    '/tensorflow/api/tf2_enable', 'Environment variable TF2_BEHAVIOR is set".')
+    "/tensorflow/api/tf2_enable", 'Environment variable TF2_BEHAVIOR is set".'
+)
 _tf2_gauge.get_cell().set(_tf2.enabled())
 
 # Feature Column
@@ -217,6 +219,7 @@ from tensorflow.python import proto_exports
 # Update dispatch decorator docstrings to contain lists of registered APIs.
 # (This should come after any imports that register APIs.)
 from tensorflow.python.util import dispatch
+
 dispatch.update_docstrings_with_api_lists()
 
 # Export protos

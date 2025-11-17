@@ -18,9 +18,9 @@ from tensorflow.compiler.mlir.stablehlo import stablehlo
 
 
 def smoketest():
-  """Test StableHLO Portable APIs."""
-  assert isinstance(stablehlo.get_api_version(), int)
-  assembly = """
+    """Test StableHLO Portable APIs."""
+    assert isinstance(stablehlo.get_api_version(), int)
+    assembly = """
     module @jit_f_jax.0 {
       func.func public @main(%arg0: tensor<ui32>) -> tensor<i1> {
         %0 = stablehlo.constant dense<1> : tensor<ui32>
@@ -29,12 +29,12 @@ def smoketest():
       }
     }
   """
-  target = stablehlo.get_current_version()
-  artifact = stablehlo.serialize_portable_artifact_str(assembly, target)
-  deserialized = stablehlo.deserialize_portable_artifact_str(artifact)
-  rountrip = stablehlo.serialize_portable_artifact_str(deserialized, target)
-  assert artifact == rountrip
+    target = stablehlo.get_current_version()
+    artifact = stablehlo.serialize_portable_artifact_str(assembly, target)
+    deserialized = stablehlo.deserialize_portable_artifact_str(artifact)
+    rountrip = stablehlo.serialize_portable_artifact_str(deserialized, target)
+    assert artifact == rountrip
 
 
 if __name__ == "__main__":
-  smoketest()
+    smoketest()

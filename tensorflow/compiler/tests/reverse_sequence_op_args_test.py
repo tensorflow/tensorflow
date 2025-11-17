@@ -23,30 +23,30 @@ from tensorflow.python.platform import test
 
 
 class ReverseSequenceArgsTest(xla_test.XLATestCase):
-  """Tests argument verification of array_ops.reverse_sequence."""
+    """Tests argument verification of array_ops.reverse_sequence."""
 
-  def testInvalidArguments(self):
-    # seq_axis negative
-    with self.assertRaisesRegex(
-        (errors.InvalidArgumentError, ValueError), "seq_dim must be >=0"
-    ):
+    def testInvalidArguments(self):
+        # seq_axis negative
+        with self.assertRaisesRegex(
+            (errors.InvalidArgumentError, ValueError), "seq_dim must be >=0"
+        ):
 
-      @def_function.function(jit_compile=True)
-      def f(x):
-        return array_ops.reverse_sequence(x, [2, 2], seq_axis=-1)
+            @def_function.function(jit_compile=True)
+            def f(x):
+                return array_ops.reverse_sequence(x, [2, 2], seq_axis=-1)
 
-      f([[1, 2], [3, 4]])
+            f([[1, 2], [3, 4]])
 
-    # batch_axis negative
-    with self.assertRaisesRegex(ValueError, "batch_dim must be >=0"):
+        # batch_axis negative
+        with self.assertRaisesRegex(ValueError, "batch_dim must be >=0"):
 
-      @def_function.function(jit_compile=True)
-      def g(x):
-        return array_ops.reverse_sequence(x, [2, 2], seq_axis=1, batch_axis=-1)
+            @def_function.function(jit_compile=True)
+            def g(x):
+                return array_ops.reverse_sequence(x, [2, 2], seq_axis=1, batch_axis=-1)
 
-      g([[1, 2], [3, 4]])
+            g([[1, 2], [3, 4]])
 
 
 if __name__ == "__main__":
-  v2_compat.enable_v2_behavior()
-  test.main()
+    v2_compat.enable_v2_behavior()
+    test.main()

@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the `MapAndBatchFusion` optimization."""
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import testing
@@ -24,19 +25,22 @@ from tensorflow.python.platform import test
 
 
 class MapAndBatchFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testMapAndBatchFusion(self):
-    dataset = dataset_ops.Dataset.range(10).apply(
-        testing.assert_next(
-            ["MapAndBatch"])).map(lambda x: x * x).batch(10)
-    options = options_lib.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.map_and_batch_fusion = True
-    dataset = dataset.with_options(options)
-    self.assertDatasetProduces(
-        dataset, expected_output=[[x * x for x in range(10)]])
+    @combinations.generate(test_base.default_test_combinations())
+    def testMapAndBatchFusion(self):
+        dataset = (
+            dataset_ops.Dataset.range(10)
+            .apply(testing.assert_next(["MapAndBatch"]))
+            .map(lambda x: x * x)
+            .batch(10)
+        )
+        options = options_lib.Options()
+        options.experimental_optimization.apply_default_optimizations = False
+        options.experimental_optimization.map_and_batch_fusion = True
+        dataset = dataset.with_options(options)
+        self.assertDatasetProduces(
+            dataset, expected_output=[[x * x for x in range(10)]]
+        )
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

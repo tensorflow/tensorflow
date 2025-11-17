@@ -19,4 +19,4 @@ For testing `deprecation.deprecate_moved_module`.
 
 
 def a():
-  return 1
+    return 1

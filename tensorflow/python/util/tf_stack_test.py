@@ -19,101 +19,99 @@ from tensorflow.python.util import tf_stack
 
 
 class TFStackTest(test.TestCase):
+    def testFrameSummaryEquality(self):
+        frames1 = tf_stack.extract_stack()
+        frames2 = tf_stack.extract_stack()
 
-  def testFrameSummaryEquality(self):
-    frames1 = tf_stack.extract_stack()
-    frames2 = tf_stack.extract_stack()
+        self.assertNotEqual(frames1[0], frames1[1])
+        self.assertEqual(frames1[0], frames1[0])
+        self.assertEqual(frames1[0], frames2[0])
 
-    self.assertNotEqual(frames1[0], frames1[1])
-    self.assertEqual(frames1[0], frames1[0])
-    self.assertEqual(frames1[0], frames2[0])
+    def testFrameSummaryEqualityAndHash(self):
+        # Both defined on the same line to produce identical stacks.
+        frame1, frame2 = tf_stack.extract_stack(), tf_stack.extract_stack()
+        self.assertEqual(len(frame1), len(frame2))
+        for f1, f2 in zip(frame1, frame2):
+            self.assertEqual(f1, f2)
+            self.assertEqual(hash(f1), hash(f1))
+            self.assertEqual(hash(f1), hash(f2))
+        self.assertEqual(frame1, frame2)
+        self.assertEqual(hash(tuple(frame1)), hash(tuple(frame2)))
 
-  def testFrameSummaryEqualityAndHash(self):
-    # Both defined on the same line to produce identical stacks.
-    frame1, frame2 = tf_stack.extract_stack(), tf_stack.extract_stack()
-    self.assertEqual(len(frame1), len(frame2))
-    for f1, f2 in zip(frame1, frame2):
-      self.assertEqual(f1, f2)
-      self.assertEqual(hash(f1), hash(f1))
-      self.assertEqual(hash(f1), hash(f2))
-    self.assertEqual(frame1, frame2)
-    self.assertEqual(hash(tuple(frame1)), hash(tuple(frame2)))
+    def testLastUserFrame(self):
+        trace = tf_stack.extract_stack()
+        frame = trace.last_user_frame()
+        self.assertRegex(repr(frame), "testLastUserFrame")
 
-  def testLastUserFrame(self):
-    trace = tf_stack.extract_stack()
-    frame = trace.last_user_frame()
-    self.assertRegex(repr(frame), 'testLastUserFrame')
+    def testGetUserFrames(self):
+        def func():
+            trace = tf_stack.extract_stack()  # COMMENT
+            frames = list(trace.get_user_frames())
+            return frames
 
-  def testGetUserFrames(self):
+        frames = func()  # CALLSITE
 
-    def func():
-      trace = tf_stack.extract_stack()  # COMMENT
-      frames = list(trace.get_user_frames())
-      return frames
+        self.assertRegex(repr(frames[-1]), "func")
+        self.assertRegex(repr(frames[-2]), "testGetUserFrames")
 
-    frames = func()  # CALLSITE
+    def testGetItem(self):
+        def func(n):
+            if n == 0:
+                return tf_stack.extract_stack()  # COMMENT
+            else:
+                return func(n - 1)
 
-    self.assertRegex(repr(frames[-1]), 'func')
-    self.assertRegex(repr(frames[-2]), 'testGetUserFrames')
+        trace = func(5)
+        self.assertIn("func", repr(trace[-1]))
 
-  def testGetItem(self):
-    def func(n):
-      if n == 0:
-        return tf_stack.extract_stack()  # COMMENT
-      else:
-        return func(n - 1)
+        with self.assertRaises(IndexError):
+            _ = trace[-len(trace) - 1]
 
-    trace = func(5)
-    self.assertIn('func', repr(trace[-1]))
+        with self.assertRaises(IndexError):
+            _ = trace[len(trace)]
 
-    with self.assertRaises(IndexError):
-      _ = trace[-len(trace) - 1]
+    def testSourceMap(self):
+        source_map = tf_stack._tf_stack.PyBindSourceMap()
 
-    with self.assertRaises(IndexError):
-      _ = trace[len(trace)]
+        def func(n):
+            if n == 0:
+                return tf_stack._tf_stack.extract_stack(
+                    source_map, tf_stack._tf_stack.PyBindFileSet()
+                )
+            else:
+                return func(n - 1)
 
-  def testSourceMap(self):
-    source_map = tf_stack._tf_stack.PyBindSourceMap()
-
-    def func(n):
-      if n == 0:
-        return tf_stack._tf_stack.extract_stack(
-            source_map, tf_stack._tf_stack.PyBindFileSet()
+        trace = func(5)
+        source_map.update_to(
+            (
+                (
+                    (trace[0].filename, trace[0].lineno),
+                    ("filename", 42, "function_name"),
+                ),
+            )
         )
-      else:
-        return func(n - 1)
+        trace = list(func(5))
+        self.assertEqual(str(trace[0]), 'File "filename", line 42, in function_name')
 
-    trace = func(5)
-    source_map.update_to((
-        (
-            (trace[0].filename, trace[0].lineno),
-            ("filename", 42, "function_name"),
-        ),
-    ))
-    trace = list(func(5))
-    self.assertEqual(
-        str(trace[0]), 'File "filename", line 42, in function_name'
-    )
+    def testStackTraceBuilder(self):
+        stack1 = tf_stack.extract_stack()
+        stack2 = tf_stack.extract_stack()
+        stack3 = tf_stack.extract_stack()
 
-  def testStackTraceBuilder(self):
-    stack1 = tf_stack.extract_stack()
-    stack2 = tf_stack.extract_stack()
-    stack3 = tf_stack.extract_stack()
+        builder = tf_stack.GraphDebugInfoBuilder()
+        builder.AccumulateStackTrace("func1", "node1", stack1)
+        builder.AccumulateStackTrace("func2", "node2", stack2)
+        builder.AccumulateStackTrace("func3", "node3", stack3)
+        debug_info = builder.Build()
 
-    builder = tf_stack.GraphDebugInfoBuilder()
-    builder.AccumulateStackTrace('func1', 'node1', stack1)
-    builder.AccumulateStackTrace('func2', 'node2', stack2)
-    builder.AccumulateStackTrace('func3', 'node3', stack3)
-    debug_info = builder.Build()
+        trace_map = tf_stack.LoadTracesFromDebugInfo(debug_info)
+        self.assertSameElements(
+            trace_map.keys(), ["node1@func1", "node2@func2", "node3@func3"]
+        )
 
-    trace_map = tf_stack.LoadTracesFromDebugInfo(debug_info)
-    self.assertSameElements(
-        trace_map.keys(), ['node1@func1', 'node2@func2', 'node3@func3']
-    )
-
-    for trace in trace_map.values():
-      self.assertRegex(repr(trace), 'tf_stack_test.py', trace)
+        for trace in trace_map.values():
+            self.assertRegex(repr(trace), "tf_stack_test.py", trace)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

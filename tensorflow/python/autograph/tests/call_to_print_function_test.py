@@ -26,61 +26,59 @@ from tensorflow.python.autograph.tests import reference_test_base
 
 
 def lone_print(x):
-  print(x)
-
-
-def print_multiple_values(x):
-  print('x is', x)
-
-
-def multiple_prints(x, y):
-  tf.print('x is', x)
-  tf.print('y is', y)
-
-
-def print_with_nontf_values(x):
-  print('x is', x, {'foo': 'bar'})
-
-
-def print_in_cond(x):
-  if x == 0:
     print(x)
 
 
+def print_multiple_values(x):
+    print("x is", x)
+
+
+def multiple_prints(x, y):
+    tf.print("x is", x)
+    tf.print("y is", y)
+
+
+def print_with_nontf_values(x):
+    print("x is", x, {"foo": "bar"})
+
+
+def print_in_cond(x):
+    if x == 0:
+        print(x)
+
+
 def tf_print(x):
-  tf.print(x)
+    tf.print(x)
 
 
 class ReferenceTest(reference_test_base.TestCase):
+    def setUp(self):
+        super(ReferenceTest, self).setUp()
+        self.autograph_opts = tf.autograph.experimental.Feature.BUILTIN_FUNCTIONS
 
-  def setUp(self):
-    super(ReferenceTest, self).setUp()
-    self.autograph_opts = tf.autograph.experimental.Feature.BUILTIN_FUNCTIONS
+    def test_lone_print(self):
+        self.assertFunctionMatchesEager(lone_print, 1)
+        self.assertFunctionMatchesEager(lone_print, np.array([1, 2, 3]))
 
-  def test_lone_print(self):
-    self.assertFunctionMatchesEager(lone_print, 1)
-    self.assertFunctionMatchesEager(lone_print, np.array([1, 2, 3]))
+    def test_print_multiple_values(self):
+        self.assertFunctionMatchesEager(print_multiple_values, 1)
+        self.assertFunctionMatchesEager(print_multiple_values, np.array([1, 2, 3]))
 
-  def test_print_multiple_values(self):
-    self.assertFunctionMatchesEager(print_multiple_values, 1)
-    self.assertFunctionMatchesEager(print_multiple_values, np.array([1, 2, 3]))
+    def test_multiple_prints(self):
+        self.assertFunctionMatchesEager(multiple_prints, 1, 2)
+        self.assertFunctionMatchesEager(multiple_prints, np.array([1, 2, 3]), 4)
 
-  def test_multiple_prints(self):
-    self.assertFunctionMatchesEager(multiple_prints, 1, 2)
-    self.assertFunctionMatchesEager(multiple_prints, np.array([1, 2, 3]), 4)
+    def test_print_with_nontf_values(self):
+        self.assertFunctionMatchesEager(print_with_nontf_values, 1)
+        self.assertFunctionMatchesEager(print_with_nontf_values, np.array([1, 2, 3]))
 
-  def test_print_with_nontf_values(self):
-    self.assertFunctionMatchesEager(print_with_nontf_values, 1)
-    self.assertFunctionMatchesEager(print_with_nontf_values, np.array([1, 2,
-                                                                       3]))
+    def test_print_in_cond(self):
+        self.assertFunctionMatchesEager(print_in_cond, 0)
+        self.assertFunctionMatchesEager(print_in_cond, 1)
 
-  def test_print_in_cond(self):
-    self.assertFunctionMatchesEager(print_in_cond, 0)
-    self.assertFunctionMatchesEager(print_in_cond, 1)
-
-  def test_tf_print(self):
-    self.assertFunctionMatchesEager(tf_print, 0)
+    def test_tf_print(self):
+        self.assertFunctionMatchesEager(tf_print, 0)
 
 
-if __name__ == '__main__':
-  tf.test.main()
+if __name__ == "__main__":
+    tf.test.main()

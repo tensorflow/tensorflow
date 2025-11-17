@@ -25,38 +25,33 @@ DoNotConvert = config_lib.DoNotConvert
 # for a definitely_convert of definitely_bypass call.
 CONVERSION_RULES = (
     # Known packages
-    Convert('tensorflow.python.training.experimental'),
-
+    Convert("tensorflow.python.training.experimental"),
     # Builtin modules
-    DoNotConvert('collections'),
-    DoNotConvert('copy'),
-    DoNotConvert('cProfile'),
-    DoNotConvert('inspect'),
-    DoNotConvert('ipdb'),
-    DoNotConvert('linecache'),
-    DoNotConvert('mock'),
-    DoNotConvert('pathlib'),
-    DoNotConvert('pdb'),
-    DoNotConvert('posixpath'),
-    DoNotConvert('pstats'),
-    DoNotConvert('re'),
-    DoNotConvert('threading'),
-    DoNotConvert('urllib'),
-
+    DoNotConvert("collections"),
+    DoNotConvert("copy"),
+    DoNotConvert("cProfile"),
+    DoNotConvert("inspect"),
+    DoNotConvert("ipdb"),
+    DoNotConvert("linecache"),
+    DoNotConvert("mock"),
+    DoNotConvert("pathlib"),
+    DoNotConvert("pdb"),
+    DoNotConvert("posixpath"),
+    DoNotConvert("pstats"),
+    DoNotConvert("re"),
+    DoNotConvert("threading"),
+    DoNotConvert("urllib"),
     # Known libraries
-    DoNotConvert('matplotlib'),
-    DoNotConvert('numpy'),
-    DoNotConvert('pandas'),
-    DoNotConvert('tensorflow'),
-    DoNotConvert('PIL'),
-    DoNotConvert('absl.logging'),
-
+    DoNotConvert("matplotlib"),
+    DoNotConvert("numpy"),
+    DoNotConvert("pandas"),
+    DoNotConvert("tensorflow"),
+    DoNotConvert("PIL"),
+    DoNotConvert("absl.logging"),
     # TODO(b/133417201): Remove.
-    DoNotConvert('tensorflow_probability'),
-
+    DoNotConvert("tensorflow_probability"),
     # TODO(b/133842282): Remove.
-    DoNotConvert('tensorflow_datasets.core'),
-
-    DoNotConvert('keras'),
-    DoNotConvert('tf_keras'),
+    DoNotConvert("tensorflow_datasets.core"),
+    DoNotConvert("keras"),
+    DoNotConvert("tf_keras"),
 )

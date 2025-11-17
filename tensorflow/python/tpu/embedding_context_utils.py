@@ -19,28 +19,28 @@ from absl import logging
 
 
 class _EmbeddingPipeliningState(threading.local):
+    def __init__(self):
+        super().__init__()
+        self.enabled = True
 
-  def __init__(self):
-    super().__init__()
-    self.enabled = True
 
 embedding_pipelining_state = _EmbeddingPipeliningState()
 
 
 class SequentialEmbeddingContext:
-  """Disables embedding pipelining for all ops created in the scope."""
+    """Disables embedding pipelining for all ops created in the scope."""
 
-  def __init__(self):
-    self._original_embedding_pipelining_state_enabled = (
-        embedding_pipelining_state.enabled
-    )
+    def __init__(self):
+        self._original_embedding_pipelining_state_enabled = (
+            embedding_pipelining_state.enabled
+        )
 
-  def __enter__(self):
-    embedding_pipelining_state.enabled = False
-    logging.info("Entering SequentialEmbeddingContext.")
+    def __enter__(self):
+        embedding_pipelining_state.enabled = False
+        logging.info("Entering SequentialEmbeddingContext.")
 
-  def __exit__(self, exc_type, exc_val, exc_tb):
-    embedding_pipelining_state.enabled = (
-        self._original_embedding_pipelining_state_enabled
-    )
-    logging.info("Exiting SequentialEmbeddingContext.")
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        embedding_pipelining_state.enabled = (
+            self._original_embedding_pipelining_state_enabled
+        )
+        logging.info("Exiting SequentialEmbeddingContext.")

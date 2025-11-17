@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.enumerate()`."""
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
@@ -27,49 +28,55 @@ from tensorflow.python.platform import test
 
 
 class EnumerateTest(test_base.DatasetTestBase, parameterized.TestCase):
+    @combinations.generate(test_base.default_test_combinations())
+    def testEnumerate(self):
+        components = (["a", "b"], [1, 2], [37.0, 38])
+        start = constant_op.constant(20, dtype=dtypes.int64)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testEnumerate(self):
-    components = (["a", "b"], [1, 2], [37.0, 38])
-    start = constant_op.constant(20, dtype=dtypes.int64)
+        dataset = dataset_ops.Dataset.from_tensor_slices(components).enumerate(start)
 
-    dataset = dataset_ops.Dataset.from_tensor_slices(components).enumerate(
-        start)
+        self.assertEqual(dtypes.int64, dataset_ops.get_legacy_output_types(dataset)[0])
+        dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+        self.assertEqual((), dataset_output_shapes[0])
+        self.assertEqual(
+            [tensor_shape.TensorShape([])] * 3,
+            [shape for shape in dataset_output_shapes[1]],
+        )
 
-    self.assertEqual(dtypes.int64,
-                     dataset_ops.get_legacy_output_types(dataset)[0])
-    dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
-    self.assertEqual((), dataset_output_shapes[0])
-    self.assertEqual([tensor_shape.TensorShape([])] * 3,
-                     [shape for shape in dataset_output_shapes[1]])
-
-    self.assertDatasetProduces(dataset, [(20, (b"a", 1, 37.0)),
-                                         (21, (b"b", 2, 38.0))])
+        self.assertDatasetProduces(
+            dataset, [(20, (b"a", 1, 37.0)), (21, (b"b", 2, 38.0))]
+        )
 
 
-class EnumerateCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                              parameterized.TestCase):
+class EnumerateCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase
+):
+    def _build_enumerate_dataset(self, start, stop, options=None):
+        dataset = dataset_ops.Dataset.range(start, stop).enumerate()
+        if options:
+            dataset = dataset.with_options(options)
+        return dataset
 
-  def _build_enumerate_dataset(self, start, stop, options=None):
-    dataset = dataset_ops.Dataset.range(start, stop).enumerate()
-    if options:
-      dataset = dataset.with_options(options)
-    return dataset
-
-  @combinations.generate(
-      combinations.times(
-          test_base.default_test_combinations(),
-          checkpoint_test_base.default_test_combinations(),
-          combinations.combine(symbolic_checkpoint=[False, True])))
-  def test(self, verify_fn, symbolic_checkpoint):
-    start = 2
-    stop = 10
-    options = options_lib.Options()
-    options.experimental_symbolic_checkpoint = symbolic_checkpoint
-    verify_fn(
-        self, lambda: self._build_enumerate_dataset(
-            start=start, stop=stop, options=options), stop - start)
+    @combinations.generate(
+        combinations.times(
+            test_base.default_test_combinations(),
+            checkpoint_test_base.default_test_combinations(),
+            combinations.combine(symbolic_checkpoint=[False, True]),
+        )
+    )
+    def test(self, verify_fn, symbolic_checkpoint):
+        start = 2
+        stop = 10
+        options = options_lib.Options()
+        options.experimental_symbolic_checkpoint = symbolic_checkpoint
+        verify_fn(
+            self,
+            lambda: self._build_enumerate_dataset(
+                start=start, stop=stop, options=options
+            ),
+            stop - start,
+        )
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

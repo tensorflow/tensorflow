@@ -67,78 +67,76 @@ _LIST_METRICS = flags.DEFINE_bool(
 
 ncu_bin = shutil.which("ncu")
 if not ncu_bin:
-  ncu_bin = "/usr/local/cuda/bin/ncu"
+    ncu_bin = "/usr/local/cuda/bin/ncu"
 logging.info("ncu binary: %s", ncu_bin)
 
 
 def main(argv: Sequence[str]) -> None:
-  if len(argv) != 2:
-    raise app.UsageError("provide .ncu-rep file path")
-  input_file_name = argv[1]
-  if not os.path.exists(input_file_name):
-    raise app.UsageError(f"file '{input_file_name}' does not exist")
-  cmd = [
-      ncu_bin,
-      "-i",
-      input_file_name,
-      "--csv",
-      "--print-units",
-      "base",
-      "--page",
-      "raw",
-  ]
-  env_with_locale = os.environ.copy()
-  # Force locale to en_US.UTF-8 to get consistent output.
-  env_with_locale["LC_ALL"] = "en_US.UTF-8"
-  # env_with_locale["LC_ALL"] = "de_DE.UTF-8"
-  out = subprocess.check_output(cmd, text=True, env=env_with_locale).strip()
-  rows = list(csv.reader(out.splitlines()))
-  name_index = {}
-  for i, name in enumerate(rows[0]):
-    name_index[name] = i
+    if len(argv) != 2:
+        raise app.UsageError("provide .ncu-rep file path")
+    input_file_name = argv[1]
+    if not os.path.exists(input_file_name):
+        raise app.UsageError(f"file '{input_file_name}' does not exist")
+    cmd = [
+        ncu_bin,
+        "-i",
+        input_file_name,
+        "--csv",
+        "--print-units",
+        "base",
+        "--page",
+        "raw",
+    ]
+    env_with_locale = os.environ.copy()
+    # Force locale to en_US.UTF-8 to get consistent output.
+    env_with_locale["LC_ALL"] = "en_US.UTF-8"
+    # env_with_locale["LC_ALL"] = "de_DE.UTF-8"
+    out = subprocess.check_output(cmd, text=True, env=env_with_locale).strip()
+    rows = list(csv.reader(out.splitlines()))
+    name_index = {}
+    for i, name in enumerate(rows[0]):
+        name_index[name] = i
 
-  if _LIST_METRICS.value:
-    for name in rows[0]:
-      print(name)
-    return
+    if _LIST_METRICS.value:
+        for name in rows[0]:
+            print(name)
+        return
 
-  all_kernels = ncu_rep_lib.get_metrics_by_kernel(rows)
-  filtered_kernels = all_kernels
-  for f in _KERNEL_FILTER.value or []:
-    filtered_kernels = ncu_rep_lib.filter_kernels(filtered_kernels, f)
-  if not filtered_kernels:
-    raise app.UsageError(
-        "No kernels matched the filter, use --list_kernels without --filter to"
-        " see all kernels"
-    )
+    all_kernels = ncu_rep_lib.get_metrics_by_kernel(rows)
+    filtered_kernels = all_kernels
+    for f in _KERNEL_FILTER.value or []:
+        filtered_kernels = ncu_rep_lib.filter_kernels(filtered_kernels, f)
+    if not filtered_kernels:
+        raise app.UsageError(
+            "No kernels matched the filter, use --list_kernels without --filter to"
+            " see all kernels"
+        )
 
-  if _LIST_KERNELS.value:
-    for row in filtered_kernels:
-      print(
-          row[ncu_rep_lib.KERNEL_ID_FIELD][0],
-          row[ncu_rep_lib.KERNEL_NAME_FIELD][0],
-      )
-    return
+    if _LIST_KERNELS.value:
+        for row in filtered_kernels:
+            print(
+                row[ncu_rep_lib.KERNEL_ID_FIELD][0],
+                row[ncu_rep_lib.KERNEL_NAME_FIELD][0],
+            )
+        return
 
-  if len(filtered_kernels) > 1:
-    sys.stderr.write(
-        f"aggregating {len(filtered_kernels)} kernels\n",
-    )
+    if len(filtered_kernels) > 1:
+        sys.stderr.write(
+            f"aggregating {len(filtered_kernels)} kernels\n",
+        )
 
-  metrics = ncu_rep_lib.aggregate_kernel_metrics(
-      _METRICS.value, filtered_kernels
-  )
+    metrics = ncu_rep_lib.aggregate_kernel_metrics(_METRICS.value, filtered_kernels)
 
-  fmt = _FORMAT.value
-  if fmt == "csv":
-    ncu_rep_lib.write_metrics_csv(sys.stdout, metrics)
-  elif fmt == "json":
-    ncu_rep_lib.write_metrics_json(sys.stdout, metrics)
-  elif fmt == "raw":
-    ncu_rep_lib.write_metrics_raw(sys.stdout, metrics)
-  else:
-    ncu_rep_lib.write_metrics_markdown(sys.stdout, metrics)
+    fmt = _FORMAT.value
+    if fmt == "csv":
+        ncu_rep_lib.write_metrics_csv(sys.stdout, metrics)
+    elif fmt == "json":
+        ncu_rep_lib.write_metrics_json(sys.stdout, metrics)
+    elif fmt == "raw":
+        ncu_rep_lib.write_metrics_raw(sys.stdout, metrics)
+    else:
+        ncu_rep_lib.write_metrics_markdown(sys.stdout, metrics)
 
 
 if __name__ == "__main__":
-  app.run(main)
+    app.run(main)

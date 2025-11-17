@@ -25,58 +25,59 @@ from tensorflow.python.platform import test
 
 
 class FunctionalOpsTest(test.TestCase):
+    def testIfWithDefun(self):
+        # Defun should only be used in graph mode
+        with ops.Graph().as_default():
 
-  def testIfWithDefun(self):
-    # Defun should only be used in graph mode
-    with ops.Graph().as_default():
-      @function.Defun(dtypes.float32)
-      def Then(x):
-        return x + 1
+            @function.Defun(dtypes.float32)
+            def Then(x):
+                return x + 1
 
-      @function.Defun(dtypes.float32)
-      def Else(x):
-        return x - 1
+            @function.Defun(dtypes.float32)
+            def Else(x):
+                return x - 1
 
-      inputs = [10.]
-      result = self.evaluate(functional_ops.If(False, inputs, Then, Else))
-      self.assertEqual([9.0], result)
+            inputs = [10.0]
+            result = self.evaluate(functional_ops.If(False, inputs, Then, Else))
+            self.assertEqual([9.0], result)
 
-  def testIfWithFunction(self):
+    def testIfWithFunction(self):
+        @def_function.function(
+            input_signature=[tensor_spec.TensorSpec((), dtypes.float32)]
+        )
+        def Then(x):
+            return x + 1
 
-    @def_function.function(
-        input_signature=[tensor_spec.TensorSpec((), dtypes.float32)])
-    def Then(x):
-      return x + 1
+        @def_function.function(
+            input_signature=[tensor_spec.TensorSpec((), dtypes.float32)]
+        )
+        def Else(x):
+            return x - 1
 
-    @def_function.function(
-        input_signature=[tensor_spec.TensorSpec((), dtypes.float32)])
-    def Else(x):
-      return x - 1
+        inputs = [10.0]
+        then_cf = Then.get_concrete_function()
+        else_cf = Else.get_concrete_function()
+        result = self.evaluate(functional_ops.If(False, inputs, then_cf, else_cf))
+        self.assertEqual([9.0], result)
 
-    inputs = [10.]
-    then_cf = Then.get_concrete_function()
-    else_cf = Else.get_concrete_function()
-    result = self.evaluate(functional_ops.If(False, inputs, then_cf, else_cf))
-    self.assertEqual([9.0], result)
+    def testIfWithFunctionComposite(self):
+        signature = [tensor_spec.TensorSpec([], dtypes.float32)]
 
-  def testIfWithFunctionComposite(self):
+        @def_function.function(input_signature=signature)
+        def Then(x):
+            return sparse_tensor.SparseTensor([[0]], [x + 1], [1])
 
-    signature = [tensor_spec.TensorSpec([], dtypes.float32)]
-    @def_function.function(input_signature=signature)
-    def Then(x):
-      return sparse_tensor.SparseTensor([[0]], [x + 1], [1])
+        @def_function.function(input_signature=signature)
+        def Else(x):
+            return sparse_tensor.SparseTensor([[0]], [x - 1], [1])
 
-    @def_function.function(input_signature=signature)
-    def Else(x):
-      return sparse_tensor.SparseTensor([[0]], [x - 1], [1])
-
-    inputs = [10.]
-    then_cf = Then.get_concrete_function()
-    else_cf = Else.get_concrete_function()
-    result = functional_ops.If(False, inputs, then_cf, else_cf)
-    self.assertIsInstance(result, sparse_tensor.SparseTensor)
-    self.assertAllEqual([9.0], result.values)
+        inputs = [10.0]
+        then_cf = Then.get_concrete_function()
+        else_cf = Else.get_concrete_function()
+        result = functional_ops.If(False, inputs, then_cf, else_cf)
+        self.assertIsInstance(result, sparse_tensor.SparseTensor)
+        self.assertAllEqual([9.0], result.values)
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

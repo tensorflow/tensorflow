@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Module contains the implementation of RNN cell wrappers."""
+
 from tensorflow.python.keras.layers.legacy_rnn import rnn_cell_wrapper_impl
 
 

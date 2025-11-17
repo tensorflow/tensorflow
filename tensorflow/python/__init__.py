@@ -19,16 +19,17 @@
 # Additional imports in this file could cause the internal
 # import time of TensorFlow to increase by multiple seconds.
 
-
 # Special dunders that we choose to export:
-_exported_dunders = set([
-    '__version__',
-    '__git_version__',
-    '__compiler_version__',
-    '__cxx11_abi_flag__',
-    '__monolithic_build__',
-])
+_exported_dunders = set(
+    [
+        "__version__",
+        "__git_version__",
+        "__compiler_version__",
+        "__cxx11_abi_flag__",
+        "__monolithic_build__",
+    ]
+)
 
 # Expose symbols minus dunders, unless they are allowlisted above.
 # This is necessary to export our dunders.
-__all__ = [s for s in dir() if s in _exported_dunders or not s.startswith('_')]
+__all__ = [s for s in dir() if s in _exported_dunders or not s.startswith("_")]

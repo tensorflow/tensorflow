@@ -27,34 +27,35 @@ from tensorflow.python.platform import flags
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
-    'output', None,
-    'Path to write the genereated register op file and MLIR file.')
+    "output", None, "Path to write the genereated register op file and MLIR file."
+)
 
-flags.DEFINE_bool('gen_register_op', True,
-                  'Generate register op cc file or tfr mlir file.')
+flags.DEFINE_bool(
+    "gen_register_op", True, "Generate register op cc file or tfr mlir file."
+)
 
-flags.mark_flag_as_required('output')
+flags.mark_flag_as_required("output")
 
 
-@Composite('TestRandom', derived_attrs=['T: numbertype'], outputs=['o: T'])
+@Composite("TestRandom", derived_attrs=["T: numbertype"], outputs=["o: T"])
 def _composite_random_op():
-  pass
+    pass
 
 
 def main(_):
-  if FLAGS.gen_register_op:
-    assert FLAGS.output.endswith('.cc')
-    generated_code = gen_register_op(sys.modules[__name__], '_composite_')
-  else:
-    assert FLAGS.output.endswith('.mlir')
-    generated_code = tfr_gen_from_module(sys.modules[__name__], '_composite_')
+    if FLAGS.gen_register_op:
+        assert FLAGS.output.endswith(".cc")
+        generated_code = gen_register_op(sys.modules[__name__], "_composite_")
+    else:
+        assert FLAGS.output.endswith(".mlir")
+        generated_code = tfr_gen_from_module(sys.modules[__name__], "_composite_")
 
-  dirname = os.path.dirname(FLAGS.output)
-  if not os.path.exists(dirname):
-    os.makedirs(dirname)
-  with open(FLAGS.output, 'w') as f:
-    f.write(generated_code)
+    dirname = os.path.dirname(FLAGS.output)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    with open(FLAGS.output, "w") as f:
+        f.write(generated_code)
 
 
-if __name__ == '__main__':
-  app.run(main=main)
+if __name__ == "__main__":
+    app.run(main=main)

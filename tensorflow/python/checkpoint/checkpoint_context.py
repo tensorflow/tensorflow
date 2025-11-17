@@ -19,20 +19,20 @@ import threading
 
 
 class PreemptionSaveContext(threading.local):
-  """A context for saving checkpoint upon preemption."""
+    """A context for saving checkpoint upon preemption."""
 
-  def __init__(self):
-    super().__init__()
-    self._in_preemption_save_context = False
+    def __init__(self):
+        super().__init__()
+        self._in_preemption_save_context = False
 
-  def enter_preemption_save_context(self):
-    self._in_preemption_save_context = True
+    def enter_preemption_save_context(self):
+        self._in_preemption_save_context = True
 
-  def exit_preemption_save_context(self):
-    self._in_preemption_save_context = False
+    def exit_preemption_save_context(self):
+        self._in_preemption_save_context = False
 
-  def in_preemption_save_context(self):
-    return self._in_preemption_save_context
+    def in_preemption_save_context(self):
+        return self._in_preemption_save_context
 
 
 _preemption_save_context = PreemptionSaveContext()
@@ -40,33 +40,32 @@ _preemption_save_context = PreemptionSaveContext()
 
 @contextlib.contextmanager
 def preemption_save_context():
-  _preemption_save_context.enter_preemption_save_context()
-  try:
-    yield
-  finally:
-    _preemption_save_context.exit_preemption_save_context()
+    _preemption_save_context.enter_preemption_save_context()
+    try:
+        yield
+    finally:
+        _preemption_save_context.exit_preemption_save_context()
 
 
 def in_preemption_save_context():
-  return _preemption_save_context.in_preemption_save_context()
+    return _preemption_save_context.in_preemption_save_context()
 
 
 class AsyncMetricsContext(threading.local):
-  """A context for controlling metrics recording when async checkpoint is used.
-  """
+    """A context for controlling metrics recording when async checkpoint is used."""
 
-  def __init__(self):
-    super().__init__()
-    self._in_async_metrics_context = False
+    def __init__(self):
+        super().__init__()
+        self._in_async_metrics_context = False
 
-  def enter_async_metrics_context(self):
-    self._in_async_metrics_context = True
+    def enter_async_metrics_context(self):
+        self._in_async_metrics_context = True
 
-  def exit_async_metrics_context(self):
-    self._in_async_metrics_context = False
+    def exit_async_metrics_context(self):
+        self._in_async_metrics_context = False
 
-  def in_async_metrics_context(self):
-    return self._in_async_metrics_context
+    def in_async_metrics_context(self):
+        return self._in_async_metrics_context
 
 
 _async_metrics_context = AsyncMetricsContext()
@@ -74,12 +73,12 @@ _async_metrics_context = AsyncMetricsContext()
 
 @contextlib.contextmanager
 def async_metrics_context():
-  _async_metrics_context.enter_async_metrics_context()
-  try:
-    yield
-  finally:
-    _async_metrics_context.exit_async_metrics_context()
+    _async_metrics_context.enter_async_metrics_context()
+    try:
+        yield
+    finally:
+        _async_metrics_context.exit_async_metrics_context()
 
 
 def in_async_metrics_context():
-  return _async_metrics_context.in_async_metrics_context()
+    return _async_metrics_context.in_async_metrics_context()

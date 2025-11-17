@@ -13,6 +13,7 @@
 # limitations under the License.
 # =============================================================================
 """Contains the base Layer class, from which all layers inherit."""
+
 from tensorflow.python.keras.legacy_tf_layers import base
 
 InputSpec = base.InputSpec

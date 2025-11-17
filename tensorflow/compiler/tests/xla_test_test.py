@@ -19,22 +19,21 @@ from tensorflow.python.platform import test
 
 
 class XlaTestCaseTestCase(test.TestCase):
-
-  def testManifestEmptyLineDoesNotCatchAll(self):
-    manifest = """
+    def testManifestEmptyLineDoesNotCatchAll(self):
+        manifest = """
 testCaseOne
 """
-    disabled_regex, _ = xla_test.parse_disabled_manifest(manifest)
-    self.assertEqual(disabled_regex, "testCaseOne")
+        disabled_regex, _ = xla_test.parse_disabled_manifest(manifest)
+        self.assertEqual(disabled_regex, "testCaseOne")
 
-  def testManifestWholeLineCommentDoesNotCatchAll(self):
-    manifest = """# I am a comment
+    def testManifestWholeLineCommentDoesNotCatchAll(self):
+        manifest = """# I am a comment
 testCaseOne
 testCaseTwo
 """
-    disabled_regex, _ = xla_test.parse_disabled_manifest(manifest)
-    self.assertEqual(disabled_regex, "testCaseOne|testCaseTwo")
+        disabled_regex, _ = xla_test.parse_disabled_manifest(manifest)
+        self.assertEqual(disabled_regex, "testCaseOne|testCaseTwo")
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

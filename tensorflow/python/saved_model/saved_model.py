@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Convenience functions to save a model.
-"""
-
+"""Convenience functions to save a model."""
 
 # pylint: disable=unused-import
 from tensorflow.python.saved_model import builder
@@ -30,6 +28,7 @@ from tensorflow.python.saved_model.fingerprinting import Fingerprint
 from tensorflow.python.saved_model.fingerprinting import read_fingerprint
 from tensorflow.python.saved_model.load import load
 from tensorflow.python.saved_model.save import save
+
 # pylint: enable=unused-import
 # pylint: disable=wildcard-import
 from tensorflow.python.saved_model.simple_save import *

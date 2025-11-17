@@ -22,105 +22,126 @@ from tensorflow.python.platform import test
 
 
 class ErrorMetadataBaseTest(test.TestCase):
+    def test_create_exception_default_constructor(self):
+        class CustomError(Exception):
+            pass
 
-  def test_create_exception_default_constructor(self):
+        em = error_utils.ErrorMetadataBase(
+            callsite_tb=(),
+            cause_metadata=None,
+            cause_message="test message",
+            source_map={},
+            converter_filename=None,
+        )
+        exc = em.create_exception(CustomError())
+        self.assertIsInstance(exc, CustomError)
+        self.assertIn("test message", str(exc))
 
-    class CustomError(Exception):
-      pass
+    def test_create_exception_custom_constructor(self):
+        class CustomError(Exception):
+            def __init__(self):
+                super(CustomError, self).__init__("test_message")
 
-    em = error_utils.ErrorMetadataBase(
-        callsite_tb=(),
-        cause_metadata=None,
-        cause_message='test message',
-        source_map={},
-        converter_filename=None)
-    exc = em.create_exception(CustomError())
-    self.assertIsInstance(exc, CustomError)
-    self.assertIn('test message', str(exc))
+        em = error_utils.ErrorMetadataBase(
+            callsite_tb=(),
+            cause_metadata=None,
+            cause_message="test message",
+            source_map={},
+            converter_filename=None,
+        )
+        exc = em.create_exception(CustomError())
+        self.assertIsNone(exc)
 
-  def test_create_exception_custom_constructor(self):
-
-    class CustomError(Exception):
-
-      def __init__(self):
-        super(CustomError, self).__init__('test_message')
-
-    em = error_utils.ErrorMetadataBase(
-        callsite_tb=(),
-        cause_metadata=None,
-        cause_message='test message',
-        source_map={},
-        converter_filename=None)
-    exc = em.create_exception(CustomError())
-    self.assertIsNone(exc)
-
-  def test_get_message_no_code(self):
-    callsite_tb = [
-        ('/path/one.py', 11, 'test_fn_1', None),
-        ('/path/two.py', 171, 'test_fn_2', 'test code'),
-    ]
-    cause_message = 'Test message'
-    em = error_utils.ErrorMetadataBase(
-        callsite_tb=callsite_tb,
-        cause_metadata=None,
-        cause_message=cause_message,
-        source_map={},
-        converter_filename=None)
-    self.assertRegex(
-        em.get_message(),
-        re.compile(('"/path/one.py", line 11, in test_fn_1.*'
+    def test_get_message_no_code(self):
+        callsite_tb = [
+            ("/path/one.py", 11, "test_fn_1", None),
+            ("/path/two.py", 171, "test_fn_2", "test code"),
+        ]
+        cause_message = "Test message"
+        em = error_utils.ErrorMetadataBase(
+            callsite_tb=callsite_tb,
+            cause_metadata=None,
+            cause_message=cause_message,
+            source_map={},
+            converter_filename=None,
+        )
+        self.assertRegex(
+            em.get_message(),
+            re.compile(
+                (
+                    '"/path/one.py", line 11, in test_fn_1.*'
                     '"/path/two.py", line 171, in test_fn_2.*'
-                    'Test message'), re.DOTALL))
+                    "Test message"
+                ),
+                re.DOTALL,
+            ),
+        )
 
-  def test_get_message_converted_code(self):
-    callsite_tb = [
-        ('/path/one.py', 11, 'test_fn_1', 'test code 1'),
-        ('/path/two.py', 171, 'test_fn_2', 'test code 2'),
-        ('/path/three.py', 171, 'test_fn_3', 'test code 3'),
-    ]
-    cause_message = 'Test message'
-    em = error_utils.ErrorMetadataBase(
-        callsite_tb=callsite_tb,
-        cause_metadata=None,
-        cause_message=cause_message,
-        source_map={
-            origin_info.LineLocation(filename='/path/two.py', lineno=171):
-                origin_info.OriginInfo(
+    def test_get_message_converted_code(self):
+        callsite_tb = [
+            ("/path/one.py", 11, "test_fn_1", "test code 1"),
+            ("/path/two.py", 171, "test_fn_2", "test code 2"),
+            ("/path/three.py", 171, "test_fn_3", "test code 3"),
+        ]
+        cause_message = "Test message"
+        em = error_utils.ErrorMetadataBase(
+            callsite_tb=callsite_tb,
+            cause_metadata=None,
+            cause_message=cause_message,
+            source_map={
+                origin_info.LineLocation(
+                    filename="/path/two.py", lineno=171
+                ): origin_info.OriginInfo(
                     loc=origin_info.LineLocation(
-                        filename='/path/other_two.py', lineno=13),
-                    function_name='converted_fn',
-                    source_code_line='converted test code',
-                    comment=None)
-        },
-        converter_filename=None)
-    result = em.get_message()
-    self.assertRegex(
-        result,
-        re.compile((r'converted_fn  \*.*'
+                        filename="/path/other_two.py", lineno=13
+                    ),
+                    function_name="converted_fn",
+                    source_code_line="converted test code",
+                    comment=None,
+                )
+            },
+            converter_filename=None,
+        )
+        result = em.get_message()
+        self.assertRegex(
+            result,
+            re.compile(
+                (
+                    r"converted_fn  \*.*"
                     r'"/path/three.py", line 171, in test_fn_3.*'
-                    r'Test message'), re.DOTALL))
-    self.assertNotRegex(result, re.compile('test_fn_1'))
+                    r"Test message"
+                ),
+                re.DOTALL,
+            ),
+        )
+        self.assertNotRegex(result, re.compile("test_fn_1"))
 
-  def test_get_message_call_overload(self):
-
-    callsite_tb = [
-        ('/path/one.py', 11, 'test_fn_1', 'test code 1'),
-        ('/path/two.py', 0, 'test_fn_2', 'test code 2'),
-        ('/path/three.py', 171, 'test_fn_3', 'test code 3'),
-    ]
-    cause_message = 'Test message'
-    em = error_utils.ErrorMetadataBase(
-        callsite_tb=callsite_tb,
-        cause_metadata=None,
-        cause_message=cause_message,
-        source_map={},
-        converter_filename='/path/two.py')
-    self.assertRegex(
-        em.get_message(),
-        re.compile((r'"/path/one.py", line 11, in test_fn_1.*'
+    def test_get_message_call_overload(self):
+        callsite_tb = [
+            ("/path/one.py", 11, "test_fn_1", "test code 1"),
+            ("/path/two.py", 0, "test_fn_2", "test code 2"),
+            ("/path/three.py", 171, "test_fn_3", "test code 3"),
+        ]
+        cause_message = "Test message"
+        em = error_utils.ErrorMetadataBase(
+            callsite_tb=callsite_tb,
+            cause_metadata=None,
+            cause_message=cause_message,
+            source_map={},
+            converter_filename="/path/two.py",
+        )
+        self.assertRegex(
+            em.get_message(),
+            re.compile(
+                (
+                    r'"/path/one.py", line 11, in test_fn_1.*'
                     r'"/path/three.py", line 171, in test_fn_3  \*\*.*'
-                    r'Test message'), re.DOTALL))
+                    r"Test message"
+                ),
+                re.DOTALL,
+            ),
+        )
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

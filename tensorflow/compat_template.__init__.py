@@ -30,13 +30,16 @@ from tensorflow.python.util.lazy_loader import KerasLazyLoader as _KerasLazyLoad
 _current_module = _sys.modules[__name__]
 
 # Lazy load Keras v2
-_tf_uses_legacy_keras = (
-    _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"))
+_tf_uses_legacy_keras = _os.environ.get("TF_USE_LEGACY_KERAS", None) in (
+    "true",
+    "True",
+    "1",
+)
 setattr(_current_module, "keras", _KerasLazyLoader(globals(), mode="v2"))
 if _tf_uses_legacy_keras:
-  _module_dir = _module_util.get_parent_dir_for_name("tf_keras.api._v2.keras")
+    _module_dir = _module_util.get_parent_dir_for_name("tf_keras.api._v2.keras")
 else:
-  _module_dir = _module_util.get_parent_dir_for_name("keras.api._v2.keras")
+    _module_dir = _module_util.get_parent_dir_for_name("keras.api._v2.keras")
 _current_module.__path__ = [_module_dir] + _current_module.__path__
 
 
@@ -47,17 +50,18 @@ _current_module.__path__ = [_module_dir] + _current_module.__path__
 #
 # This make this one symbol available directly.
 from tensorflow.python.compat.v2_compat import enable_v2_behavior  # pylint: disable=g-import-not-at-top
+
 setattr(_current_module, "enable_v2_behavior", enable_v2_behavior)
 
 # Add module aliases
-_losses = _KerasLazyLoader(
-    globals(), submodule="losses", name="losses", mode="v2")
-_metrics = _KerasLazyLoader(
-    globals(), submodule="metrics", name="metrics", mode="v2")
+_losses = _KerasLazyLoader(globals(), submodule="losses", name="losses", mode="v2")
+_metrics = _KerasLazyLoader(globals(), submodule="metrics", name="metrics", mode="v2")
 _optimizers = _KerasLazyLoader(
-    globals(), submodule="optimizers", name="optimizers", mode="v2")
+    globals(), submodule="optimizers", name="optimizers", mode="v2"
+)
 _initializers = _KerasLazyLoader(
-    globals(), submodule="initializers", name="initializers", mode="v2")
+    globals(), submodule="initializers", name="initializers", mode="v2"
+)
 setattr(_current_module, "losses", _losses)
 setattr(_current_module, "metrics", _metrics)
 setattr(_current_module, "optimizers", _optimizers)

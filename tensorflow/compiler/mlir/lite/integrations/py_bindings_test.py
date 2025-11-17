@@ -20,8 +20,8 @@
 
 
 def smoketest():
-  import tensorflow.compiler.mlir.lite.integrations.python.mlir
+    import tensorflow.compiler.mlir.lite.integrations.python.mlir
 
 
 if __name__ == "__main__":
-  smoketest()
+    smoketest()

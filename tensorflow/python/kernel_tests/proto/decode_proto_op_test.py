@@ -22,10 +22,9 @@ from tensorflow.python.platform import test
 
 
 class DecodeProtoOpTest(test_base.DecodeProtoOpTestBase):
+    def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
+        super(DecodeProtoOpTest, self).__init__(proto_ops, methodName)
 
-  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
-    super(DecodeProtoOpTest, self).__init__(proto_ops, methodName)
 
-
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

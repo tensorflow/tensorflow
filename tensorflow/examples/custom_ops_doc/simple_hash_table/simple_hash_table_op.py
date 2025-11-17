@@ -18,4 +18,5 @@ import tensorflow as tf
 from tensorflow.python.platform import resource_loader
 
 gen_simple_hash_table_op = tf.load_op_library(
-    resource_loader.get_path_to_datafile("simple_hash_table_kernel.so"))
+    resource_loader.get_path_to_datafile("simple_hash_table_kernel.so")
+)

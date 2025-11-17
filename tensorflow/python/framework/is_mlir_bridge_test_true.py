@@ -22,5 +22,5 @@ to be compiled with MLIR bridge.
 
 
 def is_mlir_bridge_enabled():
-  """Returns true if MLIR bridge should be enabled for tests."""
-  return True
+    """Returns true if MLIR bridge should be enabled for tests."""
+    return True

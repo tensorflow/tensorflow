@@ -26,33 +26,35 @@ from tensorflow.python.module import module
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import save_options
 
-flags.DEFINE_string('saved_model_path', '', 'Path to save the model to.')
+flags.DEFINE_string("saved_model_path", "", "Path to save the model to.")
 FLAGS = flags.FLAGS
 
 
 class ToyModule(module.Module):
-  """Defines a toy module."""
+    """Defines a toy module."""
 
-  @def_function.function(
-      input_signature=[tensor_spec.TensorSpec([], dtypes.int32, name='input')])
-  def map_data(self, x):
-    dataset = dataset_ops.Dataset.from_tensors(x)
-    r = dataset.map(lambda x: x + 1)
-    return r.get_single_element()
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32, name="input")]
+    )
+    def map_data(self, x):
+        dataset = dataset_ops.Dataset.from_tensors(x)
+        r = dataset.map(lambda x: x + 1)
+        return r.get_single_element()
 
 
 def main(argv):
-  if len(argv) > 1:
-    raise app.UsageError('Too many command-line arguments.')
+    if len(argv) > 1:
+        raise app.UsageError("Too many command-line arguments.")
 
-  v2_compat.enable_v2_behavior()
+    v2_compat.enable_v2_behavior()
 
-  save.save(
-      ToyModule(),
-      FLAGS.saved_model_path,
-      options=save_options.SaveOptions(save_debug_info=False))
-  logging.info('Saved model to: %s', FLAGS.saved_model_path)
+    save.save(
+        ToyModule(),
+        FLAGS.saved_model_path,
+        options=save_options.SaveOptions(save_debug_info=False),
+    )
+    logging.info("Saved model to: %s", FLAGS.saved_model_path)
 
 
-if __name__ == '__main__':
-  app.run(main)
+if __name__ == "__main__":
+    app.run(main)

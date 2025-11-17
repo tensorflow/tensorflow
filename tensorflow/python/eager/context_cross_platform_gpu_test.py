@@ -22,22 +22,21 @@ from tensorflow.python.platform import test
 
 
 class ContextCrossPlatformGpuTest(test.TestCase, parameterized.TestCase):
-
-  @parameterized.named_parameters(
-      [(f'_{stage}', stage) for stage in ['hlo', 'hlo_serialized']]
-  )
-  def testGetCompilerIrOnTpuPlatform(self, stage):
-    @def_function.function(jit_compile=True)
-    def test_func(x):
-      return 2 * x
-
-    a = array_ops.ones((1000, 1000))  # 4 * 1000 * 1000 in bytes
-    result = test_func.experimental_get_compiler_ir(a)(
-        stage=stage, platform_name='TPU'
+    @parameterized.named_parameters(
+        [(f"_{stage}", stage) for stage in ["hlo", "hlo_serialized"]]
     )
-    self.assertNotEmpty(result)
+    def testGetCompilerIrOnTpuPlatform(self, stage):
+        @def_function.function(jit_compile=True)
+        def test_func(x):
+            return 2 * x
+
+        a = array_ops.ones((1000, 1000))  # 4 * 1000 * 1000 in bytes
+        result = test_func.experimental_get_compiler_ir(a)(
+            stage=stage, platform_name="TPU"
+        )
+        self.assertNotEmpty(result)
 
 
-if __name__ == '__main__':
-  ops.enable_eager_execution()
-  test.main()
+if __name__ == "__main__":
+    ops.enable_eager_execution()
+    test.main()

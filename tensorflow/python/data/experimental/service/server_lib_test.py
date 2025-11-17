@@ -24,154 +24,160 @@ from tensorflow.python.profiler import profiler_client
 
 _portpicker_import_error = None
 try:
-  import portpicker  # pylint: disable=g-import-not-at-top
+    import portpicker  # pylint: disable=g-import-not-at-top
 except ImportError as _error:  # pylint: disable=invalid-name
-  _portpicker_import_error = _error
-  portpicker = None
+    _portpicker_import_error = _error
+    portpicker = None
 
 ASSIGNED_PORTS = set()
 lock = threading.Lock()
 
 
 def pick_unused_port():
-  """Returns an unused and unassigned local port."""
+    """Returns an unused and unassigned local port."""
 
-  if _portpicker_import_error:
-    raise _portpicker_import_error  # pylint: disable=raising-bad-type
+    if _portpicker_import_error:
+        raise _portpicker_import_error  # pylint: disable=raising-bad-type
 
-  global ASSIGNED_PORTS
-  with lock:
-    while True:
-      try:
-        port = portpicker.pick_unused_port()
-      except portpicker.NoFreePortFoundError:
-        raise unittest.SkipTest("Flakes in portpicker library do not represent "
-                                "TensorFlow errors.")
-      if port > 10000 and port not in ASSIGNED_PORTS:
-        ASSIGNED_PORTS.add(port)
-        logging.info("Using local port %r", port)
-        return port
+    global ASSIGNED_PORTS
+    with lock:
+        while True:
+            try:
+                port = portpicker.pick_unused_port()
+            except portpicker.NoFreePortFoundError:
+                raise unittest.SkipTest(
+                    "Flakes in portpicker library do not represent TensorFlow errors."
+                )
+            if port > 10000 and port not in ASSIGNED_PORTS:
+                ASSIGNED_PORTS.add(port)
+                logging.info("Using local port %r", port)
+                return port
 
 
 class ServerLibTest(test.TestCase):
+    def testStartDispatcher(self):
+        dispatcher = server_lib.DispatchServer(start=False)
+        dispatcher.start()
 
-  def testStartDispatcher(self):
-    dispatcher = server_lib.DispatchServer(start=False)
-    dispatcher.start()
+    def testStartDispatcherWithPortConfig(self):
+        port = pick_unused_port()
+        config = server_lib.DispatcherConfig(port=port)
+        dispatcher = server_lib.DispatchServer(config=config, start=True)
+        self.assertEqual(dispatcher.target, "grpc://localhost:{}".format(port))
 
-  def testStartDispatcherWithPortConfig(self):
-    port = pick_unused_port()
-    config = server_lib.DispatcherConfig(port=port)
-    dispatcher = server_lib.DispatchServer(config=config, start=True)
-    self.assertEqual(dispatcher.target, "grpc://localhost:{}".format(port))
+    def testStartDispatcherWithWorkDirConfig(self):
+        temp_dir = tempfile.mkdtemp()
+        config = server_lib.DispatcherConfig(work_dir=temp_dir)
+        dispatcher = server_lib.DispatchServer(  # pylint: disable=unused-variable
+            config=config, start=True
+        )
 
-  def testStartDispatcherWithWorkDirConfig(self):
-    temp_dir = tempfile.mkdtemp()
-    config = server_lib.DispatcherConfig(work_dir=temp_dir)
-    dispatcher = server_lib.DispatchServer(  # pylint: disable=unused-variable
-        config=config, start=True)
+    def testStartDispatcherWithFaultTolerantConfig(self):
+        temp_dir = tempfile.mkdtemp()
+        config = server_lib.DispatcherConfig(
+            work_dir=temp_dir, fault_tolerant_mode=True
+        )
+        dispatcher = server_lib.DispatchServer(  # pylint: disable=unused-variable
+            config=config, start=True
+        )
 
-  def testStartDispatcherWithFaultTolerantConfig(self):
-    temp_dir = tempfile.mkdtemp()
-    config = server_lib.DispatcherConfig(
-        work_dir=temp_dir, fault_tolerant_mode=True)
-    dispatcher = server_lib.DispatchServer(  # pylint: disable=unused-variable
-        config=config, start=True)
+    def testStartDispatcherWithWrongFaultTolerantConfig(self):
+        config = server_lib.DispatcherConfig(fault_tolerant_mode=True)
+        error = "Cannot enable fault tolerant mode without configuring a work dir"
+        with self.assertRaisesRegex(ValueError, error):
+            dispatcher = server_lib.DispatchServer(  # pylint: disable=unused-variable
+                config=config, start=True
+            )
 
-  def testStartDispatcherWithWrongFaultTolerantConfig(self):
-    config = server_lib.DispatcherConfig(fault_tolerant_mode=True)
-    error = "Cannot enable fault tolerant mode without configuring a work dir"
-    with self.assertRaisesRegex(ValueError, error):
-      dispatcher = server_lib.DispatchServer(  # pylint: disable=unused-variable
-          config=config, start=True)
+    def testMultipleStartDispatcher(self):
+        dispatcher = server_lib.DispatchServer(start=True)
+        dispatcher.start()
 
-  def testMultipleStartDispatcher(self):
-    dispatcher = server_lib.DispatchServer(start=True)
-    dispatcher.start()
+    def testStartWorker(self):
+        dispatcher = server_lib.DispatchServer()
+        worker = server_lib.WorkerServer(
+            server_lib.WorkerConfig(dispatcher._address), start=False
+        )
+        worker.start()
 
-  def testStartWorker(self):
-    dispatcher = server_lib.DispatchServer()
-    worker = server_lib.WorkerServer(
-        server_lib.WorkerConfig(dispatcher._address), start=False)
-    worker.start()
+    def testStartWorkerWithPortConfig(self):
+        dispatcher = server_lib.DispatchServer()
+        port = pick_unused_port()
+        worker = server_lib.WorkerServer(
+            server_lib.WorkerConfig(dispatcher._address, port=port), start=True
+        )
+        self.assertEqual(worker._address, "localhost:{}".format(port))
 
-  def testStartWorkerWithPortConfig(self):
-    dispatcher = server_lib.DispatchServer()
-    port = pick_unused_port()
-    worker = server_lib.WorkerServer(
-        server_lib.WorkerConfig(dispatcher._address, port=port), start=True)
-    self.assertEqual(worker._address, "localhost:{}".format(port))
+    def testMultipleStartWorker(self):
+        dispatcher = server_lib.DispatchServer()
+        worker = server_lib.WorkerServer(
+            server_lib.WorkerConfig(dispatcher._address), start=True
+        )
+        worker.start()
 
-  def testMultipleStartWorker(self):
-    dispatcher = server_lib.DispatchServer()
-    worker = server_lib.WorkerServer(
-        server_lib.WorkerConfig(dispatcher._address), start=True)
-    worker.start()
+    def testStopDispatcher(self):
+        dispatcher = server_lib.DispatchServer()
+        dispatcher.stop()
+        dispatcher.stop()
 
-  def testStopDispatcher(self):
-    dispatcher = server_lib.DispatchServer()
-    dispatcher.stop()
-    dispatcher.stop()
+    def testStopWorker(self):
+        dispatcher = server_lib.DispatchServer()
+        worker = server_lib.WorkerServer(server_lib.WorkerConfig(dispatcher._address))
+        worker.stop()
+        worker.stop()
 
-  def testStopWorker(self):
-    dispatcher = server_lib.DispatchServer()
-    worker = server_lib.WorkerServer(
-        server_lib.WorkerConfig(dispatcher._address))
-    worker.stop()
-    worker.stop()
+    def testStopStartDispatcher(self):
+        dispatcher = server_lib.DispatchServer()
+        dispatcher.stop()
+        with self.assertRaisesRegex(
+            RuntimeError, "Server cannot be started after it has been stopped"
+        ):
+            dispatcher.start()
 
-  def testStopStartDispatcher(self):
-    dispatcher = server_lib.DispatchServer()
-    dispatcher.stop()
-    with self.assertRaisesRegex(
-        RuntimeError, "Server cannot be started after it has been stopped"):
-      dispatcher.start()
+    def testStopStartWorker(self):
+        dispatcher = server_lib.DispatchServer()
+        worker = server_lib.WorkerServer(server_lib.WorkerConfig(dispatcher._address))
+        worker.stop()
+        with self.assertRaisesRegex(
+            RuntimeError, "Server cannot be started after it has been stopped"
+        ):
+            worker.start()
 
-  def testStopStartWorker(self):
-    dispatcher = server_lib.DispatchServer()
-    worker = server_lib.WorkerServer(
-        server_lib.WorkerConfig(dispatcher._address))
-    worker.stop()
-    with self.assertRaisesRegex(
-        RuntimeError, "Server cannot be started after it has been stopped"):
-      worker.start()
+    def testJoinDispatcher(self):
+        dispatcher = server_lib.DispatchServer()
+        dispatcher.stop()
+        dispatcher.join()
 
-  def testJoinDispatcher(self):
-    dispatcher = server_lib.DispatchServer()
-    dispatcher.stop()
-    dispatcher.join()
+    def testJoinWorker(self):
+        dispatcher = server_lib.DispatchServer()
+        worker = server_lib.WorkerServer(server_lib.WorkerConfig(dispatcher._address))
+        worker.stop()
+        worker.join()
 
-  def testJoinWorker(self):
-    dispatcher = server_lib.DispatchServer()
-    worker = server_lib.WorkerServer(
-        server_lib.WorkerConfig(dispatcher._address))
-    worker.stop()
-    worker.join()
+    def testDispatcherNumWorkers(self):
+        dispatcher = server_lib.DispatchServer()
+        self.assertEqual(0, dispatcher._num_workers())
+        worker1 = server_lib.WorkerServer(  # pylint: disable=unused-variable
+            server_lib.WorkerConfig(dispatcher._address)
+        )
+        self.assertEqual(1, dispatcher._num_workers())
+        worker2 = server_lib.WorkerServer(  # pylint: disable=unused-variable
+            server_lib.WorkerConfig(dispatcher._address)
+        )
+        self.assertEqual(2, dispatcher._num_workers())
 
-  def testDispatcherNumWorkers(self):
-    dispatcher = server_lib.DispatchServer()
-    self.assertEqual(0, dispatcher._num_workers())
-    worker1 = server_lib.WorkerServer(  # pylint: disable=unused-variable
-        server_lib.WorkerConfig(dispatcher._address))
-    self.assertEqual(1, dispatcher._num_workers())
-    worker2 = server_lib.WorkerServer(  # pylint: disable=unused-variable
-        server_lib.WorkerConfig(dispatcher._address))
-    self.assertEqual(2, dispatcher._num_workers())
-
-  def testProfileWorker(self):
-    dispatcher = server_lib.DispatchServer()
-    worker = server_lib.WorkerServer(
-        server_lib.WorkerConfig(dispatcher._address)
-    )
-    # Test the profilers are successfully started and connected to profiler
-    # service on the worker. Since there is no op running, it is expected to
-    # return RuntimeError with no trace events collected string.
-    with self.assertRaises(RuntimeError) as error:
-      profiler_client.trace(worker._address, tempfile.mkdtemp(), duration_ms=10)
-    self.assertStartsWith(
-        str(error.exception), "UNAVAILABLE: No trace event was collected"
-    )
+    def testProfileWorker(self):
+        dispatcher = server_lib.DispatchServer()
+        worker = server_lib.WorkerServer(server_lib.WorkerConfig(dispatcher._address))
+        # Test the profilers are successfully started and connected to profiler
+        # service on the worker. Since there is no op running, it is expected to
+        # return RuntimeError with no trace events collected string.
+        with self.assertRaises(RuntimeError) as error:
+            profiler_client.trace(worker._address, tempfile.mkdtemp(), duration_ms=10)
+        self.assertStartsWith(
+            str(error.exception), "UNAVAILABLE: No trace event was collected"
+        )
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

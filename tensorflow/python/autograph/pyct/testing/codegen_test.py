@@ -22,15 +22,15 @@ from tensorflow.python.platform import test
 
 
 class CodeGenTest(test.TestCase):
+    def test_codegen_gens(self):
+        np.random.seed(0)
+        for _ in range(1000):
+            node = codegen.generate_random_functiondef()
+            fn = compiler.ast_to_object(node)
+            self.assertIsNotNone(
+                fn, "Generated invalid AST that could not convert to source."
+            )
 
-  def test_codegen_gens(self):
-    np.random.seed(0)
-    for _ in range(1000):
-      node = codegen.generate_random_functiondef()
-      fn = compiler.ast_to_object(node)
-      self.assertIsNotNone(
-          fn, 'Generated invalid AST that could not convert to source.')
 
-
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

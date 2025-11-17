@@ -14,6 +14,7 @@
 # ==============================================================================
 
 """Tests for c_api utils."""
+
 import gc
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import test_util
@@ -21,21 +22,20 @@ from tensorflow.python.platform import googletest
 
 
 class ApiDefMapTest(test_util.TensorFlowTestCase):
+    def testApiDefMapOpNames(self):
+        api_def_map = c_api_util.ApiDefMap()
+        self.assertIn("Add", api_def_map.op_names())
 
-  def testApiDefMapOpNames(self):
-    api_def_map = c_api_util.ApiDefMap()
-    self.assertIn("Add", api_def_map.op_names())
+    def testApiDefMapGet(self):
+        api_def_map = c_api_util.ApiDefMap()
+        op_def = api_def_map.get_op_def("Add")
+        self.assertEqual(op_def.name, "Add")
+        api_def = api_def_map.get_api_def("Add")
+        self.assertEqual(api_def.graph_op_name, "Add")
 
-  def testApiDefMapGet(self):
-    api_def_map = c_api_util.ApiDefMap()
-    op_def = api_def_map.get_op_def("Add")
-    self.assertEqual(op_def.name, "Add")
-    api_def = api_def_map.get_api_def("Add")
-    self.assertEqual(api_def.graph_op_name, "Add")
-
-  def testApiDefMapPutThenGet(self):
-    api_def_map = c_api_util.ApiDefMap()
-    api_def_text = """
+    def testApiDefMapPutThenGet(self):
+        api_def_map = c_api_util.ApiDefMap()
+        api_def_text = """
 op {
   graph_op_name: "Add"
   summary: "Returns x + y element-wise."
@@ -45,77 +45,76 @@ op {
 END
 }
 """
-    api_def_map.put_api_def(api_def_text)
-    api_def = api_def_map.get_api_def("Add")
-    self.assertEqual(api_def.graph_op_name, "Add")
-    self.assertEqual(api_def.summary, "Returns x + y element-wise.")
+        api_def_map.put_api_def(api_def_text)
+        api_def = api_def_map.get_api_def("Add")
+        self.assertEqual(api_def.graph_op_name, "Add")
+        self.assertEqual(api_def.summary, "Returns x + y element-wise.")
 
 
 class UniquePtrTest(test_util.TensorFlowTestCase):
+    def setUp(self):
+        super(UniquePtrTest, self).setUp()
 
-  def setUp(self):
+        class MockClass:
+            def __init__(self):
+                self.deleted = False
 
-    super(UniquePtrTest, self).setUp()
+        def deleter(obj):
+            obj.deleted = True
 
-    class MockClass:
+        self.obj = MockClass()
+        self.deleter = deleter
 
-      def __init__(self):
-        self.deleted = False
+    def testLifeCycle(self):
+        self.assertFalse(self.obj.deleted)
 
-    def deleter(obj):
-      obj.deleted = True
+        a = c_api_util.UniquePtr(name="mock", deleter=self.deleter, obj=self.obj)
 
-    self.obj = MockClass()
-    self.deleter = deleter
+        with a.get() as obj:
+            self.assertIs(obj, self.obj)
 
-  def testLifeCycle(self):
-    self.assertFalse(self.obj.deleted)
+        del a
+        gc.collect()
+        self.assertTrue(self.obj.deleted)
 
-    a = c_api_util.UniquePtr(name="mock", deleter=self.deleter, obj=self.obj)
+    def testSafeUnderRaceCondition(self):
+        self.assertFalse(self.obj.deleted)
 
-    with a.get() as obj:
-      self.assertIs(obj, self.obj)
+        a = c_api_util.UniquePtr(name="mock", deleter=self.deleter, obj=self.obj)
 
-    del a
-    gc.collect()
-    self.assertTrue(self.obj.deleted)
+        with a.get() as obj:
+            self.assertIs(obj, self.obj)
+            # The del below mimics a potential race condition.
+            # 'a' could be owned by a different thread, and this thread not
+            # necessarily hold a long-term reference to a.
+            del a
+            gc.collect()
+            self.assertFalse(obj.deleted)
 
-  def testSafeUnderRaceCondition(self):
-    self.assertFalse(self.obj.deleted)
+        gc.collect()
+        self.assertTrue(self.obj.deleted)
 
-    a = c_api_util.UniquePtr(name="mock", deleter=self.deleter, obj=self.obj)
+    def testRaiseAfterDeleted(self):
+        self.assertFalse(self.obj.deleted)
 
-    with a.get() as obj:
-      self.assertIs(obj, self.obj)
-      # The del below mimics a potential race condition.
-      # 'a' could be owned by a different thread, and this thread not
-      # necessarily hold a long-term reference to a.
-      del a
-      gc.collect()
-      self.assertFalse(obj.deleted)
+        a = c_api_util.UniquePtr(name="mock", deleter=self.deleter, obj=self.obj)
 
-    gc.collect()
-    self.assertTrue(self.obj.deleted)
+        # The __del__ below mimics a partially started deletion, potentially
+        # started from another thread.
+        # 'a' could be owned by a different thread, and this thread not
+        # necessarily hold a long-term reference to a.
+        a.__del__()
+        self.assertTrue(self.obj.deleted)
 
-  def testRaiseAfterDeleted(self):
-    self.assertFalse(self.obj.deleted)
+        with self.assertRaisesRegex(
+            c_api_util.AlreadyGarbageCollectedError, "MockClass"
+        ):
+            with a.get():
+                pass
 
-    a = c_api_util.UniquePtr(name="mock", deleter=self.deleter, obj=self.obj)
+        gc.collect()
+        self.assertTrue(self.obj.deleted)
 
-    # The __del__ below mimics a partially started deletion, potentially
-    # started from another thread.
-    # 'a' could be owned by a different thread, and this thread not
-    # necessarily hold a long-term reference to a.
-    a.__del__()
-    self.assertTrue(self.obj.deleted)
-
-    with self.assertRaisesRegex(c_api_util.AlreadyGarbageCollectedError,
-                                "MockClass"):
-      with a.get():
-        pass
-
-    gc.collect()
-    self.assertTrue(self.obj.deleted)
 
 if __name__ == "__main__":
-  googletest.main()
+    googletest.main()

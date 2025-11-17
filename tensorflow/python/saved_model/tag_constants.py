@@ -12,9 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Common tags used for graphs in SavedModel.
+"""Common tags used for graphs in SavedModel."""
 
-"""
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -22,17 +21,15 @@ from tensorflow.python.util.tf_export import tf_export
 SERVING = "serve"
 tf_export(
     "saved_model.SERVING",
-    v1=["saved_model.SERVING",
-        "saved_model.tag_constants.SERVING"]).export_constant(
-            __name__, "SERVING")
+    v1=["saved_model.SERVING", "saved_model.tag_constants.SERVING"],
+).export_constant(__name__, "SERVING")
 
 # Tag for the `training` graph.
 TRAINING = "train"
 tf_export(
     "saved_model.TRAINING",
-    v1=["saved_model.TRAINING",
-        "saved_model.tag_constants.TRAINING"]).export_constant(
-            __name__, "TRAINING")
+    v1=["saved_model.TRAINING", "saved_model.tag_constants.TRAINING"],
+).export_constant(__name__, "TRAINING")
 
 # LINT.IfChange
 # Tag for the `eval` graph. Not exported while the export logic is in contrib.
@@ -42,13 +39,11 @@ EVAL = "eval"
 # Tag for the `gpu` graph.
 GPU = "gpu"
 tf_export(
-    "saved_model.GPU", v1=["saved_model.GPU",
-                           "saved_model.tag_constants.GPU"]).export_constant(
-                               __name__, "GPU")
+    "saved_model.GPU", v1=["saved_model.GPU", "saved_model.tag_constants.GPU"]
+).export_constant(__name__, "GPU")
 
 # Tag for the `tpu` graph.
 TPU = "tpu"
 tf_export(
-    "saved_model.TPU", v1=["saved_model.TPU",
-                           "saved_model.tag_constants.TPU"]).export_constant(
-                               __name__, "TPU")
+    "saved_model.TPU", v1=["saved_model.TPU", "saved_model.tag_constants.TPU"]
+).export_constant(__name__, "TPU")

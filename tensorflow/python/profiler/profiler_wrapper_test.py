@@ -16,26 +16,28 @@
 
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
-from tensorflow.python.profiler.internal import _pywrap_profiler_plugin as profiler_wrapper_plugin
+from tensorflow.python.profiler.internal import (
+    _pywrap_profiler_plugin as profiler_wrapper_plugin,
+)
 
 
 class ProfilerSessionTest(test_util.TensorFlowTestCase):
+    def test_xspace_to_tools_data_default_options(self):
+        # filenames only used for `hlo_proto` tool.
+        profiler_wrapper_plugin.xspace_to_tools_data([], "trace_viewer")
 
-  def test_xspace_to_tools_data_default_options(self):
-    # filenames only used for `hlo_proto` tool.
-    profiler_wrapper_plugin.xspace_to_tools_data([], 'trace_viewer')
+    def _test_xspace_to_tools_data_options(self, options):
+        profiler_wrapper_plugin.xspace_to_tools_data([], "trace_viewer", options)
 
-  def _test_xspace_to_tools_data_options(self, options):
-    profiler_wrapper_plugin.xspace_to_tools_data([], 'trace_viewer', options)
+    def test_xspace_to_tools_data_empty_options(self):
+        self._test_xspace_to_tools_data_options({})
 
-  def test_xspace_to_tools_data_empty_options(self):
-    self._test_xspace_to_tools_data_options({})
+    def test_xspace_to_tools_data_int_options(self):
+        self._test_xspace_to_tools_data_options({"example_option": 0})
 
-  def test_xspace_to_tools_data_int_options(self):
-    self._test_xspace_to_tools_data_options({'example_option': 0})
+    def test_xspace_to_tools_data_str_options(self):
+        self._test_xspace_to_tools_data_options({"example_option": "example"})
 
-  def test_xspace_to_tools_data_str_options(self):
-    self._test_xspace_to_tools_data_options({'example_option': 'example'})
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

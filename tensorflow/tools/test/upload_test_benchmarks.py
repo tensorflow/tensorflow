@@ -87,30 +87,30 @@ from google.cloud import datastore
 
 
 def is_real_file(dirpath, fname):
-  fpath = os.path.join(dirpath, fname)
-  return os.path.isfile(fpath) and not os.path.islink(fpath)
+    fpath = os.path.join(dirpath, fname)
+    return os.path.isfile(fpath) and not os.path.islink(fpath)
 
 
 def get_mtime(dirpath, fname):
-  fpath = os.path.join(dirpath, fname)
-  return os.stat(fpath).st_mtime
+    fpath = os.path.join(dirpath, fname)
+    return os.stat(fpath).st_mtime
 
 
 def list_files_by_mtime(dirpath):
-  """Return a list of files in the directory, sorted in increasing "mtime".
+    """Return a list of files in the directory, sorted in increasing "mtime".
 
-  Return a list of files in the given directory, sorted from older to newer file
-  according to their modification times.  Only return actual files, skipping
-  directories, symbolic links, pipes, etc.
+    Return a list of files in the given directory, sorted from older to newer file
+    according to their modification times.  Only return actual files, skipping
+    directories, symbolic links, pipes, etc.
 
-  Args:
-    dirpath: directory pathname
+    Args:
+      dirpath: directory pathname
 
-  Returns:
-    A list of file names relative to the given directory path.
-  """
-  files = [f for f in os.listdir(dirpath) if is_real_file(dirpath, f)]
-  return sorted(files, key=lambda f: get_mtime(dirpath, f))
+    Returns:
+      A list of file names relative to the given directory path.
+    """
+    files = [f for f in os.listdir(dirpath) if is_real_file(dirpath, f)]
+    return sorted(files, key=lambda f: get_mtime(dirpath, f))
 
 
 # Note: The file locking code uses flock() instead of lockf() because benchmark
@@ -118,127 +118,134 @@ def list_files_by_mtime(dirpath):
 # locks on them.  This imposes the limitation that the data directory must be
 # local, not NFS-mounted.
 def lock(fd):
-  fcntl.flock(fd, fcntl.LOCK_EX)
+    fcntl.flock(fd, fcntl.LOCK_EX)
 
 
 def unlock(fd):
-  fcntl.flock(fd, fcntl.LOCK_UN)
+    fcntl.flock(fd, fcntl.LOCK_UN)
 
 
 def trylock(fd):
-  try:
-    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    return True
-  except Exception:  # pylint: disable=broad-except
-    return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except Exception:  # pylint: disable=broad-except
+        return False
 
 
 def upload_benchmark_data(client, data):
-  """Parse benchmark data and use the client to upload it to the datastore.
+    """Parse benchmark data and use the client to upload it to the datastore.
 
-  Parse the given benchmark data from the serialized JSON-format used to write
-  the test results file.  Create the different datastore Entities from that data
-  and upload them to the datastore in a batch using the client connection.
+    Parse the given benchmark data from the serialized JSON-format used to write
+    the test results file.  Create the different datastore Entities from that data
+    and upload them to the datastore in a batch using the client connection.
 
-  Args:
-    client: datastore client connection
-    data: JSON-encoded benchmark data
-  """
-  test_result = json.loads(data)
+    Args:
+      client: datastore client connection
+      data: JSON-encoded benchmark data
+    """
+    test_result = json.loads(data)
 
-  test_name = str(test_result["name"])
-  start_time = datetime.datetime.utcfromtimestamp(
-      float(test_result["startTime"]))
-  batch = []
+    test_name = str(test_result["name"])
+    start_time = datetime.datetime.utcfromtimestamp(float(test_result["startTime"]))
+    batch = []
 
-  # Create the Test Entity containing all the test information as a
-  # non-indexed JSON blob.
-  t_key = client.key("Test")
-  t_val = datastore.Entity(t_key, exclude_from_indexes=["info"])
-  t_val.update({"test": test_name, "start": start_time, "info": str(data)})
-  batch.append(t_val)
+    # Create the Test Entity containing all the test information as a
+    # non-indexed JSON blob.
+    t_key = client.key("Test")
+    t_val = datastore.Entity(t_key, exclude_from_indexes=["info"])
+    t_val.update({"test": test_name, "start": start_time, "info": str(data)})
+    batch.append(t_val)
 
-  # Create one Entry Entity for each benchmark entry.  The wall-clock timing is
-  # the attribute to be fetched and displayed.  The full entry information is
-  # also stored as a non-indexed JSON blob.
-  for ent in test_result["entries"].get("entry", []):
-    ent_name = str(ent["name"])
-    e_key = client.key("Entry")
-    e_val = datastore.Entity(e_key, exclude_from_indexes=["info"])
-    e_val.update({
-        "test": test_name,
-        "start": start_time,
-        "entry": ent_name,
-        "timing": ent["wallTime"],
-        "info": str(json.dumps(ent))
-    })
-    batch.append(e_val)
+    # Create one Entry Entity for each benchmark entry.  The wall-clock timing is
+    # the attribute to be fetched and displayed.  The full entry information is
+    # also stored as a non-indexed JSON blob.
+    for ent in test_result["entries"].get("entry", []):
+        ent_name = str(ent["name"])
+        e_key = client.key("Entry")
+        e_val = datastore.Entity(e_key, exclude_from_indexes=["info"])
+        e_val.update(
+            {
+                "test": test_name,
+                "start": start_time,
+                "entry": ent_name,
+                "timing": ent["wallTime"],
+                "info": str(json.dumps(ent)),
+            }
+        )
+        batch.append(e_val)
 
-  # Put the whole batch of Entities in the datastore.
-  client.put_multi(batch)
+    # Put the whole batch of Entities in the datastore.
+    client.put_multi(batch)
 
 
 def upload_benchmark_files(opts):
-  """Find benchmark files, process them, and upload their data to the datastore.
+    """Find benchmark files, process them, and upload their data to the datastore.
 
-  Locate benchmark files in the data directory, process them, and upload their
-  data to the datastore.  After processing each file, move it to the archive
-  directory for safe-keeping.  Each file is locked for processing, which allows
-  multiple uploader instances to run concurrently if needed, each one handling
-  different benchmark files, skipping those already locked by another.
+    Locate benchmark files in the data directory, process them, and upload their
+    data to the datastore.  After processing each file, move it to the archive
+    directory for safe-keeping.  Each file is locked for processing, which allows
+    multiple uploader instances to run concurrently if needed, each one handling
+    different benchmark files, skipping those already locked by another.
 
-  Args:
-    opts: command line options object
+    Args:
+      opts: command line options object
 
-  Note: To use locking, the file is first opened, then its descriptor is used to
-  lock and read it.  The lock is released when the file is closed.  Do not open
-  that same file a 2nd time while the lock is already held, because when that
-  2nd file descriptor is closed, the lock will be released prematurely.
-  """
-  client = datastore.Client()
+    Note: To use locking, the file is first opened, then its descriptor is used to
+    lock and read it.  The lock is released when the file is closed.  Do not open
+    that same file a 2nd time while the lock is already held, because when that
+    2nd file descriptor is closed, the lock will be released prematurely.
+    """
+    client = datastore.Client()
 
-  for fname in list_files_by_mtime(opts.datadir):
-    fpath = os.path.join(opts.datadir, fname)
-    try:
-      with open(fpath, "r") as fd:
-        if trylock(fd):
-          upload_benchmark_data(client, fd.read())
-          shutil.move(fpath, os.path.join(opts.archivedir, fname))
-          # unlock(fd) -- When "with open()" closes fd, the lock is released.
-    except Exception as e:  # pylint: disable=broad-except
-      print("Cannot process '%s', skipping. Error: %s" % (fpath, e))
+    for fname in list_files_by_mtime(opts.datadir):
+        fpath = os.path.join(opts.datadir, fname)
+        try:
+            with open(fpath, "r") as fd:
+                if trylock(fd):
+                    upload_benchmark_data(client, fd.read())
+                    shutil.move(fpath, os.path.join(opts.archivedir, fname))
+                    # unlock(fd) -- When "with open()" closes fd, the lock is released.
+        except Exception as e:  # pylint: disable=broad-except
+            print("Cannot process '%s', skipping. Error: %s" % (fpath, e))
 
 
 def parse_cmd_line():
-  """Parse command line options.
+    """Parse command line options.
 
-  Returns:
-    The parsed arguments object.
-  """
-  desc = "Upload benchmark results to datastore."
-  opts = [
-      ("-a", "--archivedir", str, None, True,
-       "Directory where benchmark files are archived."),
-      ("-d", "--datadir", str, None, True,
-       "Directory of benchmark files to upload."),
-  ]
+    Returns:
+      The parsed arguments object.
+    """
+    desc = "Upload benchmark results to datastore."
+    opts = [
+        (
+            "-a",
+            "--archivedir",
+            str,
+            None,
+            True,
+            "Directory where benchmark files are archived.",
+        ),
+        ("-d", "--datadir", str, None, True, "Directory of benchmark files to upload."),
+    ]
 
-  parser = argparse.ArgumentParser(description=desc)
-  for opt in opts:
-    parser.add_argument(opt[0], opt[1], type=opt[2], default=opt[3],
-                        required=opt[4], help=opt[5])
-  return parser.parse_args()
+    parser = argparse.ArgumentParser(description=desc)
+    for opt in opts:
+        parser.add_argument(
+            opt[0], opt[1], type=opt[2], default=opt[3], required=opt[4], help=opt[5]
+        )
+    return parser.parse_args()
 
 
 def main():
-  options = parse_cmd_line()
+    options = parse_cmd_line()
 
-  # Check that credentials are specified to access the datastore.
-  if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-    raise ValueError("GOOGLE_APPLICATION_CREDENTIALS env. var. is not set.")
+    # Check that credentials are specified to access the datastore.
+    if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        raise ValueError("GOOGLE_APPLICATION_CREDENTIALS env. var. is not set.")
 
-  upload_benchmark_files(options)
+    upload_benchmark_files(options)
 
 
 if __name__ == "__main__":
-  main()
+    main()

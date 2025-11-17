@@ -18,46 +18,46 @@ from tensorflow.python.platform import test
 
 
 class TestingTest(test.TestCase):
+    def test_parameter_combinations(self):
+        """Tests that parameter_combinations returns correct combinations."""
+        test_parameters = [
+            {
+                "shapes": [
+                    [3, 3],
+                    [3, None],
+                ],
+                "has_bias": [True, False],
+            }
+        ]
+        combinations = testing.parameter_combinations(test_parameters)
 
-  def test_parameter_combinations(self):
-    """Tests that parameter_combinations returns correct combinations."""
-    test_parameters = [{
-        'shapes': [
-            [3, 3],
-            [3, None],
-        ],
-        'has_bias': [True, False],
-    }]
-    combinations = testing.parameter_combinations(test_parameters)
-
-    self.assertLen(combinations, 4)
-    self.assertIn({'shapes': [3, 3], 'has_bias': True}, combinations)
-    self.assertIn({'shapes': [3, 3], 'has_bias': False}, combinations)
-    self.assertIn({'shapes': [3, None], 'has_bias': True}, combinations)
-    self.assertIn({'shapes': [3, None], 'has_bias': False}, combinations)
+        self.assertLen(combinations, 4)
+        self.assertIn({"shapes": [3, 3], "has_bias": True}, combinations)
+        self.assertIn({"shapes": [3, 3], "has_bias": False}, combinations)
+        self.assertIn({"shapes": [3, None], "has_bias": True}, combinations)
+        self.assertIn({"shapes": [3, None], "has_bias": False}, combinations)
 
 
 class FileSizeTestCase(test.TestCase):
+    def setUp(self):
+        super().setUp()
 
-  def setUp(self):
-    super().setUp()
+        self.path_a = self.create_tempdir("dir_a").full_path
+        self.create_tempfile(file_path="dir_a/w.txt", content="abcd")
 
-    self.path_a = self.create_tempdir('dir_a').full_path
-    self.create_tempfile(file_path='dir_a/w.txt', content='abcd')
+        self.path_b = self.create_tempdir("dir_b").full_path
+        self.create_tempfile(file_path="dir_b/x.txt", content="1234")
+        self.create_tempfile(file_path="dir_b/y.txt", content="56")
+        self.create_tempfile(file_path="dir_b/z.txt", content="78")
 
-    self.path_b = self.create_tempdir('dir_b').full_path
-    self.create_tempfile(file_path='dir_b/x.txt', content='1234')
-    self.create_tempfile(file_path='dir_b/y.txt', content='56')
-    self.create_tempfile(file_path='dir_b/z.txt', content='78')
+    def test_get_dir_size(self):
+        self.assertEqual(testing.get_dir_size(self.path_a), 4)
+        self.assertEqual(testing.get_dir_size(self.path_b), 8)
 
-  def test_get_dir_size(self):
-    self.assertEqual(testing.get_dir_size(self.path_a), 4)
-    self.assertEqual(testing.get_dir_size(self.path_b), 8)
-
-  def test_get_size_ratio(self):
-    self.assertEqual(testing.get_size_ratio(self.path_a, self.path_b), 0.5)
-    self.assertEqual(testing.get_size_ratio(self.path_b, self.path_a), 2.0)
+    def test_get_size_ratio(self):
+        self.assertEqual(testing.get_size_ratio(self.path_a, self.path_b), 0.5)
+        self.assertEqual(testing.get_size_ratio(self.path_b, self.path_a), 2.0)
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

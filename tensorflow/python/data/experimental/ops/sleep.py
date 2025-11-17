@@ -13,36 +13,38 @@
 # limitations under the License.
 # ==============================================================================
 """Experimental API for manually injecting delays into `tf.data` pipelines."""
+
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
 
 
 class _SleepDataset(dataset_ops.UnaryUnchangedStructureDataset):
-  """A `Dataset` that sleeps before producing each upstream element."""
+    """A `Dataset` that sleeps before producing each upstream element."""
 
-  def __init__(self, input_dataset, sleep_microseconds):
-    self._input_dataset = input_dataset
-    self._sleep_microseconds = sleep_microseconds
-    variant_tensor = gen_experimental_dataset_ops.sleep_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._sleep_microseconds,
-        **self._flat_structure)
-    super(_SleepDataset, self).__init__(input_dataset, variant_tensor)
+    def __init__(self, input_dataset, sleep_microseconds):
+        self._input_dataset = input_dataset
+        self._sleep_microseconds = sleep_microseconds
+        variant_tensor = gen_experimental_dataset_ops.sleep_dataset(
+            self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+            self._sleep_microseconds,
+            **self._flat_structure,
+        )
+        super(_SleepDataset, self).__init__(input_dataset, variant_tensor)
 
 
 def sleep(sleep_microseconds):
-  """Sleeps for `sleep_microseconds` before producing each input element.
+    """Sleeps for `sleep_microseconds` before producing each input element.
 
-  Args:
-    sleep_microseconds: The number of microseconds to sleep before producing an
-      input element.
+    Args:
+      sleep_microseconds: The number of microseconds to sleep before producing an
+        input element.
 
-  Returns:
-    A `Dataset` transformation function, which can be passed to
-    `tf.data.Dataset.apply`.
-  """
+    Returns:
+      A `Dataset` transformation function, which can be passed to
+      `tf.data.Dataset.apply`.
+    """
 
-  def _apply_fn(dataset):
-    return _SleepDataset(dataset, sleep_microseconds)
+    def _apply_fn(dataset):
+        return _SleepDataset(dataset, sleep_microseconds)
 
-  return _apply_fn
+    return _apply_fn

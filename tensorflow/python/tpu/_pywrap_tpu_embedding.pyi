@@ -13,4 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-def stack_tables(arg0: list[int], arg1: list[int], arg2: list[int], arg3: list[int], arg4: list[str], arg5: int) -> list[list[str]]: ...
+def stack_tables(
+    arg0: list[int],
+    arg1: list[int],
+    arg2: list[int],
+    arg3: list[int],
+    arg4: list[str],
+    arg5: int,
+) -> list[list[str]]: ...

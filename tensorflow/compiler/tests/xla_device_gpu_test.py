@@ -24,27 +24,26 @@ from tensorflow.python.platform import test
 
 
 class XlaDeviceGpuTest(test.TestCase):
+    def __init__(self, method_name="runTest"):
+        super(XlaDeviceGpuTest, self).__init__(method_name)
+        context.context().enable_xla_devices()
 
-  def __init__(self, method_name="runTest"):
-    super(XlaDeviceGpuTest, self).__init__(method_name)
-    context.context().enable_xla_devices()
+    def testCopiesToAndFromGpuWork(self):
+        """Tests that copies between GPU and XLA devices work."""
+        if not config.list_physical_devices("GPU"):
+            return
 
-  def testCopiesToAndFromGpuWork(self):
-    """Tests that copies between GPU and XLA devices work."""
-    if not config.list_physical_devices("GPU"):
-      return
-
-    with session_lib.Session() as sess:
-      x = array_ops.placeholder(dtypes.float32, [2])
-      with ops.device("GPU"):
-        y = x * 2
-      with ops.device("device:XLA_CPU:0"):
-        z = y * y
-      with ops.device("GPU"):
-        w = y + z
-      result = sess.run(w, {x: [1.5, 0.5]})
-    self.assertAllClose(result, [12., 2.], rtol=1e-3)
+        with session_lib.Session() as sess:
+            x = array_ops.placeholder(dtypes.float32, [2])
+            with ops.device("GPU"):
+                y = x * 2
+            with ops.device("device:XLA_CPU:0"):
+                z = y * y
+            with ops.device("GPU"):
+                w = y + z
+            result = sess.run(w, {x: [1.5, 0.5]})
+        self.assertAllClose(result, [12.0, 2.0], rtol=1e-3)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

@@ -31,95 +31,97 @@ from tensorflow.python.training import saver as saver_lib
 
 
 class CheckpointIteratorTest(test.TestCase):
+    @test_util.run_in_graph_and_eager_modes
+    def testReturnsEmptyIfNoCheckpointsFound(self):
+        checkpoint_dir = os.path.join(self.get_temp_dir(), "no_checkpoints_found")
 
-  @test_util.run_in_graph_and_eager_modes
-  def testReturnsEmptyIfNoCheckpointsFound(self):
-    checkpoint_dir = os.path.join(self.get_temp_dir(), "no_checkpoints_found")
+        num_found = 0
+        for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
+            num_found += 1
+        self.assertEqual(num_found, 0)
 
-    num_found = 0
-    for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
-      num_found += 1
-    self.assertEqual(num_found, 0)
+    @test_util.run_in_graph_and_eager_modes
+    def testReturnsSingleCheckpointIfOneCheckpointFound(self):
+        checkpoint_dir = os.path.join(self.get_temp_dir(), "one_checkpoint_found")
+        if not gfile.Exists(checkpoint_dir):
+            gfile.MakeDirs(checkpoint_dir)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testReturnsSingleCheckpointIfOneCheckpointFound(self):
-    checkpoint_dir = os.path.join(self.get_temp_dir(), "one_checkpoint_found")
-    if not gfile.Exists(checkpoint_dir):
-      gfile.MakeDirs(checkpoint_dir)
+        save_path = os.path.join(checkpoint_dir, "model.ckpt")
 
-    save_path = os.path.join(checkpoint_dir, "model.ckpt")
+        a = resource_variable_ops.ResourceVariable(5)
+        self.evaluate(a.initializer)
+        checkpoint = trackable_utils.Checkpoint(a=a)
+        checkpoint.save(file_prefix=save_path)
 
-    a = resource_variable_ops.ResourceVariable(5)
-    self.evaluate(a.initializer)
-    checkpoint = trackable_utils.Checkpoint(a=a)
-    checkpoint.save(file_prefix=save_path)
+        num_found = 0
+        for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
+            num_found += 1
+        self.assertEqual(num_found, 1)
 
-    num_found = 0
-    for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
-      num_found += 1
-    self.assertEqual(num_found, 1)
+    @test_util.run_in_graph_and_eager_modes
+    def testWorksWithFSPath(self):
+        checkpoint_dir = pathlib.Path(self.get_temp_dir()) / "one_checkpoint_found"
+        if not gfile.Exists(checkpoint_dir):
+            gfile.MakeDirs(checkpoint_dir)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testWorksWithFSPath(self):
-    checkpoint_dir = pathlib.Path(self.get_temp_dir()) / "one_checkpoint_found"
-    if not gfile.Exists(checkpoint_dir):
-      gfile.MakeDirs(checkpoint_dir)
+        save_path = checkpoint_dir / "model.ckpt"
 
-    save_path = checkpoint_dir / "model.ckpt"
+        a = resource_variable_ops.ResourceVariable(5)
+        self.evaluate(a.initializer)
+        checkpoint = trackable_utils.Checkpoint(a=a)
+        checkpoint.save(file_prefix=save_path)
 
-    a = resource_variable_ops.ResourceVariable(5)
-    self.evaluate(a.initializer)
-    checkpoint = trackable_utils.Checkpoint(a=a)
-    checkpoint.save(file_prefix=save_path)
+        num_found = 0
+        for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
+            num_found += 1
+        self.assertEqual(num_found, 1)
 
-    num_found = 0
-    for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
-      num_found += 1
-    self.assertEqual(num_found, 1)
+    @test_util.run_v1_only("Tests v1-style checkpoint sharding")
+    def testReturnsSingleCheckpointIfOneShardedCheckpoint(self):
+        checkpoint_dir = os.path.join(
+            self.get_temp_dir(), "one_checkpoint_found_sharded"
+        )
+        if not gfile.Exists(checkpoint_dir):
+            gfile.MakeDirs(checkpoint_dir)
 
-  @test_util.run_v1_only("Tests v1-style checkpoint sharding")
-  def testReturnsSingleCheckpointIfOneShardedCheckpoint(self):
-    checkpoint_dir = os.path.join(self.get_temp_dir(),
-                                  "one_checkpoint_found_sharded")
-    if not gfile.Exists(checkpoint_dir):
-      gfile.MakeDirs(checkpoint_dir)
+        global_step = variables.Variable(0, name="v0")
 
-    global_step = variables.Variable(0, name="v0")
+        # This will result in 3 different checkpoint shard files.
+        with ops.device("/cpu:0"):
+            variables.Variable(10, name="v1")
+        with ops.device("/cpu:1"):
+            variables.Variable(20, name="v2")
 
-    # This will result in 3 different checkpoint shard files.
-    with ops.device("/cpu:0"):
-      variables.Variable(10, name="v1")
-    with ops.device("/cpu:1"):
-      variables.Variable(20, name="v2")
+        saver = saver_lib.Saver(sharded=True)
 
-    saver = saver_lib.Saver(sharded=True)
+        with session_lib.Session(
+            target="", config=config_pb2.ConfigProto(device_count={"CPU": 2})
+        ) as session:
+            session.run(variables.global_variables_initializer())
+            save_path = os.path.join(checkpoint_dir, "model.ckpt")
+            saver.save(session, save_path, global_step=global_step)
 
-    with session_lib.Session(
-        target="",
-        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as session:
+        num_found = 0
+        for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
+            num_found += 1
+        self.assertEqual(num_found, 1)
 
-      session.run(variables.global_variables_initializer())
-      save_path = os.path.join(checkpoint_dir, "model.ckpt")
-      saver.save(session, save_path, global_step=global_step)
+    @test_util.run_in_graph_and_eager_modes
+    def testTimeoutFn(self):
+        timeout_fn_calls = [0]
 
-    num_found = 0
-    for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
-      num_found += 1
-    self.assertEqual(num_found, 1)
+        def timeout_fn():
+            timeout_fn_calls[0] += 1
+            return timeout_fn_calls[0] > 3
 
-  @test_util.run_in_graph_and_eager_modes
-  def testTimeoutFn(self):
-    timeout_fn_calls = [0]
-    def timeout_fn():
-      timeout_fn_calls[0] += 1
-      return timeout_fn_calls[0] > 3
-
-    results = list(
-        checkpoint_utils.checkpoints_iterator(
-            "/non-existent-dir", timeout=0.1, timeout_fn=timeout_fn))
-    self.assertEqual([], results)
-    self.assertEqual(4, timeout_fn_calls[0])
+        results = list(
+            checkpoint_utils.checkpoints_iterator(
+                "/non-existent-dir", timeout=0.1, timeout_fn=timeout_fn
+            )
+        )
+        self.assertEqual([], results)
+        self.assertEqual(4, timeout_fn_calls[0])
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

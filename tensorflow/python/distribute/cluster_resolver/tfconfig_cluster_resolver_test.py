@@ -29,20 +29,22 @@ mock = test.mock
 
 @test_util.run_all_in_graph_and_eager_modes
 class TFConfigClusterResolverTest(test.TestCase):
+    def _verifyClusterSpecEquality(self, cluster_spec, expected_proto):
+        self.assertProtoEquals(expected_proto, cluster_spec.as_cluster_def())
+        self.assertProtoEquals(
+            expected_proto, server_lib.ClusterSpec(cluster_spec).as_cluster_def()
+        )
+        self.assertProtoEquals(
+            expected_proto,
+            server_lib.ClusterSpec(cluster_spec.as_cluster_def()).as_cluster_def(),
+        )
+        self.assertProtoEquals(
+            expected_proto,
+            server_lib.ClusterSpec(cluster_spec.as_dict()).as_cluster_def(),
+        )
 
-  def _verifyClusterSpecEquality(self, cluster_spec, expected_proto):
-    self.assertProtoEquals(expected_proto, cluster_spec.as_cluster_def())
-    self.assertProtoEquals(
-        expected_proto, server_lib.ClusterSpec(cluster_spec).as_cluster_def())
-    self.assertProtoEquals(
-        expected_proto,
-        server_lib.ClusterSpec(cluster_spec.as_cluster_def()).as_cluster_def())
-    self.assertProtoEquals(
-        expected_proto,
-        server_lib.ClusterSpec(cluster_spec.as_dict()).as_cluster_def())
-
-  def testNormalClusterSpecRead(self):
-    os.environ['TF_CONFIG'] = """
+    def testNormalClusterSpecRead(self):
+        os.environ["TF_CONFIG"] = """
     {
       "cluster": {
         "ps": ["ps0:2222", "ps1:2222"],
@@ -55,19 +57,19 @@ class TFConfigClusterResolverTest(test.TestCase):
     }
     """
 
-    cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
-    expected_proto = """
+        cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
+        expected_proto = """
     job { name: 'ps' tasks { key: 0 value: 'ps0:2222' }
                      tasks { key: 1 value: 'ps1:2222' } }
     job { name: 'worker' tasks { key: 0 value: 'worker0:2222' }
                          tasks { key: 1 value: 'worker1:2222' }
                          tasks { key: 2 value: 'worker2:2222' } }
     """
-    actual_cluster_spec = cluster_resolver.cluster_spec()
-    self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
+        actual_cluster_spec = cluster_resolver.cluster_spec()
+        self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
 
-  def testSparseClusterSpecRead(self):
-    os.environ['TF_CONFIG'] = """
+    def testSparseClusterSpecRead(self):
+        os.environ["TF_CONFIG"] = """
     {
       "cluster": {
         "ps": ["ps0:2222", "ps1:2222"],
@@ -80,17 +82,17 @@ class TFConfigClusterResolverTest(test.TestCase):
     }
     """
 
-    cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
-    expected_proto = """
+        cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
+        expected_proto = """
     job { name: 'ps' tasks { key: 0 value: 'ps0:2222' }
                      tasks { key: 1 value: 'ps1:2222' } }
     job { name: 'worker' tasks { key: 1 value: 'worker1:2222' } }
     """
-    actual_cluster_spec = cluster_resolver.cluster_spec()
-    self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
+        actual_cluster_spec = cluster_resolver.cluster_spec()
+        self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
 
-  def testAutomaticMasterRead(self):
-    os.environ['TF_CONFIG'] = """
+    def testAutomaticMasterRead(self):
+        os.environ["TF_CONFIG"] = """
     {
       "cluster": {
         "ps": ["ps0:2222", "ps1:2222"],
@@ -103,11 +105,11 @@ class TFConfigClusterResolverTest(test.TestCase):
     }
     """
 
-    cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
-    self.assertEqual('ps0:2222', cluster_resolver.master())
+        cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
+        self.assertEqual("ps0:2222", cluster_resolver.master())
 
-  def testSpecifiedTaskTypeAndIndexMasterRead(self):
-    os.environ['TF_CONFIG'] = """
+    def testSpecifiedTaskTypeAndIndexMasterRead(self):
+        os.environ["TF_CONFIG"] = """
     {
       "cluster": {
         "ps": ["ps0:2222", "ps1:2222"],
@@ -120,11 +122,11 @@ class TFConfigClusterResolverTest(test.TestCase):
     }
     """
 
-    cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
-    self.assertEqual('worker1:2222', cluster_resolver.master('worker', 1))
+        cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
+        self.assertEqual("worker1:2222", cluster_resolver.master("worker", 1))
 
-  def testSessionMasterRead(self):
-    os.environ['TF_CONFIG'] = """
+    def testSessionMasterRead(self):
+        os.environ["TF_CONFIG"] = """
     {
       "cluster": {
         "ps": ["ps0:2222", "ps1:2222"],
@@ -138,11 +140,11 @@ class TFConfigClusterResolverTest(test.TestCase):
     }
     """
 
-    cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
-    self.assertEqual('sessionmaster:2222', cluster_resolver.master())
+        cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
+        self.assertEqual("sessionmaster:2222", cluster_resolver.master())
 
-  def testRpcLayerRead(self):
-    os.environ['TF_CONFIG'] = """
+    def testRpcLayerRead(self):
+        os.environ["TF_CONFIG"] = """
     {
       "cluster": {
         "ps": ["ps0:2222", "ps1:2222"],
@@ -156,11 +158,11 @@ class TFConfigClusterResolverTest(test.TestCase):
     }
     """
 
-    cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
-    self.assertEqual('grpc://ps0:2222', cluster_resolver.master())
+        cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
+        self.assertEqual("grpc://ps0:2222", cluster_resolver.master())
 
-  def testTaskTypeIndexRpcRead(self):
-    os.environ['TF_CONFIG'] = """
+    def testTaskTypeIndexRpcRead(self):
+        os.environ["TF_CONFIG"] = """
     {
       "cluster": {
         "ps": ["ps0:2222", "ps1:2222"],
@@ -174,13 +176,13 @@ class TFConfigClusterResolverTest(test.TestCase):
     }
     """
 
-    cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
-    self.assertEqual('ps', cluster_resolver.task_type)
-    self.assertEqual(0, cluster_resolver.task_id)
-    self.assertEqual('grpc', cluster_resolver.rpc_layer)
+        cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
+        self.assertEqual("ps", cluster_resolver.task_type)
+        self.assertEqual(0, cluster_resolver.task_id)
+        self.assertEqual("grpc", cluster_resolver.rpc_layer)
 
-  def testParameterOverrides(self):
-    os.environ['TF_CONFIG'] = """
+    def testParameterOverrides(self):
+        os.environ["TF_CONFIG"] = """
     {
       "cluster": {
         "ps": ["ps0:2222", "ps1:2222"],
@@ -194,24 +196,25 @@ class TFConfigClusterResolverTest(test.TestCase):
     }
     """
 
-    cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver(
-        task_type='ps', task_id=0)
+        cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver(
+            task_type="ps", task_id=0
+        )
 
-    self.assertEqual('grpc://ps0:2222', cluster_resolver.master())
-    self.assertEqual('ps', cluster_resolver.task_type)
-    self.assertEqual(0, cluster_resolver.task_id)
+        self.assertEqual("grpc://ps0:2222", cluster_resolver.master())
+        self.assertEqual("ps", cluster_resolver.task_type)
+        self.assertEqual(0, cluster_resolver.task_id)
 
-    cluster_resolver.task_type = 'worker'
-    cluster_resolver.task_id = 1
-    cluster_resolver.rpc_layer = 'test'
+        cluster_resolver.task_type = "worker"
+        cluster_resolver.task_id = 1
+        cluster_resolver.rpc_layer = "test"
 
-    self.assertEqual('test://worker1:2222', cluster_resolver.master())
-    self.assertEqual('worker', cluster_resolver.task_type)
-    self.assertEqual(1, cluster_resolver.task_id)
-    self.assertEqual('test', cluster_resolver.rpc_layer)
+        self.assertEqual("test://worker1:2222", cluster_resolver.master())
+        self.assertEqual("worker", cluster_resolver.task_type)
+        self.assertEqual(1, cluster_resolver.task_id)
+        self.assertEqual("test", cluster_resolver.rpc_layer)
 
-  def testTaskTypeCastToString(self):
-    os.environ['TF_CONFIG'] = """
+    def testTaskTypeCastToString(self):
+        os.environ["TF_CONFIG"] = """
     {
       "cluster": {
         "123456": ["ps0:2222", "ps1:2222"],
@@ -224,11 +227,11 @@ class TFConfigClusterResolverTest(test.TestCase):
       }
     }
     """
-    cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
-    self.assertEqual('123456', cluster_resolver.task_type)
+        cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
+        self.assertEqual("123456", cluster_resolver.task_type)
 
-  def testTaskIndexCastToInteger(self):
-    os.environ['TF_CONFIG'] = """
+    def testTaskIndexCastToInteger(self):
+        os.environ["TF_CONFIG"] = """
     {
       "cluster": {
         "ps": ["ps0:2222", "ps1:2222"],
@@ -241,11 +244,11 @@ class TFConfigClusterResolverTest(test.TestCase):
       }
     }
     """
-    cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
-    self.assertEqual(1, cluster_resolver.task_id)
+        cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
+        self.assertEqual(1, cluster_resolver.task_id)
 
-  def testTaskIndexOverride(self):
-    os.environ['TF_CONFIG'] = """
+    def testTaskIndexOverride(self):
+        os.environ["TF_CONFIG"] = """
     {
       "cluster": {
         "worker": ["worker0:2222", "worker1:2222"]
@@ -256,20 +259,19 @@ class TFConfigClusterResolverTest(test.TestCase):
       }
     }
     """
-    cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver(
-        task_id=1)
-    self.assertEqual(1, cluster_resolver.task_id)
+        cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver(task_id=1)
+        self.assertEqual(1, cluster_resolver.task_id)
 
-  def testZeroItemsInClusterSpecMasterRead(self):
-    os.environ['TF_CONFIG'] = """
+    def testZeroItemsInClusterSpecMasterRead(self):
+        os.environ["TF_CONFIG"] = """
     {}
     """
 
-    cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
-    self.assertEqual('', cluster_resolver.master())
+        cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
+        self.assertEqual("", cluster_resolver.master())
 
-  def testOneItemInClusterSpecMasterRead(self):
-    os.environ['TF_CONFIG'] = """
+    def testOneItemInClusterSpecMasterRead(self):
+        os.environ["TF_CONFIG"] = """
     {
       "cluster": {
         "worker": ["worker0:2222"]
@@ -277,14 +279,15 @@ class TFConfigClusterResolverTest(test.TestCase):
     }
     """
 
-    cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
-    self.assertEqual('', cluster_resolver.master())
+        cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
+        self.assertEqual("", cluster_resolver.master())
 
-  @mock.patch.object(config, 'list_logical_devices')
-  @mock.patch.object(session.BaseSession, 'list_devices')
-  def testNumAcceleratorsFilterTasksByEnvVar(self, mock_list_devices,
-                                             mock_eager_list_devices):
-    os.environ['TF_CONFIG'] = """
+    @mock.patch.object(config, "list_logical_devices")
+    @mock.patch.object(session.BaseSession, "list_devices")
+    def testNumAcceleratorsFilterTasksByEnvVar(
+        self, mock_list_devices, mock_eager_list_devices
+    ):
+        os.environ["TF_CONFIG"] = """
     {
       "cluster": {
         "worker1": ["w10:2222"],
@@ -298,32 +301,32 @@ class TFConfigClusterResolverTest(test.TestCase):
     }
     """
 
-    devices = [
-        context.LogicalDevice('/job:worker1/task:0/device:TPU:0', 'TPU'),
-        context.LogicalDevice('/job:worker1/task:0/device:TPU:1', 'TPU'),
-        context.LogicalDevice('/job:worker1/task:0/device:GPU:0', 'GPU'),
-        context.LogicalDevice('/job:worker1/task:0/device:GPU:1', 'GPU'),
-        context.LogicalDevice('/job:worker2/task:1/device:TPU:2', 'TPU'),
-        context.LogicalDevice('/job:worker2/task:2/device:TPU:3', 'TPU'),
-        context.LogicalDevice('/job:worker2/task:3/device:GPU:2', 'GPU'),
-        context.LogicalDevice('/job:worker2/task:4/device:GPU:3', 'GPU'),
-    ]
-    device_list = [
-        session._DeviceAttributes(d.name, d.device_type, 1024, 0)
-        for d in devices
-    ]
-    mock_eager_list_devices.return_value = devices
-    mock_list_devices.return_value = device_list
+        devices = [
+            context.LogicalDevice("/job:worker1/task:0/device:TPU:0", "TPU"),
+            context.LogicalDevice("/job:worker1/task:0/device:TPU:1", "TPU"),
+            context.LogicalDevice("/job:worker1/task:0/device:GPU:0", "GPU"),
+            context.LogicalDevice("/job:worker1/task:0/device:GPU:1", "GPU"),
+            context.LogicalDevice("/job:worker2/task:1/device:TPU:2", "TPU"),
+            context.LogicalDevice("/job:worker2/task:2/device:TPU:3", "TPU"),
+            context.LogicalDevice("/job:worker2/task:3/device:GPU:2", "GPU"),
+            context.LogicalDevice("/job:worker2/task:4/device:GPU:3", "GPU"),
+        ]
+        device_list = [
+            session._DeviceAttributes(d.name, d.device_type, 1024, 0) for d in devices
+        ]
+        mock_eager_list_devices.return_value = devices
+        mock_list_devices.return_value = device_list
 
-    resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
+        resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
 
-    # By default we read from TF_CONFIG
-    self.assertEqual(resolver.num_accelerators(), {'TPU': 2, 'GPU': 2})
+        # By default we read from TF_CONFIG
+        self.assertEqual(resolver.num_accelerators(), {"TPU": 2, "GPU": 2})
 
-    # Override still works when we want it to
-    self.assertEqual(resolver.num_accelerators(task_type='worker2', task_id=3),
-                     {'GPU': 1})
+        # Override still works when we want it to
+        self.assertEqual(
+            resolver.num_accelerators(task_type="worker2", task_id=3), {"GPU": 1}
+        )
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

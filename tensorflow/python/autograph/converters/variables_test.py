@@ -20,191 +20,175 @@ from tensorflow.python.platform import test
 
 
 class VariablesTest(converter_testing.TestCase):
+    def transform_with_test_ld(self, f):
+        """Generates code which adds 1 to all variable reads."""
+        return self.transform(f, variables, ag_overrides={"ld": lambda x: x + 1})
 
-  def transform_with_test_ld(self, f):
-    """Generates code which adds 1 to all variable reads."""
-    return self.transform(f, variables, ag_overrides={'ld': lambda x: x + 1})
+    def test_read(self):
+        def f(l):
+            return l
 
-  def test_read(self):
+        tr = self.transform_with_test_ld(f)
 
-    def f(l):
-      return l
+        self.assertEqual(tr(1), 2)
 
-    tr = self.transform_with_test_ld(f)
+    def test_aug_assign(self):
+        def f(l):
+            l *= 10
+            return l
 
-    self.assertEqual(tr(1), 2)
+        tr = self.transform_with_test_ld(f)
 
-  def test_aug_assign(self):
+        self.assertEqual(tr(1), (1 + 1) * 10 + 1)  # two reads
 
-    def f(l):
-      l *= 10
-      return l
+    def test_del(self):
+        def f(l):
+            del l
+            return l
 
-    tr = self.transform_with_test_ld(f)
+        tr = self.transform(f, variables)
 
-    self.assertEqual(tr(1), (1 + 1) * 10 + 1)  # two reads
+        with self.assertRaisesRegex(NameError, "'l' is used before assignment"):
+            tr(1)
 
-  def test_del(self):
+    def test_del_getitem_ignored_basic_slice(self):
+        def f(l):
+            del l[0]
+            return l
 
-    def f(l):
-      del l
-      return l
+        tr = self.transform(f, variables)
 
-    tr = self.transform(f, variables)
+        self.assertListEqual([2], tr([1, 2]))
 
-    with self.assertRaisesRegex(NameError, "'l' is used before assignment"):
-      tr(1)
+    def test_del_getitem_ignored_range_slice(self):
+        def f(l):
+            del l[0:2]
+            return l
 
-  def test_del_getitem_ignored_basic_slice(self):
+        tr = self.transform(f, variables)
 
-    def f(l):
-      del l[0]
-      return l
+        self.assertListEqual([], tr([1, 2]))
 
-    tr = self.transform(f, variables)
+    def test_del_getattr_ignored(self):
+        def f(l):
+            del l.a
+            return l
 
-    self.assertListEqual([2], tr([1, 2]))
+        class TestClass(object):
+            def __init__(self):
+                self.a = 1
+                self.b = 2
 
-  def test_del_getitem_ignored_range_slice(self):
+        tr = self.transform(f, variables)
 
-    def f(l):
-      del l[0:2]
-      return l
+        self.assertFalse(hasattr(tr(TestClass()), "a"))
+        self.assertEqual(tr(TestClass()).b, 2)
 
-    tr = self.transform(f, variables)
+    def test_del_packing_ignored_list(self):
+        # Note: testing for UnboundLocalError, not NameError because in this case we
+        # don't rewrite the del.
 
-    self.assertListEqual([], tr([1, 2]))
+        def f(a, b):
+            del [a, b]
+            return a
 
-  def test_del_getattr_ignored(self):
+        tr = self.transform(f, variables)
 
-    def f(l):
-      del l.a
-      return l
+        with self.assertRaises(UnboundLocalError):
+            tr(1, 2)
 
-    class TestClass(object):
+    def test_del_packing_ignored_nested(self):
+        # Note: testing for UnboundLocalError, not NameError because in this case we
+        # don't rewrite the del.
 
-      def __init__(self):
-        self.a = 1
-        self.b = 2
+        def f(a, b, c):
+            del [a, (b, c)]
+            return c
 
-    tr = self.transform(f, variables)
+        tr = self.transform(f, variables)
 
-    self.assertFalse(hasattr(tr(TestClass()), 'a'))
-    self.assertEqual(tr(TestClass()).b, 2)
+        with self.assertRaises(UnboundLocalError):
+            tr(1, 2, 3)
 
-  def test_del_packing_ignored_list(self):
-    # Note: testing for UnboundLocalError, not NameError because in this case we
-    # don't rewrite the del.
+    def test_del_item_multiple_mixed_used_after(self):
+        def f(a, b, c):
+            del a, b, c[0]
+            a = 1
+            return a, b, c
 
-    def f(a, b):
-      del [a, b]
-      return a
+        tr = self.transform(f, variables)
 
-    tr = self.transform(f, variables)
+        with self.assertRaisesRegex(NameError, "'b' is used before assignment"):
+            tr(1, 2, [1, 2])
 
-    with self.assertRaises(UnboundLocalError):
-      tr(1, 2)
+    def test_del_item_multiple_mixed_unused_after(self):
+        def f(a, b, c):
+            del a, b, c[0]
+            a = 1
+            b = 2
+            return c
 
-  def test_del_packing_ignored_nested(self):
-    # Note: testing for UnboundLocalError, not NameError because in this case we
-    # don't rewrite the del.
+        tr = self.transform(f, variables)
 
-    def f(a, b, c):
-      del [a, (b, c)]
-      return c
+        self.assertListEqual([2], tr(1, 2, [1, 2]))
 
-    tr = self.transform(f, variables)
+    def test_attribute(self):
+        class TestClass(object):
+            def __init__(self):
+                self.v = 1
 
-    with self.assertRaises(UnboundLocalError):
-      tr(1, 2, 3)
+            def __add__(self, other):
+                self.v += other
+                return self
 
-  def test_del_item_multiple_mixed_used_after(self):
+        def f(l):
+            return l.v
 
-    def f(a, b, c):
-      del a, b, c[0]
-      a = 1
-      return a, b, c
+        tc = TestClass()
+        tr = self.transform_with_test_ld(f)
 
-    tr = self.transform(f, variables)
+        self.assertEqual(tr(tc), 2)
 
-    with self.assertRaisesRegex(NameError, "'b' is used before assignment"):
-      tr(1, 2, [1, 2])
+    def test_subscript(self):
+        class TestClass(object):
+            def __init__(self):
+                self.v = 1
 
-  def test_del_item_multiple_mixed_unused_after(self):
+            def __add__(self, other):
+                self.v += other
+                return self
 
-    def f(a, b, c):
-      del a, b, c[0]
-      a = 1
-      b = 2
-      return c
+            def __getitem__(self, _):
+                return self.v
 
-    tr = self.transform(f, variables)
+        def f(l):
+            return l[0]
 
-    self.assertListEqual([2], tr(1, 2, [1, 2]))
+        tc = TestClass()
+        tr = self.transform_with_test_ld(f)
 
-  def test_attribute(self):
+        self.assertEqual(tr(tc), 2)
 
-    class TestClass(object):
+    def test_call(self):
+        class TestClass(object):
+            def __init__(self):
+                self.v = 1
 
-      def __init__(self):
-        self.v = 1
+            def __add__(self, other):
+                self.v += other
+                return self
 
-      def __add__(self, other):
-        self.v += other
-        return self
+            def __call__(self):
+                return self.v
 
-    def f(l):
-      return l.v
+        def f(l):
+            return l()
 
-    tc = TestClass()
-    tr = self.transform_with_test_ld(f)
+        tc = TestClass()
+        tr = self.transform_with_test_ld(f)
 
-    self.assertEqual(tr(tc), 2)
+        self.assertEqual(tr(tc), 2)
 
-  def test_subscript(self):
 
-    class TestClass(object):
-
-      def __init__(self):
-        self.v = 1
-
-      def __add__(self, other):
-        self.v += other
-        return self
-
-      def __getitem__(self, _):
-        return self.v
-
-    def f(l):
-      return l[0]
-
-    tc = TestClass()
-    tr = self.transform_with_test_ld(f)
-
-    self.assertEqual(tr(tc), 2)
-
-  def test_call(self):
-
-    class TestClass(object):
-
-      def __init__(self):
-        self.v = 1
-
-      def __add__(self, other):
-        self.v += other
-        return self
-
-      def __call__(self):
-        return self.v
-
-    def f(l):
-      return l()
-
-    tc = TestClass()
-    tr = self.transform_with_test_ld(f)
-
-    self.assertEqual(tr(tc), 2)
-
-
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

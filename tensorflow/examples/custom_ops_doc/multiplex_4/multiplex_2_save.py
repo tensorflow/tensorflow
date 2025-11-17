@@ -29,13 +29,13 @@ from tensorflow.examples.custom_ops_doc.multiplex_4 import model_using_multiplex
 
 
 def main(argv):
-  del argv  # not used
-  path = 'model_using_multiplex'
-  if os.path.exists(path):
-    shutil.rmtree(path, ignore_errors=True)
-  model_using_multiplex.save(multiplex_2_op.multiplex, path)
-  print('Saved model to', path)
+    del argv  # not used
+    path = "model_using_multiplex"
+    if os.path.exists(path):
+        shutil.rmtree(path, ignore_errors=True)
+    model_using_multiplex.save(multiplex_2_op.multiplex, path)
+    print("Saved model to", path)
 
 
-if __name__ == '__main__':
-  app.run(main)
+if __name__ == "__main__":
+    app.run(main)

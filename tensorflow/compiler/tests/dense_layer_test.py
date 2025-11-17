@@ -29,113 +29,123 @@ from tensorflow.python.platform import test
 
 jit_scope = jit.experimental_jit_scope
 
+
 def GetRunMetadataLabels(run_metadata):
-  """Returns all labels in run_metadata."""
-  labels = []
-  for dev_stats in run_metadata.step_stats.dev_stats:
-    for node_stats in dev_stats.node_stats:
-      labels.append(node_stats.timeline_label)
-  return labels
+    """Returns all labels in run_metadata."""
+    labels = []
+    for dev_stats in run_metadata.step_stats.dev_stats:
+        for node_stats in dev_stats.node_stats:
+            labels.append(node_stats.timeline_label)
+    return labels
 
 
 def InLabels(labels, substr):
-  """Returns true iff one of the labels contains substr."""
-  return any(substr in x for x in labels)
+    """Returns true iff one of the labels contains substr."""
+    return any(substr in x for x in labels)
 
 
 class DenseLayerTest(test.TestCase):
+    def countXlaOps(self, labels):
+        """Count how many XlaCompile/XlaRun labels are present."""
+        xla_compile_count = sum("XlaCompile(" in x for x in labels)
+        xla_run_count = sum("XlaRun(" in x for x in labels)
+        self.assertEqual(xla_compile_count, xla_run_count)
+        return xla_run_count
 
-  def countXlaOps(self, labels):
-    """Count how many XlaCompile/XlaRun labels are present."""
-    xla_compile_count = sum("XlaCompile(" in x for x in labels)
-    xla_run_count = sum("XlaRun(" in x for x in labels)
-    self.assertEqual(xla_compile_count, xla_run_count)
-    return xla_run_count
+    def testDenseLayerAutoJit(self):
+        """Tests dense layer compilation in auto-jit mode.
 
+        Dense layer should be compiled into a single XlaCompile/XlaRun op pair in
+        auto-jit mode.
+        """
 
-  def testDenseLayerAutoJit(self):
-    """Tests dense layer compilation in auto-jit mode.
+        os.environ["TF_XLA_FLAGS"] = "--tf_xla_cpu_global_jit " + os.environ.get(
+            "TF_XLA_FLAGS", ""
+        )
+        config = config_pb2.ConfigProto()
+        config.graph_options.optimizer_options.global_jit_level = (
+            config_pb2.OptimizerOptions.ON_1
+        )
 
-    Dense layer should be compiled into a single XlaCompile/XlaRun op pair in
-    auto-jit mode.
-    """
+        with self.session(config=config) as sess:
+            x = array_ops.placeholder(shape=[None, None, 3], dtype=np.float32)
+            y = layers.dense(x, 3)
 
-    os.environ["TF_XLA_FLAGS"] = (
-        "--tf_xla_cpu_global_jit " + os.environ.get("TF_XLA_FLAGS", ""))
-    config = config_pb2.ConfigProto()
-    config.graph_options.optimizer_options.global_jit_level = (
-        config_pb2.OptimizerOptions.ON_1)
+            self.evaluate(variables.global_variables_initializer())
+            run_metadata = config_pb2.RunMetadata()
+            test_utils.RunWithWarmup(
+                sess,
+                y,
+                {x: np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])},
+                run_metadata=run_metadata,
+                options=config_pb2.RunOptions(
+                    trace_level=config_pb2.RunOptions.FULL_TRACE
+                ),
+            )
 
-    with self.session(config=config) as sess:
-      x = array_ops.placeholder(shape=[None, None, 3], dtype=np.float32)
-      y = layers.dense(x, 3)
+        labels = GetRunMetadataLabels(run_metadata)
+        self.assertEqual(1, self.countXlaOps(labels))
+        self.assertFalse(InLabels(labels, "MatMult"))
 
-      self.evaluate(variables.global_variables_initializer())
-      run_metadata = config_pb2.RunMetadata()
-      test_utils.RunWithWarmup(
-          sess,
-          y, {x: np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])},
-          run_metadata=run_metadata,
-          options=config_pb2.RunOptions(
-              trace_level=config_pb2.RunOptions.FULL_TRACE))
+    def testDenseLayerJitScopeDefinedShape(self):
+        """Tests that the dense layer node is properly compiled in jit scope.
 
-    labels = GetRunMetadataLabels(run_metadata)
-    self.assertEqual(1, self.countXlaOps(labels))
-    self.assertFalse(InLabels(labels, "MatMult"))
+        Dense layer with static shape input tensor should be compiled into a single
+        XlaCompile/XlaRun op pair by XLA.
+        """
 
-  def testDenseLayerJitScopeDefinedShape(self):
-    """Tests that the dense layer node is properly compiled in jit scope.
+        with self.session() as sess:
+            x = array_ops.placeholder(shape=[2, 2, 3], dtype=np.float32)
+            with jit_scope():
+                y = layers.dense(x, 3)
 
-    Dense layer with static shape input tensor should be compiled into a single
-    XlaCompile/XlaRun op pair by XLA.
-    """
+            self.evaluate(variables.global_variables_initializer())
+            run_metadata = config_pb2.RunMetadata()
+            test_utils.RunWithWarmup(
+                sess,
+                y,
+                {x: np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])},
+                run_metadata=run_metadata,
+                options=config_pb2.RunOptions(
+                    trace_level=config_pb2.RunOptions.FULL_TRACE
+                ),
+            )
 
-    with self.session() as sess:
-      x = array_ops.placeholder(shape=[2, 2, 3], dtype=np.float32)
-      with jit_scope():
-        y = layers.dense(x, 3)
+        labels = GetRunMetadataLabels(run_metadata)
+        self.assertEqual(1, self.countXlaOps(labels))
+        # No need to check whether ListDiff is compiled or not because ListDiff op
+        # is not used when input tensor shape is fully defined.
 
-      self.evaluate(variables.global_variables_initializer())
-      run_metadata = config_pb2.RunMetadata()
-      test_utils.RunWithWarmup(
-          sess,
-          y, {x: np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])},
-          run_metadata=run_metadata,
-          options=config_pb2.RunOptions(
-              trace_level=config_pb2.RunOptions.FULL_TRACE))
+    def testDenseLayerJitScopeUndefinedShape(self):
+        """Tests that the dense layer node is properly compiled in jit scope."""
 
-    labels = GetRunMetadataLabels(run_metadata)
-    self.assertEqual(1, self.countXlaOps(labels))
-    # No need to check whether ListDiff is compiled or not because ListDiff op
-    # is not used when input tensor shape is fully defined.
+        with self.session() as sess:
+            x = array_ops.placeholder(shape=[None, None, 3], dtype=np.float32)
+            with jit_scope():
+                y = layers.dense(x, 3)
 
-  def testDenseLayerJitScopeUndefinedShape(self):
-    """Tests that the dense layer node is properly compiled in jit scope.
-    """
+            self.evaluate(variables.global_variables_initializer())
+            run_metadata = config_pb2.RunMetadata()
+            test_utils.RunWithWarmup(
+                sess,
+                y,
+                {x: np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])},
+                run_metadata=run_metadata,
+                options=config_pb2.RunOptions(
+                    trace_level=config_pb2.RunOptions.FULL_TRACE
+                ),
+            )
 
-    with self.session() as sess:
-      x = array_ops.placeholder(shape=[None, None, 3], dtype=np.float32)
-      with jit_scope():
-        y = layers.dense(x, 3)
-
-      self.evaluate(variables.global_variables_initializer())
-      run_metadata = config_pb2.RunMetadata()
-      test_utils.RunWithWarmup(
-          sess,
-          y, {x: np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])},
-          run_metadata=run_metadata,
-          options=config_pb2.RunOptions(
-              trace_level=config_pb2.RunOptions.FULL_TRACE))
-
-    labels = GetRunMetadataLabels(run_metadata)
-    self.assertEqual(1, self.countXlaOps(labels))
-    self.assertFalse(InLabels(labels, "MatMult"))
+        labels = GetRunMetadataLabels(run_metadata)
+        self.assertEqual(1, self.countXlaOps(labels))
+        self.assertFalse(InLabels(labels, "MatMult"))
 
 
 if __name__ == "__main__":
-  os.environ["TF_XLA_FLAGS"] = ("--tf_xla_enable_lazy_compilation=true " +
-                                os.environ.get("TF_XLA_FLAGS", ""))
-  # This test is using Tensorflow sessions which are not compatible with eager
-  # mode.
-  ops.disable_eager_execution()
-  test.main()
+    os.environ["TF_XLA_FLAGS"] = (
+        "--tf_xla_enable_lazy_compilation=true " + os.environ.get("TF_XLA_FLAGS", "")
+    )
+    # This test is using Tensorflow sessions which are not compatible with eager
+    # mode.
+    ops.disable_eager_execution()
+    test.main()

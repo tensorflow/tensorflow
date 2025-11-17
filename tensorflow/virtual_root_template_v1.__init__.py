@@ -29,42 +29,42 @@ from tensorflow.python.util import module_wrapper
 # tensorflow/python/util/lazy_loader.py as to use that we would already need to
 # import tensorflow. Hence, we define it inline.
 class _LazyLoader(_types.ModuleType):
-  """Lazily import a module so that we can forward it."""
+    """Lazily import a module so that we can forward it."""
 
-  # The lint error here is incorrect.
-  def __init__(self, local_name, parent_module_globals, name):
-    self._local_name = local_name
-    self._parent_module_globals = parent_module_globals
-    super(_LazyLoader, self).__init__(name)
+    # The lint error here is incorrect.
+    def __init__(self, local_name, parent_module_globals, name):
+        self._local_name = local_name
+        self._parent_module_globals = parent_module_globals
+        super(_LazyLoader, self).__init__(name)
 
-  def _load(self):
-    """Import the target module and insert it into the parent's namespace."""
-    module = _importlib.import_module(self.__name__)
-    self._parent_module_globals[self._local_name] = module
-    self.__dict__.update(module.__dict__)
-    return module
+    def _load(self):
+        """Import the target module and insert it into the parent's namespace."""
+        module = _importlib.import_module(self.__name__)
+        self._parent_module_globals[self._local_name] = module
+        self.__dict__.update(module.__dict__)
+        return module
 
-  def __getattr__(self, item):
-    module = self._load()
-    return getattr(module, item)
+    def __getattr__(self, item):
+        module = self._load()
+        return getattr(module, item)
 
-  def __dir__(self):
-    module = self._load()
-    return dir(module)
+    def __dir__(self):
+        module = self._load()
+        return dir(module)
 
-  def __reduce__(self):
-    return __import__, (self.__name__,)
+    def __reduce__(self):
+        return __import__, (self.__name__,)
 
 
 # Forwarding a module is as simple as lazy loading the module from the new path
 # and then registering it to sys.modules using the old path
 def _forward_module(old_name):
-  parts = old_name.split(".")
-  parts[0] = parts[0] + "_core"
-  local_name = parts[-1]
-  existing_name = ".".join(parts)
-  _module = _LazyLoader(local_name, globals(), existing_name)
-  return _sys.modules.setdefault(old_name, _module)
+    parts = old_name.split(".")
+    parts[0] = parts[0] + "_core"
+    local_name = parts[-1]
+    existing_name = ".".join(parts)
+    _module = _LazyLoader(local_name, globals(), existing_name)
+    return _sys.modules.setdefault(old_name, _module)
 
 
 # This list should contain all modules _immediately_ under tensorflow
@@ -83,7 +83,7 @@ _top_level_modules = [
 
 # Lazy load all of the _top_level_modules, we don't need their names anymore
 for _m in _top_level_modules:
-  _forward_module(_m)
+    _forward_module(_m)
 
 # We still need all the names that are toplevel on tensorflow_core
 from tensorflow_core import *
@@ -92,33 +92,32 @@ _major_api_version = 1
 
 # In V1 API we need to print deprecation messages
 if not isinstance(_sys.modules[__name__], module_wrapper.TFModuleWrapper):
-  _sys.modules[__name__] = module_wrapper.TFModuleWrapper(
-      _sys.modules[__name__], "")
+    _sys.modules[__name__] = module_wrapper.TFModuleWrapper(_sys.modules[__name__], "")
 
 # These should not be visible in the main tf module.
 try:
-  del core
+    del core
 except NameError:
-  pass
+    pass
 
 try:
-  del python
+    del python
 except NameError:
-  pass
+    pass
 
 try:
-  del compiler
+    del compiler
 except NameError:
-  pass
+    pass
 
 try:
-  del tools
+    del tools
 except NameError:
-  pass
+    pass
 
 try:
-  del examples
+    del examples
 except NameError:
-  pass
+    pass
 
 # LINT.ThenChange(//tensorflow/virtual_root_template_v2.__init__.py.oss)

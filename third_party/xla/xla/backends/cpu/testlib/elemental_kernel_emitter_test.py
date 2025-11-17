@@ -41,36 +41,34 @@ def create_input(
     dtype: np.dtype,
     shuffle: bool = False,
 ) -> np.ndarray:
-  size = np.prod(shape) if shape else 1
-  result = np.linspace(
-      value_range[0], value_range[1], size, dtype=dtype
-  ).reshape(shape)
+    size = np.prod(shape) if shape else 1
+    result = np.linspace(value_range[0], value_range[1], size, dtype=dtype).reshape(
+        shape
+    )
 
-  if shuffle and (np.ndim(result) != 0):
-    np.random.shuffle(result)
+    if shuffle and (np.ndim(result) != 0):
+        np.random.shuffle(result)
 
-  return result
+    return result
 
 
 def np_erf(x):
-  return np.vectorize(math.erf, otypes=[x.dtype])(x)
+    return np.vectorize(math.erf, otypes=[x.dtype])(x)
 
 
 @dataclasses.dataclass(frozen=True)
 class ElementalHloOpcodeDef:
-  op: HloOpcode
-  np_op: Callable[[np.ndarray, ...], np.ndarray]
-  input_ranges: tuple[float, float] = (-1.0, 1.0)
-  decimal_precision: int = 6
+    op: HloOpcode
+    np_op: Callable[[np.ndarray, ...], np.ndarray]
+    input_ranges: tuple[float, float] = (-1.0, 1.0)
+    decimal_precision: int = 6
 
-  # For simple unpacking
-  def __iter__(self):
-    return iter(
-        (self.op, self.np_op, self.input_ranges, self.decimal_precision)
-    )
+    # For simple unpacking
+    def __iter__(self):
+        return iter((self.op, self.np_op, self.input_ranges, self.decimal_precision))
 
-  def __repr__(self):
-    return f"{self.op.name}({self.input_ranges})"
+    def __repr__(self):
+        return f"{self.op.name}({self.input_ranges})"
 
 
 @parameterized.product(
@@ -82,9 +80,7 @@ class ElementalHloOpcodeDef:
         ElementalHloOpcodeDef(HloOpcode.log, np.log, (0.01, 10.0)),
         ElementalHloOpcodeDef(HloOpcode.log_plus_one, np.log1p),
         ElementalHloOpcodeDef(HloOpcode.sqrt, np.sqrt),
-        ElementalHloOpcodeDef(
-            HloOpcode.rsqrt, lambda x: np.reciprocal(np.sqrt(x))
-        ),
+        ElementalHloOpcodeDef(HloOpcode.rsqrt, lambda x: np.reciprocal(np.sqrt(x))),
         ElementalHloOpcodeDef(HloOpcode.cbrt, np.cbrt),
         ElementalHloOpcodeDef(HloOpcode.power, np.pow),
         ElementalHloOpcodeDef(HloOpcode.add, np.add),
@@ -116,65 +112,61 @@ class ElementalHloOpcodeDef:
     dtype=[np.dtype(np.float32), np.dtype(np.float64)],
 )
 class ElementalKernelRunnerTest(parameterized.TestCase):
+    def test_elemental_kernel_emitter(
+        self,
+        op_def: ElementalHloOpcodeDef,
+        shape: tuple[int, ...],
+        dtype: np.dtype,
+    ):
+        [op, np_op, input_ranges, decimal_precision] = op_def
 
-  def test_elemental_kernel_emitter(
-      self,
-      op_def: ElementalHloOpcodeDef,
-      shape: tuple[int, ...],
-      dtype: np.dtype,
-  ):
+        num_inputs = opcode_arity(op)
+        self.assertIsNotNone(num_inputs)
 
-    [op, np_op, input_ranges, decimal_precision] = op_def
+        np_inputs = [
+            create_input(input_ranges, shape, dtype) for _ in range(num_inputs)
+        ]
+        input_literals = [create_literal(input_array) for input_array in np_inputs]
 
-    num_inputs = opcode_arity(op)
-    self.assertIsNotNone(num_inputs)
+        expected_output = np_op(*np_inputs)
+        output_literal = create_literal(np.ndarray(shape, dtype=expected_output.dtype))
 
-    np_inputs = [
-        create_input(input_ranges, shape, dtype) for _ in range(num_inputs)
-    ]
-    input_literals = [create_literal(input_array) for input_array in np_inputs]
+        hlo_parameters = [
+            HloInstruction.create_parameter(idx, literal.shape(), f"input_{idx}")
+            for [idx, literal] in enumerate(input_literals)
+        ]
 
-    expected_output = np_op(*np_inputs)
-    output_literal = create_literal(
-        np.ndarray(shape, dtype=expected_output.dtype)
-    )
+        hlo_op = HloInstruction.create_variadic(
+            output_literal.shape(), op, hlo_parameters
+        )
 
-    hlo_parameters = [
-        HloInstruction.create_parameter(idx, literal.shape(), f"input_{idx}")
-        for [idx, literal] in enumerate(input_literals)
-    ]
+        hlo_module, buffer_assignment = utilities.build_hlo_module(
+            hlo_op, *hlo_parameters
+        )
+        jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
-    hlo_op = HloInstruction.create_variadic(
-        output_literal.shape(), op, hlo_parameters
-    )
+        emitter = testlib_cpu.ElementalKernelEmitter(
+            hlo_module.get_root_instruction(),
+            buffer_assignment,
+            jit_compiler.get_target_machine(),
+        )
 
-    hlo_module, buffer_assignment = utilities.build_hlo_module(
-        hlo_op, *hlo_parameters
-    )
-    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+        kernel_definition = emitter.emit_kernel_definition()
+        self.assertIsNotNone(kernel_definition)
 
-    emitter = testlib_cpu.ElementalKernelEmitter(
-        hlo_module.get_root_instruction(),
-        buffer_assignment,
-        jit_compiler.get_target_machine(),
-    )
+        # kernel_definition is consumed by the runner, so we need to save the IR
+        # string before passing it to the runner.
+        ir_string = str(kernel_definition.source())
 
-    kernel_definition = emitter.emit_kernel_definition()
-    self.assertIsNotNone(kernel_definition)
+        runner = testlib_cpu.KernelRunner.create(kernel_definition, jit_compiler)
 
-    # kernel_definition is consumed by the runner, so we need to save the IR
-    # string before passing it to the runner.
-    ir_string = str(kernel_definition.source())
-
-    runner = testlib_cpu.KernelRunner.create(kernel_definition, jit_compiler)
-
-    runner.call(list(itertools.chain(input_literals, [output_literal])))
-    np.testing.assert_array_almost_equal(
-        np.asarray(output_literal),
-        expected_output,
-        decimal=decimal_precision,
-        err_msg=ir_string,
-    )
+        runner.call(list(itertools.chain(input_literals, [output_literal])))
+        np.testing.assert_array_almost_equal(
+            np.asarray(output_literal),
+            expected_output,
+            decimal=decimal_precision,
+            err_msg=ir_string,
+        )
 
 
 @parameterized.product(
@@ -202,47 +194,46 @@ class ElementalKernelRunnerTest(parameterized.TestCase):
     ],
 )
 class ElementalComparisonKernelRunnerTest(parameterized.TestCase):
+    def test_elemental_comparision_kernel_emitter(self, op_def, shape, dtype):
+        [direction, np_op] = op_def
 
-  def test_elemental_comparision_kernel_emitter(self, op_def, shape, dtype):
-    [direction, np_op] = op_def
+        is_unsigned = np.issubdtype(dtype, np.unsignedinteger)
+        value_range = (0.0, 20.0) if is_unsigned else (-10.0, 10.0)
+        lhs_np = create_input(value_range, shape, dtype, shuffle=True)
+        rhs_np = create_input(value_range, shape, dtype, shuffle=True)
 
-    is_unsigned = np.issubdtype(dtype, np.unsignedinteger)
-    value_range = (0.0, 20.0) if is_unsigned else (-10.0, 10.0)
-    lhs_np = create_input(value_range, shape, dtype, shuffle=True)
-    rhs_np = create_input(value_range, shape, dtype, shuffle=True)
+        lhs_literal = create_literal(lhs_np)
+        rhs_literal = create_literal(rhs_np)
 
-    lhs_literal = create_literal(lhs_np)
-    rhs_literal = create_literal(rhs_np)
+        output_literal = create_literal(np.ndarray(shape, dtype=np.bool))
 
-    output_literal = create_literal(np.ndarray(shape, dtype=np.bool))
+        lhs_param = HloInstruction.create_parameter(0, lhs_literal.shape(), "lhs")
+        rhs_param = HloInstruction.create_parameter(1, rhs_literal.shape(), "rhs")
 
-    lhs_param = HloInstruction.create_parameter(0, lhs_literal.shape(), "lhs")
-    rhs_param = HloInstruction.create_parameter(1, rhs_literal.shape(), "rhs")
+        hlo_op = HloInstruction.create_compare(
+            output_literal.shape(), lhs_param, rhs_param, direction
+        )
 
-    hlo_op = HloInstruction.create_compare(
-        output_literal.shape(), lhs_param, rhs_param, direction
-    )
+        hlo_module, buffer_assignment = utilities.build_hlo_module(
+            hlo_op, lhs_param, rhs_param
+        )
+        jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
-    hlo_module, buffer_assignment = utilities.build_hlo_module(
-        hlo_op, lhs_param, rhs_param
-    )
-    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+        emitter = testlib_cpu.ElementalKernelEmitter(
+            hlo_module.get_root_instruction(),
+            buffer_assignment,
+            jit_compiler.get_target_machine(),
+        )
 
-    emitter = testlib_cpu.ElementalKernelEmitter(
-        hlo_module.get_root_instruction(),
-        buffer_assignment,
-        jit_compiler.get_target_machine(),
-    )
+        runner = testlib_cpu.KernelRunner.create(
+            emitter.emit_kernel_definition(), jit_compiler
+        )
 
-    runner = testlib_cpu.KernelRunner.create(
-        emitter.emit_kernel_definition(), jit_compiler
-    )
-
-    runner.call([lhs_literal, rhs_literal, output_literal])
-    np.testing.assert_equal(
-        np.asarray(output_literal),
-        np_op(lhs_np, rhs_np),
-    )
+        runner.call([lhs_literal, rhs_literal, output_literal])
+        np.testing.assert_equal(
+            np.asarray(output_literal),
+            np_op(lhs_np, rhs_np),
+        )
 
 
 @parameterized.product(
@@ -262,14 +253,13 @@ class ElementalComparisonKernelRunnerTest(parameterized.TestCase):
     ],
 )
 class HloModuleKernelRunnerTest(parameterized.TestCase):
+    def test_map(self, input_dimensions, dtype):
+        scalar_shape = xla_extension.Shape.scalar_shape(dtype)
+        shape = xla_extension.Shape.array_shape(dtype, input_dimensions)
 
-  def test_map(self, input_dimensions, dtype):
-    scalar_shape = xla_extension.Shape.scalar_shape(dtype)
-    shape = xla_extension.Shape.array_shape(dtype, input_dimensions)
-
-    # Please note the double curly braces is to escape the python string
-    # formatting.
-    hlo = """
+        # Please note the double curly braces is to escape the python string
+        # formatting.
+        hlo = """
       HloModule test_map
 
       double {{
@@ -284,56 +274,56 @@ class HloModuleKernelRunnerTest(parameterized.TestCase):
       }}
     """.format(scalar_shape=scalar_shape, shape=shape)
 
-    hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
-    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+        hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
+        jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
-    emitter = testlib_cpu.ElementalKernelEmitter(
-        hlo_module.get_root_instruction(),
-        buffer_assignment,
-        jit_compiler.get_target_machine(),
-    )
+        emitter = testlib_cpu.ElementalKernelEmitter(
+            hlo_module.get_root_instruction(),
+            buffer_assignment,
+            jit_compiler.get_target_machine(),
+        )
 
-    input_np = create_input([0, 10], input_dimensions, dtype, shuffle=True)
+        input_np = create_input([0, 10], input_dimensions, dtype, shuffle=True)
 
-    input_literal = create_literal(input_np)
+        input_literal = create_literal(input_np)
 
-    output_literal = xla_extension.Literal(shape)
+        output_literal = xla_extension.Literal(shape)
 
-    runner = testlib_cpu.KernelRunner.create(
-        emitter.emit_kernel_definition(), jit_compiler
-    )
+        runner = testlib_cpu.KernelRunner.create(
+            emitter.emit_kernel_definition(), jit_compiler
+        )
 
-    runner.call([input_literal, output_literal])
+        runner.call([input_literal, output_literal])
 
-    np.testing.assert_equal(
-        np.asarray(output_literal),
-        input_np * 2,
-    )
+        np.testing.assert_equal(
+            np.asarray(output_literal),
+            input_np * 2,
+        )
 
-  def test_reduce(self, input_dimensions, dtype):
-    # Iterate over all combinations of reduce dimensions.
-    for reduce_dimensions in itertools.chain.from_iterable(
-        itertools.combinations(range(len(input_dimensions)), r)
-        for r in range(1, len(input_dimensions))
-    ):
-      scalar_shape = xla_extension.Shape.scalar_shape(dtype)
-      input_shape = xla_extension.Shape.array_shape(dtype, input_dimensions)
+    def test_reduce(self, input_dimensions, dtype):
+        # Iterate over all combinations of reduce dimensions.
+        for reduce_dimensions in itertools.chain.from_iterable(
+            itertools.combinations(range(len(input_dimensions)), r)
+            for r in range(1, len(input_dimensions))
+        ):
+            scalar_shape = xla_extension.Shape.scalar_shape(dtype)
+            input_shape = xla_extension.Shape.array_shape(dtype, input_dimensions)
 
-      output_dimensions = [
-          dim
-          for idx, dim in enumerate(input_dimensions)
-          if idx not in reduce_dimensions
-      ]
-      # Result can overflow in int8 (which results in undefined behavior),
-      # so we use int16 instead.
-      output_dtype = np.dtype(np.int16) if (dtype == np.int8) else dtype
-      output_shape = xla_extension.Shape.array_shape(
-          output_dtype, output_dimensions
-      )
+            output_dimensions = [
+                dim
+                for idx, dim in enumerate(input_dimensions)
+                if idx not in reduce_dimensions
+            ]
+            # Result can overflow in int8 (which results in undefined behavior),
+            # so we use int16 instead.
+            output_dtype = np.dtype(np.int16) if (dtype == np.int8) else dtype
+            output_shape = xla_extension.Shape.array_shape(
+                output_dtype, output_dimensions
+            )
 
-      # Please note the double curly braces is to escape the python string
-      # formatting.
-      hlo = """
+            # Please note the double curly braces is to escape the python string
+            # formatting.
+            hlo = """
         HloModule test_reduce
 
         add_method {{
@@ -349,43 +339,43 @@ class HloModuleKernelRunnerTest(parameterized.TestCase):
             dimensions={{{reduce_dimensions}}}, to_apply=add_method
         }}
       """.format(
-          scalar_shape=scalar_shape,
-          input_shape=input_shape,
-          reduce_dimensions=",".join(map(str, reduce_dimensions)),
-          output_shape=output_shape,
-      )
+                scalar_shape=scalar_shape,
+                input_shape=input_shape,
+                reduce_dimensions=",".join(map(str, reduce_dimensions)),
+                output_shape=output_shape,
+            )
 
-      hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
-      jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+            hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
+            jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
-      emitter = testlib_cpu.ElementalKernelEmitter(
-          hlo_module.get_root_instruction(),
-          buffer_assignment,
-          jit_compiler.get_target_machine(),
-      )
+            emitter = testlib_cpu.ElementalKernelEmitter(
+                hlo_module.get_root_instruction(),
+                buffer_assignment,
+                jit_compiler.get_target_machine(),
+            )
 
-      input_np = create_input([0, 10], input_dimensions, dtype)
-      input_literal = create_literal(input_np)
+            input_np = create_input([0, 10], input_dimensions, dtype)
+            input_literal = create_literal(input_np)
 
-      initial_value_np = create_input([0, 10], (), dtype)
-      initial_value_literal = create_literal(initial_value_np)
+            initial_value_np = create_input([0, 10], (), dtype)
+            initial_value_literal = create_literal(initial_value_np)
 
-      output_literal = xla_extension.Literal(output_shape)
+            output_literal = xla_extension.Literal(output_shape)
 
-      runner = testlib_cpu.KernelRunner.create(
-          emitter.emit_kernel_definition(), jit_compiler
-      )
+            runner = testlib_cpu.KernelRunner.create(
+                emitter.emit_kernel_definition(), jit_compiler
+            )
 
-      runner.call([input_literal, initial_value_literal, output_literal])
+            runner.call([input_literal, initial_value_literal, output_literal])
 
-      np.testing.assert_array_almost_equal_nulp(
-          np.asarray(output_literal),
-          np.add.reduce(
-              input_np, axis=reduce_dimensions, initial=initial_value_np
-          ),
-          nulp=3,
-      )
+            np.testing.assert_array_almost_equal_nulp(
+                np.asarray(output_literal),
+                np.add.reduce(
+                    input_np, axis=reduce_dimensions, initial=initial_value_np
+                ),
+                nulp=3,
+            )
 
 
 if __name__ == "__main__":
-  absltest.main()
+    absltest.main()

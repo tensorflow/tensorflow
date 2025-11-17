@@ -18,29 +18,28 @@ from jax import profiler
 
 
 class ProfileDataTest(absltest.TestCase):
-
-  def test_find_plane_with_name(self):
-    profile = profiler.ProfileData.from_text_proto("""
+    def test_find_plane_with_name(self):
+        profile = profiler.ProfileData.from_text_proto("""
         planes { name: "a" }
         planes { name: "b" }
         """)
-    self.assertEqual(profile.find_plane_with_name('a').name, 'a')
-    self.assertEqual(profile.find_plane_with_name('b').name, 'b')
-    self.assertIsNone(profile.find_plane_with_name('c'))
+        self.assertEqual(profile.find_plane_with_name("a").name, "a")
+        self.assertEqual(profile.find_plane_with_name("b").name, "b")
+        self.assertIsNone(profile.find_plane_with_name("c"))
 
-  def test_visit_space(self):
-    space = profiler.ProfileData.from_text_proto("""
+    def test_visit_space(self):
+        space = profiler.ProfileData.from_text_proto("""
         planes { name: "a" }
         planes { name: "b" }
         """)
-    self.assertEqual([plane.name for plane in space.planes], ['a', 'b'])
+        self.assertEqual([plane.name for plane in space.planes], ["a", "b"])
 
-  def test_visit_empty_space(self):
-    space = profiler.ProfileData.from_text_proto('')
-    self.assertEmpty(list(space.planes))
+    def test_visit_empty_space(self):
+        space = profiler.ProfileData.from_text_proto("")
+        self.assertEmpty(list(space.planes))
 
-  def test_visit_plane(self):
-    profile = profiler.ProfileData.from_text_proto("""
+    def test_visit_plane(self):
+        profile = profiler.ProfileData.from_text_proto("""
         planes {
           name: "p0"
           lines { name: "t1" }
@@ -52,20 +51,20 @@ class ProfileDataTest(absltest.TestCase):
           }
         }
         """)
-    plane = profile.find_plane_with_name('p0')
-    self.assertEqual(plane.name, 'p0')
-    self.assertEqual([line.name for line in plane.lines], ['t1', 't2'])
-    self.assertEqual(dict(plane.stats), {'hello': 'world'})
+        plane = profile.find_plane_with_name("p0")
+        self.assertEqual(plane.name, "p0")
+        self.assertEqual([line.name for line in plane.lines], ["t1", "t2"])
+        self.assertEqual(dict(plane.stats), {"hello": "world"})
 
-  def test_visit_empty_plane(self):
-    profile = profiler.ProfileData.from_text_proto('planes {}')
+    def test_visit_empty_plane(self):
+        profile = profiler.ProfileData.from_text_proto("planes {}")
 
-    plane = next(profile.planes)
-    self.assertEmpty(plane.name)
-    self.assertEmpty(list(plane.lines))
+        plane = next(profile.planes)
+        self.assertEmpty(plane.name)
+        self.assertEmpty(list(plane.lines))
 
-  def test_visit_line(self):
-    profile = profiler.ProfileData.from_text_proto("""
+    def test_visit_line(self):
+        profile = profiler.ProfileData.from_text_proto("""
         planes {
           name: "p0"
           lines {
@@ -83,29 +82,29 @@ class ProfileDataTest(absltest.TestCase):
           }
         }
         """)
-    plane = next(profile.planes)
-    lines = list(plane.lines)
-    self.assertLen(lines, 1)
-    line = lines[0]
-    self.assertEqual(line.name, 't100')
-    self.assertListEqual([event.name for event in line.events], ['foo', 'bar'])
+        plane = next(profile.planes)
+        lines = list(plane.lines)
+        self.assertLen(lines, 1)
+        line = lines[0]
+        self.assertEqual(line.name, "t100")
+        self.assertListEqual([event.name for event in line.events], ["foo", "bar"])
 
-  def test_visit_empty_line(self):
-    profile = profiler.ProfileData.from_text_proto("""
+    def test_visit_empty_line(self):
+        profile = profiler.ProfileData.from_text_proto("""
         planes {
           name: "p0"
           lines {}
         }
         """)
-    plane = next(profile.planes)
-    lines = list(plane.lines)
-    self.assertLen(lines, 1)
-    line = lines[0]
-    self.assertEmpty(line.name)
-    self.assertEmpty(list(line.events))
+        plane = next(profile.planes)
+        lines = list(plane.lines)
+        self.assertLen(lines, 1)
+        line = lines[0]
+        self.assertEmpty(line.name)
+        self.assertEmpty(list(line.events))
 
-  def test_visit_event(self):
-    profile = profiler.ProfileData.from_text_proto("""
+    def test_visit_event(self):
+        profile = profiler.ProfileData.from_text_proto("""
         planes {
           name: "p0"
           lines {
@@ -141,24 +140,24 @@ class ProfileDataTest(absltest.TestCase):
           }
         }
         """)
-    plane = next(profile.planes)
-    lines = list(plane.lines)
-    self.assertLen(lines, 1)
-    line = lines[0]
-    events = list(line.events)
-    self.assertLen(events, 1)
-    event = events[0]
-    self.assertEqual(event.start_ns, 1500.0)
-    self.assertEqual(event.duration_ns, 600.0)
-    self.assertEqual(event.end_ns, 2100.0)
-    self.assertEqual(event.name, 'hlo')
-    self.assertEqual(
-        dict(event.stats),
-        {'flops': 400.0, 'bytes': 1024, 'provenance': 'tf_op'},
-    )
+        plane = next(profile.planes)
+        lines = list(plane.lines)
+        self.assertLen(lines, 1)
+        line = lines[0]
+        events = list(line.events)
+        self.assertLen(events, 1)
+        event = events[0]
+        self.assertEqual(event.start_ns, 1500.0)
+        self.assertEqual(event.duration_ns, 600.0)
+        self.assertEqual(event.end_ns, 2100.0)
+        self.assertEqual(event.name, "hlo")
+        self.assertEqual(
+            dict(event.stats),
+            {"flops": 400.0, "bytes": 1024, "provenance": "tf_op"},
+        )
 
-  def test_visit_event_missing_metadata(self):
-    profile = profiler.ProfileData.from_text_proto("""
+    def test_visit_event_missing_metadata(self):
+        profile = profiler.ProfileData.from_text_proto("""
         planes {
           name: "p0"
           lines {
@@ -180,30 +179,30 @@ class ProfileDataTest(absltest.TestCase):
           }
         }
         """)
-    plane = next(profile.planes)
-    lines = list(plane.lines)
-    self.assertLen(lines, 1)
-    line = lines[0]
-    events = list(line.events)
-    self.assertLen(events, 1)
-    event = events[0]
-    self.assertEqual(event.name, '')
-    self.assertEqual(
-        dict(filter(lambda x: x[0] is not None, event.stats)),
-        {'flops': 400.0, 'provenance': ''},
-    )
+        plane = next(profile.planes)
+        lines = list(plane.lines)
+        self.assertLen(lines, 1)
+        line = lines[0]
+        events = list(line.events)
+        self.assertLen(events, 1)
+        event = events[0]
+        self.assertEqual(event.name, "")
+        self.assertEqual(
+            dict(filter(lambda x: x[0] is not None, event.stats)),
+            {"flops": 400.0, "provenance": ""},
+        )
 
-  def test_create_profile_data_from_file(self):
-    serialized = profiler.ProfileData.text_proto_to_serialized_xspace("""
+    def test_create_profile_data_from_file(self):
+        serialized = profiler.ProfileData.text_proto_to_serialized_xspace("""
         planes { name: "a" }
         planes { name: "b" }
         """)
-    tmp_file = self.create_tempfile().full_path
-    with open(tmp_file, 'wb') as f:
-      f.write(serialized)
-    profile = profiler.ProfileData.from_file(tmp_file)
-    self.assertEqual([plane.name for plane in profile.planes], ['a', 'b'])
+        tmp_file = self.create_tempfile().full_path
+        with open(tmp_file, "wb") as f:
+            f.write(serialized)
+        profile = profiler.ProfileData.from_file(tmp_file)
+        self.assertEqual([plane.name for plane in profile.planes], ["a", "b"])
 
 
-if __name__ == '__main__':
-  absltest.main()
+if __name__ == "__main__":
+    absltest.main()

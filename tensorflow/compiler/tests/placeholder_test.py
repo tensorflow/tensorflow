@@ -22,23 +22,22 @@ from tensorflow.python.platform import googletest
 
 
 class PlaceholderTest(xla_test.XLATestCase):
+    def test_placeholder_with_default_default(self):
+        with self.session() as sess, self.test_scope():
+            v = resource_variable_ops.ResourceVariable(4.0)
+            ph = array_ops.placeholder_with_default(v, shape=[])
+            out = ph * 2
+            sess.run(variables.variables_initializer([v]))
+            self.assertEqual(8.0, self.evaluate(out))
 
-  def test_placeholder_with_default_default(self):
-    with self.session() as sess, self.test_scope():
-      v = resource_variable_ops.ResourceVariable(4.0)
-      ph = array_ops.placeholder_with_default(v, shape=[])
-      out = ph * 2
-      sess.run(variables.variables_initializer([v]))
-      self.assertEqual(8.0, self.evaluate(out))
-
-  def test_placeholder_with_default_fed(self):
-    with self.session() as sess, self.test_scope():
-      v = resource_variable_ops.ResourceVariable(4.0)
-      ph = array_ops.placeholder_with_default(v, shape=[])
-      out = ph * 2
-      sess.run(variables.variables_initializer([v]))
-      self.assertEqual(2.0, sess.run(out, {ph: 1.0}))
+    def test_placeholder_with_default_fed(self):
+        with self.session() as sess, self.test_scope():
+            v = resource_variable_ops.ResourceVariable(4.0)
+            ph = array_ops.placeholder_with_default(v, shape=[])
+            out = ph * 2
+            sess.run(variables.variables_initializer([v]))
+            self.assertEqual(2.0, sess.run(out, {ph: 1.0}))
 
 
-if __name__ == '__main__':
-  googletest.main()
+if __name__ == "__main__":
+    googletest.main()
