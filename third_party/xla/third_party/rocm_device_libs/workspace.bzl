@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
     """Imports Rocm-Device-Libs."""
-    LLVM_COMMIT = "c93c6e5451544e9ead12f2d2b15e1969b9a1bd04"
-    LLVM_SHA256 = "f715a0a9c3c1a2b09a79939016ed53a0cbd454f7b0ea4ef32878433275c7b16c"
+    LLVM_COMMIT = "fcc50fb091b7c75d8f6c9a6554d0b004bc0cd474"
+    LLVM_SHA256 = "fa9089d3134bd32d2b05a141006b9261e441c1d80b75782db0dcb154b6a60561"
 
     tf_http_archive(
         name = "rocm_device_libs",
