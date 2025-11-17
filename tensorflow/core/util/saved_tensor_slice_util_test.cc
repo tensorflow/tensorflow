@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
+#include <string>
+
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
