@@ -158,6 +158,38 @@ tf_proto_library(
     visibility = ["//xla/python/ifrt:users"],
 )
 
+tf_proto_library(
+    name = "ifrt_ir_executable_version_proto",
+    srcs = ["ifrt_ir_executable_version.proto"],
+    visibility = ["//xla/python/ifrt:users"],
+    deps = [
+        "//xla/python/ifrt:device_proto",
+        "//xla/python/pjrt_ifrt:executable_metadata_proto",
+    ],
+)
+
+cc_library(
+    name = "ifrt_ir_executable_version",
+    srcs = ["ifrt_ir_executable_version.cc"],
+    hdrs = ["ifrt_ir_executable_version.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//xla/python/ifrt:users"],
+    deps = [
+        ":ifrt_ir_executable_version_proto_cc",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:device_proto_cc",
+        "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_version",
+        "//xla/python/pjrt_ifrt:xla_executable_version",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 cc_library(
     name = "ifrt_ir_program",
     srcs = ["ifrt_ir_program.cc"],
