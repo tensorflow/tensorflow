@@ -262,7 +262,7 @@ TEST_F(MatmulStatsCollectionTest,
                   ->backend_config<GpuBackendConfig>()
                   ->reification_cost(),
               ElementsAre(Property(&ReificationCost::exec_time_us,
-                                   DoubleNear(199, /*max_abs_error=*/1))));
+                                   DoubleNear(141, /*max_abs_error=*/1))));
 }
 
 }  // namespace

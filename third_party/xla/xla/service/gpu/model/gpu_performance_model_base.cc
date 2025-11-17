@@ -346,7 +346,7 @@ int64_t GpuPerformanceModelBase::CalculateEffectiveFlopsPerNs(
       std::min<int64_t>(num_blocks, gpu_device_info.core_count());
   int64_t fpu_count = n_active_core * n_active_fpus_per_core;
 
-  int64_t flop_per_ns_per_fpu = gpu_device_info.clock_rate_ghz() * /*fma:*/ 2;
+  double flop_per_ns_per_fpu = gpu_device_info.clock_rate_ghz() * /*fma:*/ 2;
   return flop_per_ns_per_fpu * fpu_count;
 }
 

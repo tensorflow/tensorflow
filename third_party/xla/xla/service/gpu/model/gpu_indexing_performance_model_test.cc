@@ -534,7 +534,7 @@ ENTRY main {
           *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{{1, 1}}));
 
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.read_time), 2932, 2);
-  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.compute_time), 19, 1);
+  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.compute_time), 14, 1);
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 2932, 2);
 }
 
@@ -682,7 +682,7 @@ ENTRY main {
                           indexing_cost_model_.EstimateRunTimeForTiledFusion(
                               *fusion_adaptor, /*launch_dimensions=*/{1024, 8},
                               /*output_tile_sizes=*/{{4, 4}}));
-  EXPECT_NEAR(absl::ToDoubleMicroseconds(res1.exec_time), 412, 1);
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(res1.exec_time), 292, 1);
 
   TF_ASSERT_OK_AND_ASSIGN(auto res2,
                           indexing_cost_model_.EstimateRunTimeForTiledFusion(
