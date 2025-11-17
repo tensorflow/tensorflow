@@ -109,3 +109,41 @@ py_wheel(
         ":xla_plugins/xla_cpu_pjrt/xla_cpu_pjrt.so",
     ],
 )
+
+# Tests
+cc_test(
+    name = "cpu_smoke_test",
+    srcs = ["smoke_test.cc"],
+    data = [":xla_plugins/xla_cpu_pjrt/xla_cpu_pjrt.so"],
+    env = {
+        "PJRT_PLUGIN_PATH": "build_tools/pjrt_wheels/xla_plugins/xla_cpu_pjrt/xla_cpu_pjrt.so",
+    },
+    linkopts = ["-ldl"],
+    deps = ["//xla/pjrt/c:pjrt_c_api_hdrs"],
+)
+
+cc_test(
+    name = cuda_label + "_smoke_test",
+    srcs = ["smoke_test.cc"],
+    data = [":xla_plugins/xla_" + cuda_label + "_pjrt/xla_gpu_pjrt.so"],
+    env = {
+        "PJRT_PLUGIN_PATH": "build_tools/pjrt_wheels/xla_plugins/xla_" + cuda_label + "_pjrt/xla_gpu_pjrt.so",
+    },
+    linkopts = ["-ldl"],
+    deps = ["//xla/pjrt/c:pjrt_c_api_hdrs"],
+)
+
+# The CPU and CUDA test suites are run in CI's build script
+test_suite(
+    name = "cpu_test_suite",
+    tests = [
+        ":cpu_smoke_test",
+    ],
+)
+
+test_suite(
+    name = "cuda_test_suite",
+    tests = [
+        ":" + cuda_label + "_smoke_test",
+    ],
+)
