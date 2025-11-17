@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER8(BinaryOp, CPU, "FloorMod", functor::safe_floor_mod, int8, int16,
-          int32, int64_t, uint8, uint16, uint32, uint64);
+REGISTER8(BinaryOp, CPU, "FloorMod", functor::safe_floor_mod, int8_t, int16_t,
+          int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t);
 REGISTER4(BinaryOp, CPU, "FloorMod", functor::floor_fmod, Eigen::half, bfloat16,
           float, double);
 
@@ -39,7 +39,7 @@ REGISTER_KERNEL_BUILDER(Name("FloorMod")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::safe_floor_mod<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        BinaryOp<CPUDevice, functor::safe_floor_mod<int32_t>>);
 
 }  // namespace tensorflow
