@@ -82,33 +82,35 @@ absl::Status GetFunctionDefAndAttrs(const FunctionLibraryDefinition& flib_def,
 // Stores references to graph nodes. These references must outlive this.
 class FunctionStack {
  public:
-  explicit FunctionStack(const string& function_name);
+  explicit FunctionStack(const std::string& function_name);
 
   // `node_in_current_function` must outlive this.
   FunctionStack Push(const Node* node_in_current_function,
-                     const string& new_current_function) const;
+                     const std::string& new_current_function) const;
 
   // Returns true iff this stack already includes `function_name`.
-  bool HasFunction(const string& function_name) const;
+  bool HasFunction(const std::string& function_name) const;
 
-  const string& current_function_name() const { return current_function_name_; }
+  const std::string& current_function_name() const {
+    return current_function_name_;
+  }
 
   // Format's this suitable for error interpolation that retrieves
   // Python files and line numbers.
-  string FormatForError() const;
+  std::string FormatForError() const;
 
  private:
   struct Frame {
-    Frame(const string& function, const Node* node)
+    Frame(const std::string& function, const Node* node)
         : function_name(function), node(node) {}
 
-    string function_name;
+    std::string function_name;
     const Node* node;
   };
 
   // The function at the top of the stack. In other words, the function
   // that is currently being inspected for placement.
-  string current_function_name_;
+  std::string current_function_name_;
 
   // The stack of frames that got the placement to the current_function_name_.
   // frames_[0].function_name is the top function that Placer was constructed
