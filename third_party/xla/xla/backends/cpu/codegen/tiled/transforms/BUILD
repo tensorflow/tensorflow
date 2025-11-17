@@ -53,7 +53,6 @@ cc_library(
         "memref_copy_to_loops.cc",
         "shlo_to_vector.cc",
         "tensor_ops_to_vector.cc",
-        "xtile_to_vector.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
