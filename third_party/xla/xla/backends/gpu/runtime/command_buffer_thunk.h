@@ -101,6 +101,15 @@ class CommandBufferThunk : public Thunk {
 
     // Number of command buffer executions since last update.
     int64_t num_executions ABSL_GUARDED_BY(mutex) = 0;
+
+    // For GPU backend, NCCL may call cuda-graph un-supported host side API
+    // during graph capturing (e.g. cuCtxEnablePeerAccess), this will break XLA
+    // cuda graph run. To work around the issue, this PR introduces a warm up
+    // iteration for command buffer thunk, during warm up iteration, command
+    // buffer thunk are executed through normal thunks. The warm up iteration
+    // will do the proper NCCL setup, so later iterations running through
+    // command buffer does not need to call NCCL setup APIs.
+    bool warmup_done ABSL_GUARDED_BY(mutex) = false;
   };
 
   // Command buffer thunk owns commands buffers instantiated on all executors.

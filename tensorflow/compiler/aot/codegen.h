@@ -32,14 +32,14 @@ namespace tfcompile {
 // and the generated metadata object file.
 struct CodegenOpts {
   // The name of the generated C++ class, wrapping the generated function.
-  string class_name;
+  std::string class_name;
 
   // Target triple for the architecture we're targeting.
-  string target_triple;
+  std::string target_triple;
 
   // Namespaces specifies a list of C++ namespaces to add to the generated
   // header.  If empty, all symbols will be in the global namespace.
-  std::vector<string> namespaces;
+  std::vector<std::string> namespaces;
 
   // If true, generate name-to-index data for Lookup{Arg,Result}Index methods.
   bool gen_name_to_index = false;
@@ -62,27 +62,27 @@ struct CodegenOpts {
 struct MetadataResult {
   // These are top level "extern C" declarations that are expected to be visible
   // wherever program_shape_access_shim is emitted.
-  std::vector<string> header_variable_decls;
+  std::vector<std::string> header_variable_decls;
 
   // program_shape_access_shim is a C++ expression that constructs the
   // xla::ProgramShapeProto instance for the CompileResult passed to
   // GenerateMetadata.
-  string program_shape_access_shim;
+  std::string program_shape_access_shim;
 
   // hlo_profile_printer_data_access_shim is a C++ expression that constructs
   // the xla::HloProfilePrinterData instance for the CompileResult passed to
   // GenerateMetadata.  If the xla::HloProfilePrinterData is null then this is a
   // C++ expression that evaluates to nullptr at runtime.
   // This is set only for AOT legacy.
-  string hlo_profile_printer_data_access_shim;
+  std::string hlo_profile_printer_data_access_shim;
 
   // cpu_executable_access_shim is a C++ expression that constructs
   // a protobuf required to construct a CpuExecutable.
   // This is set only for AOT thunks.
-  string cpu_executable_access_shim;
+  std::string cpu_executable_access_shim;
 
   // The contents of the object (".o") file.
-  string object_file_data;
+  std::string object_file_data;
 };
 
 // Generates a set of constant buffers embedded into an object file.
@@ -105,14 +105,16 @@ absl::Status GenerateMetadata(const CodegenOpts& opts,
 absl::Status GenerateHeader(
     const CodegenOpts& opts, const tf2xla::Config& config,
     const CompileResult& compile_result, const MetadataResult& metadata_result,
-    const EmbeddedConstantBuffers& embedded_constant_buffers, string* header);
+    const EmbeddedConstantBuffers& embedded_constant_buffers,
+    std::string* header);
 
 // ParseCppClass parses `cpp_class` into its `class_name` and `namespaces`
 // components.  The syntax is [[<optional_namespace>::],...]<class_name>.  This
 // mirrors the C++ syntax for referring to a class, where multiple namespaces
 // may precede the class name, separated by double-colons.
-absl::Status ParseCppClass(const string& cpp_class, string* class_name,
-                           std::vector<string>* namespaces);
+absl::Status ParseCppClass(const std::string& cpp_class,
+                           std::string* class_name,
+                           std::vector<std::string>* namespaces);
 
 // ValidateCppIdent returns OK iff ident is a valid C++ identifier.  The msg is
 // appended to error messages.

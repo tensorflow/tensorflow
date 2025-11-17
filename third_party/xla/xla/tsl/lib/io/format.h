@@ -38,22 +38,22 @@ class BlockHandle {
   BlockHandle();
 
   // The offset of the block in the file.
-  uint64 offset() const { return offset_; }
-  void set_offset(uint64 offset) { offset_ = offset; }
+  uint64_t offset() const { return offset_; }
+  void set_offset(uint64_t offset) { offset_ = offset; }
 
   // The size of the stored block
-  uint64 size() const { return size_; }
-  void set_size(uint64 size) { size_ = size; }
+  uint64_t size() const { return size_; }
+  void set_size(uint64_t size) { size_ = size; }
 
-  void EncodeTo(string* dst) const;
+  void EncodeTo(std::string* dst) const;
   absl::Status DecodeFrom(absl::string_view* input);
 
   // Maximum encoding length of a BlockHandle
   enum { kMaxEncodedLength = 10 + 10 };
 
  private:
-  uint64 offset_;
-  uint64 size_;
+  uint64_t offset_;
+  uint64_t size_;
 };
 
 // Footer encapsulates the fixed information stored at the tail
@@ -70,7 +70,7 @@ class Footer {
   const BlockHandle& index_handle() const { return index_handle_; }
   void set_index_handle(const BlockHandle& h) { index_handle_ = h; }
 
-  void EncodeTo(string* dst) const;
+  void EncodeTo(std::string* dst) const;
   absl::Status DecodeFrom(absl::string_view* input);
 
   // Encoded length of a Footer.  Note that the serialization of a
@@ -86,7 +86,7 @@ class Footer {
 // kTableMagicNumber was picked by running
 //    echo http://code.google.com/p/leveldb/ | sha1sum
 // and taking the leading 64 bits.
-static const uint64 kTableMagicNumber = 0xdb4775248b80fb57ull;
+static const uint64_t kTableMagicNumber = 0xdb4775248b80fb57ull;
 
 // 1-byte type + 32-bit crc
 static const size_t kBlockTrailerSize = 5;
@@ -105,7 +105,7 @@ extern absl::Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
 // Implementation details follow.  Clients should ignore,
 
 inline BlockHandle::BlockHandle()
-    : offset_(~static_cast<uint64>(0)), size_(~static_cast<uint64>(0)) {}
+    : offset_(~static_cast<uint64_t>(0)), size_(~static_cast<uint64_t>(0)) {}
 
 }  // namespace table
 }  // namespace tsl

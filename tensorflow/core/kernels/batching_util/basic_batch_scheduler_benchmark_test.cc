@@ -99,11 +99,11 @@ class BenchmarkBatchTask : public BatchTask {
 
   size_t size() const override { return 1; }
 
-  uint64 start_time_micros() const { return start_time_micros_; }
+  uint64_t start_time_micros() const { return start_time_micros_; }
 
  private:
   // The time at which the task was created, in microseconds.
-  const uint64 start_time_micros_;
+  const uint64_t start_time_micros_;
 };
 
 BenchmarkBatchTask::BenchmarkBatchTask()
@@ -164,7 +164,7 @@ class LatencyBenchmark {
   void InjectLoad();
 
   // Return latency and batch size stat.
-  string ReportLatencyBatchSz();
+  std::string ReportLatencyBatchSz();
 
   // Reset scheduler. This has a side-effect of waiting for all work to be
   // completed prior to reset.
@@ -255,7 +255,7 @@ void LatencyBenchmark::InjectLoad() {
 void LatencyBenchmark::ProcessBatch(
     std::unique_ptr<Batch<BenchmarkBatchTask>> batch) {
   PerformBatchCpuWork();
-  const uint64 batch_completion_time = Env::Default()->NowMicros();
+  const uint64_t batch_completion_time = Env::Default()->NowMicros();
 
   {
     mutex_lock l(mu_);
@@ -263,7 +263,7 @@ void LatencyBenchmark::ProcessBatch(
   }
 
   for (int i = 0; i < batch->num_tasks(); ++i) {
-    const uint64 task_latency_micros =
+    const uint64_t task_latency_micros =
         batch_completion_time - batch->task(i).start_time_micros();
     {
       mutex_lock l(mu_);
@@ -280,7 +280,7 @@ void LatencyBenchmark::PerformBatchCpuWork() const {
   CHECK_NE(dummy, 0);
 }
 
-string LatencyBenchmark::ReportLatencyBatchSz() {
+std::string LatencyBenchmark::ReportLatencyBatchSz() {
   mutex_lock l(mu_);
   return absl::StrCat(
       "lat_p99.9=", task_latency_millis_histogram_.Percentile(99.9),
@@ -347,9 +347,9 @@ void LatencyBM(::testing::benchmark::State& state) {
     scheduler_options.num_batch_threads = state.range(1);
     scheduler_options.max_enqueued_batches = INT_MAX;  // Unbounded queue.
     const int kBatchCpuCost = 10 * 1000 * 1000;
-    const int64 kQps = state.range(2);
-    const int64 kInjectionIntervalMicros = 1000000 / (kQps / state.threads());
-    const int64 kNumTasks = latency_benchmark_duration_secs * kQps;
+    const int64_t kQps = state.range(2);
+    const int64_t kInjectionIntervalMicros = 1000000 / (kQps / state.threads());
+    const int64_t kNumTasks = latency_benchmark_duration_secs * kQps;
     if (kNumTasks <= 10000) {
       LOG(WARNING) << "Not enough tasks (" << kNumTasks << ")"
                    << " to report meaningful 99.9% latency!"

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/nvptxcompiler_compilation_provider.h"
 
-#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>

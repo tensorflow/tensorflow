@@ -12,14 +12,6 @@ COPY builder.packages.txt /builder.packages.txt
 
 RUN /setup.sources.sh && /setup.packages.sh /builder.packages.txt
 
-# Install devtoolset-9 in /dt9 with glibc 2.17 and libstdc++ 4.8, for building
-# manylinux2014-compatible packages.
-COPY builder.devtoolset/fixlinks.sh /fixlinks.sh
-COPY builder.devtoolset/rpm-patch.sh /rpm-patch.sh
-COPY builder.devtoolset/build_devtoolset.sh /build_devtoolset.sh
-COPY builder.devtoolset/glibc2.17-inline.patch /glibc2.17-inline.patch
-RUN /build_devtoolset.sh devtoolset-9 /dt9
-
 # Setup Python
 COPY setup.python.sh /setup.python.sh
 COPY builder.requirements.txt /builder.requirements.txt
@@ -55,9 +47,6 @@ RUN if [ "${INSTALL_NVIDIA_PACKAGES}" = "true" ]; then \
 RUN ln -sf /usr/bin/python3.12 /usr/bin/python3
 RUN ln -sf /usr/bin/python3.12 /usr/bin/python
 RUN ln -sf /usr/lib/python3.12 /usr/lib/tf_python
-
-# Make sure clang is on the path
-RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
 
 # Link the compat driver to the location if available.
 RUN if [ -e "/usr/local/cuda/compat/libcuda.so.1" ]; then ln -s /usr/local/cuda/compat/libcuda.so.1 /usr/lib/x86_64-linux-gnu/libcuda.so.1; fi

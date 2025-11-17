@@ -67,7 +67,8 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
                      const gtl::ArraySlice<int32> perm, Tensor* out) {
   // Ensures we can use 32-bit index.
   const int64 nelem = in.NumElements();
-  CHECK_LT(nelem, kint32max) << "Tensor too large to transpose on GPU";
+  CHECK_LT(nelem, std::numeric_limits<int32_t>::max())
+      << "Tensor too large to transpose on GPU";
   // Pack strides and permutation into one buffer.
   const int32 ndims = in.dims();
   GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);

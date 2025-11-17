@@ -69,7 +69,7 @@ static PJRT_Error* PJRT_FFI_UserData_Add(PJRT_FFI_UserData_Add_Args* args) {
 
   xla::ffi::TypeRegistry::TypeId type_id(args->user_data.type_id);
   PJRT_RETURN_IF_ERROR(args->context->execute_context->ffi_context().Insert(
-      type_id, args->user_data.data, args->user_data.deleter));
+      type_id, args->user_data.data));
   return nullptr;
 }
 
@@ -102,10 +102,9 @@ PJRT_FFI_Extension CreateFfiExtension(PJRT_Extension_Base* next) {
           /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_FFI,
           /*next=*/next,
       },
-      /*type_id_register=*/PJRT_FFI_Type_Register,
+      /*type_register=*/PJRT_FFI_Type_Register,
       /*user_data_add=*/PJRT_FFI_UserData_Add,
       /*register_handler=*/PJRT_FFI_Register_Handler,
-      /*type_register=*/PJRT_FFI_Type_Register,
   };
 }
 

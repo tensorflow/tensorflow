@@ -91,7 +91,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_norm_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_pad_for_convolutions.h"
 #include "xla/service/gpu/transforms/cudnn_simplify_padding.h"
-#include "xla/service/gpu/transforms/gpusolver_rewriter.h"
 #include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
@@ -104,7 +103,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/cuda/cuda_solver_context.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -198,8 +196,6 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   MatmulBfloat16Support matmul_bf16_support(*cuda_compute_capability);
   pipeline.AddPass<FloatNormalization>(&matmul_bf16_support);
 
-  pipeline.AddPass<GpusolverRewriter>(
-      stream_executor::CudaSolverContext::Create);
   if (!hlo_module->config()
            .debug_options()
            .xla_gpu_experimental_disable_binary_libraries()) {
@@ -439,15 +435,15 @@ absl::Status NVPTXCompiler::AddFusionAutotuningPass(
   }
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
+  auto native_backend = std::make_unique<NativeEmitterBackend>(
+      &debug_options, this, target_config);
+  native_backend->AllowRegisterSpills();
+  backends.push_back(std::move(native_backend));
   auto ble_backend = std::make_unique<BlockLevelEmitterBackend>(
       &debug_options, this, shape_size_fn, target_config,
       /*use_default_config=*/true);
   ble_backend->AllowRegisterSpills();
   backends.push_back(std::move(ble_backend));
-  auto native_backend = std::make_unique<NativeEmitterBackend>(
-      &debug_options, this, target_config);
-  native_backend->AllowRegisterSpills();
-  backends.push_back(std::move(native_backend));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<AutotunerPass> autotuner_pass,

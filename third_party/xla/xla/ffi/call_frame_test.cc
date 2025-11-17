@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/attribute_map.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
@@ -131,7 +132,7 @@ void BM_AddBufferArg(benchmark::State& state) {
 void BM_AddAttributes(benchmark::State& state) {
   size_t num_attrs = state.range(0);
 
-  CallFrameBuilder::AttributesMap attrs;
+  AttributesMap attrs;
   for (size_t i = 0; i < num_attrs; ++i) {
     attrs.try_emplace(absl::StrCat("attr_", i), 42);
   }

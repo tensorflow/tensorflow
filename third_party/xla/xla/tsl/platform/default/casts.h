@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <assert.h>  // for use with down_cast<>
 
+#include <memory>
 #include <type_traits>
 
 namespace tensorflow {
@@ -87,10 +88,19 @@ inline To down_cast(From& f) {
   return static_cast<To>(f);
 }
 
+// A `down_cast` version for `std::shared_ptr`.
+template <typename To, typename From>
+std::shared_ptr<To> down_pointer_cast(const std::shared_ptr<From>& from) {
+  auto* ptr =
+      down_cast<typename std::shared_ptr<To>::element_type*>(from.get());
+  return std::shared_ptr<To>{from, ptr};
+}
+
 }  // namespace tensorflow
 
 namespace tsl {
 using ::tensorflow::down_cast;
-}
+using ::tensorflow::down_pointer_cast;
+}  // namespace tsl
 
 #endif  // XLA_TSL_PLATFORM_DEFAULT_CASTS_H_

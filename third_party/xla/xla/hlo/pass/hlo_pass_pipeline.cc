@@ -179,6 +179,7 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
       hash_before = absl::HashOf(*hlo);
       VLOG(2) << "  Module hash " << hash_before.value();
     }
+    VLOG(2) << "  Number of instructions: " << hlo->instruction_count();
     tsl::profiler::TraceMe traceme(pass->name());
     if (!pass->IsPassPipeline()) {
       compilation_stats_->StartPass(pass_name);
@@ -289,7 +290,7 @@ void HloPassPipeline::MaybeDumpHloAndSaveFilenames(
   }
 }
 
-absl::StatusOr<bool> HloPassPipeline::Run(
+absl::StatusOr<bool> HloPassPipeline::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   run_called_ = true;
@@ -303,7 +304,7 @@ absl::StatusOr<bool> HloPassPipeline::Run(
   return RunPassesInternal(module, debug_options, execution_threads);
 }
 
-absl::StatusOr<bool> HloPassPipeline::Run(
+absl::StatusOr<bool> HloPassPipeline::RunImpl(
     std::unique_ptr<HloModule>& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   run_called_ = true;

@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
@@ -97,6 +99,23 @@ GpuAlgebraicSimplifierVisitor::MakeMultiplyForPrecisionAlgorithm(
     HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs) {
   return MakeMultiplyForDotPrecisionAlgorithm(
       lhs, rhs, dot->precision_config().algorithm());
+}
+
+absl::StatusOr<bool> GpuAlgebraicSimplifier::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  XLA_VLOG_LINES(
+      2, "GpuAlgebraicSimplifier::RunImpl(), before:\n" + module->ToString());
+  bool changed = false;
+  GpuAlgebraicSimplifierVisitor visitor(options_, compute_capability_, this);
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
+    if (visitor.Run(comp, options_, this)) {
+      changed = true;
+    }
+  }
+  XLA_VLOG_LINES(
+      2, "GpuAlgebraicSimplifier::RunImpl(), after:\n" + module->ToString());
+  return changed;
 }
 
 }  // namespace xla::gpu

@@ -339,7 +339,7 @@ static absl::StatusOr<bool> TryDecomposeAllReduce(
   return true;
 }
 
-absl::StatusOr<bool> AllReduceBlueConnect::Run(
+absl::StatusOr<bool> AllReduceBlueConnect::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running AllReduceBlueConnect";

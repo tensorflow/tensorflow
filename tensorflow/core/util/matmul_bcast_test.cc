@@ -22,11 +22,11 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-string MatMulBCastToStr(const MatMulBCast& b) {
+std::string MatMulBCastToStr(const MatMulBCast& b) {
   if (!b.IsValid()) {
     return "invalid";
   }
-  string ret;
+  std::string ret;
   absl::StrAppend(&ret, "[",
                   absl::StrJoin(b.output_batch_shape().dim_sizes(), ","), "]");
   absl::StrAppend(&ret, "[", absl::StrJoin(b.x_batch_indices(), ","), "]");

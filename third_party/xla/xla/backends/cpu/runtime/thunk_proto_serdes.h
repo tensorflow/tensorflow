@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/serdes_base.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla::cpu {
@@ -36,10 +37,13 @@ void ForEachThunkProto(const ThunkSequenceProto& proto,
 
 class ThunkSequenceSerDesProtobuf : public SerDesBase<ThunkSequence> {
  public:
+  // For serialization, `hlo_module` and `buffer_allocations` are optional. For
+  // deserialization, both are required as we rely on the HLO module to resolve
+  // thunks that were generated from `HloComputation`s, and we also need buffer
+  // allocations to resolve buffer slices.
   explicit ThunkSequenceSerDesProtobuf(
-      const std::vector<BufferAllocation>* buffer_allocations =
-          nullptr);  // NOTE buffer allocations aren't
-                     // needed for serialization.
+      const HloModule* hlo_module = nullptr,
+      const std::vector<BufferAllocation>* buffer_allocations = nullptr);
 
   absl::StatusOr<std::string> Serialize(
       const ThunkSequence& thunk_sequence) override;
@@ -52,6 +56,7 @@ class ThunkSequenceSerDesProtobuf : public SerDesBase<ThunkSequence> {
       const ThunkSequenceProto& proto) const;
 
  private:
+  const HloModule* hlo_module_;
   const std::vector<BufferAllocation>* buffer_allocations_;
 };
 

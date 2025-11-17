@@ -1,5 +1,12 @@
 op {
   graph_op_name: "Imag"
+  attr {
+    name: "Tout"
+    description: <<END
+Need to be `tf.float32` when the type of `x` is `tf.complex64`.
+Need to be `tf.float64` when the type of `x` is `tf.complex128`.
+END
+  }
   summary: "Returns the imaginary part of a complex number."
   description: <<END
 Given a tensor `input` of complex numbers, this operation returns a tensor of

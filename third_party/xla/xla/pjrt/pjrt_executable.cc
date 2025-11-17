@@ -148,8 +148,8 @@ MultiSliceConfig::~MultiSliceConfig() = default;
 absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
   ExecuteOptionsProto proto;
 
-  proto.set_arguments_are_tupled(arguments_are_tupled);
-  proto.set_untuple_result(untuple_result);
+  proto.set_arguments_are_tupled(false);
+  proto.set_untuple_result(true);
   proto.set_launch_id(launch_id);
   if (context != nullptr) {
     return absl::UnimplementedError(
@@ -197,7 +197,6 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
     const ExecuteOptionsProto& proto) {
   ExecuteOptions options;
 
-  options.arguments_are_tupled = proto.arguments_are_tupled();
   options.untuple_result = proto.untuple_result();
   options.launch_id = proto.launch_id();
   options.strict_shape_checking = proto.strict_shape_checking();

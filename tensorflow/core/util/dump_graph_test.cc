@@ -35,7 +35,7 @@ TEST(DumpGraph, DumpGraphToFileSuccess) {
   TF_CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
 
   setenv("TF_DUMP_GRAPH_PREFIX", testing::TmpDir().c_str(), 1);
-  string ret = DumpGraphToFile("graph", graph);
+  std::string ret = DumpGraphToFile("graph", graph);
   EXPECT_EQ(ret, io::JoinPath(testing::TmpDir(), "graph.pbtxt"));
   ret = DumpGraphToFile("graph", graph);
   EXPECT_EQ(ret, io::JoinPath(testing::TmpDir(), "graph_1.pbtxt"));
@@ -43,7 +43,7 @@ TEST(DumpGraph, DumpGraphToFileSuccess) {
   GraphDef gdef;
   TF_ASSERT_OK(ReadTextProto(
       Env::Default(), io::JoinPath(testing::TmpDir(), "graph.pbtxt"), &gdef));
-  string read, written;
+  std::string read, written;
   gdef.AppendToString(&read);
   graph.ToGraphDefDebug().AppendToString(&written);
   EXPECT_EQ(read, written);
@@ -52,14 +52,14 @@ TEST(DumpGraph, DumpGraphToFileSuccess) {
 TEST(DumpGraph, DumpGraphToFileNoEnvPrefix) {
   Graph graph(OpRegistry::Global());
   unsetenv("TF_DUMP_GRAPH_PREFIX");
-  string ret = DumpGraphToFile("graph", graph);
+  std::string ret = DumpGraphToFile("graph", graph);
   EXPECT_TRUE(absl::StrContains(ret, "TF_DUMP_GRAPH_PREFIX not specified"));
 }
 
 TEST(DumpGraph, DumpFunctionDefToFileSuccess) {
   FunctionDef fdef;
   setenv("TF_DUMP_GRAPH_PREFIX", testing::TmpDir().c_str(), 1);
-  string ret = DumpFunctionDefToFile("function", fdef);
+  std::string ret = DumpFunctionDefToFile("function", fdef);
   EXPECT_EQ(ret, io::JoinPath(testing::TmpDir(), "function.pbtxt"));
 }
 
@@ -72,8 +72,9 @@ TEST(DumpGraph, DumpProtoToFileSuccess) {
 
   setenv("TF_DUMP_GRAPH_PREFIX", testing::TmpDir().c_str(), 1);
   setenv("TF_DUMP_GRAPH_FMT", "TXT", 1);
-  string expected_filepath = io::JoinPath(testing::TmpDir(), "node_def.pbtxt");
-  string actual_filepath = DumpProtoToFile("node_def", ndef_in);
+  std::string expected_filepath =
+      io::JoinPath(testing::TmpDir(), "node_def.pbtxt");
+  std::string actual_filepath = DumpProtoToFile("node_def", ndef_in);
   EXPECT_EQ(expected_filepath, actual_filepath);
 
   NodeDef ndef_out;
@@ -81,7 +82,7 @@ TEST(DumpGraph, DumpProtoToFileSuccess) {
   EXPECT_EQ(ndef_in.DebugString(), ndef_out.DebugString());
 
   setenv("TF_DUMP_GRAPH_FMT", "BIN", 1);
-  string ret = DumpProtoToFile("node_def", ndef_in);
+  std::string ret = DumpProtoToFile("node_def", ndef_in);
   EXPECT_EQ(ret, io::JoinPath(testing::TmpDir(), "node_def_1.pb"));
   TF_ASSERT_OK(ReadBinaryProto(Env::Default(), ret, &ndef_out));
   EXPECT_EQ(ndef_out.DebugString(), ndef_in.DebugString());

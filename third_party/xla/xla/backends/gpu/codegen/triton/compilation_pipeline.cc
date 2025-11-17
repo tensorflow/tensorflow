@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 
-#include <variant>
-
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -32,10 +30,13 @@ namespace xla::gpu {
 void CreateTritonXlaPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::GpuComputeCapability& gpu_cc, bool rewrite_int4,
-    bool allow_tma) {
+    bool allow_tma, int num_stages) {
   pm->addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
-  pm->addPass(mlir::triton::xla::CreateTritonXLALowerXTilePass());
   pm->addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
+  pm->addPass(mlir::triton::xla::CreateTritonXLALowerBlockBarrierPass());
+  pm->addPass(mlir::triton::xla::CreateTritonXLALowerAtomicsPass());
+  pm->addPass(mlir::triton::xla::CreateTritonXLALowerGetTidPass());
+  pm->addPass(mlir::triton::xla::CreateTritonXLALowerXTilePass());
 
   auto* cuda_cc = gpu_cc.cuda_compute_capability();
   bool is_at_least_hopper = cuda_cc != nullptr && cuda_cc->IsAtLeastHopper();
@@ -46,7 +47,7 @@ void CreateTritonXlaPipeline(
   }
 
   pm->addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
-      /*allow_tma=*/allow_tma && is_at_least_hopper));
+      /*allow_tma=*/allow_tma && is_at_least_hopper, num_stages));
 
   // Lower affine expressions into arithmetic ops.
   pm->addPass(mlir::createLowerAffinePass());

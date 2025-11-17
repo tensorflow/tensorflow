@@ -186,7 +186,7 @@ inline TfLiteStatus CheckTypes(TfLiteContext* context,
                                TfLiteFullyConnectedParams* params) {
   const bool is_quantized =
       ((filter->type == kTfLiteUInt8) || (filter->type == kTfLiteInt8) ||
-       (filter->type == kTfLiteInt4));
+       (filter->type == kTfLiteInt4) || (filter->type == kTfLiteInt2));
   const bool is_hybrid = is_quantized && (input->type == kTfLiteFloat32);
   const bool is_shuffled =
       is_quantized && (params->weights_format ==
@@ -448,7 +448,8 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_ENSURE(context,
                      input->type == kTfLiteInt8 || input->type == kTfLiteInt16);
       TF_LITE_ENSURE(context, (filter->type == kTfLiteInt8 ||
-                               filter->type == kTfLiteInt4));
+                               filter->type == kTfLiteInt4 ||
+                               filter->type == kTfLiteInt2));
       TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
                         per_channel_quantization_size);
       TF_LITE_ENSURE_EQ(
@@ -654,7 +655,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   const bool is_quantized =
       ((filter->type == kTfLiteUInt8) || (filter->type == kTfLiteInt8) ||
-       (filter->type == kTfLiteInt4));
+       (filter->type == kTfLiteInt4) || (filter->type == kTfLiteInt2));
   const bool is_hybrid = is_quantized && (input->type == kTfLiteFloat32);
   const bool is_pie = kernel_type == kLegacyPie;
 
@@ -666,7 +667,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                 params->activation == kTfLiteActReluN1To1 ||
                                 params->activation == kTfLiteActRelu6);
   }
-  if (filter->type == kTfLiteInt4) {
+  if (filter->type == kTfLiteInt4 || filter->type == kTfLiteInt2) {
     TF_LITE_ENSURE_MSG(
         context,
         kTfLiteOk == VerifyQuantizationZeroPoint(filter, /*expected_value=*/0),
@@ -1420,6 +1421,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       case kTfLiteUInt8:
         if (kernel_type == kReference) {
           TF_LITE_ENSURE(context, filter->type != kTfLiteInt4);
+          TF_LITE_ENSURE(context, filter->type != kTfLiteInt2);
           reference_ops::FullyConnected(
               op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
               GetTensorShape(filter), GetTensorData<uint8_t>(filter),
@@ -1456,8 +1458,10 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                 "Invalid quantized and sparse fully-connected format.");
             return kTfLiteError;
           }
-          // Int4 support for sparse filter tensor is currently not supported
+          // Int4/Int2 support for sparse filter tensor is currently not
+          // supported
           TF_LITE_ENSURE(context, filter->type != kTfLiteInt4);
+          TF_LITE_ENSURE(context, filter->type != kTfLiteInt2);
           if (sparsity.dim_metadata_size == kDimMetadataSizeBlockSparse &&
               sparsity.dim_metadata[2].dense_size == 16) {
             // Block sparse with block size of 1x16.
@@ -1483,6 +1487,14 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
             tflite::tensor_utils::UnpackPackedIntToInt8(
                 GetTensorData<int8_t>(filter),
                 GetTensorShape(filter).FlatSize(), /*bit_width=*/4,
+                unpacked_filter_data.get());
+            filter_data = unpacked_filter_data.get();
+          } else if (filter->type == kTfLiteInt2) {
+            const size_t bytes_unpacked = filter->bytes * 4;
+            unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
+            tflite::tensor_utils::UnpackPackedIntToInt8(
+                GetTensorData<int8_t>(filter),
+                GetTensorShape(filter).FlatSize(), /*bit_width=*/2,
                 unpacked_filter_data.get());
             filter_data = unpacked_filter_data.get();
           } else {
@@ -1512,6 +1524,14 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
             tflite::tensor_utils::UnpackPackedIntToInt8(
                 GetTensorData<int8_t>(filter),
                 GetTensorShape(filter).FlatSize(), /*bit_width=*/4,
+                unpacked_filter_data.get());
+            filter_data = unpacked_filter_data.get();
+          } else if (filter->type == kTfLiteInt2) {
+            const size_t bytes_unpacked = filter->bytes * 4;
+            unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
+            tflite::tensor_utils::UnpackPackedIntToInt8(
+                GetTensorData<int8_t>(filter),
+                GetTensorShape(filter).FlatSize(), /*bit_width=*/2,
                 unpacked_filter_data.get());
             filter_data = unpacked_filter_data.get();
           } else {
@@ -1762,14 +1782,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteError;
       }
     case kTfLiteInt8:
-      if (params->weights_format == kTfLiteFullyConnectedWeightsFormatDefault) {
-        return EvalQuantized<kernel_type>(context, node, params, data, input,
-                                          filter, bias, output);
-      } else {
-        TF_LITE_KERNEL_LOG(context, "Unhandled fully-connected weights format");
-        return kTfLiteError;
-      }
     case kTfLiteInt4:
+    case kTfLiteInt2:
       if (params->weights_format == kTfLiteFullyConnectedWeightsFormatDefault) {
         return EvalQuantized<kernel_type>(context, node, params, data, input,
                                           filter, bias, output);

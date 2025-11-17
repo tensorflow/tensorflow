@@ -25,17 +25,17 @@ namespace data {
 // See below macro for usage details.
 class AllowlistedStatefulOpRegistry {
  public:
-  absl::Status Add(string op_name) {
+  absl::Status Add(std::string op_name) {
     op_names_.insert(std::move(op_name));
     return absl::OkStatus();
   }
 
-  absl::Status Remove(string op_name) {
+  absl::Status Remove(std::string op_name) {
     op_names_.erase(op_name);
     return absl::OkStatus();
   }
 
-  bool Contains(const string& op_name) { return op_names_.count(op_name); }
+  bool Contains(const std::string& op_name) { return op_names_.count(op_name); }
 
   static AllowlistedStatefulOpRegistry* Global() {
     static auto* reg = new AllowlistedStatefulOpRegistry;
@@ -49,7 +49,7 @@ class AllowlistedStatefulOpRegistry {
   AllowlistedStatefulOpRegistry operator=(
       AllowlistedStatefulOpRegistry const& copy) = delete;
 
-  std::unordered_set<string> op_names_;
+  std::unordered_set<std::string> op_names_;
 };
 
 }  // namespace data

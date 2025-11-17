@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
@@ -86,12 +87,14 @@ class YnnFusionThunk : public Thunk {
       absl::Span<const se::DeviceMemoryBase> arguments_buffers)>;
 
   static absl::StatusOr<std::unique_ptr<YnnFusionThunk>> Create(
-      Options options, Info info, std::vector<Argument> arguments,
-      std::vector<Result> results, Builder builder);
+      Options options, Info info, const HloInstruction* hlo,
+      std::vector<Argument> arguments, std::vector<Result> results,
+      Builder builder);
 
   static absl::StatusOr<std::unique_ptr<YnnFusionThunk>> Create(
-      Options options, Info info, std::vector<Argument> arguments,
-      std::vector<Result> results, CapturingBuilder capturing_builder,
+      Options options, Info info, const HloInstruction* hlo,
+      std::vector<Argument> arguments, std::vector<Result> results,
+      CapturingBuilder capturing_builder,
       absl::Span<const int64_t> captured_arguments_ids);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
@@ -104,13 +107,19 @@ class YnnFusionThunk : public Thunk {
 
   YnnFusionKind ynn_fusion_kind() const { return ynn_fusion_kind_; }
 
+  const HloInstruction* hlo() const { return hlo_; }
+
+  absl::Span<const Argument> arguments() const { return arguments_; }
+  absl::Span<const Result> results() const { return results_; }
+
  protected:
   YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
-                 std::vector<Argument> arguments, std::vector<Result> results,
-                 Builder builder);
+                 const HloInstruction* hlo, std::vector<Argument> arguments,
+                 std::vector<Result> results, Builder builder);
 
   YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
-                 std::vector<Argument> arguments, std::vector<Result> results,
+                 const HloInstruction* hlo, std::vector<Argument> arguments,
+                 std::vector<Result> results,
                  CapturingBuilder capturing_builder,
                  absl::Span<const int64_t> captured_arguments_ids);
 
@@ -150,6 +159,10 @@ class YnnFusionThunk : public Thunk {
 
   YnnFusionKind ynn_fusion_kind_;
   Options options_;
+
+  // A pointer to the HLO instruction that this thunk is associated with. Owned
+  // by the `HloModule` associated with the XLA executable.
+  const HloInstruction* hlo_;  // not owned
 
   std::vector<Argument> arguments_;
   std::vector<Result> results_;

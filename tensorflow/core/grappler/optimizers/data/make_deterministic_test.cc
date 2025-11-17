@@ -34,8 +34,8 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-std::vector<string> GetNodeNames(const FunctionDef& func) {
-  std::vector<string> node_names;
+std::vector<std::string> GetNodeNames(const FunctionDef& func) {
+  std::vector<std::string> node_names;
   for (const NodeDef& node : func.node_def()) {
     node_names.push_back(node.name());
   }

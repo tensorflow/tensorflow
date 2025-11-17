@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -626,14 +627,12 @@ std::string SanitizeFunctionName(std::string function_name) {
   // are illegal.
 
   // Sanitize chars in function_name.
-  std::transform(function_name.begin(), function_name.end(),
-                 function_name.begin(), [](char c) {
-                   if (('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') ||
-                       ('0' <= c && c <= '9') || c == '_' || c == '$') {
-                     return c;
-                   }
-                   return '_';
-                 });
+  absl::c_transform(function_name, function_name.begin(), [](char c) {
+    if (absl::ascii_isalnum(c) || c == '_' || c == '$') {
+      return c;
+    }
+    return '_';
+  });
 
   // Ensure the name isn't empty.
   if (function_name.empty()) {
@@ -641,8 +640,7 @@ std::string SanitizeFunctionName(std::string function_name) {
   }
 
   // Ensure the name doesn't start with a number.
-  if (!function_name.empty() && function_name[0] >= '0' &&
-      function_name[0] <= '9') {
+  if (!function_name.empty() && absl::ascii_isdigit(function_name[0])) {
     function_name.insert(function_name.begin(), '_');
   }
 

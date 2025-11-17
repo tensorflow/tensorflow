@@ -120,11 +120,13 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
     TF_ASSIGN_OR_RETURN(
         DotDimensionNumbers dot_dimension_numbers,
         ParseDimensionNumbers(frontend_attrs.at("composite.attributes")));
+    PrecisionConfig precision{};
+    precision.mutable_operand_precision()->Resize(2, PrecisionConfig::DEFAULT);
     auto* scaled_dot =
         computation->AddInstruction(HloInstruction::CreateScaledDot(
             call->shape(), call->mutable_operand(0), call->mutable_operand(1),
             call->mutable_operand(2), call->mutable_operand(3),
-            dot_dimension_numbers, PrecisionConfig{}));
+            dot_dimension_numbers, precision));
     TF_RETURN_IF_ERROR(call->ReplaceAllUsesWith(scaled_dot));
     TF_RETURN_IF_ERROR(computation->RemoveInstruction(call));
     changed = true;
@@ -132,7 +134,7 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
   return changed;
 }
 
-absl::StatusOr<bool> CompositeRewriter::Run(
+absl::StatusOr<bool> CompositeRewriter::RunImpl(
     HloModule* module, const absl::flat_hash_set<absl::string_view>&) {
   bool changed = false;
   for (HloComputation* computation : module->computations()) {

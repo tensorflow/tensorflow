@@ -16,12 +16,16 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_YNN_SUPPORT_H_
 #define XLA_BACKENDS_CPU_YNN_SUPPORT_H_
 
+#include <cstdint>
+
 #include "ynnpack/include/ynnpack.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
+#include "xla/xla.pb.h"
 
 namespace xla::cpu {
 
@@ -54,6 +58,21 @@ bool IsConstantSupportedByYnn(const HloInstruction* hlo);
 
 // Returns true if the nonconstant elementwise op is supported by YNNPACK.
 bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the dot operation is supported by YNNPACK. Returns an error
+// if the dot operation shape is invalid.
+absl::StatusOr<bool> IsDotSupportedByYnn(
+    const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
+    const Shape& rhs_shape, const Shape& out_shape);
+
+// Returns true if the reduce op is supported by YNNPACK.
+bool IsReduceOpSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the reduce op will be offloaded to YNNPACK.
+bool IsReduceOpOffloadedToYnn(const HloInstruction* hlo);
+
+// Convert XLA options to YNNPACK flags.
+uint32_t YnnFlags(const DebugOptions& debug_options);
 
 }  // namespace xla::cpu
 

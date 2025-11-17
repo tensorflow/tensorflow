@@ -199,6 +199,23 @@ void WhileThunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
   body_thunk_sequence_->ForAllThunksMutable(fn);
 }
 
+absl::Status WhileThunk::TransformAllNestedThunks(
+    absl::FunctionRef<
+        absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
+        fn) {
+  TF_RETURN_IF_ERROR(condition_thunk_sequence_->TransformAllNestedThunks(fn));
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk,
+                      fn(std::move(condition_thunk_sequence_)));
+  condition_thunk_sequence_ = SequentialThunk::FromThunk(std::move(thunk));
+
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->TransformAllNestedThunks(fn));
+
+  TF_ASSIGN_OR_RETURN(thunk, fn(std::move(body_thunk_sequence_)));
+  body_thunk_sequence_ = SequentialThunk::FromThunk(std::move(thunk));
+  return absl::OkStatus();
+}
+
 std::string WhileThunk::ToString(int indent) const {
   std::string indent_str(indent * 2, ' ');
   std::string result;

@@ -29,7 +29,7 @@ namespace tensorflow {
 
 // ReaderBase ------------------------------------------------------
 
-ReaderBase::ReaderBase(const string& name) : name_(name) {}
+ReaderBase::ReaderBase(const std::string& name) : name_(name) {}
 
 int64_t ReaderBase::NumRecordsProduced() {
   mutex_lock lock(mu_);
@@ -199,9 +199,9 @@ void ReaderBase::Read(QueueInterface* queue, tstring* key, tstring* value,
   }
 }
 
-string ReaderBase::GetNextWorkLocked(QueueInterface* queue,
-                                     OpKernelContext* context) const {
-  string work;
+std::string ReaderBase::GetNextWorkLocked(QueueInterface* queue,
+                                          OpKernelContext* context) const {
+  std::string work;
   absl::Notification n;
   queue->TryDequeue(
       context, [context, &n, &work](const QueueInterface::Tuple& tuple) {
@@ -246,7 +246,7 @@ absl::Status ReaderBase::RestoreBaseState(const ReaderBaseState& state) {
 #if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
     const string debug_string = "<debug state not available>";
 #else
-    const string debug_string = state.DebugString();
+    const std::string debug_string = state.DebugString();
 #endif
     return errors::InvalidArgument(
         "Unexpected negative value when restoring in ", name(), ": ",
@@ -256,7 +256,7 @@ absl::Status ReaderBase::RestoreBaseState(const ReaderBaseState& state) {
 #if defined(__ANDROID__) || (__EMSCRIPTEN__)
     const string debug_string = "<debug state not available>";
 #else
-    const string debug_string = state.DebugString();
+    const std::string debug_string = state.DebugString();
 #endif
     return errors::InvalidArgument(
         "Inconsistent work started vs. finished when restoring in ", name(),

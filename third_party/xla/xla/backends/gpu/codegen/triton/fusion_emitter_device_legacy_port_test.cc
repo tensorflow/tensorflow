@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/service/pattern_matcher.h"
@@ -93,6 +93,7 @@ class TritonTest : public GpuCodegenTest {
         debug_options
             .mutable_xla_gpu_unsupported_generic_triton_emitter_features();
     emitter_opts->Add(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
+    emitter_opts->Add(DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM);
     emitter_opts->Add(
         DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION);
     emitter_opts->Add(
@@ -110,15 +111,6 @@ class TritonTest : public GpuCodegenTest {
 
   const stream_executor::GpuComputeCapability& GpuComputeCapability() {
     return device_desc().gpu_compute_capability();
-  }
-
-  stream_executor::GpuComputeCapability CudaAmpereOrRocm() {
-    if (GpuComputeCapability().IsRocm()) {
-      return stream_executor::GpuComputeCapability{
-          device_desc().rocm_compute_capability()};
-    }
-    return stream_executor::GpuComputeCapability{
-        se::CudaComputeCapability::Ampere()};
   }
 
   // Returns the module, its fusion computation and associated block level
@@ -268,8 +260,8 @@ ENTRY e {
                                  module_and_metadata.block_level_parameters,
                                  R"(
 CHECK: %[[LOAD:.*]] = xtile.extract {{.*}} -> tensor<16x16xi8>
-CHECK: %[[TRUNCI:.*]] = arith.trunci %[[LOAD]] : tensor<16x16xi8> to tensor<16x16xi1>
-CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
+CHECK: %[[CMPI:.*]] = arith.cmpi ne, %[[LOAD]], {{.*}} : tensor<16x16xi8>
+CHECK: %{{.*}} = arith.andi %[[CMPI]], %{{.*}} : tensor<16x16xi1>
 )"));
 }
 

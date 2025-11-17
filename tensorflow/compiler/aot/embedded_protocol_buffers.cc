@@ -41,9 +41,9 @@ using xla::llvm_ir::AsStringRef;
 
 static void AddEmbeddedProtocolBufferToLlvmModule(
     llvm::Module* module, const ::tensorflow::protobuf::MessageLite& proto,
-    absl::string_view unique_identifier, string* protobuf_array_symbol_name,
-    int64_t* protobuf_array_size) {
-  string protobuf_array_contents = proto.SerializeAsString();
+    absl::string_view unique_identifier,
+    std::string* protobuf_array_symbol_name, int64_t* protobuf_array_size) {
+  std::string protobuf_array_contents = proto.SerializeAsString();
   *protobuf_array_symbol_name =
       absl::StrCat(unique_identifier, "_protobuf_array_contents");
   *protobuf_array_size = protobuf_array_contents.size();
@@ -58,10 +58,10 @@ static void AddEmbeddedProtocolBufferToLlvmModule(
       protobuf_array_initializer, AsStringRef(*protobuf_array_symbol_name));
 }
 
-static string CreateCPPShimExpression(
+static std::string CreateCPPShimExpression(
     absl::string_view qualified_cpp_protobuf_name,
     absl::string_view protobuf_array_symbol_name, int64_t protobuf_array_size) {
-  string code =
+  std::string code =
       "[]() {\n"
       "    {{PROTOBUF_NAME}}* proto = new {{PROTOBUF_NAME}};\n"
       "    proto->ParseFromArray(&{{ARRAY_SYMBOL}}[0], {{ARRAY_SIZE}});\n"
@@ -77,7 +77,7 @@ static string CreateCPPShimExpression(
       });
 }
 
-static absl::StatusOr<string> CodegenModule(
+static absl::StatusOr<std::string> CodegenModule(
     llvm::TargetMachine* target_machine, std::unique_ptr<llvm::Module> module) {
   llvm::SmallVector<char, 0> stream_buffer;
   llvm::raw_svector_ostream ostream(stream_buffer);
@@ -91,7 +91,7 @@ static absl::StatusOr<string> CodegenModule(
 
   codegen_passes.run(*module);
 
-  return string(stream_buffer.begin(), stream_buffer.end());
+  return std::string(stream_buffer.begin(), stream_buffer.end());
 }
 
 static absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
@@ -124,9 +124,9 @@ absl::StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
   EmbeddedProtocolBuffers result;
 
   for (const ProtobufToEmbed& protobuf_to_embed : protobufs_to_embed) {
-    string cpp_shim, cpp_variable_decl;
+    std::string cpp_shim, cpp_variable_decl;
     if (protobuf_to_embed.message) {
-      string protobuf_array_symbol_name;
+      std::string protobuf_array_symbol_name;
       int64_t protobuf_array_size;
 
       AddEmbeddedProtocolBufferToLlvmModule(

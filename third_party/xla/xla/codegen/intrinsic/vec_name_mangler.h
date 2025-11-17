@@ -24,9 +24,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/codegen/intrinsic/type.h"
+#include "xla/util.h"
 
 namespace xla::codegen::intrinsic {
 
@@ -82,7 +84,7 @@ inline std::string GetMangledNamePrefix(
                               param_cardinalities);
 }
 
-inline std::string FunctionName(bool last_arg_is_return_type,
+inline std::string GetTypedName(bool last_arg_is_return_type,
                                 absl::Span<const intrinsics::Type> types,
                                 absl::string_view func_name) {
   std::vector<std::string> type_names;
@@ -94,6 +96,59 @@ inline std::string FunctionName(bool last_arg_is_return_type,
     type_names.insert(--type_names.end(), "to");
   }
   return absl::StrCat("xla.", func_name, ".", absl::StrJoin(type_names, "."));
+}
+
+struct ParsedFunctionName {
+  std::string base_name;
+  std::vector<intrinsics::Type> types;
+  bool last_arg_is_return_type;
+  bool is_masked;  // TODO: Add support for masked functions.
+};
+
+inline std::string GetTypedName(const ParsedFunctionName& parsed_name) {
+  return GetTypedName(parsed_name.last_arg_is_return_type, parsed_name.types,
+                      parsed_name.base_name);
+}
+
+inline absl::StatusOr<ParsedFunctionName> ParseFunctionName(
+    absl::string_view function_name) {
+  // The `to` in a typed function name is used to specify the return type, so
+  // we ignore it when parsing the function name.
+  static constexpr absl::string_view kIgnoredParts[] = {"to"};
+  std::vector<intrinsics::Type> types;
+  auto parts = absl::StrSplit(function_name, '.');
+  int i = -1;
+  ParsedFunctionName result;
+  result.last_arg_is_return_type = false;
+  result.is_masked = false;
+  for (absl::string_view part : parts) {
+    // Skip the first two parts, which will be `xla.<func_name>`:
+    i++;
+    if (i == 0) {
+      if (part != "xla") {
+        return InvalidArgument("Invalid function name: %s", function_name);
+      }
+      // skip `xla.`
+      continue;
+    }
+    if (i == 1) {
+      result.base_name = std::string(part);
+      continue;
+    }
+    if (bool ignored =
+            absl::c_find(kIgnoredParts, part) != std::end(kIgnoredParts)) {
+      if (part == "to") {
+        result.last_arg_is_return_type = true;
+      }
+      continue;
+    }
+    types.push_back(intrinsics::Type::FromName(part));
+  }
+  if (i < 2) {
+    return InvalidArgument("Invalid function name: %s", function_name);
+  }
+  result.types = types;
+  return result;
 }
 
 }  // namespace xla::codegen::intrinsic

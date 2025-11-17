@@ -175,7 +175,8 @@ TEST_F(LayoutTest, LayoutToFromString) {
 }
 
 TEST_F(LayoutTest, LayoutToFromStringNotSharded) {
-  std::string layout_str = "sharding_specs:x," + string(Layout::kUnshardedDim) +
+  std::string layout_str = "sharding_specs:x," +
+                           std::string(Layout::kUnshardedDim) +
                            ", mesh:|x=1|0|0|/job:localhost/task:0/device:CPU:0";
   EXPECT_EQ(layout_str, Layout::FromString(layout_str)->ToString());
 }
@@ -223,7 +224,7 @@ TEST_F(LayoutTest, OnTPUMesh) {
 }
 
 TEST_F(LayoutTest, NumShardsAsVector) {
-  std::vector<int32> shards = {4, 8};
+  std::vector<int32_t> shards = {4, 8};
   EXPECT_EQ(BatchLayout().num_shards(), shards);
 }
 
@@ -233,7 +234,7 @@ TEST_F(LayoutTest, IsReplicated) {
 
 TEST_F(LayoutTest, MeshDeviceLocations) {
   Layout layout = BatchLayout();
-  absl::InlinedVector<int64, 4> offset = {1, 2};
+  absl::InlinedVector<int64_t, 4> offset = {1, 2};
   EXPECT_THAT(layout.mesh().device_location(10),
               absl_testing::IsOkAndHolds(offset));
   offset = {2, 2};

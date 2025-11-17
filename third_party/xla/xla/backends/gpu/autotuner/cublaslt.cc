@@ -74,11 +74,11 @@ absl::StatusOr<BlasLt::Epilogue> AsBlasLtEpilogue(
   }
 }
 
-bool IsSupported(const HloInstruction& instr) {
+}  // namespace
+
+bool CublasLtBackend::IsSupported(const HloInstruction& instr) {
   return IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr);
 }
-
-}  // namespace
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 CublasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {

@@ -40,10 +40,11 @@ namespace tsl {
 
 namespace {
 
-const std::vector<string>& kCachedDomainNames =
-    *new std::vector<string>{"www.googleapis.com", "storage.googleapis.com"};
+const std::vector<std::string>& kCachedDomainNames =
+    *new std::vector<std::string>{"www.googleapis.com",
+                                  "storage.googleapis.com"};
 
-inline void print_getaddrinfo_error(const string& name,
+inline void print_getaddrinfo_error(const std::string& name,
                                     absl::Status return_status) {
   // Status doesn't map well to EAI type errors.
   LOG(ERROR) << "Error resolving " << name << ": " << return_status;
@@ -81,10 +82,10 @@ void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
 
   CHECK_EQ(kCachedDomainNames.size(), addresses_.size());
   for (size_t i = 0; i < kCachedDomainNames.size(); ++i) {
-    const string& name = kCachedDomainNames[i];
-    const std::vector<string>& addresses = addresses_[i];
+    const std::string& name = kCachedDomainNames[i];
+    const std::vector<std::string>& addresses = addresses_[i];
     if (!addresses.empty()) {
-      const string& chosen_address =
+      const std::string& chosen_address =
           SelectRandomItemUniform(&random_, addresses);
       request->AddResolveOverride(name, 443, chosen_address);
       VLOG(1) << "Annotated DNS mapping: " << name << " --> " << chosen_address;
@@ -94,7 +95,8 @@ void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
   }
 }
 
-/* static */ std::vector<string> GcsDnsCache::ResolveName(const string& name) {
+/* static */ std::vector<std::string> GcsDnsCache::ResolveName(
+    const std::string& name) {
   VLOG(1) << "Resolving DNS name: " << name;
 
   addrinfo hints;
@@ -182,7 +184,7 @@ void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
       },
       retryConfig);
 
-  std::vector<string> output;
+  std::vector<std::string> output;
   if (getaddrinfo_status.ok()) {
     for (const addrinfo* i = result; i != nullptr; i = i->ai_next) {
       if (i->ai_family != AF_INET || i->ai_addr->sa_family != AF_INET) {
@@ -221,11 +223,11 @@ void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
 //
 // Ensures: names.size() == return_value.size()
 
-std::vector<std::vector<string>> GcsDnsCache::ResolveNames(
-    const std::vector<string>& names) {
-  std::vector<std::vector<string>> all_addresses;
+std::vector<std::vector<std::string>> GcsDnsCache::ResolveNames(
+    const std::vector<std::string>& names) {
+  std::vector<std::vector<std::string>> all_addresses;
   all_addresses.reserve(names.size());
-  for (const string& name : names) {
+  for (const std::string& name : names) {
     all_addresses.push_back(ResolveName(name));
   }
   return all_addresses;

@@ -62,10 +62,10 @@ static absl::InlinedVector<XLA_CPU_KernelArg, 8> ConvertBuffersToKernelArgs(
 }
 
 template <bool num_workgroups_x_only>
-class Kernel::ParallelTask {
+class Kernel::Task {
  public:
-  ParallelTask(XLA_CPU_Kernel* kernel, NumWorkGroups num_workgroups,
-               absl::Span<const XLA_CPU_KernelArg> args);
+  Task(XLA_CPU_Kernel* kernel, NumWorkGroups num_workgroups,
+       absl::Span<const XLA_CPU_KernelArg> args);
 
   // Invokes a host kernel for a given task index.
   absl::Status operator()(size_t task_index) const;
@@ -87,7 +87,7 @@ class Kernel::ParallelTask {
 };
 
 template <bool num_workgroups_x_only>
-Kernel::ParallelTask<num_workgroups_x_only>::ParallelTask(
+Kernel::Task<num_workgroups_x_only>::Task(
     XLA_CPU_Kernel* kernel, NumWorkGroups num_workgroups,
     absl::Span<const XLA_CPU_KernelArg> args)
     : kernel_(kernel),
@@ -98,7 +98,7 @@ Kernel::ParallelTask<num_workgroups_x_only>::ParallelTask(
       stride_y_(num_workgroups.x) {}
 
 template <bool num_workgroups_x_only>
-absl::Status Kernel::ParallelTask<num_workgroups_x_only>::operator()(
+absl::Status Kernel::Task<num_workgroups_x_only>::operator()(
     size_t task_index) const {
   DCHECK_LT(task_index, num_tasks_) << "Task index out of range";  // Crash OK
 
@@ -117,7 +117,7 @@ absl::Status Kernel::ParallelTask<num_workgroups_x_only>::operator()(
 }
 
 template <bool num_workgroups_x_only>
-XLA_CPU_WorkGroupId Kernel::ParallelTask<num_workgroups_x_only>::Delinearize(
+XLA_CPU_WorkGroupId Kernel::Task<num_workgroups_x_only>::Delinearize(
     uint64_t task_index) const {
   // In the most common case we parallelize only over the `x` dimension.
   if constexpr (num_workgroups_x_only) {
@@ -197,14 +197,12 @@ tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
                        std::numeric_limits<uint16_t>::max());
 
   if (ABSL_PREDICT_TRUE(num_workgroups.y == 1 && num_workgroups.z == 1)) {
-    return Worker::Parallelize(
-        device->getPool(), num_workers, num_tasks,
-        ParallelTask<true>(kernel_, num_workgroups, args));
+    return Worker::Parallelize(device->getPool(), num_workers, num_tasks,
+                               Task<true>(kernel_, num_workgroups, args));
   }
 
-  return Worker::Parallelize(
-      device->getPool(), num_workers, num_tasks,
-      ParallelTask<false>(kernel_, num_workgroups, args));
+  return Worker::Parallelize(device->getPool(), num_workers, num_tasks,
+                             Task<false>(kernel_, num_workgroups, args));
 }
 
 }  // namespace xla::cpu

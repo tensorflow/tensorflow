@@ -249,11 +249,15 @@ bool IsDotAlgorithmSupportedByTriton(
 CodegenDecision AreDotInputAndOutputTypesSupportedAndCompatible(
     const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
   auto output_type = dot.shape().element_type();
-  auto lhs_type = dot.operand(0)->shape().element_type();
-  auto rhs_type = dot.operand(1)->shape().element_type();
-
   if (!IsTritonSupportedDotOutputType(output_type, gpu_version)) {
     return CodegenDecision::Forbid("Unsupported output data type for Dot op.");
+  }
+
+  auto lhs_type = dot.operand(0)->shape().element_type();
+  auto rhs_type = dot.operand(1)->shape().element_type();
+  if (lhs_type != rhs_type && !(primitive_util::IsF8Type(lhs_type) &&
+                                primitive_util::IsF8Type(rhs_type))) {
+    return CodegenDecision::Forbid("Non-fp8 input types must be the same.");
   }
 
   if (!IsTritonSupportedDataType(lhs_type, gpu_version) ||
@@ -268,6 +272,12 @@ CodegenDecision AreDotInputAndOutputTypesSupportedAndCompatible(
         "Currently, S32 output is only supported for 8-bit integral inputs.");
   }
 
+  if (primitive_util::IsIntegralType(lhs_type) !=
+      primitive_util::IsIntegralType(output_type)) {
+    return CodegenDecision::Forbid(
+        "Dots between integer and floating-point types are not supported.");
+  }
+
   return CodegenDecision::Allow();
 }
 
@@ -280,12 +290,11 @@ CodegenDecision CanTritonHandleGEMM(
   CHECK(cuda_compute_capability || rocm_compute_capability);
 
   if (dot.precision_config().algorithm() == PrecisionConfig::ALG_UNSET) {
-    if (!tsl::tensor_float_32_execution_enabled() ||
-        absl::c_any_of(dot.precision_config().operand_precision(),
+    if (absl::c_any_of(dot.precision_config().operand_precision(),
                        [](int x) { return x != PrecisionConfig::DEFAULT; })) {
       return CodegenDecision::Forbid(
-          "Having non-default operand precisions or TensorFloat-32 disabled "
-          "for Dot op with unset algorithm.");
+          "Having non-default operand precisions for Dot op with unset "
+          "algorithm.");
     }
   } else {
     if (!IsDotAlgorithmSupportedByTriton(dot.precision_config().algorithm(),

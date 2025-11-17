@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "xla/debug_options_parsers.h"
 
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -45,6 +47,7 @@ using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::IsEmpty;
+using ::xla::details::ParseIntRangeInclusive;
 using ::xla::details::ParseRepeatedEnumModifiers;
 using ::xla::details::RepeatedFlagModifier;
 
@@ -396,6 +399,7 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
       enabled_features,
       testing::UnorderedElementsAre(
           DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM,
+          DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM,
           DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES,
           DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION));
 
@@ -412,6 +416,7 @@ TEST(ParseRepeatedEnumFlagsTest, GenericTritonEmitterFeatures) {
       enabled_features,
       testing::UnorderedElementsAre(
           DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM,
+          DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM,
           DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION));
 
   // Overwriting options.
@@ -545,6 +550,49 @@ TEST(ParseRepeatedEnumFlagsTest, OneDnnFusionType) {
 
 TEST(ParseRepeatedEnumFlagsTest, XnnFusionType) {
   TestLibraryFusionType("xnn");
+}
+
+TEST(ParseIntRangeInclusiveTest, SingleInteger) {
+  IntRangeInclusive range;
+  EXPECT_TRUE(ParseIntRangeInclusive("10", range));
+  EXPECT_EQ(range.first(), 10);
+  EXPECT_EQ(range.last(), 10);
+}
+
+TEST(ParseIntRangeInclusiveTest, Range) {
+  IntRangeInclusive range;
+  EXPECT_TRUE(ParseIntRangeInclusive("10:20", range));
+  EXPECT_EQ(range.first(), 10);
+  EXPECT_EQ(range.last(), 20);
+}
+
+TEST(ParseIntRangeInclusiveTest, HalfOpenRangeWithMin) {
+  IntRangeInclusive range;
+  EXPECT_TRUE(ParseIntRangeInclusive("10:", range));
+  EXPECT_EQ(range.first(), 10);
+  EXPECT_EQ(range.last(), std::numeric_limits<int64_t>::max());
+}
+
+TEST(ParseIntRangeInclusiveTest, HalfOpenRangeWithMax) {
+  IntRangeInclusive range;
+  EXPECT_TRUE(ParseIntRangeInclusive(":100", range));
+  EXPECT_EQ(range.first(), std::numeric_limits<int64_t>::min());
+  EXPECT_EQ(range.last(), 100);
+}
+
+TEST(ParseIntRangeInclusiveTest, InvalidRange) {
+  IntRangeInclusive range;
+  EXPECT_FALSE(ParseIntRangeInclusive("10:20:30", range));
+}
+
+TEST(ParseIntRangeInclusiveTest, InvalidHalfOpenRange) {
+  IntRangeInclusive range;
+  EXPECT_FALSE(ParseIntRangeInclusive(":", range));
+}
+
+TEST(ParseIntRangeInclusiveTest, ReversedRange) {
+  IntRangeInclusive range;
+  EXPECT_FALSE(ParseIntRangeInclusive("20:10", range));
 }
 
 }  // namespace

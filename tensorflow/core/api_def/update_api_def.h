@@ -23,14 +23,14 @@ namespace tensorflow {
 
 // Returns ApiDefs text representation in multi-line format
 // constructed based on the given op.
-string CreateApiDef(const OpDef& op);
+std::string CreateApiDef(const OpDef& op);
 
 // Removes .Doc call for the given op.
 // If unsuccessful, returns original file_contents and prints an error.
 // start_location - We search for .Doc call starting at this location
 //   in file_contents.
-string RemoveDoc(const OpDef& op, const string& file_contents,
-                 size_t start_location);
+std::string RemoveDoc(const OpDef& op, const std::string& file_contents,
+                      size_t start_location);
 
 // Creates api_def_*.pbtxt files for any new ops (i.e. ops that don't have an
 // api_def_*.pbtxt file yet).
@@ -38,8 +38,8 @@ string RemoveDoc(const OpDef& op, const string& file_contents,
 // look for a REGISTER_OP call for the new ops and removes corresponding
 // .Doc() calls since the newly generated api_def_*.pbtxt files will
 // store the doc strings.
-void CreateApiDefs(const OpList& ops, const string& api_def_dir,
-                   const string& op_file_pattern);
+void CreateApiDefs(const OpList& ops, const std::string& api_def_dir,
+                   const std::string& op_file_pattern);
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_API_DEF_UPDATE_API_DEF_H_

@@ -17,12 +17,12 @@ limitations under the License.
 #define XLA_SERVICE_HLO_RUNNER_INTERFACE_H_
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -291,9 +291,9 @@ class HloRunnerInterface {
       DeviceAssignment* device_assignment) = 0;
 
   virtual absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::function<OpaqueExecutable*(int64_t)> executable_provider,
-      std::function<int64_t(int64_t)> argument_count_provider,
-      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) = 0;
 

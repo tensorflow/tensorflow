@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/service/lockable.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
 namespace xla::gpu {

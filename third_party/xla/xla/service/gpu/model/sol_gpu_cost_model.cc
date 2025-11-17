@@ -138,6 +138,9 @@ SolGPUCostModel::Config GetPlatformConfig(
     } else if (option_name == kSolChunkSizeBytes &&
                absl::SimpleAtoi(option_value, &value) && value > 0) {
       config.chunk_size_bytes = value;
+    } else if (option_name == kSolPartitionSize &&
+               absl::SimpleAtoi(option_value, &value) && value > 0) {
+      config.partition_size = value;
     }
   }
   return config;

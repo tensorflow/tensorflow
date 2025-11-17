@@ -300,7 +300,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithNestedFuncs) {
       // Output Mapping
       {{"o", "o:z:0"}});
 
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<std::string, AttrValue> func_instantiation_attr;
   func_instantiation_attr["T"].set_type(DT_FLOAT);
 
   GrapplerFunctionItem item;

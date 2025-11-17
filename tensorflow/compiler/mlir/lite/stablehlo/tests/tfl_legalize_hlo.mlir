@@ -3724,11 +3724,40 @@ func.func @dynamic_broadcast_in_dim_general_case_expand_back_dims(%arg0: tensor<
 // -----
 
 //===----------------------------------------------------------------------===//
+// mhlo.case
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: case_func
+func.func @case_func(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (tensor<i32>) {
+  %0 = "mhlo.case"(%arg0) ({
+    %2 = mhlo.add %arg1, %arg2 : tensor<i32>
+    "mhlo.return"(%2) : (tensor<i32>) -> ()
+  }, {
+    %2 = mhlo.multiply %arg1, %arg1 : tensor<i32>
+    "mhlo.return"(%2) : (tensor<i32>) -> ()
+  }) : (tensor<i32>) -> tensor<i32>
+  func.return %0: tensor<i32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK: %[[PRED:.*]] = tfl.not_equal(%arg0, %[[CST]]) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK: %[[IF:.*]] = "tfl.if"(%[[PRED]]) ({
+// CHECK:   %[[MUL:.*]] = tfl.mul %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<i32>
+// CHECK:   "tfl.yield"(%[[MUL]]) : (tensor<i32>) -> ()
+// CHECK: }, {
+// CHECK:   %[[ADD:.*]] = tfl.add %arg1, %arg2 {fused_activation_function = "NONE"} : tensor<i32>
+// CHECK:   "tfl.yield"(%[[ADD]]) : (tensor<i32>) -> ()
+// CHECK: }) : (tensor<i1>) -> tensor<i32>
+// CHECK: return %[[IF]] : tensor<i32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // mhlo.if
 //===----------------------------------------------------------------------===//
 
-// CHECK-LABEL: if
-func.func @if(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (tensor<i32>) {
+// CHECK-LABEL: if_label
+func.func @if_label(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (tensor<i32>) {
   %0 = mhlo.add %arg1, %arg2 : tensor<i32>
   %1 = "mhlo.if"(%arg0) ({
     "mhlo.return"(%0) : (tensor<i32>) -> ()

@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
-#include "absl/types/span.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -30,6 +29,16 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+
+// Returns the all-reduce strategy for the given input size.
+// If `is_multimem_enabled` is true, then multimem strategies are also
+// considered.
+se::gpu::AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
+                                                bool is_multimem_enabled);
+
+// Returns the maximum supported all-reduce size in bytes for the given
+// strategy.
+int64_t GetMaxSupportedAllReduceSizeBytes(se::gpu::AllReduceStrategy strategy);
 
 // Returns the launch dimensions for the all-reduce kernel.
 // The launch dimensions are determined by the number of elements and the

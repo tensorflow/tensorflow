@@ -61,8 +61,9 @@ bool HasSideEffectingNodes(const Graph& g);
 // Parse the mapping from outside_compilation_subgraph name to core number,
 // which is specified in an attr as a list of strings
 // <subgraph_name>:<core_index>.
-absl::Status ParseHostComputeCoreList(absl::Span<const string> list_from_attr,
-                                      std::map<string, int>* host_compute_core);
+absl::Status ParseHostComputeCoreList(
+    absl::Span<const std::string> list_from_attr,
+    std::map<std::string, int>* host_compute_core);
 
 }  // namespace tensorflow
 

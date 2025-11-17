@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <memory>

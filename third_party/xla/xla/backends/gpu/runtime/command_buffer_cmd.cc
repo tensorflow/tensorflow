@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/debug_options_flags.h"
@@ -63,6 +64,7 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/execution_graph.h"
@@ -1832,7 +1834,7 @@ namespace {
 // Records each buffer associated with each slice into the provided vector.
 // Returns an error if any of the slices is missing a buffer allocation.
 absl::Status GetBuffers(const Thunk::ExecuteParams& execute_params,
-                        absl::Span<const std::optional<ShapedSlice>> slices,
+                        absl::Span<const NullableShapedSlice> slices,
                         std::vector<void*>& buffers, absl::string_view label) {
   for (int i = 0; i < slices.size(); ++i) {
     if (!slices[i].has_value()) {
@@ -1915,7 +1917,7 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
   arguments.reserve(operands_.size());
 
   for (int i = 0; i < operands_.size(); ++i) {
-    const std::optional<ShapedSlice>& slice = operands_[i];
+    const NullableShapedSlice& slice = operands_[i];
     if (!slice.has_value()) {
       arguments.push_back(se::DeviceMemoryBase{});
       continue;
@@ -1932,7 +1934,7 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
   results.reserve(results_.size());
 
   for (int i = 0; i < results_.size(); ++i) {
-    const std::optional<ShapedSlice>& slice = results_[i];
+    const NullableShapedSlice& slice = results_[i];
     if (!slice.has_value()) {
       results.push_back(se::DeviceMemoryBase{});
       continue;
@@ -1999,7 +2001,7 @@ CommandBufferCmd::BufferUseVector CustomCallCmd::buffers() const {
 CollectiveCmd::CollectiveCmd(
     CommandBufferCmdType cmd_type, CollectiveConfig config,
     std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : CommandBufferCmd(cmd_type),
+    : CommandBufferCmd(cmd_type, se::StreamPriority::Highest),
       config_(std::move(config)),
       async_events_(std::move(async_events)) {}
 
@@ -2376,7 +2378,7 @@ CommandBufferCmd::BufferUseVector CollectiveBroadcastCmd::buffers() const {
 DynamicSliceFusionCmd::DynamicSliceFusionCmd(
     CommandBufferCmdExecutor embedded_commands,
     std::vector<std::optional<BufferAllocation::Slice>> arguments,
-    std::vector<std::unique_ptr<BufferAllocation>> fake_allocations,
+    std::vector<BufferAllocation> fake_allocations,
     std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets,
     std::vector<std::optional<Shape>> orig_shapes,
     std::vector<std::optional<Shape>> sliced_shapes,

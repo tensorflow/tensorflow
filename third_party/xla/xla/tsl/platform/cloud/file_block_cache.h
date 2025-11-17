@@ -69,7 +69,7 @@ class FileBlockCache {
   /// cache is constructed. The returned Status should be OK as long as the
   /// read from the remote filesystem succeeded (similar to the semantics of the
   /// read(2) system call).
-  typedef std::function<absl::Status(const string& filename, size_t offset,
+  typedef std::function<absl::Status(const std::string& filename, size_t offset,
                                      size_t buffer_size, char* buffer,
                                      size_t* bytes_transferred)>
       BlockFetcher;
@@ -90,18 +90,19 @@ class FileBlockCache {
   ///    placed in `out`.
   /// 4) OK otherwise (i.e. the read succeeded, and at least one byte was placed
   ///    in `out`).
-  virtual absl::Status Read(const string& filename, size_t offset, size_t n,
-                            char* buffer, size_t* bytes_transferred) = 0;
+  virtual absl::Status Read(const std::string& filename, size_t offset,
+                            size_t n, char* buffer,
+                            size_t* bytes_transferred) = 0;
 
   // Validate the given file signature with the existing file signature in the
   // cache. Returns true if the signature doesn't change or the file did not
   // exist before. If the signature changes, update the existing signature with
   // the new one and remove the file from cache.
-  virtual bool ValidateAndUpdateFileSignature(const string& filename,
+  virtual bool ValidateAndUpdateFileSignature(const std::string& filename,
                                               int64_t file_signature) = 0;
 
   /// Remove all cached blocks for `filename`.
-  virtual void RemoveFile(const string& filename) = 0;
+  virtual void RemoveFile(const std::string& filename) = 0;
 
   /// Remove all cached data.
   virtual void Flush() = 0;
@@ -109,7 +110,7 @@ class FileBlockCache {
   /// Accessors for cache parameters.
   virtual size_t block_size() const = 0;
   virtual size_t max_bytes() const = 0;
-  virtual uint64 max_staleness() const = 0;
+  virtual uint64_t max_staleness() const = 0;
 
   /// The current size (in bytes) of the cache.
   virtual size_t CacheSize() const = 0;

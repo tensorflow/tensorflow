@@ -105,7 +105,7 @@ class Executor {
     const ConfigProto* session_config = nullptr;
     SessionState* session_state = nullptr;
     // Unique session identifier. Can be empty.
-    string session_handle;
+    std::string session_handle;
     TensorStore* tensor_store = nullptr;
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;

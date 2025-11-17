@@ -646,7 +646,9 @@ ENTRY entry {
       hlo_module->entry_computation()->ComputeProgramShape());
 
   GpuLayoutAssignment layout_assignment(
-      &computation_layout, se::RocmComputeCapability::EarliestRDNASupport(),
+      &computation_layout,
+      se::GpuComputeCapability{
+          se::RocmComputeCapability::EarliestRDNASupport()},
       GetDnnVersion(), GetDeviceDescription());
 
   EXPECT_THAT(layout_assignment.Run(hlo_module.get()),
@@ -683,7 +685,9 @@ ENTRY entry {
       hlo_module->entry_computation()->ComputeProgramShape());
 
   GpuLayoutAssignment layout_assignment(
-      &computation_layout, se::RocmComputeCapability::EarliestRDNASupport(),
+      &computation_layout,
+      se::GpuComputeCapability{
+          se::RocmComputeCapability::EarliestRDNASupport()},
       GetDnnVersion(), GetDeviceDescription());
 
   EXPECT_THAT(layout_assignment.Run(hlo_module.get()),
@@ -723,7 +727,9 @@ ENTRY entry {
       hlo_module->entry_computation()->ComputeProgramShape());
 
   GpuLayoutAssignment layout_assignment(
-      &computation_layout, se::RocmComputeCapability::EarliestCDNASupport(),
+      &computation_layout,
+      se::GpuComputeCapability{
+          se::RocmComputeCapability::EarliestCDNASupport()},
       GetDnnVersion(), GetDeviceDescription());
 
   EXPECT_THAT(layout_assignment.Run(hlo_module.get()),
@@ -763,7 +769,9 @@ ENTRY entry {
       hlo_module->entry_computation()->ComputeProgramShape());
 
   GpuLayoutAssignment layout_assignment(
-      &computation_layout, se::RocmComputeCapability::EarliestCDNASupport(),
+      &computation_layout,
+      se::GpuComputeCapability{
+          se::RocmComputeCapability::EarliestCDNASupport()},
       GetDnnVersion(), GetDeviceDescription());
 
   EXPECT_THAT(layout_assignment.Run(hlo_module.get()),

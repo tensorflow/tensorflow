@@ -28,6 +28,8 @@ def TritonXLAExtractInsertToTritonPass : Pass<"triton-xla-extract-insert-to-trit
   let options = [
     Option<"allow_tma_", "allow_tma", "bool", "false",
            "Whether to permit lowering to TMA.">,
+    Option<"num_stages_", "num_stages", "int", "1",
+           "Number of stages for pipelining.">,
   ];
   let dependentDialects = [
     "triton::TritonDialect",
@@ -60,7 +62,8 @@ def TritonXLAFoldTransposePass : Pass<"triton-xla-fold-transpose", "mlir::Module
     This pass tries to remove transposes by folding them into loads.
   }];
   let dependentDialects = [
-    "::mlir::triton::xla::XlaTritonDialect"
+    "::mlir::triton::xla::XlaTritonDialect",
+    "::mlir::memref::MemRefDialect",
   ];
   let constructor = "CreateTritonXLAFoldTransposePass()";
 }
@@ -210,8 +213,9 @@ def StableHLOLowerToTritonPass
     : Pass<"stablehlo-lower-to-triton", "mlir::ModuleOp"> {
   let summary = "Lowers StableHLO operations to their Triton equivalent.";
   let dependentDialects = [
-    "stablehlo::StablehloDialect",
-    "triton::TritonDialect"
+    "::mlir::stablehlo::StablehloDialect",
+    "::mlir::triton::TritonDialect",
+    "::xla::xtile::XTileDialect",
   ];
   let constructor = "CreateStableHLOLowerToTritonPass()";
 }
@@ -221,9 +225,36 @@ def TensorLowerToTritonPass
   let summary = "Lowers tensor operations to their Triton equivalent.";
   let dependentDialects = [
     "tensor::TensorDialect",
-    "triton::TritonDialect"
+    "triton::TritonDialect",
+    "::xla::xtile::XTileDialect",
   ];
   let constructor = "CreateTensorLowerToTritonPass()";
+}
+
+def TritonXLAMathToLibdevicePass
+    : Pass<"triton-xla-math-to-libdevice", "mlir::ModuleOp"> {
+  let summary = "Lowers math operations to tt.extern_elementwise calls to their libdevice equivalent.";
+  let dependentDialects = [
+    "tensor::TensorDialect",
+    "triton::TritonDialect"
+  ];
+  let options = [
+    Option<"libdevice_path_", "libdevice_path", "std::string", "",
+           "Path to the libdevice library.">,
+    Option<"triple_string_", "triple", "std::string", "",
+           "Device triple string.">,
+  ];
+}
+
+
+def XTileLowerToTritonPass
+    : Pass<"xtile-lower-to-triton", "mlir::ModuleOp"> {
+  let summary = "Lowers XTile operations to their Triton equivalent.";
+  let dependentDialects = [
+    "::mlir::triton::TritonDialect",
+    "::xla::xtile::XTileDialect",
+  ];
+  let constructor = "CreateXTileLowerToTritonPass()";
 }
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

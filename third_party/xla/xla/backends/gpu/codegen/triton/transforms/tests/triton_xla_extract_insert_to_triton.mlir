@@ -3,7 +3,7 @@
 // RUN: | FileCheck %s
 
 // RUN: xla-opt %s -split-input-file \
-// RUN: -triton-xla-extract-insert-to-triton=allow_tma=1 \
+// RUN: -triton-xla-extract-insert-to-triton="allow_tma=1 num_stages=3" \
 // RUN: | FileCheck %s --check-prefix=CHECK-TMA
 
 func.func @lower_extract_insert(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
@@ -250,3 +250,28 @@ module {
 // CHECK-TMA-LABEL: tt.func @incompatible_tma_dynamic_offset_not_divisible_by_16_bytes
 // CHECK-TMA:         tt.load
 // CHECK-TMA:         tt.descriptor_store
+
+// -----
+
+func.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma(
+          %arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: !tt.ptr<f32>) {
+  %cst = arith.constant dense<0.000000e+00> : tensor<64x64xf32>
+  %extracted_tile = triton_xla.extract from %arg0 as
+      memref<64xf32, #triton_xla.layout<[0]>> [0] [64] [1] : tensor<64xf32>
+  %0 = tt.expand_dims %extracted_tile {axis = 1 : i32}
+      : tensor<64xf32> -> tensor<64x1xf32>
+  %1 = tt.broadcast %0 : tensor<64x1xf32> -> tensor<64x64xf32>
+  %extracted_tile_0 = triton_xla.extract from %arg1 as
+      memref<64x64xf32, #triton_xla.layout<[1, 0]>> [0, 0] [64, 64] [1, 1]
+      : tensor<64x64xf32>
+  %2 = tt.dot %1, %extracted_tile_0, %cst, inputPrecision = tf32
+      : tensor<64x64xf32> * tensor<64x64xf32> -> tensor<64x64xf32>
+  triton_xla.insert %2 into %arg2 as
+      memref<64x64xf32, #triton_xla.layout<[1, 0]>> [0, 0] [64, 64] [1, 1]
+      : tensor<64x64xf32>
+  return
+}
+
+// CHECK-TMA-LABEL: tt.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma
+// CHECK-TMA-NOT:         tt.descriptor_load %arg0
+// CHECK-TMA:             tt.descriptor_load %arg1

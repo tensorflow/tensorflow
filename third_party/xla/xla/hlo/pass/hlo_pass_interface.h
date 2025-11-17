@@ -78,27 +78,20 @@ class HloPassInterface {
   // Run the pass on the given HLO module with specified execution_threads.
   // Empty execution_threads list means all execution_threads are included.
   // Returns whether it modified the module.
-  //
-  // Note: C++ hides non-explicitly declared overloaded functions.
-  // You can make all overloaded variants available in the child class  by
-  // adding `using HloPassInterface::Run;` to the child class declaration.
-  absl::StatusOr<bool> Run(HloModule* module) {
-    return Run(module, /*execution_threads=*/{});
-  }
-  virtual absl::StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Same as above, except that this API allows the pass to return a *different*
   // module, rather than modifying the module in-place.
-  absl::StatusOr<bool> Run(std::unique_ptr<HloModule>& module_ptr) {
-    return Run(module_ptr, /*execution_threads=*/{});
-  }
-  virtual absl::StatusOr<bool> Run(
+  // TODO(b/454418238): Remove this function (and the corresponding RunImpl).
+  ABSL_DEPRECATED(
+      "This interface exists for passes which create an entire new HloModule "
+      "instead of updating the existing one in place. This is not the norm and "
+      "should not be done.")
+  absl::StatusOr<bool> Run(
       std::unique_ptr<HloModule>& module_ptr,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) {
-    return Run(module_ptr.get(), execution_threads);
-  }
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Run the pass on computation on changed computations from last iteration in
   // given HLO module for specified execution_threads, with caller provided
@@ -132,6 +125,18 @@ class HloPassInterface {
       // It usually means the pass was invoked on its own.
       LOG(WARNING) << "Failed to set stat: " << status;
     }
+  }
+
+ protected:
+  virtual absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
+
+  // TODO(b/454418238): Remove this function.
+  virtual absl::StatusOr<bool> RunImpl(
+      std::unique_ptr<HloModule>& module_ptr,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    return RunImpl(module_ptr.get(), execution_threads);
   }
 };
 

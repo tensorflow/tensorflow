@@ -133,7 +133,7 @@ class SharedBatchScheduler
   // TODO(b/25089730): Tune defaults based on best practices as they develop.
   struct Options {
     // The name to use for the pool of batch threads.
-    string thread_pool_name = {"batch_threads"};
+    std::string thread_pool_name = {"batch_threads"};
 
     // The number of threads to use to process batches.
     // Must be >= 1, and should be tuned carefully.
@@ -233,7 +233,7 @@ class SharedBatchScheduler
     size_t max_execution_batch_size = 1000;
 
     // If non-empty, contains configured batch sizes.
-    std::vector<int32> allowed_batch_sizes;
+    std::vector<int32_t> allowed_batch_sizes;
 
     // If true, the padding will not be appended.
     bool disable_padding = false;
@@ -241,7 +241,7 @@ class SharedBatchScheduler
     // The padding policy to use.
     //
     // See the documentation for kPadUpPolicy for details.
-    string batch_padding_policy = string(kPadUpPolicy);
+    std::string batch_padding_policy = std::string(kPadUpPolicy);
 
     // A pointer to a ModelBatchStats instance for this model. To be used for
     // cost-based padding policy selection.
@@ -266,7 +266,7 @@ class SharedBatchScheduler
       // See QueueOptions.max_enqueued_batches
       size_t max_enqueued_batches = 0;
       // See QueueOptions.allowed_batch_sizes
-      std::vector<int32> allowed_batch_sizes;
+      std::vector<int32_t> allowed_batch_sizes;
     };
     // A subset of queue options for high priority input. These options are
     // currently not being used in favor of the equivalents options at the
@@ -516,7 +516,7 @@ class Queue {
   size_t tail_batch_task_size() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Returns the number of enqueued batches.
-  int64 num_enqueued_batches() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  int64_t num_enqueued_batches() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Gets the appropriate batches.
   std::deque<std::unique_ptr<Batch<TaskType>>>& GetBatches()
@@ -573,7 +573,7 @@ class Queue {
       TF_GUARDED_BY(mu_);
 
   // The counter of the TraceMe context ids.
-  uint64 traceme_context_id_counter_ TF_GUARDED_BY(mu_) = 0;
+  uint64_t traceme_context_id_counter_ TF_GUARDED_BY(mu_) = 0;
 
   // The time at which the first task was added to the open (back-most) batch
   // in 'high_priority_batches_'. Valid iff that batch contains at least one
@@ -581,7 +581,7 @@ class Queue {
   //
   // Note that when using a batch padding policy other than PAD_UP, this field
   // might contain an approximate value.
-  uint64 open_batch_start_time_micros_ TF_GUARDED_BY(mu_);
+  uint64_t open_batch_start_time_micros_ TF_GUARDED_BY(mu_);
 
   // Whether this queue contains a batch that is eligible to be scheduled.
   // Used to keep track of when to call 'schedulable_batch_callback_'.
@@ -980,7 +980,7 @@ void Queue<TaskType>::PadOpenBatchWithLowPriorityTasks() {
       return;
     }
 
-    uint64 task_time = low_priority_tasks_.EarliestTaskStartTime().value();
+    uint64_t task_time = low_priority_tasks_.EarliestTaskStartTime().value();
     std::unique_ptr<TaskType> task = low_priority_tasks_.RemoveTask();
 
     const int64_t input_task_size = task->size();
@@ -1089,11 +1089,11 @@ size_t Queue<TaskType>::SchedulingCapacity() const {
 
 template <typename TaskType>
 size_t Queue<TaskType>::SchedulingCapacityInternal() const {
-  const int64 num_new_batches_schedulable =
+  const int64_t num_new_batches_schedulable =
       static_cast<int64_t>(options_.max_enqueued_batches) -
       this->num_enqueued_batches();
-  const int64 execution_batch_size_limit = max_execution_batch_size();
-  const int64 open_batch_capacity =
+  const int64_t execution_batch_size_limit = max_execution_batch_size();
+  const int64_t open_batch_capacity =
       execution_batch_size_limit - this->tail_batch_task_size();
   // Note the returned value is guaranteed to be not negative, since
   // enqueue operation could only happen if queue has enough capacity.
@@ -1201,7 +1201,7 @@ Queue<TaskType>::ScheduleBatch() {
       // batch, making it read-only.
       Batch<TaskType>& old_batch = *batches[0];
       if (!old_batch.empty()) {
-        uint64 old_batch_time = old_batch.EarliestTaskStartTime().value();
+        uint64_t old_batch_time = old_batch.EarliestTaskStartTime().value();
         std::vector<std::unique_ptr<TaskType>> trimmed_tasks;
         MaybeBatchDown(
             /* batch= */ old_batch,
@@ -1415,7 +1415,7 @@ Queue<TaskType>::PeekBatchPriorityImpl() const {
   Batch<TaskType>* open_batch = batches.back().get();
 
   size_t effective_batch_size = open_batch->size();
-  uint64 effective_start_time_micros = open_batch_start_time_micros_;
+  uint64_t effective_start_time_micros = open_batch_start_time_micros_;
   int64_t effective_batch_timeout_micros = options_.batch_timeout_micros;
   if (effective_batch_size == 0) {
     // open_batch_start_time_micros_ is not valid for an empty batch.
@@ -1498,7 +1498,7 @@ size_t Queue<TaskType>::tail_batch_task_size() const {
 }
 
 template <typename TaskType>
-int64 Queue<TaskType>::num_enqueued_batches() const {
+int64_t Queue<TaskType>::num_enqueued_batches() const {
   return GetBatches().size();
 }
 

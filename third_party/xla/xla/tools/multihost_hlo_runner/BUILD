@@ -1,7 +1,7 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("//xla:xla.default.bzl", "xla_cc_binary")
+load("//xla:xla.default.bzl", "xla_cc_binary", "xla_py_strict_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm", "if_google")
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
@@ -184,7 +184,6 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
-        "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_layout",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/runtime/large_hlo_snapshot_serialization:serialization",
@@ -256,6 +255,7 @@ xla_test(
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
@@ -337,5 +337,28 @@ tsl_pybind_extension(
         ],
     )) + if_rocm([
         "//xla/stream_executor:rocm_platform",
+    ]),
+)
+
+xla_py_strict_test(
+    name = "python_hlo_runner_test",
+    srcs = ["python_hlo_runner_test.py"],
+    data = [
+        ":hlo_file",
+    ],
+    # Transformer engine dlopens several cuda libraries and so requires them as data dependencies.
+    need_cuda_libs = True,
+    tags = [
+        "gpu",
+        # Transformer engine takes a long time to compile. Disabling it for CI tests.
+        "no_oss",
+        "requires-gpu-sm90-only",
+    ],
+    deps = [
+        ":py_hlo_multihost_runner",
+        "@absl_py//absl/testing:absltest",
+        "@transformer_engine//:transformer_engine_jax",
+    ] + if_cuda([
+        "//xla/stream_executor:cuda_platform",
     ]),
 )

@@ -45,8 +45,6 @@ namespace {
 using ::testing::ElementsAreArray;
 using ::testing::FloatEq;
 using ::testing::IsEmpty;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 TEST(MlirToByteCodeTest, Basic) {
   constexpr char kBasicMlir[] =

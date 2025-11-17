@@ -31,11 +31,11 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -84,7 +84,7 @@ class TestDevice : public PjRtDevice {
 
 absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(
     const Shape& shape, LocalClient* client, PjRtDevice* device) {
-  std::vector<tsl::RCReference<RawSEDeviceMemory>> device_buffers;
+  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> device_buffers;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
       [&](const Shape& subshape, const ShapeIndex&) -> absl::Status {

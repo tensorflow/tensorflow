@@ -119,7 +119,7 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
     }
   }
 
-  string desc = ctx->op_kernel().name();
+  std::string desc = ctx->op_kernel().name();
 
   xla::XlaBuilder* const b = ctx->builder();
   // Construct the builder for the reduction lambda.

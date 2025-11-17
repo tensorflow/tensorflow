@@ -97,8 +97,8 @@ struct SharedState {
 
 // Represents a parameter.
 struct Parameter {
-  Parameter(const string& name, std::shared_ptr<SharedState> state, double min,
-            double max)
+  Parameter(const std::string& name, std::shared_ptr<SharedState> state,
+            double min, double max)
       : name(name),
         // Sometimes non-autotune nodes (with `autotune_=false`) may contain
         // parameters (for example inputs of parallel interleave dataset which
@@ -121,7 +121,7 @@ struct Parameter {
         state(parameter->state) {}
 
   // Human-readable name of the parameter.
-  const string name;
+  const std::string name;
 
   // Identifies the model value of the parameter. This can be different from
   // the actual value (e.g. during optimization search).
@@ -138,18 +138,18 @@ struct Parameter {
 };
 
 // Returns a new tunable parameter with the value set to `min`.
-std::shared_ptr<Parameter> MakeParameter(const string& name,
+std::shared_ptr<Parameter> MakeParameter(const std::string& name,
                                          std::shared_ptr<SharedState> state,
                                          double min, double max);
 
 // Returns a new tunable parameter with the value set to `value` instead
 // of `min`.
-std::shared_ptr<Parameter> MakeParameter(const string& name,
+std::shared_ptr<Parameter> MakeParameter(const std::string& name,
                                          std::shared_ptr<SharedState> state,
                                          double min, double max, double value);
 
 // Returns a new non-tunable parameter.
-std::shared_ptr<Parameter> MakeNonTunableParameter(const string& name,
+std::shared_ptr<Parameter> MakeNonTunableParameter(const std::string& name,
                                                    double value);
 
 // Class for managing the ram budget of an iterator. This is necessary for
@@ -283,7 +283,7 @@ class Node {
   // Arguments for `Node` constructor.
   struct Args {
     int64_t id;
-    string name;
+    std::string name;
     std::shared_ptr<Node> output;
   };
 
@@ -292,10 +292,10 @@ class Node {
   using NodePairList =
       std::list<std::pair<std::shared_ptr<Node>, std::shared_ptr<Node>>>;
   using ModelParameters =
-      std::vector<std::pair<string, std::shared_ptr<Parameter>>>;
-  using NodeValues = absl::flat_hash_map<string, double>;
+      std::vector<std::pair<std::string, std::shared_ptr<Parameter>>>;
+  using NodeValues = absl::flat_hash_map<std::string, double>;
   using ParameterGradients =
-      absl::flat_hash_map<std::pair<string, string>, double>;
+      absl::flat_hash_map<std::pair<std::string, std::string>, double>;
 
   explicit Node(Args args)
       : id_(args.id),
@@ -413,10 +413,12 @@ class Node {
   }
 
   // Returns a longer node name that is guaranteed to be unique.
-  string long_name() const { return absl::StrCat(name_, "(id:", id_, ")"); }
+  std::string long_name() const {
+    return absl::StrCat(name_, "(id:", id_, ")");
+  }
 
   // Returns the node name.
-  const string& name() const { return name_; }
+  const std::string& name() const { return name_; }
 
   // Returns the number of elements produced by the node.
   int64_t num_elements() const TF_LOCKS_EXCLUDED(mu_) { return num_elements_; }
@@ -426,7 +428,7 @@ class Node {
   std::shared_ptr<Node> output_shared() { return output_weak_ptr_.lock(); }
 
   // Returns the parameter value.
-  double parameter_value(const string& name) const TF_LOCKS_EXCLUDED(mu_) {
+  double parameter_value(const std::string& name) const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return parameters_.at(name)->state->value;
   }
@@ -564,7 +566,7 @@ class Node {
   ModelParameters CollectNodeTunableParameters() const TF_LOCKS_EXCLUDED(mu_);
 
   // Returns a human-readable representation of this node.
-  string DebugString() const TF_LOCKS_EXCLUDED(mu_);
+  std::string DebugString() const TF_LOCKS_EXCLUDED(mu_);
 
   // Flushes the metrics recorded by this node.
   void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
@@ -645,7 +647,7 @@ class Node {
   // Used for (incrementally) recording metrics. The class is thread-safe.
   class Metrics {
    public:
-    explicit Metrics(const string& name)
+    explicit Metrics(const std::string& name)
         : bytes_consumed_counter_(metrics::GetTFDataBytesConsumedCounter(name)),
           bytes_produced_counter_(metrics::GetTFDataBytesProducedCounter(name)),
           num_elements_counter_(metrics::GetTFDataElementsCounter(name)),
@@ -787,8 +789,9 @@ class Node {
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Build up debug string for the node and store in the debug strings map.
-  void DebugStringHelper(absl::flat_hash_map<string, string>* debug_strings)
-      const TF_SHARED_LOCKS_REQUIRED(mu_);
+  void DebugStringHelper(
+      absl::flat_hash_map<std::string, std::string>* debug_strings) const
+      TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Copy the node and add the (input, copy) pairs to the NodePairList.
   std::shared_ptr<Node> SnapshotHelper(std::shared_ptr<Node> cloned_output,
@@ -827,7 +830,7 @@ class Node {
 
   mutable mutex mu_;
   const int64_t id_;
-  const string name_;
+  const std::string name_;
 
   // Indicates whether the subtree rooted in this node should be included in
   // autotuning. In particular, if this is `false`, then the subtree is excluded
@@ -844,7 +847,7 @@ class Node {
   std::atomic<int64_t> processing_time_;
   std::atomic<bool> record_metrics_;
   Metrics metrics_;
-  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters_
+  absl::flat_hash_map<std::string, std::shared_ptr<Parameter>> parameters_
       TF_GUARDED_BY(mu_);
 
   // Statistic of inputs processing time history.
@@ -952,7 +955,7 @@ class Model {
   }
 
   // Adds a node with the given name and given parent.
-  void AddNode(Node::Factory factory, const string& name,
+  void AddNode(Node::Factory factory, const std::string& name,
                std::shared_ptr<Node> parent, std::shared_ptr<Node>* out_node)
       TF_LOCKS_EXCLUDED(mu_);
 
@@ -1014,12 +1017,13 @@ class Model {
 
   // Saves this model with a given snapshot and its optimization parameters to a
   // file. Note that the file directory must already exist.
-  absl::Status Save(const string& fname, std::shared_ptr<Node> snapshot,
+  absl::Status Save(const std::string& fname, std::shared_ptr<Node> snapshot,
                     const OptimizationParams& optimization_params);
 
   // Loads a model and its optimization parameters from a file with the given
   // name.
-  static absl::Status Load(const string& fname, std::unique_ptr<Model>* model,
+  static absl::Status Load(const std::string& fname,
+                           std::unique_ptr<Model>* model,
                            OptimizationParams* optimization_params);
 
   // Records gap time between consecutive `GetNext()` calls.

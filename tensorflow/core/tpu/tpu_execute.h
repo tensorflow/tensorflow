@@ -42,7 +42,7 @@ absl::StatusOr<xla::ExecutionOutput> TPUExecute(
     const TPUHostTransferInfoProto& host_transfers,
     const xla::HloProto& hlo_metadata,
     std::vector<xla::ExecutionInput> arguments,
-    const std::string& rendezvous_key_base, uint32 rng_seed,
+    const std::string& rendezvous_key_base, uint32_t rng_seed,
     tpu::TpuNodeContext* node_context, xla::DeviceAssignment* device_assignment,
     CancellationManager* cancellation_manager, OpKernelContext* ctx,
     stream_executor::Stream* stream,

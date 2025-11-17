@@ -4,6 +4,7 @@
 load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
+    "xla_py_proto_library",
 )
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load(
@@ -29,6 +30,11 @@ tf_proto_library(
     name = "memory_space_assignment_proto",
     srcs = ["memory_space_assignment.proto"],
     make_default_target_header_only = True,
+)
+
+xla_py_proto_library(
+    name = "memory_space_assignment_proto_py_pb2",
+    deps = [":memory_space_assignment_proto"],
 )
 
 cc_library(

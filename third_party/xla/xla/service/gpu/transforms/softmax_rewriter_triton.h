@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -59,11 +59,6 @@ class SoftmaxRewriterTriton : public HloModulePass {
         symbolic_expr_context_(symbolic_expr_context) {}
 
   absl::string_view name() const override { return "triton-softmax-rewriter"; }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Finds and returns all the fusible normalization diamonds in the module. The
   // resulting vector is sorted according to a post-order matching (i.e. within
@@ -101,6 +96,11 @@ class SoftmaxRewriterTriton : public HloModulePass {
   // array.
   DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamond(
       HloInstruction* instr) const;
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   const se::DeviceDescription& device_info_;

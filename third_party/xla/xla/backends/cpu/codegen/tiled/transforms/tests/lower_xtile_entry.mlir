@@ -1,4 +1,4 @@
-// RUN: emitters_opt %s --xtile-cpu-lower-xtile-entry -split-input-file | FileCheck %s
+// RUN: fusion_compiler_opt %s --xtile-cpu-lower-xtile-entry -split-input-file | FileCheck %s
 
 xtile.entry_func @simple_wrap(%input: memref<1024xf32> {xla.some_attr = 1},
                              %output: memref<32xf64>,

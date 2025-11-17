@@ -153,6 +153,11 @@ InputTensorData CreateRandomTensorData(std::string name, TfLiteType type,
           num_elements,
           std::uniform_int_distribution<int16_t>(low_range, high_range));
     }
+    case kTfLiteUInt16: {
+      return CreateInputTensorData<uint16_t>(
+          num_elements,
+          std::uniform_int_distribution<uint16_t>(low_range, high_range));
+    }
     case kTfLiteUInt8: {
       // std::uniform_int_distribution is specified not to support char types.
       return CreateInputTensorData<uint8_t>(

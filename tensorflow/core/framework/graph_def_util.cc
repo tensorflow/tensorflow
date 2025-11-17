@@ -35,8 +35,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-string SummarizeGraphDef(const GraphDef& graph_def) {
-  string ret;
+std::string SummarizeGraphDef(const GraphDef& graph_def) {
+  std::string ret;
   absl::StrAppend(&ret, "versions = ", graph_def.versions().ShortDebugString(),
                   ";\n");
   for (const NodeDef& node : graph_def.node()) {
@@ -85,7 +85,7 @@ absl::Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
 static absl::Status RemoveNewDefaultAttrsFromNodeDef(
     NodeDef* node_def, const OpRegistryInterface& consumer_op_registry,
     const OpRegistryInterface& producer_op_registry,
-    std::set<std::pair<string, string>>* op_attr_removed) {
+    std::set<std::pair<std::string, std::string>>* op_attr_removed) {
   const OpDef* producer_op_def;
   const OpDef* consumer_op_def;
   TF_RETURN_IF_ERROR(
@@ -93,7 +93,7 @@ static absl::Status RemoveNewDefaultAttrsFromNodeDef(
   TF_RETURN_IF_ERROR(
       consumer_op_registry.LookUpOpDef(node_def->op(), &consumer_op_def));
 
-  std::vector<string> to_remove;
+  std::vector<std::string> to_remove;
   for (const auto& attr : node_def->attr()) {
     // If the attr is not in consumer_op_def and doesn't start with '_'...
     if (!absl::StartsWith(attr.first, "_") &&
@@ -117,7 +117,7 @@ static absl::Status RemoveNewDefaultAttrsFromNodeDef(
   // We separate identifying which attrs should be removed from
   // actually removing them to avoid invalidating the loop iterators
   // above.
-  for (const string& attr_name : to_remove) {
+  for (const std::string& attr_name : to_remove) {
     node_def->mutable_attr()->erase(attr_name);
     if (op_attr_removed != nullptr) {
       op_attr_removed->insert(std::make_pair(node_def->op(), attr_name));
@@ -127,7 +127,7 @@ static absl::Status RemoveNewDefaultAttrsFromNodeDef(
   return absl::OkStatus();
 }
 
-static bool IsFunction(const GraphDef& graph_def, const string& op_name) {
+static bool IsFunction(const GraphDef& graph_def, const std::string& op_name) {
   for (const auto& func_def : graph_def.library().function()) {
     if (op_name == func_def.signature().name()) return true;
   }
@@ -137,7 +137,7 @@ static bool IsFunction(const GraphDef& graph_def, const string& op_name) {
 absl::Status RemoveNewDefaultAttrsFromGraphDef(
     GraphDef* graph_def, const OpRegistryInterface& consumer_op_registry,
     const OpRegistryInterface& producer_op_registry,
-    std::set<std::pair<string, string>>* op_attr_removed) {
+    std::set<std::pair<std::string, std::string>>* op_attr_removed) {
   // TODO(joshL): Make IsFunction() faster by collecting the names of
   // all functions as a preprocessing step.
   for (int n = 0; n < graph_def->node_size(); ++n) {
@@ -184,7 +184,7 @@ void StripDefaultAttributes(const OpRegistryInterface& op_registry,
     for (const OpDef::AttrDef& attr_def : op_def->attr()) {
       if (attr_def.has_default_value()) {
         AttrValueMap* attrs = node->mutable_attr();
-        const string& name = attr_def.name();
+        const std::string& name = attr_def.name();
         auto iter = attrs->find(name);
         if (iter != attrs->end()) {
           const AttrValue& default_value = attr_def.default_value();
@@ -202,9 +202,9 @@ void StripDefaultAttributes(const OpRegistryInterface& op_registry,
 }
 
 void OpsUsedByGraph(const GraphDef& graph_def,
-                    std::set<string>* ops_used_in_graph) {
+                    std::set<std::string>* ops_used_in_graph) {
   // Map function names to definitions.
-  std::unordered_map<string, const FunctionDef*> name_to_function;
+  std::unordered_map<std::string, const FunctionDef*> name_to_function;
   for (const auto& function : graph_def.library().function()) {
     name_to_function.insert(
         std::make_pair(function.signature().name(), &function));
@@ -212,11 +212,11 @@ void OpsUsedByGraph(const GraphDef& graph_def,
 
   // Collect the sorted list of op names.  Since functions can reference
   // functions, we need a recursive traversal.
-  std::set<string> used_ops;  // Includes both primitive ops and functions
+  std::set<std::string> used_ops;  // Includes both primitive ops and functions
   std::vector<const FunctionDef*> functions_to_process;  // A subset of used_ops
   // Collect the logic to mark an op in a lambda; it'll be used twice below.
   const auto mark_op_as_used = [&used_ops, &functions_to_process,
-                                &name_to_function](const string& op) {
+                                &name_to_function](const std::string& op) {
     if (used_ops.insert(op).second) {
       // If it's a function, we'll need to process further
       const auto it = name_to_function.find(op);
@@ -239,7 +239,7 @@ void OpsUsedByGraph(const GraphDef& graph_def,
   // Filter out function names to produce output.
   // TODO(josh11b): Change the above code to produce this directly.
   ops_used_in_graph->clear();
-  for (const string& op_name : used_ops) {
+  for (const std::string& op_name : used_ops) {
     if (name_to_function.find(op_name) == name_to_function.end()) {
       ops_used_in_graph->insert(op_name);
     }
@@ -249,12 +249,12 @@ void OpsUsedByGraph(const GraphDef& graph_def,
 absl::Status StrippedOpListForGraph(const GraphDef& graph_def,
                                     const OpRegistryInterface& op_registry,
                                     OpList* stripped_op_list) {
-  std::set<string> used_ops;
+  std::set<std::string> used_ops;
   OpsUsedByGraph(graph_def, &used_ops);
 
   // Build the stripped op list in sorted order, ignoring functions.
   stripped_op_list->clear_op();
-  for (const string& op_name : used_ops) {
+  for (const std::string& op_name : used_ops) {
     const OpDef* op_def;
     TF_RETURN_IF_ERROR(op_registry.LookUpOpDef(op_name, &op_def));
     OpDef* stripped_op = stripped_op_list->add_op();

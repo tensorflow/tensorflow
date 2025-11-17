@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"

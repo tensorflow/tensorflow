@@ -41,7 +41,7 @@ const char kTensorPrefix[] = "tftensor$";
 
 }  // namespace
 
-string MangleAttributeName(absl::string_view str) {
+std::string MangleAttributeName(absl::string_view str) {
   return absl::StrCat(kAttributePrefix, str);
 }
 
@@ -66,7 +66,7 @@ MangledKind GetMangledKind(absl::string_view str) {
   }
 }
 
-string MangleShape(const TensorShapeProto& shape) {
+std::string MangleShape(const TensorShapeProto& shape) {
   return absl::StrCat(kTensorShapePrefix, PrintShortTextProto(shape));
 }
 
@@ -74,7 +74,7 @@ absl::Status DemangleShape(absl::string_view str, TensorShapeProto* proto) {
   return ParseTextProto(str, kTensorShapePrefix, proto);
 }
 
-string MangleTensor(const TensorProto& tensor) {
+std::string MangleTensor(const TensorProto& tensor) {
   return absl::StrCat(kTensorPrefix, PrintShortTextProto(tensor));
 }
 
@@ -82,7 +82,7 @@ absl::Status DemangleTensor(absl::string_view str, TensorProto* proto) {
   return ParseTextProto(str, kTensorPrefix, proto);
 }
 
-string MangleDataType(const DataType& dtype) {
+std::string MangleDataType(const DataType& dtype) {
   return absl::StrCat(kDataTypePrefix, DataType_Name(dtype));
 }
 

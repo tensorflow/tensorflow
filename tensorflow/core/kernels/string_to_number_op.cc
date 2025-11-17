@@ -68,7 +68,7 @@ class StringToNumberOp : public OpKernel {
                           StringToNumberOp<type>)
 REGISTER(float);
 REGISTER(double);
-REGISTER(int32);
+REGISTER(int32_t);
 REGISTER(int64_t);
 REGISTER(uint32_t);
 REGISTER(uint64_t);

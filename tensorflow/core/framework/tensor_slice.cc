@@ -75,18 +75,20 @@ absl::Status TensorSlice::BuildTensorSlice(const TensorSliceProto& proto,
   return absl::OkStatus();
 }
 
-absl::Status TensorSlice::Parse(const string& str, TensorSlice* slice) {
-  std::vector<string> items = str_util::Split(str, ':', str_util::SkipEmpty());
+absl::Status TensorSlice::Parse(const std::string& str, TensorSlice* slice) {
+  std::vector<std::string> items =
+      str_util::Split(str, ':', str_util::SkipEmpty());
   slice->starts_.reserve(items.size());
   slice->lengths_.reserve(items.size());
-  for (const string& x : items) {
+  for (const std::string& x : items) {
     int64_t s, l;
     if (x == "-") {
       // "everything"
       s = 0;
       l = kFullExtent;
     } else {
-      std::vector<string> sl = str_util::Split(x, ',', str_util::SkipEmpty());
+      std::vector<std::string> sl =
+          str_util::Split(x, ',', str_util::SkipEmpty());
       if (sl.size() != 2 || !absl::SimpleAtoi(sl[0], &s) ||
           !absl::SimpleAtoi(sl[1], &l)) {
         return errors::InvalidArgument(
@@ -152,8 +154,8 @@ void TensorSlice::AsProto(TensorSliceProto* proto) const {
   }
 }
 
-string TensorSlice::DebugString() const {
-  string buffer;
+std::string TensorSlice::DebugString() const {
+  std::string buffer;
   bool first = true;
   for (int d = 0; d < dims(); ++d) {
     if (!first) {

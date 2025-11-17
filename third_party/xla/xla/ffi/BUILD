@@ -1,4 +1,5 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -22,6 +23,7 @@ cc_library(
     hdrs = ["call_frame.h"],
     deps = [
         ":api",
+        ":attribute_map",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -44,6 +46,7 @@ xla_cc_test(
     name = "call_frame_test",
     srcs = ["call_frame_test.cc"],
     deps = [
+        ":attribute_map",
         ":call_frame",
         "//xla:xla_data_proto_cc",
         "//xla/ffi/api:c_api",
@@ -67,7 +70,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -196,7 +199,11 @@ cc_library(
     srcs = ["attribute_map.cc"],
     hdrs = ["attribute_map.h"],
     deps = [
-        ":call_frame",
+        ":attribute_map_proto_cc",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -204,9 +211,25 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
+)
+
+xla_cc_test(
+    name = "attribute_map_test",
+    srcs = ["attribute_map_test.cc"],
+    deps = [
+        ":attribute_map",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_proto_library(
+    name = "attribute_map_proto",
+    srcs = ["attribute_map.proto"],
 )
 
 xla_cc_test(
@@ -216,6 +239,7 @@ xla_cc_test(
     features = ["-use_header_modules"],
     shuffle_tests = False,
     deps = [
+        ":attribute_map",
         ":call_frame",
         ":execution_context",
         ":execution_state",
@@ -275,6 +299,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],

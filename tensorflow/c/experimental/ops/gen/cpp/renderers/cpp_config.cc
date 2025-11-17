@@ -22,7 +22,7 @@ namespace tensorflow {
 namespace generator {
 namespace cpp {
 
-CppConfig::CppConfig(const string &category, const string &name_space)
+CppConfig::CppConfig(const std::string& category, const std::string& name_space)
     : category(category),
       unit(absl::AsciiStrToLower(category)),
       namespaces(absl::StrSplit(name_space, "::")) {}

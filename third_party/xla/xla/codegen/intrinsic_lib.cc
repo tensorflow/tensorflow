@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/codegen/intrinsic_lib.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -27,7 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
-#include "absl/strings/str_split.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
@@ -48,6 +47,7 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Linker/Linker.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/Casting.h"
@@ -90,25 +90,6 @@ template <size_t N, typename F, typename Container>
 decltype(auto) apply_vector(F&& f, const Container& v) {
   return apply_vector(f, v, std::make_index_sequence<N>{});
 }
-
-std::vector<Type> ParseTypesFromFunctionName(absl::string_view function_name) {
-  // The `to` in a typed function name is used to specify the return type, so
-  // we ignore it when parsing the function name.
-  static constexpr absl::string_view kIgnoredParts[] = {"to"};
-  std::vector<Type> types;
-  auto parts = absl::StrSplit(function_name, '.');
-  size_t i = 0;
-  for (absl::string_view part : parts) {
-    // Skip the first two parts, which will be `xla.<func_name>`:
-    if (i++ < 2 || std::find(std::begin(kIgnoredParts), std::end(kIgnoredParts),
-                             part) != std::end(kIgnoredParts)) {
-      continue;
-    }
-    types.push_back(Type::FromName(part));
-  }
-  return types;
-}
-
 }  // namespace
 
 using intrinsics::IntrinsicOptions;
@@ -131,7 +112,9 @@ class IntrinsicAdapter : public IntrinsicFunction {
   llvm::Function* CreateDefinition(llvm::Module& module,
                                    IntrinsicOptions options,
                                    absl::string_view name) const override {
-    std::vector<Type> types = ParseTypesFromFunctionName(name);
+    absl::StatusOr<intrinsic::ParsedFunctionName> parsed =
+        intrinsic::ParseFunctionName(name);
+    CHECK_OK(parsed);
     return apply_vector<Intrinsic::kNumArgs>(
                [&](auto... args) {
                  if constexpr (std::is_invocable_v<
@@ -144,7 +127,7 @@ class IntrinsicAdapter : public IntrinsicFunction {
                    return Intrinsic::CreateDefinition(&module, args...);
                  }
                },
-               types)
+               parsed->types)
         .value();
   }
 

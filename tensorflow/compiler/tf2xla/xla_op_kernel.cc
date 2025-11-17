@@ -207,9 +207,9 @@ static absl::Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
     return errors::InvalidArgument("value is not a scalar");
   }
   if (literal.shape().element_type() == xla::S16) {
-    *out = literal.Get<int16>({});
+    *out = literal.Get<int16_t>({});
   } else if (literal.shape().element_type() == xla::S32) {
-    *out = literal.Get<int32>({});
+    *out = literal.Get<int32_t>({});
   } else if (literal.shape().element_type() == xla::S64) {
     *out = literal.Get<int64_t>({});
   } else {
@@ -370,7 +370,7 @@ static absl::Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
   int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() == xla::S32) {
     for (int64_t i = 0; i < size; ++i) {
-      out->push_back(literal.Get<int32>({i}));
+      out->push_back(literal.Get<int32_t>({i}));
     }
   } else if (literal.shape().element_type() == xla::S64) {
     for (int64_t i = 0; i < size; ++i) {
@@ -422,7 +422,7 @@ absl::Status XlaOpKernelContext::ConstantInputAsInt64Literal(
     case xla::S32: {
       *out = xla::Literal(
           xla::ShapeUtil::ChangeElementType(literal.shape(), xla::S64));
-      auto src_data = literal.data<int32>();
+      auto src_data = literal.data<int32_t>();
       for (int64_t i = 0; i < src_data.size(); ++i) {
         out->data<int64_t>()[i] = src_data[i];
       }

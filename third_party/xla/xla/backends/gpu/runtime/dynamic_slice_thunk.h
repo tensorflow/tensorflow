@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -28,9 +30,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/literal.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -111,7 +114,7 @@ class DynamicSliceThunk : public Thunk {
   DynamicSliceThunk(
       ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
       std::vector<std::optional<BufferAllocation::Slice>> arguments,
-      std::vector<std::unique_ptr<BufferAllocation>> fake_allocations,
+      std::vector<BufferAllocation> fake_allocations,
       std::vector<std::optional<std::vector<Offset>>> offsets,
       std::vector<std::optional<Shape>> orig_shapes,
       std::vector<std::optional<Shape>> sliced_shapes,
@@ -147,8 +150,7 @@ class DynamicSliceThunk : public Thunk {
     return arguments_;
   }
 
-  const std::vector<std::unique_ptr<BufferAllocation>>& get_fake_allocations()
-      const {
+  const std::vector<BufferAllocation>& get_fake_allocations() const {
     return fake_allocations_;
   }
 
@@ -170,21 +172,21 @@ class DynamicSliceThunk : public Thunk {
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
   void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
+  absl::Status TransformAllNestedThunks(
+      absl::FunctionRef<
+          absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
+          fn) override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
   // `buffer_allocations`: the actual buffer allocations; required to parse the
   // `arguments` (BufferAllocation::Slice) -- the tensors that we are later
   // slicing from.
-  // `fake_allocations`: The fake allocations that are used as
-  // placeholders during creation of the embedded thunk. These are being
-  // replaced during execution in `ExecuteOnStream` with the actual (dynamic)
-  // slices. We have to create these outside of this method to manage their
-  // lifetime correctly.
+  // `deserializer`: The deserializer is used to deserialize the embedded thunk.
   static absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> FromProto(
       ThunkInfo thunk_info, const DynamicSliceThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations,
-      absl::Span<const BufferAllocation> fake_allocations);
+      const DeserializerWithCustomAllocations& deserializer);
 
   std::optional<const OffsetAsFunctionOfIndvarModulesMetadata*>
   get_offset_function() const {
@@ -198,7 +200,7 @@ class DynamicSliceThunk : public Thunk {
  private:
   std::unique_ptr<SequentialThunk> embedded_thunk_;
   std::vector<std::optional<BufferAllocation::Slice>> arguments_;
-  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_;
+  std::vector<BufferAllocation> fake_allocations_;
   std::vector<std::optional<std::vector<Offset>>> offsets_;
   std::vector<std::optional<Shape>> orig_shapes_;
   std::vector<std::optional<Shape>> sliced_shapes_;

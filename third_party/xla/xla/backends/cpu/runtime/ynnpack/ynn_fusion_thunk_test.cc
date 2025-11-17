@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -106,10 +107,6 @@ class YnnFusionThunkTest : public testing::TestWithParam<bool> {
 };
 
 TEST_P(YnnFusionThunkTest, ElementwiseAdd) {
-  if (use_threadpool()) {
-    GTEST_SKIP() << "Threadpool is not yet supported. Needs more clean-up.";
-  }
-
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
@@ -134,6 +131,7 @@ TEST_P(YnnFusionThunkTest, ElementwiseAdd) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, YnnFusionThunk::Create(
                       YnnFusionThunk::Options{use_threadpool()}, {"fusion"},
+                      reinterpret_cast<HloInstruction*>(0xDEADBEEF),
                       {lhs_arg, rhs_arg}, {out_res}, &BuildBinaryAddSubgraph));
 
   YnnThreadpool threadpool;

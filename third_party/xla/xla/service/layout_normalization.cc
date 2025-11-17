@@ -86,13 +86,12 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
   // To handle a constant, just give the literal data a new layout.
   absl::Status HandleConstant(HloInstruction* hlo) override {
+    Shape shape = hlo->shape();
     Literal& literal = *Cast<HloConstantInstruction>(hlo)->mutable_literal();
-    if (literal.shape().IsTuple()) {
-      // TODO(cheshire): Tuple constants.
+    if (literal.shape().IsTuple() || ShapeUtil::IsZeroElementArray(shape)) {
       return absl::OkStatus();
     }
 
-    Shape shape = hlo->shape();
     Shape normalized_shape = Normalize(shape);
     *literal.mutable_shape_do_not_use() = normalized_shape;
     // Ensure element_size_in_bits of literal is 0, because literals do not
@@ -872,7 +871,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
 }  // end namespace
 
-absl::StatusOr<bool> LayoutNormalization::Run(
+absl::StatusOr<bool> LayoutNormalization::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return LayoutNormalizationVisitor{this, custom_call_transformer_}.RunOnModule(

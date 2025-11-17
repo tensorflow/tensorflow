@@ -462,8 +462,8 @@ absl::StatusOr<TmaMetadata> TmaMetadata::FromProto(
 
 bool IsTmaAvailableForDevice(
     const stream_executor::DeviceDescription& device_info) {
-  if (auto* cuda_cc = std::get_if<stream_executor::CudaComputeCapability>(
-          &device_info.gpu_compute_capability())) {
+  if (auto* cuda_cc =
+          device_info.gpu_compute_capability().cuda_compute_capability()) {
     return cuda_cc->IsAtLeastHopper();
   }
   return false;

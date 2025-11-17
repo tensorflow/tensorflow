@@ -222,7 +222,7 @@ static absl::Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
     return shape_inference::UnknownShape(c);
   }
 
-  string dimension_numbers_string;
+  std::string dimension_numbers_string;
   TF_RETURN_IF_ERROR(
       c->GetAttr("dimension_numbers", &dimension_numbers_string));
 
@@ -1027,7 +1027,7 @@ REGISTER_OP("XlaEinsum")
     .Attr("equation: string")
     .Attr("T: {complex64, bfloat16, float}")
     .SetShapeFn([](shape_inference::InferenceContext* context) {
-      string equation;
+      std::string equation;
       TF_RETURN_IF_ERROR(context->GetAttr("equation", &equation));
       // XlaEinsum supports only two-input einsum equations.
       if (!absl::StrContains(equation, ",")) {
@@ -1057,9 +1057,9 @@ REGISTER_OP("XlaSpmdFullToShardShape")
       if (!c->RankKnown(input_handle)) {
         return shape_inference::UnknownShape(c);
       }
-      string sharding_attr;
+      std::string sharding_attr;
       TF_RETURN_IF_ERROR(c->GetAttr("manual_sharding", &sharding_attr));
-      int32 single_dim;
+      int32_t single_dim;
       TF_RETURN_IF_ERROR(c->GetAttr("dim", &single_dim));
       xla::OpSharding sharding;
       sharding.ParseFromString(sharding_attr);

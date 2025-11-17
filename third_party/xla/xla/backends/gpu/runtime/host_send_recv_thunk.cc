@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/global_device_id.h"
@@ -112,6 +113,53 @@ HostSendThunk::HostSendThunk(
       frontend_attrs_(std::move(frontend_attrs)),
       device_constraint_(device_constraint) {}
 
+absl::StatusOr<ThunkProto> HostSendThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+  HostSendThunkProto& host_send_thunk_proto = *proto.mutable_host_send_thunk();
+  *host_send_thunk_proto.mutable_shape() = shape_.ToProto();
+  TF_ASSIGN_OR_RETURN(*host_send_thunk_proto.mutable_buffer(),
+                      buffer_.ToProto());
+  host_send_thunk_proto.set_channel_id(channel_id_);
+  for (const auto& [key, value] : frontend_attrs_) {
+    host_send_thunk_proto.mutable_frontend_attrs()->insert({key, value});
+  }
+  if (device_constraint_.has_value()) {
+    host_send_thunk_proto.set_device_constraint(device_constraint_->value());
+  }
+  std::optional<AsyncEventsUniqueId> async_events_unique_id =
+      GetAsyncEventsUniqueId();
+  if (!async_events_unique_id.has_value()) {
+    return absl::InternalError("HostSendThunk has no paired Done event");
+  }
+  host_send_thunk_proto.set_async_events_unique_id(
+      async_events_unique_id.value().value());
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<HostSendThunk>> HostSendThunk::FromProto(
+    ThunkInfo thunk_info, const HostSendThunkProto& proto,
+    absl::Span<const BufferAllocation> allocations,
+    HostSendRecvAsyncEventsMap& async_events_map) {
+  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice buffer,
+      BufferAllocation::Slice::FromProto(proto.buffer(), allocations));
+  std::optional<GlobalDeviceId> device_constraint;
+  if (proto.has_device_constraint()) {
+    device_constraint = GlobalDeviceId(proto.device_constraint());
+  }
+  absl::flat_hash_map<std::string, std::string> frontend_attrs(
+      proto.frontend_attrs().begin(), proto.frontend_attrs().end());
+
+  auto [async_event_it, _] = async_events_map.try_emplace(
+      AsyncEventsUniqueId(proto.async_events_unique_id()),
+      std::make_shared<HostSendRecvAsyncEvents>());
+  return std::make_unique<HostSendThunk>(
+      thunk_info, std::move(shape), buffer, proto.channel_id(),
+      async_event_it->second, std::move(frontend_attrs), device_constraint);
+}
+
 absl::Status HostSendThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Send buffer: channel_id=" << channel_id_
           << "; shape=" << shape_.ToString();
@@ -168,6 +216,44 @@ HostSendDoneThunk::HostSendDoneThunk(
       events_(std::move(events)),
       device_constraint_(device_constraint) {}
 
+absl::StatusOr<ThunkProto> HostSendDoneThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+  HostSendDoneThunkProto& host_send_done_thunk_proto =
+      *proto.mutable_host_send_done_thunk();
+  host_send_done_thunk_proto.set_channel_id(channel_id_);
+  if (device_constraint_.has_value()) {
+    host_send_done_thunk_proto.set_device_constraint(
+        device_constraint_->value());
+  }
+  std::optional<AsyncEventsUniqueId> async_events_unique_id =
+      GetAsyncEventsUniqueId();
+  if (!async_events_unique_id.has_value()) {
+    return absl::InternalError("HostSendDoneThunk has no paired Start event");
+  }
+  host_send_done_thunk_proto.set_async_events_unique_id(
+      async_events_unique_id.value().value());
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<HostSendDoneThunk>> HostSendDoneThunk::FromProto(
+    ThunkInfo thunk_info, const HostSendDoneThunkProto& proto,
+    absl::Span<const BufferAllocation> allocations,
+    HostSendRecvAsyncEventsMap& async_events_map) {
+  std::optional<GlobalDeviceId> device_constraint;
+  if (proto.has_device_constraint()) {
+    device_constraint = GlobalDeviceId(proto.device_constraint());
+  }
+
+  auto [async_event_it, _] = async_events_map.try_emplace(
+      AsyncEventsUniqueId(proto.async_events_unique_id()),
+      std::make_shared<HostSendRecvAsyncEvents>());
+
+  return std::make_unique<HostSendDoneThunk>(thunk_info, proto.channel_id(),
+                                             std::move(async_event_it->second),
+                                             device_constraint);
+}
+
 absl::Status HostSendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Wait for send completion: channel_id=" << channel_id_;
 
@@ -216,6 +302,53 @@ HostRecvThunk::HostRecvThunk(
       events_(std::move(events)),
       frontend_attrs_(std::move(frontend_attrs)),
       device_constraint_(device_constraint) {}
+
+absl::StatusOr<ThunkProto> HostRecvThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+  HostRecvThunkProto& host_recv_thunk_proto = *proto.mutable_host_recv_thunk();
+  *host_recv_thunk_proto.mutable_shape() = shape_.ToProto();
+  TF_ASSIGN_OR_RETURN(*host_recv_thunk_proto.mutable_buffer(),
+                      buffer_.ToProto());
+  host_recv_thunk_proto.set_channel_id(channel_id_);
+  for (const auto& [key, value] : frontend_attrs_) {
+    host_recv_thunk_proto.mutable_frontend_attrs()->insert({key, value});
+  }
+  if (device_constraint_.has_value()) {
+    host_recv_thunk_proto.set_device_constraint(device_constraint_->value());
+  }
+  std::optional<AsyncEventsUniqueId> async_events_unique_id =
+      GetAsyncEventsUniqueId();
+  if (!async_events_unique_id.has_value()) {
+    return absl::InternalError("HostRecvThunk has no paired Done event");
+  }
+  host_recv_thunk_proto.set_async_events_unique_id(
+      async_events_unique_id.value().value());
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<HostRecvThunk>> HostRecvThunk::FromProto(
+    ThunkInfo thunk_info, const HostRecvThunkProto& proto,
+    absl::Span<const BufferAllocation> allocations,
+    HostSendRecvAsyncEventsMap& async_events_map) {
+  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice buffer,
+      BufferAllocation::Slice::FromProto(proto.buffer(), allocations));
+  std::optional<GlobalDeviceId> device_constraint;
+  if (proto.has_device_constraint()) {
+    device_constraint = GlobalDeviceId(proto.device_constraint());
+  }
+  absl::flat_hash_map<std::string, std::string> frontend_attrs(
+      proto.frontend_attrs().begin(), proto.frontend_attrs().end());
+
+  auto [async_event_it, _] = async_events_map.try_emplace(
+      AsyncEventsUniqueId(proto.async_events_unique_id()),
+      std::make_shared<HostSendRecvAsyncEvents>());
+  return std::make_unique<HostRecvThunk>(
+      thunk_info, std::move(shape), buffer, proto.channel_id(),
+      async_event_it->second, std::move(frontend_attrs), device_constraint);
+}
 
 absl::Status HostRecvThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Recv buffer: channel_id=" << channel_id_
@@ -270,7 +403,46 @@ HostRecvDoneThunk::HostRecvDoneThunk(
     std::optional<GlobalDeviceId> device_constraint)
     : Thunk(Thunk::kHostRecvDone, thunk_info),
       channel_id_(channel_id),
-      events_(std::move(events)) {}
+      events_(std::move(events)),
+      device_constraint_(device_constraint) {}
+
+absl::StatusOr<ThunkProto> HostRecvDoneThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+  HostRecvDoneThunkProto& host_recv_done_thunk_proto =
+      *proto.mutable_host_recv_done_thunk();
+  host_recv_done_thunk_proto.set_channel_id(channel_id_);
+  if (device_constraint_.has_value()) {
+    host_recv_done_thunk_proto.set_device_constraint(
+        device_constraint_->value());
+  }
+  std::optional<AsyncEventsUniqueId> async_events_unique_id =
+      GetAsyncEventsUniqueId();
+  if (!async_events_unique_id.has_value()) {
+    return absl::InternalError("HostRecvDoneThunk has no paired Start event");
+  }
+  host_recv_done_thunk_proto.set_async_events_unique_id(
+      async_events_unique_id.value().value());
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<HostRecvDoneThunk>> HostRecvDoneThunk::FromProto(
+    ThunkInfo thunk_info, const HostRecvDoneThunkProto& proto,
+    absl::Span<const BufferAllocation> allocations,
+    HostSendRecvAsyncEventsMap& async_events_map) {
+  std::optional<GlobalDeviceId> device_constraint;
+  if (proto.has_device_constraint()) {
+    device_constraint = GlobalDeviceId(proto.device_constraint());
+  }
+
+  auto [async_event_it, _] = async_events_map.try_emplace(
+      AsyncEventsUniqueId(proto.async_events_unique_id()),
+      std::make_shared<HostSendRecvAsyncEvents>());
+
+  return std::make_unique<HostRecvDoneThunk>(thunk_info, proto.channel_id(),
+                                             std::move(async_event_it->second),
+                                             device_constraint);
+}
 
 absl::Status HostRecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Wait for recv completion: channel_id=" << channel_id_;

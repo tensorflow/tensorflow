@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -292,7 +291,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   return true;
 }
 
-absl::StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
+absl::StatusOr<bool> WhileLoopInvariantCodeMotion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(3) << "HLO module before WhileLoopInvariantCodeMotion:";

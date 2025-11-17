@@ -32,7 +32,8 @@ namespace tensorflow {
 namespace tf2xla {
 namespace {
 
-void PrintSupportedOps(const string& device, const string& regen_run) {
+void PrintSupportedOps(const std::string& device,
+                       const std::string& regen_run) {
   XlaOpRegistry::RegisterCompilationKernels();
 
   std::vector<const KernelDef*> kdefs =
@@ -46,10 +47,10 @@ void PrintSupportedOps(const string& device, const string& regen_run) {
             << "Operator | Type Constraint\n"
             << "-------- | ---------------" << std::endl;
   for (const KernelDef* kdef : kdefs) {
-    std::vector<string> constraints;
+    std::vector<std::string> constraints;
     constraints.reserve(kdef->constraint().size());
     for (const KernelDef::AttrConstraint& constraint : kdef->constraint()) {
-      std::vector<string> types;
+      std::vector<std::string> types;
       const auto& allowed_values = constraint.allowed_values().list().type();
       types.reserve(allowed_values.size());
       for (int type : allowed_values) {
@@ -70,18 +71,18 @@ void PrintSupportedOps(const string& device, const string& regen_run) {
 }  // namespace
 
 void SupportedOpsMain(int argc, char** argv, const char* regen_run) {
-  std::vector<string> device_names = XlaOpRegistry::BackendNames();
+  std::vector<std::string> device_names = XlaOpRegistry::BackendNames();
   std::sort(device_names.begin(), device_names.end());
 
   // Set up and parse flags.
-  string device;
+  std::string device;
   std::vector<Flag> flag_list = {
       {"device", &device,
        "Name of the compilation device for which to print supported ops, "
        "one of: " +
            absl::StrJoin(device_names, ",")},
   };
-  string usage = Flags::Usage(argv[0], flag_list);
+  std::string usage = Flags::Usage(argv[0], flag_list);
   bool parsed_flags_ok = Flags::Parse(&argc, argv, flag_list);
   QCHECK(parsed_flags_ok) << "\n" << usage;
   QCHECK(XlaOpRegistry::IsBackendRegistered(device))

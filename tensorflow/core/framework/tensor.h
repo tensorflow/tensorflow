@@ -217,11 +217,11 @@ class Tensor {
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(int32_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint32 scalar_value)
+  explicit Tensor(uint32_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint16 scalar_value)
+  explicit Tensor(uint16_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint8 scalar_value)
+  explicit Tensor(uint8_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(int16_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
@@ -235,7 +235,7 @@ class Tensor {
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(int64_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint64 scalar_value)
+  explicit Tensor(uint64_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(bool scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}

@@ -15,7 +15,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:gast_util",
         "//tensorflow/python/autograph/pyct:templates",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -25,7 +25,7 @@ py_strict_test(
     tags = ["no_oss"],
     deps = [
         ":common_transformers",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/autograph/pyct:loader",
         "//tensorflow/python/autograph/pyct:parser",

@@ -37,7 +37,7 @@ namespace tensorflow {
 namespace grappler {
 
 CostAnalyzer::CostAnalyzer(const GrapplerItem& item, Cluster* cluster,
-                           const string& suffix)
+                           const std::string& suffix)
     : item_(&item),
       measure_estimator_(cluster, 10, 0),
       analytical_estimator_(cluster, /*use_static_shapes=*/false,
@@ -86,7 +86,7 @@ void CostAnalyzer::GatherCosts() {
 
   CostGraphDef cost_graph_analytical_filtered;
   CostGraphDef cost_graph_measured_filtered;
-  std::map<string, const CostGraphDef_Node*> measured_nodes;
+  std::map<std::string, const CostGraphDef_Node*> measured_nodes;
   for (const auto& node : cost_graph_measured.node()) {
     measured_nodes[node.name()] = &node;
   }
@@ -139,7 +139,7 @@ void CostAnalyzer::PreprocessCosts() {
   }
 }
 
-void CostAnalyzer::SortOpsByTime(std::map<string, OpPerfSummary> ops) {
+void CostAnalyzer::SortOpsByTime(std::map<std::string, OpPerfSummary> ops) {
   for (const auto& op : ops) {
     ops_.push_back(op.second);
   }
@@ -152,9 +152,9 @@ void CostAnalyzer::SortOpsByTime(std::map<string, OpPerfSummary> ops) {
 }
 
 void CostAnalyzer::AnalyzeCosts() {
-  std::map<string, OpPerfSummary> ops;
+  std::map<std::string, OpPerfSummary> ops;
   for (const auto& op_perf : op_perf_.op_performance()) {
-    string op_name = op_perf.op().op();
+    std::string op_name = op_perf.op().op();
     ops[op_name].count++;
     ops[op_name].time += op_perf.compute_cost();
     ops[op_name].compute_time += op_perf.compute_time();
@@ -263,7 +263,7 @@ void CostAnalyzer::PrintAnalysis(std::ostream& os, bool per_node_report,
       os << "    Inputs" << std::endl;
       for (int i = 0; i < op_perf_.op_performance_size(); i++) {
         const auto& perf = op_perf_.op_performance(i);
-        string op_name = perf.op().op();
+        std::string op_name = perf.op().op();
         os << std::setw(width) << op_name << ",";
         os << std::setw(width_wide) << perf.compute_cost() << ",";
         os << std::setw(width_wide) << perf.compute_time() << ",";

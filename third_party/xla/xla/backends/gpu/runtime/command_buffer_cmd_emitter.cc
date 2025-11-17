@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
+#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
@@ -197,10 +198,10 @@ static absl::StatusOr<Command> Convert(
       ConvertToCommands(thunk.get_embedded_thunk()->thunks(), options));
 
   auto& thunk_fake_allocations = thunk.get_fake_allocations();
-  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations;
+  std::vector<BufferAllocation> fake_allocations;
   for (auto it = thunk_fake_allocations.begin();
        it != thunk_fake_allocations.end(); ++it) {
-    fake_allocations.push_back(std::make_unique<BufferAllocation>(**it));
+    fake_allocations.push_back(BufferAllocation(*it));
   }
   return std::make_unique<DynamicSliceFusionCmd>(
       std::move(embedded_cmds), thunk.get_arguments(),

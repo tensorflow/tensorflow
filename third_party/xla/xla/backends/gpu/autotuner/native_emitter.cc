@@ -43,7 +43,7 @@ namespace gpu {
 // it has a config for another backend, and we currently don't have an easy way
 // to check that. Therefore, we only support fusions that are already set up to
 // go through the native emitter.
-bool IsSupported(const HloInstruction& instr) {
+bool NativeEmitterBackend::IsSupported(const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kFusion) {
     return false;
   }

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_SCHEMA_SCHEMA_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_SCHEMA_SCHEMA_UTILS_H_
 
+#include <cstddef>
+
 #include "flatbuffers/flatbuffers.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 
@@ -27,6 +29,11 @@ namespace tflite {
 BuiltinOperator GetBuiltinCode(const OperatorCode *op_code);
 
 BuiltinOperator GetBuiltinCode(const OperatorCodeT *op_code);
+
+// Returns the size of the given TensorType in bytes, or 0 if the TensorType is
+// not supported, this function should be aligned with TfLiteTypeGetSize in
+// lite/kernels/kernel_util.h.
+size_t TensorTypeGetSize(::tflite::TensorType data_type);
 
 }  // namespace tflite
 

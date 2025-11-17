@@ -138,11 +138,13 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
 #define CASE(X)              \
   case DTypeProto::KIND_##X: \
     return DType(DType::Kind::k##X);
+      CASE(S2);
       CASE(S4);
       CASE(S8);
       CASE(S16);
       CASE(S32);
       CASE(S64);
+      CASE(U2);
       CASE(U4);
       CASE(U8);
       CASE(U16);
@@ -154,15 +156,15 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
       CASE(BF16);
       CASE(C64);
       CASE(C128);
-      CASE(F4E2M1FN);
       CASE(F8E3M4);
       CASE(F8E4M3);
-      CASE(F8E8M0FNU);
       CASE(F8E4M3FN);
       CASE(F8E4M3B11FNUZ);
       CASE(F8E4M3FNUZ);
       CASE(F8E5M2);
       CASE(F8E5M2FNUZ);
+      CASE(F8E8M0FNU);
+      CASE(F4E2M1FN);
 #undef CASE
     case DTypeProto::KIND_STRING:
       return DType(DType::Kind::kString);
@@ -195,11 +197,13 @@ DTypeProto DType::ToProto(SerDesVersion version) const {
   case DType::Kind::k##X:                       \
     dtype_proto.set_kind(DTypeProto::KIND_##X); \
     break;
+      CASE(S2);
       CASE(S4);
       CASE(S8);
       CASE(S16);
       CASE(S32);
       CASE(S64);
+      CASE(U2);
       CASE(U4);
       CASE(U8);
       CASE(U16);
@@ -211,15 +215,15 @@ DTypeProto DType::ToProto(SerDesVersion version) const {
       CASE(BF16);
       CASE(C64);
       CASE(C128);
-      CASE(F4E2M1FN);
       CASE(F8E3M4);
       CASE(F8E4M3);
-      CASE(F8E8M0FNU);
       CASE(F8E4M3FN);
       CASE(F8E4M3B11FNUZ);
       CASE(F8E4M3FNUZ);
       CASE(F8E5M2);
       CASE(F8E5M2FNUZ);
+      CASE(F8E8M0FNU);
+      CASE(F4E2M1FN);
 #undef CASE
     case DType::Kind::kString:
       dtype_proto.set_kind(DTypeProto::KIND_STRING);

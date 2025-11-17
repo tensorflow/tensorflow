@@ -230,6 +230,7 @@ absl::Status ExportShardyForGSPMD(mlir::ModuleOp module) {
   // to handle.
   xla::sdy::StablehloExportPipelineOptions options;
   options.keepHloShardingConstraints = true;
+  options.addMissingShardingToControlFlow = false;
   xla::sdy::addStablehloExportPipeline(pm, options);
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
   if (!mlir::succeeded(pm.run(module))) {

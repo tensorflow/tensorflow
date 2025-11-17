@@ -27,6 +27,16 @@ int PickUnusedPort();
 // that case, the error message is logged to FATAL.
 int PickUnusedPortOrDie();
 
+// Relinquish a claim on the given port which was previously returned by
+// PickUnusedPort[OrDie](). This allows PickUnusedPort[OrDie]() to return
+// the given port to another caller in the future. Since the number of
+// ports the portserver will give to a process is limited (typically 200),
+// recycling ports after they are no longer needed can help avoid
+// exhausting them. 'port' must be a positive number that was previously
+// returned by PickUnusedPort[OrDie](), and not yet recycled, otherwise an
+// abort may occur.
+void RecycleUnusedPort(int port);
+
 }  // namespace internal
 }  // namespace tsl
 

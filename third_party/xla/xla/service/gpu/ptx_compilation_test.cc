@@ -81,11 +81,25 @@ ENTRY main {
 )";
 
 constexpr absl::string_view kSM90AHlo = R"(
+lhs {
+  ROOT p0 = f16[64,1024]{1,0} parameter(0)
+}
+rhs {
+  p0 = f16[1024,32,32]{2,1,0} parameter(0)
+  ROOT bitcast = f16[1024,1024]{0,1} bitcast(p0)
+}
 gemm_fusion_dot {
-  %p0 = f16[64,1024]{1,0} parameter(0)
-  %p1 = f16[1024,32,32]{2,1,0} parameter(1)
-  %bitcast.74246 = f16[1024,1024]{0,1} bitcast(f16[1024,32,32]{2,1,0} %p1)
-  ROOT %dot.1302 = f16[64,1024]{1,0} dot(f16[64,1024]{1,0} %p0, f16[1024,1024]{0,1} %bitcast.74246), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={grad_x="false",grad_y="false"}
+  p0 = f16[64,1024]{1,0} parameter(0)
+  p1 = f16[1024,32,32]{2,1,0} parameter(1)
+  lhs = f16[64,1024]{1,0} fusion(p0), kind=kCustom, calls=lhs,
+    backend_config={fusion_backend_config:{kind:"__triton_nested_gemm_fusion",
+      block_level_fusion_config:{output_tiles:[{sizes:[64,32]}]}}}
+  rhs = f16[1024,1024]{0,1} fusion(p1), kind=kCustom, calls=rhs,
+    backend_config={fusion_backend_config:{kind:"__triton_nested_gemm_fusion",
+      block_level_fusion_config:{output_tiles:[{sizes:[32,32]}]}}}
+  ROOT dot = f16[64,1024]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    frontend_attributes={grad_x="false",grad_y="false"}
 }
 
 ENTRY e {
@@ -95,11 +109,8 @@ ENTRY e {
   // whether we properly enable SM 9.0A in all compilation and linking paths.
   ROOT triton_gemm_fusion_dot = f16[64,1024]{1,0} fusion(p0, p1), kind=kCustom,
     calls=gemm_fusion_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-      triton_gemm_config:
-        {"block_m":64,"block_n":32,"block_k":32,
-         "split_k":1,"num_stages":1,"num_warps":4,
-         "num_ctas":1}}}
+    backend_config={fusion_backend_config:{kind:"__triton_nested_gemm_fusion",
+      block_level_fusion_config:{output_tiles:[{sizes:[64,32]}],num_stages:1,num_warps:4,num_ctas:1}}}
 })";
 
 constexpr absl::string_view kResultsInNoPtxHlo = R"(

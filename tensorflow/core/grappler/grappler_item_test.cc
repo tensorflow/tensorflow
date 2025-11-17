@@ -33,11 +33,11 @@ TEST_F(GrapplerItemTest, Basic) {
 
   EXPECT_TRUE(item.InitOpsFanin().empty());
 
-  std::vector<string> graph_nodes;
+  std::vector<std::string> graph_nodes;
   for (const auto& node : item.graph.node()) {
     graph_nodes.push_back(node.name());
   }
-  std::vector<string> main_ops;
+  std::vector<std::string> main_ops;
   for (const auto& node : item.MainOpsFanin()) {
     main_ops.push_back(node->name());
   }
@@ -49,9 +49,9 @@ TEST_F(GrapplerItemTest, Basic) {
 TEST_F(GrapplerItemTest, InferDevices) {
   using test::function::NDef;
 
-  const string cpu0 = "/job:work/replica:1/task:1/device:CPU:0";
-  const string cpu1 = "/job:work/replica:1/task:1/device:CPU:1";
-  const string cpu2 = "/device:CPU:2";
+  const std::string cpu0 = "/job:work/replica:1/task:1/device:CPU:0";
+  const std::string cpu1 = "/job:work/replica:1/task:1/device:CPU:1";
+  const std::string cpu2 = "/device:CPU:2";
 
   GrapplerItem item;
   item.graph = test::function::GDef(

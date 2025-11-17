@@ -137,7 +137,7 @@ class KernelThunk : public KernelThunkBase {
               absl::Span<const BufferAllocation::Slice> arguments_buffers,
               absl::Span<const BufferAllocation::Slice> results_buffers,
               absl::flat_hash_set<int64_t> invariant_arguments,
-              std::string kernel_name, NumWorkGroups num_workgroups,
+              absl::string_view kernel_name, NumWorkGroups num_workgroups,
               std::optional<uint64_t> min_alignment);
 
   absl::Status CheckInvariantBuffersMemory(const KernelArgs& kernel_args) const;
@@ -196,7 +196,7 @@ class KernelThunk final : public internal::KernelThunk<> {
       Thunk::Info info,
       absl::Span<const BufferAllocation::Slice> arguments_buffers,
       absl::Span<const BufferAllocation::Slice> results_buffers,
-      std::string kernel_name, NumWorkGroups num_workgroups,
+      absl::string_view kernel_name, NumWorkGroups num_workgroups,
       absl::flat_hash_set<int64_t> invariant_arguments,
       std::optional<uint64_t> min_alignment = std::nullopt);
 

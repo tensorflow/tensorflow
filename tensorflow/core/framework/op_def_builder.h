@@ -40,7 +40,7 @@ typedef std::vector<std::reference_wrapper<const FullTypeDef>> TypeRefVector;
 // A callback into the type inference process, allowing type inference functions
 // to request inferring the type of some function (assumed to exist in the
 // runtime). The function is specified by name.
-typedef std::function<absl::StatusOr<FullTypeDef>(const string&,
+typedef std::function<absl::StatusOr<FullTypeDef>(const std::string&,
                                                   const TypeRefVector&)>
     FunctionTypeInferrer;
 
@@ -266,12 +266,12 @@ class OpDefBuilder {
   OpDef* op_def() { return &op_reg_data_.op_def; }
 
   OpRegistrationData op_reg_data_;
-  std::vector<string> attrs_;
-  std::vector<string> inputs_;
-  std::vector<string> outputs_;
-  std::vector<string> control_outputs_;
+  std::vector<std::string> attrs_;
+  std::vector<std::string> inputs_;
+  std::vector<std::string> outputs_;
+  std::vector<std::string> control_outputs_;
   std::string doc_;
-  std::vector<string> errors_;
+  std::vector<std::string> errors_;
   bool allow_attr_type_any_ = false;
 };
 

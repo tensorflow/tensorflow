@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -94,6 +95,7 @@ const std::unordered_map<string, string> dtype_type{
     {"_dtypes.float8_e4m3fnuz", "_atypes.Float8e4m3fnuz"},
     {"_dtypes.float8_e4m3b11fnuz", "_atypes.Float8e4m3b11fnuz"},
     {"_dtypes.float8_e5m2fnuz", "_atypes.Float8e5m2fnuz"},
+    {"_dtypes.float4_e2m1fn", "_atypes.Float4e2m1fn"},
     {"_dtypes.int4", "_atypes.Int4"},
     {"_dtypes.uint4", "_atypes.UInt4"},
     {"_dtypes.int2", "_atypes.Int2"},
@@ -783,14 +785,15 @@ void GenerateLowerCaseOpName(const string& str, string* result) {
     // Emit a joiner only if a previous-lower-to-now-upper or a
     // now-upper-to-next-lower transition happens.
     // (But don't emit an extra joiner if we just saw a namespace separator
-    if (isupper(c) && (i > 0)) {
-      if (islower(str[i - 1]) || ((i < last_index) && islower(str[i + 1]))) {
+    if (absl::ascii_isupper(c) && (i > 0)) {
+      if (absl::ascii_islower(str[i - 1]) ||
+          ((i < last_index) && absl::ascii_islower(str[i + 1]))) {
         if (!(str[i - 1] == namespace_separator)) {
           result->push_back(joiner);
         }
       }
     }
-    result->push_back(tolower(c));
+    result->push_back(absl::ascii_tolower(c));
   }
 }
 
@@ -2118,7 +2121,7 @@ void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
 
 string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
   OpList ops;
-  ops.ParseFromArray(op_list_buf, op_list_len);
+  ops.ParseFromString(absl::string_view(op_list_buf, op_list_len));
 
   ApiDefMap api_def_map(ops);
   return GetPythonOpsImpl(ops, api_def_map, OpRegOffsets(), {}, {});

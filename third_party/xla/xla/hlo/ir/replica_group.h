@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_REPLICA_GROUP_H_
 #define XLA_HLO_IR_REPLICA_GROUP_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -24,8 +25,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/array.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
@@ -33,6 +37,53 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
+
+class IotaReplicaGroupList;
+class CollectiveDeviceList;
+
+class MeshAxesReplicaGroupList {
+  struct ReshapeAndAggregateAxes {
+    std::vector<int64_t> reshape_dims;
+    std::vector<int64_t> aggregate_axes;
+  };
+
+ public:
+  explicit MeshAxesReplicaGroupList(Mesh mesh, std::vector<AxisRef> axes);
+
+  bool operator==(const MeshAxesReplicaGroupList& other) const {
+    return mesh_ == other.mesh_ && axes_ == other.axes_;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const MeshAxesReplicaGroupList& c) {
+    return H::combine(std::move(h), c.mesh_, c.axes_);
+  }
+
+  int64_t num_replica_groups() const;
+  int64_t num_devices_per_group() const;
+  std::vector<std::vector<int64_t>> flattened_replica_groups();
+
+  void Print(Printer* printer) const;
+
+  std::string ToString() const;
+
+  MeshAxesReplicaGroupListProto ToProto() const;
+
+  static MeshAxesReplicaGroupList FromProto(
+      const MeshAxesReplicaGroupListProto& proto);
+
+  // Methods for converting to V2 and V1 representations.
+  IotaReplicaGroupList ToIotaReplicaGroupList();
+  CollectiveDeviceList ToCollectiveDeviceList();
+
+ private:
+  void InitializeDimToReshapeAndAggregateAxes();
+  std::pair<std::vector<int64_t>, std::vector<int64_t>> ComputeReindexedAxes();
+  Mesh mesh_;
+  std::vector<AxisRef> axes_;
+  std::optional<absl::flat_hash_map<int64_t, ReshapeAndAggregateAxes>>
+      dim_to_reshape_and_aggregate_axes_;
+};
 
 std::string ReplicaGroupsToString(
     absl::Span<const ReplicaGroup> replica_groups);
@@ -156,6 +207,7 @@ class CollectiveDeviceList {
 
   // Lazyly explands iota if applicable.
   const std::vector<ReplicaGroup>& replica_groups() const;
+  std::vector<std::vector<int64_t>> flattened_replica_groups() const;
   const std::optional<IotaReplicaGroupList>& iota_replica_group_list() const {
     return iota_replica_group_list_;
   }

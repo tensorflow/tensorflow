@@ -42,8 +42,8 @@ class ShardyXLA : public xla::HloModulePass {
 
   absl::string_view name() const override { return "shardy-xla"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       xla::HloModule* hloModule,
       const absl::flat_hash_set<absl::string_view>& executionThreads) override;
 

@@ -17,8 +17,11 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_MEMSET_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 

@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_PATH_H_
 #define TENSORFLOW_CORE_LIB_IO_PATH_H_
 
-#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/path.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_LIB_IO_PATH_H_

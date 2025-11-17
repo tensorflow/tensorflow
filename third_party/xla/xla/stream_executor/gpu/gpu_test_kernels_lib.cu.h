@@ -32,6 +32,11 @@ __global__ void AddI32(int32_t* a, int32_t* b, int32_t* c) {
   c[index] = a[index] + b[index];
 }
 
+__global__ void IncI32(int32_t a, int32_t* b, int32_t* c) {
+  int index = threadIdx.x + blockIdx.x * blockDim.x;
+  c[index] = a + b[index];
+}
+
 __global__ void MulI32(int32_t* a, int32_t* b, int32_t* c) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
   c[index] = a[index] * b[index];

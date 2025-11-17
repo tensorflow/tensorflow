@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -88,10 +88,14 @@ class GemmFusionAutotuner : public HloModulePass {
 
   absl::string_view name() const override { return "gemm-fusion-autotuner"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  absl::StatusOr<bool> RunViaNewInfra(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
  private:
   AutotuneConfig config_;
@@ -164,6 +168,7 @@ class GemmFusionAutotunerImpl {
   // Helper methods.
   const AutotuneConfig& GetConfig() const { return config_; }
   bool IsAutotuningEnabled() const;
+  bool IsWarpSpecializationAvailable() const;
 
   static const int64_t BLAS_GEMM_DEFAULT;
 
@@ -201,13 +206,8 @@ class GemmFusionAutotunerImpl {
     return config_.GetGpuComputeCapability();
   }
 
-  bool isRocm() const {
-    return std::holds_alternative<se::RocmComputeCapability>(
-        GetComputeCapability());
-  }
-
   bool AddLibConfigs(const HloFusionInstruction& fusion,
-                     const HloDotInstruction* dot,
+                     const HloInstruction* dot,
                      std::vector<BackendConfig>& configs);
 
   std::vector<TritonGemmConfig> GetDefaultTritonConfigs() const;

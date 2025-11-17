@@ -35,10 +35,18 @@ class HloDimensionAnalysisTest : public HloHardwareIndependentTestBase {
   bool IsWeight(const HloDimensionAnalysis& hlo_dimension_analysis,
                 HloModule* module, absl::string_view instruction_name) {
     HloInstruction* instruction = FindInstruction(module, instruction_name);
-    std::optional<ShapeTree<WeightInfo>> weight_info =
-        hlo_dimension_analysis.GetWeightInfo(instruction);
-    return weight_info.has_value() &&
-           (*weight_info).element({}) == WeightInfo::kWeight;
+    std::optional<ShapeTree<DimensionInfo>> dim_info =
+        hlo_dimension_analysis.GetDimensionInfo(instruction);
+    return dim_info.has_value() &&
+           (*dim_info).element({}) == DimensionInfo::kWeight;
+  }
+  bool HasDotDependent(const HloDimensionAnalysis& hlo_dimension_analysis,
+                       HloModule* module, absl::string_view instruction_name) {
+    HloInstruction* instruction = FindInstruction(module, instruction_name);
+    std::optional<ShapeTree<DimensionInfo>> dimension_info =
+        hlo_dimension_analysis.GetDimensionInfo(instruction);
+    return dimension_info.has_value() &&
+           (*dimension_info).element({}) == DimensionInfo::kDotDependent;
   }
 };
 
@@ -83,6 +91,13 @@ ENTRY entry {
   EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "copy"));
   EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "Arg_1.2"));
   EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "all-gather"));
+
+  EXPECT_FALSE(HasDotDependent(*hlo_dimension_analysis, module.get(), "dot.0"));
+  EXPECT_TRUE(
+      HasDotDependent(*hlo_dimension_analysis, module.get(), "maximum.33"));
+  EXPECT_TRUE(
+      HasDotDependent(*hlo_dimension_analysis, module.get(), "select.35"));
+  EXPECT_TRUE(HasDotDependent(*hlo_dimension_analysis, module.get(), "dot.2"));
 }
 
 TEST_F(HloDimensionAnalysisTest, RepeatWhile) {
@@ -239,6 +254,19 @@ ENTRY entry {
   EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "reshape.22"));
   EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "reshape.23"));
   EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "reshape.24"));
+
+  EXPECT_FALSE(HasDotDependent(*hlo_dimension_analysis, module.get(), "dot.0"));
+  EXPECT_TRUE(HasDotDependent(*hlo_dimension_analysis, module.get(), "dot.1"));
+  EXPECT_TRUE(
+      HasDotDependent(*hlo_dimension_analysis, module.get(), "reshape.90"));
+  EXPECT_TRUE(
+      HasDotDependent(*hlo_dimension_analysis, module.get(), "reshape.95"));
+  // Index 2 of the while result is dot-dependent.
+  EXPECT_TRUE(HasDotDependent(*hlo_dimension_analysis, module.get(),
+                              "dynamic-update-slice.99"));
+  // Check the dot-dependent while result is not propagated to the call site.
+  EXPECT_FALSE(HasDotDependent(*hlo_dimension_analysis, module.get(),
+                               "get-tuple-element.179"));
 }
 
 }  // namespace xla

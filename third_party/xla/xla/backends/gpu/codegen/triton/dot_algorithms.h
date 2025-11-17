@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -26,6 +27,15 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace triton {
+
+// Precision-relevant configuration bits for `dot`s.
+struct PrecisionSpec {
+  PrecisionConfig::Algorithm algorithm;
+  // TODO(bchetioui): we hope to get rid of operand precisions eventually, they
+  // are currently a (XLA-wide) bridge to work with ALG_UNSET.
+  mlir::stablehlo::Precision lhs_operand_precision;
+  mlir::stablehlo::Precision rhs_operand_precision;
+};
 
 // Carries named `Value`s corresponding to `dot` operands. This includes an
 // accumulator.

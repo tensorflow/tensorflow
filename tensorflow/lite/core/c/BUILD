@@ -106,6 +106,7 @@ tflite_cc_library_with_c_headers_test(
     deps = [
         ":c_api_types",
         ":operator",
+        "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:stderr_reporter",

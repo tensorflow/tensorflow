@@ -31,8 +31,8 @@ SqliteQueryConnection::~SqliteQueryConnection() {
   if (db_ != nullptr) db_->Unref();
 }
 
-absl::Status SqliteQueryConnection::Open(const string& data_source_name,
-                                         const string& query,
+absl::Status SqliteQueryConnection::Open(const std::string& data_source_name,
+                                         const std::string& query,
                                          const DataTypeVector& output_types) {
   if (db_ != nullptr) {
     return errors::FailedPrecondition(

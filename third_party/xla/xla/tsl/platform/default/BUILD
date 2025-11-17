@@ -116,13 +116,23 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
+<<<<<<< HEAD
         "@local_config_rocm//rocm:rocm_config",
         "@local_config_tensorrt//:tensorrt_headers",
+=======
+>>>>>>> upstream/master
         "@local_tsl//tsl/platform:load_library",
         "@local_tsl//tsl/platform:path",
     ] + if_oss([
         "@nvshmem//:nvshmem_config",
         "@local_config_nccl//:nccl_config",
+<<<<<<< HEAD
+=======
+        "@local_config_tensorrt//:tensorrt_headers",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_config",
+        "@local_config_rocm//rocm:rocm_headers",
+>>>>>>> upstream/master
     ]),
 )
 
@@ -312,6 +322,8 @@ cc_library(
     ],
     deps = [
         "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:strcat",
     ],
     alwayslink = True,
@@ -355,6 +367,7 @@ cc_library(
         "//xla/tsl/platform:types",
         "//xla/tsl/platform/profile_utils:profile_utils_cpu_utils",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/platform",
         "@snappy",
     ] + select({

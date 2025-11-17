@@ -18,11 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
-#include <limits>
 #include <numeric>
 #include <optional>
 #include <ostream>
-#include <sstream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -30,9 +28,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/numeric/int128.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"

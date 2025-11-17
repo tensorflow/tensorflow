@@ -31,7 +31,7 @@ namespace {
 class DepthToSpaceOp : public XlaOpKernel {
  public:
   explicit DepthToSpaceOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    string data_format_str;
+    std::string data_format_str;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
     OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
                 errors::InvalidArgument("Invalid data format"));

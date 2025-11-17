@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/backends/gpu/profiler/kernel_name_tracer_factory.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
-#include "xla/stream_executor/cuda/cuda_platform.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"

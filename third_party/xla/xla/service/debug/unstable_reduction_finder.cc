@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -62,7 +63,13 @@ bool IsKnownStableReduction(const HloReduceInstruction* reduction) {
     return true;
   }
 
-  return false;
+  Shape operand_shape = reduction->operand(0)->shape();
+  for (auto dim : reduction->dimensions()) {
+    if (operand_shape.dimensions(dim) != 1) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace

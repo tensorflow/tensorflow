@@ -42,29 +42,32 @@ namespace tensorflow {
 // 'name' with '.pbtxt' or '.pb'. If a graph has already been dumped by
 // this process with the same name, suffixes with "_n.pb(txt)", where 'n' is a
 // sequence number.
-string DumpGraphDefToFile(const string& name, GraphDef const& graph_def,
-                          const string& dirname = "");
+std::string DumpGraphDefToFile(const std::string& name,
+                               GraphDef const& graph_def,
+                               const std::string& dirname = "");
 
 // Similar to DumpGraphDefToFile, use CostGraphDef instead of GraphDef.
-string DumpCostGraphDefToFile(const string& name, CostGraphDef const& graph_def,
-                              const string& dirname = "");
+std::string DumpCostGraphDefToFile(const std::string& name,
+                                   CostGraphDef const& graph_def,
+                                   const std::string& dirname = "");
 
 // Similar to DumpGraphDefToFile, but builds the GraphDef to dump from a 'graph'
 // and an optional function library 'flib_def'. Returns the file name chosen.
-string DumpGraphToFile(const string& name, Graph const& graph,
-                       const FunctionLibraryDefinition* flib_def = nullptr,
-                       const string& dirname = "");
+std::string DumpGraphToFile(const std::string& name, Graph const& graph,
+                            const FunctionLibraryDefinition* flib_def = nullptr,
+                            const std::string& dirname = "");
 
 // Similar to DumpGraphDefToFile, but dumps a function as a FunctionDef text
 // proto. Returns the file name chosen.
-string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef,
-                             const string& dirname = "");
+std::string DumpFunctionDefToFile(const std::string& name,
+                                  FunctionDef const& fdef,
+                                  const std::string& dirname = "");
 
 // Similar to DumpGraphDefToFile, but dumps a proto of any type. Returns the
 // file name chosen.
-string DumpProtoToFile(const string& name,
-                       tensorflow::protobuf::Message const& proto,
-                       const string& dirname = "");
+std::string DumpProtoToFile(const std::string& name,
+                            tensorflow::protobuf::Message const& proto,
+                            const std::string& dirname = "");
 
 // Sets a custom Graph dumper. If set, this dumper will be used to dump graphs
 // instead via DumpGraphToFile. As the custom dumper may not produce protobufs,
@@ -74,14 +77,14 @@ void SetGraphDumper(
                                const FunctionLibraryDefinition* flib_def,
                                WritableFile*)>
         dumper,
-    string suffix = ".pbtxt");
+    std::string suffix = ".pbtxt");
 
 // Dump data to a file.
 // This function will create a WritableFile and pass it to the dumper.
 // The dumper callback will be responsible for writing data to the file.
-string DumpToFile(const string& name, const string& dirname,
-                  const string& suffix, absl::string_view type_name,
-                  std::function<absl::Status(WritableFile*)> dumper);
+std::string DumpToFile(const std::string& name, const std::string& dirname,
+                       const std::string& suffix, absl::string_view type_name,
+                       std::function<absl::Status(WritableFile*)> dumper);
 
 }  // namespace tensorflow
 

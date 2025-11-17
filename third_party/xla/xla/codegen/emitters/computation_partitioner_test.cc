@@ -25,10 +25,10 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 namespace emitters {
@@ -45,7 +45,7 @@ class ComputationPartitionerTest : public HloHardwareIndependentTestBase {
   }
 
   mlir::MLIRContext mlir_context_;
-  gpu::SymbolicExprContext symbolic_expr_context_;
+  SymbolicExprContext symbolic_expr_context_;
 };
 
 std::string PrintAndErase(mlir::func::FuncOp func) {

@@ -28,7 +28,7 @@ namespace tensorflow {
 namespace activity_watcher {
 
 std::unique_ptr<Activity> ActivityFromContext(
-    OpKernelContext* context, tsl::string name, ActivityCategory category,
+    OpKernelContext* context, std::string name, ActivityCategory category,
     Activity::Attributes additional_attributes) {
   Activity::Attributes attributes(std::move(additional_attributes));
   if (context) {

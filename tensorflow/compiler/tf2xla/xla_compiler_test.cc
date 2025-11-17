@@ -140,7 +140,7 @@ namespace {
 // compiled kernels.
 class DummyResourceForTest : public ResourceBase {
  public:
-  string DebugString() const override { return "dummy"; }
+  std::string DebugString() const override { return "dummy"; }
   void Increment() { ++value_; }
   int Get() { return value_; }
 
@@ -268,8 +268,8 @@ TEST_F(XlaCompilerTest, Simple) {
                                      std::move(graph), args, &result));
 
   // Tests that the generated computation works.
-  xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32>({7, 42});
-  xla::Literal param1_literal = xla::LiteralUtil::CreateR1<int32>({-3, 101});
+  xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32_t>({7, 42});
+  xla::Literal param1_literal = xla::LiteralUtil::CreateR1<int32_t>({-3, 101});
   std::unique_ptr<xla::GlobalData> param0_data =
       client_->TransferToServer(param0_literal).value();
   std::unique_ptr<xla::GlobalData> param1_data =
@@ -281,7 +281,7 @@ TEST_F(XlaCompilerTest, Simple) {
           .value();
   xla::Literal actual_literal = client_->Transfer(*actual).value();
 
-  xla::Literal expected0 = xla::LiteralUtil::CreateR1<int32>({4, 143});
+  xla::Literal expected0 = xla::LiteralUtil::CreateR1<int32_t>({4, 143});
   xla::Literal expected_literal = xla::LiteralUtil::MakeTuple({&expected0});
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
 }
@@ -366,8 +366,8 @@ TEST_F(XlaCompilerTest, OutOfOrderGraph) {
                                      args, &result));
 
   // Tests that the generated computation works.
-  xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32>({7, 42});
-  xla::Literal param1_literal = xla::LiteralUtil::CreateR1<int32>({-3, 101});
+  xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32_t>({7, 42});
+  xla::Literal param1_literal = xla::LiteralUtil::CreateR1<int32_t>({-3, 101});
   std::unique_ptr<xla::GlobalData> param0_data =
       client_->TransferToServer(param0_literal).value();
   std::unique_ptr<xla::GlobalData> param1_data =
@@ -484,7 +484,7 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForRetVal) {
   auto read = ops::ReadVariableOp(
       scope.WithControlDependencies(std::vector<Operation>{write}), var,
       DT_INT32);
-  auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
+  auto read_plus_one = ops::Add(scope, read, ops::Const<int32_t>(scope, 1));
   auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 0);
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_ASSERT_OK(scope.ToGraph(graph.get()));
@@ -602,7 +602,7 @@ TEST_F(XlaCompilerTest, MixedOrderArguments) {
     auto read = ops::ReadVariableOp(
         scope.WithControlDependencies(std::vector<Operation>{write}), var,
         DT_INT32);
-    auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
+    auto read_plus_one = ops::Add(scope, read, ops::Const<int32_t>(scope, 1));
     auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 0);
     std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
     TF_ASSERT_OK(scope.ToGraph(graph.get()));
@@ -680,7 +680,7 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
   // func(a) { b=7; c=-a; return b, c; }
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
-  auto b = ops::Const<int32>(scope.WithOpName("B"), 7);
+  auto b = ops::Const<int32_t>(scope.WithOpName("B"), 7);
   auto c = ops::Neg(scope.WithOpName("C"), a);
   auto d = ops::_Retval(scope.WithOpName("D"), b, 0);
   auto e = ops::_Retval(scope.WithOpName("E"), c, 1);
@@ -710,7 +710,7 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
     EXPECT_FALSE(result.outputs[1].is_constant);
 
     // Tests that the generated computation works.
-    xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32>({7, 42});
+    xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32_t>({7, 42});
     std::unique_ptr<xla::GlobalData> param0_data =
         client_->TransferToServer(param0_literal).value();
 
@@ -718,8 +718,8 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
         client_->Execute(*result.computation, {param0_data.get()}).value();
     xla::Literal actual_literal = client_->Transfer(*actual).value();
 
-    xla::Literal expected0 = xla::LiteralUtil::CreateR0<int32>(7);
-    xla::Literal expected1 = xla::LiteralUtil::CreateR1<int32>({-7, -42});
+    xla::Literal expected0 = xla::LiteralUtil::CreateR0<int32_t>(7);
+    xla::Literal expected1 = xla::LiteralUtil::CreateR1<int32_t>({-7, -42});
     xla::Literal expected =
         xla::LiteralUtil::MakeTuple({&expected0, &expected1});
     EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected, actual_literal));
@@ -885,7 +885,7 @@ TEST_F(XlaCompilerTest, DeterministicCompilation) {
         // The names of instructions were uniquified by the XlaBuilder and the
         // unique ids may be different, the rest of the fields should be
         // identical.
-        string str1, str2;
+        std::string str1, str2;
         LOG(INFO) << "instr1 = " << instr1.DebugString();
         LOG(INFO) << "instr2 = " << instr2.DebugString();
         instr1.AppendPartialToString(&str1);
@@ -904,7 +904,7 @@ TEST_F(XlaCompilerTest, CanPassTensorArraysToAndFromComputation) {
   auto flow = ops::Const<float>(scope, {});
   auto grad1 = ops::TensorArrayGrad(scope, arg, flow, "grad1");
   auto grad2 = ops::TensorArrayGrad(scope, arg, grad1.flow_out, "grad2");
-  auto index = ops::Const<int32>(scope, 1);
+  auto index = ops::Const<int32_t>(scope, 1);
   auto write = ops::TensorArrayWrite(scope, grad1.grad_handle, index, index,
                                      grad2.flow_out);
   auto read = ops::TensorArrayRead(scope, arg, index, write.flow_out, DT_INT32);
@@ -933,12 +933,12 @@ TEST_F(XlaCompilerTest, CanPassTensorArraysToAndFromComputation) {
   const XlaCompiler::ResourceUpdate& update = result.resource_updates[0];
   EXPECT_EQ(0, update.input_index);
   EXPECT_EQ(DT_INT32, update.type);
-  EXPECT_EQ((std::set<string>{"grad1", "grad2"}),
+  EXPECT_EQ((std::set<std::string>{"grad1", "grad2"}),
             update.tensor_array_gradients_accessed);
 
   // Tests that the generated computation works.
-  xla::Literal input_base = xla::LiteralUtil::CreateR1<int32>({7, 42});
-  xla::Literal input_grad2 = xla::LiteralUtil::CreateR1<int32>({-3, 101});
+  xla::Literal input_base = xla::LiteralUtil::CreateR1<int32_t>({7, 42});
+  xla::Literal input_grad2 = xla::LiteralUtil::CreateR1<int32_t>({-3, 101});
   xla::Literal input = xla::LiteralUtil::MakeTuple({&input_base, &input_grad2});
   std::unique_ptr<xla::GlobalData> param0_data =
       client_->TransferToServer(input).value();
@@ -947,10 +947,10 @@ TEST_F(XlaCompilerTest, CanPassTensorArraysToAndFromComputation) {
       client_->Execute(*result.computation, {param0_data.get()}).value();
   xla::Literal actual_literal = client_->Transfer(*actual).value();
 
-  xla::Literal output_read = xla::LiteralUtil::CreateR0<int32>(42);
-  xla::Literal output_base = xla::LiteralUtil::CreateR1<int32>({7, 42});
-  xla::Literal output_grad1 = xla::LiteralUtil::CreateR1<int32>({0, 1});
-  xla::Literal output_grad2 = xla::LiteralUtil::CreateR1<int32>({-3, 101});
+  xla::Literal output_read = xla::LiteralUtil::CreateR0<int32_t>(42);
+  xla::Literal output_base = xla::LiteralUtil::CreateR1<int32_t>({7, 42});
+  xla::Literal output_grad1 = xla::LiteralUtil::CreateR1<int32_t>({0, 1});
+  xla::Literal output_grad2 = xla::LiteralUtil::CreateR1<int32_t>({-3, 101});
   xla::Literal output_resource =
       xla::LiteralUtil::MakeTuple({&output_base, &output_grad1, &output_grad2});
   xla::Literal expected_literal =
@@ -964,7 +964,7 @@ TEST_F(XlaCompilerTest, UnwrittenTensorArrayGradientsAreNotComputationOutputs) {
   auto arg = ops::_Arg(scope.WithOpName("arg"), DT_RESOURCE, 0);
   auto flow = ops::Const<float>(scope, {});
   auto grad1 = ops::TensorArrayGrad(scope, arg, flow, "grad1");
-  auto index = ops::Const<int32>(scope, 1);
+  auto index = ops::Const<int32_t>(scope, 1);
   auto read = ops::TensorArrayRead(scope, arg, index, grad1.flow_out, DT_INT32);
   auto retval = ops::_Retval(scope.WithOpName("retval"), read, 0);
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
@@ -996,7 +996,7 @@ TEST_F(XlaCompilerTest, NewTensorArrayGradientsAreComputationOutputs) {
   auto arg = ops::_Arg(scope.WithOpName("arg"), DT_RESOURCE, 0);
   auto flow = ops::Const<float>(scope, {});
   auto grad1 = ops::TensorArrayGrad(scope, arg, flow, "grad2");
-  auto index = ops::Const<int32>(scope, 1);
+  auto index = ops::Const<int32_t>(scope, 1);
   auto read = ops::TensorArrayRead(scope, arg, index, grad1.flow_out, DT_INT32);
   auto retval = ops::_Retval(scope.WithOpName("retval"), read, 0);
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
@@ -1067,8 +1067,8 @@ TEST_F(XlaCompilerTest, FunctionCallWithConstants) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   Scope scope = Scope::NewRootScope().ExitOnError();
-  auto value = ops::Const<int32>(scope.WithOpName("value"), 1, {});
-  auto shape = ops::Const<int32>(scope.WithOpName("shape"), {5}, {1});
+  auto value = ops::Const<int32_t>(scope.WithOpName("value"), 1, {});
+  auto shape = ops::Const<int32_t>(scope.WithOpName("shape"), {5}, {1});
   TF_EXPECT_OK(scope.graph()->AddFunctionLibrary(flib));
 
   NodeDef def;
@@ -1151,9 +1151,9 @@ TEST_F(XlaCompilerTest, SliceWithDynamicBegins) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   Scope scope = Scope::NewRootScope().ExitOnError();
-  auto value = ops::Const<int32>(scope.WithOpName("shape"), {5}, {1});
+  auto value = ops::Const<int32_t>(scope.WithOpName("shape"), {5}, {1});
   auto begin = ops::_Arg(scope.WithOpName("arg"), DT_INT32, 0);
-  auto size = ops::Const<int32>(scope.WithOpName("value"), {1}, {1});
+  auto size = ops::Const<int32_t>(scope.WithOpName("value"), {1}, {1});
 
   TF_EXPECT_OK(scope.graph()->AddFunctionLibrary(flib));
 
@@ -1188,8 +1188,8 @@ TEST_F(XlaCompilerTest, SliceWithDynamicBegins) {
 
 void RunAndCheckVariablesComputation(
     xla::Client* client, const XlaCompiler::CompilationResult& result) {
-  xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32>({7, 42});
-  xla::Literal param1_literal = xla::LiteralUtil::CreateR1<int32>({-3, 101});
+  xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32_t>({7, 42});
+  xla::Literal param1_literal = xla::LiteralUtil::CreateR1<int32_t>({-3, 101});
   std::unique_ptr<xla::GlobalData> param0_data =
       client->TransferToServer(param0_literal).value();
   std::unique_ptr<xla::GlobalData> param1_data =
@@ -1201,8 +1201,8 @@ void RunAndCheckVariablesComputation(
           .value();
   xla::Literal actual_literal = client->Transfer(*actual).value();
 
-  xla::Literal expected0 = xla::LiteralUtil::CreateR1<int32>({5, 144});
-  xla::Literal expected1 = xla::LiteralUtil::CreateR1<int32>({4, 143});
+  xla::Literal expected0 = xla::LiteralUtil::CreateR1<int32_t>({5, 144});
+  xla::Literal expected1 = xla::LiteralUtil::CreateR1<int32_t>({4, 143});
   xla::Literal expected_literal =
       xla::LiteralUtil::MakeTuple({&expected0, &expected1});
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
@@ -1220,7 +1220,7 @@ TEST_F(XlaCompilerTest, Variables) {
   auto read = ops::ReadVariableOp(
       scope.WithControlDependencies(std::vector<Operation>{write}), var,
       DT_INT32);
-  auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
+  auto read_plus_one = ops::Add(scope, read, ops::Const<int32_t>(scope, 1));
   auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 0);
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_ASSERT_OK(scope.ToGraph(graph.get()));
@@ -1356,7 +1356,7 @@ TEST_F(XlaCompilerTest, ReturnResourceHandleOnly) {
                                      std::move(graph), args, &result));
 
   // Tests that the generated computation works.
-  xla::Literal param1_literal = xla::LiteralUtil::CreateR1<int32>({-3, 101});
+  xla::Literal param1_literal = xla::LiteralUtil::CreateR1<int32_t>({-3, 101});
   std::unique_ptr<xla::GlobalData> param1_data =
       client_->TransferToServer(param1_literal).value();
 
@@ -1379,7 +1379,7 @@ TEST_F(XlaCompilerTest, ReturnResourceHandle) {
   auto read = ops::ReadVariableOp(
       scope.WithControlDependencies(std::vector<Operation>{write}), var,
       DT_INT32);
-  auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
+  auto read_plus_one = ops::Add(scope, read, ops::Const<int32_t>(scope, 1));
   auto r = ops::_Retval(scope.WithOpName("R"), var, 0);
   auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 1);
 
@@ -1414,7 +1414,7 @@ absl::StatusOr<std::unique_ptr<Graph>> BuildTestGraph() {
   auto read = ops::ReadVariableOp(
       scope.WithControlDependencies(std::vector<Operation>{write}), var,
       DT_INT32);
-  auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
+  auto read_plus_one = ops::Add(scope, read, ops::Const<int32_t>(scope, 1));
   auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 0);
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_RETURN_IF_ERROR(scope.ToGraph(graph.get()));
@@ -1475,9 +1475,9 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
 
   // Tests that the generated computation works.
   xla::Literal param0_literal =
-      xla::LiteralUtil::CreateR2<int32>({{4, 55}, {1, -3}});
+      xla::LiteralUtil::CreateR2<int32_t>({{4, 55}, {1, -3}});
   xla::Literal param1_literal =
-      xla::LiteralUtil::CreateR1<int32>({22, 11, 33, 404});
+      xla::LiteralUtil::CreateR1<int32_t>({22, 11, 33, 404});
   std::unique_ptr<xla::GlobalData> param0_data =
       client_->TransferToServer(param0_literal).value();
   std::unique_ptr<xla::GlobalData> param1_data =
@@ -1490,8 +1490,9 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
   xla::Literal actual_literal = client_->Transfer(*actual).value();
 
   xla::Literal expected0 =
-      xla::LiteralUtil::CreateR2<int32>({{27, 67}, {35, 402}});
-  xla::Literal expected1 = xla::LiteralUtil::CreateR1<int32>({26, 66, 34, 401});
+      xla::LiteralUtil::CreateR2<int32_t>({{27, 67}, {35, 402}});
+  xla::Literal expected1 =
+      xla::LiteralUtil::CreateR1<int32_t>({26, 66, 34, 401});
   xla::Literal expected_literal =
       xla::LiteralUtil::MakeTuple({&expected0, &expected1});
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
@@ -1547,9 +1548,9 @@ TEST_F(XlaCompilerTest, ArgRetvalShapeRepresentationFunction) {
 
   // Tests that the generated computation works.
   xla::Literal param0_literal =
-      xla::LiteralUtil::CreateR1<int32>({4, 55, 1, -3});
+      xla::LiteralUtil::CreateR1<int32_t>({4, 55, 1, -3});
   xla::Literal param1_literal =
-      xla::LiteralUtil::CreateR1<int32>({22, 11, 33, 404});
+      xla::LiteralUtil::CreateR1<int32_t>({22, 11, 33, 404});
   std::unique_ptr<xla::GlobalData> param0_data =
       client_->TransferToServer(param0_literal).value();
   std::unique_ptr<xla::GlobalData> param1_data =
@@ -1561,8 +1562,10 @@ TEST_F(XlaCompilerTest, ArgRetvalShapeRepresentationFunction) {
           .value();
   xla::Literal actual_literal = client_->Transfer(*actual).value();
 
-  xla::Literal expected0 = xla::LiteralUtil::CreateR1<int32>({27, 67, 35, 402});
-  xla::Literal expected1 = xla::LiteralUtil::CreateR1<int32>({26, 66, 34, 401});
+  xla::Literal expected0 =
+      xla::LiteralUtil::CreateR1<int32_t>({27, 67, 35, 402});
+  xla::Literal expected1 =
+      xla::LiteralUtil::CreateR1<int32_t>({26, 66, 34, 401});
   xla::Literal expected_literal =
       xla::LiteralUtil::MakeTuple({&expected0, &expected1});
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
@@ -1587,8 +1590,8 @@ TEST_F(XlaCompilerTest, FunctionWithInvalidOp) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   Scope scope = Scope::NewRootScope().ExitOnError();
-  auto value = ops::Const<int32>(scope.WithOpName("value"), 1, {});
-  auto shape = ops::Const<int32>(scope.WithOpName("shape"), {5}, {1});
+  auto value = ops::Const<int32_t>(scope.WithOpName("value"), 1, {});
+  auto shape = ops::Const<int32_t>(scope.WithOpName("shape"), {5}, {1});
   TF_ASSERT_OK(scope.graph()->AddFunctionLibrary(flib));
 
   NodeDef def;
@@ -1684,7 +1687,8 @@ TEST_F(XlaCompilerTest, TokenInputAndOutput) {
   side_effecting_op.set_name("DummySideEffectingOp");
   side_effecting_op.set_op("DummySideEffectingOp");
   AddNodeAttr(kXlaTokenInputNodesAttrName,
-              std::vector<string>{kXlaTokenArgNodeName}, &side_effecting_op);
+              std::vector<std::string>{kXlaTokenArgNodeName},
+              &side_effecting_op);
   AddNodeAttr(kXlaOriginalOutsideCompilationNodeName, side_effecting_op.name(),
               &side_effecting_op);
   absl::Status status;
@@ -1768,8 +1772,8 @@ TEST_F(XlaCompilerTest, OpsWithTensorListInput) {
   }
 
   Scope scope = Scope::NewRootScope().ExitOnError();
-  auto element_shape = ops::Const<int32>(scope, {1}, {1});
-  auto max_elements = ops::Const<int32>(scope, {10}, {});
+  auto element_shape = ops::Const<int32_t>(scope, {1}, {1});
+  auto max_elements = ops::Const<int32_t>(scope, {10}, {});
   auto arg = ops::_Arg(scope.WithOpName("arg"), DT_VARIANT, 0);
   std::initializer_list<Output> out = {arg, arg};
   auto add_n = ops::AddN(scope, out);
@@ -1822,7 +1826,7 @@ TEST_F(XlaCompilerTest, WhileWithResources) {
     auto arg0 = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
     auto arg1 = ops::_Arg(scope.WithOpName("arg1"), DT_RESOURCE, 1);
     auto arg2 = ops::_Arg(scope.WithOpName("arg2"), DT_RESOURCE, 2);
-    auto less = ops::Less(scope, arg0, ops::Const<int32>(scope, 10));
+    auto less = ops::Less(scope, arg0, ops::Const<int32_t>(scope, 10));
     (void)ops::_Retval(scope.WithOpName("ret"), less, 0);
     TF_ASSERT_OK(scope.ToGraph(graph.get()));
     FunctionDef fdef;
@@ -1899,9 +1903,9 @@ TEST_F(XlaCompilerTest, WhileWithResources) {
   ASSERT_EQ(output2.input_index, 2);
 
   // Tests that the generated computation works.
-  xla::Literal literal0 = xla::LiteralUtil::CreateR0<int32>(0);
-  xla::Literal literal1 = xla::LiteralUtil::CreateR0<int32>(2);
-  xla::Literal literal2 = xla::LiteralUtil::CreateR0<int32>(1);
+  xla::Literal literal0 = xla::LiteralUtil::CreateR0<int32_t>(0);
+  xla::Literal literal1 = xla::LiteralUtil::CreateR0<int32_t>(2);
+  xla::Literal literal2 = xla::LiteralUtil::CreateR0<int32_t>(1);
   std::unique_ptr<xla::GlobalData> data0 =
       client_->TransferToServer(literal0).value();
   std::unique_ptr<xla::GlobalData> data1 =
@@ -1916,9 +1920,9 @@ TEST_F(XlaCompilerTest, WhileWithResources) {
           .value();
   xla::Literal actual_literal = client_->Transfer(*actual).value();
 
-  xla::Literal expected0 = xla::LiteralUtil::CreateR0<int32>(10);
-  xla::Literal expected1 = xla::LiteralUtil::CreateR0<int32>(2);
-  xla::Literal expected2 = xla::LiteralUtil::CreateR0<int32>(1);
+  xla::Literal expected0 = xla::LiteralUtil::CreateR0<int32_t>(10);
+  xla::Literal expected1 = xla::LiteralUtil::CreateR0<int32_t>(2);
+  xla::Literal expected2 = xla::LiteralUtil::CreateR0<int32_t>(1);
   xla::Literal expected_literal =
       xla::LiteralUtil::MakeTuple({&expected0, &expected1, &expected2});
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
@@ -1978,7 +1982,7 @@ TEST_F(XlaCompilerTest, SetShardingForReturnedTuple) {
 
 TEST_F(XlaCompilerTest, AliasResourceUpdates) {
   Scope scope = Scope::NewRootScope().ExitOnError();
-  auto a = ops::Const<int32>(scope.WithOpName("A"), {1, 2});
+  auto a = ops::Const<int32_t>(scope.WithOpName("A"), {1, 2});
   auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 1);
   auto write = ops::AssignAddVariableOp(scope, var, a);
   auto read = ops::ReadVariableOp(
@@ -2022,7 +2026,7 @@ TEST_F(XlaCompilerTest, AliasResourceUpdates) {
 TEST_F(XlaCompilerTest, SetDeviceToHostMetadataExactDuplicate) {
   XlaCompiler compiler(DefaultOptions());
 
-  const string& key = "comm_key";
+  const std::string& key = "comm_key";
   std::vector<DataType> types{DT_INT32};
   std::vector<TensorShape> shapes{TensorShape({2})};
 
@@ -2035,7 +2039,7 @@ TEST_F(XlaCompilerTest, SetDeviceToHostMetadataExactDuplicate) {
 TEST_F(XlaCompilerTest, SetDeviceToHostMetadataMismatchedDuplicate) {
   XlaCompiler compiler(DefaultOptions());
 
-  const string& key = "comm_key";
+  const std::string& key = "comm_key";
   std::vector<DataType> types{DT_INT32};
   std::vector<TensorShape> shapes{TensorShape({2})};
   std::vector<DataType> types2{DT_FLOAT};
@@ -2051,7 +2055,7 @@ TEST_F(XlaCompilerTest, SetDeviceToHostMetadataMismatchedDuplicate) {
 TEST_F(XlaCompilerTest, SetHostToDeviceMetadataExactDuplicate) {
   XlaCompiler compiler(DefaultOptions());
 
-  const string& key = "comm_key";
+  const std::string& key = "comm_key";
   std::vector<DataType> types{DT_INT32};
   std::vector<TensorShape> shapes{TensorShape({2})};
 
@@ -2064,7 +2068,7 @@ TEST_F(XlaCompilerTest, SetHostToDeviceMetadataExactDuplicate) {
 TEST_F(XlaCompilerTest, SetHostToDeviceMetadataMismatchedDuplicate) {
   XlaCompiler compiler(DefaultOptions());
 
-  const string& key = "comm_key";
+  const std::string& key = "comm_key";
   std::vector<DataType> types{DT_INT32};
   std::vector<TensorShape> shapes{TensorShape({2})};
   std::vector<DataType> types2{DT_FLOAT};

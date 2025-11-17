@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/ffi/execution_state.h"
 
-#include "absl/base/attributes.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -35,20 +34,13 @@ ExecutionState::~ExecutionState() {
 }
 
 absl::Status ExecutionState::Set(TypeId type_id, void* state) {
-  TF_ASSIGN_OR_RETURN(auto type_info,
-                      TypeRegistry::GetExternalTypeInfo(type_id));
+  TF_ASSIGN_OR_RETURN(auto type_info, TypeRegistry::GetTypeInfo(type_id));
   if (type_info.deleter == nullptr) {
     return InvalidArgument(
         "Type id %d does not have a registered type info with a deleter",
         type_id.value());
   }
   return Set(type_id, type_info, state);
-}
-
-ABSL_DEPRECATED("FFI users must rely in TypeInfo registration")
-absl::Status ExecutionState::Set(TypeId type_id, void* state,
-                                 void (*deleter)(void*)) {
-  return Set(type_id, TypeInfo{deleter}, state);
 }
 
 absl::Status ExecutionState::Set(TypeId type_id, TypeInfo type_info,

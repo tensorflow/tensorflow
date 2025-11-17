@@ -155,6 +155,15 @@ class WhileUtil {
   static absl::Status IncrementWhileLoopTripCount(
       const HloInstruction& while_instruction, int32_t increment);
 };
+
+// This is a helper function to update the original value after some
+// transformations append new elements to the while input tuple (or turn it into
+// a tuple if it was not one before). It appends the original values of the
+// new elements after existing children of the root node of the old original
+// value. This is done for both the input and output of the loop respectively.
+void AppendToWhileLoopOriginalValue(
+    HloInstruction* while_instr,
+    const HloInstruction::InstructionVector& new_while_input_tuple_elements);
 }  // namespace xla
 
 #endif  // XLA_SERVICE_WHILE_UTIL_H_

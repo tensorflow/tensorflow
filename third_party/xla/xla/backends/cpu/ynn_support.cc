@@ -16,19 +16,28 @@ limitations under the License.
 #include "xla/backends/cpu/ynn_support.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <tuple>
 
 #include "ynnpack/include/ynnpack.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
@@ -136,6 +145,138 @@ bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo) {
     default:
       return false;
   }
+}
+
+absl::StatusOr<bool> IsDotSupportedByYnn(
+    const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
+    const Shape& rhs_shape, const Shape& out_shape) {
+  // Stores tuple of allowed (input, output) dtypes.
+  static const absl::NoDestructor<absl::flat_hash_set<
+      std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
+      kAllowedTypes({
+          // TODO(b/452693819): We plan to enable this in stages, starting with
+          // int8, and enable f32 later.
+          // {F32, F32, F32},
+          // TODO(b/449998002): We don't have fast fp16 kernels yet.
+          // {F16, F16, F32},
+          {BF16, BF16, F32},
+          {S8, S8, S32},
+          {U8, S8, S32},
+          // TODO(b/441600372): We don't have fast int4 kernels yet. Even the
+          // reference kernel might be pretty good though?
+          // {S8, S4, S32},
+      });
+
+  // Types must be in the allowed set.
+  PrimitiveType lhs_dtype = lhs_shape.element_type();
+  PrimitiveType rhs_dtype = rhs_shape.element_type();
+  PrimitiveType out_dtype = out_shape.element_type();
+  if (!kAllowedTypes->contains({lhs_dtype, rhs_dtype, out_dtype})) {
+    return false;
+  }
+
+  if (!IsLayoutSupportedByYnn(lhs_shape) ||
+      !IsLayoutSupportedByYnn(rhs_shape) ||
+      !IsLayoutSupportedByYnn(out_shape)) {
+    return false;
+  }
+
+  // Check shapes.
+  TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
+                                                      rhs_shape, out_shape));
+
+  TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
+                      GetDotCanonicalDims(dot_dimensions, dot_shape));
+
+  if (dot_canonical_dims.m == 1 && dot_canonical_dims.n == 1 &&
+      dot_shape.batch_size > 1) {
+    // TODO(b/430079105): YNNPACK does not handle batch dimensions that are not
+    // matrix dimensions. We could handle this case by fully implementing dot
+    // (b/430079105), but we also could just insert dummy dimensions of size 1
+    // for the matrix dimensions, so the batch dimensions get handled correctly.
+    return false;
+  }
+
+  if (std::max({dot_canonical_dims.m, dot_canonical_dims.k,
+                dot_canonical_dims.n}) < 8) {
+    // If this dot is small, our overhead is probably too significant.
+    // TODO(b/458529782): This is here as a workaround for an unrelated bug.
+    return false;
+  }
+
+  // YNNPACK supports transposing the inputs efficiently if possible (they will
+  // fuse with dot packing), but we don't currently support generating the
+  // necessary transposes.
+  if (!dot_canonical_dims.lhs_canonical ||
+      dot_canonical_dims.lhs_column_major ||
+      dot_canonical_dims.rhs_column_major) {
+    return false;
+  }
+
+  return true;
+}
+
+bool IsReduceOpSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kReduce);
+  if (!YnnType(hlo->shape().element_type()).ok()) {
+    return false;
+  }
+  const HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
+  CHECK_NE(reduce, nullptr);
+  // TODO(ashaposhnikov): we can support this edge case,
+  // planning to come back to this later.
+  if (reduce->dimensions().empty()) {
+    return false;
+  }
+
+  HloInstruction* init = reduce->init_values().front();
+  const PrimitiveType type = init->shape().element_type();
+  // TODO(ashaposhnikov): The list of supported types can be extended.
+  if (type != F32) {
+    return false;
+  }
+  if (type != hlo->shape().element_type()) {
+    return false;
+  }
+
+  const HloComputation* to_apply = reduce->to_apply();
+  CHECK_NE(to_apply, nullptr);
+  return Match(to_apply->root_instruction(),
+               match::AnyOf<HloInstruction>(match::Add(), match::Maximum(),
+                                            match::Minimum())
+                   .WithBinaryOperandsAnyOrder(match::Parameter(0),
+                                               match::Parameter(1)));
+}
+
+bool IsReduceOpOffloadedToYnn(const HloInstruction* hlo) {
+  if (!IsReduceOpSupportedByYnn(hlo)) {
+    return false;
+  }
+  const HloInstruction* input = hlo->operand(0);
+  if (ShapeUtil::ElementsIn(input->shape()) < 32 * 1024) {
+    return false;
+  }
+  switch (input->opcode()) {
+    case HloOpcode::kMultiply:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kSlice:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kConvert:
+    case HloOpcode::kReshape:
+      return false;
+    default: {
+      return true;
+    }
+  }
+}
+
+uint32_t YnnFlags(const DebugOptions& debug_options) {
+  uint32_t flags = 0;
+  if (!debug_options.xla_cpu_enable_platform_dependent_math()) {
+    flags |= YNN_FLAG_CONSISTENT_ARITHMETIC;
+  }
+  return flags;
 }
 
 }  // namespace xla::cpu

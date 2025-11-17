@@ -164,6 +164,7 @@ tsl_cc_test(
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/log:check",
     ],
 )
 

@@ -94,7 +94,8 @@ void MergeHostPlanesAndSortLines(tensorflow::profiler::XSpace* space) {
 }  // namespace
 
 void PostProcessSingleHostXSpace(tensorflow::profiler::XSpace* space,
-                                 uint64 start_time_ns, uint64 stop_time_ns) {
+                                 uint64_t start_time_ns,
+                                 uint64_t stop_time_ns) {
   VLOG(3) << "Post processing local profiler XSpace.";
   // Post processing the collected XSpace without hold profiler lock.
   // 1. Merge all host planes and sorts lines by name.

@@ -109,10 +109,10 @@ absl::Status UpdateTPUEmbeddingEnqueueOrdinalPass::Run(
   single_tpu_device_spec.has_id = false;
   options.device_set->FindMatchingDevices(single_tpu_device_spec,
                                           &task_devices);
-  int64 num_tpus_per_task = task_devices.size();
+  int64_t num_tpus_per_task = task_devices.size();
 
   for (Node* node : embedding_nodes) {
-    int64 replica_id;
+    int64_t replica_id;
     if (TryGetNodeAttr(node->attrs(), kXlaReplicaIdAttrName, &replica_id)) {
       node->AddAttr("device_ordinal", replica_id % num_tpus_per_task);
     }
@@ -128,7 +128,7 @@ absl::Status UpdateMapsForModeOverride(
     std::map<std::string, N>* enqueue_op,
     std::map<std::string, bool>* found_recv_op,
     std::map<std::string, bool>* found_grad_send_op) {
-  string layer_call_index;
+  std::string layer_call_index;
   if (TryGetNodeAttr(attrs, "_tpu_embedding_layer", &layer_call_index)) {
     if ((op == kTPURecvOps[0]) || (op == kTPURecvOps[1])) {
       // We will prevent users from creating multiple copies of the
@@ -269,7 +269,7 @@ absl::Status UpdateTPUEmbeddingModePass::UpdateFunctionDefEnqueueOp(
   TF_RET_CHECK(!node->input(mode_override).empty());
 
   // Find input node
-  string select_name = std::vector<std::string>(
+  std::string select_name = std::vector<std::string>(
       absl::StrSplit(node->input(mode_override), ':'))[0];
   int select = 0;
   while ((select < function->node_def_size()) &&

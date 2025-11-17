@@ -57,13 +57,6 @@ class MultiOutputFusion : public HloModulePass {
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
-  // Run multi-output fusion on the given module. Returns whether the module
-  // was changed.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
  protected:
   // Main entry for the optimization. Returns true if the optimization happens.
   bool Perform();
@@ -163,6 +156,12 @@ class MultiOutputFusion : public HloModulePass {
   // Creates an initial worklist of fusible instruction pairs for the current
   // computation.
   virtual void CreateFusionWorkListForCurrentComputation();
+
+  // Run multi-output fusion on the given module. Returns whether the module
+  // was changed.
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // The pair of candidates to be fused and the profit score.

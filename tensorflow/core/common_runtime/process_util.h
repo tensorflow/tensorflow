@@ -32,10 +32,10 @@ namespace tensorflow {
 thread::ThreadPool* ComputePool(const SessionOptions& options);
 
 // Returns the TF_NUM_INTEROP_THREADS environment value, or 0 if not specified.
-int32 NumInterOpThreadsFromEnvironment();
+int32_t NumInterOpThreadsFromEnvironment();
 
 // Returns the TF_NUM_INTRAOP_THREADS environment value, or 0 if not specified.
-int32 NumIntraOpThreadsFromEnvironment();
+int32_t NumIntraOpThreadsFromEnvironment();
 
 // Returns the number of inter op threads specified in `options` or a default.
 // If no value or a negative value is specified in the provided options, then
@@ -43,7 +43,7 @@ int32 NumIntraOpThreadsFromEnvironment();
 // environment variable. If neither a value is specified in the options or in
 // the environment, this function will return a reasonable default value based
 // on the number of schedulable CPUs, and any MKL and OpenMP configurations.
-int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options);
+int32_t NumInterOpThreadsFromSessionOptions(const SessionOptions& options);
 
 // Creates a thread pool with number of inter op threads.
 // The number is set if `num_threads` > 0, otherwise it will be configured by

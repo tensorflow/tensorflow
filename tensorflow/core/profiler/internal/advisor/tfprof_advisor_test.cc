@@ -48,11 +48,10 @@ class TFProfAdvisorTest : public ::testing::Test {
     advisor_ = std::make_unique<Advisor>(stats_.get());
   }
 
-  std::unique_ptr<TFGraphNode> CreateNode(const string& name,
-                                          const string& type,
-                                          std::map<string, string> attrs,
-                                          int64_t step, int64_t start_miros,
-                                          int64_t end_rel_micros) {
+  std::unique_ptr<TFGraphNode> CreateNode(
+      const std::string& name, const std::string& type,
+      std::map<std::string, std::string> attrs, int64_t step,
+      int64_t start_miros, int64_t end_rel_micros) {
     node_defs_.push_back(std::make_unique<NodeDef>());
     NodeDef* def = node_defs_.back().get();
 

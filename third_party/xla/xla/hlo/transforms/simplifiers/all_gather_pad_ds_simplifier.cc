@@ -960,7 +960,7 @@ absl::Status AllGatherPadDsSimplifierVisitor::HandleDynamicSlice(
   return ReplaceInstruction(dynamic_slice, *selected);
 }
 
-absl::StatusOr<bool> AllGatherPadDsSimplifier::Run(
+absl::StatusOr<bool> AllGatherPadDsSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

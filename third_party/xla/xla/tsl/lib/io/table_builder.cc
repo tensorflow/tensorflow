@@ -33,7 +33,7 @@ namespace table {
 
 namespace {
 
-void FindShortestSeparator(string* start, absl::string_view limit) {
+void FindShortestSeparator(std::string* start, absl::string_view limit) {
   // Find length of common prefix
   size_t min_length = std::min(start->size(), limit.size());
   size_t diff_index = 0;
@@ -45,9 +45,9 @@ void FindShortestSeparator(string* start, absl::string_view limit) {
   if (diff_index >= min_length) {
     // Do not shorten if one string is a prefix of the other
   } else {
-    uint8 diff_byte = static_cast<uint8>((*start)[diff_index]);
-    if (diff_byte < static_cast<uint8>(0xff) &&
-        diff_byte + 1 < static_cast<uint8>(limit[diff_index])) {
+    uint8_t diff_byte = static_cast<uint8_t>((*start)[diff_index]);
+    if (diff_byte < static_cast<uint8_t>(0xff) &&
+        diff_byte + 1 < static_cast<uint8_t>(limit[diff_index])) {
       (*start)[diff_index]++;
       start->resize(diff_index + 1);
       assert(absl::string_view(*start).compare(limit) < 0);
@@ -55,12 +55,12 @@ void FindShortestSeparator(string* start, absl::string_view limit) {
   }
 }
 
-void FindShortSuccessor(string* key) {
+void FindShortSuccessor(std::string* key) {
   // Find first character that can be incremented
   size_t n = key->size();
   for (size_t i = 0; i < n; i++) {
-    const uint8 byte = (*key)[i];
-    if (byte != static_cast<uint8>(0xff)) {
+    const uint8_t byte = (*key)[i];
+    if (byte != static_cast<uint8_t>(0xff)) {
       (*key)[i] = byte + 1;
       key->resize(i + 1);
       return;
@@ -74,11 +74,11 @@ struct TableBuilder::Rep {
   Options options;
   Options index_block_options;
   WritableFile* file;
-  uint64 offset;
+  uint64_t offset;
   absl::Status status;
   BlockBuilder data_block;
   BlockBuilder index_block;
-  string last_key;
+  std::string last_key;
   int64_t num_entries;
   bool closed;  // Either Finish() or Abandon() has been called.
 
@@ -94,7 +94,7 @@ struct TableBuilder::Rep {
   bool pending_index_entry;
   BlockHandle pending_handle;  // Handle to add to index block
 
-  string compressed_output;
+  std::string compressed_output;
 
   Rep(const Options& opt, WritableFile* f)
       : options(opt),
@@ -136,7 +136,7 @@ void TableBuilder::Add(absl::string_view key, absl::string_view value) {
   if (r->pending_index_entry) {
     assert(r->data_block.empty());
     FindShortestSeparator(&r->last_key, key);
-    string handle_encoding;
+    std::string handle_encoding;
     r->pending_handle.EncodeTo(&handle_encoding);
     r->index_block.Add(r->last_key, absl::string_view(handle_encoding));
     r->pending_index_entry = false;
@@ -183,7 +183,7 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
       break;
 
     case kSnappyCompression: {
-      string* compressed = &r->compressed_output;
+      std::string* compressed = &r->compressed_output;
       if (port::Snappy_Compress(raw.data(), raw.size(), compressed) &&
           compressed->size() < raw.size() - (raw.size() / 8u)) {
         block_contents = *compressed;
@@ -210,7 +210,7 @@ void TableBuilder::WriteRawBlock(absl::string_view block_contents,
   if (r->status.ok()) {
     char trailer[kBlockTrailerSize];
     trailer[0] = type;
-    uint32 crc = crc32c::Value(block_contents.data(), block_contents.size());
+    uint32_t crc = crc32c::Value(block_contents.data(), block_contents.size());
     crc = crc32c::Extend(crc, trailer, 1);  // Extend crc to cover block type
     core::EncodeFixed32(trailer + 1, crc32c::Mask(crc));
     r->status = r->file->Append(absl::string_view(trailer, kBlockTrailerSize));
@@ -241,7 +241,7 @@ absl::Status TableBuilder::Finish() {
   if (ok()) {
     if (r->pending_index_entry) {
       FindShortSuccessor(&r->last_key);
-      string handle_encoding;
+      std::string handle_encoding;
       r->pending_handle.EncodeTo(&handle_encoding);
       r->index_block.Add(r->last_key, absl::string_view(handle_encoding));
       r->pending_index_entry = false;
@@ -254,7 +254,7 @@ absl::Status TableBuilder::Finish() {
     Footer footer;
     footer.set_metaindex_handle(metaindex_block_handle);
     footer.set_index_handle(index_block_handle);
-    string footer_encoding;
+    std::string footer_encoding;
     footer.EncodeTo(&footer_encoding);
     r->status = r->file->Append(footer_encoding);
     if (r->status.ok()) {
@@ -270,9 +270,9 @@ void TableBuilder::Abandon() {
   r->closed = true;
 }
 
-uint64 TableBuilder::NumEntries() const { return rep_->num_entries; }
+uint64_t TableBuilder::NumEntries() const { return rep_->num_entries; }
 
-uint64 TableBuilder::FileSize() const { return rep_->offset; }
+uint64_t TableBuilder::FileSize() const { return rep_->offset; }
 
 }  // namespace table
 }  // namespace tsl

@@ -18,12 +18,14 @@ limitations under the License.
 // Portability layer for toco tool. Mainly, abstract filesystem access so we
 // can build and use on google internal environments and on OSX.
 
+#include <cstdint>
 #include <string>
+
 #include "google/protobuf/text_format.h"
-#include "tensorflow/lite/toco/format_port.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/lite/toco/format_port.h"
 #if defined(PLATFORM_GOOGLE)
 #include "absl/strings/cord.h"
 #endif  // PLATFORM_GOOGLE
@@ -39,17 +41,16 @@ limitations under the License.
 namespace std {
 
 template <typename T>
-std::string to_string(T value)
-{
-    std::ostringstream os ;
-    os << value ;
-    return os.str() ;
+std::string to_string(T value) {
+  std::ostringstream os;
+  os << value;
+  return os.str();
 }
 
 #ifdef __ARM_ARCH_7A__
 double round(double x);
 #endif
-}
+}  // namespace std
 #endif
 
 namespace toco {
@@ -84,7 +85,7 @@ void CopyToBuffer(const ::absl::Cord& src, char* dest);
 #endif  // PLATFORM_GOOGLE
 void CopyToBuffer(const std::string& src, char* dest);
 
-inline uint32 ReverseBits32(uint32 n) {
+inline uint32_t ReverseBits32(uint32_t n) {
   n = ((n >> 1) & 0x55555555) | ((n & 0x55555555) << 1);
   n = ((n >> 2) & 0x33333333) | ((n & 0x33333333) << 2);
   n = ((n >> 4) & 0x0F0F0F0F) | ((n & 0x0F0F0F0F) << 4);

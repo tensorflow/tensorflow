@@ -50,22 +50,6 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 namespace {
-int GetGpuStreamPriority(StreamExecutor* executor,
-                         stream_executor::StreamPriority stream_priority) {
-  std::unique_ptr<ActivateContext> activation = executor->Activate();
-  if (stream_priority == stream_executor::StreamPriority::Default) {
-    return 0;
-  }
-  int lowest, highest;
-  hipError_t res = wrap::hipDeviceGetStreamPriorityRange(&lowest, &highest);
-  if (res != hipSuccess) {
-    LOG(ERROR)
-        << "Could not query stream priority range. Returning default priority.";
-    return 0;
-  }
-  return stream_priority == stream_executor::StreamPriority::Highest ? highest
-                                                                     : lowest;
-}
 
 absl::StatusOr<hipStream_t> CreateStream(StreamExecutor* executor,
                                          int priority) {
@@ -188,8 +172,7 @@ absl::StatusOr<std::unique_ptr<RocmStream>> RocmStream::Create(
     if (priority.has_value() && std::holds_alternative<int>(priority.value())) {
       return std::get<int>(priority.value());
     }
-    return GetGpuStreamPriority(
-        executor,
+    return executor->GetGpuStreamPriority(
         std::get<StreamPriority>(priority.value_or(StreamPriority::Default)));
   }();
   TF_ASSIGN_OR_RETURN(auto stream_handle,

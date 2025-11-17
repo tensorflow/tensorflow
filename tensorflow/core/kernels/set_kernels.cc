@@ -16,7 +16,7 @@ limitations under the License.
 // Ops for operating with sets. They are not checked in
 // to TensorFlow because we would first like to demonstrate successful
 // end-to-end use of these ops in eval and polish the api a bit like taking two
-// SparseTensor rather than on edense and one sparse.
+// SparseTensor rather than one dense and one sparse.
 
 #define EIGEN_USE_THREADS
 
@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/ascii.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -323,8 +324,7 @@ SetOperation SetOperationFromContext(OpKernelConstruction* ctx) {
   if (!ctx->GetAttr("set_operation", &set_operation_str).ok()) {
     ctx->CtxFailure(errors::InvalidArgument("Missing set_operation."));
   } else {
-    std::transform(set_operation_str.begin(), set_operation_str.end(),
-                   set_operation_str.begin(), ::tolower);
+    absl::AsciiStrToLower(&set_operation_str);
     if ("a-b" == set_operation_str) {
       return A_MINUS_B;
     }

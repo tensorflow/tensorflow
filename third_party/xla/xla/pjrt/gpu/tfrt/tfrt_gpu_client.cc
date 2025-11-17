@@ -850,8 +850,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
   absl::InlinedVector<int64_t, 4> tmp_strides;
   if (!byte_strides) {
     tmp_strides.resize(dims.size());
-    TF_RETURN_IF_ERROR(
-        ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(tmp_strides)));
+    TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+        device_shape, absl::MakeSpan(tmp_strides)));
     byte_strides = tmp_strides;
   }
 
@@ -868,8 +868,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
 
   absl::InlinedVector<int64_t, 4> shape_strides(
       device_shape.dimensions().size());
-  TF_RETURN_IF_ERROR(
-      ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(shape_strides)));
+  TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+      device_shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
       (byte_size == 0 || *byte_strides == shape_strides);
 
@@ -1209,7 +1209,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
   TF_ASSIGN_OR_RETURN(
       DeviceTopologyPair device_topology_pair,
       BuildDistributedDevices(
-          pjrt_platform_name, xla_client, options.node_id, options.num_nodes,
+          pjrt_platform_name, xla_client, options.node_id,
+          options.max_inflight_computations, options.num_nodes,
           gpu_run_options.get(), kv_store, options.enable_mock_nccl,
           options.mock_gpu_topology, options.partition_index, absl::Minutes(2),
           absl::Minutes(5)));

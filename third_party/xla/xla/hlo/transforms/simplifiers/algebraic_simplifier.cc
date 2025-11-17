@@ -10033,7 +10033,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleMap(HloInstruction* map) {
   return ReplaceWithNewInstruction(map, std::move(clone));
 }
 
-absl::StatusOr<bool> AlgebraicSimplifier::Run(
+absl::StatusOr<bool> AlgebraicSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

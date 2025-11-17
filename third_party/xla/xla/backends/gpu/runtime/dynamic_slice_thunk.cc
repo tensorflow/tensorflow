@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -39,23 +41,20 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -175,7 +174,7 @@ std::string DynamicSliceThunk::SliceDef::ToString() const {
 DynamicSliceThunk::DynamicSliceThunk(
     ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
     std::vector<std::optional<BufferAllocation::Slice>> arguments,
-    std::vector<std::unique_ptr<BufferAllocation>> fake_allocations,
+    std::vector<BufferAllocation> fake_allocations,
     std::vector<std::optional<std::vector<Offset>>> offsets,
     std::vector<std::optional<Shape>> orig_shapes,
     std::vector<std::optional<Shape>> sliced_shapes,
@@ -440,6 +439,18 @@ void DynamicSliceThunk::ForAllThunksMutable(
   embedded_thunk_->ForAllThunksMutable(fn);
 }
 
+absl::Status DynamicSliceThunk::TransformAllNestedThunks(
+    absl::FunctionRef<
+        absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
+        fn) {
+  TF_RETURN_IF_ERROR(embedded_thunk_->TransformAllNestedThunks(fn));
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk,
+                      fn(std::move(embedded_thunk_)));
+  embedded_thunk_ = SequentialThunk::FromThunk(std::move(thunk));
+  return absl::OkStatus();
+}
+
 absl::StatusOr<OptionalDynamicSliceOffsetsProto>
 SerializeOptionalDynamicSliceOffsetsToProto(
     const std::optional<std::vector<DynamicSliceThunk::Offset>>& offsets_item,
@@ -605,13 +616,19 @@ absl::StatusOr<ThunkProto> DynamicSliceThunk::ToProto() const {
              ->mutable_offset_as_function_of_indvar_modules_metadata(),
         offset_as_function_of_indvar_metadata_->ToProto());
   }
+
+  // fake_allocations
+  for (const auto& fake_allocation : fake_allocations_) {
+    *dynamic_slice_proto->add_fake_allocations() = fake_allocation.ToProto();
+  }
+
   return proto;
 }
 
 absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
     ThunkInfo thunk_info, const DynamicSliceThunkProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations,
-    absl::Span<const BufferAllocation> fake_allocations) {
+    const DeserializerWithCustomAllocations& deserializer) {
   // offset_as_function_of_indvar_metadata
   std::optional<OffsetAsFunctionOfIndvarModulesMetadata>
       offset_as_function_of_indvar_metadata;
@@ -668,21 +685,25 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
     }
   }
 
+  // fake_allocations
+  std::vector<BufferAllocation> fake_allocations;
+  for (const auto& fake_allocation_proto : proto.fake_allocations()) {
+    fake_allocations.push_back(
+        BufferAllocation::FromProto(fake_allocation_proto));
+  }
+
   // embedded_thunk
   std::vector<std::unique_ptr<Thunk>> embedded_thunks;
   for (const auto& thunk_proto : proto.embedded_thunk().thunks()) {
-    TF_ASSIGN_OR_RETURN(auto thunk,
-                        DeserializeThunkProto(thunk_proto, fake_allocations));
-    embedded_thunks.push_back(std::move(thunk));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> embedded_thunk,
+                        deserializer(thunk_proto, fake_allocations));
+    embedded_thunks.push_back(std::move(embedded_thunk));
   }
 
-  // leave fake_allocations empty, because we manage their lifetime outside
-  // of this function.
   return std::make_unique<DynamicSliceThunk>(
       thunk_info, std::make_unique<ThunkSequence>(std::move(embedded_thunks)),
-      std::move(arguments),
-      /*fake_allocations=*/std::vector<std::unique_ptr<BufferAllocation>>(),
-      std::move(offsets), std::move(orig_shapes), std::move(sliced_shapes),
+      std::move(arguments), std::move(fake_allocations), std::move(offsets),
+      std::move(orig_shapes), std::move(sliced_shapes),
       std::move(offset_byte_sizes),
       std::move(offset_as_function_of_indvar_metadata));
 }

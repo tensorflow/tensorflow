@@ -42,8 +42,8 @@ constexpr std::array<CublasPaddingRequirement, 3> CublasPaddingRequirements{
      {se::CudaComputeCapability::Volta(), F16, 8},
      {se::CudaComputeCapability::Ampere(), BF16, 8}}};
 
-constexpr std::array<HipblasPaddingRequirement, 2> HipblasPaddingRequirements{
-    {{/*rocm gpu arch,*/ F16, 8}, {/*rocm gpu arch,*/ BF16, 8}}};
+// No padding requirements for ROCM
+constexpr std::array<HipblasPaddingRequirement, 0> HipblasPaddingRequirements;
 
 // Tell if either of the operands of the dot requires padding.
 bool CublasRequiresPadding(const HloDotInstruction& dot,

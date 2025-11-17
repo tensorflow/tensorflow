@@ -513,5 +513,25 @@ TEST_F(LayoutUtilTest, MaxElementsInPerSplit) {
   EXPECT_EQ(LayoutUtil::MaxElementsInPerSplit(shape), 150 * 90 * 70);
 }
 
+struct IsUntiledLayoutTestCase {
+  std::vector<int64_t> shape;
+  std::vector<Tile> tiles;
+  bool expected_result;
+};
+
+using IsUntiledLayoutTest = ::testing::TestWithParam<IsUntiledLayoutTestCase>;
+
+TEST_P(IsUntiledLayoutTest, IsUntiledLayout) {
+  IsUntiledLayoutTestCase params = GetParam();
+  EXPECT_EQ(LayoutUtil::IsUntiledLayout(params.tiles, params.shape),
+            params.expected_result);
+}
+
+INSTANTIATE_TEST_SUITE_P(IsUntiledLayoutTests, IsUntiledLayoutTest,
+                         ::testing::ValuesIn<IsUntiledLayoutTestCase>(
+                             {{{24, 128}, {Tile({8, 128})}, true},
+                              {{4, 256}, {Tile({1, 128})}, true},
+                              {{2, 3, 4}, {Tile({8, 128})}, false}}));
+
 }  // namespace
 }  // namespace xla

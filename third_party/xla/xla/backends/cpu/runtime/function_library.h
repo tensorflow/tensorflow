@@ -19,13 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <type_traits>
-#include <utility>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/tsl/lib/gtl/int_type.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -64,14 +63,14 @@ class FunctionLibrary {
   };
 
   template <typename F, std::enable_if_t<std::is_function_v<F>>* = nullptr>
-  static Symbol Sym(std::string name) {
-    return Symbol{GetTypeId<F>(), std::move(name)};
+  static Symbol Sym(absl::string_view name) {
+    return Symbol{GetTypeId<F>(), std::string(name)};
   }
 
   template <typename F, std::enable_if_t<std::is_function_v<F>>* = nullptr>
   absl::StatusOr<F*> ResolveFunction(absl::string_view name) {
     TF_ASSIGN_OR_RETURN(void* ptr, ResolveFunction(GetTypeId<F>(), name));
-    return reinterpret_cast<F*>(ptr);
+    return reinterpret_cast<F*>(ptr);  // NOLINT
   }
 
  protected:

@@ -62,6 +62,7 @@ TEST(PythonOpGen, TypeAnnotateAllOps) {
   const std::string all_types =
       ", \"_atypes.BFloat16\", \"_atypes.Bool\", \"_atypes.Complex128\", "
       "\"_atypes.Complex64\", \"_atypes.Float16\", \"_atypes.Float32\", "
+      "\"_atypes.Float4e2m1fn\", "
       "\"_atypes.Float64\", "
       "\"_atypes.Float8e4m3b11fnuz\", \"_atypes.Float8e4m3fn\", "
       "\"_atypes.Float8e4m3fnuz\", \"_atypes.Float8e5m2\", "

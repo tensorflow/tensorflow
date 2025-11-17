@@ -173,7 +173,7 @@ CurlHttpRequest::~CurlHttpRequest() {
   }
 }
 
-string CurlHttpRequest::EscapeString(const string& str) {
+string CurlHttpRequest::EscapeString(const std::string& str) {
   char* out_char_str = libcurl_->curl_easy_escape(curl_, str.c_str(), 0);
   string out_str(out_char_str);
   libcurl_->curl_free(out_char_str);

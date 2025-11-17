@@ -127,7 +127,7 @@ class DebugDataDumper {
   std::optional<std::string> name_filter_;
 
   // The groups filter.
-  std::set<string> groups_filter_;
+  std::set<std::string> groups_filter_;
 
   // A flag indicating whether to dump wrapped graphs.
   bool dump_wrapped_;

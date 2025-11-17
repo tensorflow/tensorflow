@@ -70,7 +70,7 @@ absl::Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
   TF_RETURN_IF_ERROR(context->allocate_temp(
       tensorflow::DT_INT32, tensorflow::TensorShape({output_size}),
       &spans->starts, alloc_attr));
-  auto starts_vec = spans->starts.vec<int32>();
+  auto starts_vec = spans->starts.vec<int32_t>();
   TF_RETURN_IF_ERROR(context->allocate_temp(
       tensorflow::DT_FLOAT,
       tensorflow::TensorShape({spans->span_size * output_size}),
@@ -135,7 +135,7 @@ absl::Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
   };
   std::vector<std::vector<GradComponent>> grad_components(forward_input_size);
   auto weights_vec = spans.weights.vec<float>();
-  auto starts_vec = spans.starts.vec<int32>();
+  auto starts_vec = spans.starts.vec<int32_t>();
   for (int output_index = 0; output_index < forward_output_size;
        ++output_index) {
     int input_index = starts_vec(output_index);
@@ -163,7 +163,7 @@ absl::Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
   TF_RETURN_IF_ERROR(context->allocate_temp(
       tensorflow::DT_INT32, tensorflow::TensorShape({forward_input_size}),
       &grad_spans->starts, alloc_attr));
-  auto grad_starts_vec = grad_spans->starts.vec<int32>();
+  auto grad_starts_vec = grad_spans->starts.vec<int32_t>();
   TF_RETURN_IF_ERROR(context->allocate_temp(
       tensorflow::DT_FLOAT,
       tensorflow::TensorShape({grad_spans->span_size * forward_input_size}),
@@ -273,7 +273,7 @@ class ScaleAndTranslateOp : public OpKernel {
   explicit ScaleAndTranslateOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("antialias", &antialias_));
-    string kernel_type_str;
+    std::string kernel_type_str;
     OP_REQUIRES_OK(context, context->GetAttr("kernel_type", &kernel_type_str));
     kernel_type_ = functor::SamplingKernelTypeFromString(kernel_type_str);
     OP_REQUIRES(context, kernel_type_ != functor::SamplingKernelTypeEnd,
@@ -293,15 +293,16 @@ class ScaleAndTranslateOp : public OpKernel {
     OP_REQUIRES(context, output_shape_t.NumElements() == 2,
                 errors::InvalidArgument("output_shape_t must have two elements",
                                         output_shape_t.shape().DebugString()));
-    auto output_shape_vec = output_shape_t.vec<int32>();
+    auto output_shape_vec = output_shape_t.vec<int32_t>();
     const int64_t output_height = internal::SubtleMustCopy(output_shape_vec(0));
     const int64_t output_width = internal::SubtleMustCopy(output_shape_vec(1));
 
     OP_REQUIRES(
         context,
-        FastBoundsCheck(input.dim_size(1), std::numeric_limits<int32>::max()) &&
+        FastBoundsCheck(input.dim_size(1),
+                        std::numeric_limits<int32_t>::max()) &&
             FastBoundsCheck(input.dim_size(2),
-                            std::numeric_limits<int32>::max()),
+                            std::numeric_limits<int32_t>::max()),
         errors::InvalidArgument("input sizes must be between 0 and max int32"));
 
     const int64_t batch_size = input.dim_size(0);
@@ -359,13 +360,13 @@ class ScaleAndTranslateOp : public OpKernel {
         intermediate_t.tensor<float, 4>();
 
     const functor::Spans& const_row_spans = row_spans;
-    typename TTypes<int32, 1>::ConstTensor row_starts(
-        const_row_spans.starts.tensor<int32, 1>());
+    typename TTypes<int32_t, 1>::ConstTensor row_starts(
+        const_row_spans.starts.tensor<int32_t, 1>());
     typename TTypes<float, 1>::ConstTensor row_weights(
         const_row_spans.weights.tensor<float, 1>());
     const functor::Spans& const_col_spans = col_spans;
-    typename TTypes<int32, 1>::ConstTensor col_starts(
-        const_col_spans.starts.tensor<int32, 1>());
+    typename TTypes<int32_t, 1>::ConstTensor col_starts(
+        const_col_spans.starts.tensor<int32_t, 1>());
     typename TTypes<float, 1>::ConstTensor col_weights(
         const_col_spans.weights.tensor<float, 1>());
 
@@ -384,7 +385,7 @@ class ScaleAndTranslateGradOp : public OpKernel {
   explicit ScaleAndTranslateGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("antialias", &antialias_));
-    string kernel_type_str;
+    std::string kernel_type_str;
     OP_REQUIRES_OK(context, context->GetAttr("kernel_type", &kernel_type_str));
     kernel_type_ = functor::SamplingKernelTypeFromString(kernel_type_str);
     OP_REQUIRES(context, kernel_type_ != functor::SamplingKernelTypeEnd,
@@ -417,9 +418,9 @@ class ScaleAndTranslateGradOp : public OpKernel {
 
     OP_REQUIRES(context,
                 FastBoundsCheck(forward_input_height,
-                                std::numeric_limits<int32>::max()) &&
+                                std::numeric_limits<int32_t>::max()) &&
                     FastBoundsCheck(forward_input_width,
-                                    std::numeric_limits<int32>::max()),
+                                    std::numeric_limits<int32_t>::max()),
                 errors::InvalidArgument(
                     "original sizes must be between 0 and max int32"));
     Tensor* output = nullptr;
@@ -464,13 +465,13 @@ class ScaleAndTranslateGradOp : public OpKernel {
         intermediate_t.tensor<float, 4>();
 
     const functor::Spans& const_row_spans = row_spans;
-    typename TTypes<int32, 1>::ConstTensor row_starts =
-        const_row_spans.starts.tensor<int32, 1>();
+    typename TTypes<int32_t, 1>::ConstTensor row_starts =
+        const_row_spans.starts.tensor<int32_t, 1>();
     typename TTypes<float, 1>::ConstTensor row_weights(
         const_row_spans.weights.tensor<float, 1>());
     const functor::Spans& const_col_spans = col_spans;
-    typename TTypes<int32, 1>::ConstTensor col_starts(
-        const_col_spans.starts.tensor<int32, 1>());
+    typename TTypes<int32_t, 1>::ConstTensor col_starts(
+        const_col_spans.starts.tensor<int32_t, 1>());
     typename TTypes<float, 1>::ConstTensor col_weights(
         const_col_spans.weights.tensor<float, 1>());
 
@@ -485,8 +486,8 @@ class ScaleAndTranslateGradOp : public OpKernel {
 };
 
 template <typename T>
-void GatherColumns(OpKernelContext* context, int span_size, const int32* starts,
-                   const float* weights, const T* image,
+void GatherColumns(OpKernelContext* context, int span_size,
+                   const int32_t* starts, const float* weights, const T* image,
                    const int64_t input_height, const int64_t input_width,
                    const int64_t output_height, const int64_t output_width,
                    const int channels, float* output) {
@@ -538,7 +539,7 @@ inline void AddScaledVector(const T* in_vec, int vec_len, float weight,
 }
 
 template <typename T>
-void GatherRows(OpKernelContext* context, int span_size, const int32* starts,
+void GatherRows(OpKernelContext* context, int span_size, const int32_t* starts,
                 const float* weights, const T* image,
                 const int64_t input_height, const int64_t input_width,
                 const int64_t output_height, const int64_t output_width,
@@ -581,10 +582,10 @@ template <typename T>
 struct GatherSpans<CPUDevice, T> {
   void operator()(OpKernelContext* context, const CPUDevice& d,
                   int row_span_size,
-                  typename TTypes<int32, 1>::ConstTensor row_starts,
+                  typename TTypes<int32_t, 1>::ConstTensor row_starts,
                   typename TTypes<float, 1>::ConstTensor row_weights,
                   int col_span_size,
-                  typename TTypes<int32, 1>::ConstTensor col_starts,
+                  typename TTypes<int32_t, 1>::ConstTensor col_starts,
                   typename TTypes<float, 1>::ConstTensor col_weights,
                   typename TTypes<T, 4>::ConstTensor images,
                   typename TTypes<float, 4>::Tensor intermediate_buffer,

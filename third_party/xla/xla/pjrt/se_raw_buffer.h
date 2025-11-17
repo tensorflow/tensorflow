@@ -20,9 +20,9 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/future.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/tracked_device_buffer.h"
@@ -92,10 +92,10 @@ class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
 
 class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {
  public:
-  PjRtStreamExecutorRawBuffer(PjRtStreamExecutorClient* client,
-                              PjRtMemorySpace* memory_space,
-                              LocalDeviceState* local_device,
-                              tsl::RCReference<RawSEDeviceMemory> device_buffer)
+  PjRtStreamExecutorRawBuffer(
+      PjRtStreamExecutorClient* client, PjRtMemorySpace* memory_space,
+      LocalDeviceState* local_device,
+      tsl::AsyncValueRef<RawSEDeviceMemory> device_buffer)
       : client_(client),
         memory_space_(memory_space),
         local_device_(local_device),
@@ -105,7 +105,7 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {
 
   LocalDeviceState* local_device() const { return local_device_; }
 
-  const tsl::RCReference<RawSEDeviceMemory>& device_buffer() const {
+  const tsl::AsyncValueRef<RawSEDeviceMemory>& device_buffer() const {
     return device_buffer_;
   }
 
@@ -151,7 +151,7 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {
   PjRtStreamExecutorClient* client_;
   PjRtMemorySpace* memory_space_;
   LocalDeviceState* local_device_;
-  tsl::RCReference<RawSEDeviceMemory> device_buffer_;
+  tsl::AsyncValueRef<RawSEDeviceMemory> device_buffer_;
 };
 
 }  // namespace xla

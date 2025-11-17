@@ -47,10 +47,10 @@ limitations under the License.
 #include "xla/codegen/emitters/type_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -68,8 +68,7 @@ const Shape& TupleShape(const Shape& shape, int index) {
 }
 
 std::vector<IndexingMapSet> ComputeOperandIndexingMaps(
-    const HloInstruction* instr,
-    gpu::SymbolicExprContext* symbolic_expr_context) {
+    const HloInstruction* instr, SymbolicExprContext* symbolic_expr_context) {
   std::vector<IndexingMapSet> indexing_maps_per_operand;
   // For some ops, there is no indexing map implemented for the operands (e.g.
   // scatter) or there are multiple results and the common iteration space is
@@ -106,7 +105,7 @@ bool HasNoCompute(const HloInstruction* instr) {
 
 EpilogueSpecification EpilogueSpecification::FromIdentityIndexing(
     const HloInstruction* hero, const HloInstruction* root,
-    gpu::SymbolicExprContext* symbolic_expr_context) {
+    SymbolicExprContext* symbolic_expr_context) {
   EpilogueSpecification result;
   if (root->shape().IsArray()) {
     absl::c_copy(root->shape().dimensions(),
@@ -206,7 +205,7 @@ struct HloSubgraphData {
 
 PartitionedComputation::PartitionedComputation(
     const HloComputation* computation,
-    gpu::SymbolicExprContext* symbolic_expr_context,
+    SymbolicExprContext* symbolic_expr_context,
     std::function<bool(const HloInstruction*)> is_subgraph_root)
     : computation_(computation) {
   CHECK_NE(computation, nullptr);
@@ -393,8 +392,7 @@ PartitionedComputation::Subgraph PartitionedComputation::Subgraph::ForEpilogue(
 }
 
 PartitionedComputations::PartitionedComputations(
-    const HloComputation* fusion,
-    gpu::SymbolicExprContext* symbolic_expr_context,
+    const HloComputation* fusion, SymbolicExprContext* symbolic_expr_context,
     std::vector<EpilogueSpecification> epilogues)
     : fusion_(fusion), symbolic_expr_context_(symbolic_expr_context) {
   // Collect all transitively called computations (including the fusion itself).

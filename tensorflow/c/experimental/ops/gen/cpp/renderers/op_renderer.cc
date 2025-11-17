@@ -31,11 +31,11 @@ namespace tensorflow {
 namespace generator {
 namespace cpp {
 
-string OpRenderer::Signature() const {
-  std::vector<string> args_with_default_val;
-  std::vector<string> args_without_default_val;
+std::string OpRenderer::Signature() const {
+  std::vector<std::string> args_with_default_val;
+  std::vector<std::string> args_without_default_val;
   for (OpArgumentView const& argument : op_.AllArguments()) {
-    string text = argument.Declaration();
+    std::string text = argument.Declaration();
     if (context_.mode == RendererContext::kHeader) {
       absl::StrAppend(&text, argument.Initializer());
     }
@@ -45,7 +45,7 @@ string OpRenderer::Signature() const {
       args_without_default_val.push_back(text);
     }
   }
-  std::vector<string> arguments;
+  std::vector<std::string> arguments;
   arguments.reserve(args_without_default_val.size() +
                     args_with_default_val.size());
   arguments.insert(arguments.end(),

@@ -37,7 +37,7 @@ struct GrapplerItem;
 
 // Aggregated perf summary for ops of the same type in a graph.
 struct OpPerfSummary {
-  string name;
+  std::string name;
   int64_t count;
   int64_t time;
   int64_t compute_time;
@@ -52,7 +52,7 @@ struct OpPerfSummary {
 class CostAnalyzer {
  public:
   explicit CostAnalyzer(const GrapplerItem& item, Cluster* cluster,
-                        const string& suffix);
+                        const std::string& suffix);
   absl::Status GenerateReport(std::ostream& os, bool per_node_report,
                               bool verbose);
 
@@ -62,7 +62,7 @@ class CostAnalyzer {
   void GatherCosts();
   void PreprocessCosts();
   void AnalyzeCosts();
-  void SortOpsByTime(std::map<string, OpPerfSummary> ops);
+  void SortOpsByTime(std::map<std::string, OpPerfSummary> ops);
   void PrintAnalysis(std::ostream& os, bool per_node_report,
                      bool verbose) const;
 
@@ -77,7 +77,7 @@ class CostAnalyzer {
   int64_t total_time_measured_serialized_;
   int64_t total_time_analytical_upper_;
   int64_t total_time_analytical_lower_;
-  string suffix_;
+  std::string suffix_;
 };
 
 }  // end namespace grappler

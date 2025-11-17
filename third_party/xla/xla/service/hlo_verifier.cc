@@ -2871,7 +2871,7 @@ absl::Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
 
 namespace {
 std::string FormatShapeIndexValidationError(
-    absl::string_view instruction_name,
+    const HloInstruction* instruction,
     const absl::flat_hash_set<ShapeIndex>& shape_leaf_indices,
     const absl::flat_hash_set<ShapeIndex>& ov_leaf_indices) {
   std::vector<ShapeIndex> shape_only;
@@ -2895,7 +2895,8 @@ std::string FormatShapeIndexValidationError(
       "Mismatched tuple structure in original_value for "
       "instruction %s. Leaf indices in shape and original_value "
       "do not match.\nIn shape only: {%s}\nIn original_value only: {%s}",
-      instruction_name, absl::StrJoin(shape_only, ", ", shape_index_formatter),
+      instruction->ToString(),
+      absl::StrJoin(shape_only, ", ", shape_index_formatter),
       absl::StrJoin(ov_only, ", ", shape_index_formatter));
 }
 
@@ -2924,9 +2925,9 @@ absl::Status VerifyOriginalValue(const HloModule& module) {
         }
 
         if (shape_leaf_indices != ov_leaf_indices) {
-          return Internal("%s", FormatShapeIndexValidationError(
-                                    instruction->name(), shape_leaf_indices,
-                                    ov_leaf_indices));
+          return Internal(
+              "%s", FormatShapeIndexValidationError(
+                        instruction, shape_leaf_indices, ov_leaf_indices));
         }
       }
     }
@@ -3212,7 +3213,7 @@ int64_t CountWriters(const HloInstruction* inst,
 int64_t CountWritersInUser(const HloInstruction* inst,
                            absl::Span<const int64_t> shape_index,
                            const HloInstruction* user) {
-  if (dynamic_cast<const HloCallableInstruction*>(user) ||
+  if (HloCallableInstruction::ClassOf(user) ||
       user->opcode() == HloOpcode::kWhile ||
       user->opcode() == HloOpcode::kConditional) {
     // For HloCallableInstruction, we may overcount here if we will allow
@@ -3843,7 +3844,7 @@ absl::Status InstructionVerifier::VerifyNoHostMemorySpace(
       });
 }
 
-absl::StatusOr<bool> HloVerifier::Run(
+absl::StatusOr<bool> HloVerifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto disabled = module->config().debug_options().xla_disable_hlo_passes();

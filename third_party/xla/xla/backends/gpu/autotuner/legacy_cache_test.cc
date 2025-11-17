@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "google/protobuf/any.pb.h"
 #include <gmock/gmock.h>
@@ -28,11 +29,13 @@ limitations under the License.
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 
 namespace xla {
@@ -94,6 +97,13 @@ class LegacyCacheTest : public ::testing::Test {
   Config CreateDummyCublasConfig() {
     Config config;
     config.codegen_backend_name = "Cublas";
+    config.backend_config.PackFrom(AutotuneResult::GemmKey());
+    return config;
+  }
+
+  Config CreateDummyCublasFissionConfig() {
+    Config config;
+    config.codegen_backend_name = "Cublas_fission";
     config.backend_config.PackFrom(AutotuneResult::GemmKey());
     return config;
   }
@@ -164,6 +174,31 @@ TEST_F(LegacyCacheTest, InsertAndLookupCublas) {
   EXPECT_THAT(cache.Lookup(instr.get()), Optional(ConfigEq(config)));
 }
 
+TEST_F(LegacyCacheTest, InsertAndLookupCublasFission) {
+  auto cache = LegacyCache(test_dir_, mode_, device_desc_);
+  constexpr char kHLO[] = R"(
+HloModule test_module
+
+fused_computation {
+  param.0 = f32[] parameter(0)
+  param.1 = f32[] parameter(1)
+  ROOT add.0 = f32[] add(param.0, param.1)
+}
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT fusion.0 = f32[] fusion(p0, p1), kind=kLoop, calls=fused_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHLO));
+  auto instr = module->entry_computation()->root_instruction();
+  Config config = CreateDummyCublasFissionConfig();
+
+  TF_ASSERT_OK(cache.Insert(instr, config));
+  EXPECT_THAT(cache.Lookup(instr), Optional(ConfigEq(config)));
+}
+
 TEST_F(LegacyCacheTest, InsertAndLookupCudnn) {
   auto cache = LegacyCache(test_dir_, mode_, device_desc_);
   auto instr = CreateDummyInstr("hlo3");
@@ -230,6 +265,32 @@ TEST_F(LegacyCacheTest, OnlyInsertOncePerHlo) {
   Config another_config = CreateDummyCublasConfig();
   TF_ASSERT_OK(cache.Insert(instr.get(), another_config));
   EXPECT_THAT(cache.Lookup(instr.get()), Optional(ConfigEq(config)));
+}
+
+TEST_F(LegacyCacheTest, SerializeAndDeserialize) {
+  LegacyCache cache(test_dir_, mode_, device_desc_);
+  std::unique_ptr<HloInstruction> instr_1 = CreateDummyInstr("hlo9");
+  std::unique_ptr<HloInstruction> instr_2 = CreateDummyInstr("hlo10");
+  Config orig_config = CreateDummyTritonConfig();
+  TF_ASSERT_OK(cache.Insert(instr_1.get(), orig_config));
+  TF_ASSERT_OK(cache.Insert(instr_2.get(), orig_config));
+
+  // Serialize instr_1 to a string.
+  std::vector<const HloInstruction*> instructions_to_serialize = {
+      instr_1.get()};
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_cache,
+                          cache.Serialize(instructions_to_serialize));
+
+  // Overwrite config for both instructions.
+  cache.ClearCache();
+  Config another_config = CreateDummyCublasConfig();
+  TF_ASSERT_OK(cache.Insert(instr_1.get(), another_config));
+  TF_ASSERT_OK(cache.Insert(instr_2.get(), another_config));
+
+  // Deserialize the cache, only instr_1 should be overwritten.
+  TF_ASSERT_OK(cache.Deserialize(serialized_cache));
+  EXPECT_THAT(cache.Lookup(instr_1.get()), Optional(ConfigEq(orig_config)));
+  EXPECT_THAT(cache.Lookup(instr_2.get()), Optional(ConfigEq(another_config)));
 }
 
 }  // namespace

@@ -43,7 +43,7 @@ class SummaryTensorOpV2 : public OpKernel {
 
     Summary s;
     Summary::Value* v = s.add_value();
-    v->set_tag(string(tag.scalar<tstring>()()));  // NOLINT
+    v->set_tag(std::string(tag.scalar<tstring>()()));  // NOLINT
 
     if (tensor.dtype() == DT_STRING) {
       // tensor_util.makeNdarray doesn't work for strings in tensor_content

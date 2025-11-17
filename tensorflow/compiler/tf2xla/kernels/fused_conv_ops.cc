@@ -154,7 +154,7 @@ class FusedConv2DInt8Op : public XlaOpKernel {
 
     // Un-vectorize NCHW_VECT_C to NCHW.
     TensorFormat orig_data_format = conv_attrs_.data_format;
-    int64 vect_width = -1;
+    int64_t vect_width = -1;
     switch (conv_attrs_.data_format) {
       case FORMAT_NCHW_VECT_C:
         vect_width = conv_input_shape.dimensions(4);

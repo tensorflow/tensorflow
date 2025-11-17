@@ -34,7 +34,7 @@ class GrpcDebugTest : public ::testing::Test {
  protected:
   struct ServerData {
     int port;
-    string url;
+    std::string url;
     std::unique_ptr<test::TestEventListenerImpl> server;
     std::unique_ptr<thread::ThreadPool> thread_pool;
   };
@@ -86,7 +86,7 @@ TEST_F(GrpcDebugTest, ConnectionTimeoutWorks) {
   SetChannelConnectionTimeoutMicros(kShortTimeoutMicros);
   ASSERT_EQ(kShortTimeoutMicros, GetChannelConnectionTimeoutMicros());
 
-  const string& kInvalidGrpcUrl =
+  const std::string& kInvalidGrpcUrl =
       absl::StrCat("grpc://localhost:", testing::PickUnusedPortOrDie());
   Tensor tensor(DT_FLOAT, TensorShape({1, 1}));
   tensor.flat<float>()(0) = 42.0;
@@ -98,10 +98,11 @@ TEST_F(GrpcDebugTest, ConnectionTimeoutWorks) {
   TF_ASSERT_OK(DebugIO::CloseDebugURL(kInvalidGrpcUrl));
 
   ASSERT_FALSE(publish_status.ok());
-  const string expected_error_msg = strings::StrCat(
+  const std::string expected_error_msg = strings::StrCat(
       "Failed to connect to gRPC channel at ", kInvalidGrpcUrl.substr(7),
       " within a timeout of ", kShortTimeoutMicros / 1e6, " s");
-  ASSERT_NE(string::npos, publish_status.message().find(expected_error_msg));
+  ASSERT_NE(std::string::npos,
+            publish_status.message().find(expected_error_msg));
 }
 
 TEST_F(GrpcDebugTest, ConnectionToDelayedStartingServerWorks) {
@@ -149,7 +150,7 @@ TEST_F(GrpcDebugTest, SendSingleDebugTensorViaGrpcTest) {
 
 TEST_F(GrpcDebugTest, SendDebugTensorWithLargeStringAtIndex0ViaGrpcTest) {
   Tensor tensor(DT_STRING, TensorShape({1, 1}));
-  tensor.flat<tstring>()(0) = string(5000 * 1024, 'A');
+  tensor.flat<tstring>()(0) = std::string(5000 * 1024, 'A');
   const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
                                    "foo_tensor", 0, "DebugIdentity");
   const absl::Status status = DebugIO::PublishDebugTensor(
@@ -158,14 +159,14 @@ TEST_F(GrpcDebugTest, SendDebugTensorWithLargeStringAtIndex0ViaGrpcTest) {
   ASSERT_NE(status.message().find("string value at index 0 from debug "
                                   "node foo_tensor:0:DebugIdentity does "
                                   "not fit gRPC message size limit"),
-            string::npos);
+            std::string::npos);
   TF_ASSERT_OK(DebugIO::CloseDebugURL(server_data_.url));
 }
 
 TEST_F(GrpcDebugTest, SendDebugTensorWithLargeStringAtIndex1ViaGrpcTest) {
   Tensor tensor(DT_STRING, TensorShape({1, 2}));
   tensor.flat<tstring>()(0) = "A";
-  tensor.flat<tstring>()(1) = string(5000 * 1024, 'A');
+  tensor.flat<tstring>()(1) = std::string(5000 * 1024, 'A');
   const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
                                    "foo_tensor", 0, "DebugIdentity");
   const absl::Status status = DebugIO::PublishDebugTensor(
@@ -174,7 +175,7 @@ TEST_F(GrpcDebugTest, SendDebugTensorWithLargeStringAtIndex1ViaGrpcTest) {
   ASSERT_NE(status.message().find("string value at index 1 from debug "
                                   "node foo_tensor:0:DebugIdentity does "
                                   "not fit gRPC message size limit"),
-            string::npos);
+            std::string::npos);
   TF_ASSERT_OK(DebugIO::CloseDebugURL(server_data_.url));
 }
 
@@ -197,7 +198,7 @@ TEST_F(GrpcDebugTest, SendMultipleDebugTensorsSynchronizedViaGrpcTest) {
   int tensor_count TF_GUARDED_BY(mu) = 0;
   std::vector<absl::Status> statuses TF_GUARDED_BY(mu);
 
-  const std::vector<string> urls({server_data_.url});
+  const std::vector<std::string> urls({server_data_.url});
 
   // Set up the concurrent tasks of sending Tensors via an Event stream to the
   // server.
@@ -210,7 +211,7 @@ TEST_F(GrpcDebugTest, SendMultipleDebugTensorsSynchronizedViaGrpcTest) {
     }
 
     // Different concurrent tasks will send different tensors.
-    const uint64 wall_time = Env::Default()->NowMicros();
+    const uint64_t wall_time = Env::Default()->NowMicros();
     absl::Status publish_status = DebugIO::PublishDebugTensor(
         DebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
                      absl::StrCat("synchronized_node_", this_count), 0,
@@ -247,7 +248,7 @@ TEST_F(GrpcDebugTest, SendMultipleDebugTensorsSynchronizedViaGrpcTest) {
   // One prep tensor plus kSends concurrent tensors are expected.
   ASSERT_EQ(kSends, server_data_.server->node_names.size());
   for (size_t i = 0; i < server_data_.server->node_names.size(); ++i) {
-    std::vector<string> items =
+    std::vector<std::string> items =
         str_util::Split(server_data_.server->node_names[i], '_');
     int tensor_index;
     strings::safe_strto32(items[2], &tensor_index);
@@ -267,10 +268,10 @@ TEST_F(GrpcDebugTest, SendDebugTensorsThroughMultipleRoundsUsingGrpcGating) {
   Tensor tensor(DT_INT32, TensorShape({1, 1}));
   tensor.flat<int>()(0) = 42;
 
-  const std::vector<string> urls({server_data_.url});
+  const std::vector<std::string> urls({server_data_.url});
   for (int i = 0; i < 3; ++i) {
     server_data_.server->ClearReceivedDebugData();
-    const uint64 wall_time = Env::Default()->NowMicros();
+    const uint64_t wall_time = Env::Default()->NowMicros();
 
     // On the 1st send (i == 0), gating is disabled, so data should be sent.
     // On the 2nd send (i == 1), gating is enabled, and the server has enabled
@@ -315,10 +316,10 @@ TEST_F(GrpcDebugTest, SendDebugTensorsThroughMultipleRoundsUnderReadWriteMode) {
   Tensor tensor(DT_INT32, TensorShape({1, 1}));
   tensor.flat<int>()(0) = 42;
 
-  const std::vector<string> urls({server_data_.url});
+  const std::vector<std::string> urls({server_data_.url});
   for (int i = 0; i < 3; ++i) {
     server_data_.server->ClearReceivedDebugData();
-    const uint64 wall_time = Env::Default()->NowMicros();
+    const uint64_t wall_time = Env::Default()->NowMicros();
 
     // On the 1st send (i == 0), gating is disabled, so data should be sent.
     // On the 2nd send (i == 1), gating is enabled, and the server has enabled
@@ -367,8 +368,8 @@ TEST_F(GrpcDebugTest, TestGateDebugNodeOnEmptyEnabledSet) {
 }
 
 TEST_F(GrpcDebugTest, TestGateDebugNodeOnNonEmptyEnabledSet) {
-  const string kGrpcUrl1 = "grpc://localhost:3333";
-  const string kGrpcUrl2 = "grpc://localhost:3334";
+  const std::string kGrpcUrl1 = "grpc://localhost:3333";
+  const std::string kGrpcUrl2 = "grpc://localhost:3334";
 
   DebugGrpcIO::SetDebugNodeKeyGrpcState(
       kGrpcUrl1, "foo:0:DebugIdentity",
@@ -398,9 +399,9 @@ TEST_F(GrpcDebugTest, TestGateDebugNodeOnNonEmptyEnabledSet) {
 }
 
 TEST_F(GrpcDebugTest, TestGateDebugNodeOnMultipleEmptyEnabledSets) {
-  const string kGrpcUrl1 = "grpc://localhost:3333";
-  const string kGrpcUrl2 = "grpc://localhost:3334";
-  const string kGrpcUrl3 = "grpc://localhost:3335";
+  const std::string kGrpcUrl1 = "grpc://localhost:3333";
+  const std::string kGrpcUrl2 = "grpc://localhost:3334";
+  const std::string kGrpcUrl3 = "grpc://localhost:3335";
 
   DebugGrpcIO::SetDebugNodeKeyGrpcState(
       kGrpcUrl1, "foo:0:DebugIdentity",
@@ -434,14 +435,14 @@ TEST_F(GrpcDebugTest, TestGateDebugNodeOnNonEmptyEnabledSetAndEmptyURLs) {
       "grpc://localhost:3333", "foo:0:DebugIdentity",
       EventReply::DebugOpStateChange::READ_ONLY);
 
-  std::vector<string> debug_urls_1;
+  std::vector<std::string> debug_urls_1;
   ASSERT_FALSE(
       DebugIO::IsDebugNodeGateOpen("foo:1:DebugIdentity", debug_urls_1));
 }
 
 TEST_F(GrpcDebugTest, TestGateCopyNodeOnEmptyEnabledSet) {
-  const string kGrpcUrl1 = "grpc://localhost:3333";
-  const string kWatch1 = "foo:0:DebugIdentity";
+  const std::string kGrpcUrl1 = "grpc://localhost:3333";
+  const std::string kWatch1 = "foo:0:DebugIdentity";
 
   ASSERT_FALSE(DebugIO::IsCopyNodeGateOpen(
       {DebugWatchAndURLSpec(kWatch1, kGrpcUrl1, true)}));
@@ -456,10 +457,10 @@ TEST_F(GrpcDebugTest, TestGateCopyNodeOnEmptyEnabledSet) {
 }
 
 TEST_F(GrpcDebugTest, TestGateCopyNodeOnNonEmptyEnabledSet) {
-  const string kGrpcUrl1 = "grpc://localhost:3333";
-  const string kGrpcUrl2 = "grpc://localhost:3334";
-  const string kWatch1 = "foo:0:DebugIdentity";
-  const string kWatch2 = "foo:1:DebugIdentity";
+  const std::string kGrpcUrl1 = "grpc://localhost:3333";
+  const std::string kGrpcUrl2 = "grpc://localhost:3334";
+  const std::string kWatch1 = "foo:0:DebugIdentity";
+  const std::string kWatch2 = "foo:1:DebugIdentity";
   DebugGrpcIO::SetDebugNodeKeyGrpcState(
       kGrpcUrl1, kWatch1, EventReply::DebugOpStateChange::READ_ONLY);
 

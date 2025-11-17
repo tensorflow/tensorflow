@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "xla/backends/cpu/runtime/dot_lib.h"
+#include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
 #include "xla/backends/cpu/xnn_gemm_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"

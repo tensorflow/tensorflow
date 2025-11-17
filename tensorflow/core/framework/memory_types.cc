@@ -43,7 +43,7 @@ int GetTotal(const NameRangeMap& name_map) {
 // to DEVICE_MEMORY except those args in host_memory_args.  Removes
 // elements of host_memory_args that were used.
 void MemoryTypesHelper(const NameRangeMap& name_map,
-                       std::vector<string>* host_memory_args,
+                       std::vector<std::string>* host_memory_args,
                        MemoryTypeVector* memory_types) {
   // Update args that have been marked as in "HOST_MEMORY".
   size_t keep = 0;
@@ -62,7 +62,7 @@ void MemoryTypesHelper(const NameRangeMap& name_map,
   host_memory_args->resize(keep);
 }
 
-bool IsFunctionCallOp(const string& op_type) {
+bool IsFunctionCallOp(const std::string& op_type) {
   return op_type == "SymbolicGradient" || op_type == "PartitionedCall" ||
          op_type == "StatefulPartitionedCall" || op_type == "While" ||
          op_type == "StatelessWhile" || op_type == "If" || 
@@ -146,6 +146,7 @@ absl::Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
       out_mtypes->resize(GetTotal(out_names), DEVICE_MEMORY);
     }
 
+<<<<<<< HEAD
     // Fills in host memory types based on the kernel def
     if(kdef != nullptr) {  // can this ever be false?
       const auto& from_proto = kdef->host_memory_arg();
@@ -157,6 +158,18 @@ absl::Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
             "HostMemory args '", absl::StrJoin(host_memory_args, "', '"),
             "' not found in OpDef: ", SummarizeOpDef(*op_def));
       }
+=======
+    // Fills in host memory types based on the kernel def.
+    const auto& from_proto = kdef->host_memory_arg();
+    std::vector<std::string> host_memory_args(from_proto.begin(),
+                                              from_proto.end());
+    MemoryTypesHelper(inp_names, &host_memory_args, inp_mtypes);
+    MemoryTypesHelper(out_names, &host_memory_args, out_mtypes);
+    if (!host_memory_args.empty()) {
+      return errors::InvalidArgument(
+          "HostMemory args '", absl::StrJoin(host_memory_args, "', '"),
+          "' not found in OpDef: ", SummarizeOpDef(*op_def));
+>>>>>>> upstream/master
     }
   } else {
     inp_mtypes->resize(inp_dtypes.size(), DEVICE_MEMORY);
@@ -177,7 +190,7 @@ absl::Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
     }
   }
 
-  std::vector<int32> hostmem_attr;
+  std::vector<int32_t> hostmem_attr;
   if (TryGetNodeAttr(ndef, "_input_hostmem", &hostmem_attr)) {
     for (int32_t i : hostmem_attr) {
       if (0 <= i && i < inp_mtypes->size()) {

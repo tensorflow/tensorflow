@@ -99,9 +99,9 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
   if (in.dtype() != DT_VARIANT) {
     // Variants are handled by CopyTensor::ViaDMA.
     AllocationAttributes aa;
-    uint64 safe_alloc_frontier = dst_device->SafeAllocFrontier(0);
-    std::function<uint64()> freed_by_func = [dst_device,
-                                             &safe_alloc_frontier]() {
+    uint64_t safe_alloc_frontier = dst_device->SafeAllocFrontier(0);
+    std::function<uint64_t()> freed_by_func = [dst_device,
+                                               &safe_alloc_frontier]() {
       safe_alloc_frontier = dst_device->SafeAllocFrontier(safe_alloc_frontier);
       return safe_alloc_frontier;
     };

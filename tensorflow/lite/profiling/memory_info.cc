@@ -92,7 +92,9 @@ MemoryUsage GetMemoryUsage() {
       result.private_footprint_bytes = (vm_swap_kb + res.ru_maxrss) * 1024;
     }
   }
-#if defined(__NO_MALLINFO__) || !defined(__GLIBC__)
+#if defined(__NO_MALLINFO__) || !defined(__GLIBC__) ||         \
+    defined(ADDRESS_SANITIZER) || defined(MEMORY_SANITIZER) || \
+    defined(THREAD_SANITIZER)
   result.total_allocated_bytes = -1;
   result.in_use_allocated_bytes = -1;
 #elif __GLIBC_MINOR__ >= 33
@@ -103,7 +105,9 @@ MemoryUsage GetMemoryUsage() {
   const auto mem = mallinfo();
   result.total_allocated_bytes = mem.arena;
   result.in_use_allocated_bytes = mem.uordblks;
-#endif  // defined(__NO_MALLINFO__)
+#endif  // defined(__NO_MALLINFO__) || !defined(__GLIBC__) || \
+        // defined(ADDRESS_SANITIZER) || defined(MEMORY_SANITIZER) ||
+        // defined(THREAD_SANITIZER)
 #elif defined(__APPLE__)
   struct task_vm_info vm_info;
   mach_msg_type_number_t count = TASK_VM_INFO_COUNT;

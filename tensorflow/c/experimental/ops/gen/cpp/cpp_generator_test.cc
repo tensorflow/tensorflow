@@ -30,12 +30,12 @@ namespace generator {
 namespace {
 
 TEST(CppGeneratorTest, typical_usage) {
-  string category = "testing";
-  string name_space = "tensorflow::ops";
-  string output_dir = "tensorflow/c/experimental/ops/gen/cpp/golden";
-  string source_dir = "tensorflow";
-  string api_dirs = "";
-  std::vector<string> ops = {
+  std::string category = "testing";
+  std::string name_space = "tensorflow::ops";
+  std::string output_dir = "tensorflow/c/experimental/ops/gen/cpp/golden";
+  std::string source_dir = "tensorflow";
+  std::string api_dirs = "";
+  std::vector<std::string> ops = {
       "Neg",        // Simple unary Op
       "MatMul",     // 2 inputs & attrs with default values
       "IdentityN",  // Variadic input+output
@@ -50,17 +50,19 @@ TEST(CppGeneratorTest, typical_usage) {
   CppGenerator generator(cpp_config, controller_config);
 
   Env *env = Env::Default();
-  string golden_dir = io::JoinPath(testing::TensorFlowSrcRoot(),
-                                   controller_config.tf_output_dir);
+  std::string golden_dir = io::JoinPath(testing::TensorFlowSrcRoot(),
+                                        controller_config.tf_output_dir);
 
-  string generated_header = generator.HeaderFileContents().Render();
-  string generated_source = generator.SourceFileContents().Render();
-  string expected_header;
-  string header_file_name = io::JoinPath(golden_dir, "testing_ops.h.golden");
+  std::string generated_header = generator.HeaderFileContents().Render();
+  std::string generated_source = generator.SourceFileContents().Render();
+  std::string expected_header;
+  std::string header_file_name =
+      io::JoinPath(golden_dir, "testing_ops.h.golden");
   TF_CHECK_OK(ReadFileToString(env, header_file_name, &expected_header));
 
-  string expected_source;
-  string source_file_name = io::JoinPath(golden_dir, "testing_ops.cc.golden");
+  std::string expected_source;
+  std::string source_file_name =
+      io::JoinPath(golden_dir, "testing_ops.cc.golden");
   TF_CHECK_OK(ReadFileToString(env, source_file_name, &expected_source));
 
   // Remove carriage returns (for Windows)

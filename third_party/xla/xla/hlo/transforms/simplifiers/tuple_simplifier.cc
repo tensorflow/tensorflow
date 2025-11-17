@@ -64,7 +64,7 @@ absl::StatusOr<HloInstruction*> TupleSimplifier::RemoveWholeTuple(
   return nullptr;
 }
 
-absl::StatusOr<bool> TupleSimplifier::Run(
+absl::StatusOr<bool> TupleSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Initially add all GTE and Tuple instructions to the worklist.

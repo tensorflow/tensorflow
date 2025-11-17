@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -61,6 +62,9 @@ limitations under the License.
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/kernel_argument_packing_spec.h"
+#include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -87,8 +91,8 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/numa.h"
 #include "tsl/platform/numbers.h"
 
 namespace stream_executor {
@@ -380,11 +384,16 @@ absl::Status EnablePeerAccess(Context* from, Context* to) {
   hipError_t result =
       wrap::hipDeviceEnablePeerAccess(to->device_ordinal(), 0 /* = flags */);
 
-  if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
+  if (result == hipErrorPeerAccessAlreadyEnabled) {
+    // hipGetLastError is used to reset per thread error state,
+    // as hipGetLastError would get the recent error code since rocm7 even the
+    // last call is successful.
+    (void)wrap::hipGetLastError();
+  } else if (result != hipSuccess) {
     return absl::InternalError(
         absl::StrFormat("failed to enable peer access from %d to %d: %s",
                         from->device_ordinal(), to->device_ordinal(),
-                        ToString(result).c_str()));
+                        wrap::hipGetErrorString(result)));
   }
 
   return absl::OkStatus();
@@ -522,7 +531,7 @@ bool RocmExecutor::UnloadModule(ModuleHandle module_handle) {
 }
 
 absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetMemoryRange(
-    const DeviceMemoryBase& location) {
+    const DeviceMemoryBase& location) const {
   hipDeviceptr_t device_pointer;
   size_t size;
   hipError_t result = wrap::hipMemGetAddressRange(
@@ -713,7 +722,23 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     rocm_kernel->set_metadata(kernel_metadata);
   }
   rocm_kernel->set_name(kernel_name);
-  rocm_kernel->set_args_packing(spec.kernel_args_packing());
+  if (std::holds_alternative<KernelLoaderSpec::KernelArgsPackingFunc>(
+          spec.kernel_args_packing())) {
+    rocm_kernel->set_args_packing(
+        std::get<KernelLoaderSpec::KernelArgsPackingFunc>(
+            spec.kernel_args_packing()));
+  } else {
+    const auto& packing_spec =
+        std::get<KernelArgumentsPackingSpec>(spec.kernel_args_packing());
+    rocm_kernel->set_args_packing([packing_spec](const Kernel& kernel,
+                                                 const KernelArgs& args) {
+      const auto& mem_args =
+          stream_executor::Cast<stream_executor::KernelArgsDeviceMemoryArray>(
+              &args);
+      return packing_spec.BuildArguments(mem_args->device_memory_args(),
+                                         args.number_of_shared_bytes());
+    });
+  }
   return std::move(rocm_kernel);
 }
 
@@ -1077,6 +1102,20 @@ RocmExecutor::CreateCommandBuffer(CommandBuffer::Mode mode) {
   return RocmCommandBuffer::Create(mode, this);
 }
 
+int RocmExecutor::GetGpuStreamPriority(StreamPriority priority) {
+  if (priority == StreamPriority::Default) {
+    return 0;
+  }
+  std::unique_ptr<ActivateContext> activation = Activate();
+  int lowest, highest;
+  auto status = wrap::hipDeviceGetStreamPriorityRange(&lowest, &highest);
+  if (status != hipSuccess) {
+    LOG(ERROR) << "Failed to get stream priority range: " << ToString(status);
+    return 0;
+  }
+  return priority == StreamPriority::Highest ? highest : lowest;
+}
+
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   TF_ASSIGN_OR_RETURN(hipDevice_t device, GetDevice(device_ordinal));
@@ -1121,6 +1160,9 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
 
     desc.set_l2_cache_size(prop.l2CacheSize);
   }
+
+  // PCIe bandwidth for PCI Gen4 x16 (approximate)
+  desc.set_pcie_bandwidth(32LL * 1024 * 1024 * 1024);
 
   {
     auto ecc_enabled_or = IsEccEnabled(device);

@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/work_group.h"
@@ -48,7 +47,7 @@ MlirTestKernelEmitter::MlirTestKernelEmitter(absl::string_view mlir,
   }
 }
 
-absl::StatusOr<MlirKernelDefinition>
+absl::StatusOr<MlirTestKernelEmitter::KernelDefinition>
 MlirTestKernelEmitter::EmitKernelDefinition() {
   std::unique_ptr<mlir::MLIRContext> context = FusionCompiler::CreateContext();
 
@@ -72,6 +71,6 @@ MlirTestKernelEmitter::EmitKernelDefinition() {
   KernelSpec kernel_spec(kernel_name_, num_workgroups_,
                          std::move(argument_buffers), std::move(result_buffers),
                          /*invariant_arguments=*/{});
-  return MlirKernelDefinition(std::move(kernel_spec), std::move(source));
+  return KernelDefinition(std::move(kernel_spec), std::move(source));
 }
 }  // namespace xla::cpu

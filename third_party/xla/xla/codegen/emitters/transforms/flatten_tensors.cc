@@ -50,8 +50,8 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/layout_util.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -62,7 +62,6 @@ namespace {
 #define GEN_PASS_DEF_FLATTENTENSORSPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
 
-using gpu::SymbolicExprContext;
 using mlir::Attribute;
 using mlir::Location;
 using mlir::LogicalResult;

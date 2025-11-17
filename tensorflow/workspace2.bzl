@@ -38,15 +38,15 @@ load("@local_xla//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("@local_xla//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("@local_xla//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("@local_xla//third_party/triton:workspace.bzl", triton = "repo")
+load("@local_xla//tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
+load("@local_xla//tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
+load("@local_xla//tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
+load("@local_xla//tools/toolchains/clang6:repo.bzl", "clang6_configure")
+load("@local_xla//tools/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
+load("@local_xla//tools/toolchains/remote:configure.bzl", "remote_execution_configure")
+load("@local_xla//tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("@rules_jvm_external//:defs.bzl", "maven_install")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
-load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
-load("//tensorflow/tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
-load("//tensorflow/tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
-load("//tensorflow/tools/toolchains/clang6:repo.bzl", "clang6_configure")
-load("//tensorflow/tools/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
-load("//tensorflow/tools/toolchains/remote:configure.bzl", "remote_execution_configure")
-load("//tensorflow/tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
 load("//third_party/hexagon:workspace.bzl", hexagon_nn = "repo")
@@ -137,7 +137,7 @@ def _tf_toolchains():
     # Point //external/local_config_arm_compiler to //external/arm_compiler
     arm_compiler_configure(
         name = "local_config_arm_compiler",
-        build_file = "//tensorflow/tools/toolchains/cpus/arm:template.BUILD",
+        build_file = "@local_xla//tools/toolchains/cpus/arm:template.BUILD",
         remote_config_repo_arm = "../arm_compiler",
         remote_config_repo_aarch64 = "../aarch64_compiler",
     )
@@ -148,7 +148,7 @@ def _tf_toolchains():
     # TFLite crossbuild toolchain for embeddeds Linux
     arm_linux_toolchain_configure(
         name = "local_config_embedded_arm",
-        build_file = "//tensorflow/tools/toolchains/embedded/arm-linux:template.BUILD",
+        build_file = "@local_xla//tools/toolchains/embedded/arm-linux:template.BUILD",
         aarch64_repo = "../aarch64_linux_toolchain",
         armhf_repo = "../armhf_linux_toolchain",
     )
@@ -168,9 +168,9 @@ def _tf_repositories():
     # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "a23040b6307b67da2319de292a0bb4b39d0e5913fae50a90f955eafa1acb81c7",
-        strip_prefix = "XNNPACK-da9a34d9bb68f339c35d2da480ab0734b0a26429",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/da9a34d9bb68f339c35d2da480ab0734b0a26429.zip"),
+        sha256 = "b75c85b77e2d20b710763978c00385b27869f28a5f0a4967050c6d06767043ce",
+        strip_prefix = "XNNPACK-2dbaa1cd9faac161a59f4e1f3d0835991e2370d9",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/2dbaa1cd9faac161a59f4e1f3d0835991e2370d9.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -210,9 +210,9 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "@local_xla//third_party:cudnn_frontend.BUILD",
         patch_file = ["@local_xla//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "34dfe01057e43e799af207522aa0c863ad3177f8c1568b6e7a7e4ccf1cbff769",
-        strip_prefix = "cudnn-frontend-1.11.0",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.11.0.zip"),
+        sha256 = "257b3b7f8a99abc096094abc9e5011659117b647d55293bcd2c5659f9181b99e",
+        strip_prefix = "cudnn-frontend-1.13.0",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.13.0.zip"),
     )
 
     tf_http_archive(
@@ -288,7 +288,7 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "aarch64_linux_toolchain",
-        build_file = "//tensorflow/tools/toolchains/embedded/arm-linux:aarch64-linux-toolchain.BUILD",
+        build_file = "@local_xla//tools/toolchains/embedded/arm-linux:aarch64-linux-toolchain.BUILD",
         sha256 = "50cdef6c5baddaa00f60502cc8b59cc11065306ae575ad2f51e412a9b2a90364",
         strip_prefix = "arm-gnu-toolchain-11.3.rel1-x86_64-aarch64-none-linux-gnu",
         urls = tf_mirror_urls("https://developer.arm.com/-/media/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz"),
@@ -296,7 +296,7 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "armhf_linux_toolchain",
-        build_file = "//tensorflow/tools/toolchains/embedded/arm-linux:armhf-linux-toolchain.BUILD",
+        build_file = "@local_xla//tools/toolchains/embedded/arm-linux:armhf-linux-toolchain.BUILD",
         sha256 = "3f76650b1d048036473b16b647b8fd005ffccd1a2869c10994967e0e49f26ac2",
         strip_prefix = "arm-gnu-toolchain-11.3.rel1-x86_64-arm-none-linux-gnueabihf",
         urls = tf_mirror_urls("https://developer.arm.com/-/media/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz"),

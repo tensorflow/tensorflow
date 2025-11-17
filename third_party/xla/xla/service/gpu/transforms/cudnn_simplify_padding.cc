@@ -236,7 +236,7 @@ absl::StatusOr<bool> TrySimplifyPadding(HloInstruction* instr) {
 
 }  // anonymous namespace
 
-absl::StatusOr<bool> CudnnSimplifyPadding::Run(
+absl::StatusOr<bool> CudnnSimplifyPadding::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

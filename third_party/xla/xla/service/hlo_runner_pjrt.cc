@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,6 +25,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_runner_interface.h"
@@ -137,11 +137,6 @@ absl::StatusOr<std::vector<Layout>> FlattenedParameterLayouts(
 
 absl::StatusOr<ExecuteOptions> GenerateExecuteOptions(const HloModule& module) {
   ExecuteOptions execute_options;
-
-  // PjRt requires untuple_result if the output is a tuple.
-  if (module.result_shape().IsTuple()) {
-    execute_options.untuple_result = true;
-  }
   return execute_options;
 }
 
@@ -567,9 +562,10 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
                       HloRunnerPjRtExecutable::TryUnwrap(*this, executable));
 
   xla::ExecuteOptions execute_options;
-  execute_options.untuple_result = true;
   return ExecuteReplicatedImpl(
-      [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices)
+      [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices,
+          absl::AnyInvocable<OpaqueExecutable*(int64_t)>
+              executable_provider_arg)
           -> absl::StatusOr<
               std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> {
         tsl::recordphase::RecordScoped rs("HloRunnerPjRt_Execute",
@@ -587,15 +583,17 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
-    std::function<OpaqueExecutable*(int64_t)> executable_provider,
-    std::function<int64_t(int64_t)> argument_count_provider,
-    std::function<const Literal*(int64_t, int64_t)> argument_provider,
+    absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+    absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+    absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
     const HloRunnerInterface::ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
   TF_RET_CHECK(device_assignment->computation_count() == 1)
       << "Only single-computation execution is supported.";
   return ExecuteReplicatedImpl(
-      [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices)
+      [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices,
+          absl::AnyInvocable<OpaqueExecutable*(int64_t)>
+              executable_provider_arg)
           -> absl::StatusOr<
               std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> {
         tsl::recordphase::RecordScoped rs("HloRunnerPjRt_Execute",
@@ -619,7 +617,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
             }
             TF_ASSIGN_OR_RETURN(HloRunnerPjRtExecutable* const executable,
                                 HloRunnerPjRtExecutable::TryUnwrap(
-                                    *this, executable_provider(i)));
+                                    *this, executable_provider_arg(i)));
             TF_ASSIGN_OR_RETURN(
                 PjRtLoadedExecutable * pjrt_executable,
                 executable->GetOrLoadExecutable(pjrt_client_.get()));
@@ -631,7 +629,6 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
                            args = argument_buffer_slices[i], device_ptr]() {
               std::optional<Future<>> returned_future = {};
               xla::ExecuteOptions options;
-              options.untuple_result = true;
               per_replica_results[i] = pjrt_executable->ExecuteSharded(
                   args, device_ptr, options,
                   /*returned_future=*/returned_future,
@@ -657,18 +654,19 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
         }
         return results;
       },
-      executable_provider, argument_count_provider, argument_provider, options,
-      device_assignment);
+      std::move(executable_provider), std::move(argument_count_provider),
+      std::move(argument_provider), options, device_assignment);
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
-    std::function<
+    absl::AnyInvocable<
         absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>(
-            absl::Span<const std::vector<PjRtBuffer*>>)>
+            absl::Span<const std::vector<PjRtBuffer*>>,
+            absl::AnyInvocable<OpaqueExecutable*(int64_t)>)>
         execution_helper,
-    std::function<OpaqueExecutable*(int64_t)> executable_provider,
-    std::function<int64_t(int64_t)> argument_count_provider,
-    std::function<const Literal*(int64_t, int64_t)> argument_provider,
+    absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+    absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+    absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
     const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
   TF_RET_CHECK(options.infeed_values.empty() ||
@@ -777,7 +775,8 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
   TF_ASSIGN_OR_RETURN(
       const std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
           result_buffers,
-      execution_helper(BufferMatToPointerMat(argument_buffer_slices)));
+      execution_helper(BufferMatToPointerMat(argument_buffer_slices),
+                       std::move(executable_provider)));
   VLOG(1) << "Replicated execution terminated";
 
   // Get the result from execution.
@@ -917,7 +916,7 @@ std::string MakeFilename(const HloModule& module, const bool run_hlo_passes) {
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
 CompilePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
                                             const bool run_hlo_passes) {
-  const std::string filename =
+  const std::string path =
       tsl::io::JoinPath(artifact_dir_, MakeFilename(*module, run_hlo_passes));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<OpaqueExecutable> wrapped_executable,
@@ -928,19 +927,19 @@ CompilePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
 
   TF_ASSIGN_OR_RETURN(const std::string serialized_executable,
                       executable->executable()->SerializeExecutable());
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), filename,
-                                            serialized_executable));
+  TF_RETURN_IF_ERROR(
+      tsl::WriteStringToFile(tsl::Env::Default(), path, serialized_executable));
   return wrapped_executable;
 }
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
 ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
                                             const bool run_hlo_passes) {
-  const std::string filename =
-      tsl::io::JoinPath(artifact_dir_, MakeFilename(*module, run_hlo_passes));
+  const std::string filename = MakeFilename(*module, run_hlo_passes);
+  const std::string path = tsl::io::JoinPath(artifact_dir_, filename);
   std::string serialized_executable;
   if (const absl::Status status = tsl::ReadFileToString(
-          tsl::Env::Default(), filename, &serialized_executable);
+          tsl::Env::Default(), path, &serialized_executable);
       !status.ok()) {
     if (!compile_if_not_found_) {
       return absl::NotFoundError(absl::StrCat(
@@ -949,6 +948,31 @@ ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
     LOG(INFO) << "Failed to read serialized executable. " << status;
     return HloRunnerPjRt::CreateExecutable(std::move(module), run_hlo_passes);
   }
+  LOG(INFO) << "ExecutePhase deserializing " << module->name() << " from "
+            << filename;
+
+  // If fail_duplicate_loads_ is enabled, fail if we previously loaded an
+  // executable at this path, and the file at this path exists.
+  if (fail_duplicate_loads_) {
+    if (const auto [unused_it, did_insert] =
+            loaded_executable_paths_.insert(path);
+        !did_insert) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "ExecutePhaseHloRunnerPjRt::CreateExecutable called with a module "
+          "that loads an executable that was previously loaded. The module "
+          "name is %s and the filename is %s. If this is intentional, please "
+          "set fail_duplicate_loads to false. This error exists to snuff out "
+          "accidental duplicate loads originating from fingerprint collisions. "
+          "If you intended to load two different executables, this error "
+          "indicates that their fingerprints are the same. If you wish to "
+          "avoid this issue in a test, you can either force their fingerprints "
+          "to be different through some superficial change in the module (e.g. "
+          "the module name), or by disabling split compilation by setting "
+          "precompile_test = False in the corresponding xla_test.",
+          module->name(), filename));
+    }
+  }
+
   return DeserializeExecutable(serialized_executable);
 }
 

@@ -503,7 +503,7 @@ class XFlow {
   }
 
   // Encoding
-  uint64 ToStatValue() const { return encoded_.whole; }
+  uint64_t ToStatValue() const { return encoded_.whole; }
 
   // Decoding
   static XFlow FromStatValue(uint64_t encoded) { return XFlow(encoded); }

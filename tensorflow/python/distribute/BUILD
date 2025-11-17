@@ -500,7 +500,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_dill//:pkg",  # build_cleaner: keep
+        "@pypi//dill",  # build_cleaner: keep
     ],
 )
 
@@ -1406,7 +1406,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/util:nest",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_dill//:pkg",  # build_cleaner: keep
+        "@pypi//dill",  # build_cleaner: keep
     ],
 )
 
@@ -1722,7 +1722,7 @@ distribute_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variable_v1",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_wrapt//:pkg",
+        "@pypi//wrapt",
     ],
 )
 
@@ -2241,8 +2241,8 @@ py_strict_library(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
-        "@pypi_dill//:pkg",  # build_cleaner: keep
-        "@pypi_tblib//:pkg",  # build_cleaner: keep
+        "@pypi//dill",  # build_cleaner: keep
+        "@pypi//tblib",  # build_cleaner: keep
         "@six_archive//:six",
     ],
 )

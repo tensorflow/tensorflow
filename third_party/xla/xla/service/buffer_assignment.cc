@@ -245,6 +245,7 @@ BufferAllocation::Slice::ToProto() const {
   proto.set_offset(offset());
   proto.set_size(size());
   proto.set_buffer_allocation_index(allocation() == nullptr ? -1 : index());
+  proto.set_element_type(element_type());
   return proto;
 }
 
@@ -259,13 +260,14 @@ absl::StatusOr<BufferAllocation::Slice> BufferAllocation::Slice::FromProto(
   }
   const BufferAllocation& allocation =
       buffer_allocations[proto.buffer_allocation_index()];
-  return BufferAllocation::Slice(&allocation, proto.offset(), proto.size());
+  return BufferAllocation::Slice(&allocation, proto.offset(), proto.size(),
+                                 proto.element_type());
 }
 
 BufferAllocation::Slice BufferAllocation::GetSlice(
     const HloValue& buffer) const {
   const OffsetSize os = FindOrDie(assigned_buffers_, &buffer);
-  return Slice(this, os.offset, os.size);
+  return Slice(this, os.offset, os.size, buffer.shape().element_type());
 }
 
 absl::Status BufferAllocation::AddAssignment(const HloValue& buffer,
@@ -331,6 +333,8 @@ BufferAllocationProto BufferAllocation::ToProto() const {
     proto_assigned->set_logical_buffer_id(buffer_offset_size.first->id());
     proto_assigned->set_offset(buffer_offset_size.second.offset);
     proto_assigned->set_size(buffer_offset_size.second.size);
+    proto_assigned->set_element_type(
+        buffer_offset_size.first->shape().element_type());
   }
   absl::c_sort(*proto.mutable_assigned(),
                [](const BufferAllocationProto::Assigned& assign1,
@@ -990,13 +994,21 @@ std::string BufferAllocation::MemoryUsageReport(const std::string& prefix,
 
   // Group the values by their offset in the allocation.
   absl::flat_hash_map<int64_t, OffsetInfo> offset_to_buffers;
+  std::vector<const HloValue*> sorted_hlo_values;
+  sorted_hlo_values.reserve(assigned_buffers_.size());
   for (const auto& element : assigned_buffers_) {
-    const HloValue* value = element.first;
-    OffsetInfo& offset_info = offset_to_buffers[element.second.offset];
+    sorted_hlo_values.push_back(element.first);
+  }
+  absl::c_sort(sorted_hlo_values, [](const HloValue* a, const HloValue* b) {
+    return a->id() < b->id();
+  });
+  for (const HloValue* value : sorted_hlo_values) {
+    const OffsetSize& offset_size = assigned_buffers_.find(value)->second;
+    OffsetInfo& offset_info = offset_to_buffers[offset_size.offset];
     offset_info.values.push_back(value);
-    offset_info.offset_size.offset = element.second.offset;
+    offset_info.offset_size.offset = offset_size.offset;
     offset_info.offset_size.size =
-        std::max(offset_info.offset_size.size, element.second.size);
+        std::max(offset_info.offset_size.size, offset_size.size);
   }
 
   // Sort the offset infos by the max size of the values in the group.
@@ -1008,7 +1020,14 @@ std::string BufferAllocation::MemoryUsageReport(const std::string& prefix,
   }
   absl::c_sort(sorted_offset_infos,
                [](const OffsetInfo& a, const OffsetInfo& b) {
-                 return a.offset_size.size > b.offset_size.size;
+                 if (a.offset_size.size != b.offset_size.size) {
+                   return a.offset_size.size > b.offset_size.size;
+                 }
+                 // Each HloValue appears in just one OffsetInfo `values`
+                 // vector. Therefore we can use the id of any element of the
+                 // `values` vector as tie breaker, as long as the `values`
+                 // vector has a deterministic order.
+                 return a.values.back()->id() < b.values.back()->id();
                });
 
   StrAppend(&output, prefix,
@@ -1030,15 +1049,21 @@ std::string BufferAllocation::MemoryUsageReport(const std::string& prefix,
     // of the line.
     absl::flat_hash_map<std::string, int64_t> shapes;
     for (auto& value : offset_info.values) shapes[value->shape().ToString()]++;
+    std::vector<std::pair<int64_t, std::string>> sorted_shapes;
+    sorted_shapes.reserve(shapes.size());
+    for (const auto& entry : shapes) {
+      sorted_shapes.emplace_back(entry.second, entry.first);
+    }
+    absl::c_sort(sorted_shapes);
 
-    StrAppend(
-        &output,
-        absl::StrJoin(shapes, ", ", [](std::string* out, const auto& pair) {
-          if (pair.second == 1) {
-            return absl::StrAppend(out, pair.first);
-          }
-          return absl::StrAppend(out, pair.second, "×", pair.first);
-        }));
+    StrAppend(&output,
+              absl::StrJoin(
+                  sorted_shapes, ", ", [](std::string* out, const auto& pair) {
+                    if (pair.first == 1) {
+                      return absl::StrAppend(out, pair.second);
+                    }
+                    return absl::StrAppend(out, pair.first, "×", pair.second);
+                  }));
 
     StrAppend(&output, "\n");
 

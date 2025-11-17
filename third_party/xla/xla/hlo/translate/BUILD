@@ -131,6 +131,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:UBDialect",
         "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_passes_optimization",
     ],
 )
 

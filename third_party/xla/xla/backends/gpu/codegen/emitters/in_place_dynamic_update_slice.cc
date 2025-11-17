@@ -32,13 +32,13 @@ limitations under the License.
 #include "xla/codegen/emitters/dynamic_update_slice_kernel_emitter.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -96,17 +96,17 @@ WorkDimensions InPlaceDynamicUpdateSliceFusion::GetWorkDimensions() const {
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 InPlaceDynamicUpdateSliceFusion::CreateMLIRModule(
-    SymbolicExprContext& symbolic_expr_context,
-    const HloFusionInstruction& fusion, const std::string& entry_function_name,
+    mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+    const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
   emitters::DynamicUpdateSliceKernelEmitter emitter(
       symbolic_expr_context, fusion, analysis_.fusion_spec(), buffer_assignment,
       GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,
       BackendKind::kGpu);
 
   TF_ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
-  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
-  return std::move(source).ReleaseStorage().module;
+  return std::move(kernel_definition).TakeSource().TakeModule();
 }
 
 absl::Status InPlaceDynamicUpdateSliceFusion::EmitEntryFunction(

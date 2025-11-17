@@ -139,7 +139,7 @@ class MockXlaDeviceExecutablePersistor
             Config{testing::TmpDir(), false, "xla"},
             DeviceType(DEVICE_CPU_XLA_JIT)) {}
   MOCK_METHOD(absl::Status, TryToPersistExecutable,
-              (uint64, const std::string&, const XlaCompiler::Options&,
+              (uint64_t, const std::string&, const XlaCompiler::Options&,
                const XlaCompiler::CompilationResult&,
                const xla::LocalExecutable&,
                (DeviceCompilerClient<xla::LocalExecutable, xla::LocalClient>*)),
@@ -425,7 +425,7 @@ TEST_F(DeviceCompilerTest, CompileFailedToLoadFromPersistentCache) {
       &xla_executable));
 
   // Corrupt the file which contains the serialized executable.
-  std::vector<string> files;
+  std::vector<std::string> files;
   TF_ASSERT_OK(Env::Default()->GetChildren(testing::TmpDir(), &files));
   std::string const* serialized_executable_filename = nullptr;
   for (const auto& file : files) {

@@ -280,9 +280,14 @@ class AnnotationMap {
   explicit AnnotationMap(uint64_t max_size, uint32_t num_gpus)
       : max_size_(max_size), per_device_map_(num_gpus) {}
 
-  void Add(uint32_t device_id, uint32_t correlation_id,
-           absl::string_view annotation, absl::string_view nvtx_range,
-           int64_t scope_range_id = 0);
+  // Returns a string_view of the dedupped annotation string. The string_view is
+  // valid as long as the AnnotationMap is alive. If the annotation is dropped
+  // due to size limit or any other reason, an empty string_view will be
+  // returned.
+  absl::string_view Add(uint32_t device_id, uint32_t correlation_id,
+                        absl::string_view annotation,
+                        absl::string_view nvtx_range,
+                        int64_t scope_range_id = 0);
 
   AnnotationInfo LookUp(uint32_t device_id, uint32_t correlation_id) const
       ABSL_ATTRIBUTE_LIFETIME_BOUND;

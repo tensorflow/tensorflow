@@ -2081,8 +2081,10 @@ class ConvertIotaOpToTfRange : public OpConversionPattern<mhlo::IotaOp> {
       ConversionPatternRewriter& rewriter) const final {
     RankedTensorType type =
         mlir::dyn_cast_or_null<RankedTensorType>(iota_op.getType());
-    // TF::RangeOp doesn't support UI16.
-    if (!type || type.getElementType().isUnsignedInteger(16)) return failure();
+    // TF::RangeOp doesn't support UI16 and UI8.
+    if (!type || type.getElementType().isUnsignedInteger(16) ||
+        type.getElementType().isUnsignedInteger(8))
+      return failure();
 
     const uint64_t dimension = iota_op.getIotaDimension();
     Type element_type = type.getElementType();

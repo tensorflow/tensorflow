@@ -18,6 +18,8 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
+#include <limits>
+
 #include "Eigen/Cholesky"  // from @eigen_archive
 #include "Eigen/Core"  // from @eigen_archive
 #include "Eigen/QR"  // from @eigen_archive
@@ -67,8 +69,9 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
     double n = static_cast<double>(input_matrix_shapes[0].dim_size(1));
     double num_rhss = static_cast<double>(input_matrix_shapes[1].dim_size(1));
     double cost = std::max(m, n) * std::min(m, n) * (std::min(m, n) + num_rhss);
-    return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64_t>(cost);
+    return cost >= static_cast<double>(std::numeric_limits<int64_t>::max())
+               ? std::numeric_limits<int64_t>::max()
+               : static_cast<int64_t>(cost);
   }
 
   bool EnableInputForwarding() const final { return false; }

@@ -39,9 +39,9 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/mlir/utils/error_util.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -71,7 +71,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
 class XLAOpsTest : public HloPjRtTestBase {
  public:
   mlir::MLIRContext mlir_context_;
-  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 std::string VariableConstraintsToString(const IndexingMap& map) {

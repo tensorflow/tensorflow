@@ -103,7 +103,8 @@ TritonFusion::GenerateTritonKernelAndWrapper(
 
   if (fusion_kind == kTritonFusionKind ||
       fusion_kind == kTritonNestedGemmFusionKind ||
-      fusion_kind == kTritonScaledDotFusionKind) {
+      fusion_kind == kTritonScaledDotFusionKind ||
+      fusion_kind == kTritonCollectiveFusionKind) {
     if (!analysis_.fusion_backend_config().has_block_level_fusion_config()) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Block level fusion config is required for Triton fusions: ",
@@ -166,10 +167,10 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 
     TF_ASSIGN_OR_RETURN(
         TritonWrapperResult triton_wrapper_result,
-        GenerateTritonKernelAndWrapper(
-            fusion, impl_fn_name, ir_emitter_context.gpu_device_info(),
-            ir_emitter_context.llvm_module(),
-            ir_emitter_context.symbolic_expr_context()));
+        GenerateTritonKernelAndWrapper(fusion, impl_fn_name,
+                                       ir_emitter_context.gpu_device_info(),
+                                       ir_emitter_context.llvm_module(),
+                                       ir_emitter_context.expr_context()));
 
     auto backend_config =
         fusion.backend_config<GpuBackendConfig>()->fusion_backend_config();
@@ -178,7 +179,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     LaunchDimensions launch_dimensions;
     if (fusion_kind == kTritonFusionKind ||
         fusion_kind == kTritonNestedGemmFusionKind ||
-        fusion_kind == kTritonScaledDotFusionKind) {
+        fusion_kind == kTritonScaledDotFusionKind ||
+        fusion_kind == kTritonCollectiveFusionKind) {
       std::optional<LaunchConfig> launch_config;
       // Currently GetLaunchConfig will compute the same value as the extracted
       // one. They are different only when warp specialization is enabled.

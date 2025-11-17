@@ -233,11 +233,12 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ThunkExecutor::TracedExecute(
 
   // When thunk execution completes, create a consumer traceme to capture the
   // end event.
-  execute_event.AndThen([context_id = producer.GetContextId(), &thunk] {
-    tsl::profiler::TraceMeConsumer(
-        [&] { return absl::StrFormat("end: %s", thunk.info().op_name); },
-        tsl::profiler::ContextType::kGeneric, context_id);
-  });
+  execute_event.AndThen(
+      [context_id = producer.GetContextId(), op_name = thunk.info().op_name] {
+        tsl::profiler::TraceMeConsumer(
+            [&] { return absl::StrFormat("end: %s", op_name); },
+            tsl::profiler::ContextType::kGeneric, context_id);
+      });
 
   return execute_event;
 }

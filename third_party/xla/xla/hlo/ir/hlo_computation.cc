@@ -26,6 +26,7 @@ limitations under the License.
 #include <stack>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -237,6 +239,28 @@ void HloComputation::ClearCalledComputations() {
   }
   // Clearing the instructions should have removed all callee computations.
   CHECK(callee_computations_.empty());
+}
+
+void HloComputation::SetInstruction(HloInstruction* instruction,
+                                    InstructionType type) {
+  static_assert(alignof(HloInstruction) == kInstructionTypeMask + 1,
+                "HloInstruction should be aligned as a QWORD");
+
+  DCHECK(type != InstructionType::kUnset)
+      << "Set instruction must be called with a valid type, not kUnset.";
+  DCHECK(instruction_type() == InstructionType::kUnset ||
+         instruction_type() == type)
+      << "Unexpected instruction type. Current type is "
+      << static_cast<int>(instruction_type()) << " and it cannot be reset to "
+      << static_cast<int>(type);
+
+  // If `instruction` is nullptr, we need to preserve the existing type.
+  if (instruction == nullptr) {
+    type = instruction_type();
+  }
+
+  instruction_and_type_ =
+      reinterpret_cast<uintptr_t>(instruction) | static_cast<uintptr_t>(type);
 }
 
 HloInstruction* HloComputation::AddInstruction(
@@ -1422,6 +1446,10 @@ HloComputation::CreateFromProto(
       new HloComputation(proto.name(), parameter_count, &instructions, root,
                          /*preserve_instruction_ids=*/true));
   computation->SetUniqueIdHelper(proto.id());
+  if (proto.is_fusion_computation()) {
+    computation->instruction_and_type_ =
+        static_cast<uintptr_t>(InstructionType::kFusion);
+  }
   if (!proto.execution_thread().empty()) {
     computation->SetExecutionThread(proto.execution_thread());
   }
@@ -1938,7 +1966,7 @@ void SortClonedInstructions(
       continue;
     }
     ++num_mapped_instructions;
-    if (!dynamic_cast<const HloParameterInstruction*>(instruction.get())) {
+    if (!HloParameterInstruction::ClassOf(instruction.get())) {
       continue;
     }
     mapped_index_of_last_parameter_plus_one = num_mapped_instructions;
@@ -1946,7 +1974,7 @@ void SortClonedInstructions(
   auto unmapped_ptr_index =
       [num_mapped_instructions,
        mapped_index_of_last_parameter_plus_one](const HloInstruction* i) {
-        if (dynamic_cast<const HloParameterInstruction*>(i)) {
+        if (HloParameterInstruction::ClassOf(i)) {
           if (num_mapped_instructions > 0 &&
               mapped_index_of_last_parameter_plus_one > 0) {
             return mapped_index_of_last_parameter_plus_one - 1;
@@ -1994,7 +2022,8 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
                               std::unique_ptr<HloInstruction>>* replacements,
     absl::Span<const HloInstruction* const> extra_parameters,
     HloCloneContext* context, const std::string& suffix,
-    const HloInstruction* new_root) {
+    std::variant<const HloInstruction*, const absl::Span<HloInstruction* const>>
+        new_root) {
   std::unique_ptr<HloCloneContext> context_ptr;
   if (context == nullptr) {
     context_ptr = std::make_unique<HloCloneContext>(parent(), suffix);
@@ -2009,11 +2038,9 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
     const absl::flat_hash_map<const HloInstruction*,
                               std::unique_ptr<HloInstruction>>* replacements,
     absl::Span<const HloInstruction* const> extra_parameters,
-    const std::string& suffix, const HloInstruction* new_root) const {
-  if (new_root == nullptr) {
-    new_root = root_instruction();
-  }
-
+    const std::string& suffix,
+    std::variant<const HloInstruction*, const absl::Span<HloInstruction* const>>
+        new_root) const {
   // Look up instr in the replacements map, and return either the replacement,
   // or instr, if the replacement isn't present.
   //
@@ -2106,8 +2133,39 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
   for (auto& instr : instructions) {
     builder.AddInstruction(std::move(instr));
   }
+
+  // Figure out the new root instruction for the clone. There are three cases:
+  // 1. The new root is just the old root (nullptr `new_root` instruction)
+  // 2. The new root is a different instruction in the computation (non-null
+  // `new_root` instruction)
+  // 3. The new root is a tuple of instructions, where the instructions are part
+  // of the computation, but the tuple did not previously exist (`new_root`
+  // span).
+  HloInstruction* new_root_instruction;
+  std::visit(absl::Overload{
+                 [&](const HloInstruction* arg) {
+                   if (arg == nullptr) {
+                     new_root_instruction =
+                         context.GetInstruction(replace(root_instruction()));
+                   } else {
+                     new_root_instruction =
+                         context.GetInstruction(replace(arg));
+                   }
+                 },
+                 [&](const absl::Span<HloInstruction* const> arg) {
+                   std::vector<HloInstruction*> root_replacements;
+                   for (HloInstruction* instr : arg) {
+                     root_replacements.push_back(
+                         context.GetInstruction(replace(instr)));
+                   }
+                   new_root_instruction = builder.AddInstruction(
+                       HloInstruction::CreateTuple(root_replacements));
+                 },
+             },
+             new_root);
+
   auto result = builder.Build(
-      /*root_instruction=*/context.GetInstruction(replace(new_root)));
+      /*root_instruction=*/new_root_instruction);
 
   // Clone control dependencies.
   for (auto instr : postorder) {

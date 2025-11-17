@@ -44,10 +44,10 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
@@ -162,7 +162,11 @@ TritonEmitterConstraints::DeriveCustomConstraints(
       ConstraintExpression divisibility_constraints =
           ConstraintExpression::GetAlwaysSatisfied();
 
-      for (const HloInstruction* operand : hlo->operands()) {
+      // The last operand of the concat does not require the divisibility
+      // constraint.
+      for (int operand_id = 0; operand_id < hlo->operand_count() - 1;
+           ++operand_id) {
+        const HloInstruction* operand = hlo->operand(operand_id);
         AffineExpr operand_concat_dimension = mlir::getAffineConstantExpr(
             operand->shape().dimensions(concatenate_dimension_index), ctx);
         ConstraintExpression::Constraint divisibility_constraint{
@@ -334,6 +338,10 @@ absl::StatusOr<bool> TritonEmitterConstraints::ParametersSatisfyConstraints(
       // invalid. Otherwise we would for example compute the launch config
       // incorrectly.
       if ((tile_size & (tile_size - 1)) && tile_size != dim_size) {
+        VLOG(5)
+            << "Found a tile size that is not a power of 2 and is not equal "
+               "to the dimension size. Bailing out."
+            << tile_size << " " << dim_size;
         return false;
       }
     }

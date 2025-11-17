@@ -3566,7 +3566,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
           /*instruction_to_shard_group_id=*/nullptr,
           /*shard_group_id_to_shard_as_group=*/nullptr,
           /*shard_group_id_to_shard_like_group=*/nullptr,
-          /*allow_spmd_sharding_propagation_to_parameters_vector=*/nullptr,
+          /*allow_spmd_sharding_propagation_to_parameters_vector=*/{},
           /*remove_unknown_shardings=*/true));
 
   DumpHloModuleIfEnabled(*module, "after_spmd_calls");
@@ -3956,7 +3956,7 @@ std::vector<int> FindAllIndices(std::vector<int64_t> vec, int64_t element) {
   return result;
 }
 
-absl::StatusOr<bool> AutoSharding::Run(
+absl::StatusOr<bool> AutoSharding::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!option_.enable) {

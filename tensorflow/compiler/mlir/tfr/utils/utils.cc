@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -92,9 +93,9 @@ std::string GetComposeFuncName(StringRef tf_op_name) {
     }
     if (tf_op_name[i] == '.') {
       compose_func_name.push_back('_');
-    } else if (tf_op_name[i] >= 'A' && tf_op_name[i] <= 'Z') {
+    } else if (llvm::isUpper(tf_op_name[i])) {
       compose_func_name.push_back('_');
-      compose_func_name.push_back(tf_op_name[i] + 'a' - 'A');
+      compose_func_name.push_back(llvm::toLower(tf_op_name[i]));
     } else {
       compose_func_name.push_back(tf_op_name[i]);
     }
@@ -106,13 +107,13 @@ std::string GetTFOpName(StringRef compose_func_name) {
   std::string tf_op_name;
   bool after_underscore = false;
   for (int i = 0; i < compose_func_name.size(); ++i) {
-    if (compose_func_name[i] >= 'A' && compose_func_name[i] <= 'Z') {
+    if (llvm::isUpper(compose_func_name[i])) {
       // The field name must not contain uppercase letters.
       return {};
     }
     if (after_underscore) {
-      if (compose_func_name[i] >= 'a' && compose_func_name[i] <= 'z') {
-        tf_op_name.push_back(compose_func_name[i] + 'A' - 'a');
+      if (llvm::isLower(compose_func_name[i])) {
+        tf_op_name.push_back(llvm::toUpper(compose_func_name[i]));
         after_underscore = false;
       } else {
         // The character after a "_" must be a lowercase letter.

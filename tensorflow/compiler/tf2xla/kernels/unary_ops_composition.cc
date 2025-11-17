@@ -36,7 +36,7 @@ namespace tensorflow {
 namespace {
 
 using XlaUnaryOpGenerator = std::function<xla::XlaOp(xla::XlaOp)>;
-using XlaOpGeneratorMap = absl::flat_hash_map<string, XlaUnaryOpGenerator>;
+using XlaOpGeneratorMap = absl::flat_hash_map<std::string, XlaUnaryOpGenerator>;
 
 void PopulateXlaOpGeneratorMap(XlaOpGeneratorMap* op_generator_map) {
   auto add_xla_op_generator = [&](std::string name,
@@ -120,7 +120,7 @@ class UnaryOpsCompositionOp : public XlaOpKernel {
   }
 
  private:
-  std::vector<string> op_names_;
+  std::vector<std::string> op_names_;
 };
 
 REGISTER_XLA_OP(Name("_UnaryOpsComposition"), UnaryOpsCompositionOp);

@@ -42,7 +42,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-absl::Status GetTestDevice(Session* session, string* test_device) {
+absl::Status GetTestDevice(Session* session, std::string* test_device) {
   std::vector<DeviceAttributes> devices;
   TF_RETURN_IF_ERROR(session->ListDevices(&devices));
 
@@ -85,7 +85,7 @@ TEST(FusedBatchnormReserveSpaceTest, Test) {
   std::unique_ptr<tensorflow::Session> session(
       tensorflow::NewSession(tensorflow::SessionOptions{}));
 
-  string test_device;
+  std::string test_device;
   TF_ASSERT_OK(GetTestDevice(session.get(), &test_device));
 
   Scope root = tensorflow::Scope::NewRootScope();
@@ -108,8 +108,8 @@ TEST(FusedBatchnormReserveSpaceTest, Test) {
   Output variance =
       Const(root.WithOpName("variance"), Input::Initializer(variance_data));
 
-  string tf_device = absl::StrCat("/device:", test_device, ":0");
-  string xla_device = absl::StrCat("/device:XLA_", test_device, ":0");
+  std::string tf_device = absl::StrCat("/device:", test_device, ":0");
+  std::string xla_device = absl::StrCat("/device:XLA_", test_device, ":0");
 
   FusedBatchNorm fused_batch_norm_tf(
       root.WithOpName("fused_batch_norm_tf").WithDevice(tf_device), input,

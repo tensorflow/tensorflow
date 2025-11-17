@@ -19,9 +19,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -42,9 +42,8 @@ class SolGpuCostModelStatsCollection : public HloModulePass {
     return "sol-gpu-cost-model-stats-collection";
   }
 
-  using HloPassInterface::Run;
-
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

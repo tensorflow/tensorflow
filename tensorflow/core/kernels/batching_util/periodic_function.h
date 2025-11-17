@@ -82,7 +82,7 @@ class PeriodicFunction {
 
     // Specifies the thread name prefix (see the description in class
     // Thread).
-    string thread_name_prefix = "periodic_function";
+    std::string thread_name_prefix = "periodic_function";
 
     // The environment to use. Does not take ownership, but must remain alive
     // for as long as the PeriodicFunction exists.

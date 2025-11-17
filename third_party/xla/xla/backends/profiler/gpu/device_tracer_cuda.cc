@@ -101,13 +101,25 @@ absl::Status GpuTracer::DoStart() {
 #endif
 
   CuptiTracerCollectorOptions collector_options;
-  collector_options.num_gpus = cupti_tracer_->NumGpus();
+  int num_gpus = cupti_tracer_->NumGpus();
+  collector_options.num_gpus = num_gpus;
 
   // TODO: Add a test to verify that the options are set correctly and
   // collectors are generating correct data once ProfileData is
   // available(b/399675726).
   TF_RETURN_IF_ERROR(UpdateCuptiTracerOptionsFromProfilerOptions(
       profile_options_, options_, collector_options));
+
+  if (collector_options.num_gpus <= 0 ||
+      collector_options.num_gpus > num_gpus) {
+    if (collector_options.num_gpus != 0) {
+      LOG(WARNING)
+          << "The provided number of GPUs (" << collector_options.num_gpus
+          << ") is invalid. Profiling will be done on all available GPUs ("
+          << num_gpus << ").";
+    }
+    collector_options.num_gpus = num_gpus;
+  }
 
   uint64_t start_gputime_ns = CuptiTracer::GetTimestamp();
   uint64_t start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();

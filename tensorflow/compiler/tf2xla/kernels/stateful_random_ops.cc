@@ -511,7 +511,7 @@ class RngSkipOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("RngSkip").CompileTimeConstantInput("algorithm"),
                 RngSkipOp<>);
 
-using RngReadAndSkipOp = RngSkipOp<int32, true>;
+using RngReadAndSkipOp = RngSkipOp<int32_t, true>;
 
 REGISTER_XLA_OP(Name("RngReadAndSkip").CompileTimeConstantInput("alg"),
                 RngReadAndSkipOp);

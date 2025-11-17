@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/collective_interpolator.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
@@ -344,7 +344,7 @@ ENTRY e {
 })",
       /*opcode_to_find=*/HloOpcode::kFusion,
       /*cost_type=*/CostType::kNodeCost,
-      /*expected_latency=*/absl::Microseconds(9),
+      /*expected_latency=*/absl::Microseconds(8),
   };
 
   EstimatorTestCase cublas_matmul_bf16_batch1_1024_1024_1024 = {
@@ -374,7 +374,127 @@ ENTRY e {
 })",
       /*opcode_to_find=*/HloOpcode::kCustomCall,
       /*cost_type=*/CostType::kNodeCost,
-      /*expected_latency=*/absl::Microseconds(9),
+      /*expected_latency=*/absl::Microseconds(8),
+  };
+
+  EstimatorTestCase cublaslt_matmul_mixed_fp8_batch1_1024_1024_1024 = {
+      /*test_name=*/"cublas_matmul_mixed_fp8_batch1_1024_1024_1024",
+      /*module_string=*/R"(
+HloModule m
+
+ENTRY e {
+  p0 = f8e5m2[1024,1024] parameter(0)
+  p1 = f8e4m3fn[1024,1024] parameter(1)
+  ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
+    custom_call_target="__cublas$lt$matmul$f8",
+    backend_config={
+      "operation_queue_id":"0",
+      "wait_on_operation_queues":[],
+      "gemm_backend_config":{
+        "alpha_real":1,
+        "beta":1,
+        "dot_dimension_numbers": {
+          "lhs_contracting_dimensions":["1"],
+          "rhs_contracting_dimensions":["1"],
+          "lhs_batch_dimensions":[],
+          "rhs_batch_dimensions":[]
+        }
+      }
+    }
+})",
+      /*opcode_to_find=*/HloOpcode::kCustomCall,
+      /*cost_type=*/CostType::kNodeCost,
+      /*expected_latency=*/absl::Microseconds(8),
+  };
+
+  EstimatorTestCase cublaslt_matmul_f8e5m2_f8e4m3fn_batch1_1024_1024_1024 = {
+      /*test_name=*/"cublaslt_matmul_f8e5m2_f8e4m3fn_batch1_1024_1024_1024",
+      /*module_string=*/R"(
+HloModule m
+
+ENTRY e {
+  p0 = f8e5m2[1024,1024] parameter(0)
+  p1 = f8e4m3fn[1024,1024] parameter(1)
+  ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
+    custom_call_target="__cublas$lt$matmul$f8",
+    backend_config={
+      "operation_queue_id":"0",
+      "wait_on_operation_queues":[],
+      "gemm_backend_config":{
+        "alpha_real":1,
+        "beta":1,
+        "dot_dimension_numbers": {
+          "lhs_contracting_dimensions":["1"],
+          "rhs_contracting_dimensions":["1"],
+          "lhs_batch_dimensions":[],
+          "rhs_batch_dimensions":[]
+        }
+      }
+    }
+})",
+      /*opcode_to_find=*/HloOpcode::kCustomCall,
+      /*cost_type=*/CostType::kNodeCost,
+      /*expected_latency=*/absl::Microseconds(8),
+  };
+
+  EstimatorTestCase cublaslt_matmul_f8e4m3fn_f8e5m2_batch1_1024_1024_1024 = {
+      /*test_name=*/"cublaslt_matmul_f8e4m3fn_f8e5m2_batch1_1024_1024_1024",
+      /*module_string=*/R"(
+HloModule m
+
+ENTRY e {
+  p0 = f8e4m3fn[1024,1024] parameter(0)
+  p1 = f8e5m2[1024,1024] parameter(1)
+  ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
+    custom_call_target="__cublas$lt$matmul$f8",
+    backend_config={
+      "operation_queue_id":"0",
+      "wait_on_operation_queues":[],
+      "gemm_backend_config":{
+        "alpha_real":1,
+        "beta":1,
+        "dot_dimension_numbers": {
+          "lhs_contracting_dimensions":["1"],
+          "rhs_contracting_dimensions":["1"],
+          "lhs_batch_dimensions":[],
+          "rhs_batch_dimensions":[]
+        }
+      }
+    }
+})",
+      /*opcode_to_find=*/HloOpcode::kCustomCall,
+      /*cost_type=*/CostType::kNodeCost,
+      /*expected_latency=*/absl::Microseconds(8),
+  };
+
+  EstimatorTestCase cublaslt_matmul_f8e4m3fn_f8e4m3fn_batch1_1024_1024_1024 = {
+      /*test_name=*/"cublaslt_matmul_f8e4m3fn_f8e4m3fn_batch1_1024_1024_1024",
+      /*module_string=*/R"(
+HloModule m
+
+ENTRY e {
+  p0 = f8e4m3fn[1024,1024] parameter(0)
+  p1 = f8e4m3fn[1024,1024] parameter(1)
+  ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
+    custom_call_target="__cublas$lt$matmul$f8",
+    backend_config={
+      "operation_queue_id":"0",
+      "wait_on_operation_queues":[],
+      "gemm_backend_config":{
+        "alpha_real":1,
+        "beta":1,
+        "dot_dimension_numbers": {
+          "lhs_contracting_dimensions":["1"],
+          "rhs_contracting_dimensions":["1"],
+          "lhs_batch_dimensions":[],
+          "rhs_batch_dimensions":[]
+        }
+      }
+    }
+})",
+      /*opcode_to_find=*/HloOpcode::kCustomCall,
+      /*cost_type=*/CostType::kNodeCost,
+      /*expected_latency=*/absl::Microseconds(8),
   };
 
   EstimatorTestCase simple_fusion_elementwise = {

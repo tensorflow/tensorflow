@@ -180,8 +180,8 @@ class SliceOp : public XlaOpKernel {
               xla::Reshape(xla::Slice(ctx->Input(2), {i}, {i + 1}, {1}), {});
           if (constant_size_is_minus_one && size[i] == -1) {
             // size = input_.dim_size(i) - begin[i]
-            dynamic_size = xla::ConstantR0<int32>(ctx->builder(),
-                                                  input_shape.dim_size(i)) -
+            dynamic_size = xla::ConstantR0<int32_t>(ctx->builder(),
+                                                    input_shape.dim_size(i)) -
                            begin_indices[i];
           }
           auto constant_size = ctx->value_inference().AnalyzeConstant(
@@ -192,7 +192,7 @@ class SliceOp : public XlaOpKernel {
             // triggered when some dimensions's slice sizes are constant while
             // some are dynamic.
             sliced = xla::SliceInDim(
-                sliced, 0, constant_size->Get<int32>({}).value(), 1, i);
+                sliced, 0, constant_size->Get<int32_t>({}).value(), 1, i);
           } else {
             // We gave a generous bound (same as input) to the output, try reset
             // the bound if a tighter one can be found.

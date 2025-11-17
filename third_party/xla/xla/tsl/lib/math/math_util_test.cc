@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tsl/lib/math/math_util.h"
 
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <vector>
 
@@ -60,9 +61,9 @@ void TestCeilOfRatio(const TestDataType test_data[][kNumTestArguments],
 }
 
 template <typename UnsignedIntegralType>
-void TestCeilOfRatioUnsigned(uint64 kMax) {
+void TestCeilOfRatioUnsigned(uint64_t kMax) {
   const int kNumTests = 12;
-  const uint64 kTestData[kNumTests][kNumTestArguments] = {
+  const uint64_t kTestData[kNumTests][kNumTestArguments] = {
       // Numerator  | Denominator | Expected floor of ratio | Expected ceil of
       // ratio |
       // When numerator = 0, the result is always zero
@@ -83,7 +84,7 @@ void TestCeilOfRatioUnsigned(uint64 kMax) {
       // Try with a huge numerator and a huge denominator
       {kMax, kMax, 1, 1},
   };
-  TestCeilOfRatio<UnsignedIntegralType, uint64>(kTestData, kNumTests);
+  TestCeilOfRatio<UnsignedIntegralType, uint64_t>(kTestData, kNumTests);
 }
 
 template <typename SignedInteger>
@@ -185,18 +186,23 @@ void TestThatCeilOfRatioDenomMinusOneIsIncorrect() {
   // It does not work with negative values
   TestThatCeilOfRatioDenomMinusOneIsIncorrect(-1LL, -2LL, -1LL);
 
-  // This would also fail if given kint64max because of signed integer overflow.
+  // This would also fail if given std::numeric_limits<int64_t>::max() because
+  // of signed integer overflow.
 }
 
 TEST(MathUtil, CeilOfRatio) {
-  TestCeilOfRatioUnsigned<uint8>(kuint8max);
-  TestCeilOfRatioUnsigned<uint16>(kuint16max);
-  TestCeilOfRatioUnsigned<uint32>(kuint32max);
-  TestCeilOfRatioUnsigned<uint64>(kuint64max);
-  TestCeilOfRatioSigned<int8>(kint8min, kint8max);
-  TestCeilOfRatioSigned<int16>(kint16min, kint16max);
-  TestCeilOfRatioSigned<int32>(kint32min, kint32max);
-  TestCeilOfRatioSigned<int64_t>(kint64min, kint64max);
+  TestCeilOfRatioUnsigned<uint8_t>(std::numeric_limits<uint8_t>::max());
+  TestCeilOfRatioUnsigned<uint16_t>(std::numeric_limits<uint16_t>::max());
+  TestCeilOfRatioUnsigned<uint32_t>(std::numeric_limits<uint32_t>::max());
+  TestCeilOfRatioUnsigned<uint64_t>(std::numeric_limits<uint64_t>::max());
+  TestCeilOfRatioSigned<int8_t>(std::numeric_limits<int8_t>::min(),
+                                std::numeric_limits<int8_t>::max());
+  TestCeilOfRatioSigned<int16_t>(std::numeric_limits<int16_t>::min(),
+                                 std::numeric_limits<int16_t>::max());
+  TestCeilOfRatioSigned<int32_t>(std::numeric_limits<int32_t>::min(),
+                                 std::numeric_limits<int32_t>::max());
+  TestCeilOfRatioSigned<int64_t>(std::numeric_limits<int64_t>::min(),
+                                 std::numeric_limits<int64_t>::max());
 #if 0
   TestThatCeilOfRatioDenomMinusOneIsIncorrect();
 #endif
@@ -220,15 +226,15 @@ TEST(MathUtil, GCD) {
   });
 
   for (const auto& tc : testcases) {
-    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint32>(tc.x, tc.y));
-    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint32>(tc.y, tc.x));
-    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint64>(tc.x, tc.y));
-    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint64>(tc.y, tc.x));
+    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint32_t>(tc.x, tc.y));
+    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint32_t>(tc.y, tc.x));
+    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint64_t>(tc.x, tc.y));
+    EXPECT_EQ(tc.gcd, tsl::MathUtil::GCD<uint64_t>(tc.y, tc.x));
   }
 
-  const uint64 biggish_prime = 1666666667;
+  const uint64_t biggish_prime = 1666666667;
   EXPECT_EQ(biggish_prime,
-            tsl::MathUtil::GCD<uint64>(biggish_prime * 3, biggish_prime * 4));
+            tsl::MathUtil::GCD<uint64_t>(biggish_prime * 3, biggish_prime * 4));
 }
 
 template <typename T>

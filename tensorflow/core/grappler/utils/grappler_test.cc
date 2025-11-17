@@ -52,7 +52,7 @@ void CompareGraphNodes(protobuf::RepeatedPtrField<NodeDef>* want,
         << got_node.DebugString();
 
     // Order of control dependencies doesn't matter, so we sort them first.
-    const auto is_control = [](const string& input) -> bool {
+    const auto is_control = [](const std::string& input) -> bool {
       return ParseTensorName(input).index() < 0;
     };
 

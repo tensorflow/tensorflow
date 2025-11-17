@@ -34,12 +34,12 @@ namespace {
 class XlaDotOp : public XlaOpKernel {
  public:
   explicit XlaDotOp(OpKernelConstruction* context) : XlaOpKernel(context) {
-    string dnums_attr;
+    std::string dnums_attr;
     OP_REQUIRES_OK(context, context->GetAttr("dimension_numbers", &dnums_attr));
     OP_REQUIRES(
         context, dnums_.ParsePartialFromString(dnums_attr),
         errors::InvalidArgument("Error parsing convolution dimension numbers"));
-    string precision_config_attr;
+    std::string precision_config_attr;
     OP_REQUIRES_OK(
         context, context->GetAttr("precision_config", &precision_config_attr));
     OP_REQUIRES(

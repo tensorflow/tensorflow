@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/matmul_indexing_utils.h"
@@ -202,6 +202,8 @@ absl::Status AnnotateDotOperandNestedFusionImpl(
   block_level_parameters.num_ctas = config.num_ctas;
   block_level_parameters.num_stages = config.num_stages;
   block_level_parameters.is_tma_allowed = config.is_tma_allowed;
+  block_level_parameters.is_warp_specialization_allowed =
+      config.is_warp_specialization_allowed;
 
   TF_ASSIGN_OR_RETURN(auto gpu_config,
                       nested_fusion.backend_config<GpuBackendConfig>());
@@ -333,11 +335,6 @@ absl::Status MakeNestedFusionFromGemmFusion(
   TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
 
   return absl::OkStatus();
-}
-
-size_t GetDotCount(HloComputation* computation) {
-  return absl::c_count_if(computation->instructions(),
-                          HloPredicateIsOp<HloOpcode::kDot>);
 }
 
 using HloInstructionSetVector =
@@ -1324,7 +1321,7 @@ absl::StatusOr<bool> NestGemmFusion::RunOnModule(
   return changed;
 }
 
-absl::StatusOr<bool> NestGemmFusion::Run(
+absl::StatusOr<bool> NestGemmFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "--xla_gpu_unsupported_generic_triton_emitter_features="
@@ -1338,9 +1335,7 @@ absl::StatusOr<bool> NestGemmFusion::Run(
     VLOG(1) << "Generic Triton emitter for gemms is disabled, exiting";
     return false;
   }
-
-  TF_ASSIGN_OR_RETURN(bool result, RunOnModule(module, execution_threads));
-  return result;
+  return RunOnModule(module, execution_threads);
 }
 
 namespace detail {
@@ -1443,6 +1438,8 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
       params.num_ctas = config.num_ctas;
       params.num_stages = config.num_stages;
       params.is_tma_allowed = config.is_tma_allowed;
+      params.is_warp_specialization_allowed =
+          config.is_warp_specialization_allowed;
       return params;
     }
     VLOG(4) << "mapped_dot_tile_sizes: "

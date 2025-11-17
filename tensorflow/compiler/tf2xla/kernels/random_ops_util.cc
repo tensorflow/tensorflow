@@ -140,7 +140,7 @@ absl::StatusOr<int> GetAlgId(XlaOpKernelContext* ctx, int alg_input_idx) {
   if (alg_dtype == DT_INT32) {
     return alg_literal.Get<int>({});
   } else {
-    return alg_literal.Get<int64>({});
+    return alg_literal.Get<int64_t>({});
   }
 }
 
@@ -172,7 +172,7 @@ DataType MaybeConvertBF16ToF32(DataType const& dtype) {
 }
 
 absl::StatusOr<xla::XlaOp> BuildUniformRandoms(
-    XlaOpKernelContext* ctx, DataType dtype, string device_type_string,
+    XlaOpKernelContext* ctx, DataType dtype, std::string device_type_string,
     TensorShape shape,
     std::function<xla::XlaOp(xla::XlaBuilder*, xla::PrimitiveType)> lo_fn,
     std::function<xla::XlaOp(xla::XlaBuilder*, xla::PrimitiveType)> hi_fn) {
@@ -190,7 +190,7 @@ absl::StatusOr<xla::XlaOp> BuildUniformRandoms(
 
 absl::StatusOr<xla::XlaOp> BuildUniformRandoms(XlaOpKernelContext* ctx,
                                                DataType dtype,
-                                               string device_type_string,
+                                               std::string device_type_string,
                                                xla::Shape xla_shape,
                                                xla::XlaOp lo, xla::XlaOp hi) {
   xla::XlaOp key = ctx->Input(kRandomKeyInputIdx);

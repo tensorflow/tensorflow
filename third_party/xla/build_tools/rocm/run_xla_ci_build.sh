@@ -18,16 +18,22 @@
 set -e
 set -x
 
+SCRIPT_DIR=$(realpath $(dirname $0))
+TAG_FILTERS=$($SCRIPT_DIR/rocm_tag_filters.sh),gpu,-multi_gpu,-multi_gpu_h100,requires-gpu-amd,,-skip_rocprofiler_sdk,-no_oss,-oss_excluded,-oss_serial
+
+if [ ! -d /tf/pkg ]; then
+	mkdir -p /tf/pkg
+fi
+
 SCRIPT_DIR=$(dirname $0)
-bazel --bazelrc="$SCRIPT_DIR/rocm_xla.bazelrc" test \
-	"$@" \
-	--test_tag_filters=gpu,requires-gpu-amd,-requires-gpu-nvidia,-requires-gpu-intel,-no_oss,-oss_excluded,-oss_serial,-no_gpu,-no_rocm,-requires-gpu-sm60,-requires-gpu-sm60-only,-requires-gpu-sm70,-requires-gpu-sm70-only,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm86,-requires-gpu-sm86-only,-requires-gpu-sm89,-requires-gpu-sm89-only,-requires-gpu-sm90,-requires-gpu-sm90-only \
-	--build_tag_filters=gpu,requires-gpu-amd,-requires-gpu-nvidia,-requires-gpu-intel,-no_oss,-oss_excluded,-oss_serial,-no_gpu,-no_rocm,-requires-gpu-sm60,-requires-gpu-sm60-only,-requires-gpu-sm70,-requires-gpu-sm70-only,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm86,-requires-gpu-sm86-only,-requires-gpu-sm89,-requires-gpu-sm89-only,-requires-gpu-sm90,-requires-gpu-sm90-only \
+bazel --bazelrc="$SCRIPT_DIR/rocm_xla_ci.bazelrc" test \
+	--build_tag_filters=$TAG_FILTERS \
+    --test_tag_filters=$TAG_FILTERS \
 	--profile=/tf/pkg/profile.json.gz \
 	--keep_going \
 	--test_env=TF_TESTS_PER_GPU=1 \
-	--action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
-	--action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
+	--action_env=XLA_FLAGS="--xla_gpu_enable_llvm_module_compilation_parallelism=true --xla_gpu_force_compilation_parallelism=16" \
 	--test_output=errors \
 	--local_test_jobs=2 \
-	--run_under=//build_tools/rocm:parallel_gpu_execute
+	--run_under=//build_tools/rocm:parallel_gpu_execute \
+	"$@"

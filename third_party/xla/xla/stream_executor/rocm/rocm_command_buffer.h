@@ -46,6 +46,8 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   static absl::StatusOr<std::unique_ptr<RocmCommandBuffer>> Create(
       Mode mode, StreamExecutor* executor);
 
+  std::string ToString() const override;
+
   ~RocmCommandBuffer() override;
 
  private:

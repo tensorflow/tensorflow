@@ -300,9 +300,6 @@ absl::Status CheckDepthwiseConvGpuDelegateCompatibility(
   if (bias && NumElements(bias->dims) != output_depth) {
     return absl::InvalidArgumentError("bias.size != output.c");
   }
-  if (depth_multiplier != 1 && input_depth != 1) {
-    return absl::UnimplementedError("depth_multiplier != 1 && input.c != 1");
-  }
   return absl::OkStatus();
 }
 
@@ -1005,6 +1002,12 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
       RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
                                          /*required_runtime_inputs=*/1,
                                          /*required_outputs=*/1));
+      return absl::OkStatus();
+
+    case kTfLiteBuiltinTopkV2:
+      RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
+                                         /*required_runtime_inputs=*/1,
+                                         /*required_outputs=*/2));
       return absl::OkStatus();
 
     case kTfLiteBuiltinTranspose:

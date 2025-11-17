@@ -29,7 +29,7 @@ namespace tensorflow {
 
 class TextLineReader : public ReaderBase {
  public:
-  TextLineReader(const string& node_name, int skip_header_lines, Env* env)
+  TextLineReader(const std::string& node_name, int skip_header_lines, Env* env)
       : ReaderBase(absl::StrCat("TextLineReader '", node_name, "'")),
         skip_header_lines_(skip_header_lines),
         env_(env),
@@ -41,7 +41,7 @@ class TextLineReader : public ReaderBase {
 
     input_buffer_.reset(new io::InputBuffer(file_.get(), kBufferSize));
     for (; line_number_ < skip_header_lines_; ++line_number_) {
-      string line_contents;
+      std::string line_contents;
       absl::Status status = input_buffer_->ReadLine(&line_contents);
       if (absl::IsOutOfRange(status)) {
         // We ignore an end of file error when skipping header lines.

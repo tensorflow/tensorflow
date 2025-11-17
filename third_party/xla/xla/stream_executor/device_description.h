@@ -23,7 +23,6 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <variant>
 
@@ -36,26 +35,40 @@ limitations under the License.
 
 namespace stream_executor {
 
-class GpuComputeCapability
-    : public std::variant<CudaComputeCapability, RocmComputeCapability> {
+class GpuComputeCapability {
  public:
-  using std::variant<CudaComputeCapability, RocmComputeCapability>::variant;
-  using std::variant<CudaComputeCapability, RocmComputeCapability>::operator=;
+  GpuComputeCapability() = default;
+  GpuComputeCapability(const CudaComputeCapability& compute_capability)
+      : compute_capability_(compute_capability) {}
+  explicit GpuComputeCapability(const RocmComputeCapability& compute_capability)
+      : compute_capability_(compute_capability) {}
+
+  GpuComputeCapability& operator=(
+      const CudaComputeCapability& compute_capability) {
+    compute_capability_ = compute_capability;
+    return *this;
+  }
+
+  GpuComputeCapability& operator=(
+      const RocmComputeCapability& compute_capability) {
+    compute_capability_ = compute_capability;
+    return *this;
+  }
 
   bool IsCuda() const {
-    return std::holds_alternative<CudaComputeCapability>(*this);
+    return std::holds_alternative<CudaComputeCapability>(compute_capability_);
   }
 
   bool IsRocm() const {
-    return std::holds_alternative<RocmComputeCapability>(*this);
+    return std::holds_alternative<RocmComputeCapability>(compute_capability_);
   }
 
   const CudaComputeCapability* cuda_compute_capability() const {
-    return std::get_if<CudaComputeCapability>(this);
+    return std::get_if<CudaComputeCapability>(&compute_capability_);
   }
 
   const RocmComputeCapability* rocm_compute_capability() const {
-    return std::get_if<RocmComputeCapability>(this);
+    return std::get_if<RocmComputeCapability>(&compute_capability_);
   }
 
   std::string ToString() const {
@@ -64,6 +77,35 @@ class GpuComputeCapability
     }
     return rocm_compute_capability()->ToString();
   }
+
+  GpuComputeCapabilityProto ToProto() const;
+
+  static absl::StatusOr<GpuComputeCapability> FromProto(
+      const GpuComputeCapabilityProto& proto);
+
+  friend bool operator==(const GpuComputeCapability& lhs,
+                         const GpuComputeCapability& rhs) {
+    return lhs.compute_capability_ == rhs.compute_capability_;
+  }
+
+  friend bool operator!=(const GpuComputeCapability& lhs,
+                         const GpuComputeCapability& rhs) {
+    return !(lhs == rhs);
+  }
+
+ private:
+  std::variant<CudaComputeCapability, RocmComputeCapability>
+      compute_capability_;
+};
+
+// Information about NVLink/UALink.
+struct DeviceInterconnectInfo {
+  int active_links = 0;
+
+  // Uuid of the cluster to which this GPU belongs.
+  std::string cluster_uuid;
+  // ID of the fabric clique to which this GPU belongs.
+  std::string clique_id;
 };
 
 // Data that describes the execution target of the StreamExecutor, in terms of
@@ -74,6 +116,8 @@ class GpuComputeCapability
 // Thread-safe: immutable post-initialization.
 class DeviceDescription {
  public:
+  DeviceDescription() = default;
+
   // Returns the platform being run on; this value is primarily intended for
   // printing, and comes out something like "OpenCL 1.2" or "Compute Capability
   // 3.5".
@@ -137,34 +181,28 @@ class DeviceDescription {
   // Returns the limit on the total number of threads that can be launched in a
   // single block; i.e. the limit on x * y * z dimensions of a ThreadDim.
   // This limit affects what constitutes a legitimate kernel launch request.
-  const int64_t& threads_per_block_limit() const {
-    return threads_per_block_limit_;
-  }
+  int64_t threads_per_block_limit() const { return threads_per_block_limit_; }
 
   // Returns the limit on the total number of threads that can be simultaneously
   // launched on a given multiprocessor.
-  const int64_t& threads_per_core_limit() const {
-    return threads_per_core_limit_;
-  }
+  int64_t threads_per_core_limit() const { return threads_per_core_limit_; }
 
   // Returns the number of threads per warp/wavefront.
   constexpr int64_t threads_per_warp() const { return threads_per_warp_; }
 
   // Returns the limit on the total number of registers per core.
-  const int64_t& registers_per_core_limit() const {
-    return registers_per_core_limit_;
-  }
+  int64_t registers_per_core_limit() const { return registers_per_core_limit_; }
 
   // Returns the limit on the total number of registers that can be
   // simultaneously used by a block.
-  const int64_t& registers_per_block_limit() const {
+  int64_t registers_per_block_limit() const {
     return registers_per_block_limit_;
   }
 
   // Returns the number of address bits available to kernel code running on the
   // platform. This affects things like the maximum allocation size and perhaps
   // types used in kernel code such as size_t.
-  const int64_t& device_address_bits() const { return device_address_bits_; }
+  int64_t device_address_bits() const { return device_address_bits_; }
 
   // Returns the device memory size in bytes.
   int64_t device_memory_size() const { return device_memory_size_; }
@@ -176,6 +214,9 @@ class DeviceDescription {
   // reads/writes to/from the device's own memory, not for transfers between the
   // host and device.)
   int64_t memory_bandwidth() const { return memory_bandwidth_; }
+
+  // Returns the PCIe memory bandwidth in bytes/sec.
+  int64_t pcie_bandwidth() const { return pcie_bandwidth_; }
 
   // Returns the device's core clock rate in GHz.
   float clock_rate_ghz() const { return clock_rate_ghz_; }
@@ -261,21 +302,20 @@ class DeviceDescription {
     return 32;
   }
 
+  const DeviceInterconnectInfo& device_interconnect_info() const {
+    return interconnect_info_;
+  }
+
   GpuDeviceInfoProto ToGpuProto() const;
 
   std::string ToString() const;
 
-  DeviceDescription() = default;
   static absl::StatusOr<DeviceDescription> FromProto(
       const GpuDeviceInfoProto& proto);
 
   // For string values that are not available via the underlying platform, this
   // value will be provided.
   static inline const char* const kUndefinedString = "<undefined>";
-
-  void set_gpu_compute_capability(const GpuComputeCapability& c) {
-    gpu_compute_capability_ = c;
-  }
 
   void set_block_dim_limit_x(int64_t limit) { block_dim_limit_.x = limit; }
 
@@ -327,6 +367,7 @@ class DeviceDescription {
   void set_device_memory_size(int64_t value) { device_memory_size_ = value; }
   void set_l2_cache_size(int64_t value) { l2_cache_size_ = value; }
   void set_memory_bandwidth(int64_t value) { memory_bandwidth_ = value; }
+  void set_pcie_bandwidth(int64_t value) { pcie_bandwidth_ = value; }
 
   void set_shared_memory_per_core(int64_t value) {
     shared_memory_per_core_ = value;
@@ -340,6 +381,10 @@ class DeviceDescription {
 
   void set_clock_rate_ghz(float value) { clock_rate_ghz_ = value; }
 
+  void set_gpu_compute_capability(const GpuComputeCapability& c) {
+    gpu_compute_capability_ = c;
+  }
+
   void set_cuda_compute_capability(const CudaComputeCapability& cc) {
     gpu_compute_capability_ = cc;
   }
@@ -352,6 +397,10 @@ class DeviceDescription {
   void set_core_count(int value) { core_count_ = value; }
   void set_fpus_per_core(int value) { fpus_per_core_ = value; }
   void set_ecc_enabled(bool value) { ecc_enabled_ = value; }
+
+  void set_device_interconnect_info(DeviceInterconnectInfo info) {
+    interconnect_info_ = std::move(info);
+  }
 
  private:
   // For description of the following members, see the corresponding accessor
@@ -383,7 +432,9 @@ class DeviceDescription {
   int64_t device_address_bits_ = kUninitialized<int64_t>;
   int64_t device_memory_size_ = kUninitialized<int64_t>;
   int64_t l2_cache_size_ = kUninitialized<int64_t>;
+
   int64_t memory_bandwidth_ = kUninitialized<int64_t>;
+  int64_t pcie_bandwidth_ = kUninitialized<int64_t>;
 
   // Shared memory limits on a given device.
   int64_t shared_memory_per_core_ = kUninitialized<int64_t>;
@@ -403,6 +454,8 @@ class DeviceDescription {
   SemanticVersion runtime_version_{0, 0, 0};
   SemanticVersion compile_time_toolkit_version_{0, 0, 0};
   SemanticVersion dnn_version_{0, 0, 0};
+
+  DeviceInterconnectInfo interconnect_info_;
 };
 
 // Returns whether the given thread_dim is acceptable given the limits described

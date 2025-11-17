@@ -23,7 +23,7 @@ class AutoClusteringTestImpl : public AutoClusteringTest {
  protected:
   // Test auto-clustering with a proto text file ${key}.pbtxt.
   absl::Status RunAutoClusteringTestWithPbtxt(absl::string_view key) {
-    string file_name_without_extension =
+    std::string file_name_without_extension =
         absl::StrCat(testing::TensorFlowSrcRoot(), "/compiler/jit/tests/", key);
 
     return AutoClusteringTest::RunAutoClusteringTestWithPbtxt(
@@ -33,7 +33,7 @@ class AutoClusteringTestImpl : public AutoClusteringTest {
 
   // Test auto-clustering with a gzipped proto text file ${key}.pbtxt.gz.
   absl::Status RunAutoClusteringTestWithGzippedPbtxt(absl::string_view key) {
-    string file_name_without_extension =
+    std::string file_name_without_extension =
         absl::StrCat(testing::TensorFlowSrcRoot(), "/compiler/jit/tests/", key);
 
     return AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(

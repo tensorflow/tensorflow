@@ -104,7 +104,7 @@ class [[nodiscard]] Buffer {
 template <TfLiteType kType, class T>
 void Assign(Buffer b, std::vector<int> shape, const std::vector<T>& data,
             Quantization quantization) {
-  using Storage = TfLiteTypeToType<kType>::Type;
+  using Storage = typename TfLiteTypeToType<kType>::Type;
   std::unique_ptr<Storage[]> buffer_data(new Storage[data.size()]);
   std::copy(begin(data), end(data), buffer_data.get());
   Assign(

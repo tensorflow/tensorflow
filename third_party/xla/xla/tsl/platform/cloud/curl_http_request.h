@@ -200,7 +200,7 @@ class CurlHttpRequest : public HttpRequest {
 
   std::vector<char> default_response_buffer_;
 
-  std::unordered_map<string, string> response_headers_;
+  std::unordered_map<std::string, string> response_headers_;
   uint64 response_code_ = 0;
 
   // The timestamp of the last activity related to the request execution, in

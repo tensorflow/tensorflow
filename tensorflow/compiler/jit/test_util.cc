@@ -29,7 +29,7 @@ namespace tensorflow {
 
 absl::Status ShapeAnnotationsMatch(
     const Graph& graph, const GraphShapeInfo& shape_info,
-    std::map<string, std::vector<PartialTensorShape>> expected_shapes) {
+    std::map<std::string, std::vector<PartialTensorShape>> expected_shapes) {
   for (Node* node : graph.op_nodes()) {
     auto sit = shape_info.find(node->name());
     TF_RET_CHECK(sit != shape_info.end())
@@ -50,7 +50,7 @@ absl::Status ShapeAnnotationsMatch(
     }
   }
   if (!expected_shapes.empty()) {
-    std::vector<string> missing;
+    std::vector<std::string> missing;
     missing.reserve(expected_shapes.size());
     for (const auto& entry : expected_shapes) {
       missing.push_back(entry.first);
@@ -88,12 +88,12 @@ void DeviceSetup::AddDevicesAndSetUp(
   flr_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
 }
 
-Device* DeviceSetup::GetDevice(const string& device_name) {
+Device* DeviceSetup::GetDevice(const std::string& device_name) {
   if (device_mgr_ == nullptr) {
     return nullptr;
   }
 
-  string full_device_name = absl::StrCat(
+  std::string full_device_name = absl::StrCat(
       "/job:localhost/replica:0/task:0/device:", device_name, ":0");
   Device* device;
   TF_CHECK_OK(device_mgr_->LookupDevice(full_device_name, &device));

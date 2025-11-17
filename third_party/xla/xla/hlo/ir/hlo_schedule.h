@@ -242,6 +242,9 @@ class HloSchedule {
   // satisfied in the schedule.
   absl::Status Verify() const;
 
+  // Verifies that the given schedule is valid for the given computation.
+  absl::Status Verify(const HloComputation* computation) const;
+
   std::string ToString() const;
 
   bool empty() const { return sequences_.empty(); }

@@ -39,7 +39,7 @@ absl::Status DefaultValidator(const OpRegistryInterface& op_registry) {
 
 // OpRegistry -----------------------------------------------------------------
 
-absl::Status OpRegistryInterface::LookUpOpDef(const string& op_type_name,
+absl::Status OpRegistryInterface::LookUpOpDef(const std::string& op_type_name,
                                               const OpDef** op_def) const {
   *op_def = nullptr;
   const OpRegistrationData* op_reg_data = nullptr;
@@ -62,7 +62,7 @@ void OpRegistry::Register(const OpRegistrationDataFactory& op_data_factory) {
 
 namespace {
 // Helper function that returns Status message for failed LookUp.
-absl::Status OpNotFound(const string& op_type_name) {
+absl::Status OpNotFound(const std::string& op_type_name) {
   absl::Status status = errors::NotFound(
       "Op type not registered '", op_type_name, "' in binary running on ",
       port::Hostname(), ". ",
@@ -76,13 +76,14 @@ absl::Status OpNotFound(const string& op_type_name) {
 }
 }  // namespace
 
-absl::Status OpRegistry::LookUp(const string& op_type_name,
+absl::Status OpRegistry::LookUp(const std::string& op_type_name,
                                 const OpRegistrationData** op_reg_data) const {
   if ((*op_reg_data = LookUp(op_type_name))) return absl::OkStatus();
   return OpNotFound(op_type_name);
 }
 
-const OpRegistrationData* OpRegistry::LookUp(const string& op_type_name) const {
+const OpRegistrationData* OpRegistry::LookUp(
+    const std::string& op_type_name) const {
   {
     tf_shared_lock l(mu_);
     if (initialized_) {
@@ -96,7 +97,7 @@ const OpRegistrationData* OpRegistry::LookUp(const string& op_type_name) const {
 }
 
 const OpRegistrationData* OpRegistry::LookUpSlow(
-    const string& op_type_name) const {
+    const std::string& op_type_name) const {
   const OpRegistrationData* res = nullptr;
 
   bool first_call = false;
@@ -195,10 +196,10 @@ absl::Status OpRegistry::ProcessRegistrations() const {
   return CallDeferred();
 }
 
-string OpRegistry::DebugString(bool include_internal) const {
+std::string OpRegistry::DebugString(bool include_internal) const {
   OpList op_list;
   Export(include_internal, &op_list);
-  string ret;
+  std::string ret;
   for (const auto& op : op_list.op()) {
     absl::StrAppend(&ret, SummarizeOpDef(op), "\n");
   }
@@ -268,7 +269,7 @@ OpListOpRegistry::OpListOpRegistry(const OpList* op_list) {
 }
 
 const OpRegistrationData* OpListOpRegistry::LookUp(
-    const string& op_type_name) const {
+    const std::string& op_type_name) const {
   auto iter = index_.find(op_type_name);
   if (iter == index_.end()) {
     return nullptr;
@@ -277,7 +278,8 @@ const OpRegistrationData* OpListOpRegistry::LookUp(
 }
 
 absl::Status OpListOpRegistry::LookUp(
-    const string& op_type_name, const OpRegistrationData** op_reg_data) const {
+    const std::string& op_type_name,
+    const OpRegistrationData** op_reg_data) const {
   if ((*op_reg_data = LookUp(op_type_name))) return absl::OkStatus();
   return OpNotFound(op_type_name);
 }

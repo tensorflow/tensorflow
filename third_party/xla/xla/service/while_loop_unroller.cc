@@ -23,7 +23,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/algorithm.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -1432,7 +1431,7 @@ WhileLoopUnroller::UnrollAndReturnReplacement(
   return result;
 }
 
-absl::StatusOr<bool> WhileLoopUnroller::Run(
+absl::StatusOr<bool> WhileLoopUnroller::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // TODO(b/288130138) For now, we only support full unrolling. Will add partial
@@ -1440,7 +1439,8 @@ absl::StatusOr<bool> WhileLoopUnroller::Run(
   if (unroll_factor_ != -1) {
     return false;
   }
-  XLA_VLOG_LINES(3, "WhileLoopUnroller::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(
+      3, "WhileLoopUnroller::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
   // Make sure all the necessary passes are executed before unrolling in order
   // to unroll every possible loop.
@@ -1478,7 +1478,8 @@ absl::StatusOr<bool> WhileLoopUnroller::Run(
     TF_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
   }
 
-  XLA_VLOG_LINES(3, "WhileLoopUnroller::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(3,
+                 "WhileLoopUnroller::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

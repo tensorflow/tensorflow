@@ -18,6 +18,10 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+<<<<<<< HEAD
+=======
+#include <optional>
+>>>>>>> upstream/master
 #include <string>
 #include <utility>
 
@@ -125,7 +129,11 @@ absl::StatusOr<DeviceListRef> GetAddressableDevices(
   return client->MakeDeviceList(std::move(devices));
 }
 
-UserContextRef MakeUserContext(uint64_t id) {
+UserContextRef MakeUserContext(uint64_t id,
+                               std::optional<std::string> debug_string) {
+  if (debug_string.has_value()) {
+    return TestUserContext::Create(UserContextId(id), *std::move(debug_string));
+  }
   return TestUserContext::Create(UserContextId(id));
 }
 

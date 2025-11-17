@@ -273,6 +273,13 @@ class LayoutUtil {
 
   // Returns a shape's split config if present.
   static std::optional<SplitConfig> GetSplitConfig(const Shape& shape);
+
+  // Returns true if the layout tiling is equivalent to having no tiles at all.
+  // This is not a complete check and may return false for some unusual tilings
+  // even if they _are_ effectively untiled.
+  // The tiling should be valid for the provided shape.
+  static bool IsUntiledLayout(absl::Span<const Tile> tiles,
+                              absl::Span<const int64_t> shape);
 };
 
 }  // namespace xla

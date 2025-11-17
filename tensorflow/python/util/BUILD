@@ -783,7 +783,7 @@ py_strict_library(
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        "@pypi_wrapt//:pkg",
+        "@pypi//wrapt",
         "//tensorflow/python:pywrap_tensorflow",
         ":_pywrap_utils",
     ],
@@ -969,7 +969,7 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         "//third_party/py/numpy",
-        "@pypi_wrapt//:pkg",
+        "@pypi//wrapt",
     ],
 )
 

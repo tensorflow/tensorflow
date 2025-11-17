@@ -34,21 +34,21 @@ Renderer& Renderer::BlankLine() {
   return *this;
 }
 
-Renderer& Renderer::CodeLine(const string& text) {
+Renderer& Renderer::CodeLine(const std::string& text) {
   context_.code.AddLineWithoutIndent(text);
   return *this;
 }
 
-Renderer& Renderer::CodeLines(const string& text) {
+Renderer& Renderer::CodeLines(const std::string& text) {
   absl::string_view trimmed_text(text);
   str_util::RemoveWhitespaceContext(&trimmed_text);
-  for (const string& line : str_util::Split(trimmed_text, '\n')) {
+  for (const std::string& line : str_util::Split(trimmed_text, '\n')) {
     context_.code.AddLineWithoutIndent(line);
   }
   return *this;
 }
 
-Renderer& Renderer::Statement(const string& text) {
+Renderer& Renderer::Statement(const std::string& text) {
   if (absl::EndsWith(text, ";")) {
     LOG(WARNING) << "Superfluous terminating ';' in '" << text << "'";
     context_.code.AddLineWithIndent(text);
@@ -58,22 +58,22 @@ Renderer& Renderer::Statement(const string& text) {
   return *this;
 }
 
-Renderer& Renderer::TFStatement(const string& text) {
+Renderer& Renderer::TFStatement(const std::string& text) {
   return Statement(absl::Substitute("TF_RETURN_IF_ERROR($0)", text));
 }
 
-Renderer& Renderer::CommentLine(const string& text) {
+Renderer& Renderer::CommentLine(const std::string& text) {
   context_.code.AddLineWithIndent(absl::StrCat("// ", text));
   return *this;
 }
 
-Renderer& Renderer::BlockOpen(const string& text) {
+Renderer& Renderer::BlockOpen(const std::string& text) {
   context_.code.AddLineWithIndent(absl::StrCat(text, " {"));
   context_.code.IncreaseIndent();
   return *this;
 }
 
-Renderer& Renderer::BlockClose(const string& text) {
+Renderer& Renderer::BlockClose(const std::string& text) {
   context_.code.DecreaseIndent();
   context_.code.AddLineWithIndent(absl::StrCat("}", text));
   return *this;

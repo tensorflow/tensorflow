@@ -84,7 +84,8 @@ static absl::StatusOr<bool> PopulateTensorArrayGradients(
 
       // Add any TensorArray gradients touched by the then/else computation to
       // the enclosing graph.
-      for (const string& grad_source : update.tensor_array_gradients_accessed) {
+      for (const std::string& grad_source :
+           update.tensor_array_gradients_accessed) {
         VLOG(5) << "TensorArray " << resource->name() << " accessed gradient "
                 << grad_source;
         XlaResource* gradient;
@@ -318,7 +319,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
     if (has_token_input_output_ && i == num_inputs - 1) {
       // Set token input for this "if" op.
       std::vector<xla::XlaOp> token_inputs;
-      for (const string& node_name : token_input_nodes_) {
+      for (const std::string& node_name : token_input_nodes_) {
         auto token_or = compiler->GetNodeToken(node_name);
         OP_REQUIRES_OK(ctx, token_or.status());
         token_inputs.push_back(token_or.value());

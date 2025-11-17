@@ -129,6 +129,8 @@ class OriginalValue {
 
   bool IsCompatibleWith(const Shape& shape) const;
 
+  bool IsTuple() const { return tree().IsTuple(); }
+
   bool operator==(const OriginalValue& other) const;
 
   bool operator!=(const OriginalValue& other) const {

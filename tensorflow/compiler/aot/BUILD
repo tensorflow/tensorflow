@@ -51,8 +51,8 @@ cc_library(
         "@local_xla//xla:status_macros",
         "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/backends/cpu/runtime:convolution_lib",
-        "@local_xla//xla/backends/cpu/runtime:dot_lib",
+        "@local_xla//xla/backends/cpu/runtime:convolution_dims",
+        "@local_xla//xla/backends/cpu/runtime:dot_dims",
         "@local_xla//xla/backends/cpu/runtime:thunk_proto_cc",
         "@local_xla//xla/service/cpu:executable_proto_cc",
         "@local_xla//xla/tsl/platform:statusor",
@@ -96,6 +96,7 @@ cc_library(
         ":thunk_proto_execution_deserializer",
         "//tensorflow/compiler/tf2xla",
         "//tensorflow/compiler/tf2xla:allocator",
+        "//tensorflow/compiler/tf2xla:encoded_buffer_allocation_info",
         "//tensorflow/compiler/tf2xla:mlir_tf2xla",  # fixdeps: keep
         "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/compiler/tf2xla:tf2xla_util",

@@ -22,7 +22,6 @@ limitations under the License.
 #include <random>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>

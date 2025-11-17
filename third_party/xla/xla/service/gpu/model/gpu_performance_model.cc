@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/coalescing_analysis.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
@@ -227,7 +227,11 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
     absl::Span<const HloInstruction* const> fused_consumers) {
   auto cache_result = gpu_performance_model_cache_.Get(*producer);
-  CHECK(cache_result.has_value());
+  CHECK(cache_result.has_value())
+      << "Producer `" << producer->name()
+      << "` not found in cache. This should never happen! HLO module name: "
+      << producer->GetModule()->name()
+      << " HLO Instruction: " << producer->ToString();
   EstimateRunTimeData producer_runtime = *cache_result;
 
   absl::Duration time_unfused =
@@ -240,7 +244,11 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     VLOG(8) << "Fused consumer: " << fused_consumer->name();
 
     auto cache_result = gpu_performance_model_cache_.Get(*fused_consumer);
-    CHECK(cache_result.has_value());
+    CHECK(cache_result.has_value())
+        << "Consumer `" << fused_consumer->name()
+        << "` not found in cache. This should never happen! HLO module name: "
+        << fused_consumer->GetModule()->name()
+        << " HLO Instruction: " << fused_consumer->ToString();
     EstimateRunTimeData consumer_runtime = *cache_result;
 
     time_unfused += consumer_runtime.exec_time;

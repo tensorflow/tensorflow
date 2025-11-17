@@ -11,6 +11,7 @@ def get_cub_sort_kernel_types(name = ""):
     """ List of supported types for CUB sort kernels.
     """
     return [
+        "bf16",
         "f16",
         "f32",
         "f64",

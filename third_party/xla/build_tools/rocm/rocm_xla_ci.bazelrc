@@ -1,0 +1,3 @@
+# CI related imports
+try-import /usertools/rocm.bazelrc
+try-import %workspace%/build_tools/rocm/rocm_xla.bazelrc

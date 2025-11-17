@@ -17,20 +17,20 @@ limitations under the License.
 #define XLA_TESTS_HLO_TEST_BASE_WITH_SYMBOLIC_EXPR_CONTEXT_H_
 
 #include "mlir/IR/MLIRContext.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 
 class HloTestBaseWithSymbolicExprContext : public HloTestBase {
  public:
-  gpu::SymbolicExprContext* symbolic_expr_context() {
+  SymbolicExprContext* symbolic_expr_context() {
     return &symbolic_expr_context_;
   }
 
  private:
   mlir::MLIRContext mlir_context_;
-  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 }  // namespace xla

@@ -39,7 +39,7 @@ namespace tensorflow {
 namespace {
 
 TEST(RendezvousTest, Key) {
-  const string key = Rendezvous::CreateKey(
+  const std::string key = Rendezvous::CreateKey(
       "/job:mnist/replica:1/task:2/CPU:0", 7890,
       "/job:mnist/replica:1/task:2/device:GPU:0", "var0", FrameAndIter(0, 0));
   EXPECT_EQ(key,
@@ -83,23 +83,23 @@ class LocalRendezvousTest : public ::testing::Test {
 };
 
 // string -> Tensor<string>
-Tensor V(const string& content) {
+Tensor V(const std::string& content) {
   Tensor tensor(DT_STRING, TensorShape({}));
   tensor.scalar<tstring>()() = content;
   return tensor;
 }
 
 // Tensor<string> -> string
-string V(const Tensor& tensor) {
+std::string V(const Tensor& tensor) {
   CHECK_EQ(tensor.dtype(), DT_STRING);
   CHECK(TensorShapeUtils::IsScalar(tensor.shape()));
   return tensor.scalar<tstring>()();
 }
 
-Rendezvous::ParsedKey MakeKey(const string& name) {
-  string s = Rendezvous::CreateKey("/job:mnist/replica:1/task:2/CPU:0", 7890,
-                                   "/job:mnist/replica:1/task:2/device:GPU:0",
-                                   name, FrameAndIter(0, 0));
+Rendezvous::ParsedKey MakeKey(const std::string& name) {
+  std::string s = Rendezvous::CreateKey(
+      "/job:mnist/replica:1/task:2/CPU:0", 7890,
+      "/job:mnist/replica:1/task:2/device:GPU:0", name, FrameAndIter(0, 0));
   Rendezvous::ParsedKey k;
   TF_EXPECT_OK(Rendezvous::ParseKey(s, &k));
   return k;

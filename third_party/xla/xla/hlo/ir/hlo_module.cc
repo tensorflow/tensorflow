@@ -1694,33 +1694,32 @@ void HloModule::OriginalValueRecoveryTable::AddRecoveryComputation(
   for (const auto& [shape_index, old_original_array] :
        old_original_value->original_arrays()) {
     if (!old_original_array || table_.contains(*old_original_array)) {
-      // If the replaced array is already tracked by the recovery table, we can
+      // If the original array is already tracked by the recovery table, we can
       // ignore it since it is already handled by another path.
       continue;
     }
-    // If build_recovery_computation is not provided, we can just propagate the
-    // replaced original array.
     std::optional<std::unique_ptr<HloModule>> recovery_computation(nullptr);
     if (build_recovery_computation) {
       recovery_computation = build_recovery_computation(
           shape_index, *old_original_array,
           ShapeUtil::GetSubshape(old_inst->shape(), shape_index),
           ShapeUtil::GetSubshape(new_inst->shape(), shape_index));
-    }
-    if (!recovery_computation) {
-      continue;
+      if (!recovery_computation) {
+        // Skips if build_recovery_computation returns a nullopt, which
+        // indicates
+        // the original array is not recoverable.
+        continue;
+      }
     }
     std::optional<OriginalArray>* new_original_array =
         new_inst->original_value()->mutable_original_array(shape_index);
-    if (recovery_computation->get() == nullptr &&
-        !new_original_array->has_value()) {
-      // If the recovery computation is the identity computation and the
-      // replacing original array is not set, we can just propagate the replaced
-      // original array without setting any recovery computation.
-      new_original_array->emplace(*old_original_array);
-      continue;
-    }
     if (!*new_original_array) {
+      if (recovery_computation->get() == nullptr) {
+        // If the recovery computation is a nullptr, it means this is an
+        // identity computation and we can just pass through the original array.
+        new_original_array->emplace(*old_original_array);
+        continue;
+      }
       new_original_array->emplace(
           OriginalArray{GetOriginalValuePlaceholderInstructionName(
                             old_original_array->instruction_name),
