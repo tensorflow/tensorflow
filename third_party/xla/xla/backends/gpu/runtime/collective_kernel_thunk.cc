@@ -285,13 +285,8 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
   const AllReduceStrategy strategy =
       GetAllReduceStrategy(GetInputSizeBytes(), is_multimem_enabled_);
   const LaunchDimensions launch_dimensions = AllReduceLaunchDimensions(
-<<<<<<< HEAD
-      buffers_[0].element_count, clique_key.num_local_participants(),
-      GetAllReduceStrategy(GetInputSizeBytes()));
-=======
       buffers_[0].element_count, clique_key.num_local_participants(), strategy);
 
->>>>>>> upstream/master
   StreamState* state = nullptr;
   {
     absl::MutexLock lock(mutex_);

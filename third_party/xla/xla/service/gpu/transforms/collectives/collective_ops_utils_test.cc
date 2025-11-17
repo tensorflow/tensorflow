@@ -62,11 +62,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost8Devices) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-<<<<<<< HEAD
-              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
-=======
               IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
->>>>>>> upstream/master
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHost4Devices) {
@@ -89,11 +85,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost4Devices) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-<<<<<<< HEAD
-              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
-=======
               IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
->>>>>>> upstream/master
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHost16Devices) {
@@ -116,11 +108,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost16Devices) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*partition_size=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-<<<<<<< HEAD
-              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
-=======
               IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
->>>>>>> upstream/master
 }
 
 TEST_F(CommunicationTypeTest, DetectWorldLevelAllDevices) {
@@ -143,11 +131,7 @@ TEST_F(CommunicationTypeTest, DetectWorldLevelAllDevices) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-<<<<<<< HEAD
-              absl_testing::IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
-=======
               IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
->>>>>>> upstream/master
 }
 
 TEST_F(CommunicationTypeTest, DetectWorldLevelHalfMesh) {
@@ -173,11 +157,7 @@ TEST_F(CommunicationTypeTest, DetectWorldLevelHalfMesh) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-<<<<<<< HEAD
-              absl_testing::IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
-=======
               IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
->>>>>>> upstream/master
 }
 
 TEST_F(CommunicationTypeTest, DetectNonWorldLevel) {
@@ -198,16 +178,9 @@ TEST_F(CommunicationTypeTest, DetectNonWorldLevel) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-<<<<<<< HEAD
-  EXPECT_THAT(
-      CommunicationType(/*num_devices_per_host=*/8, *instr,
-                        device_info().gpu_compute_capability()),
-      absl_testing::IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
-=======
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
               IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
->>>>>>> upstream/master
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHost16DevicesForEmptyReplicaGroups) {
@@ -228,11 +201,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost16DevicesForEmptyReplicaGroups) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/16, *instr,
                                 device_info().gpu_compute_capability()),
-<<<<<<< HEAD
-              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
-=======
               IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
->>>>>>> upstream/master
 }
 
 TEST_F(CommunicationTypeTest, DetectWorldLevel8DevicesForEmptyReplicaGroups) {
@@ -253,11 +222,7 @@ TEST_F(CommunicationTypeTest, DetectWorldLevel8DevicesForEmptyReplicaGroups) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-<<<<<<< HEAD
-              absl_testing::IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
-=======
               IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
->>>>>>> upstream/master
 }
 
 TEST_F(CommunicationTypeTest, DetectNonWorldLevel16Devices) {
@@ -276,16 +241,9 @@ TEST_F(CommunicationTypeTest, DetectNonWorldLevel16Devices) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-<<<<<<< HEAD
-  EXPECT_THAT(
-      CommunicationType(/*num_devices_per_host=*/8, *instr,
-                        device_info().gpu_compute_capability()),
-      absl_testing::IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
-=======
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
               IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
->>>>>>> upstream/master
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermute) {
@@ -305,11 +263,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermute) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-<<<<<<< HEAD
-              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
-=======
               IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
->>>>>>> upstream/master
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermuteSinglePair) {
@@ -348,16 +302,9 @@ TEST_F(CommunicationTypeTest, DetectNonWorldLevelCollectivePermute) {
 
   HloChannelInstruction* instr = Cast<HloChannelInstruction>(
       module->entry_computation()->root_instruction());
-<<<<<<< HEAD
-  EXPECT_THAT(
-      CommunicationType(/*num_devices_per_host=*/8, *instr,
-                        device_info().gpu_compute_capability()),
-      absl_testing::IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
-=======
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
               IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
->>>>>>> upstream/master
 }
 
 TEST_F(CommunicationTypeTest, DetectWorldLevelCollectivePermute) {
@@ -377,9 +324,6 @@ TEST_F(CommunicationTypeTest, DetectWorldLevelCollectivePermute) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-<<<<<<< HEAD
-              absl_testing::IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
-=======
               IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
 }
 
@@ -534,7 +478,6 @@ TEST_F(CommunicationTypeTest, DetectsRailAlignedMultiPartition) {
   EXPECT_THAT(CommunicationType(/*partition_size=*/64, *instr,
                                 device_info().gpu_compute_capability()),
               IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
->>>>>>> upstream/master
 }
 
 }  // namespace

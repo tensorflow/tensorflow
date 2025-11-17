@@ -18,10 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-<<<<<<< HEAD
-=======
 #include <optional>
->>>>>>> upstream/master
 #include <string>
 #include <utility>
 

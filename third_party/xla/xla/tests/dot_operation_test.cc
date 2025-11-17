@@ -324,19 +324,6 @@ class ParametricDotTest : public DotOperationTest,
     if (IsRocm()) {
       absl::string_view name(
           ::testing::UnitTest::GetInstance()->current_test_info()->name());
-<<<<<<< HEAD
-      if (name.find("TestF16/270x270x520_MajorToMinor") != std::string::npos) {
-        execution_options_.mutable_debug_options()->set_xla_gpu_autotune_level(
-            0);
-        DotTestParam param = GetParam();
-        // In order to test both grad_x and grad_y attributes, we set
-        // propagate_grad_xy_ to 1 or 2 based on some alternating parameter
-        // to set it deterministically.
-        propagate_grad_xy_ = param.dot_lhs_row_major ? 1 : 2;
-=======
-      if (absl::StrContains(name, "TestF16/270x270x520_MajorToMinor")) {
-        GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
->>>>>>> upstream/master
       }
     }
   }
@@ -1703,19 +1690,7 @@ INSTANTIATE_TEST_SUITE_P(Einsum, EinsumTest,
 using BatchDotParamType = std::tuple<std::vector<int64_t>, std::vector<int64_t>,
                                      std::vector<int64_t>>;
 class BatchDotTest : public DotOperationTest,
-<<<<<<< HEAD
-                     public ::testing::WithParamInterface<BatchDotParamType> {
- protected:
-  void SetUp() override {
-    const auto& gpu_comp = client_->backend()
-                                .default_stream_executor()
-                                ->GetDeviceDescription()
-                                .gpu_compute_capability();
-  }
-};
-=======
                      public ::testing::WithParamInterface<BatchDotParamType> {};
->>>>>>> upstream/master
 
 TEST_P(BatchDotTest, BroadcastingBatchDotTest) {
   XlaBuilder builder(TestName());
@@ -1752,22 +1727,8 @@ std::vector<BatchDotParamType> GetBatchDotTestCases() {
 INSTANTIATE_TEST_SUITE_P(BatchDot, BatchDotTest,
                          ::testing::ValuesIn(GetBatchDotTestCases()));
 
-<<<<<<< HEAD
-class DotOperationTextTest : public HloTestBase {
- public:
-  const stream_executor::GpuComputeCapability& GpuComputeComp() {
-    return device_desc().gpu_compute_capability();
-  }
-
- protected:
-  const stream_executor::DeviceDescription& device_desc() {
-    return backend().default_stream_executor()->GetDeviceDescription();
-  }
-};
-=======
 class DotOperationTextTest
     : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
->>>>>>> upstream/master
 
 TEST_F(DotOperationTextTest, DotReorderedDotDims) {
   absl::string_view hlo_string =

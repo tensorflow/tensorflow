@@ -155,13 +155,7 @@ OpKernelRunner::OpKernelRunner(
     tensorflow::Device* device,
     tensorflow::FunctionLibraryRuntime* function_library_runtime,
     std::unique_ptr<tensorflow::OpKernel> op_kernel)
-<<<<<<< HEAD
-    : op_kernel_(std::move(op_kernel)),
-      info_(std::make_unique<Info>()),
-      op_name_(op_name) {
-=======
     : op_kernel_(std::move(op_kernel)), info_(std::make_unique<Info>()) {
->>>>>>> upstream/master
   DCHECK(device);
   DCHECK(function_library_runtime);
 

@@ -27,18 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
-namespace rocm {
-
-<<<<<<< HEAD
-// Opaque and unique identifier for the ROCM platform plugin.
-// This is needed so that plugins can refer to/identify this platform without
-// instantiating a ROCmPlatform object.
-extern const Platform::Id kROCmPlatformId;
-}
-
 namespace gpu {
-=======
->>>>>>> upstream/master
 // ROCm-specific platform plugin, registered as a singleton value via module
 // initializer.
 class ROCmPlatform : public Platform {

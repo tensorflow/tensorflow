@@ -116,23 +116,15 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
-<<<<<<< HEAD
-        "@local_config_rocm//rocm:rocm_config",
-        "@local_config_tensorrt//:tensorrt_headers",
-=======
->>>>>>> upstream/master
         "@local_tsl//tsl/platform:load_library",
         "@local_tsl//tsl/platform:path",
     ] + if_oss([
         "@nvshmem//:nvshmem_config",
         "@local_config_nccl//:nccl_config",
-<<<<<<< HEAD
-=======
         "@local_config_tensorrt//:tensorrt_headers",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_config",
         "@local_config_rocm//rocm:rocm_headers",
->>>>>>> upstream/master
     ]),
 )
 

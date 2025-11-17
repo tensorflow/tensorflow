@@ -49,12 +49,7 @@ TEST(SemverTest, VersionStringFollowsSemver) {
   // Poor approximation of the semver 2.0 specification at www.semver.org.  Feel
   // free to refine further (for example, check for leading 0s in numbers), but
   // avoid adding dependencies.
-<<<<<<< HEAD
-  GTEST_SKIP() << "TODO: Weekly-sync 24-12-10,  Currently failing on ROCm!";
-  uint64 major, minor, patch;
-=======
   uint64_t major, minor, patch;
->>>>>>> upstream/master
   absl::string_view prerelease, metadata;
   absl::string_view semver(TF_VERSION_STRING);
 

@@ -3608,11 +3608,7 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_2GPUs_SliceSize1) {
     send_sizes = s32[32] parameter(3)
     output_offsets = s32[32] parameter(4)
     recv_sizes = s32[32] parameter(5)
-<<<<<<< HEAD
-    ROOT ra2a = f32[512,5,32] ragged-all-to-all(input, output,
-=======
     ROOT ra2a = f32[$1,5,32] ragged-all-to-all(input, output,
->>>>>>> upstream/master
       input_offsets, send_sizes, output_offsets, recv_sizes),
       replica_groups={{0,1}}
   })",
@@ -3667,11 +3663,7 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_8GPUs_SliceSize4) {
     send_sizes = s32[32] parameter(3)
     output_offsets = s32[32] parameter(4)
     recv_sizes = s32[32] parameter(5)
-<<<<<<< HEAD
-    ROOT ra2a = f32[512,5,32] ragged-all-to-all(input, output,
-=======
     ROOT ra2a = f32[$1,5,32] ragged-all-to-all(input, output,
->>>>>>> upstream/master
       input_offsets, send_sizes, output_offsets, recv_sizes),
       replica_groups={{0,1,2,3,4,5,6,7}}
   })",
@@ -3729,11 +3721,7 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest,
     send_sizes = s32[32] parameter(3)
     output_offsets = s32[32] parameter(4)
     recv_sizes = s32[32] parameter(5)
-<<<<<<< HEAD
-    ROOT ra2a = f32[512,5,32] ragged-all-to-all(input, output,
-=======
     ROOT ra2a = f32[$1,5,32] ragged-all-to-all(input, output,
->>>>>>> upstream/master
       input_offsets, send_sizes, output_offsets, recv_sizes),
       replica_groups={{0,2,4,6},{1,3,5,7}}
   })",

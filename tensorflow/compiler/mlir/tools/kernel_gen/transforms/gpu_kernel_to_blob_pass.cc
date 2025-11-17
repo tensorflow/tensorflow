@@ -118,7 +118,7 @@ class GpuKernelToBlobPass
       auto llvm_module_copy = llvm::CloneModule(*llvmModule);
       auto hsaco_or = xla::gpu::amdgpu::CompileToHsaco(
           llvm_module_copy.get(),
-          tensorflow::se::RocmComputeCapability{arch_str}, options,
+          stream_executor::GpuComputeCapability(tensorflow::se::RocmComputeCapability{arch_str}), options,
           options.DebugString());
       if (!hsaco_or.ok()) {
         return tensorflow::errors::Internal("Failure when generating HSACO");

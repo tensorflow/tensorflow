@@ -74,11 +74,6 @@ class CommandBufferTest
     debug_options.set_xla_gpu_command_buffer_scheduling_mode(GetParam());
     return debug_options;
   }
-<<<<<<< HEAD
- public:
-  bool IsRocm() {
-    return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
-=======
 
   // Execute compiled module three times to exercise warm-up, create, and
   // update paths. Third run uses cloned arguments to encourage device buffer
@@ -183,7 +178,6 @@ class CommandBufferTest
       return ::testing::AssertionFailure() << "Mismatch on update run";
 
     return ::testing::AssertionSuccess();
->>>>>>> upstream/master
   }
 };
 
