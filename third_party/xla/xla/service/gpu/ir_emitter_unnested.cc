@@ -164,17 +164,13 @@ limitations under the License.
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/service/llvm_ir/sort_util.h"
 #include "xla/service/name_uniquer.h"
-#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
-#include "xla/stream_executor/gpu_solver_context.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
@@ -1376,9 +1372,10 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
       kernel::topk::GetTopKKernel("topk", dtype, n, k, batch_size,
                                   platform_name(), wavefront_size));
 
+  Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
+      instr, ir_emitter_context_->GetNextThunkId());
   AddThunkToThunkSequence(std::make_unique<CustomKernelThunk>(
-      instr, std::move(kernel), kernel_arguments,
-      ir_emitter_context_->GetNextThunkId()));
+      std::move(thunk_info), std::move(kernel), kernel_arguments));
   return absl::OkStatus();
 }
 

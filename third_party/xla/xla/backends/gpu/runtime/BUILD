@@ -3348,11 +3348,8 @@ xla_cc_test(
     deps = [
         ":custom_kernel_thunk",
         ":thunk",
-        ":thunk_id",
-        "//xla:literal",
         "//xla:shape_util",
         "//xla/codegen/emitters:kernel_arguments",
-        "//xla/hlo/ir:hlo",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/service/gpu/kernels:custom_kernel",

@@ -28,9 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/print_buffer_contents.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
@@ -44,12 +42,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-
 CustomKernelThunk::CustomKernelThunk(
-    const HloInstruction* instr, CustomKernel custom_kernel,
-    const emitters::KernelArguments& kernel_arguments, ThunkId thunk_id)
-    : Thunk(Kind::kCustomKernel,
-            Thunk::ThunkInfo::WithProfileAnnotation(instr, thunk_id)),
+    Thunk::ThunkInfo thunk_info, CustomKernel custom_kernel,
+    const emitters::KernelArguments& kernel_arguments)
+    : Thunk(Kind::kCustomKernel, std::move(thunk_info)),
       args_(kernel_arguments.GetArgumentBufferSlices()),
       written_(kernel_arguments.GetArgumentOutputFlags()),
       custom_kernel_(std::move(custom_kernel)) {}

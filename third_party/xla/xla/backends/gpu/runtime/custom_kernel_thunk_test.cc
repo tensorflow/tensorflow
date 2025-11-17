@@ -18,10 +18,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/literal.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
@@ -46,8 +43,7 @@ TEST(CustomKernelThunkTest, BufferUsesReturnsCorrectBuffers) {
   arg0.set_written(false);
   arg1.set_written(true);
   emitters::KernelArguments kernel_arguments({arg0, arg1});
-  auto hlo = HloInstruction::CreateConstant(Literal());
-  CustomKernelThunk thunk(hlo.get(), kernel, kernel_arguments, ThunkId{0});
+  CustomKernelThunk thunk(Thunk::ThunkInfo{}, kernel, kernel_arguments);
 
   Thunk::BufferUses buffers = thunk.buffer_uses();
 
@@ -69,8 +65,7 @@ TEST(CustomKernelThunkTest, BufferUsesReturnsBuffersInConsistentOrder) {
   arg0.set_written(false);
   arg1.set_written(true);
   emitters::KernelArguments kernel_arguments({arg0, arg1});
-  auto hlo = HloInstruction::CreateConstant(Literal());
-  CustomKernelThunk thunk(hlo.get(), kernel, kernel_arguments, ThunkId{0});
+  CustomKernelThunk thunk(Thunk::ThunkInfo{}, kernel, kernel_arguments);
 
   Thunk::BufferUses buffers1 = thunk.buffer_uses();
   Thunk::BufferUses buffers2 = thunk.buffer_uses();

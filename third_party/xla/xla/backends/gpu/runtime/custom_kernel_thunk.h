@@ -27,9 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -45,9 +43,8 @@ namespace gpu {
 // compiled by XLA and loaded from an executable source.
 class CustomKernelThunk : public Thunk {
  public:
-  CustomKernelThunk(const HloInstruction* inst, CustomKernel custom_kernel,
-                    const emitters::KernelArguments& kernel_arguments,
-                    ThunkId thunk_id);
+  CustomKernelThunk(Thunk::ThunkInfo thunk_info, CustomKernel custom_kernel,
+                    const emitters::KernelArguments& kernel_arguments);
 
   std::string ToString(int indent) const override;
 
