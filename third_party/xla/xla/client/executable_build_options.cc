@@ -143,8 +143,8 @@ std::string ExecutableBuildOptions::ToString() const {
       device_ordinal_, result_layout, num_replicas_);
 }
 
-absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
-    const {
+absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto(
+    bool ignore_unserializable_fields) const {
   ExecutableBuildOptionsProto output;
   output.set_device_ordinal(device_ordinal());
   if (result_layout()) {
@@ -156,12 +156,12 @@ absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
   if (has_debug_options()) {
     *output.mutable_debug_options() = debug_options();
   }
-  if (layout_canonicalization_callback_) {
+  if (layout_canonicalization_callback_ && !ignore_unserializable_fields) {
     return InvalidArgument(
         "Cannot serialize "
         "ExecutableBuildOptions::layout_canonicalization_callback");
   }
-  if (compile_thread_pool() != nullptr) {
+  if (compile_thread_pool() != nullptr && !ignore_unserializable_fields) {
     return InvalidArgument(
         "Cannot serialize ExecutableBuildOptions::compile_thread_pool");
   }
