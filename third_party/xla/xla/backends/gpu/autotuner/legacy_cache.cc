@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/autotuning/autotune_cache_key.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -46,7 +47,7 @@ std::optional<LegacyCache::Config> LegacyCache::Lookup(
   if (!result->has_value()) {
     return std::nullopt;
   }
-  return GetConfig(result->value());
+  return GetConfig(result->value(), instr->opcode() == HloOpcode::kFusion);
 }
 
 absl::Status LegacyCache::Insert(const HloInstruction* instr,
@@ -99,13 +100,16 @@ AutotuneCacheKey LegacyCache::GetAutotuneCacheKey(const HloInstruction& instr) {
 }
 
 std::optional<LegacyCache::Config> LegacyCache::GetConfig(
-    const AutotuneResult& result) {
+    const AutotuneResult& result, bool is_fusion_instruction) {
   Config config;
   if (result.has_triton()) {
     config.codegen_backend_name = "Triton";
     config.backend_config.PackFrom(result.triton());
   } else if (result.has_gemm()) {
     config.codegen_backend_name = "Cublas";
+    if (is_fusion_instruction) {
+      config.codegen_backend_name = "Cublas_fission";
+    }
     config.backend_config.PackFrom(result.gemm());
   } else if (result.has_algorithm()) {
     config.codegen_backend_name = "Cudnn";
@@ -124,7 +128,8 @@ std::optional<AutotuneResult> LegacyCache::GetAutotuneResult(
   AutotuneResult result;
   if (config.codegen_backend_name == "Triton") {
     config.backend_config.UnpackTo(result.mutable_triton());
-  } else if (config.codegen_backend_name == "Cublas") {
+  } else if (config.codegen_backend_name == "Cublas" ||
+             config.codegen_backend_name == "Cublas_fission") {
     config.backend_config.UnpackTo(result.mutable_gemm());
   } else if (config.codegen_backend_name == "Cudnn") {
     config.backend_config.UnpackTo(result.mutable_algorithm());
