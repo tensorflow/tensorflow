@@ -144,42 +144,6 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/di
  // PrecisionConfigAttr is a constraint attribute on ArrayAttrs.
  // Create this class to allow for building this attr similar to other
  // attributes.
-diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
---- stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
-+++ stablehlo/stablehlo/integrations/cpp/builder/AttrTypeBuilderUtilTest.cpp
-@@ -20,7 +20,7 @@
- #include <utility>
- #include <vector>
- 
--#include "gtest/gtest.h"
-+#include "testing/base/public/gunit.h"
- #include "llvm/ADT/DenseMap.h"
- #include "mlir/IR/BuiltinTypeInterfaces.h"
- #include "mlir/IR/BuiltinTypes.h"
-diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
---- stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
-+++ stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
-@@ -15,7 +15,7 @@
- 
- #include <string>
- 
--#include "gtest/gtest.h"
-+#include "testing/base/public/gunit.h"
- #include "llvm/Support/raw_ostream.h"
- #include "mlir/Dialect/Func/IR/FuncOps.h"
- #include "mlir/IR/BuiltinOps.h"
-diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
---- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
-+++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
-@@ -17,7 +17,7 @@
- #include <cstdint>
- #include <string>
- 
--#include "gtest/gtest.h"
-+#include "testing/base/public/gunit.h"
- #include "mlir/IR/BuiltinAttributes.h"
- #include "mlir/IR/BuiltinOps.h"
- #include "mlir/IR/DialectRegistry.h"
 diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td b/stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td
 --- stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td
 +++ stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td
