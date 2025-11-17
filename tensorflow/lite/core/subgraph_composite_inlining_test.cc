@@ -285,7 +285,6 @@ CompositeDelegate& GetDelegate(TfLiteDelegate& tflite_delegate) {
 class CompositeInliningTest : public testing::Test {
  public:
   CompositeInliningTest() {
-    interpreter_options_.SetShloCompositeInlining(true);
   }
 
  protected:
