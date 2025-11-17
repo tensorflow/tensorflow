@@ -1702,8 +1702,8 @@ absl::StatusOr<bool> GemmFusionAutotuner::RunViaNewInfra(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                       Compiler::GetForPlatform(stream_exec->GetPlatform()));
   se::DeviceMemoryAllocator* device_allocator = config_.GetAllocator();
-  std::unique_ptr<Compiler::TargetConfig> target_config;
-  target_config = std::make_unique<Compiler::TargetConfig>(stream_exec);
+  std::unique_ptr<Compiler::GpuTargetConfig> target_config;
+  target_config = std::make_unique<Compiler::GpuTargetConfig>(stream_exec);
   backends.push_back(std::make_unique<TritonBackend>(
       &debug_options, compiler.get(), target_config.get(),
       symbolic_expr_context_));

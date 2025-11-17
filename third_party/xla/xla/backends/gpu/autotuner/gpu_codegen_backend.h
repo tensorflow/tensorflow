@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 
 namespace xla {
-namespace  gpu {
+namespace gpu {
 
 // Abstract base class for GPU backends, implementing the Backend interface.
 class GpuCodegenBackend : public CodegenBackend {
@@ -43,7 +43,7 @@ class GpuCodegenBackend : public CodegenBackend {
   // TODO(b/447096292): Remove stream_executor from GpuCodegenBackend.
   GpuCodegenBackend(absl::string_view name, const DebugOptions* debug_options,
                     Compiler* compiler,
-                    const Compiler::TargetConfig* target_config,
+                    const Compiler::GpuTargetConfig* target_config,
                     stream_executor::StreamExecutor* stream_executor = nullptr)
       : name_(name),
         stream_executor_(stream_executor),
@@ -53,7 +53,9 @@ class GpuCodegenBackend : public CodegenBackend {
 
   absl::string_view name() const override { return name_; }
 
-  const Compiler::TargetConfig& target_config() const { return target_config_; }
+  const Compiler::GpuTargetConfig& target_config() const {
+    return target_config_;
+  }
   const DebugOptions& debug_options() const { return debug_options_; }
   stream_executor::StreamExecutor* stream_executor() {
     return stream_executor_;
@@ -75,7 +77,7 @@ class GpuCodegenBackend : public CodegenBackend {
         allow_register_spills_);
 
     Compiler::CompileOptions options;
-    options.target_config = target_config_;
+    options.gpu_target_config = target_config_;
     options.is_autotuning_compilation = true;
     TF_ASSIGN_OR_RETURN(auto optimized_module,
                         RunHloPasses(std::move(hlo_module), options));
@@ -127,7 +129,7 @@ class GpuCodegenBackend : public CodegenBackend {
 
   std::string name_;
   stream_executor::StreamExecutor* stream_executor_;
-  const Compiler::TargetConfig& target_config_;
+  const Compiler::GpuTargetConfig& target_config_;
   const DebugOptions& debug_options_;
   // TODO(b/407494653): remove compiler when we don't need to run any HLO passes
   // and the codegen backend can directly produce an executable without a

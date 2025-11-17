@@ -45,7 +45,7 @@ class FissionBackend : public GpuCodegenBackend {
  public:
   explicit FissionBackend(stream_executor::StreamExecutor* stream_executor,
                           const DebugOptions* debug_options, Compiler* compiler,
-                          const Compiler::TargetConfig* target_config,
+                          const Compiler::GpuTargetConfig* target_config,
                           SymbolicExprContext* symbolic_expr_context)
       : GpuCodegenBackend("Fission", debug_options, compiler, target_config),
         cublas_backend_(stream_executor, debug_options, compiler,

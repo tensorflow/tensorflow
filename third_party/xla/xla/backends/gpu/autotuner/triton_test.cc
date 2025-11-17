@@ -89,7 +89,7 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
   se::StreamExecutor* stream_executor_;
-  Compiler::TargetConfig target_config_;
+  Compiler::GpuTargetConfig target_config_;
   TritonBackend backend_;
   mlir::MLIRContext mlir_context_;
   SymbolicExprContext symbolic_expr_context_{&mlir_context_};

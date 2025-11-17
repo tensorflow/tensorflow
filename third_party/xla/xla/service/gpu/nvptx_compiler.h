@@ -62,7 +62,7 @@ class NVPTXCompiler : public GpuCompiler {
 
   absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const TargetConfig& gpu_target_config,
+      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const GpuAliasInfo* alias_info,
       tsl::thread::ThreadPool* thread_pool) override;
 
@@ -75,7 +75,7 @@ class NVPTXCompiler : public GpuCompiler {
       const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
       se::StreamExecutor* stream_exec,
-      const Compiler::TargetConfig* target_config) override;
+      const Compiler::GpuTargetConfig* target_config) override;
 
   absl::Status AddGemmFusionAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
@@ -89,7 +89,7 @@ class NVPTXCompiler : public GpuCompiler {
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
       stream_executor::StreamExecutor* stream_executor,
-      const Compiler::TargetConfig* target_config,
+      const Compiler::GpuTargetConfig* target_config,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn) override;
 
   absl::Status RunCudnnCompilerPasses(HloModule* module,

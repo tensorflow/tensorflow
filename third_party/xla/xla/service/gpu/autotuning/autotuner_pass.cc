@@ -93,7 +93,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     const DebugOptions& debug_options,
     stream_executor::StreamExecutor* stream_executor,
     tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
-    const Compiler::TargetConfig* target_config,
+    const Compiler::GpuTargetConfig* target_config,
     se::DeviceMemoryAllocator* allocator, bool optimize_scratch_bytes,
     MultiProcessKeyValueStore key_value_store) {
   std::unique_ptr<Profiler> profiler = nullptr;

@@ -181,7 +181,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
 
 absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const TargetConfig& gpu_target_config,
+    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool) {
   HloPassPipeline pre_pipeline("AMDGPU post-layout_assignment part 1");
 
@@ -243,7 +243,7 @@ absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
     const CompileOptions& options, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
     se::StreamExecutor* stream_exec,
-    const Compiler::TargetConfig* target_config) {
+    const Compiler::GpuTargetConfig* target_config) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   if (hlo_module->config()
           .debug_options()

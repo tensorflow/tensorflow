@@ -76,7 +76,7 @@ class MIOpenBackendTest : public HloHardwareIndependentTestBase {
   DebugOptions debug_options_;
   AMDGPUCompiler compiler_;
   se::StreamExecutor* stream_executor_;
-  Compiler::TargetConfig target_config_;
+  Compiler::GpuTargetConfig target_config_;
   MIOpenBackend backend_;
 
   MIOpenBackendTest()

@@ -2007,7 +2007,8 @@ ENTRY %main {
   ASSERT_TRUE(tsl::Env::Default()->LocalTempFilename(&target_file));
   TF_ASSERT_OK(tsl::WriteTextProto(
       tsl::Env::Default(), target_file,
-      Compiler::TargetConfig(backend().default_stream_executor()).ToProto()));
+      Compiler::GpuTargetConfig(backend().default_stream_executor())
+          .ToProto()));
   debug_options.set_xla_gpu_target_config_filename(target_file);
   config.set_debug_options(debug_options);
 
@@ -2044,7 +2045,8 @@ TEST_F(GpuCompilerTest, CompilingAndCollectingMetadata) {
   ASSERT_TRUE(tsl::Env::Default()->LocalTempFilename(&target_file));
   TF_ASSERT_OK(tsl::WriteTextProto(
       tsl::Env::Default(), target_file,
-      Compiler::TargetConfig(backend().default_stream_executor()).ToProto()));
+      Compiler::GpuTargetConfig(backend().default_stream_executor())
+          .ToProto()));
   debug_options.set_xla_gpu_target_config_filename(target_file);
   config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

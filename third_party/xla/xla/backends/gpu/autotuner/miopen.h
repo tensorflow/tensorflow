@@ -36,7 +36,7 @@ class MIOpenBackend : public GpuCodegenBackend {
  public:
   explicit MIOpenBackend(stream_executor::StreamExecutor* stream_executor,
                          const DebugOptions* debug_options, Compiler* compiler,
-                         const Compiler::TargetConfig* target_config)
+                         const Compiler::GpuTargetConfig* target_config)
       : GpuCodegenBackend("MIOpen", debug_options, compiler, target_config,
                           stream_executor) {}
 

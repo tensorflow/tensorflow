@@ -41,7 +41,7 @@ namespace xla {
 
 /* static */ absl::Mutex Compiler::platform_compiler_mutex_(absl::kConstInit);
 
-Compiler::TargetConfig::TargetConfig(se::StreamExecutor* s)
+Compiler::GpuTargetConfig::GpuTargetConfig(se::StreamExecutor* s)
     : device_description(s->GetDeviceDescription()),
       platform_name(s->GetPlatform()->Name()),
       device_description_str(s->GetDeviceDescription().name()) {
@@ -54,9 +54,9 @@ Compiler::TargetConfig::TargetConfig(se::StreamExecutor* s)
   }
 }
 
-absl::StatusOr<Compiler::TargetConfig> Compiler::TargetConfig::FromProto(
+absl::StatusOr<Compiler::GpuTargetConfig> Compiler::GpuTargetConfig::FromProto(
     const se::GpuTargetConfigProto& proto) {
-  TargetConfig target_config;
+  GpuTargetConfig target_config;
   TF_ASSIGN_OR_RETURN(
       target_config.device_description,
       stream_executor::DeviceDescription::FromProto(proto.gpu_device_info()));
@@ -76,7 +76,7 @@ absl::StatusOr<Compiler::TargetConfig> Compiler::TargetConfig::FromProto(
   return target_config;
 }
 
-se::GpuTargetConfigProto Compiler::TargetConfig::ToProto() const {
+se::GpuTargetConfigProto Compiler::GpuTargetConfig::ToProto() const {
   stream_executor::GpuTargetConfigProto proto;
   *proto.mutable_gpu_device_info() = device_description.ToGpuProto();
   proto.set_platform_name(platform_name);

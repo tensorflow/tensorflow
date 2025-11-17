@@ -44,7 +44,7 @@ namespace xla::gpu {
 class FissionBackend : public GpuCodegenBackend {
  public:
   FissionBackend(const DebugOptions* debug_options, Compiler* compiler,
-                 const Compiler::TargetConfig* target_config,
+                 const Compiler::GpuTargetConfig* target_config,
                  std::unique_ptr<GpuCodegenBackend> backend,
                  std::unique_ptr<HloPassPipeline> rewriter_pipeline,
                  SymbolicExprContext* symbolic_expr_context,

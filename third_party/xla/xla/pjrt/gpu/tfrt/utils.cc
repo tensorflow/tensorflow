@@ -285,7 +285,7 @@ std::optional<stream_executor::GpuTargetConfigProto> GetTargetConfigForDevices(
     se::StreamExecutor* executor =
         tensorflow::down_cast<const TfrtGpuDevice*>(device)->executor();
     if (executor != nullptr) {
-      return xla::Compiler::TargetConfig(executor).ToProto();
+      return xla::Compiler::GpuTargetConfig(executor).ToProto();
     }
   }
   return std::nullopt;

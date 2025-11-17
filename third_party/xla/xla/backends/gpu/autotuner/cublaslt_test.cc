@@ -107,7 +107,7 @@ class CublasLtBackendTest : public HloHardwareIndependentTestBase {
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
   se::StreamExecutor* stream_executor_;
-  Compiler::TargetConfig target_config_;
+  Compiler::GpuTargetConfig target_config_;
   CublasLtBackend backend_;
 
   CublasLtBackendTest()

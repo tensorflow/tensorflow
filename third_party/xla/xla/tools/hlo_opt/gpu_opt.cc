@@ -192,7 +192,7 @@ class GpuOptProvider : public CompiledOptProvider {
       const HloModule* module) {
     Compiler::CompileOptions opts;
     TF_ASSIGN_OR_RETURN(
-        Compiler::TargetConfig target_config,
+        Compiler::GpuTargetConfig target_config,
         gpu::GpuCompiler::GetTargetConfig(
             opts, module->config().debug_options(), /*executor=*/nullptr));
     return target_config.device_description;

@@ -105,7 +105,7 @@ class GpuCompiler : public LLVMCompiler {
 
   int64_t GetPointerSize() const { return pointer_size_; }
 
-  static absl::StatusOr<Compiler::TargetConfig> GetTargetConfig(
+  static absl::StatusOr<Compiler::GpuTargetConfig> GetTargetConfig(
       const Compiler::CompileOptions& options, const DebugOptions& debug_opts,
       se::StreamExecutor* executor);
 
@@ -155,7 +155,7 @@ class GpuCompiler : public LLVMCompiler {
   // thread_pool is used to speed up compilation during autotuning.
   virtual absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const TargetConfig& gpu_target_config,
+      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool);
 
   // CollectivesScheduleLinearizer enforces a total ordering between collectives
@@ -176,7 +176,7 @@ class GpuCompiler : public LLVMCompiler {
       const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
       se::StreamExecutor* stream_exec,
-      const Compiler::TargetConfig* target_config) {
+      const Compiler::GpuTargetConfig* target_config) {
     return absl::OkStatus();
   }
 
@@ -195,7 +195,7 @@ class GpuCompiler : public LLVMCompiler {
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
       stream_executor::StreamExecutor* stream_executor,
-      const Compiler::TargetConfig* target_config,
+      const Compiler::GpuTargetConfig* target_config,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
     return absl::OkStatus();
   }
@@ -248,7 +248,7 @@ class GpuCompiler : public LLVMCompiler {
   absl::Status OptimizeHloModule(HloModule* hlo_module,
                                  se::StreamExecutor* stream_exec,
                                  const CompileOptions& options,
-                                 const TargetConfig& gpu_target_config,
+                                 const GpuTargetConfig& gpu_target_config,
                                  const GpuAliasInfo* alias_info);
 
   virtual absl::Status OptimizeHloConvolutionCanonicalization(
