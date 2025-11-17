@@ -36,11 +36,10 @@ using ::testing::Values;
 // Test fixture to hold the context for all tests.
 struct SymbolicExprTest : public ::testing::Test {
  protected:
-  mlir::MLIRContext mlir_context;
-  SymbolicExprContext ctx{&mlir_context};
-  SymbolicExpr v0 = ctx.CreateVariable(0);
-  SymbolicExpr v1 = ctx.CreateVariable(1);
-  SymbolicExpr c2 = ctx.CreateConstant(2);
+  mlir::MLIRContext ctx;
+  SymbolicExpr v0 = CreateSymbolicVariable(0, &ctx);
+  SymbolicExpr v1 = CreateSymbolicVariable(1, &ctx);
+  SymbolicExpr c2 = CreateSymbolicConstant(2, &ctx);
 };
 
 TEST_F(SymbolicExprTest, CreateAndPrint) {
@@ -67,17 +66,20 @@ TEST_F(SymbolicExprTest, PrintWithDifferentNumDimensions) {
 TEST_F(SymbolicExprTest, ParseAndPrint) {
   const std::string kStringContainingAllOperators =
       "((((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2)";
-  SymbolicExpr parsed_expr = ctx.Parse(kStringContainingAllOperators);
+  SymbolicExpr parsed_expr =
+      ParseSymbolicExpr(kStringContainingAllOperators, &ctx);
   ASSERT_NE(parsed_expr, nullptr);
   EXPECT_THAT(parsed_expr.ToString(),
               MatchIndexingString(kStringContainingAllOperators));
 }
 
 TEST_F(SymbolicExprTest, ParseAndPrint_Invalid) {
-  EXPECT_DEATH(ctx.Parse("1 + "), "Unexpected end of expression");
-  EXPECT_DEATH(ctx.Parse("max(1, )"), "Failed to parse expression");
-  EXPECT_DEATH(ctx.Parse("(1 + 2"), "Missing parenthesis");
-  EXPECT_DEATH(ctx.Parse("foo(3, 4)"), "Failed to parse expression");
+  EXPECT_DEATH(ParseSymbolicExpr("1 + ", &ctx), "Unexpected end of expression");
+  EXPECT_DEATH(ParseSymbolicExpr("max(1, )", &ctx),
+               "Failed to parse expression");
+  EXPECT_DEATH(ParseSymbolicExpr("(1 + 2", &ctx), "Missing parenthesis");
+  EXPECT_DEATH(ParseSymbolicExpr("foo(3, 4)", &ctx),
+               "Failed to parse expression");
 }
 
 TEST_F(SymbolicExprTest, Evaluate) {
@@ -102,8 +104,8 @@ TEST_P(SymbolicExprEvaluateDivModTest, EvaluateDivMod) {
   const auto& params = GetParam();
   const int64_t numerator_val = std::get<0>(params);
   const int64_t denominator_val = std::get<1>(params);
-  SymbolicExpr numerator = ctx.CreateConstant(numerator_val);
-  SymbolicExpr denominator = ctx.CreateConstant(denominator_val);
+  SymbolicExpr numerator = CreateSymbolicConstant(numerator_val, &ctx);
+  SymbolicExpr denominator = CreateSymbolicConstant(denominator_val, &ctx);
 
   if (numerator_val % denominator_val == 0) {
     EXPECT_EQ((numerator % denominator).Evaluate({}), 0);
@@ -120,27 +122,28 @@ INSTANTIATE_TEST_SUITE_P(PositiveAndNegative, SymbolicExprEvaluateDivModTest,
                          Combine(Values(5, -5, 4, -4), Values(2, -2)));
 
 TEST_F(SymbolicExprTest, ReplaceVariables) {
-  SymbolicExpr expr_to_sub = ctx.Parse("(v0 + v1)");
-  std::vector<SymbolicExpr> substitutions{{}, ctx.Parse("(v2 * 10)")};
+  SymbolicExpr expr_to_sub = ParseSymbolicExpr("(v0 + v1)", &ctx);
+  std::vector<SymbolicExpr> substitutions{{},
+                                          ParseSymbolicExpr("(v2 * 10)", &ctx)};
   SymbolicExpr result = expr_to_sub.ReplaceVariables(substitutions);
   EXPECT_EQ(result.ToString(), "(v0 + (v2 * 10))");
 }
 
 TEST_F(SymbolicExprTest, ReplaceSymbols) {
-  SymbolicExpr d0 = ctx.CreateVariable(0);
-  SymbolicExpr s0 = ctx.CreateVariable(1);
-  SymbolicExpr s1 = ctx.CreateVariable(2);
-  SymbolicExpr c7 = ctx.CreateConstant(7);
+  SymbolicExpr d0 = CreateSymbolicVariable(0, &ctx);
+  SymbolicExpr s0 = CreateSymbolicVariable(1, &ctx);
+  SymbolicExpr s1 = CreateSymbolicVariable(2, &ctx);
+  SymbolicExpr c7 = CreateSymbolicConstant(7, &ctx);
   SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
   SymbolicExpr result = expr_to_sub.ReplaceSymbols({d0, c7}, /*num_dims=*/1);
   EXPECT_EQ(result, ((d0 + (d0 * 2)) * c7));
 }
 
 TEST_F(SymbolicExprTest, ReplaceDimsAndSymbols) {
-  SymbolicExpr d0 = ctx.CreateVariable(0);
-  SymbolicExpr s0 = ctx.CreateVariable(1);
-  SymbolicExpr s1 = ctx.CreateVariable(2);
-  SymbolicExpr c7 = ctx.CreateConstant(7);
+  SymbolicExpr d0 = CreateSymbolicVariable(0, &ctx);
+  SymbolicExpr s0 = CreateSymbolicVariable(1, &ctx);
+  SymbolicExpr s1 = CreateSymbolicVariable(2, &ctx);
+  SymbolicExpr c7 = CreateSymbolicConstant(7, &ctx);
   SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
   SymbolicExpr result =
       expr_to_sub.ReplaceDimsAndSymbols({s0}, {d0, c7}, /*num_dims=*/1);
@@ -156,10 +159,10 @@ TEST_F(SymbolicExprTest, ReplaceDimsAndSymbols) {
 }
 
 TEST_F(SymbolicExprTest, UniquingWorks) {
-  SymbolicExpr c1 = ctx.CreateConstant(42);
-  SymbolicExpr c2 = ctx.CreateConstant(42);
+  SymbolicExpr c1 = CreateSymbolicConstant(42, &ctx);
+  SymbolicExpr c2 = CreateSymbolicConstant(42, &ctx);
   EXPECT_EQ(c1, c2);
-  SymbolicExpr c3 = ctx.CreateConstant(99);
+  SymbolicExpr c3 = CreateSymbolicConstant(99, &ctx);
   EXPECT_NE(c1, c3);
 
   SymbolicExpr add1 = v0 + 42;
@@ -170,24 +173,17 @@ TEST_F(SymbolicExprTest, UniquingWorks) {
 }
 
 TEST_F(SymbolicExprTest, UniquingDoesNotCrashWithCombinedAffineExpr) {
-  mlir::AffineExpr affine_expr = mlir::getAffineDimExpr(0, &mlir_context);
-  SymbolicExpr c1 = ctx.CreateConstant(42);
-  EXPECT_EQ(affine_expr, mlir::getAffineDimExpr(0, &mlir_context));
-  EXPECT_EQ(c1, ctx.CreateConstant(42));
-}
-
-TEST_F(SymbolicExprTest, UniquingWorksAcrossDifferentContexts) {
-  SymbolicExprContext ctx2(&mlir_context);
-
-  EXPECT_EQ(ctx.CreateConstant(42), ctx2.CreateConstant(42));
-  EXPECT_EQ(ctx.CreateVariable(0), ctx2.CreateVariable(0));
+  mlir::AffineExpr affine_expr = mlir::getAffineDimExpr(0, &ctx);
+  SymbolicExpr c1 = CreateSymbolicConstant(42, &ctx);
+  EXPECT_EQ(affine_expr, mlir::getAffineDimExpr(0, &ctx));
+  EXPECT_EQ(c1, CreateSymbolicConstant(42, &ctx));
 }
 
 TEST_F(SymbolicExprTest, Replace) {
-  SymbolicExpr d0 = ctx.CreateVariable(0);
-  SymbolicExpr d1 = ctx.CreateVariable(1);
-  SymbolicExpr c2 = ctx.CreateConstant(2);
-  SymbolicExpr c5 = ctx.CreateConstant(5);
+  SymbolicExpr d0 = CreateSymbolicVariable(0, &ctx);
+  SymbolicExpr d1 = CreateSymbolicVariable(1, &ctx);
+  SymbolicExpr c2 = CreateSymbolicConstant(2, &ctx);
+  SymbolicExpr c5 = CreateSymbolicConstant(5, &ctx);
 
   SymbolicExpr expr = (d0 + c2) * (d1 + c2);
   EXPECT_EQ(expr.Replace(d0 + c2, c5), (c5 * (d1 + c2)));
@@ -195,14 +191,14 @@ TEST_F(SymbolicExprTest, Replace) {
   EXPECT_EQ(expr.Replace(c2, c5), (d0 + c5) * (d1 + c5));
   EXPECT_EQ(expr.Replace(expr, c2), c2);
   EXPECT_EQ(expr.Replace(d1, d1), expr);
-  EXPECT_EQ(expr.Replace(ctx.CreateConstant(42), d1), expr);
+  EXPECT_EQ(expr.Replace(CreateSymbolicConstant(42, &ctx), d1), expr);
 }
 
 TEST_F(SymbolicExprTest, ReplaceWithMap) {
-  SymbolicExpr d0 = ctx.CreateVariable(0);
-  SymbolicExpr d1 = ctx.CreateVariable(1);
-  SymbolicExpr c2 = ctx.CreateConstant(2);
-  SymbolicExpr c5 = ctx.CreateConstant(5);
+  SymbolicExpr d0 = CreateSymbolicVariable(0, &ctx);
+  SymbolicExpr d1 = CreateSymbolicVariable(1, &ctx);
+  SymbolicExpr c2 = CreateSymbolicConstant(2, &ctx);
+  SymbolicExpr c5 = CreateSymbolicConstant(5, &ctx);
 
   SymbolicExpr expr = (d0 + c2) * (d1 + c2);
 
@@ -221,14 +217,14 @@ TEST_F(SymbolicExprTest, ReplaceWithMap) {
   EXPECT_EQ(expr.Replace(swap_variables), (d1 + c2) * (d0 + c2));
 
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> no_change;
-  no_change[ctx.CreateVariable(99)] = c5;
+  no_change[CreateSymbolicVariable(99, &ctx)] = c5;
   EXPECT_EQ(expr.Replace(no_change), expr);
 }
 
 TEST_F(SymbolicExprTest, BasicSimplificationsAtCreationTime) {
-  auto c0 = ctx.CreateConstant(0);
-  auto c1 = ctx.CreateConstant(1);
-  auto c3 = ctx.CreateConstant(3);
+  auto c0 = CreateSymbolicConstant(0, &ctx);
+  auto c1 = CreateSymbolicConstant(1, &ctx);
+  auto c3 = CreateSymbolicConstant(3, &ctx);
 
   // x + 0 = x
   EXPECT_EQ(v0 + c0, v0);
@@ -253,7 +249,7 @@ TEST_F(SymbolicExprTest, BasicSimplificationsAtCreationTime) {
 
   // No associativity if constant is on LHS of outer mul.
   // TODO(b/459357586): This will be canonicalized to (v0 * 6) in the future.
-  SymbolicExpr mul_2_v0 = ctx.CreateConstant(2) * v0;
+  SymbolicExpr mul_2_v0 = CreateSymbolicConstant(2, &ctx) * v0;
   SymbolicExpr mul_2_v0_3 = mul_2_v0 * 3;
   EXPECT_EQ(mul_2_v0_3.ToString(), "((2 * v0) * 3)");
 }
@@ -356,18 +352,18 @@ TEST_F(SymbolicExprTest, Walk) {
 TEST_F(SymbolicExprTest, Hashing) {
   absl::flat_hash_set<SymbolicExpr> set;
 
-  SymbolicExpr c42_1 = ctx.CreateConstant(42);
-  SymbolicExpr c42_2 = ctx.CreateConstant(42);
-  SymbolicExpr c3 = ctx.CreateConstant(3);
+  SymbolicExpr c42_1 = CreateSymbolicConstant(42, &ctx);
+  SymbolicExpr c42_2 = CreateSymbolicConstant(42, &ctx);
+  SymbolicExpr c3 = CreateSymbolicConstant(3, &ctx);
 
   set.insert(c42_1);
   set.insert(c42_2);
   set.insert(c3);
   EXPECT_EQ(set.size(), 2);
 
-  SymbolicExpr v0_1 = ctx.CreateVariable(0);
-  SymbolicExpr v0_2 = ctx.CreateVariable(0);
-  SymbolicExpr v1 = ctx.CreateVariable(1);
+  SymbolicExpr v0_1 = CreateSymbolicVariable(0, &ctx);
+  SymbolicExpr v0_2 = CreateSymbolicVariable(0, &ctx);
+  SymbolicExpr v1 = CreateSymbolicVariable(1, &ctx);
 
   set.insert(v0_1);
   set.insert(v0_2);
@@ -382,19 +378,6 @@ TEST_F(SymbolicExprTest, Hashing) {
   set.insert(add2);
   set.insert(add3);
   EXPECT_EQ(set.size(), 6);
-}
-
-TEST_F(SymbolicExprTest, SymbolicExprContextEq) {
-  mlir::MLIRContext mlir_context2;
-  SymbolicExprContext ctx2(&mlir_context2);
-
-  // Different MLIRContexts should result in different SymbolicExprContexts.
-  EXPECT_NE(ctx, ctx2);
-
-  // Same MLIRContext should result in same StorageUniquer and thus equal
-  // SymbolicExprContexts.
-  SymbolicExprContext ctx3(&mlir_context);
-  EXPECT_EQ(ctx, ctx3);
 }
 
 }  // namespace

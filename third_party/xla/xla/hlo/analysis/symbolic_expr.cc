@@ -73,7 +73,7 @@ std::string GetBinaryOpString(SymbolicExprType type) {
 // Helper class to manage the state of the parser.
 class Parser {
  public:
-  Parser(absl::string_view str, SymbolicExprContext* context)
+  Parser(absl::string_view str, mlir::MLIRContext* context)
       : remaining_str_(str), context_(context) {}
 
   SymbolicExpr Parse() {
@@ -107,8 +107,8 @@ class Parser {
     while (true) {
       SkipWhitespace();
       if (absl::ConsumePrefix(&remaining_str_, "+")) {
-        lhs =
-            context_->CreateBinaryOp(SymbolicExprType::kAdd, lhs, ParseTerm());
+        lhs = CreateSymbolicBinaryOp(SymbolicExprType::kAdd, lhs, ParseTerm(),
+                                     context_);
       } else {
         break;
       }
@@ -122,14 +122,14 @@ class Parser {
     while (true) {
       SkipWhitespace();
       if (absl::ConsumePrefix(&remaining_str_, "*")) {
-        lhs = context_->CreateBinaryOp(SymbolicExprType::kMul, lhs,
-                                       ParseFactor());
+        lhs = CreateSymbolicBinaryOp(SymbolicExprType::kMul, lhs, ParseFactor(),
+                                     context_);
       } else if (absl::ConsumePrefix(&remaining_str_, "floordiv")) {
-        lhs = context_->CreateBinaryOp(SymbolicExprType::kFloorDiv, lhs,
-                                       ParseFactor());
+        lhs = CreateSymbolicBinaryOp(SymbolicExprType::kFloorDiv, lhs,
+                                     ParseFactor(), context_);
       } else if (absl::ConsumePrefix(&remaining_str_, "ceildiv")) {
-        lhs = context_->CreateBinaryOp(SymbolicExprType::kCeilDiv, lhs,
-                                       ParseFactor());
+        lhs = CreateSymbolicBinaryOp(SymbolicExprType::kCeilDiv, lhs,
+                                     ParseFactor(), context_);
       } else {
         break;
       }
@@ -152,7 +152,7 @@ class Parser {
     SkipWhitespace();
     CHECK(absl::ConsumePrefix(&remaining_str_, ")"))
         << "Missing ')' in " << func_name << "()";
-    return context_->CreateBinaryOp(type, lhs, rhs);
+    return CreateSymbolicBinaryOp(type, lhs, rhs, context_);
   }
 
   // Handles highest precedence items: numbers, variables, and functions.
@@ -178,13 +178,13 @@ class Parser {
     if (absl::ConsumePrefix(&remaining_str_, "v")) {
       std::string error_msg = "Invalid variable format";
       int64_t var_id = ParseNumber(error_msg);
-      return context_->CreateVariable(var_id);
+      return CreateSymbolicVariable(var_id, context_);
     }
     // Case 4: Number
     std::string error_msg =
         absl::StrCat("Failed to parse expression: \"", remaining_str_, "\"");
     int64_t val = ParseNumber(error_msg);
-    return context_->CreateConstant(val);
+    return CreateSymbolicConstant(val, context_);
   }
 
   void SkipWhitespace() {
@@ -192,7 +192,7 @@ class Parser {
   }
 
   absl::string_view remaining_str_;
-  SymbolicExprContext* context_;
+  mlir::MLIRContext* context_;
 };
 
 // Returns {BASE, COEFF}, where expr is equivalent to BASE * COEFF.
@@ -231,13 +231,15 @@ SymbolicExpr BasicAddSimplify(SymbolicExpr lhs, SymbolicExpr rhs) {
   }
   if (lhs.GetType() == SymbolicExprType::kConstant &&
       rhs.GetType() == SymbolicExprType::kConstant) {
-    return lhs.GetContext()->CreateConstant(lhs.GetValue() + rhs.GetValue());
+    return CreateSymbolicConstant(lhs.GetValue() + rhs.GetValue(),
+                                  lhs.GetContext());
   }
-  return lhs.GetContext()->CreateBinaryOp(SymbolicExprType::kAdd, lhs, rhs);
+  return CreateSymbolicBinaryOp(SymbolicExprType::kAdd, lhs, rhs,
+                                lhs.GetContext());
 }
 
 SymbolicExpr CanonicalizeAdd(SymbolicExpr lhs, SymbolicExpr rhs) {
-  SymbolicExprContext* ctx = lhs.GetContext();
+  mlir::MLIRContext* ctx = lhs.GetContext();
 
   // Flattening and term collection
   llvm::SmallVector<std::pair<SymbolicExpr, int64_t>> terms;
@@ -272,17 +274,18 @@ SymbolicExpr CanonicalizeAdd(SymbolicExpr lhs, SymbolicExpr rhs) {
 
   // Add the combined constant term as an expression
   if (const_val != 0) {
-    exprs.push_back(ctx->CreateConstant(const_val));
+    exprs.push_back(CreateSymbolicConstant(const_val, ctx));
   }
   if (exprs.empty()) {
-    return ctx->CreateConstant(0);
+    return CreateSymbolicConstant(0, ctx);
   }
   // Sort all terms, including the constant
   absl::c_sort(exprs);
 
   SymbolicExpr result = exprs[0];
   for (size_t i = 1; i < exprs.size(); ++i) {
-    result = ctx->CreateBinaryOp(SymbolicExprType::kAdd, result, exprs[i]);
+    result =
+        CreateSymbolicBinaryOp(SymbolicExprType::kAdd, result, exprs[i], ctx);
   }
   return result;
 }
@@ -293,7 +296,7 @@ SymbolicExpr SimplifyMulByConstantRHS(SymbolicExpr lhs, SymbolicExpr rhs) {
     return SymbolicExpr();
   }
   int64_t rhs_val = rhs.GetValue();
-  SymbolicExprContext* ctx = lhs.GetContext();
+  mlir::MLIRContext* ctx = lhs.GetContext();
 
   if (rhs_val == 0) {
     return rhs;  // x * 0 = 0
@@ -302,21 +305,21 @@ SymbolicExpr SimplifyMulByConstantRHS(SymbolicExpr lhs, SymbolicExpr rhs) {
     return lhs;  // x * 1 = x
   }
   if (lhs.GetType() == SymbolicExprType::kConstant) {
-    return ctx->CreateConstant(lhs.GetValue() * rhs_val);
+    return CreateSymbolicConstant(lhs.GetValue() * rhs_val, ctx);
   }
 
   // Associativity: (X * C1) * C2 => X * (C1 * C2)
   if (lhs.GetType() == SymbolicExprType::kMul &&
       lhs.GetRHS().GetType() == SymbolicExprType::kConstant) {
-    return ctx->CreateBinaryOp(
+    return CreateSymbolicBinaryOp(
         SymbolicExprType::kMul, lhs.GetLHS(),
-        ctx->CreateConstant(lhs.GetRHS().GetValue() * rhs_val));
+        CreateSymbolicConstant(lhs.GetRHS().GetValue() * rhs_val, ctx), ctx);
   }
   return SymbolicExpr();
 }
 
 SymbolicExpr BasicMulSimplify(SymbolicExpr lhs, SymbolicExpr rhs) {
-  SymbolicExprContext* ctx = lhs.GetContext();
+  mlir::MLIRContext* ctx = lhs.GetContext();
 
   // Try constant folding, neutral element simplification, and associativity.
   if (rhs.GetType() == SymbolicExprType::kConstant) {
@@ -331,11 +334,11 @@ SymbolicExpr BasicMulSimplify(SymbolicExpr lhs, SymbolicExpr rhs) {
     }
   }
 
-  return ctx->CreateBinaryOp(SymbolicExprType::kMul, lhs, rhs);
+  return CreateSymbolicBinaryOp(SymbolicExprType::kMul, lhs, rhs, ctx);
 }
 
 SymbolicExpr CanonicalizeMul(SymbolicExpr lhs, SymbolicExpr rhs) {
-  SymbolicExprContext* ctx = lhs.GetContext();
+  mlir::MLIRContext* ctx = lhs.GetContext();
 
   if (rhs.GetType() == SymbolicExprType::kConstant) {
     // Try constant folding, neutral element simplification, and associativity.
@@ -357,7 +360,7 @@ SymbolicExpr CanonicalizeMul(SymbolicExpr lhs, SymbolicExpr rhs) {
     return ((lhs * rhs.GetLHS()) + (lhs * rhs.GetRHS())).Canonicalize();
   }
 
-  return ctx->CreateBinaryOp(SymbolicExprType::kMul, lhs, rhs);
+  return CreateSymbolicBinaryOp(SymbolicExprType::kMul, lhs, rhs, ctx);
 }
 
 std::optional<int64_t> SubtractAndGetConstDiff(SymbolicExpr lhs,
@@ -370,21 +373,21 @@ std::optional<int64_t> SubtractAndGetConstDiff(SymbolicExpr lhs,
 }
 
 SymbolicExpr CanonicalizeMin(SymbolicExpr lhs, SymbolicExpr rhs) {
-  SymbolicExprContext* ctx = lhs.GetContext();
+  mlir::MLIRContext* ctx = lhs.GetContext();
   if (auto diff = SubtractAndGetConstDiff(lhs, rhs)) {  // min(X, X + k) = X
     return (diff.value() <= 0) ? lhs : rhs;
   }
 
-  return ctx->CreateBinaryOp(SymbolicExprType::kMin, lhs, rhs);
+  return CreateSymbolicBinaryOp(SymbolicExprType::kMin, lhs, rhs, ctx);
 }
 
 SymbolicExpr CanonicalizeMax(SymbolicExpr lhs, SymbolicExpr rhs) {
-  SymbolicExprContext* ctx = lhs.GetContext();
+  mlir::MLIRContext* ctx = lhs.GetContext();
   if (auto diff = SubtractAndGetConstDiff(lhs, rhs)) {  // max(X, X + k) = X + k
     return (diff.value() >= 0) ? lhs : rhs;
   }
 
-  return ctx->CreateBinaryOp(SymbolicExprType::kMax, lhs, rhs);
+  return CreateSymbolicBinaryOp(SymbolicExprType::kMax, lhs, rhs, ctx);
 }
 
 // Helper function to simplify (A * C1) op C2 using GCD.
@@ -443,7 +446,7 @@ SymbolicExpr SimplifyFloorDivAddOperand(SymbolicExpr a, SymbolicExpr b,
     remaining_expr = a.GetLHS();
   } else if (a.GetType() == SymbolicExprType::kConstant) {
     a_coeff = a.GetValue();
-    remaining_expr = a.GetContext()->CreateConstant(1);
+    remaining_expr = CreateSymbolicConstant(1, a.GetContext());
   } else {
     return SymbolicExpr();  // Cannot simplify
   }
@@ -455,7 +458,7 @@ SymbolicExpr SimplifyFloorDivAddOperand(SymbolicExpr a, SymbolicExpr b,
 }
 
 SymbolicExpr CanonicalizeFloorDiv(SymbolicExpr lhs, SymbolicExpr rhs) {
-  SymbolicExprContext* ctx = lhs.GetContext();
+  mlir::MLIRContext* ctx = lhs.GetContext();
 
   if (lhs.GetType() == SymbolicExprType::kConstant && lhs.GetValue() == 0) {
     return lhs;  // 0 floordiv X => 0
@@ -493,11 +496,11 @@ SymbolicExpr CanonicalizeFloorDiv(SymbolicExpr lhs, SymbolicExpr rhs) {
     }
   }
 
-  return ctx->CreateBinaryOp(SymbolicExprType::kFloorDiv, lhs, rhs);
+  return CreateSymbolicBinaryOp(SymbolicExprType::kFloorDiv, lhs, rhs, ctx);
 }
 
 SymbolicExpr CanonicalizeCeilDiv(SymbolicExpr lhs, SymbolicExpr rhs) {
-  SymbolicExprContext* ctx = lhs.GetContext();
+  mlir::MLIRContext* ctx = lhs.GetContext();
 
   if (lhs.GetType() == SymbolicExprType::kConstant && lhs.GetValue() == 0) {
     return lhs;  // 0 ceildiv X => 0
@@ -525,18 +528,18 @@ SymbolicExpr CanonicalizeCeilDiv(SymbolicExpr lhs, SymbolicExpr rhs) {
     return (-(lhs.floorDiv(-divisor))).Canonicalize();
   }
 
-  return ctx->CreateBinaryOp(SymbolicExprType::kCeilDiv, lhs, rhs);
+  return CreateSymbolicBinaryOp(SymbolicExprType::kCeilDiv, lhs, rhs, ctx);
 }
 
 SymbolicExpr CanonicalizeMod(SymbolicExpr lhs, SymbolicExpr rhs) {
-  SymbolicExprContext* ctx = lhs.GetContext();
+  mlir::MLIRContext* ctx = lhs.GetContext();
 
   if (lhs.GetType() == SymbolicExprType::kConstant && lhs.GetValue() == 0) {
     return lhs;  // 0 mod X => 0
   }
 
   if (lhs == rhs) {
-    return ctx->CreateConstant(0);  // X mod X => 0
+    return CreateSymbolicConstant(0, ctx);  // X mod X => 0
   }
 
   if (rhs.GetType() == SymbolicExprType::kConstant) {
@@ -594,12 +597,16 @@ class SymbolicExprStorage : public mlir::StorageUniquer::BaseStorage {
 
  protected:
   friend class SymbolicExpr;
-  friend class SymbolicExprContext;
+  friend SymbolicExpr GetOrCreateSymbolicExpr(SymbolicExprType type,
+                                              int64_t value, SymbolicExpr lhs,
+                                              SymbolicExpr rhs,
+                                              mlir::MLIRContext* mlir_context);
+
   SymbolicExprType type_;
   int64_t value_ = 0;
   SymbolicExpr lhs_;
   SymbolicExpr rhs_;
-  SymbolicExprContext* ctx_ = nullptr;
+  mlir::MLIRContext* mlir_context_ = nullptr;
 
  private:
   SymbolicExprStorage(SymbolicExprType type, int64_t value)
@@ -608,7 +615,9 @@ class SymbolicExprStorage : public mlir::StorageUniquer::BaseStorage {
       : type_(type), lhs_(lhs), rhs_(rhs) {}
 };
 
-SymbolicExprContext* SymbolicExpr::GetContext() const { return impl_->ctx_; }
+mlir::MLIRContext* SymbolicExpr::GetContext() const {
+  return impl_->mlir_context_;
+}
 
 SymbolicExprType SymbolicExpr::GetType() const { return impl_->type_; }
 
@@ -730,7 +739,7 @@ int64_t SymbolicExpr::Evaluate(
 
 SymbolicExpr SymbolicExpr::ReplaceVariables(
     absl::Span<const SymbolicExpr> substitutions) const {
-  SymbolicExprContext* ctx = GetContext();
+  mlir::MLIRContext* ctx = GetContext();
   switch (GetType()) {
     case SymbolicExprType::kConstant:
       return *this;
@@ -754,7 +763,7 @@ SymbolicExpr SymbolicExpr::ReplaceVariables(
       if (new_lhs == GetLHS() && new_rhs == GetRHS()) {
         return *this;
       }
-      return ctx->CreateBinaryOp(GetType(), new_lhs, new_rhs);
+      return CreateSymbolicBinaryOp(GetType(), new_lhs, new_rhs, ctx);
     }
     default:
       LOG(FATAL) << "Substitute not implemented for this type.";
@@ -772,8 +781,9 @@ SymbolicExpr SymbolicExpr::ReplaceDimsAndSymbols(
     int64_t num_dims) const {
   llvm::SmallVector<SymbolicExpr> replacements;
   replacements.append(dim_replacements.begin(), dim_replacements.end());
+  mlir::MLIRContext* ctx = GetContext();
   for (int64_t i = dim_replacements.size(); i < num_dims; ++i) {
-    replacements.push_back(GetContext()->CreateVariable(i));
+    replacements.push_back(CreateSymbolicVariable(i, ctx));
   }
   replacements.append(symbol_replacements.begin(), symbol_replacements.end());
   return ReplaceVariables(replacements);
@@ -806,7 +816,7 @@ SymbolicExpr SymbolicExpr::Replace(
   if (new_lhs == lhs && new_rhs == rhs) {
     return *this;
   }
-  return GetContext()->CreateBinaryOp(type, new_lhs, new_rhs);
+  return CreateSymbolicBinaryOp(type, new_lhs, new_rhs, GetContext());
 }
 
 void SymbolicExpr::GetUsedVariables(
@@ -850,9 +860,10 @@ SymbolicExpr SymbolicExpr::Canonicalize() const {
   // If both sides are constants, we can evaluate the expression.
   if (lhs.GetType() == SymbolicExprType::kConstant &&
       rhs.GetType() == SymbolicExprType::kConstant) {
-    return GetContext()->CreateConstant(
-        SymbolicExpr(GetContext()->CreateBinaryOp(type, lhs, rhs))
-            .Evaluate({}));
+    return CreateSymbolicConstant(
+        SymbolicExpr(CreateSymbolicBinaryOp(type, lhs, rhs, GetContext()))
+            .Evaluate({}),
+        GetContext());
   }
 
   // Assure constants are on the RHS for commutative operations.
@@ -890,7 +901,7 @@ SymbolicExpr SymbolicExpr::Canonicalize() const {
 }
 
 SymbolicExpr SymbolicExpr::operator+(int64_t v) const {
-  return *this + GetContext()->CreateConstant(v);
+  return *this + CreateSymbolicConstant(v, GetContext());
 }
 SymbolicExpr SymbolicExpr::operator+(SymbolicExpr other) const {
   // TODO(b/433693782): We should use our own canonicalization here instead of
@@ -899,7 +910,7 @@ SymbolicExpr SymbolicExpr::operator+(SymbolicExpr other) const {
 }
 
 SymbolicExpr SymbolicExpr::operator-() const {
-  return (*this * GetContext()->CreateConstant(-1)).Canonicalize();
+  return (*this * CreateSymbolicConstant(-1, GetContext())).Canonicalize();
 }
 SymbolicExpr SymbolicExpr::operator-(int64_t v) const { return *this + (-v); }
 SymbolicExpr SymbolicExpr::operator-(SymbolicExpr other) const {
@@ -907,7 +918,7 @@ SymbolicExpr SymbolicExpr::operator-(SymbolicExpr other) const {
 }
 
 SymbolicExpr SymbolicExpr::operator*(int64_t v) const {
-  return *this * GetContext()->CreateConstant(v);
+  return *this * CreateSymbolicConstant(v, GetContext());
 }
 SymbolicExpr SymbolicExpr::operator*(SymbolicExpr other) const {
   // TODO(b/433693782): We should use our own canonicalization here instead of
@@ -916,39 +927,43 @@ SymbolicExpr SymbolicExpr::operator*(SymbolicExpr other) const {
 }
 
 SymbolicExpr SymbolicExpr::operator%(int64_t v) const {
-  return this->operator%(GetContext()->CreateConstant(v));
+  return this->operator%(CreateSymbolicConstant(v, GetContext()));
 }
 SymbolicExpr SymbolicExpr::operator%(SymbolicExpr other) const {
-  return GetContext()->CreateBinaryOp(SymbolicExprType::kMod, *this, other);
+  return CreateSymbolicBinaryOp(SymbolicExprType::kMod, *this, other,
+                                GetContext());
 }
 
 SymbolicExpr SymbolicExpr::floorDiv(int64_t v) const {
-  return this->floorDiv(GetContext()->CreateConstant(v));
+  return this->floorDiv(CreateSymbolicConstant(v, GetContext()));
 }
 SymbolicExpr SymbolicExpr::floorDiv(SymbolicExpr other) const {
-  return GetContext()->CreateBinaryOp(SymbolicExprType::kFloorDiv, *this,
-                                      other);
+  return CreateSymbolicBinaryOp(SymbolicExprType::kFloorDiv, *this, other,
+                                GetContext());
 }
 
 SymbolicExpr SymbolicExpr::ceilDiv(int64_t v) const {
-  return this->ceilDiv(GetContext()->CreateConstant(v));
+  return this->ceilDiv(CreateSymbolicConstant(v, GetContext()));
 }
 SymbolicExpr SymbolicExpr::ceilDiv(SymbolicExpr other) const {
-  return GetContext()->CreateBinaryOp(SymbolicExprType::kCeilDiv, *this, other);
+  return CreateSymbolicBinaryOp(SymbolicExprType::kCeilDiv, *this, other,
+                                GetContext());
 }
 
 SymbolicExpr SymbolicExpr::min(int64_t v) const {
-  return this->min(GetContext()->CreateConstant(v));
+  return this->min(CreateSymbolicConstant(v, GetContext()));
 }
 SymbolicExpr SymbolicExpr::min(SymbolicExpr other) const {
-  return GetContext()->CreateBinaryOp(SymbolicExprType::kMin, *this, other);
+  return CreateSymbolicBinaryOp(SymbolicExprType::kMin, *this, other,
+                                GetContext());
 }
 
 SymbolicExpr SymbolicExpr::max(int64_t v) const {
-  return this->max(GetContext()->CreateConstant(v));
+  return this->max(CreateSymbolicConstant(v, GetContext()));
 }
 SymbolicExpr SymbolicExpr::max(SymbolicExpr other) const {
-  return GetContext()->CreateBinaryOp(SymbolicExprType::kMax, *this, other);
+  return CreateSymbolicBinaryOp(SymbolicExprType::kMax, *this, other,
+                                GetContext());
 }
 
 static absl::Mutex& getSymbolicExprStorageMutex() {
@@ -956,49 +971,92 @@ static absl::Mutex& getSymbolicExprStorageMutex() {
   return m;
 }
 
-SymbolicExprContext::SymbolicExprContext(mlir::MLIRContext* mlir_context)
-    : mlir_context_(mlir_context) {
+void RegisterSymbolicExprStorage(mlir::MLIRContext* mlir_context) {
   CHECK(mlir_context != nullptr);
-  absl::MutexLock lock(getSymbolicExprStorageMutex());
-  auto* uniquer = &mlir_context_->getAffineUniquer();
-  if (!uniquer->isParametricStorageInitialized(
-          mlir::TypeID::get<SymbolicExprStorage>())) {
-    uniquer->registerParametricStorageType<SymbolicExprStorage>();
+  auto* uniquer = &mlir_context->getAffineUniquer();
+  {
+    absl::MutexLock lock(getSymbolicExprStorageMutex());
+    if (!uniquer->isParametricStorageInitialized(
+            mlir::TypeID::get<SymbolicExprStorage>())) {
+      uniquer->registerParametricStorageType<SymbolicExprStorage>();
+    }
   }
 }
+
+SymbolicExpr GetOrCreateSymbolicExpr(SymbolicExprType type, int64_t value,
+                                     SymbolicExpr lhs, SymbolicExpr rhs,
+                                     mlir::MLIRContext* mlir_context) {
+  // TODO(b/433696544): This might be too expensive to call per expression.
+  // We should consider calling this once per MLIRContext creation.
+  RegisterSymbolicExprStorage(mlir_context);
+  auto* uniquer = &mlir_context->getAffineUniquer();
+  auto initContext = [&](SymbolicExprStorage* storage) {
+    storage->mlir_context_ = mlir_context;
+  };
+  return uniquer->get<SymbolicExprStorage>(initContext, type, value, lhs, rhs);
+}
+
+SymbolicExpr CreateSymbolicConstant(int64_t value,
+                                    mlir::MLIRContext* mlir_context) {
+  return GetOrCreateSymbolicExpr(SymbolicExprType::kConstant, value,
+                                 SymbolicExpr(), SymbolicExpr(), mlir_context);
+}
+
+SymbolicExpr CreateSymbolicVariable(int64_t var_id,
+                                    mlir::MLIRContext* mlir_context) {
+  return GetOrCreateSymbolicExpr(SymbolicExprType::kVariable, var_id,
+                                 SymbolicExpr(), SymbolicExpr(), mlir_context);
+}
+
+SymbolicExpr CreateSymbolicBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
+                                    SymbolicExpr rhs,
+                                    mlir::MLIRContext* mlir_context) {
+  CHECK(type != SymbolicExprType::kConstant &&
+        type != SymbolicExprType::kVariable && lhs && rhs)
+      << "We expect a binary operation and two symbolic expressions as "
+         "children.";
+  return GetOrCreateSymbolicExpr(type, 0, lhs, rhs, mlir_context);
+}
+
+llvm::SmallVector<SymbolicExpr> CreateSymbolicConstantExprs(
+    llvm::ArrayRef<int64_t> constants, mlir::MLIRContext* context) {
+  llvm::SmallVector<SymbolicExpr> exprs;
+  exprs.reserve(constants.size());
+  for (int64_t constant : constants) {
+    exprs.push_back(CreateSymbolicConstant(constant, context));
+  }
+  return exprs;
+}
+SymbolicExpr ParseSymbolicExpr(absl::string_view expr_str,
+                               mlir::MLIRContext* mlir_context) {
+  return Parser(expr_str, mlir_context).Parse();
+}
+
+SymbolicExprContext::SymbolicExprContext(mlir::MLIRContext* mlir_context)
+    : mlir_context_(mlir_context) {}
 
 SymbolicExpr SymbolicExprContext::GetOrCreate(SymbolicExprType type,
                                               int64_t value, SymbolicExpr lhs,
                                               SymbolicExpr rhs) {
-  auto initContext = [&](SymbolicExprStorage* storage) {
-    storage->ctx_ = this;
-  };
-  return mlir_context_->getAffineUniquer().get<SymbolicExprStorage>(
-      initContext, type, value, lhs, rhs);
+  return GetOrCreateSymbolicExpr(type, value, lhs, rhs, mlir_context_);
 }
 
 SymbolicExpr SymbolicExprContext::CreateConstant(int64_t value) {
-  return GetOrCreate(SymbolicExprType::kConstant, value, SymbolicExpr(),
-                     SymbolicExpr());
+  return CreateSymbolicConstant(value, mlir_context_);
 }
 
 SymbolicExpr SymbolicExprContext::CreateVariable(int64_t var_id) {
-  return GetOrCreate(SymbolicExprType::kVariable, var_id, SymbolicExpr(),
-                     SymbolicExpr());
+  return CreateSymbolicVariable(var_id, mlir_context_);
 }
 
 SymbolicExpr SymbolicExprContext::CreateBinaryOp(SymbolicExprType type,
                                                  SymbolicExpr lhs,
                                                  SymbolicExpr rhs) {
-  CHECK(type != SymbolicExprType::kConstant &&
-        type != SymbolicExprType::kVariable && lhs && rhs)
-      << "We expect a binary operation and two symbolic expressions as "
-         "children.";
-  return GetOrCreate(type, 0, lhs, rhs);
+  return CreateSymbolicBinaryOp(type, lhs, rhs, mlir_context_);
 }
 
 SymbolicExpr SymbolicExprContext::Parse(absl::string_view expr_str) {
-  return Parser(expr_str, this).Parse();
+  return ParseSymbolicExpr(expr_str, mlir_context_);
 }
 
 bool SymbolicExprContext::operator==(const SymbolicExprContext& other) const {
