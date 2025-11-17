@@ -188,7 +188,10 @@ static std::unique_ptr<::mlir::Pass> CreateConvertMathToLLVMPass() {
 // The final lowering passes common to both scalar and tiled kernels.
 // These passes are primarily responsible for lowering individual ops to
 // their LLVM equivalent.
-static void AddGenericLoweringPasses(mlir::OpPassManager& pm) {
+static void AddGenericLoweringPasses(mlir::OpPassManager& pm,
+                                     bool fast_min_max) {
+  pm.addNestedPass<mlir::func::FuncOp>(
+      emitters::CreateSimplifyArithPass(fast_min_max));
   pm.addPass(emitters::CreateSimplifyAffinePass());
   pm.addPass(mlir::createCanonicalizerPass());
 
@@ -275,9 +278,8 @@ static void AddScalarLoweringPasses(mlir::OpPassManager& pm,
   // simplify-affine has maximally folded expressions to work with.
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      emitters::CreateSimplifyArithPass(fast_min_max));
-  AddGenericLoweringPasses(pm);
+
+  AddGenericLoweringPasses(pm, fast_min_max);
 }
 
 static void AddBufferizationPasses(mlir::OpPassManager& pm) {
@@ -328,7 +330,7 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
 // Lowering passes for the tiled emitter.
 // The input IR is from the xtile dialect which uses tensors that are converted
 // first to the vector dialect and then to LLVM.
-static void AddTiledLoweringPasses(mlir::OpPassManager& pm) {
+static void AddTiledLoweringPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   pm.addPass(cpu::CreateMemrefCopyToLoopsPass());
   pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::createConvertVectorToSCFPass(
@@ -341,7 +343,7 @@ static void AddTiledLoweringPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(mlir::memref::createExpandStridedMetadataPass());
 
-  AddGenericLoweringPasses(pm);
+  AddGenericLoweringPasses(pm, fast_min_max);
 }
 
 static int GetLlvmFunctionDefCount(mlir::ModuleOp m) {
@@ -391,7 +393,7 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
     tiled_pass_manager_.addPass(
         std::make_unique<ModuleCallbackPass>(hooks_.post_optimization));
   }
-  AddTiledLoweringPasses(tiled_pass_manager_);
+  AddTiledLoweringPasses(tiled_pass_manager_, options_.fast_min_max);
 
   scalar_pass_manager_.addInstrumentation(
       std::make_unique<TraceInstrumentation>());
@@ -451,6 +453,9 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
       mlir_module, llvm_context,
       absl::StrCat(kXlaModuleIdentifier, "_", module_name));
 
+  TF_RET_CHECK(llvm_module != nullptr)
+      << "Failed to translate module to LLVM IR.";
+
   if (mlir::Attribute options =
           mlir_module->getAttr(xla::ExtraBackendOptionsAttr::name)) {
     const auto formatter = [](std::string* out, const mlir::StringAttr& attr) {
@@ -469,9 +474,6 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
     SetModuleMemoryRegionName(*llvm_module,
                               mlir::cast<mlir::StringAttr>(options).str());
   }
-
-  TF_RET_CHECK(llvm_module != nullptr)
-      << "Failed to translate module to LLVM IR.";
 
   llvm_module->setDataLayout(llvm_module->getDataLayout());
 
