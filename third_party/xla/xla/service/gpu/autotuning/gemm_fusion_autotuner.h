@@ -207,7 +207,7 @@ class GemmFusionAutotunerImpl {
   }
 
   bool AddLibConfigs(const HloFusionInstruction& fusion,
-                     const HloDotInstruction* dot,
+                     const HloInstruction* dot,
                      std::vector<BackendConfig>& configs);
 
   std::vector<TritonGemmConfig> GetDefaultTritonConfigs() const;
