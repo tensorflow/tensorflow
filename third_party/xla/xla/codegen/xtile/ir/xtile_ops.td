@@ -81,24 +81,37 @@ def EntryFuncOp : XTile_Op<"entry_func", [
     AutomaticAllocationScope,
     FunctionOpInterface]>
 {
-  let summary = "My custom entry function operation";
+  let summary = "Entry function for a XTile computation";
 
   let description = [{
-    This operation defines a custom entry function that is the starting
+    This operation defines a custom entry function that is the starting point.
     point for execution. It has a single-block region, takes a
     variadic list of memrefs and exactly one tile id index arguments,
     it has no return values.
+
+    The entry function can also accept a set of opaque arguments that are only
+    interpreted by specific backends.
+
+    The assembly format is of the form:
+
+    xtile.entry_func @with_attributes(%buffer0: memref<1024xf32>,
+                                      %buffer1: memref<32xf32>,
+                                      ...,
+                                      %opaque0: <some non-memref type>,
+                                      ...,
+                                      %tile_id: index)
+        tiling #xtile.tiling_info<tile_count:10, tiles_per_workgroup:5> {
+      ...
+      xtile.return
+    }
+
+    The tiling attribute is optional.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name,
-                       TypeAttrOf<FunctionType>:$function_type,
-                       OptionalAttr<DictArrayAttr>:$arg_attrs,
-                       OptionalAttr<XTile_TilingInfoAttr>:$tile_info,
-                       OptionalAttr<DictArrayAttr>:$res_attrs,
-                       // The number of arguments that are opaque to tiling
-                       // infrastructure and hence do not correspond to a memref
-                       // argument.
-                       DefaultValuedAttr<I32Attr, "0">:$num_opaque_args
+                       TypeArrayAttr:$memref_arg_types,
+                       TypeArrayAttr:$opaque_arg_types,
+                       OptionalAttr<XTile_TilingInfoAttr>:$tile_info
   );
 
   // The entry function has no return values.
@@ -108,8 +121,9 @@ def EntryFuncOp : XTile_Op<"entry_func", [
 
   let builders = [OpBuilder<(ins
     "mlir::StringRef":$name, "mlir::ArrayRef<mlir::Type>":$memref_arg_types,
-    CArg<"mlir::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs,
-    CArg<"mlir::ArrayRef<mlir::DictionaryAttr>", "{}">:$memref_arg_attrs)
+    "mlir::ArrayRef<mlir::Type>":$opaque_arg_types,
+    CArg<"TilingInfoAttr", "nullptr">:$tile_info,
+    CArg<"mlir::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs)
   >];
 
   let extraClassDeclaration = [{
@@ -117,13 +131,13 @@ def EntryFuncOp : XTile_Op<"entry_func", [
     // Helper Methods
     //===------------------------------------------------------------------===//
     mlir::ValueRange getBufferArgs() {
-      // +1 for the tile id argument.
-      return getBody().getArguments().drop_back(getNumOpaqueArgs() + 1);
+      return getBody().getArguments().take_front(getMemrefArgTypes().size());
     }
 
     mlir::ValueRange getOpaqueArgs() {
-      return getBody().getArguments().take_back(getNumOpaqueArgs() + 1)
-          .drop_back();
+      auto arguments = getBody().getArguments();
+      auto memref_dropped = arguments.drop_front(getMemrefArgTypes().size());
+      return memref_dropped.take_front(getOpaqueArgTypes().size());
     }
 
     mlir::Value getTileId() {
@@ -133,6 +147,16 @@ def EntryFuncOp : XTile_Op<"entry_func", [
     //===------------------------------------------------------------------===//
     // FunctionOpInterface Methods
     //===------------------------------------------------------------------===//
+    mlir::FunctionType getFunctionType();
+    void setFunctionTypeAttr(mlir::TypeAttr type);
+
+    mlir::ArrayAttr getArgAttrsAttr();
+    void setArgAttrsAttr(mlir::ArrayAttr);
+    mlir::Attribute removeArgAttrsAttr();
+
+    mlir::ArrayAttr getResAttrsAttr();
+    void setResAttrsAttr(mlir::ArrayAttr);
+    mlir::Attribute removeResAttrsAttr();
 
     /// Returns the region on the current operation that is callable.
     mlir::Region *getCallableRegion() { return &getBody(); }
