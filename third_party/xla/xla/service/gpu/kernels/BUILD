@@ -1,8 +1,12 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//xla:xla.default.bzl", "xla_cc_binary")
+load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_windows")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+)
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -56,16 +60,46 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "custom_kernel_proto",
+    srcs = ["custom_kernel.proto"],
+    protodeps = [
+        "//xla/stream_executor:kernel_spec_proto",
+        "//xla/stream_executor:launch_dim_proto",
+    ],
+    visibility = [":friends"],
+)
+
 cc_library(
     name = "custom_kernel",
     srcs = ["custom_kernel.cc"],
     hdrs = ["custom_kernel.h"],
     visibility = [":friends"],
     deps = [
+        ":custom_kernel_proto_cc",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "custom_kernel_test",
+    srcs = ["custom_kernel_test.cc"],
+    deps = [
+        ":custom_kernel",
+        ":custom_kernel_proto_cc",
+        "//xla/stream_executor:launch_dim",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

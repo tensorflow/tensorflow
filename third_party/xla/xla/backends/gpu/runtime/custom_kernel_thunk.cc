@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,11 +24,13 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/print_buffer_contents.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -119,6 +122,54 @@ Thunk::BufferUses CustomKernelThunk::buffer_uses() const {
     }
   }
   return buffers;
+}
+
+CustomKernelThunk::CustomKernelThunk(Thunk::ThunkInfo thunk_info,
+                                     CustomKernel custom_kernel,
+                                     std::vector<BufferAllocation::Slice> args,
+                                     std::vector<bool> written)
+    : Thunk(Kind::kCustomKernel, std::move(thunk_info)),
+      args_(std::move(args)),
+      written_(std::move(written)),
+      custom_kernel_(std::move(custom_kernel)) {}
+
+absl::StatusOr<ThunkProto> CustomKernelThunk::ToProto() const {
+  ThunkProto thunk_proto;
+  *thunk_proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  CustomKernelThunkProto* custom_kernel_thunk_proto =
+      thunk_proto.mutable_custom_kernel_thunk();
+  for (const BufferAllocation::Slice& arg : args_) {
+    TF_ASSIGN_OR_RETURN(*custom_kernel_thunk_proto->add_args(), arg.ToProto());
+  }
+  for (bool written : written_) {
+    custom_kernel_thunk_proto->add_written(written);
+  }
+  TF_ASSIGN_OR_RETURN(*custom_kernel_thunk_proto->mutable_custom_kernel(),
+                      custom_kernel_.ToProto());
+  return thunk_proto;
+}
+
+absl::StatusOr<std::unique_ptr<CustomKernelThunk>> CustomKernelThunk::FromProto(
+    ThunkInfo thunk_info, const CustomKernelThunkProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    const std::optional<se::KernelLoaderSpec::SymbolResolver>&
+        symbol_resolver) {
+  TF_ASSIGN_OR_RETURN(
+      CustomKernel custom_kernel,
+      CustomKernel::FromProto(proto.custom_kernel(), symbol_resolver));
+  std::vector<BufferAllocation::Slice> args;
+  args.reserve(proto.args_size());
+  for (const buffer_assignment::BufferAllocationSliceProto& arg_proto :
+       proto.args()) {
+    TF_ASSIGN_OR_RETURN(
+        args.emplace_back(),
+        BufferAllocation::Slice::FromProto(arg_proto, buffer_allocations));
+  }
+  std::vector<bool> written{proto.written().begin(), proto.written().end()};
+  return absl::WrapUnique(new CustomKernelThunk(std::move(thunk_info),
+                                                std::move(custom_kernel), args,
+                                                std::move(written)));
 }
 
 }  // namespace gpu

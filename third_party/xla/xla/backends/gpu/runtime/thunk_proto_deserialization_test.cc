@@ -23,9 +23,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -40,14 +42,18 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace xla::gpu {
 namespace {
 using ::testing::ElementsAre;
+using ::testing::Field;
 using ::testing::IsEmpty;
+using ::testing::Optional;
 using ::testing::Pointer;
 using ::testing::Property;
 using ::testing::WhenDynamicCastTo;
@@ -753,6 +759,85 @@ TEST(ThunkProtoDeserializationTest, HostExecuteThunksRoundTrip) {
       ->mutable_host_execute_done_thunk()
       ->set_async_events_unique_id(123);
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+TEST(ThunkProtoDeserializationTest, CustomKernelThunkRoundTrip) {
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
+      R"pb(
+        thunk_info { execution_stream_id: 7 }
+        custom_kernel_thunk {
+          custom_kernel {
+            name: "test_kernel"
+            kernel_spec {
+              ptx { data: "PTX" }
+              arity: 1
+            }
+            block_dims { coordinates { x: 1, y: 1, z: 1 } }
+            thread_dims { coordinates { x: 1, y: 1, z: 1 } }
+            shared_memory_bytes: 42
+          }
+          args { buffer_allocation_index: 0 }
+          written: true
+        }
+      )pb");
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0)};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> thunk,
+      DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
+                            kTestPlatformName));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+// A test symbol that we can resolve to.
+void test_kernel(void* args) {}
+
+TEST(ThunkProtoDeserializationTest, CustomKernelThunkSymbolResolvingWorks) {
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
+      R"pb(
+        thunk_info { execution_stream_id: 7 }
+        custom_kernel_thunk {
+          custom_kernel {
+            name: "test_kernel"
+            kernel_spec {
+              in_process_symbol { persistent_name: "test_kernel" }
+              arity: 1
+            }
+            block_dims { coordinates { x: 1, y: 1, z: 1 } }
+            thread_dims { coordinates { x: 1, y: 1, z: 1 } }
+            shared_memory_bytes: 42
+          }
+          args { buffer_allocation_index: 0 }
+          written: true
+        }
+      )pb");
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0)};
+
+  auto symbol_resolver =
+      [&](absl::string_view persistent_name) -> absl::StatusOr<void*> {
+    if (persistent_name == "test_kernel") {
+      return tsl::safe_reinterpret_cast<void*>(&test_kernel);
+    }
+    return absl::NotFoundError("Symbol not found");
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> thunk,
+      DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
+                            kTestPlatformName, symbol_resolver));
+
+  auto custom_kernel_thunk = dynamic_cast<CustomKernelThunk*>(thunk.get());
+  ASSERT_NE(custom_kernel_thunk, nullptr);
+  EXPECT_THAT(
+      custom_kernel_thunk->custom_kernel().kernel_spec().in_process_symbol(),
+      Optional(Field(&stream_executor::InProcessSymbol::symbol,
+                     tsl::safe_reinterpret_cast<void*>(&test_kernel))));
 }
 
 }  // namespace
