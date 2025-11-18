@@ -21,6 +21,7 @@ cc_library(
     srcs = ["ir_compiler_opt_main.cc"],
     deps = [
         "//xla:debug_options_flags",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/service/cpu:cpu_compiler_pure",
         "//xla/tsl/platform:env",

@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -232,8 +233,8 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
   IrCompiler::Options ir_compiler_options{
       /*optimization_level=*/llvm::CodeGenOptLevel::Default,
       /*optimize_for_size=*/options::OptimizeForSizeRequested(config),
-      /*target_machine_options_proto=*/
-      GetDefaultHostTargetMachineOptions(module.config().debug_options()),
+      /*target_machine_options=*/
+      TargetMachineOptions(module.config().debug_options()),
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(config),
       /*disable_expensive_passes=*/
       debug_options.xla_llvm_disable_expensive_passes(),

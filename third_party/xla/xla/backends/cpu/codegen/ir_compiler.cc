@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -63,9 +62,9 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
-#include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/intrinsic_compiler_lib.h"
 #include "xla/codegen/intrinsic_lib.h"
@@ -76,7 +75,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 
@@ -192,9 +190,9 @@ std::unique_ptr<IrCompiler> IrCompiler::Create(
     llvm::TargetOptions target_options, Options options,
     CompilationHooks hooks) {
   TargetMachineBuilder target_machine_builder =
-      IrCompiler::InferTargetMachineBuilder(
-          std::move(target_options), options.opt_level,
-          options.target_machine_options_proto);
+      IrCompiler::InferTargetMachineBuilder(std::move(target_options),
+                                            options.opt_level,
+                                            options.target_machine_options);
 
   return std::make_unique<IrCompiler>(target_machine_builder,
                                       std::move(options), std::move(hooks));
@@ -218,9 +216,9 @@ absl::once_flag initialize_llvm_flag;
 absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
 IrCompiler::InferTargetMachine(
     const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
-    const TargetMachineOptionsProto& target_machine_options_proto) {
-  llvm::SmallVector<std::string> attrs =
-      absl::StrSplit(target_machine_options_proto.features(), ',');
+    const TargetMachineOptions& target_machine_options) {
+  auto attrs_vec = target_machine_options.GetTargetMachineFeaturesVector();
+  llvm::SmallVector<std::string> attrs(attrs_vec.begin(), attrs_vec.end());
 
   absl::call_once(initialize_llvm_flag, InitializeLLVMTarget);
   std::unique_ptr<llvm::TargetMachine> target_machine(
@@ -228,15 +226,14 @@ IrCompiler::InferTargetMachine(
           .setTargetOptions(target_options)
           .setOptLevel(opt_level)
           .selectTarget(
-              /*TargetTriple=*/llvm::Triple(
-                  target_machine_options_proto.triple()),
+              /*TargetTriple=*/llvm::Triple(target_machine_options.triple()),
               /*MArch=*/"",
-              /*MCPU=*/target_machine_options_proto.cpu(),
+              /*MCPU=*/target_machine_options.cpu(),
               /*MAttrs=*/attrs));
 
   if (target_machine == nullptr) {
     return Internal("Failed to create target machine for CPU %s",
-                    target_machine_options_proto.cpu());
+                    target_machine_options.cpu());
   }
 
   return std::move(target_machine);
@@ -244,10 +241,10 @@ IrCompiler::InferTargetMachine(
 
 IrCompiler::TargetMachineBuilder IrCompiler::InferTargetMachineBuilder(
     const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
-    const TargetMachineOptionsProto& target_machine_options_proto) {
-  return [target_options, opt_level, target_machine_options_proto] {
+    const TargetMachineOptions& target_machine_options) {
+  return [target_options, opt_level, target_machine_options] {
     return InferTargetMachine(target_options, opt_level,
-                              target_machine_options_proto);
+                              target_machine_options);
   };
 }
 

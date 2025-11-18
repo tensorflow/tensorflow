@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Target/TargetOptions.h"
 #include "xla/backends/cpu/runtime/function_library.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/executable.pb.h"
@@ -37,7 +38,7 @@ llvm::TargetOptions CompilerTargetOptions(const HloModuleConfig& module_config);
 absl::StatusOr<std::unique_ptr<FunctionLibrary>> LoadFunctionLibrary(
     const std::vector<FunctionLibrary::Symbol>& compiled_symbols,
     absl::Span<const ObjFileProto> obj_files, const HloModule* hlo_module,
-    const TargetMachineOptionsProto& target_machine_options_proto);
+    const TargetMachineOptions& target_machine_options);
 
 absl::StatusOr<std::vector<FunctionLibrary::Symbol>>
 GetCompiledSymbolsFromProto(

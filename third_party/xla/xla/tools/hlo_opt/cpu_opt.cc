@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/service/change_op_data_type.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/cpu/conv_canonicalization.h"
-#include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 #include "xla/service/cpu/cpu_layout_assignment.h"
@@ -126,8 +126,7 @@ class CpuOptProvider : public CompiledOptProvider {
         cpu::IrCompiler::InferTargetMachine(
             CompilerTargetOptions(module_config),
             CodeGenOptLevel(module_config),
-            cpu::GetDefaultHostTargetMachineOptions(
-                module_config.debug_options()));
+            cpu::TargetMachineOptions(module_config.debug_options()));
     if (!jit_target_machine.ok()) {
       LOG(ERROR) << "Failed to infer target machine: "
                  << jit_target_machine.status();

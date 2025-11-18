@@ -153,6 +153,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/backends/cpu:alignment",
         "//xla/backends/cpu:constant_allocation",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/backends/cpu/runtime:buffer_allocations",
@@ -226,7 +227,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",  # TODO(zhangqiaorjc): Remove if use TFRT threadpool.
-        "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:denormal",

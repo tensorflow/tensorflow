@@ -35,10 +35,10 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 
@@ -65,7 +65,7 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
     llvm::CodeGenOptLevel opt_level = llvm::CodeGenOptLevel::None;
     bool optimize_for_size = false;
 
-    TargetMachineOptionsProto target_machine_options_proto;
+    TargetMachineOptions target_machine_options;
 
     llvm::FastMathFlags fast_math_flags;
 
@@ -96,17 +96,16 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
 
   // Infers the `llvm::TargetMachine` for the targeted host.
   static absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
-  InferTargetMachine(
-      const llvm::TargetOptions& target_options,
-      llvm::CodeGenOptLevel opt_level,
-      const TargetMachineOptionsProto& target_machine_options_proto);
+  InferTargetMachine(const llvm::TargetOptions& target_options,
+                     llvm::CodeGenOptLevel opt_level,
+                     const TargetMachineOptions& target_machine_options);
 
   // Returns a target machine builder that uses `InferTargetMachine` defined
   // above to infer the target machine for the given options.
   static TargetMachineBuilder InferTargetMachineBuilder(
       const llvm::TargetOptions& target_options,
       llvm::CodeGenOptLevel opt_level,
-      const TargetMachineOptionsProto& target_machine_options_proto);
+      const TargetMachineOptions& target_machine_options);
 
   // Compiles a `module` to an ObjectFile.
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> operator()(

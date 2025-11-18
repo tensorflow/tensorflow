@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/tsl/platform/env.h"
@@ -116,11 +117,12 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> ParseLlvmIr(
 absl::StatusOr<std::string> RunIrCompilerPasses(const IrCompilerOptConfig& opts,
                                                 int argc, char** argv) {
   llvm::TargetOptions target_options;
-  IrCompiler::Options ir_compiler_options;
   CHECK(opts.opt_level >= 0 && opts.opt_level <= 3)
       << "Optimization level must be between 0 and 3";
-  ir_compiler_options.opt_level =
-      static_cast<llvm::CodeGenOptLevel>(opts.opt_level);
+  IrCompiler::Options ir_compiler_options{
+      /*opt_level=*/static_cast<llvm::CodeGenOptLevel>(opts.opt_level),
+      /*optimize_for_size=*/false,
+      TargetMachineOptions(GetDebugOptionsFromFlags())};
   auto ir_compiler = IrCompiler::Create(target_options, ir_compiler_options,
                                         IrCompiler::CompilationHooks());
 
@@ -135,7 +137,7 @@ absl::StatusOr<std::string> RunIrCompilerPasses(const IrCompilerOptConfig& opts,
       std::unique_ptr<llvm::TargetMachine> target_machine,
       ir_compiler->InferTargetMachine(
           target_options, static_cast<llvm::CodeGenOptLevel>(opts.opt_level),
-          GetDefaultHostTargetMachineOptions(GetDebugOptionsFromFlags())));
+          ir_compiler_options.target_machine_options));
 
   llvm::Error error = ir_compiler->RunIrPasses(*module, target_machine.get());
   if (error) {

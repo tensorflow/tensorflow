@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -89,7 +90,7 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::vector<ConstantAllocation> constants,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-    TargetMachineOptionsProto target_machine_options) {
+    TargetMachineOptions target_machine_options) {
   VLOG(2) << "Create CpuExecutable from a thunk sequence; module="
           << hlo_module->name() << ", constants=" << constants.size();
 
@@ -133,7 +134,7 @@ CpuExecutable::CpuExecutable(
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
     std::unique_ptr<BufferAssignment> assignment,
-    TargetMachineOptionsProto target_machine_options)
+    TargetMachineOptions target_machine_options)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       assignment_(std::move(assignment)),

@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/kernel.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_kernel_source.h"
@@ -104,8 +105,8 @@ absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(
   IrCompiler::Options ir_compiler_options{
       /*optimization_level=*/IrCompiler::GetCodeGenOptLevel(config),
       /*optimize_for_size=*/options::OptimizeForSizeRequested(config),
-      /*target_machine_options_proto=*/
-      GetDefaultHostTargetMachineOptions(debug_options),
+      /*target_machine_options=*/
+      TargetMachineOptions(debug_options),
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(config),
       /*disable_expensive_passes=*/
       debug_options.xla_llvm_disable_expensive_passes(),

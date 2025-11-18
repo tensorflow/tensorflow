@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
@@ -227,11 +228,9 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(module_string));
 
   xla::Compiler::CompileOptions compile_options;
-  TargetMachineOptionsProto target_machine_options_proto;
-  target_machine_options_proto.set_triple(kTargetTripleForHost);
-  target_machine_options_proto.set_cpu(kTargetCpuForHost);
-  target_machine_options_proto.set_features("+foo-feature,-bar-feature");
-  compile_options.cpu_target_config.emplace(target_machine_options_proto);
+  TargetMachineOptions target_machine_options(
+      kTargetTripleForHost, kTargetCpuForHost, "+foo-feature,-bar-feature");
+  compile_options.cpu_target_config.emplace(target_machine_options);
 
   TF_ASSERT_OK_AND_ASSIGN(
       hlo_module, compiler->RunHloPasses(std::move(hlo_module), stream_exec,

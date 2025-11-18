@@ -24,6 +24,7 @@ cc_library(
     hdrs = ["kernel_runner.h"],
     deps = [
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu/codegen:builtin_definition_generator",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/codegen:execution_engine",

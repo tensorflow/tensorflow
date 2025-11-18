@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -63,7 +64,7 @@ class CpuExecutable : public Executable {
       std::vector<ConstantAllocation> constants,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
       std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-      TargetMachineOptionsProto target_machine_options);
+      TargetMachineOptions target_machine_options);
 
   ~CpuExecutable() override;
 
@@ -151,7 +152,7 @@ class CpuExecutable : public Executable {
   // structures that might have been used at compile time.
   void Finalize();
 
-  const TargetMachineOptionsProto& target_machine_options() const {
+  const TargetMachineOptions& target_machine_options() const {
     return target_machine_options_;
   }
 
@@ -239,7 +240,7 @@ class CpuExecutable : public Executable {
   // Whether the thunk executor contains any YNN fusion thunks.
   bool has_ynn_fusions_ = false;
 
-  TargetMachineOptionsProto target_machine_options_;
+  TargetMachineOptions target_machine_options_;
 
   // Entry function name for the computation.
   std::string entry_function_name_;
@@ -248,7 +249,7 @@ class CpuExecutable : public Executable {
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
                 std::unique_ptr<BufferAssignment> assignment,
-                TargetMachineOptionsProto target_machine_options);
+                TargetMachineOptions target_machine_options);
   CpuExecutable(const CpuExecutable&) = delete;
   CpuExecutable& operator=(const CpuExecutable&) = delete;
 };

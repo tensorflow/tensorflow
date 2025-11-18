@@ -39,6 +39,8 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
@@ -107,7 +109,9 @@ TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
 
   std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
       llvm::TargetOptions(),
-      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive},
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
       compilation_hooks);
 
   std::vector<std::unique_ptr<llvm::Module>> modules;
@@ -191,23 +195,22 @@ TEST(IrCompilerTest, TestAdditionalFeatures) {
       return absl::InternalError("Failed to lookup target: " + error);
     }
 
-    TargetMachineOptionsProto target_machine_options_proto;
-    target_machine_options_proto.set_cpu(cpu_name);
-    target_machine_options_proto.set_triple(triple);
-    target_machine_options_proto.set_features(features);
-
-    cpu::AddAdditionalFeaturesIfAVX512(target_machine_options_proto);
+    TargetMachineOptions target_machine_options(triple, cpu_name, features);
 
     llvm::TargetOptions target_options;
     return absl::WrapUnique(target->createTargetMachine(
-        llvm::Triple(target_machine_options_proto.triple()),
-        target_machine_options_proto.cpu(),
-        target_machine_options_proto.features(), target_options,
+        llvm::Triple(target_machine_options.triple()),
+        target_machine_options.cpu(),
+        target_machine_options.GetTargetMachineFeatures(), target_options,
         /*RM=*/std::nullopt));
   };
 
-  IrCompiler ir_compiler(std::move(builder), IrCompiler::Options(),
-                         IrCompiler::CompilationHooks());
+  IrCompiler ir_compiler(
+      std::move(builder),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::None,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
+      IrCompiler::CompilationHooks());
 
   {
     has_avx512 = true;
@@ -234,16 +237,13 @@ TEST(IrCompilerTest, TargetMachineOptionsAreCorrectlySet) {
   auto context = std::make_unique<llvm::LLVMContext>();
   IrCompiler::CompilationHooks compilation_hooks;
 
-  TargetMachineOptionsProto target_machine_options_proto;
-  target_machine_options_proto.set_cpu(kTargetCpuForHost);
-  target_machine_options_proto.set_triple(kTargetTripleForHost);
-  target_machine_options_proto.set_features("+foo-feature,-bar-feature");
+  TargetMachineOptions target_machine_options(
+      kTargetTripleForHost, kTargetCpuForHost, "+foo-feature,-bar-feature");
 
   std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
       llvm::TargetOptions(),
       IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
-                          /*optimize_for_size=*/false,
-                          target_machine_options_proto},
+                          /*optimize_for_size=*/false, target_machine_options},
       compilation_hooks);
 
   TF_ASSERT_OK_AND_ASSIGN(auto target_machine,

@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
@@ -808,16 +809,14 @@ PjRtCpuClient::CompileInternal(
       compile_options.thread_pool = pjrt_client_thread_pool();
     }
 
-    cpu::TargetMachineOptionsProto target_machine_options =
-        cpu::GetDefaultHostTargetMachineOptions(
-            hlo_module->config().debug_options());
+    cpu::TargetMachineOptions target_machine_options(
+        hlo_module->config().debug_options());
     // Overwrite the features with the machine attributes from the topology.
-    target_machine_options.set_features(
-        absl::StrJoin(topology_.cpu_topology().machine_attributes(), ","));
+
+    TF_RETURN_IF_ERROR(target_machine_options.SetFeatures(
+        absl::StrJoin(topology_.cpu_topology().machine_attributes(), ",")));
 
     compile_options.cpu_target_config.emplace(target_machine_options);
-
-    cpu::AddAdditionalFeaturesIfAVX512(target_machine_options);
 
     TF_ASSIGN_OR_RETURN(cpu_executable,
                         JitCompile(std::move(hlo_module), build_options,
