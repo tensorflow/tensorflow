@@ -340,9 +340,7 @@ def _tf_library(
             "@local_xla//xla/backends/cpu/runtime:sort_lib",
             "@local_xla//xla/backends/cpu/runtime:topk_lib",
             "@local_xla//xla/backends/cpu/runtime:convolution_lib",
-            "@local_xla//xla/service/cpu:runtime_conv2d",
             "@local_xla//xla/service/cpu:runtime_matmul",
-            "@local_xla//xla/service/cpu:runtime_single_threaded_conv2d",
             "@local_xla//xla/service/cpu:runtime_single_threaded_matmul",
             "@eigen_archive//:eigen3",
         ] or []) + (use_xla_nanort_runtime and [
