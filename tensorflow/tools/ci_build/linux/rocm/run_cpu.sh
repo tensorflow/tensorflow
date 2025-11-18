@@ -37,7 +37,7 @@ bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/cpu.ba
           --config=sigbuild_local_cache \
           --verbose_failures \
           --config=pycpp \
-          --action_env=TF_NEED_ROCM=0 \
+          --action_env=TF_NEED_ROCM=1 \
           --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
           --local_test_jobs=${N_BUILD_JOBS} \
 	  --repo_env=ROCM_PATH=/opt/rocm \
