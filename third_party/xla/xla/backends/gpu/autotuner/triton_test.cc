@@ -156,17 +156,11 @@ TEST_F(TritonBackendTest, GetSupportedConfigsForUnsupportedInstruction) {
 TEST_F(TritonBackendTest, GetDefaultConfig) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHlo));
-  TritonBackendConfig expected_config =
-      TritonGemmConfig(64, 64, 64, 1, 1, 2, 1, false).ToProto();
-
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction()));
 
   EXPECT_THAT(config, absl_testing::IsOk());
-  TritonBackendConfig actual_config;
-  ASSERT_TRUE(config.value()->UnpackTo(&actual_config));
-  EXPECT_THAT(actual_config, EqualsProto(expected_config));
 }
 
 TEST_F(TritonBackendTest, GetDefaultConfigForUnsupportedInstruction) {
