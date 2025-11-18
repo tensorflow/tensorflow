@@ -61,10 +61,10 @@ struct OutOfRange {
 
 // Add additional logging for out of range inputs when running in debug mode.
 #ifndef NDEBUG
-VALIDATE_CAST(int32, float);
-VALIDATE_CAST(int64, float);
-VALIDATE_CAST(int32, double);
-VALIDATE_CAST(int64, double);
+VALIDATE_CAST(int32_t, float);
+VALIDATE_CAST(int64_t, float);
+VALIDATE_CAST(int32_t, double);
+VALIDATE_CAST(int64_t, double);
 #endif
 
 CAST_FUNCTORS(Eigen::ThreadPoolDevice);
@@ -74,13 +74,13 @@ CAST_FUNCTORS(Eigen::ThreadPoolDevice);
 
 #define CURRY_TYPES3(FN, arg0, arg1)   \
   FN(arg0, arg1, bool);                \
-  FN(arg0, arg1, uint8);               \
-  FN(arg0, arg1, uint16);              \
-  FN(arg0, arg1, uint32);              \
-  FN(arg0, arg1, uint64);              \
-  FN(arg0, arg1, int8);                \
-  FN(arg0, arg1, int16);               \
-  FN(arg0, arg1, int32);               \
+  FN(arg0, arg1, uint8_t);             \
+  FN(arg0, arg1, uint16_t);            \
+  FN(arg0, arg1, uint32_t);            \
+  FN(arg0, arg1, uint64_t);            \
+  FN(arg0, arg1, int8_t);              \
+  FN(arg0, arg1, int16_t);             \
+  FN(arg0, arg1, int32_t);             \
   FN(arg0, arg1, int64_t);             \
   FN(arg0, arg1, float);               \
   FN(arg0, arg1, double);              \
