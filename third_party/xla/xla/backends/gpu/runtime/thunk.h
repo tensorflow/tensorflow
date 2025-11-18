@@ -143,6 +143,7 @@ class Thunk {
     kCollectiveBroadcastDone,
     kCollectiveBroadcastStart,
     kCollectiveKernel,
+    kCollectiveMetadata,
     kCollectivePermute,
     kCollectivePermuteDone,
     kCollectivePermuteStart,

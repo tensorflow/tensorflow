@@ -80,6 +80,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
+#include "xla/backends/gpu/runtime/collective_metadata_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
@@ -1937,6 +1938,31 @@ bool IsNvshmemCollective(const HloInstruction* instr) {
   return false;
 }
 
+absl::Status IrEmitterUnnested::EmitCollectiveMetadata(
+    const HloInstruction* instr) {
+  std::vector<CollectiveMetadataThunk::Buffer> buffers;
+  buffers.reserve(instr->operands().size());
+  for (const HloInstruction* operand : instr->operands()) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                        GetAllocationSliceForHlo(operand, {}));
+    buffers.push_back({slice, operand->shape().layout().memory_space()});
+  }
+
+  // Operation result should be a tuple where the last element is the buffer for
+  // the metadata.
+  ShapeIndex result_shape_index = {static_cast<int64_t>(buffers.size())};
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result,
+                      GetAllocationSliceForHlo(instr, result_shape_index));
+
+  auto thunk = std::make_unique<CollectiveMetadataThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(
+          instr, ir_emitter_context_->GetNextThunkId()),
+      CollectiveMetadataThunk::GetCollectiveConfig(*instr), std::move(buffers),
+      result);
+  AddThunkToThunkSequence(std::move(thunk));
+  return absl::OkStatus();
+}
+
 absl::Status IrEmitterUnnested::EmitCollectivePermute(
     const HloCollectivePermuteInstruction* instr) {
   // First output is aliased.
@@ -3299,6 +3325,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           instr->custom_call_target() == kUnpinCustomCallTarget ||
           instr->custom_call_target() == kCreateBufferCustomCallTarget) {
         return absl::OkStatus();
+      }
+      if (instr->custom_call_target() == kCollectiveMetadataCustomCallTarget) {
+        return EmitCollectiveMetadata(instr);
       }
       return EmitCustomCallThunk(custom_call);
     }

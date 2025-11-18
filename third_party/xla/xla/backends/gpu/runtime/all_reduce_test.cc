@@ -153,14 +153,15 @@ class AllReduceKernelTest : public ::testing::Test,
     std::vector<se::DeviceMemoryBase> metadata_buffers;
     // One for signal and one for input parameters.
     constexpr int kNumPeerParameters = 2;
-    size_t param_to_peers_size =
-        sizeof(uint64_t) * kNumPeerParameters * num_ranks;
-    std::vector<uint64_t> param_to_peers_ptrs;
-    for (const auto& local_input_buffer : local_input_buffers) {
-      param_to_peers_ptrs.push_back((uint64_t)local_input_buffer.opaque());
+    size_t param_to_peers_size = sizeof(void*) * kNumPeerParameters * num_ranks;
+    std::vector<void*> param_to_peers_ptrs;
+    for (const stream_executor::DeviceMemoryBase& local_input_buffer :
+         local_input_buffers) {
+      param_to_peers_ptrs.push_back(local_input_buffer.opaque());
     }
-    for (const auto& signal_flags_buffer : signal_flags_buffers) {
-      param_to_peers_ptrs.push_back((uint64_t)signal_flags_buffer.opaque());
+    for (const stream_executor::DeviceMemoryBase& signal_flags_buffer :
+         signal_flags_buffers) {
+      param_to_peers_ptrs.push_back(signal_flags_buffer.opaque());
     }
 
     for (int i = 0; i < num_ranks; ++i) {
@@ -174,9 +175,9 @@ class AllReduceKernelTest : public ::testing::Test,
         TF_ASSIGN_OR_RETURN(
             void* mapped_memory,
             multicast_memory->MapMemory(allocated_buffers[i], gpu_executor));
-        metadata.multicast_buffer_ptr = (uint64_t)mapped_memory;
+        metadata.multicast_buffer_ptr = mapped_memory;
       } else {
-        metadata.multicast_buffer_ptr = 0;
+        metadata.multicast_buffer_ptr = nullptr;
       }
 
       // First map from parameter to peer ptrs and then metadata.
@@ -187,7 +188,7 @@ class AllReduceKernelTest : public ::testing::Test,
           metadata_buffers[i].GetByteSlice(sizeof(CollectiveKernelMetadata),
                                            param_to_peers_size);
       metadata.param_to_peers =
-          reinterpret_cast<uint64_t*>(param_to_peers_ptrs_buffer.opaque());
+          reinterpret_cast<void**>(param_to_peers_ptrs_buffer.opaque());
 
       TF_RETURN_IF_ERROR(streams[i]->Memcpy(&metadata_buffers[i], &metadata,
                                             sizeof(CollectiveKernelMetadata)));

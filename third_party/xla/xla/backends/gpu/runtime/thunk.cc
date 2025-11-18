@@ -263,6 +263,7 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kCollectiveBroadcastDone);
     CASE(kCollectiveBroadcastStart);
     CASE(kCollectiveKernel);
+    CASE(kCollectiveMetadata);
     CASE(kCollectivePermute);
     CASE(kCollectivePermuteDone);
     CASE(kCollectivePermuteStart);
@@ -456,7 +457,6 @@ ThunkInfoProto Thunk::ThunkInfo::ToProto() const {
   proto.set_thunk_id(thunk_id.value());
   return proto;
 }
-
 
 }  // namespace gpu
 }  // namespace xla
