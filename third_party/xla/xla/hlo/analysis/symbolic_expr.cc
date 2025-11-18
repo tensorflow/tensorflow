@@ -229,11 +229,6 @@ SymbolicExpr BasicAddSimplify(SymbolicExpr lhs, SymbolicExpr rhs) {
   if (lhs.GetType() == SymbolicExprType::kConstant && lhs.GetValue() == 0) {
     return rhs;
   }
-  if (lhs.GetType() == SymbolicExprType::kConstant &&
-      rhs.GetType() == SymbolicExprType::kConstant) {
-    return CreateSymbolicConstant(lhs.GetValue() + rhs.GetValue(),
-                                  lhs.GetContext());
-  }
   return CreateSymbolicBinaryOp(SymbolicExprType::kAdd, lhs, rhs,
                                 lhs.GetContext());
 }
@@ -303,9 +298,6 @@ SymbolicExpr SimplifyMulByConstantRHS(SymbolicExpr lhs, SymbolicExpr rhs) {
   }
   if (rhs_val == 1) {
     return lhs;  // x * 1 = x
-  }
-  if (lhs.GetType() == SymbolicExprType::kConstant) {
-    return CreateSymbolicConstant(lhs.GetValue() * rhs_val, ctx);
   }
 
   // Associativity: (X * C1) * C2 => X * (C1 * C2)
@@ -1015,7 +1007,13 @@ SymbolicExpr CreateSymbolicBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
         type != SymbolicExprType::kVariable && lhs && rhs)
       << "We expect a binary operation and two symbolic expressions as "
          "children.";
-  return GetOrCreateSymbolicExpr(type, 0, lhs, rhs, mlir_context);
+  auto result = GetOrCreateSymbolicExpr(type, 0, lhs, rhs, mlir_context);
+  // Basic constant folding.
+  if (lhs.GetType() == SymbolicExprType::kConstant &&
+      rhs.GetType() == SymbolicExprType::kConstant) {
+    return CreateSymbolicConstant(result.Evaluate({}), mlir_context);
+  }
+  return result;
 }
 
 llvm::SmallVector<SymbolicExpr> CreateSymbolicConstantExprs(

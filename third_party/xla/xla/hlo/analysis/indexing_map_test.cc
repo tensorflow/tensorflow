@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map_converter.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "tsl/platform/statusor.h"
@@ -101,7 +102,7 @@ TEST_F(IndexingMapTest, VerifyDimensions) {
   EXPECT_FALSE(indexing_map.Verify(ss));
   EXPECT_EQ(ss.str(),
             "number of dim vars (2) must match the number of dimensions in the "
-            "affine map (1)");
+            "symbolic map (1)");
 }
 
 TEST_F(IndexingMapTest, VerifySymbols) {
@@ -113,7 +114,7 @@ TEST_F(IndexingMapTest, VerifySymbols) {
   EXPECT_FALSE(indexing_map.Verify(ss));
   EXPECT_EQ(ss.str(),
             "number of range (1) + runtime (0) variables must match the number "
-            "of symbols in the affine map (0)");
+            "of symbols in the symbolic map (0)");
 }
 
 TEST_F(IndexingMapTest, RTVar) {
@@ -346,6 +347,24 @@ TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
     d0 + cs_0 * 2 in [0, 24],
     d1 + cs_1 * 3 in [0, 15]
   )"));
+}
+
+TEST_F(IndexingMapTest, ComposeIndexingMapsComputationPartitionerTestCrash) {
+  // This is a simplification of a test case taken from ComputationPartitioner
+  // that used to crash when calling ComposeIndexingMaps.
+  auto indexing_map_identity_7_variables = Parse(R"(
+    (d0, d1, d2, d3, d4, d5, d6)->(d0, d1, d2, d3, d4, d5, d6),
+        domain : d0 in[0, 3],
+                d1 in[0, 3],
+                d2 in[0, 3],
+                d3 in[0, 3],
+                d4 in[0, 3],
+                d5 in[0, 3],
+                d6 in[0, 3]
+  )");
+  auto composed = ComposeIndexingMaps(indexing_map_identity_7_variables,
+                                      indexing_map_identity_7_variables);
+  EXPECT_EQ(composed, indexing_map_identity_7_variables);
 }
 
 TEST_F(IndexingMapTest, KnownEmpty_CreatingIndexingMapWithInfeasibleRange) {
@@ -1393,6 +1412,12 @@ TEST_F(IndexingMapTest, RangeEvaluatorTest) {
   // d3 is always 0.
   EXPECT_TRUE(range_evaluator.IsAlwaysPositiveOrZero(d3));
   EXPECT_TRUE(range_evaluator.IsAlwaysNegativeOrZero(d3));
+
+  // TODO: b/446858351 - Remove conversion once fully migrated to SymbolicMap.
+  // d0 * 2 + d1 between [-10, 17].
+  EXPECT_EQ(range_evaluator.ComputeExpressionRange(
+                AffineExprToSymbolicExpr(d0 * 2 + d1, /*num_dims=*/4)),
+            (Interval{-10, 17}));
 }
 
 template <typename T>
