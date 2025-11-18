@@ -198,7 +198,6 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
     const ExecuteOptionsProto& proto) {
   ExecuteOptions options;
 
-  options.untuple_result = proto.untuple_result();
   options.launch_id = proto.launch_id();
   options.strict_shape_checking = proto.strict_shape_checking();
   options.use_major_to_minor_data_layout_for_callbacks =
