@@ -73,6 +73,7 @@ class CustomKernelThunk : public Thunk {
  private:
   // Buffer slices passed to the kernel as arguments.
   std::vector<BufferAllocation::Slice> args_;
+  std::vector<Shape> args_shape_;
 
   // args_[i] is written iff (written_[i] == true).
   std::vector<bool> written_;

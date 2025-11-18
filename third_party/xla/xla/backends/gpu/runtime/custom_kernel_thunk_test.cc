@@ -30,6 +30,7 @@ namespace xla::gpu {
 namespace {
 
 TEST(CustomKernelThunkTest, BufferUsesReturnsCorrectBuffers) {
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {512});
   CustomKernel kernel(
       /*name=*/"",
       se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
@@ -38,8 +39,8 @@ TEST(CustomKernelThunkTest, BufferUsesReturnsCorrectBuffers) {
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/512);
   BufferAllocation::Slice slice1(&alloc, /*offset=*/512, /*size=*/512);
-  emitters::KernelArgument arg0(ShapeUtil::MakeShape(F32, {512}), slice0);
-  emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {512}), slice1);
+  emitters::KernelArgument arg0(arg_shape, slice0);
+  emitters::KernelArgument arg1(arg_shape, slice1);
   arg0.set_written(false);
   arg1.set_written(true);
   emitters::KernelArguments kernel_arguments({arg0, arg1});
@@ -47,8 +48,9 @@ TEST(CustomKernelThunkTest, BufferUsesReturnsCorrectBuffers) {
 
   Thunk::BufferUses buffers = thunk.buffer_uses();
 
-  ASSERT_THAT(buffers, testing::UnorderedElementsAre(BufferUse::Read(slice0),
-                                                     BufferUse::Write(slice1)));
+  ASSERT_THAT(buffers, testing::UnorderedElementsAre(
+                           BufferUse::Read(slice0, arg_shape),
+                           BufferUse::Write(slice1, arg_shape)));
 }
 
 TEST(CustomKernelThunkTest, BufferUsesReturnsBuffersInConsistentOrder) {

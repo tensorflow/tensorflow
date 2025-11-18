@@ -65,6 +65,7 @@ KernelThunk::KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
                          stream_executor::gpu::TmaMetadata tma_metadata)
     : Thunk(Kind::kKernel, std::move(thunk_info)),
       args_(kernel_arguments.GetArgumentBufferSlices()),
+      args_shape_(kernel_arguments.GetArgumentBufferShapes()),
       written_(kernel_arguments.GetArgumentOutputFlags()),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
@@ -84,11 +85,10 @@ absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   auto* kernel_proto = proto.mutable_kernel_thunk();
-  for (const auto& arg : args_) {
-    TF_ASSIGN_OR_RETURN(*kernel_proto->add_args(), arg.ToProto());
-  }
-  for (bool written : written_) {
-    kernel_proto->add_written(written);
+  for (int i = 0; i < args_.size(); i++) {
+    TF_ASSIGN_OR_RETURN(*kernel_proto->add_args(), args_[i].ToProto());
+    *kernel_proto->add_args_shape() = args_shape_[i].ToProto();
+    kernel_proto->add_written(written_[i]);
   }
   kernel_proto->set_kernel_name(kernel_name_);
   *kernel_proto->mutable_launch_dimensions() = launch_dimensions_.ToProto();
@@ -112,9 +112,11 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
         stream_executor::ClusterDim::FromProto(proto.cluster_dim()));
   }
 
-  if (proto.written().size() != proto.args().size()) {
+  if (proto.written().size() != proto.args().size() ||
+      proto.args().size() != proto.args_shape().size()) {
     return absl::InvalidArgumentError(
-        "Proto fields `written` and `args` need to have the same cardinality.");
+        "Proto fields `written`, `args` and `args_shape` need to have the same "
+        "cardinality.");
   }
 
   std::vector<emitters::KernelArgument> arguments;
@@ -123,7 +125,9 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                         BufferAllocation::Slice::FromProto(proto.args().at(i),
                                                            buffer_allocations));
-    emitters::KernelArgument argument{Shape{}, slice};
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        Shape::FromProto(proto.args_shape().at(i)));
+    emitters::KernelArgument argument{shape, slice};
     argument.set_written(proto.written().at(i));
     arguments.push_back(std::move(argument));
   }
@@ -251,9 +255,9 @@ Thunk::BufferUses KernelThunk::buffer_uses() const {
     // We assume that any buffer is either an input or an output of the
     // kernel, and inout buffers are represented as 2 separate arguments.
     if (written_[i]) {
-      buffers.push_back(BufferUse::Write(args_[i]));
+      buffers.push_back(BufferUse::Write(args_[i], args_shape_[i]));
     } else {
-      buffers.push_back(BufferUse::Read(args_[i]));
+      buffers.push_back(BufferUse::Read(args_[i], args_shape_[i]));
     }
   }
   return buffers;

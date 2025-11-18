@@ -85,6 +85,7 @@ message WhileThunkProto {
 
 message KernelThunkProto {
   repeated xla.buffer_assignment.BufferAllocationSliceProto args = 1;
+  repeated xla.ShapeProto args_shape = 8;
   repeated bool written = 2;
   string kernel_name = 3;
   LaunchDimensionsProto launch_dimensions = 4;
