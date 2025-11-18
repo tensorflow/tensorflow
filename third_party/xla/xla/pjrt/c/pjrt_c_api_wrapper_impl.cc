@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
@@ -2537,6 +2538,325 @@ PJRT_Error* PJRT_TopologyDescription_Attributes(
   return nullptr;
 }
 
+PJRT_Error* PJRT_TopologyDescription_ProcessCount(
+    PJRT_TopologyDescription_ProcessCount_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_ProcessCount_Args",
+      PJRT_TopologyDescription_ProcessCount_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(args->process_count,
+                        args->topology->topology->ProcessCount());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_ChipsPerProcess(
+    PJRT_TopologyDescription_ChipsPerProcess_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_ChipsPerProcess_Args",
+      PJRT_TopologyDescription_ChipsPerProcess_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(args->chips_per_process,
+                        args->topology->topology->ChipsPerProcess());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_CoreCountPerChip(
+    PJRT_TopologyDescription_CoreCountPerChip_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_CoreCountPerChip_Args",
+      PJRT_TopologyDescription_CoreCountPerChip_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      args->core_count_of_default_type_per_chip,
+      args->topology->topology->CoreCountOfDefaultTypePerChip());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_ChipCount(
+    PJRT_TopologyDescription_ChipCount_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_ChipCount_Args",
+      PJRT_TopologyDescription_ChipCount_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(args->chip_count,
+                        args->topology->topology->ChipCount());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_CoreCount(
+    PJRT_TopologyDescription_CoreCount_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_CoreCount_Args",
+      PJRT_TopologyDescription_CoreCount_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(args->core_count_of_default_type,
+                        args->topology->topology->CoreCountOfDefaultType());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_LogiDeviceCountPerProcess(
+    PJRT_TopologyDescription_LogiDeviceCountPerProcess_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_LogiDeviceCountPerProcess_Args",
+      PJRT_TopologyDescription_LogiDeviceCountPerProcess_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      args->logical_device_count_of_default_type_per_process,
+      args->topology->topology->LogicalDeviceCountOfDefaultTypePerProcess());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_LogiDeviceCount(
+    PJRT_TopologyDescription_LogiDeviceCount_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_LogiDeviceCount_Args",
+      PJRT_TopologyDescription_LogiDeviceCount_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      args->logical_device_count_of_default_type,
+      args->topology->topology->LogicalDeviceCountOfDefaultType());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_LogiDeviceCountPerChip(
+    PJRT_TopologyDescription_LogiDeviceCountPerChip_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_LogiDeviceCountPerChip_Args",
+      PJRT_TopologyDescription_LogiDeviceCountPerChip_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      args->logical_device_count_of_default_type_per_chip,
+      args->topology->topology->LogicalDeviceCountOfDefaultTypePerChip());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_CoreCountPerProcess(
+    PJRT_TopologyDescription_CoreCountPerProcess_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_CoreCountPerProcess_Args",
+      PJRT_TopologyDescription_CoreCountPerProcess_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      args->core_count_of_default_type_per_process,
+      args->topology->topology->CoreCountOfDefaultTypePerProcess());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_ProcessIds(
+    PJRT_TopologyDescription_ProcessIds_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_ProcessIds_Args",
+      PJRT_TopologyDescription_ProcessIds_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(xla::PjRtIdContainer<xla::PjRtProcessId> ids,
+                        args->topology->topology->ProcessIds());
+  args->num_process_ids = ids.size();
+  if (args->max_process_ids < args->num_process_ids) {
+    return new PJRT_Error{
+        xla::InvalidArgument("`max_process_ids` must be >= %zu, got %zu.",
+                             args->num_process_ids, args->max_process_ids)};
+  }
+  for (int i = 0; i < args->num_process_ids; ++i) {
+    args->process_ids[i] = ids[i].value();
+  }
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_LogiDeviceIdsOnProcess(
+    PJRT_TopologyDescription_LogiDeviceIdsOnProcess_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_LogiDeviceIdsOnProcess_Args",
+      PJRT_TopologyDescription_LogiDeviceIdsOnProcess_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      xla::PjRtIdContainer<xla::PjRtGlobalDeviceId> ids,
+      args->topology->topology->LogicalDeviceOfDefaultTypeIdsOnProcess(
+          xla::PjRtProcessId(args->process_id)));
+  args->num_logical_device_ids = ids.size();
+  if (args->max_logical_device_ids < args->num_logical_device_ids) {
+    return new PJRT_Error{xla::InvalidArgument(
+        "`max_logical_device_ids` must be >= %zu, got %zu.",
+        args->num_logical_device_ids, args->max_logical_device_ids)};
+  }
+  for (int i = 0; i < args->num_logical_device_ids; ++i) {
+    args->logical_device_of_default_type_ids[i] = ids[i].value();
+  }
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip(
+    PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip_Args",
+      PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip_Args_STRUCT_SIZE,
+      args->struct_size));
+  absl::StatusOr<std::pair<xla::PjRtProcessId, int>> status_or_result =
+      args->topology->topology->ProcessIdAndIndexOnProcessForChip(
+          xla::PjRtGlobalChipId(args->chip_id));
+  PJRT_RETURN_IF_ERROR(status_or_result.status());
+  args->process_id = status_or_result->first.value();
+  args->index_on_process = status_or_result->second;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice(
+    PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_"
+      "ProcessIdAndIndexOnProcessForLogiDeviceOfDefaultType_Args",
+      PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice_Args_STRUCT_SIZE,
+      args->struct_size));
+  absl::StatusOr<std::pair<xla::PjRtProcessId, int>> status_or_result =
+      args->topology->topology
+          ->ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+              xla::PjRtGlobalDeviceId(args->device_id));
+  PJRT_RETURN_IF_ERROR(status_or_result.status());
+  args->process_id = status_or_result->first.value();
+  args->index_on_process = status_or_result->second;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_ProcessCoordFromId(
+    PJRT_TopologyDescription_ProcessCoordFromId_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_ProcessCoordFromId_Args",
+      PJRT_TopologyDescription_ProcessCoordFromId_Args_STRUCT_SIZE,
+      args->struct_size));
+  absl::StatusOr<xla::PjRtDeviceDimensions> status_or_coords =
+      args->topology->topology->ProcessCoordFromId(
+          xla::PjRtProcessId(args->process_id));
+  PJRT_RETURN_IF_ERROR(status_or_coords.status());
+  args->coords_num_dims = status_or_coords->size();
+  if (args->coords_max_dims < args->coords_num_dims) {
+    return new PJRT_Error{
+        xla::InvalidArgument("`coords_max_dims` must be >= %zu, got %zu.",
+                             args->coords_num_dims, args->coords_max_dims)};
+  }
+  for (int i = 0; i < args->coords_num_dims; i++) {
+    args->coords[i] = (*status_or_coords)[i];
+  }
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_ChipIdFromCoord(
+    PJRT_TopologyDescription_ChipIdFromCoord_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_ChipIdFromCoord_Args",
+      PJRT_TopologyDescription_ChipIdFromCoord_Args_STRUCT_SIZE,
+      args->struct_size));
+  std::vector<int32_t> coords_vec(args->coords,
+                                  args->coords + args->coords_num_dims);
+  xla::PjRtDeviceDimensions coords(coords_vec);
+  absl::StatusOr<xla::PjRtGlobalChipId> status_or_chip_id =
+      args->topology->topology->ChipIdFromCoord(coords);
+  PJRT_RETURN_IF_ERROR(status_or_chip_id.status());
+  args->chip_id = status_or_chip_id->value();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx(
+    PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx_Args",
+      PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx_Args_STRUCT_SIZE,
+      args->struct_size));
+  std::vector<int32_t> chip_coords_vec(
+      args->chip_coords, args->chip_coords + args->chip_coords_num_dims);
+  xla::PjRtDeviceDimensions chip_coords(chip_coords_vec);
+  absl::StatusOr<xla::PjRtGlobalDeviceId> status_or_device_id =
+      args->topology->topology->IdForLogicalDeviceOfDefaultType(
+          chip_coords, args->logical_device_index_on_chip);
+  PJRT_RETURN_IF_ERROR(status_or_device_id.status());
+  args->logical_device_of_default_type_id = status_or_device_id->value();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice(
+    PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice_Args",
+      PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice_Args_STRUCT_SIZE,
+      args->struct_size));
+  absl::StatusOr<std::pair<xla::PjRtDeviceDimensions, int32_t>>
+      status_or_result =
+          args->topology->topology->LogicalDeviceOfDefaultTypeForId(
+              xla::PjRtGlobalDeviceId(args->device_id));
+  PJRT_RETURN_IF_ERROR(status_or_result.status());
+  auto [chip_coords, core_index] = *std::move(status_or_result);
+  args->chip_coords_num_dims = chip_coords.size();
+  if (args->chip_coords_max_dims < args->chip_coords_num_dims) {
+    return new PJRT_Error{xla::InvalidArgument(
+        "`chip_coords_max_dims` must be >= %zu, got %zu.",
+        args->chip_coords_num_dims, args->chip_coords_max_dims)};
+  }
+  for (int i = 0; i < args->chip_coords_num_dims; i++) {
+    args->chip_coords[i] = chip_coords[i];
+  }
+  args->device_index_on_chip = core_index;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_ChipsPerProcessBounds(
+    PJRT_TopologyDescription_ChipsPerProcessBounds_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_ChipsPerProcessBounds_Args",
+      PJRT_TopologyDescription_ChipsPerProcessBounds_Args_STRUCT_SIZE,
+      args->struct_size));
+  absl::StatusOr<xla::PjRtDeviceDimensions> status_or_bounds =
+      args->topology->topology->ChipsPerProcessBounds();
+  PJRT_RETURN_IF_ERROR(status_or_bounds.status());
+  args->chip_per_process_bounds_num_dims = status_or_bounds->size();
+  if (args->chip_per_process_bounds_max_dims <
+      args->chip_per_process_bounds_num_dims) {
+    return new PJRT_Error{xla::InvalidArgument(
+        "`chip_per_process_bounds_max_dims` must be >= %zu, got %zu.",
+        args->chip_per_process_bounds_num_dims,
+        args->chip_per_process_bounds_max_dims)};
+  }
+  for (int i = 0; i < args->chip_per_process_bounds_num_dims; i++) {
+    args->chip_per_process_bounds[i] = (*status_or_bounds)[i];
+  }
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_ChipBounds(
+    PJRT_TopologyDescription_ChipBounds_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_ChipBounds_Args",
+      PJRT_TopologyDescription_ChipBounds_Args_STRUCT_SIZE, args->struct_size));
+  absl::StatusOr<xla::PjRtDeviceDimensions> status_or_bounds =
+      args->topology->topology->ChipBounds();
+  PJRT_RETURN_IF_ERROR(status_or_bounds.status());
+  args->chip_bounds_num_dims = status_or_bounds->size();
+  if (args->chip_bounds_max_dims < args->chip_bounds_num_dims) {
+    return new PJRT_Error{xla::InvalidArgument(
+        "`chip_bounds_max_dims` must be >= %zu, got %zu.",
+        args->chip_bounds_num_dims, args->chip_bounds_max_dims)};
+  }
+  for (int i = 0; i < args->chip_bounds_num_dims; i++) {
+    args->chip_bounds[i] = (*status_or_bounds)[i];
+  }
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_ProcessBounds(
+    PJRT_TopologyDescription_ProcessBounds_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_ProcessBounds_Args",
+      PJRT_TopologyDescription_ProcessBounds_Args_STRUCT_SIZE,
+      args->struct_size));
+  absl::StatusOr<xla::PjRtDeviceDimensions> status_or_bounds =
+      args->topology->topology->ProcessBounds();
+  PJRT_RETURN_IF_ERROR(status_or_bounds.status());
+  args->process_bounds_num_dims = status_or_bounds->size();
+  if (args->process_bounds_max_dims < args->process_bounds_num_dims) {
+    return new PJRT_Error{xla::InvalidArgument(
+        "`process_bounds_max_dims` must be >= %zu, got %zu.",
+        args->process_bounds_num_dims, args->process_bounds_max_dims)};
+  }
+  for (int i = 0; i < args->process_bounds_num_dims; i++) {
+    args->process_bounds[i] = (*status_or_bounds)[i];
+  }
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Compile_Args", PJRT_Compile_Args_STRUCT_SIZE, args->struct_size));
@@ -3124,6 +3444,47 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_Client_FulfillAliasBuffer,
       /*PJRT_LoadedExecutable_GetDeviceAssignment=*/
       pjrt::PJRT_LoadedExecutable_GetDeviceAssignment,
+
+      /*PJRT_TopologyDescription_ProcessCount=*/
+      pjrt::PJRT_TopologyDescription_ProcessCount,
+      /*PJRT_TopologyDescription_ChipsPerProcess=*/
+      pjrt::PJRT_TopologyDescription_ChipsPerProcess,
+      /*PJRT_TopologyDescription_CoreCountPerChip=*/
+      pjrt::PJRT_TopologyDescription_CoreCountPerChip,
+      /*PJRT_TopologyDescription_ChipCount=*/
+      pjrt::PJRT_TopologyDescription_ChipCount,
+      /*PJRT_TopologyDescription_CoreCount=*/
+      pjrt::PJRT_TopologyDescription_CoreCount,
+      /*PJRT_TopologyDescription_LogiDeviceCountPerProcess=*/
+      pjrt::PJRT_TopologyDescription_LogiDeviceCountPerProcess,
+      /*PJRT_TopologyDescription_LogiDeviceCount=*/
+      pjrt::PJRT_TopologyDescription_LogiDeviceCount,
+      /*PJRT_TopologyDescription_LogiDeviceCountPerChip=*/
+      pjrt::PJRT_TopologyDescription_LogiDeviceCountPerChip,
+      /*PJRT_TopologyDescription_CoreCountPerProcess=*/
+      pjrt::PJRT_TopologyDescription_CoreCountPerProcess,
+      /*PJRT_TopologyDescription_ProcessIds=*/
+      pjrt::PJRT_TopologyDescription_ProcessIds,
+      /*PJRT_TopologyDescription_LogiDeviceIdsOnProcess=*/
+      pjrt::PJRT_TopologyDescription_LogiDeviceIdsOnProcess,
+      /*PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip=*/
+      pjrt::PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip,
+      /*PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice=*/
+      pjrt::PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice,
+      /*PJRT_TopologyDescription_ProcessCoordFromId=*/
+      pjrt::PJRT_TopologyDescription_ProcessCoordFromId,
+      /*PJRT_TopologyDescription_ChipIdFromCoord=*/
+      pjrt::PJRT_TopologyDescription_ChipIdFromCoord,
+      /*PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx=*/
+      pjrt::PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx,
+      /*PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice=*/
+      pjrt::PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice,
+      /*PJRT_TopologyDescription_ChipsPerProcessBounds=*/
+      pjrt::PJRT_TopologyDescription_ChipsPerProcessBounds,
+      /*PJRT_TopologyDescription_ChipBounds=*/
+      pjrt::PJRT_TopologyDescription_ChipBounds,
+      /*PJRT_TopologyDescription_ProcessBounds=*/
+      pjrt::PJRT_TopologyDescription_ProcessBounds,
   };
 }
 

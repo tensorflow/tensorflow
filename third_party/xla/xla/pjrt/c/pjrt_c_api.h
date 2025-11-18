@@ -103,7 +103,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 81
+#define PJRT_API_MINOR 82
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -2504,6 +2504,330 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Attributes_Args,
 typedef PJRT_Error* PJRT_TopologyDescription_Attributes(
     PJRT_TopologyDescription_Attributes_Args* args);
 
+struct PJRT_TopologyDescription_ProcessCount_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int32_t process_count;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_ProcessCount_Args,
+                          process_count);
+
+// Returns the number of processes in this topology.
+typedef PJRT_Error* PJRT_TopologyDescription_ProcessCount(
+    PJRT_TopologyDescription_ProcessCount_Args* args);
+
+struct PJRT_TopologyDescription_ChipsPerProcess_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int32_t chips_per_process;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_ChipsPerProcess_Args,
+                          chips_per_process);
+
+// Returns the number of chips per process in this topology.
+typedef PJRT_Error* PJRT_TopologyDescription_ChipsPerProcess(
+    PJRT_TopologyDescription_ChipsPerProcess_Args* args);
+
+struct PJRT_TopologyDescription_CoreCountPerChip_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int32_t core_count_of_default_type_per_chip;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_CoreCountPerChip_Args,
+                          core_count_of_default_type_per_chip);
+
+// Returns the number of cores of default type per chip in this topology.
+typedef PJRT_Error* PJRT_TopologyDescription_CoreCountPerChip(
+    PJRT_TopologyDescription_CoreCountPerChip_Args* args);
+
+struct PJRT_TopologyDescription_ChipCount_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int32_t chip_count;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_ChipCount_Args, chip_count);
+
+// Returns the number of total chips in this topology.
+typedef PJRT_Error* PJRT_TopologyDescription_ChipCount(
+    PJRT_TopologyDescription_ChipCount_Args* args);
+
+struct PJRT_TopologyDescription_CoreCount_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int32_t core_count_of_default_type;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_CoreCount_Args,
+                          core_count_of_default_type);
+
+// Returns the number of total cores of default type in this topology.
+typedef PJRT_Error* PJRT_TopologyDescription_CoreCount(
+    PJRT_TopologyDescription_CoreCount_Args* args);
+
+struct PJRT_TopologyDescription_LogiDeviceCount_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int32_t logical_device_count_of_default_type;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_LogiDeviceCount_Args,
+                          logical_device_count_of_default_type);
+
+// Returns the number of total logical devices of default type in this topology.
+typedef PJRT_Error* PJRT_TopologyDescription_LogiDeviceCount(
+    PJRT_TopologyDescription_LogiDeviceCount_Args* args);
+
+struct PJRT_TopologyDescription_LogiDeviceCountPerProcess_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int32_t logical_device_count_of_default_type_per_process;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_TopologyDescription_LogiDeviceCountPerProcess_Args,
+    logical_device_count_of_default_type_per_process);
+
+// Returns the number of logical devices of default type per process in this
+// topology.
+typedef PJRT_Error* PJRT_TopologyDescription_LogiDeviceCountPerProcess(
+    PJRT_TopologyDescription_LogiDeviceCountPerProcess_Args* args);
+
+struct PJRT_TopologyDescription_LogiDeviceCountPerChip_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int32_t logical_device_count_of_default_type_per_chip;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_LogiDeviceCountPerChip_Args,
+                          logical_device_count_of_default_type_per_chip);
+
+// Returns the number of logical devices of default type per chip in this
+// topology.
+typedef PJRT_Error* PJRT_TopologyDescription_LogiDeviceCountPerChip(
+    PJRT_TopologyDescription_LogiDeviceCountPerChip_Args* args);
+
+struct PJRT_TopologyDescription_CoreCountPerProcess_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int32_t core_count_of_default_type_per_process;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_CoreCountPerProcess_Args,
+                          core_count_of_default_type_per_process);
+
+// Returns the number of cores per process in this topology.
+typedef PJRT_Error* PJRT_TopologyDescription_CoreCountPerProcess(
+    PJRT_TopologyDescription_CoreCountPerProcess_Args* args);
+
+struct PJRT_TopologyDescription_ProcessIds_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  // The maximum number of process IDs that can be returned. If the topology has
+  // more than max_process_ids processes, an error is returned.
+  int32_t max_process_ids;
+  // Points to an array of size max_process_ids. The process IDs will be
+  // filled in this array.
+  int32_t* process_ids;
+  size_t num_process_ids;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_ProcessIds_Args,
+                          num_process_ids);
+
+// Returns the process IDs in this topology.
+typedef PJRT_Error* PJRT_TopologyDescription_ProcessIds(
+    PJRT_TopologyDescription_ProcessIds_Args* args);
+
+struct PJRT_TopologyDescription_LogiDeviceIdsOnProcess_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int32_t process_id;
+  // The maximum number of device IDs that can be returned. If the topology has
+  // more than max_logical_device_ids devices on the process, an error is
+  // returned.
+  int32_t max_logical_device_ids;
+  // Points to an array of size max_logical_device_ids. The device IDs will be
+  // filled in this array.
+  int32_t* logical_device_of_default_type_ids;
+  size_t num_logical_device_ids;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_LogiDeviceIdsOnProcess_Args,
+                          num_logical_device_ids);
+
+// Returns the logical device of default type IDs on the given process.
+typedef PJRT_Error* PJRT_TopologyDescription_LogiDeviceIdsOnProcess(
+    PJRT_TopologyDescription_LogiDeviceIdsOnProcess_Args* args);
+
+struct PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int32_t chip_id;
+  int32_t process_id;        // out
+  int32_t index_on_process;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip_Args, index_on_process);
+
+// Returns the process ID and index on process for the given chip.
+typedef PJRT_Error* PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip(
+    PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip_Args* args);
+
+struct PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int32_t device_id;
+  int32_t process_id;        // out
+  int32_t index_on_process;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice_Args,
+    index_on_process);
+
+// Returns the process ID and index on process for the given logical device of
+// default type.
+typedef PJRT_Error* PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice(
+    PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice_Args* args);
+
+struct PJRT_TopologyDescription_ProcessCoordFromId_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int32_t process_id;
+  // The maximum dimension of coordinates that can be returned.
+  // If the process has more than max_coords dimensions, an error is returned.
+  size_t coords_max_dims;
+  // Points to an array of size max_dims. The coordinates of the process will
+  // be stored in this array.
+  int32_t* coords;
+  size_t coords_num_dims;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_ProcessCoordFromId_Args,
+                          coords_num_dims);
+
+// Returns the coordinates of the process with the given process ID.
+typedef PJRT_Error* PJRT_TopologyDescription_ProcessCoordFromId(
+    PJRT_TopologyDescription_ProcessCoordFromId_Args* args);
+
+struct PJRT_TopologyDescription_ChipIdFromCoord_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  const int32_t* coords;
+  size_t coords_num_dims;
+  int32_t chip_id;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_ChipIdFromCoord_Args,
+                          chip_id);
+
+// Returns the chip ID for the given coordinates.
+typedef PJRT_Error* PJRT_TopologyDescription_ChipIdFromCoord(
+    PJRT_TopologyDescription_ChipIdFromCoord_Args* args);
+
+struct PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  const int32_t* chip_coords;
+  size_t chip_coords_num_dims;
+  int32_t logical_device_index_on_chip;
+  int32_t logical_device_of_default_type_id;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx_Args,
+    logical_device_of_default_type_id);
+
+// Returns the logical device of default type ID for the chip with the given
+// coordinates and logical device index on chip.
+typedef PJRT_Error* PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx(
+    PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx_Args* args);
+
+struct PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int32_t device_id;
+  // The maximum dimension of coordinates that can be returned.
+  // If the device has more than max_coords dimensions, an error is returned.
+  size_t chip_coords_max_dims;
+  // Points to an array of size max_dims. The coordinates of the device will
+  // be stored in this array.
+  int32_t* chip_coords;
+  size_t chip_coords_num_dims;   // out
+  int32_t device_index_on_chip;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice_Args,
+    device_index_on_chip);
+
+// Returns the coordinates of the chip containing the given logical device of
+// default type, and the index of the logical device on the chip.
+typedef PJRT_Error* PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice(
+    PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice_Args* args);
+
+struct PJRT_TopologyDescription_ChipsPerProcessBounds_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  // The maximum dimension of coordinates that can be returned.
+  // If the process has more than max_coords dimensions, an error is returned.
+  size_t chip_per_process_bounds_max_dims;
+  // Points to an array of size max_dims. The bounds of the chips per process
+  // will be stored in this array.
+  int32_t* chip_per_process_bounds;
+  size_t chip_per_process_bounds_num_dims;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_ChipsPerProcessBounds_Args,
+                          chip_per_process_bounds_num_dims);
+
+// Returns the bounds of the chips per process in this topology.
+typedef PJRT_Error* PJRT_TopologyDescription_ChipsPerProcessBounds(
+    PJRT_TopologyDescription_ChipsPerProcessBounds_Args* args);
+
+struct PJRT_TopologyDescription_ChipBounds_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  // The maximum dimension of coordinates that can be returned.
+  // If the chip has more than max_coords dimensions, an error is returned.
+  size_t chip_bounds_max_dims;
+  // Points to an array of size max_dims. The bounds of the chip will be stored
+  // in this array.
+  int32_t* chip_bounds;
+  size_t chip_bounds_num_dims;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_ChipBounds_Args,
+                          chip_bounds_num_dims);
+
+// Returns the bounds of the chip in this topology.
+typedef PJRT_Error* PJRT_TopologyDescription_ChipBounds(
+    PJRT_TopologyDescription_ChipBounds_Args* args);
+
+struct PJRT_TopologyDescription_ProcessBounds_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  // The maximum dimension of coordinates that can be returned.
+  // If the process has more than max_coords dimensions, an error is returned.
+  size_t process_bounds_max_dims;
+  // Points to an array of size max_dims. The bounds of the process will be
+  // stored in this array.
+  int32_t* process_bounds;
+  size_t process_bounds_num_dims;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_ProcessBounds_Args,
+                          process_bounds_num_dims);
+
+// Returns the bounds of the process in this topology.
+typedef PJRT_Error* PJRT_TopologyDescription_ProcessBounds(
+    PJRT_TopologyDescription_ProcessBounds_Args* args);
+
 struct PJRT_Compile_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -2678,11 +3002,34 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateAliasBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_FulfillAliasBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_GetDeviceAssignment);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_ProcessCount);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_ChipsPerProcess);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_CoreCountPerChip);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_ChipCount);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_CoreCount);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_LogiDeviceCountPerProcess);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_LogiDeviceCount);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_LogiDeviceCountPerChip);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_CoreCountPerProcess);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_ProcessIds);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_LogiDeviceIdsOnProcess);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip);
+  _PJRT_API_STRUCT_FIELD(
+      PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_ProcessCoordFromId);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_ChipIdFromCoord);
+  _PJRT_API_STRUCT_FIELD(
+      PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_ChipsPerProcessBounds);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_ChipBounds);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_ProcessBounds);
 } PJRT_Api;
 
 enum {
   PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_LoadedExecutable_GetDeviceAssignment)
+      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_TopologyDescription_ProcessBounds)
 };
 
 #undef _PJRT_API_STRUCT_FIELD
