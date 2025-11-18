@@ -31,6 +31,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "arith_fp8_conversion_to_triton.cc",
         "extract_tma_info_pass.cc",
         "generalize_kernel_signature.cc",
         "int4_passes.cc",
