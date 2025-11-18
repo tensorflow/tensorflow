@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
@@ -87,6 +88,27 @@ LLVMCommandLineOptionsLock::~LLVMCommandLineOptionsLock() {
   absl::MutexLock lock(lock_);
   CHECK_GT(num_active_clients_, 0);
   num_active_clients_ -= 1;
+}
+
+void LLVMCommandLineOptionsLock::
+    UpgradeToExclusiveAccessToRawLLVMCommandLine() {
+  {
+    absl::MutexLock lock(lock_);
+    CHECK_GT(num_active_clients_, 0);
+    if (ABSL_PREDICT_TRUE(num_active_clients_ == 1)) {
+      active_client_signature_ = 0;
+      return;
+    }
+    num_active_clients_ -= 1;
+  }
+  // Slow path
+  auto no_other_clients = []() ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+    return num_active_clients_ == 0;
+  };
+  lock_.LockWhen(absl::Condition(&no_other_clients));
+  active_client_signature_ = 0;
+  num_active_clients_ = 1;
+  lock_.unlock();
 }
 
 }  // namespace llvm_ir

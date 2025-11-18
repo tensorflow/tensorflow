@@ -127,17 +127,17 @@ absl::StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
   return ostream.str().str();
 }
 
-absl::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
-                 llvm::StringRef host_triple,
-                 llvm::ArrayRef<std::string> architectures,
-                 llvm::ArrayRef<int64_t> tile_sizes,
-                 llvm::ArrayRef<int64_t> unroll_factors, bool print_ptx,
+absl::Status Run(std::string input_file, std::string output_file,
+                 std::string host_triple,
+                 std::vector<std::string> architectures,
+                 std::vector<int64_t> tile_sizes,
+                 std::vector<int64_t> unroll_factors, bool print_ptx,
                  bool print_llvmir, bool enable_ftz, bool index_64bit,
                  bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
   // Read TF code.
   std::string hlo_code;
   TF_RETURN_IF_ERROR(
-      ReadFileToString(Env::Default(), input_file.str(), &hlo_code));
+      ReadFileToString(Env::Default(), input_file, &hlo_code));
 
   // Compile.
   mlir::DialectRegistry registry;
@@ -160,7 +160,7 @@ absl::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
 
   // Write .a file.
   TF_RETURN_IF_ERROR(
-      WriteStringToFile(Env::Default(), output_file.str(), binary));
+      WriteStringToFile(Env::Default(), output_file, binary));
   return absl::OkStatus();
 }
 

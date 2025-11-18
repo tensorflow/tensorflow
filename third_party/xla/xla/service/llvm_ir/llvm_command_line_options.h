@@ -76,6 +76,8 @@ class ABSL_SCOPED_LOCKABLE LLVMCommandLineOptionsLock {
 
   ~LLVMCommandLineOptionsLock() ABSL_UNLOCK_FUNCTION();
 
+  void UpgradeToExclusiveAccessToRawLLVMCommandLine();
+
   static std::vector<std::string>& GetGlobalOptions() {
     // absl::NoDestructor is not available in OSS XLA.
     static std::vector<std::string>* global_options =
