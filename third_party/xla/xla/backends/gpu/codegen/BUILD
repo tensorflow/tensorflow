@@ -127,6 +127,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/runtime:all_reduce_thunk",
         "//xla/backends/gpu/runtime:collective_thunk",
         "//xla/backends/gpu/runtime:copy_thunk",
