@@ -88,20 +88,10 @@ int RunProfiler(int argc, char** argv) {
       S8, S16, S32, S64, U8, U16, U32, U64, F16, F32, F64, C64, C128,
   };
   const std::vector<HloOpcode> ops = {
-      // Unary
-      HloOpcode::kCbrt,
-      HloOpcode::kCos,
-      HloOpcode::kErf,
-      HloOpcode::kExp,
-      HloOpcode::kExpm1,
-      HloOpcode::kLog,
-      HloOpcode::kLog1p,
-      HloOpcode::kLogistic,
-      HloOpcode::kRsqrt,
-      HloOpcode::kSin,
-      HloOpcode::kSinh,
-      HloOpcode::kSqrt,
-      HloOpcode::kTanh,
+  // Unary
+#define DEFINE_CONSTANT(name, ...) HloOpcode::k##name,
+      UNARY_OPS_WITH_ACCURACY(DEFINE_CONSTANT)
+#undef DEFINE_CONSTANT
       // Binary
       HloOpcode::kAdd,
       HloOpcode::kAtan2,

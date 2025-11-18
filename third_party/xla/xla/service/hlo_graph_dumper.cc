@@ -1139,15 +1139,13 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
   // expensive (eg, dot) and those which are unusual in some way or unique
   // (eg, parameter).
   switch (instr->opcode()) {
+#define CASE_STMT(name, ...) case HloOpcode::k##name:
+    UNARY_OPS_WITH_ACCURACY(CASE_STMT)
+#undef CASE_STMT
     case HloOpcode::kAbs:
-    case HloOpcode::kAsin:
-    case HloOpcode::kAsinh:
-    case HloOpcode::kAcos:
-    case HloOpcode::kAcosh:
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
-    case HloOpcode::kAtanh:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
@@ -1155,18 +1153,11 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kCompare:
     case HloOpcode::kComplex:
     case HloOpcode::kConvert:
-    case HloOpcode::kCos:
-    case HloOpcode::kCosh:
     case HloOpcode::kDivide:
-    case HloOpcode::kErf:
-    case HloOpcode::kExp:
-    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
     case HloOpcode::kIota:
     case HloOpcode::kIsFinite:
-    case HloOpcode::kLog:
-    case HloOpcode::kLog1p:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
@@ -1184,24 +1175,16 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
-    case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kStochasticConvert:
-    case HloOpcode::kLogistic:
     case HloOpcode::kSign:
-    case HloOpcode::kSin:
-    case HloOpcode::kSinh:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
     case HloOpcode::kTopK:
-    case HloOpcode::kSqrt:
-    case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
-    case HloOpcode::kTan:
-    case HloOpcode::kTanh:
       return kWhite;
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:

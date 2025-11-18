@@ -143,75 +143,23 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::Value* EmitIntegralMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
                                bool is_signed);
 
-  virtual absl::StatusOr<llvm::Value*> EmitAcos(PrimitiveType prim_type,
-                                                llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitAcosh(PrimitiveType prim_type,
-                                                 llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitAsin(PrimitiveType prim_type,
-                                                llvm::Value* value);
-
   virtual absl::StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type,
                                                  llvm::Value* lhs,
                                                  llvm::Value* rhs,
                                                  absl::string_view name);
-  virtual absl::StatusOr<llvm::Value*> EmitSinh(PrimitiveType prim_type,
-                                                llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitAtanh(PrimitiveType prim_type,
-                                                 llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitAsinh(PrimitiveType prim_type,
-                                                 llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
-                                               llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitSqrt(PrimitiveType prim_type,
-                                                llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitCbrt(PrimitiveType prim_type,
-                                                llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitRsqrt(PrimitiveType prim_type,
-                                                 llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitLog1p(PrimitiveType prim_type,
-                                                 llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitSin(PrimitiveType prim_type,
-                                               llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
-                                               llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitCosh(PrimitiveType prim_type,
-                                                llvm::Value* value);
+#define DEFINE_EMIT_FUNCTION(name, ...)                                    \
+  virtual absl::StatusOr<llvm::Value*> Emit##name(PrimitiveType prim_type, \
+                                                  llvm::Value* value);
+  UNARY_OPS_WITH_ACCURACY(DEFINE_EMIT_FUNCTION)
+#undef DEFINE_EMIT_FUNCTION
 
   virtual absl::StatusOr<llvm::Value*> EmitCosm1(PrimitiveType prim_type,
-                                                 llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitTan(PrimitiveType prim_type,
-                                               llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
-                                               llvm::Value* value,
-                                               absl::string_view name);
-
-  virtual absl::StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
                                                  llvm::Value* value);
 
   virtual absl::StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type,
                                                llvm::Value* lhs,
                                                llvm::Value* rhs,
                                                absl::string_view name);
-
-  virtual absl::StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
-                                               llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
-                                                llvm::Value* value);
 
   virtual absl::StatusOr<llvm::Value*> EmitReducePrecision(
       const HloInstruction* hlo, llvm::Value* x);

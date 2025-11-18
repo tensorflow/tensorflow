@@ -145,33 +145,11 @@ absl::Status HloCostAnalysis::HandleElementwiseOp(
   // kLogistic is included in "trascendental" as it is implemented using
   // trascendental ops (tanh or exp).
   if (
-      // clang-format off
-      // go/keep-sorted start
-      opcode == HloOpcode::kAcos ||
-      opcode == HloOpcode::kAcosh ||
-      opcode == HloOpcode::kAsin ||
-      opcode == HloOpcode::kAsinh ||
-      opcode == HloOpcode::kAtan2 ||
-      opcode == HloOpcode::kAtanh ||
-      opcode == HloOpcode::kCbrt ||
-      opcode == HloOpcode::kCos ||
-      opcode == HloOpcode::kCosh ||
-      opcode == HloOpcode::kErf ||
-      opcode == HloOpcode::kExp ||
-      opcode == HloOpcode::kExpm1 ||
-      opcode == HloOpcode::kLog ||
-      opcode == HloOpcode::kLog1p ||
-      opcode == HloOpcode::kLogistic ||
-      opcode == HloOpcode::kPower ||
-      opcode == HloOpcode::kRsqrt ||
-      opcode == HloOpcode::kSin ||
-      opcode == HloOpcode::kSinh ||
-      opcode == HloOpcode::kSqrt ||
-      opcode == HloOpcode::kTan ||
-      opcode == HloOpcode::kTanh
-      // go/keep-sorted end
-      // clang-format on
-  ) {
+#define OP_CONDITION(name, ...) opcode == HloOpcode::k##name ||
+      UNARY_OPS_WITH_ACCURACY(OP_CONDITION)
+#undef OP_CONDITION
+              opcode == HloOpcode::kPower ||
+      opcode == HloOpcode::kAtan2) {
     current_properties_[kTranscendentalsKey] = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from

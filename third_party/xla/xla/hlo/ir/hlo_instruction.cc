@@ -4552,7 +4552,7 @@ absl::Status HloInstruction::Visit(
     case HloOpcode::kAtanh:
       return visitor->HandleAtanh(this);
     case HloOpcode::kRoundNearestAfz:
-      return visitor->HandleRound(this);
+      return visitor->HandleRoundNearestAfz(this);
     case HloOpcode::kRoundNearestEven:
       return visitor->HandleRoundNearestEven(this);
     case HloOpcode::kBatchNormTraining:
