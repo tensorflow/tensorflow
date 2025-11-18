@@ -80,6 +80,7 @@ class LiteralBase {
   // Literals are equal if they have compatible shapes and the same data
   // values. Layout is not compared. For a layout sensitive comparison
   // call Equal() with layout_sensitive=true.
+  // test comment remove later
   bool operator==(const LiteralBase& other) const {
     return Equal(other, false);
   }
