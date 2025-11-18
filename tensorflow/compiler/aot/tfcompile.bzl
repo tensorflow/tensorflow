@@ -322,6 +322,7 @@ def _tf_library(
             # include_standard_runtime_deps is False.  Without them, the
             # generated code will fail to compile.
             "//third_party/absl/log:check",
+            "//third_party/absl/synchronization",
             "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
             "@local_xla//xla:types",
             "@local_xla//xla/backends/cpu/runtime:kernel_c_api",
@@ -338,6 +339,7 @@ def _tf_library(
             # needed.
             "@local_xla//xla/backends/cpu/runtime:sort_lib",
             "@local_xla//xla/backends/cpu/runtime:topk_lib",
+            "@local_xla//xla/backends/cpu/runtime:convolution_lib",
             "@local_xla//xla/service/cpu:runtime_conv2d",
             "@local_xla//xla/service/cpu:runtime_matmul",
             "@local_xla//xla/service/cpu:runtime_single_threaded_conv2d",

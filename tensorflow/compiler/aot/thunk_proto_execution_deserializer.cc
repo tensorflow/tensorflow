@@ -303,16 +303,12 @@ absl::StatusOr<std::string> ThunkProtoExecutionDeserializer::GetDotThunkRunImpl(
 
 absl::StatusOr<std::string>
 ThunkProtoExecutionDeserializer::GetConvolutionFunction(
-    xla::PrimitiveType xla_type, bool is_single_threaded) {
+    xla::PrimitiveType xla_type) {
   switch (xla_type) {
     case xla::F16:
-      return is_single_threaded
-                 ? "__xla_cpu_runtime_EigenSingleThreadedConv2DF16"
-                 : "__xla_cpu_runtime_EigenConv2DF16";
+      return "xla::cpu::internal::EigenConv2D<Eigen::half>";
     case xla::F32:
-      return is_single_threaded
-                 ? "__xla_cpu_runtime_EigenSingleThreadedConv2DF32"
-                 : "__xla_cpu_runtime_EigenConv2DF32";
+      return "xla::cpu::internal::EigenConv2D<float>";
     default:
       return xla::Internal("Unsupported xla type: %d", xla_type);
   }
@@ -345,63 +341,28 @@ ThunkProtoExecutionDeserializer::GetConvolution2DRunImpl(
   TF_ASSIGN_OR_RETURN(
       std::string convolution_function,
       GetConvolutionFunction(
-          convolution_thunk.input_buffer_shape().shape().element_type(),
-          /*is_single_threaded=*/false));
+          convolution_thunk.input_buffer_shape().shape().element_type()));
 
-  TF_ASSIGN_OR_RETURN(
-      std::string single_threaded_convolution_function,
-      GetConvolutionFunction(
-          convolution_thunk.input_buffer_shape().shape().element_type(),
-          /*is_single_threaded=*/true));
-
-  absl::string_view convolution_thunk_invocation_format =
-      xla_cpu_multi_thread_eigen_ ? R"(
+  absl::string_view convolution_thunk_invocation_format = R"(
      // Convolution Thunk
      {
-         if (run_options->intra_op_thread_pool() != nullptr) {
-           {{CONVOLUTION_FUNCTION}}(
-             run_options,
-             {{OUTPUT_PTR}}, {{LHS_PTR}}, {{RHS_PTR}}, {{INPUT_BATCH}},
-             {{INPUT_ROWS}}, {{INPUT_COLS}}, {{INPUT_CHANNELS}}, {{KERNEL_ROWS}},
-             {{KERNEL_COLS}}, {{KERNEL_CHANNELS}}, {{KERNEL_FILTERS}},
-             {{OUTPUT_ROWS}}, {{OUTPUT_COLS}}, {{ROW_STRIDE}}, {{COL_STRIDE}},
-             {{PADDING_TOP}}, {{PADDING_BOTTOM}}, {{PADDING_LEFT}},
-             {{PADDING_RIGHT}}, {{LHS_ROW_DILATION}}, {{LHS_COL_DILATION}},
-             {{RHS_ROW_DILATION}}, {{RHS_COL_DILATION}}, {{FEATURE_GROUP_COUNT}}
-           );
-         } else {
-           {{SINGLE_THREADED_CONVOLUTION_FUNCTION}}(
-             nullptr,
-             {{OUTPUT_PTR}}, {{LHS_PTR}}, {{RHS_PTR}}, {{INPUT_BATCH}},
-             {{INPUT_ROWS}}, {{INPUT_COLS}}, {{INPUT_CHANNELS}}, {{KERNEL_ROWS}},
-             {{KERNEL_COLS}}, {{KERNEL_CHANNELS}}, {{KERNEL_FILTERS}},
-             {{OUTPUT_ROWS}}, {{OUTPUT_COLS}}, {{ROW_STRIDE}}, {{COL_STRIDE}},
-             {{PADDING_TOP}}, {{PADDING_BOTTOM}}, {{PADDING_LEFT}},
-             {{PADDING_RIGHT}}, {{LHS_ROW_DILATION}}, {{LHS_COL_DILATION}},
-             {{RHS_ROW_DILATION}}, {{RHS_COL_DILATION}}, {{FEATURE_GROUP_COUNT}}
-           );
-         }
-     })"
-                                  :
-                                  R"(
-      // Convolution Thunk
-      {
-        {{SINGLE_THREADED_CONVOLUTION_FUNCTION}}(
-              nullptr,
-              {{OUTPUT_PTR}}, {{LHS_PTR}}, {{RHS_PTR}}, {{INPUT_BATCH}},
-              {{INPUT_ROWS}}, {{INPUT_COLS}}, {{INPUT_CHANNELS}}, {{KERNEL_ROWS}},
-              {{KERNEL_COLS}}, {{KERNEL_CHANNELS}}, {{KERNEL_FILTERS}},
-              {{OUTPUT_ROWS}}, {{OUTPUT_COLS}}, {{ROW_STRIDE}}, {{COL_STRIDE}},
-              {{PADDING_TOP}}, {{PADDING_BOTTOM}}, {{PADDING_LEFT}},
-              {{PADDING_RIGHT}}, {{LHS_ROW_DILATION}}, {{LHS_COL_DILATION}},
-              {{RHS_ROW_DILATION}}, {{RHS_COL_DILATION}}, {{FEATURE_GROUP_COUNT}}
-            );
-      }
-      )";
+        absl::Notification done;
+        {{CONVOLUTION_FUNCTION}}(
+          run_options->intra_op_thread_pool(),
+          {{OUTPUT_PTR}}, {{LHS_PTR}}, {{RHS_PTR}}, {{INPUT_BATCH}},
+          {{INPUT_ROWS}}, {{INPUT_COLS}}, {{INPUT_CHANNELS}}, {{KERNEL_ROWS}},
+          {{KERNEL_COLS}}, {{KERNEL_CHANNELS}}, {{KERNEL_FILTERS}},
+          {{OUTPUT_ROWS}}, {{OUTPUT_COLS}}, {{ROW_STRIDE}}, {{COL_STRIDE}},
+          {{PADDING_TOP}}, {{PADDING_BOTTOM}}, {{PADDING_LEFT}},
+          {{PADDING_RIGHT}}, {{LHS_ROW_DILATION}}, {{LHS_COL_DILATION}},
+          {{RHS_ROW_DILATION}}, {{RHS_COL_DILATION}}, {{FEATURE_GROUP_COUNT}},
+          [&done] { done.Notify(); }
+        );
+        done.WaitForNotification();
+     })";
 
   std::vector<std::pair<std::string, std::string>> rewrites = {
-      {"{{SINGLE_THREADED_CONVOLUTION_FUNCTION}}",
-       single_threaded_convolution_function},
+      {"{{CONVOLUTION_FUNCTION}}", convolution_function},
       {"{{OUTPUT_PTR}}", output_ptr},
       {"{{LHS_PTR}}", lhs_ptr},
       {"{{RHS_PTR}}", rhs_ptr},
@@ -427,10 +388,6 @@ ThunkProtoExecutionDeserializer::GetConvolution2DRunImpl(
       {"{{RHS_COL_DILATION}}", absl::StrCat(canonical_dims.window_dilation.y)},
       {"{{FEATURE_GROUP_COUNT}}",
        absl::StrCat(canonical_dims.feature_group_count)}};
-
-  if (xla_cpu_multi_thread_eigen_) {
-    rewrites.push_back({"{{CONVOLUTION_FUNCTION}}", convolution_function});
-  }
 
   return absl::StrReplaceAll(convolution_thunk_invocation_format, rewrites);
 }
