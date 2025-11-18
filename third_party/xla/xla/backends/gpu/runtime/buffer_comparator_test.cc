@@ -448,6 +448,45 @@ TEST_F(BufferComparatorTest, BF16) {
                    .value());
 }
 
+TEST_F(BufferComparatorTest, VeryLargeArray) {
+  constexpr PrimitiveType number_type = U8;
+  using NT = primitive_util::PrimitiveTypeToNative<number_type>::type;
+
+  // Set non-power-of-two element count on purpose, use aligned byffer siuze
+  int64_t n_elems = (1LL << 33) - 11,
+          // Buffer size must be 4-bytes aligned for Memset32
+      buf_size = (((n_elems + 1) * sizeof(NT)) + 3) & ~3;
+  auto stream = stream_exec_->CreateStream().value();
+
+  // Use host memory here since there is a limitation of 4GB per test on
+  // device memory alloc
+  TF_ASSERT_OK_AND_ASSIGN(auto base,
+                          stream_exec_->HostMemoryAllocate(buf_size));
+
+  // We use overlapping lhs and rhs arrays to reduce memory usage, also this
+  // serves as an extra test for possible pointer aliasing problems
+  se::DeviceMemoryBase lhs(base->opaque(), n_elems * sizeof(NT)),
+      rhs(static_cast<NT*>(base->opaque()) + 1, lhs.size());
+
+  constexpr uint32_t pattern = 0xABABABAB;
+  TF_CHECK_OK(stream->Memset32(&lhs, pattern, buf_size));
+
+  // First we do "positive" test to make sure lhs and rhs are indeed equal:
+  // disable host comparison here since it could take a while for ~8GB array
+  BufferComparator comparator(ShapeUtil::MakeShape(number_type, {n_elems}),
+                              /*tolerance*/ 0.1, /* verbose */ false,
+                              /*run_host_compare*/ false);
+  EXPECT_TRUE(comparator.CompareEqual(stream.get(), lhs, rhs).value());
+
+  se::DeviceMemoryBase last_word(
+      static_cast<uint8_t*>(base->opaque()) + (n_elems & ~3), sizeof(uint32_t));
+  // Change only the very last entry of rhs to verify that the whole arrays are
+  // compared (if the grid dimensions are not computed correctly, this might
+  // not be the case).
+  TF_CHECK_OK(stream->Memset32(&last_word, 0x11223344, last_word.size()));
+  EXPECT_FALSE(comparator.CompareEqual(stream.get(), lhs, rhs).value());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
