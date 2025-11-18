@@ -38,12 +38,15 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/service/test_compilation_environment.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/path.h"
 
@@ -131,8 +134,15 @@ ENTRY %constant_s32 () -> s32[] {
 )");
 }
 
+// Fake module with run_hlo_passes=false.
 constexpr absl::string_view kModuleSerializedName =
-    "7a8f4b1ac78966508b85e1d9a0bc8f21.bin";
+    "a83d1d9a594b0f1fbc4227408abcdc6a.bin";
+// Fake module with run_hlo_passes=true.
+constexpr absl::string_view kModuleWithRunHloPassesSerializedName =
+    "1f51ba5f389ad07cbe268573dd21a94e.bin";
+// Fake module with a compilation environment set.
+constexpr absl::string_view kModuleWithCompEnvSerializedName =
+    "9385c25a58e7d6d47e56af1dd950b7d1.bin";
 
 class ArtifactDirTest : public ::testing::Test {
  public:
@@ -164,6 +174,49 @@ TEST_F(CompilePhaseHloRunnerPjRtTest, CreateExecutablePlacesFileCorrectly) {
   TF_ASSERT_OK(tsl::Env::Default()->GetChildren(artifact_dir_, &children));
   ASSERT_EQ(children.size(), 1);
   ASSERT_EQ(children[0], kModuleSerializedName);
+}
+
+// Tests that a CreateExecutable call with different run_hlo_passes value places
+// the file in a different location.
+TEST_F(CompilePhaseHloRunnerPjRtTest,
+       CreateExecutablePlacesFilesCorrectlyWithDifferentRunHloPasses) {
+  CompilePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
+                                   artifact_dir_);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
+  TF_ASSERT_OK(runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/true));
+
+  std::vector<std::string> children;
+  TF_ASSERT_OK(tsl::Env::Default()->GetChildren(artifact_dir_, &children));
+  ASSERT_EQ(children.size(), 1);
+  ASSERT_EQ(children[0], kModuleWithRunHloPassesSerializedName);
+}
+
+// Tests that a CreateExecutable call with a different compilation
+// environment places the file in a different location.
+TEST_F(CompilePhaseHloRunnerPjRtTest,
+       CreateExecutablePlacesFilesCorrectlyWithCompilationEnvironment) {
+  CompilePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
+                                   artifact_dir_);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
+  m->comp_envs().RegisterProcessNewEnvFn(
+      test::TestCompilationEnvironment1::GetDescriptor(),
+      [](std::unique_ptr<tsl::protobuf::Message> msg) {
+        std::unique_ptr<test::TestCompilationEnvironment1> env(
+            tensorflow::down_cast<test::TestCompilationEnvironment1*>(
+                msg.release()));
+        if (env == nullptr) {
+          env = std::make_unique<test::TestCompilationEnvironment1>();
+        }
+        env->set_some_flag(42);
+        return env;
+      });
+  TF_ASSERT_OK(m->comp_envs().InitializeAllKnownEnvs());
+  TF_ASSERT_OK(runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/false));
+
+  std::vector<std::string> children;
+  TF_ASSERT_OK(tsl::Env::Default()->GetChildren(artifact_dir_, &children));
+  ASSERT_EQ(children.size(), 1);
+  ASSERT_EQ(children[0], kModuleWithCompEnvSerializedName);
 }
 
 using ExecutePhaseHloRunnerPjRtTest = ArtifactDirTest;
