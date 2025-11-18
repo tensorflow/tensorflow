@@ -41,6 +41,7 @@ cc_library(
         "//xla/codegen/testlib:kernel_runner",
         "//xla/runtime:work_group",
         "//xla/service:hlo_module_config",
+        "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_options",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",

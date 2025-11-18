@@ -50,6 +50,12 @@ class DialectRegistry;
 namespace xla {
 namespace cpu {
 
+void AddAdditionalFeaturesIfAVX512(
+    TargetMachineOptionsProto& target_machine_options_proto);
+
+TargetMachineOptionsProto GetDefaultHostTargetMachineOptions(
+    const DebugOptions& debug_options);
+
 // CPU-targeting implementation of the XLA Compiler interface.
 //
 // The compiler translates XLA HLO code into LLVM IR and uses LLVM's JIT

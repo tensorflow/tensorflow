@@ -40,6 +40,8 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
+#include "xla/debug_options_flags.h"
+#include "xla/service/cpu/cpu_compiler.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -133,7 +135,7 @@ absl::StatusOr<std::string> RunIrCompilerPasses(const IrCompilerOptConfig& opts,
       std::unique_ptr<llvm::TargetMachine> target_machine,
       ir_compiler->InferTargetMachine(
           target_options, static_cast<llvm::CodeGenOptLevel>(opts.opt_level),
-          std::nullopt));
+          GetDefaultHostTargetMachineOptions(GetDebugOptionsFromFlags())));
 
   llvm::Error error = ir_compiler->RunIrPasses(*module, target_machine.get());
   if (error) {

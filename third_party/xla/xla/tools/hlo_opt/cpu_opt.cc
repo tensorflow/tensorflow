@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/change_op_data_type.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/cpu/conv_canonicalization.h"
+#include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 #include "xla/service/cpu/cpu_layout_assignment.h"
@@ -125,8 +126,8 @@ class CpuOptProvider : public CompiledOptProvider {
         cpu::IrCompiler::InferTargetMachine(
             CompilerTargetOptions(module_config),
             CodeGenOptLevel(module_config),
-            cpu::CpuFeatureFromString(
-                module_config.debug_options().xla_cpu_max_isa()));
+            cpu::GetDefaultHostTargetMachineOptions(
+                module_config.debug_options()));
     if (!jit_target_machine.ok()) {
       LOG(ERROR) << "Failed to infer target machine: "
                  << jit_target_machine.status();

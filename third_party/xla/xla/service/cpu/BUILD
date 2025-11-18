@@ -512,8 +512,10 @@ xla_test(
     deps = [
         ":cpu_aot_compilation_result",
         ":test_header_helper",
+        "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla/backends/cpu/codegen:cpu_features",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
         "//xla/service:executable",
@@ -526,6 +528,7 @@ xla_test(
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",

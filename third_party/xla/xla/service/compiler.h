@@ -161,11 +161,12 @@ class Compiler {
   // Description of a target CPU for compilation.
   struct CpuTargetConfig {
     explicit CpuTargetConfig(
-        cpu::TargetMachineOptionsProto& target_machine_options_proto)
+        const cpu::TargetMachineOptionsProto& target_machine_options_proto)
         : cpu_target_machine_options_proto(target_machine_options_proto) {};
 
     // If not set, we default to the options inferred from the host machine.
-    cpu::TargetMachineOptionsProto cpu_target_machine_options_proto;
+    std::optional<cpu::TargetMachineOptionsProto>
+        cpu_target_machine_options_proto = std::nullopt;
   };
 
   struct CompileOptions {

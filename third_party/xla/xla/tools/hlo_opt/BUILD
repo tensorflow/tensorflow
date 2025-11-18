@@ -187,6 +187,7 @@ cc_library(
         "//xla/service:sharding_propagation",
         "//xla/service:transpose_folding",
         "//xla/service/cpu:conv_canonicalization",
+        "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_executable",
         "//xla/service/cpu:cpu_instruction_fusion",
         "//xla/service/cpu:cpu_layout_assignment",

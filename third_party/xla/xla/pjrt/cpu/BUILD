@@ -202,6 +202,7 @@ cc_library(
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_executable",
         "//xla/service/cpu:cpu_executable_run_options",
+        "//xla/service/cpu:executable_proto_cc",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
@@ -225,6 +226,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",  # TODO(zhangqiaorjc): Remove if use TFRT threadpool.
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:denormal",

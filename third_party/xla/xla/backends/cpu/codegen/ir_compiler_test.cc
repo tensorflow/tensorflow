@@ -40,6 +40,8 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -189,9 +191,18 @@ TEST(IrCompilerTest, TestAdditionalFeatures) {
       return absl::InternalError("Failed to lookup target: " + error);
     }
 
+    TargetMachineOptionsProto target_machine_options_proto;
+    target_machine_options_proto.set_cpu(cpu_name);
+    target_machine_options_proto.set_triple(triple);
+    target_machine_options_proto.set_features(features);
+
+    cpu::AddAdditionalFeaturesIfAVX512(target_machine_options_proto);
+
     llvm::TargetOptions target_options;
     return absl::WrapUnique(target->createTargetMachine(
-        target_triple, cpu_name, features, target_options,
+        llvm::Triple(target_machine_options_proto.triple()),
+        target_machine_options_proto.cpu(),
+        target_machine_options_proto.features(), target_options,
         /*RM=*/std::nullopt));
   };
 
@@ -217,6 +228,32 @@ TEST(IrCompilerTest, TestAdditionalFeatures) {
     EXPECT_THAT(features, Not(HasSubstr("+prefer-no-scatter")));
     EXPECT_THAT(features, Not(HasSubstr("+prefer-no-gather")));
   }
+}
+
+TEST(IrCompilerTest, TargetMachineOptionsAreCorrectlySet) {
+  auto context = std::make_unique<llvm::LLVMContext>();
+  IrCompiler::CompilationHooks compilation_hooks;
+
+  TargetMachineOptionsProto target_machine_options_proto;
+  target_machine_options_proto.set_cpu(kTargetCpuForHost);
+  target_machine_options_proto.set_triple(kTargetTripleForHost);
+  target_machine_options_proto.set_features("+foo-feature,-bar-feature");
+
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
+                          /*optimize_for_size=*/false,
+                          target_machine_options_proto},
+      compilation_hooks);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto target_machine,
+                          ir_compiler->build_target_machine());
+
+  EXPECT_EQ(target_machine->getTargetCPU(), kTargetCpuForHost);
+  EXPECT_EQ(target_machine->getTargetTriple().getTriple(),
+            kTargetTripleForHost);
+  EXPECT_EQ(target_machine->getTargetFeatureString(),
+            "+foo-feature,-bar-feature");
 }
 
 }  // namespace
