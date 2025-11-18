@@ -77,3 +77,13 @@ def MemrefCopyToLoopsPass : Pass<"xtile-cpu-memref-copy-to-loops",
     "::mlir::memref::MemRefDialect",
   ];
 }
+
+def FuseElementwisePass : Pass<"xtile-cpu-fuse-elementwise"> {
+  let summary = "Fuse linalg elementwise ops.";
+
+  let description = [{
+    This pass fuses multiple linalg elementwise ops into linalg elementwise ops
+    that contain multiple instructions. This allows for fewer matrializations
+    and fewer temporary allocations in bufferization.
+  }];
+}

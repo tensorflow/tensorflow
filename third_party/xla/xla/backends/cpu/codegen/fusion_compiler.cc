@@ -320,7 +320,7 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
   pm.addPass(CreateTensorOpsToVectorPass());
 
   pm.addPass(mlir::createConvertElementwiseToLinalgPass());
-  pm.addPass(mlir::createLinalgElementwiseOpFusionPass());
+  pm.addPass(CreateFuseElementwisePass());
 
   AddBufferizationPasses(pm);
 
