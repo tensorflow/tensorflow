@@ -221,6 +221,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"queue_addr", kQueueAddr},
        {"queue_id", kQueueId},
        {"request_id", kRequestId},
+       {"global_chip_id", kGlobalChipId},
        {"run_id", kRunId},
        {"replica_id", kReplicaId},
        {"graph_type", kGraphType},
