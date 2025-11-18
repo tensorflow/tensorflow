@@ -35,14 +35,15 @@ cc_library(
     ],
     deps = [
         ":fusion_emitter",
-        ":fusion_emitter_legacy_matmul",
         "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:util",
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/runtime:kernel_thunk",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/tiling:tiled_hlo_computation",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service/gpu:backend_configs_cc",
@@ -52,13 +53,12 @@ cc_library(
         "//xla/service/gpu:ir_emitter_context",
         "//xla/service/gpu:kernel_reuse_cache",
         "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu:matmul_utils",
-        "//xla/service/gpu:triton_fusion_analysis",
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -68,7 +68,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
-        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -274,7 +273,6 @@ cc_library(
         ":compilation_pipeline",
         ":dot_algorithms",
         ":emitter_helpers",
-        ":fusion_emitter_legacy_matmul",
         ":support",
         ":tma_utils",
         "@com_google_absl//absl/algorithm:container",
@@ -351,70 +349,6 @@ cc_library(
 )
 
 cc_library(
-    name = "fusion_emitter_legacy_matmul",
-    srcs = if_gpu_is_configured(
-        ["fusion_emitter_legacy_matmul.cc"],
-        ["fusion_emitter_legacy_matmul_stub.cc"],
-    ),
-    hdrs = ["fusion_emitter_legacy_matmul.h"],
-    deps = [
-        ":dot_algorithms",
-        ":emitter_helpers",
-        "//xla:autotuning_proto_cc",
-        "//xla:comparison_util",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
-        "//xla/codegen:emitter_loc_op_builder",
-        "//xla/codegen/xtile/ir:xtile",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_query",
-        "//xla/hlo/utils:hlo_traversal",
-        "//xla/mlir_hlo",
-        "//xla/mlir_hlo:map_mhlo_to_scalar_op",
-        "//xla/mlir_hlo:transformation_helpers",
-        "//xla/service:algorithm_util",
-        "//xla/service:matmul_indexing_utils",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu:matmul_utils",
-        "//xla/service/gpu:triton_fusion_analysis",
-        "//xla/service/gpu:triton_tiling_propagation",
-        "//xla/service/gpu/model:block_level_parameters",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor/gpu:tma_metadata",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:cord",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FunctionInterfaces",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MathDialect",
-        "@llvm-project//mlir:NVVMDialect",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Support",
-        "@triton//:TritonDialects",
-    ],
-)
-
-cc_library(
     name = "dot_algorithms",
     srcs = ["dot_algorithms.cc"],
     hdrs = ["dot_algorithms.h"],
@@ -449,12 +383,10 @@ cc_library(
 cc_library(
     name = "fusion_emitter_stub_for_testing",
     srcs = [
-        "fusion_emitter_legacy_matmul_stub.cc",
         "fusion_emitter_stub.cc",
     ],
     hdrs = [
         "fusion_emitter.h",
-        "fusion_emitter_legacy_matmul.h",
     ],
     deps = [
         ":emitter_helpers",
@@ -538,63 +470,7 @@ xla_cc_test(
     ],
 )
 
-xla_test(
-    name = "fusion_emitter_device_legacy_test",
-    size = "large",
-    srcs = if_gpu_is_configured(["fusion_emitter_device_legacy_test.cc"]),
-    # TODO(b/372714955): Fix the memory leak!
-    backend_args = if_google(
-        {
-            "h100": ["--heap_check="],
-            "a100": ["--heap_check="],
-        },
-        {},
-    ),
-    backends = [
-        "a100",
-        "h100",
-        "b200",
-        "amdgpu_any",
-    ],
-    shard_count = 20,
-    tags = [
-        "large",
-        "no_mac",
-    ],
-    deps = [
-        ":fusion_emitter",
-        ":test_utils",
-        "//xla:autotuning_proto_cc",
-        "//xla:error_spec",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/analysis:symbolic_expr",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:pattern_matcher_gmock",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service:pattern_matcher",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu/tests:gpu_codegen_test",
-        "//xla/stream_executor:device_description",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_matchers",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-        "@llvm-project//llvm:ir_headers",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:path",
-    ],
-)
-
+# TODO(b/393299275): Rename this test file now that the legacy emitter is gone.
 xla_test(
     name = "fusion_emitter_device_legacy_port_test",
     srcs = if_gpu_is_configured(["fusion_emitter_device_legacy_port_test.cc"]),
@@ -673,6 +549,7 @@ xla_test(
         "//xla/service/gpu/transforms:nest_gemm_fusion",
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
@@ -685,113 +562,8 @@ xla_test(
 )
 
 xla_test(
-    name = "fusion_emitter_legacy_int4_device_test",
-    size = "large",
-    srcs = if_gpu_is_configured(["fusion_emitter_legacy_int4_device_test.cc"]),
-    backends = [
-        "a100",
-        "h100",
-        "b200",
-        "amdgpu_any",
-    ],
-    shard_count = 10,
-    tags = [
-        "large",
-        "no_mac",
-    ],
-    deps = [
-        ":test_utils",
-        "//xla:autotuning_proto_cc",
-        "//xla:error_spec",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu/tests:gpu_codegen_test",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:path",
-    ],
-)
-
-xla_test(
     name = "dot_algorithms_test",
     srcs = ["dot_algorithms_test.cc"],
-    backend_args = if_google(
-        {
-            "b200": ["--heap_check="],
-            "a100": ["--heap_check="],
-            "h100": ["--heap_check="],
-        },
-        {},
-    ),
-    backends = [
-        "a100",
-        "h100",
-        "b200",
-        "amdgpu_any",
-    ],
-    env = {
-        "CUBLAS_EMULATE_SINGLE_PRECISION": "1",  # Trigger single precision emulation (F32_F32_F32) with BF16x9 cublas algorithm. It was introduced in cublas 12.9.
-        "CUBLAS_EMULATION_STRATEGY": "performant",  # Trigger single precision emulation (F32_F32_F32) with BF16x9 cublas algorithm. It was introduced in cublas 12.9.
-    },
-    shard_count = 30,
-    tags = [
-        "no_mac",
-    ],
-    deps = [
-        ":test_utils",
-        "//xla:autotuning_proto_cc",
-        "//xla:error_spec",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/backends/gpu/profiler:kernel_name_tracer",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service:dump",
-        "//xla/service:hlo_module_config",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu/tests:gpu_codegen_test",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tests:test_utils",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
-        "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:path",
-    ],
-)
-
-# TODO(b/393299275): Remove this target once the legacy emitter is removed.
-xla_test(
-    name = "dot_algorithms_legacy_test",
-    srcs = ["dot_algorithms_legacy_test.cc"],
     backend_args = if_google(
         {
             "b200": ["--heap_check="],
@@ -1016,38 +788,6 @@ xla_test(
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-xla_test(
-    name = "fusion_emitter_parametrized_legacy_test",
-    srcs = if_gpu_is_configured(["fusion_emitter_parametrized_legacy_test.cc"]),
-    backend_tags = {
-        # TODO(b/445172709): Re-enable once fixed.
-        "b200": ["broken"],
-    },
-    backends = [
-        "a100",
-        "h100",
-        "b200",
-        "amdgpu_any",
-    ],
-    shard_count = 10,
-    tags = ["no_mac"],
-    deps = [
-        ":support",
-        ":test_utils",
-        "//xla:comparison_util",
-        "//xla:error_spec",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/gpu/tests:gpu_codegen_test",
-        "//xla/stream_executor:device_description",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
