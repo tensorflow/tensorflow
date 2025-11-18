@@ -624,6 +624,7 @@ ThunkProtoExecutionDeserializer::GetSortThunkRunImpl(
            [comparator](const void** data) {
              bool result;
              (*comparator)(&result, nullptr, data, nullptr, nullptr, nullptr);
+             ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&result, sizeof(result));
              return result;
            };
 
