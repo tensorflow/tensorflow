@@ -610,7 +610,7 @@ xla_test(
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/service/gpu/transforms:sort_rewriter",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
