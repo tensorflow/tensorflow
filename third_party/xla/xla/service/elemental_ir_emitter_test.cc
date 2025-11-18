@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/types.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
