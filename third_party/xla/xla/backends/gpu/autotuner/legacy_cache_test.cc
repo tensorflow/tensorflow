@@ -115,6 +115,13 @@ class LegacyCacheTest : public ::testing::Test {
     return config;
   }
 
+  Config CreateDummyCustomKernelConfig() {
+    Config config;
+    config.codegen_backend_name = "CustomKernel";
+    config.backend_config.PackFrom(AutotuneResult::CustomKernelFusionKey());
+    return config;
+  }
+
   Config CreateDummyBackendConfig() {
     using DummyOtherConfig = AutotuneResult::CustomKernelFusionKey;
     Config config;
@@ -208,9 +215,17 @@ TEST_F(LegacyCacheTest, InsertAndLookupCudnn) {
   EXPECT_THAT(cache.Lookup(instr.get()), Optional(ConfigEq(config)));
 }
 
-TEST_F(LegacyCacheTest, InsertAndLookupOther) {
+TEST_F(LegacyCacheTest, InsertAndLookupCustomKernel) {
   auto cache = LegacyCache(test_dir_, mode_, device_desc_);
   auto instr = CreateDummyInstr("hlo4");
+  Config config = CreateDummyCustomKernelConfig();
+  TF_ASSERT_OK(cache.Insert(instr.get(), config));
+  EXPECT_THAT(cache.Lookup(instr.get()), Optional(ConfigEq(config)));
+}
+
+TEST_F(LegacyCacheTest, InsertAndLookupOther) {
+  auto cache = LegacyCache(test_dir_, mode_, device_desc_);
+  auto instr = CreateDummyInstr("hlo5");
   Config config = CreateDummyBackendConfig();
 
   TF_ASSERT_OK(cache.Insert(instr.get(), config));

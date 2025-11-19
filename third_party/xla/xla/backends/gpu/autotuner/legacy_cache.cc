@@ -117,6 +117,9 @@ std::optional<LegacyCache::Config> LegacyCache::GetConfig(
   } else if (result.has_other()) {
     config.codegen_backend_name = result.other().name();
     config.backend_config = result.other().config();
+  } else if (result.has_custom_kernel_fusion()) {
+    config.codegen_backend_name = "CustomKernel";
+    config.backend_config.PackFrom(result.custom_kernel_fusion());
   } else {
     return std::nullopt;
   }
@@ -133,6 +136,8 @@ std::optional<AutotuneResult> LegacyCache::GetAutotuneResult(
     config.backend_config.UnpackTo(result.mutable_gemm());
   } else if (config.codegen_backend_name == "Cudnn") {
     config.backend_config.UnpackTo(result.mutable_algorithm());
+  } else if (config.codegen_backend_name == "CustomKernel") {
+    config.backend_config.UnpackTo(result.mutable_custom_kernel_fusion());
   } else {
     result.mutable_other()->set_name(config.codegen_backend_name);
     *result.mutable_other()->mutable_config() = config.backend_config;
