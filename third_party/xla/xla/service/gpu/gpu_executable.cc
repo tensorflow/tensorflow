@@ -182,6 +182,10 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
     pipeline.AddPass(std::make_unique<ThunkBufferDebugPass>(
         ThunkBufferDebugPass::Mode::kChecksum));
   }
+  if (debug_options.xla_gpu_experimental_enable_buffer_saver_on_thunks()) {
+    pipeline.AddPass(std::make_unique<ThunkBufferDebugPass>(
+        ThunkBufferDebugPass::Mode::kBufferSaver));
+  }
   if ((debug_options.xla_gpu_detect_nan() !=
        DebugOptions::DETECTION_MODE_NONE) ||
       (debug_options.xla_gpu_detect_inf() !=

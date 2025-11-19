@@ -193,7 +193,7 @@ class GpuExecutable : public Executable {
 
   const GpuAliasInfo* alias_info() const { return alias_info_.get(); }
 
-  const SequentialThunk& GetThunk() { return *thunks_; }
+  const SequentialThunk& GetThunk() const { return *thunks_; }
 
   absl::Status ExecuteThunks(const BufferAllocations& buffer_allocations,
                              const ServiceExecutableRunOptions* run_options);

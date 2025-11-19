@@ -663,6 +663,10 @@ message DebugOptions {
   // xla_gpu_multi_streamed_windowed_einsum is set to true.
   optional bool xla_gpu_experimental_enable_alltoall_windowed_einsum = 360;
 
+  // Enables an experimental feature to record outputs of selected thunks.
+  // Writes to --xla_dump_to.
+  optional bool xla_gpu_experimental_enable_buffer_saver_on_thunks = 431;
+
   // Enables an experimental feature to record checksums of selected thunk
   // inputs/outputs.
   optional bool xla_gpu_experimental_enable_checksum_tracing_on_thunks = 414;
@@ -1426,7 +1430,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 431
+  // Next id: 432
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

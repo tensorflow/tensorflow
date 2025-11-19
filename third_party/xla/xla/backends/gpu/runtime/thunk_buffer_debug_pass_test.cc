@@ -30,8 +30,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/buffers_float_check_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
+#include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_debug_saver_inserter.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
@@ -43,7 +45,9 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 
 namespace xla {
 namespace gpu {
@@ -517,6 +521,57 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
       static_cast<const BuffersDebugFloatCheckThunk&>(*sub_thunks[1]);
   EXPECT_THAT(buffer_debug_after_fake_thunk.buffer_slices(),
               UnorderedElementsAre(Pair(1, slice_o), Pair(2, slice_io)));
+}
+
+TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
+  static constexpr ThunkId kTestThunkId = ThunkId(123);
+  // The callbacks created by ThunkBufferDebugPass require a HloModule with
+  // a non-null entry computation.
+  auto builder = HloComputation::Builder("entry");
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1.0f)));
+  std::unique_ptr<HloComputation> entry_computation = builder.Build(root);
+  HloModule hlo_module("test_module", HloModuleConfig());
+  hlo_module.AddEntryComputation(std::move(entry_computation));
+
+  // Create a fake thunk with a few different buffer uses.
+  BufferAllocation alloc(0, 1024, 0);
+  BufferAllocation::Slice slice_o(&alloc, 1, 1, PrimitiveType::F32);
+  BufferAllocation::Slice slice_io(&alloc, 2, 1, PrimitiveType::F32);
+  Thunk::ThunkInfo fake_thunk_info;
+  fake_thunk_info.thunk_id = kTestThunkId;
+
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  thunks.push_back(std::make_unique<FakeThunk>(
+      fake_thunk_info,
+      Thunk::BufferUses{
+          // Write is undefined on input, but defined on output.
+          BufferUse::Write(slice_o),
+          // Unlike Consume, Read is supposed to preserve the contents of the
+          // buffer, so we check it on input *and* output.
+          BufferUse::Read(slice_io),
+      }));
+  auto root_thunk =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
+
+  DebugOptions debug_options =
+      tsl::proto_testing::ParseTextProtoOrDie<DebugOptions>(R"pb(
+        xla_dump_to: "/tmp/123"
+        xla_gpu_experimental_enable_buffer_saver_on_thunks: true
+      )pb");
+
+  TF_EXPECT_OK(RunDebugSaverInserter(*root_thunk, debug_options, hlo_module));
+
+  // Expected thunk structure after the pass:
+  // 1. SequentialThunk
+  //    1. FakeThunk
+  //    2. CustomCall (buffer saver)
+  const std::vector<std::unique_ptr<Thunk>>& new_thunks = root_thunk->thunks();
+  EXPECT_THAT(
+      new_thunks,
+      ElementsAre(IsSequentialThunkWith(ElementsAre(
+          ThunkKindIs(Thunk::Kind::kGemm),
+          IsCustomCallThunkWithTargetName(kXlaGpuAppendToFileCustomCallTag)))));
 }
 
 TEST_F(ThunkBufferDebugPassTest, FiltersThunksByIdRanges) {
