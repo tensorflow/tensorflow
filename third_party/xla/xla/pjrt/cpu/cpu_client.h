@@ -78,6 +78,16 @@ limitations under the License.
 
 namespace xla {
 
+namespace cpu {
+
+PjRtPlatformId PlatformId();
+
+absl::string_view PlatformName();
+
+absl::string_view PlatformVersion();
+
+}  // namespace cpu
+
 class PjRtCpuClient final : public CommonPjRtClient {
  public:
   ~PjRtCpuClient() override;
@@ -104,13 +114,15 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
-  PjRtPlatformId platform_id() const override {
-    return tsl::Fingerprint64(CpuName());
+  PjRtPlatformId platform_id() const override { return cpu::PlatformId(); }
+
+  absl::string_view platform_name() const override {
+    return cpu::PlatformName();
   }
 
-  absl::string_view platform_name() const override { return CpuName(); }
-
-  absl::string_view platform_version() const override { return CpuName(); }
+  absl::string_view platform_version() const override {
+    return cpu::PlatformVersion();
+  }
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -201,7 +213,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
       const override {
-    return &topology_;
+    return topology_.get();
   }
 
   absl::StatusOr<std::pair<tsl::RCReference<CommonPjRtRawBuffer>,
@@ -261,7 +273,8 @@ class PjRtCpuClient final : public CommonPjRtClient {
       std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
       bool asynchronous,
       std::function<void(HloModuleConfig&)> customize_hlo_module_config,
-      int max_transpose_threads);
+      int max_transpose_threads,
+      std::unique_ptr<CpuTopologyDescription> topology);
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
       const XlaComputation& computation,
@@ -314,7 +327,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   std::shared_ptr<cpu::CpuCollectives> collectives_;
 
-  xla::CpuTopologyDescription topology_;
+  std::unique_ptr<xla::CpuTopologyDescription> topology_;
 
   // Used to control whether asynchronous computation dispatch is available for
   // this client. Only applies to non-parallel computations.

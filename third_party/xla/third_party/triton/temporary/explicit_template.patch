@@ -1,0 +1,17 @@
+This patch should be upstreamed, tracking bug: b/461405792
+--- a/lib/Dialect/TritonGPU/IR/LinearLayoutConversions.cpp	2025-11-13 05:31:00.000000000 -0800
++++ b/lib/Dialect/TritonGPU/IR/LinearLayoutConversions.cpp	2025-11-17 01:50:44.000000000 -0800
+@@ -1444,9 +1444,10 @@
+   // pattern to fill the K dim.
+   tileLayout *= LinearLayout::identity1D(kSize / scaleKWidth, kRegister, dimK);
+ 
+-  auto warpsPerCTANew = (dotOperandIdx == 1)
+-                            ? SmallVector{warpsPerCTA[1], warpsPerCTA[0]}
+-                            : SmallVector{warpsPerCTA[0], warpsPerCTA[1]};
++  auto warpsPerCTANew =
++      (dotOperandIdx == 1)
++          ? SmallVector<unsigned>{warpsPerCTA[1], warpsPerCTA[0]}
++          : SmallVector<unsigned>{warpsPerCTA[0], warpsPerCTA[1]};
+ 
+   auto warpOrder = (dotOperandIdx == 1) ? SmallVector<unsigned>{0, 1}
+                                         : SmallVector<unsigned>{1, 0};

@@ -285,23 +285,10 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
   auto src_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(src_element_ty);
   auto dst_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(dst_element_ty);
   if (src_fp_element_ty && dst_fp_element_ty) {
-    // F8 <-> FP16, BF16, FP32, FP64 need to be handled via Triton's tt.fp_to_fp
-    // because LLVM doesn't support casts from/to FP8.
-    // TODO(b/413272992): Add better test coverage for FpToFpOp.
-    if (IsFp8Type(src_element_ty) && !IsFp8Type(dst_element_ty)) {
-      return b.create<mt::FpToFpOp>(dst_ty, value);
-    }
-    if (IsFp8Type(dst_element_ty) && !IsFp8Type(src_element_ty)) {
-      return b.create<mt::FpToFpOp>(
-          dst_ty, value,
-          mt::RoundingModeAttr::get(b.getContext(), mt::RoundingMode::RTNE));
-    }
     if (IsFp8Type(src_element_ty) && IsFp8Type(dst_element_ty)) {
       // FP8 <-> FP8 conversion needs to go through FP16
-      auto fp16_value = b.create<mt::FpToFpOp>(fp16_ty, value);
-      return b.create<mt::FpToFpOp>(
-          dst_ty, fp16_value,
-          mt::RoundingModeAttr::get(b.getContext(), mt::RoundingMode::RTNE));
+      auto fp16_value = b.create<ma::ExtFOp>(fp16_ty, value);
+      return b.create<ma::TruncFOp>(dst_ty, fp16_value);
     }
 
     if (src_fp_element_ty.getFPMantissaWidth() >

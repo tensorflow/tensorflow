@@ -2376,7 +2376,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     // If layout is the same, we can use linear indexing into the literals.
     const Layout& lhs_layout = lhs_literal.shape().layout();
     const Layout& rhs_layout = rhs_literal.shape().layout();
-    bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout);
+    bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
+                       LayoutUtil::Equal(lhs_layout, shape.layout());
 
     if (same_layout) {
       TF_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
@@ -2424,7 +2425,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     const Layout& rhs_layout = rhs_literal.shape().layout();
     const Layout& ehs_layout = ehs_literal.shape().layout();
     bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
-                       LayoutUtil::Equal(rhs_layout, ehs_layout);
+                       LayoutUtil::Equal(rhs_layout, ehs_layout) &&
+                       LayoutUtil::Equal(lhs_layout, shape.layout());
 
     if (same_layout) {
       TF_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(

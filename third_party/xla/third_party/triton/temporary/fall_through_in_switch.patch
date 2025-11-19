@@ -1,0 +1,12 @@
+This fixes `Unannotated fall-through between switch labelsclang(-Wimplicit-fallthrough)`
+Should be upstreamed, tracking bug: b/461408762
+--- a/lib/Dialect/TritonGPU/Transforms/F32DotTC.cpp	2025-11-13 05:31:00.000000000 -0800
++++ b/lib/Dialect/TritonGPU/Transforms/F32DotTC.cpp	2025-11-17 01:57:20.000000000 -0800
+@@ -113,6 +113,7 @@
+ 
+       result = dot(lhs_parts[lo], rhs_parts[hi], result, rewriter);
+       result = dot(lhs_parts[hi], rhs_parts[lo], result, rewriter);
++      LLVM_FALLTHROUGH;
+ 
+     case InputPrecision::BF16x3:
+       result = dot(lhs_parts[mid], rhs_parts[hi], result, rewriter);
