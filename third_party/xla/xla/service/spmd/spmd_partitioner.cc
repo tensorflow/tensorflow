@@ -4956,8 +4956,8 @@ absl::Status SpmdPartitioningVisitor::HandlePartitionId(HloInstruction* hlo) {
 }
 
 absl::Status SpmdPartitioningVisitor::HandleRaggedDot(HloInstruction* hlo) {
-  LOG(WARNING) << "You have to use Shardy for RaggedDot. If not, the behavior "
-                  "is undefined.";
+  VLOG(2) << "You have to use Shardy for RaggedDot. If not, the behavior "
+             "is undefined.";
 
   const RaggedDotDimensionNumbers& ragged_dot_dnums =
       hlo->ragged_dot_dimension_numbers();
