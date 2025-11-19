@@ -309,3 +309,50 @@ cc_library(
         "@com_google_absl//absl/synchronization",
     ],
 )
+
+cc_library(
+    name = "cpu_pjrt_compiler",
+    srcs = ["cpu_pjrt_compiler.cc"],
+    hdrs = ["cpu_pjrt_compiler.h"],
+    visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_client_users"]),
+    deps = [
+        "//xla:status_macros",
+        "//xla/backends/cpu/collectives:cpu_collectives",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:communicator",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/stream_executor/platform:initialize",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "cpu_pjrt_compiler_test",
+    srcs = ["cpu_pjrt_compiler_test.cc"],
+    deps = [
+        ":cpu_pjrt_compiler",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/mlir_hlo",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+    ],
+)
