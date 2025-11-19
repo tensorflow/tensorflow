@@ -3068,6 +3068,7 @@ xla_cc_test(
         ":thunk_pass_pipeline",
         ":while_thunk",
         "//xla:literal_util",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
