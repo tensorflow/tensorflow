@@ -62,13 +62,6 @@ filegroup(
         "runtime_single_threaded_matmul_s32.cc",
         "runtime_single_threaded_matmul_u8.cc",
         # Multi-threaded support.
-        "runtime_matmul_c128.cc",
-        "runtime_matmul_c64.cc",
-        "runtime_matmul_common.h",
-        "runtime_matmul_f16.cc",
-        "runtime_matmul_f32.cc",
-        "runtime_matmul_f64.cc",
-        "runtime_matmul_s32.cc",
         "//xla/backends/cpu/runtime:runtime_srcs",
     ],
     visibility = internal_visibility([":friends"]),
@@ -81,7 +74,6 @@ filegroup(
         "runtime_single_threaded_matmul.h",
         # Multi-threaded support.
         "runtime_lightweight_check.h",
-        "runtime_matmul.h",
         "//xla/backends/cpu/runtime:runtime_hdrs",
     ],
     visibility = internal_visibility([":friends"]),
@@ -1050,27 +1042,6 @@ cc_library(
 
 cc_library(
     name = "runtime_matmul",
-    srcs = [
-        "runtime_matmul_c128.cc",
-        "runtime_matmul_c64.cc",
-        "runtime_matmul_common.h",
-        "runtime_matmul_f16.cc",
-        "runtime_matmul_f32.cc",
-        "runtime_matmul_f64.cc",
-        "runtime_matmul_s32.cc",
-    ],
-    hdrs = ["runtime_matmul.h"],
-    copts = runtime_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":runtime_lightweight_check",
-        "//xla:executable_run_options",
-        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
-        "@com_google_absl//absl/synchronization",  # build_cleaner: keep
-        "@eigen_archive//:eigen3",
-    ],
 )
 
 cc_library(
