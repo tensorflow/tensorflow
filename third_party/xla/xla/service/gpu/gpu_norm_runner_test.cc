@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_norm_runner.h"
 
+#include "xla/service/gpu/gpu_norm_runner.pb.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"

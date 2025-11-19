@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {

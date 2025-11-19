@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_executable_run_options.h"
 
-#include <cstdint>
 #include <map>
 #include <optional>
 #include <utility>

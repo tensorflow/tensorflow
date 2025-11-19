@@ -24,8 +24,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_value.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 

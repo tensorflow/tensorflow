@@ -18,6 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -38,6 +40,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {

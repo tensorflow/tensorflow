@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"
@@ -56,6 +58,8 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/testing/temporary_directory.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 
 namespace xla::gpu {

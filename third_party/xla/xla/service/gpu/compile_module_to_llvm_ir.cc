@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -61,6 +60,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_unnested.h"
+#include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"

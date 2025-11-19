@@ -24,6 +24,9 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -37,6 +40,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status_matchers.h"

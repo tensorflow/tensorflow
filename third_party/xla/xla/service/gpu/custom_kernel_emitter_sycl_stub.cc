@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/custom_kernel_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"

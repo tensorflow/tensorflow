@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
