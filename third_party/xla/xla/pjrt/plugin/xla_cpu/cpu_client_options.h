@@ -60,6 +60,10 @@ struct CpuClientOptions {
   std::function<absl::StatusOr<std::unique_ptr<CpuMemory>>(size_t size_bytes,
                                                            size_t alignment)>
       allocator;
+
+  // Maximum number of threads to use for any one transpose. We will use the
+  // the lesser of this number and the thread pool size. 1 = no threading.
+  int max_transpose_threads = 8;
 };
 
 }  // namespace xla

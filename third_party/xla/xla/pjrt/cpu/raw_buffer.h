@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -144,7 +145,8 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
       PjRtClient::HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       const Shape& shape, AsyncWorkRunner* async_work_runner,
-      absl::Mutex* transpose_mu, TransposePlanCache* transpose_cache);
+      absl::Mutex* transpose_mu, TransposePlanCache* transpose_cache,
+      tsl::thread::ThreadPool* thread_pool, int max_transpose_threads);
 
   void ReadDynamicShape(tsl::AsyncValueRef<xla::Shape> output_shape,
                         xla::Shape shape) override;

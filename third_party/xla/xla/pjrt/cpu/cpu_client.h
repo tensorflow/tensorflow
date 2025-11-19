@@ -260,7 +260,8 @@ class PjRtCpuClient final : public CommonPjRtClient {
       std::shared_ptr<CpuDeviceMemory::Allocator> allocator,
       std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
       bool asynchronous,
-      std::function<void(HloModuleConfig&)> customize_hlo_module_config);
+      std::function<void(HloModuleConfig&)> customize_hlo_module_config,
+      int max_transpose_threads);
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
       const XlaComputation& computation,
@@ -334,6 +335,10 @@ class PjRtCpuClient final : public CommonPjRtClient {
   // Thread pool for running PjRtClient tasks.
   std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;
+
+  // Maximum number of threads to use for any one transpose. We will use the
+  // the lesser of this number and the thread pool size. 1 = no threading.
+  int max_transpose_threads_;
 };
 
 class PjRtCpuExecutable final : public PjRtLoadedExecutable {
