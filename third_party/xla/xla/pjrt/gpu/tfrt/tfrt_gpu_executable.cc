@@ -33,6 +33,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -56,6 +58,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/utils.h"
@@ -599,7 +602,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        recv_device_memory(std::move(recv_device_memory)),
        output_cuda_execute_event(std::move(output_cuda_execute_event)),
        compute_reservation(std::move(compute_reservation)), client = client_,
-       task_incarnations = options.incarnations](
+       task_incarnations = options.incarnations,
+       time_measurement_key = xla::GetDeviceTimeMeasurementKey()](
           std::vector<ExecutionInput> execution_inputs) mutable {
         VLOG(1) << "execute_fn for " << executable_name
                 << ", launch_id: " << launch_id << ", replica: " << replica
@@ -678,6 +682,26 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           std::move(donation_transaction).Commit();
         }
 
+        ////////////////////////////////////////////////////////////////////////
+        // Record the start time of the execution by placing a callback on the
+        // stream directly before the execution. If this callback is added,
+        // another callback will be added directly after the execution to record
+        // the elapsed device time.
+        ////////////////////////////////////////////////////////////////////////
+        auto start_time = std::make_shared<absl::Time>();
+        if (time_measurement_key.has_value()) {
+          absl::Status host_callback_status = stream->DoHostCallback(
+              [start_time]() mutable { *start_time = absl::Now(); });
+
+          if (!host_callback_status.ok()) {
+            LOG(WARNING) << "Failed to do host callback for to register device "
+                            "start time";
+          }
+        }
+
+        ////////////////////////////////////////////////////////////////////////
+        // Start calling RunAsync for the executable.
+        ////////////////////////////////////////////////////////////////////////
         VLOG(1) << "Start calling RunAsync for " << executable_name
                 << ", device=" << device->DebugString()
                 << ", launch_id=" << launch_id << ", replica=" << replica
@@ -736,6 +760,29 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           scheduled_event.SetError(record_event_status);
           complete_event.SetError(record_event_status);
           return;
+        }
+
+        ////////////////////////////////////////////////////////////////////////
+        // Record the end time of the execution by placing a callback on the
+        // stream directly after the execution. If this callback is added,
+        // another callback will be added directly before the execution to
+        // record the elapsed device time.
+        ////////////////////////////////////////////////////////////////////////
+        if (time_measurement_key.has_value()) {
+          absl::Status host_callback_status = stream->DoHostCallback(
+              [executable_name, time_measurement_key, start_time]() mutable {
+                auto elapsed = absl::Now() - *start_time;
+                VLOG(1) << "Device execution time for " << executable_name
+                        << " is " << elapsed;
+
+                xla::RecordDeviceTimeMeasurement(
+                    *time_measurement_key, elapsed,
+                    DeviceTimeMeasurement::DeviceType::kGpu);
+              });
+          if (!host_callback_status.ok()) {
+            LOG(WARNING) << "Failed to do host callback for to register device "
+                            "time measurement";
+          }
         }
 
         ExecutionOutput& execution_output = result_buffer_or_status.value();
