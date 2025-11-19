@@ -27,7 +27,7 @@ limitations under the License.
 // This matcher matches a StatusOr<T> value whose status is OK and whose inner
 // value matches matcher m. Example:
 //
-//   using ::tsl::testing::IsOkAndHolds;
+//   using absl_testing::IsOkAndHolds;
 //   using ::testing::HasSubstr;
 //   ...
 //   StatusOr<std::string> status_or_message("Hello, world");

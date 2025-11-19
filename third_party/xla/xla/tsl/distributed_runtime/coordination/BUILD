@@ -238,9 +238,6 @@ tsl_cc_test(
     ]),  # no status matchers in OSS.
     deps = [
         ":key_value_store",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -302,6 +299,7 @@ tsl_cc_test(
         "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

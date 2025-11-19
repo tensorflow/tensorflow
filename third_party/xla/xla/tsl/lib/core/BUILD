@@ -40,7 +40,6 @@ cc_library(
     hdrs = ["status_test_util.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_matchers",
     ],

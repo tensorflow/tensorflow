@@ -279,7 +279,6 @@ xla_cc_test(
         "//xla/hlo/translate:register",
         "//xla/mlir/utils:error_util",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status:status_matchers",
