@@ -45,28 +45,42 @@ limitations under the License.
 namespace xla {
 
 namespace {
-
 // Struct to hold all call instructions and called computations in a module.
 struct HloCalls {
   // All callsites are guaranteed to be `kCall` instructions.
-  std::vector<HloInstruction*> call_sites;
+  absl::flat_hash_set<HloInstruction*> call_sites;
   absl::flat_hash_set<HloComputation*> targets;
 };
 
 // Iterates through all instructions in the module's computations
-// and collects all `HloInstruction`s with opcode `kCall` into 'calls_sites'
+// and collects all `HloInstruction`s with opcode `kCall` into 'call_sites'
 // and all unique computations targeted by these calls into 'targets'.
 HloCalls CollectHloCalls(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   HloCalls calls;
+  absl::flat_hash_map<uint64_t, uint64_t> count_num_instructions;
   for (const CallGraphNode& node : call_graph->nodes()) {
     for (const CallSite& callsite : node.callsites()) {
       if (callsite.instruction()->opcode() == HloOpcode::kCall) {
-        calls.call_sites.push_back(callsite.instruction());
+        calls.call_sites.insert(callsite.instruction());
         calls.targets.insert(callsite.instruction()->to_apply());
+        ++count_num_instructions
+            [callsite.instruction()->to_apply()->instruction_count()];
       }
+    }
+  }
+  // Remove computations for which there is no other computation with matching
+  // number of instructions (i.e. it cannot have duplicate)
+  for (auto it = calls.call_sites.begin(), end = calls.call_sites.end();
+       it != end;) {
+    // `erase()` will invalidate `it`, so advance `it` first.
+    auto copy_it = it++;
+    HloComputation* computation = (*copy_it)->to_apply();
+    if (count_num_instructions[computation->instruction_count()] == 1) {
+      calls.targets.erase(computation);
+      calls.call_sites.erase(copy_it);
     }
   }
   return calls;
