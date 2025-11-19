@@ -232,6 +232,36 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "all_reduce_reduce_scatter_reorder_cc",
+    srcs = ["all_reduce_reduce_scatter_reorder.cc"],
+    hdrs = ["all_reduce_reduce_scatter_reorder.h"],
+    deps = [
+        ":collective_ops_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass_interface",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "all_reduce_reduce_scatter_reorder_test",
+    srcs = ["all_reduce_reduce_scatter_reorder_test.cc"],
+    deps = [
+        ":all_reduce_reduce_scatter_reorder_cc",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "float_support",
     srcs = ["float_support.cc"],
     hdrs = ["float_support.h"],
