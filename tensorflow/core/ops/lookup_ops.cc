@@ -90,9 +90,9 @@ REGISTER_OP("LookupTableFind")
 
 absl::Status ValidateTableType(InferenceContext* c,
                                const ShapeAndType& key_shape_and_type,
-                               const string& key_dtype_attr,
+                               const std::string& key_dtype_attr,
                                const ShapeAndType& value_shape_and_type,
-                               const string& value_dtype_attr) {
+                               const std::string& value_dtype_attr) {
   DataType key_dtype;
   TF_RETURN_IF_ERROR(c->GetAttr(key_dtype_attr, &key_dtype));
   if (key_shape_and_type.dtype != key_dtype) {
@@ -115,8 +115,8 @@ absl::Status ValidateTableType(InferenceContext* c,
 }
 
 absl::Status ValidateTableResourceHandle(InferenceContext* c, ShapeHandle keys,
-                                         const string& key_dtype_attr,
-                                         const string& value_dtype_attr,
+                                         const std::string& key_dtype_attr,
+                                         const std::string& value_dtype_attr,
                                          ShapeAndType* output_shape_and_type) {
   auto* handle_data = c->input_handle_shapes_and_types(0);
   if (handle_data == nullptr || handle_data->size() != 2) {

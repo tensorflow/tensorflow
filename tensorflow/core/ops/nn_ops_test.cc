@@ -59,7 +59,7 @@ TEST(NNOpsTest, TopKV2_ShapeFn) {
   Tensor k_t;
   op.input_tensors[1] = &k_t;
 
-  k_t = test::AsScalar<int32>(20);
+  k_t = test::AsScalar<int32_t>(20);
   // With known input, each output is an unknown shape.
   INFER_OK(op, "?;[]", "?;?");
   // With vector input, each output is [k].
@@ -75,7 +75,7 @@ TEST(NNOpsTest, TopKV2_ShapeFn) {
               "[1];[]");
   INFER_ERROR("input must have last dimension >= k = 20 but is 4", op,
               "[1,2,3,4];[]");
-  k_t = test::AsScalar<int32>(-1);
+  k_t = test::AsScalar<int32_t>(-1);
   INFER_ERROR(
       "Dimension size, given by scalar input 1, must be non-negative but is -1",
       op, "[1,2,3,4];[]");
@@ -87,7 +87,7 @@ TEST(NNOpsTest, NthElement_ShapeFn) {
 
   Tensor n_t;
   op.input_tensors[1] = &n_t;
-  n_t = test::AsScalar<int32>(20);
+  n_t = test::AsScalar<int32_t>(20);
 
   INFER_OK(op, "?;[]", "?");
   INFER_OK(op, "[21];[]", "[]");
@@ -98,7 +98,7 @@ TEST(NNOpsTest, NthElement_ShapeFn) {
   INFER_ERROR("Input must have last dimension > n = 20 but is 1", op, "[1];[]");
   INFER_ERROR("Input must have last dimension > n = 20 but is 20", op,
               "[1,2,3,20];[]");
-  n_t = test::AsScalar<int32>(-1);
+  n_t = test::AsScalar<int32_t>(-1);
   INFER_ERROR(
       "Dimension size, given by scalar input 1, must be non-negative but is -1",
       op, "[1,2,3,4];[]");
@@ -182,7 +182,7 @@ TEST(NNOpsTest, FusedBatchNorm_ShapeFn) {
   ShapeInferenceTestOp op("FusedBatchNorm");
 
   auto set_op = [&op](bool is_training, float exponential_avg_factor,
-                      string data_format) {
+                      std::string data_format) {
     TF_ASSERT_OK(NodeDefBuilder("test", "FusedBatchNorm")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_FLOAT))
@@ -276,7 +276,7 @@ TEST(NNOpsTest, FusedBatchNorm_ShapeFn) {
 
 TEST(NNOpsTest, FusedBatchNormGrad_ShapeFn) {
   ShapeInferenceTestOp op("FusedBatchNormGrad");
-  auto set_op = [&op](string data_format) {
+  auto set_op = [&op](std::string data_format) {
     TF_ASSERT_OK(NodeDefBuilder("test", "FusedBatchNormGrad")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_FLOAT))
@@ -490,8 +490,9 @@ TEST(NNOpsTest, InTopK_ShapeFn) {
 
 TEST(NNOpsTest, Dilation2DShapeTest) {
   ShapeInferenceTestOp op("Dilation2D");
-  auto set_op = [&op](const std::vector<int32>& strides,
-                      const std::vector<int32>& rates, const string& padding) {
+  auto set_op = [&op](const std::vector<int32_t>& strides,
+                      const std::vector<int32_t>& rates,
+                      const std::string& padding) {
     TF_ASSERT_OK(NodeDefBuilder("test", "Dilation2D")
                      .Input("input", 0, DT_FLOAT)
                      .Input("filter", 0, DT_FLOAT)
@@ -568,8 +569,8 @@ TEST(NNOpsTest, FractionalAvgPoolGrad) {
   INFER_OK(op, "?;?;?;?", "[?,?,?,?]");
 
   // When input tensor is known, its values determine output shape.
-  std::vector<int32> shape{1, 2, 3, 4};
-  Tensor shape_t = test::AsTensor<int32>(shape);
+  std::vector<int32_t> shape{1, 2, 3, 4};
+  Tensor shape_t = test::AsTensor<int32_t>(shape);
   op.input_tensors[0] = &shape_t;
   INFER_OK(op, "[5];?;?;?", "[1,2,3,4]");
 }

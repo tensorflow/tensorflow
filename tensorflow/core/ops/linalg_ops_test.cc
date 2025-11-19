@@ -41,7 +41,7 @@ TEST(LinalgOpsTest, UnchangedSquare_ShapeFn) {
   for (const char* op_name : {"Cholesky", "CholeskyGrad", "MatrixInverse"}) {
     ShapeInferenceTestOp op(op_name);
 
-    const string extra_shape = (op.name == "CholeskyGrad" ? ";?" : "");
+    const std::string extra_shape = (op.name == "CholeskyGrad" ? ";?" : "");
 
     INFER_OK(op, "?" + extra_shape, "?");
     INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
