@@ -251,15 +251,6 @@ cc_library(
 )
 
 cc_library(
-    name = "host_or_device_scalar",
-    hdrs = ["host_or_device_scalar.h"],
-    deps = [
-        ":device_memory",
-        "@com_google_absl//absl/log:check",
-    ],
-)
-
-cc_library(
     name = "launch_dim",
     srcs = ["launch_dim.cc"],
     hdrs = ["launch_dim.h"],

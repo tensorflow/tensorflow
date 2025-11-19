@@ -282,7 +282,6 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:engine_options",
         "//xla/stream_executor:event_based_timer",
-        "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
