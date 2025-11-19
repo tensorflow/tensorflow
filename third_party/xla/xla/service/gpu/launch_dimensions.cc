@@ -54,16 +54,36 @@ LaunchDimensions CalculateLaunchDimensions(
   num_elements = CeilOfRatio(num_elements, int64_t{dim_config.unroll_factor});
   const int kWarpSchedulers = 4;
 
-  int64_t threads_per_block = std::min<int64_t>(
-      gpu_device_info.threads_per_warp() * kWarpSchedulers, num_elements);
+  if (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm") {
+    int64_t threads_per_block_x = std::min<int64_t>(
+        gpu_device_info.threads_per_warp() * kWarpSchedulers, num_elements);
 
-  int64_t num_blocks_total = CeilOfRatio(num_elements, threads_per_block);
-  int64_t num_blocks_y = CeilOfRatio<uint64_t>(
-      num_blocks_total, gpu_device_info.block_dim_limit().x);
-  int64_t num_blocks_x = CeilOfRatio(num_blocks_total, num_blocks_y);
+    int64_t num_blocks = CeilOfRatio(num_elements, threads_per_block_x);
+    CHECK(num_blocks < gpu_device_info.block_dim_limit().x);
 
-  return LaunchDimensions(se::BlockDim(num_blocks_x, num_blocks_y, 1),
-                          se::ThreadDim(threads_per_block, 1, 1));
+    int threads_per_block_y = 1;
+    while ((num_blocks * threads_per_block_x) >
+           std::numeric_limits<uint32_t>::max()) {
+      threads_per_block_x /= 2;
+      threads_per_block_y *= 2;
+    }
+
+    return LaunchDimensions(
+        se::BlockDim(num_blocks, 1, 1),
+        se::ThreadDim(threads_per_block_x, threads_per_block_y, 1));
+
+  } else {
+    int64_t threads_per_block = std::min<int64_t>(
+        gpu_device_info.threads_per_warp() * kWarpSchedulers, num_elements);
+
+    int64_t num_blocks_total = CeilOfRatio(num_elements, threads_per_block);
+    int64_t num_blocks_y = CeilOfRatio<uint64_t>(
+        num_blocks_total, gpu_device_info.block_dim_limit().x);
+    int64_t num_blocks_x = CeilOfRatio(num_blocks_total, num_blocks_y);
+
+    return LaunchDimensions(se::BlockDim(num_blocks_x, num_blocks_y, 1),
+                            se::ThreadDim(threads_per_block, 1, 1));
+  }
 }
 
 LaunchDimensionsProto LaunchDimensions::ToProto() const {

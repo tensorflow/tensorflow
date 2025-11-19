@@ -178,8 +178,7 @@ static absl::Status RunRedzoneChecker(
   int64_t threads_per_block = std::min(
       executor->GetDeviceDescription().threads_per_block_limit(), num_elements);
   int64_t block_count =
-      std::min(tsl::MathUtil::CeilOfRatio(num_elements, threads_per_block),
-               RedzoneAllocator::kMaxNumThreadBlocksForKernel);
+      tsl::MathUtil::CeilOfRatio(num_elements, threads_per_block);
 
   TF_RETURN_IF_ERROR(comparison_kernel.Launch(
       ThreadDim(threads_per_block), BlockDim(block_count), stream, redzone,

@@ -26,14 +26,11 @@ namespace xla::gpu {
 // A device-side comparator that compares buffers.
 class BufferComparator {
  public:
-  // Maximum number of thread blocks to be used for comparator kernel
-  static constexpr uint64_t kMaxNumThreadBlocksForKernel = 32768;
-
   BufferComparator(const BufferComparator&) = delete;
-  BufferComparator(BufferComparator&&) noexcept = default;
+  BufferComparator(BufferComparator&&) = default;
 
   explicit BufferComparator(const Shape& shape, double tolerance = 0.1,
-                            bool verbose = true, bool run_host_compare = true);
+                            bool verbose = true);
 
   // Returns true if the two buffers compare equal. The definition of "equal"
   // is:
@@ -45,15 +42,12 @@ class BufferComparator {
   //
   // See the implementation for the tolerance value.
   absl::StatusOr<bool> CompareEqual(se::Stream* stream,
-                                    const se::DeviceMemoryBase& current,
-                                    const se::DeviceMemoryBase& expected) const;
-
+                                    se::DeviceMemoryBase current,
+                                    se::DeviceMemoryBase expected) const;
  private:
   Shape shape_;
   double relative_tol_;  // relative tolerance for comparison
   bool verbose_;         // whether to print out error message on mismatch
-  // enable host-side compare if device compare reports a mismatch
-  bool run_host_compare_;
 };
 
 }  // namespace xla::gpu
