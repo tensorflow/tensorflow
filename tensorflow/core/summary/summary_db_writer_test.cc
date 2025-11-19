@@ -47,12 +47,12 @@ Tensor MakeScalarInt64(int64_t x) {
 class FakeClockEnv : public EnvWrapper {
  public:
   FakeClockEnv() : EnvWrapper(Env::Default()), current_millis_(0) {}
-  void AdvanceByMillis(const uint64 millis) { current_millis_ += millis; }
-  uint64 NowMicros() const override { return current_millis_ * 1000; }
-  uint64 NowSeconds() const override { return current_millis_ * 1000; }
+  void AdvanceByMillis(const uint64_t millis) { current_millis_ += millis; }
+  uint64_t NowMicros() const override { return current_millis_ * 1000; }
+  uint64_t NowSeconds() const override { return current_millis_ * 1000; }
 
  private:
-  uint64 current_millis_;
+  uint64_t current_millis_;
 };
 
 class SummaryDbWriterTest : public ::testing::Test {
@@ -71,7 +71,7 @@ class SummaryDbWriterTest : public ::testing::Test {
     db_ = nullptr;
   }
 
-  int64_t QueryInt(const string& sql) {
+  int64_t QueryInt(const std::string& sql) {
     SqliteStatement stmt = db_->PrepareOrDie(sql);
     bool is_done;
     absl::Status s = stmt.Step(&is_done);
@@ -82,7 +82,7 @@ class SummaryDbWriterTest : public ::testing::Test {
     return stmt.ColumnInt(0);
   }
 
-  double QueryDouble(const string& sql) {
+  double QueryDouble(const std::string& sql) {
     SqliteStatement stmt = db_->PrepareOrDie(sql);
     bool is_done;
     absl::Status s = stmt.Step(&is_done);
@@ -93,7 +93,7 @@ class SummaryDbWriterTest : public ::testing::Test {
     return stmt.ColumnDouble(0);
   }
 
-  string QueryString(const string& sql) {
+  std::string QueryString(const std::string& sql) {
     SqliteStatement stmt = db_->PrepareOrDie(sql);
     bool is_done;
     absl::Status s = stmt.Step(&is_done);
@@ -142,7 +142,7 @@ TEST_F(SummaryDbWriterTest, WriteHistogram_VerifyTensorValues) {
 
   // TODO(nickfelt): implement QueryTensor() to encapsulate this
   // Verify the data
-  string result = QueryString("SELECT data FROM Tensors");
+  std::string result = QueryString("SELECT data FROM Tensors");
   const double* val = reinterpret_cast<const double*>(result.data());
   double histarray[] = {std::numeric_limits<double>::min(),
                         -30.5,
