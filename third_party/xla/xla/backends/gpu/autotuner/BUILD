@@ -827,6 +827,7 @@ xla_test(
     tags = ["cuda-only"],
     deps = [
         ":cublas",
+        ":custom_kernel",
         ":fission_backend",
         ":gpu_codegen_backend",
         "//xla/backends/autotuner:codegen_backend",
@@ -838,6 +839,7 @@ xla_test(
         "//xla/service:executable",
         "//xla/service:platform_util",
         "//xla/service/gpu:nvptx_compiler_impl",
+        "//xla/service/gpu/transforms:custom_kernel_fusion_rewriter",
         "//xla/service/gpu/transforms:dot_algorithm_rewriter",
         "//xla/service/gpu/transforms:gemm_rewriter",
         "//xla/stream_executor:device_description",
