@@ -241,7 +241,7 @@ CpuRawBuffer::CopyFromHostBuffer(
       absl::MutexLock lock(*transpose_mu);
       TF_ASSIGN_OR_RETURN(transpose, transpose_cache->GetOrCreate(options));
     }
-    std::function<void(std::function<void(void)>)> schedule_work;
+    std::optional<std::function<void(std::function<void(void)>)>> schedule_work;
     if (thread_pool && max_transpose_threads > 1) {
       schedule_work = [thread_pool](std::function<void(void)> work) {
         thread_pool->Schedule(std::move(work));
