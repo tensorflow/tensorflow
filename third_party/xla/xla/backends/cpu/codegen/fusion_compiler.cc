@@ -319,6 +319,12 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
           mlir::vector::VectorMultiReductionLowering::InnerParallel));
   pm.addPass(CreateTensorOpsToBufferizablePass());
 
+  mlir::stablehlo::StablehloLegalizeToLinalgPassOptions
+      stablehlo_to_linalg_options;
+  stablehlo_to_linalg_options.enablePrimitiveOps = true;
+  pm.addPass(mlir::stablehlo::createStablehloLegalizeToLinalgPass());
+  pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
+
   pm.addPass(mlir::createConvertElementwiseToLinalgPass());
   pm.addPass(CreateFuseElementwisePass());
 
