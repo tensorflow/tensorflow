@@ -461,6 +461,50 @@ TEST_F(CommandBufferSchedulingTest, DoNotCaptureUnmatchedAsyncDone) {
                             });
 }
 
+TEST_F(CommandBufferSchedulingTest, ConvolutionCustomCallAndAllGather) {
+  const char* hlo = R"(
+    HloModule TestModule, is_scheduled=true
+
+    ENTRY main {
+      a = bf16[4,16,3,68,120]{4,3,2,1,0} parameter(0)
+      b = bf16[768,16,1,2,2]{4,3,2,1,0} parameter(1)
+      c = bf16[96]{0} parameter(2)
+
+      start = (bf16[96]{0}, bf16[768]{0}) all-gather-start(c),
+        channel_id=555, replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={0}
+
+      done = bf16[768]{0} all-gather-done(start)
+      ROOT %cudnn-conv-bias-activation = (bf16[4,768,3,34,60]{4,3,2,1,0}, u8[783360]{0}) 
+            custom-call(a, b, done), window={size=1x2x2 stride=1x2x2}, 
+            dim_labels=bf012_oi012->bf012, 
+            custom_call_target="__cudnn$convBiasActivationForward"
+    })";
+
+  const char* expected = R"(
+    CHECK: %command_buffer ([[P0:.+]]: bf16[96], [[P1:.+]]: bf16[4,16,3,68,120], [[P2:.+]]: bf16[768,16,1,2,2]) -> {{.*}} {
+    CHECK:   %[[P0]] = bf16[96]{0} parameter(0)
+    CHECK:   %[[P1]] = bf16[4,16,3,68,120]{4,3,2,1,0} parameter(1)
+    CHECK:   %[[P2]] = bf16[768,16,1,2,2]{4,3,2,1,0} parameter(2)
+    CHECK:   %[[START:.+]] = {{.*}} all-gather-start(%[[P0]])
+    CHECK:   %[[DONE:.+]] = bf16[768]{0} all-gather-done(%[[START]])
+    CHECK:   ROOT %[[CUDNN:.+]] =  {{.*}} custom-call(%[[P1]], %[[P2]], %[[DONE]])
+    CHECK: }
+
+    CHECK: ENTRY %{{.*}} {
+    CHECK:   %[[A:.+]] = bf16[4,16,3,68,120]{4,3,2,1,0} parameter(0)
+    CHECK:   %[[B:.+]] = bf16[768,16,1,2,2]{4,3,2,1,0} parameter(1)
+    CHECK:   %[[C:.+]] = bf16[96]{0} parameter(2)
+    CHECK:   ROOT %[[CALL:.+]] =  {{.*}} call(%[[C]], %[[A]], %[[B]]),
+    CHECK:     to_apply=%command_buffer
+    CHECK: })";
+
+  RunAndFilecheckHloRewrite(hlo, CommandBufferScheduling(device_desc()),
+                            expected, [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
 TEST_F(CommandBufferSchedulingTest, CollectCommandBufferSequence) {
   const char* hlo = R"(
       HloModule TestModule, is_scheduled=true
