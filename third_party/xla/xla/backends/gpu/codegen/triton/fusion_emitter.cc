@@ -98,6 +98,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
+#include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
@@ -1644,7 +1645,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
       auto triton_module,
       ir_emitter_triton_internal::EmitXTileModule(
           fn_name, TritonEmitterConstraints::GetBuilder(device_info), fusion,
-          block_level_parameters, symbolic_expr_context));
+          block_level_parameters, symbolic_expr_context,
+          ir_emitter_triton_internal::LegacyMatmulEmitter(device_info)));
 
   const HloComputation* hlo_computation =
       fusion->fused_instructions_computation();
@@ -1927,6 +1929,17 @@ std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
 
 namespace ir_emitter_triton_internal {
 
+absl::Status LegacyMatmulEmitter::Emit(
+    EmitterLocOpBuilder& b, const HloFusionInstruction* fusion,
+    xtile::EntryFuncOp& fn,
+    const BlockLevelParameters& block_level_parameters) {
+  std::string libdevice_path =
+      GetLibdevicePath(fusion->GetModule()->config(), device_info_);
+  TF_RETURN_IF_ERROR(EmitMatMul(b, libdevice_path, device_info_, fusion, fn,
+                                block_level_parameters));
+  return absl::OkStatus();
+}
+
 // TODO(b/447133106): Contrary to the name, this function still does a lot of
 // triton specific things. It should be migrated to use non-triton specific
 // utilities.
@@ -1935,7 +1948,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
     const HloFusionInstruction* fusion,
     const BlockLevelParameters& block_level_parameters,
-    SymbolicExprContext& symbolic_expr_context) {
+    SymbolicExprContext& symbolic_expr_context,
+    std::optional<LegacyMatmulEmitter> legacy_matmul_emitter) {
   mlir::MLIRContext& mlir_context = *symbolic_expr_context.GetMLIRContext();
   LoadMlirDialectsForTriton(mlir_context);
   const auto debug_options = fusion->GetModule()->config().debug_options();
@@ -1956,25 +1970,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
   auto backend_config =
       fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
   absl::string_view fusion_kind = backend_config.kind();
-
-  if (fusion_kind == kTritonGemmFusionKind) {
-    return Internal(
-        "Attempted to emit a GEMM fusion through the legacy Triton "
-        "emitter, but it has been deleted. This is a bug.");
-  }
-
-  // TODO(bchetioui,pifon): this list should be consolidated; why do we need so
-  // many different fusion kinds?
-  const std::vector<absl::string_view> kSupportedFusionKinds = {
-      kTritonFusionKind,
-      kTritonNestedGemmFusionKind,
-      kTritonScaledDotFusionKind,
-      kTritonCollectiveFusionKind,
-  };
-
-  if (!absl::c_linear_search(kSupportedFusionKinds, fusion_kind)) {
-    return Internal("Unsupported fusion kind: %s", fusion_kind);
-  }
 
   // Build Triton kernel.
   SmallVector<Type> fn_arg_types;
@@ -2015,11 +2010,32 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
 
-  TF_RETURN_IF_ERROR(EmitGeneric(b, emitter_specific_constraints_builder,
-                                 fusion, fn, block_level_parameters,
-                                 &symbolic_expr_context));
+  if (fusion_kind == kTritonGemmFusionKind) {
+    if (absl::c_contains(
+            fusion->GetModule()
+                ->config()
+                .debug_options()
+                .xla_gpu_unsupported_generic_triton_emitter_features(),
+            DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM)) {
+      return Internal("Legacy GEMM emitter is disabled.");
+    }
+    CHECK(legacy_matmul_emitter.has_value())
+        << "emit_legacy_matmul_fn is not set";
+    TF_RETURN_IF_ERROR(
+        legacy_matmul_emitter->Emit(b, fusion, fn, block_level_parameters));
+  } else if (fusion_kind == kTritonFusionKind ||
+             fusion_kind == kTritonNestedGemmFusionKind ||
+             fusion_kind == kTritonScaledDotFusionKind ||
+             fusion_kind == kTritonCollectiveFusionKind) {
+    TF_RETURN_IF_ERROR(EmitGeneric(b, emitter_specific_constraints_builder,
+                                   fusion, fn, block_level_parameters,
+                                   &symbolic_expr_context));
+  } else {
+    return Internal("Unsupported fusion kind: %s", fusion_kind);
+  }
 
   b.create<xtile::EntryFuncReturnOp>();
+
   return triton_module;
 }
 

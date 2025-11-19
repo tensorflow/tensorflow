@@ -102,16 +102,6 @@ class GpuCodegenBackend : public CodegenBackend {
     // Avoid using GPU graphs as we don't want to measure graph construction
     // time.
     debug_options.clear_xla_gpu_enable_command_buffer();
-    // Make sure to use the generic Triton emitter for everything.
-    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES);
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION);
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM);
     // Avoid using async dot as we don't want to measure event overheads.
     debug_options.set_xla_gpu_async_dot(false);
     debug_options.set_xla_embed_ir_in_executable(false);
