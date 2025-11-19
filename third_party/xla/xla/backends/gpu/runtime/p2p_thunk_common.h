@@ -104,7 +104,8 @@ P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
 AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr);
 
 absl::StatusOr<const int64_t> GetCollectiveCurrentId(
-    Thunk::CollectiveExecuteParams* collective_params, const P2PConfig& config);
+    Thunk::CollectiveExecuteParams* collective_params,
+    const CollectiveConfig& config);
 
 }  // namespace gpu
 }  // namespace xla
