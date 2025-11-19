@@ -335,6 +335,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
     ],
+    alwayslink = True,
 )
 
 xla_cc_test(
