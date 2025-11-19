@@ -44,9 +44,9 @@ HloModule primitive_computation_mul.8
 ENTRY primitive_computation_mul.8 {
   parameter.1 = s8[65536] parameter(0)
   parameter.2 = s8[65536] parameter(1)
-  broadcast.3 = s8[65536,65536,65536,128,2] broadcast(parameter.1), dimensions={0}
-  broadcast.4 = s8[65536,65536,65536,128,2] broadcast(parameter.2), dimensions={1}
-  ROOT multiply.5 = s8[65536,65536,65536,128,2] multiply(broadcast.3, broadcast.4)
+  broadcast.3 = s8[65536,65536,65536,128,4] broadcast(parameter.1), dimensions={0}
+  broadcast.4 = s8[65536,65536,65536,128,4] broadcast(parameter.2), dimensions={1}
+  ROOT multiply.5 = s8[65536,65536,65536,128,4] multiply(broadcast.3, broadcast.4)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
