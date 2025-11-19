@@ -1411,6 +1411,10 @@ TEST_F(IndexingMapTest, RangeEvaluatorTest) {
   // d3 is always 0.
   EXPECT_TRUE(range_evaluator.IsAlwaysPositiveOrZero(d3));
   EXPECT_TRUE(range_evaluator.IsAlwaysNegativeOrZero(d3));
+
+  // d0 * 2 + d1 between [-10, 17].
+  EXPECT_EQ(range_evaluator.ComputeExpressionRange(d0 * 2 + d1),
+            (Interval{-10, 17}));
 }
 
 template <typename T>
