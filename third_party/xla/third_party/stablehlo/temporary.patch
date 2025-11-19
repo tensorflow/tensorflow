@@ -144,6 +144,83 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/di
  // PrecisionConfigAttr is a constraint attribute on ArrayAttrs.
  // Create this class to allow for building this attr similar to other
  // attributes.
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTblgen.cpp b/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTblgen.cpp
+--- stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTblgen.cpp
++++ stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTblgen.cpp
+@@ -203,6 +203,9 @@
+   // If the op does not support type inference, return a default output shape
+   // parameter that must be injected.
+   MethodParameter getDefaultOutputShape() {
++    if (hasSingleVariadicResult(getOp()) || getOp().getNumResults() > 1) {
++      return MethodParameter("TypeRange", "resultTypes");
++    }
+     return MethodParameter("Type", "resultType");
+   }
+ 
+@@ -276,7 +279,7 @@
+     BuilderParams params = getOpBuilderParameters();
+     SmallVector<MethodParameter> parameters;
+     if (params.outputShape.has_value()) {
+-      parameters.push_back(getDefaultOutputShape());
++      parameters.push_back(params.outputShape.value());
+     }
+     for (auto& operand : params.operands) {
+       parameters.push_back(
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
+--- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
++++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
+@@ -17,12 +17,12 @@
+ #include <cstdint>
+ #include <string>
+ 
+-#include "gtest/gtest.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/DialectRegistry.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/OwningOpRef.h"
++#include "mlir/IR/Types.h"
+ #include "mlir/IR/Verifier.h"
+ #include "mlir/Support/DebugStringHelper.h"
+ #include "mlir/Support/LLVM.h"
+@@ -32,6 +32,7 @@
+ #include "stablehlo/integrations/cpp/builder/FuncBuilder.h"
+ #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+ #include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
++#include "gtest/gtest.h"
+ 
+ namespace mlir {
+ namespace stablehlo {
+@@ -1517,6 +1518,29 @@
+   EXPECT_EQ(expected, debugString(*module));
+ }
+ 
++TEST(MlirBuilderTest, VariadicResult) {
++  std::string expected = R"mlir(module {
++  func.func @main() -> (tensor<f64>, tensor<f64>) {
++    %0:2 = stablehlo.custom_call @two_outs() : () -> (tensor<f64>, tensor<f64>)
++    return %0#0, %0#1 : tensor<f64>, tensor<f64>
++  }
++})mlir";
++
++  StablehloModuleBuilder mb;
++  {
++    Location funcLoc = fileLineColLoc(mb->getContext(), "main.mlir", 1, 1);
++    func::FunctionBuilder fb(mb.get(), "main", funcLoc);
++    auto type = makeTensorType(fb.getContext(), {}, ElementType::F64);
++    SmallVector<Type> resultTypes = {type, type};
++    // Pass double data with i64 type.
++    auto cc = stablehlo::CustomCall(fb, resultTypes, {}, "two_outs");
++    func::Return(fb, {cc});
++  }
++
++  OwningOpRef<ModuleOp> module = mb->build();
++  EXPECT_EQ(expected, debugString(*module));
++}
++
+ ////////
+ // Custom Attribute Tests
+ ////////
 diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td b/stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td
 --- stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td
 +++ stablehlo/stablehlo/integrations/python/mlir/dialects/InterpreterOps.td
