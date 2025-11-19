@@ -24,6 +24,13 @@ filegroup(
     srcs = [
         "convolution_lib_f16.cc",
         "convolution_lib_f32.cc",
+        "dot_lib_c128.cc",
+        "dot_lib_c64.cc",
+        "dot_lib_f16.cc",
+        "dot_lib_f32.cc",
+        "dot_lib_f64.cc",
+        "dot_lib_s32.cc",
+        "dot_lib_s8.cc",
         "rng_state_lib.cc",
         "sort_lib.cc",
     ],
@@ -34,6 +41,7 @@ filegroup(
     name = "runtime_hdrs",
     srcs = [
         "convolution_lib.h",
+        "dot_lib.h",
         "kernel_c_api.h",
         "rng_state_lib.h",
         "sort_lib.h",
@@ -744,6 +752,28 @@ cc_library(
     ],
     hdrs = ["dot_lib.h"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+# By including `eigen_contraction_kernel` into the list of dependencies, we enable the use of
+# oneDNN Eigen contraction kernel for jit-compiling microkernels. This brings oneDNN to the list
+# of transitive dependencies, and some clients (e.g. tfcompile) don't want this extra dependency.
+cc_library(
+    name = "dot_lib_onednn",
+    srcs = [
+        "dot_lib_c128.cc",
+        "dot_lib_c64.cc",
+        "dot_lib_f16.cc",
+        "dot_lib_f32.cc",
+        "dot_lib_f64.cc",
+        "dot_lib_s32.cc",
+        "dot_lib_s8.cc",
+    ],
+    hdrs = ["dot_lib.h"],
+    deps = [
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
@@ -757,7 +787,7 @@ cc_library(
     hdrs = ["dot_thunk.h"],
     deps = [
         ":dot_dims",
-        ":dot_lib",
+        ":dot_lib_onednn",
         ":thunk",
         "//xla:shape_util",
         "//xla:types",

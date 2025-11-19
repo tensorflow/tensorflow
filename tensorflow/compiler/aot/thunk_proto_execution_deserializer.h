@@ -44,8 +44,7 @@ class ThunkProtoExecutionDeserializer {
       const xla::cpu::ThunkSequenceProto& thunk_sequence_proto);
 
  protected:
-  absl::StatusOr<std::string> GetMatmulFunction(xla::PrimitiveType xla_type,
-                                                bool is_single_threaded);
+  absl::StatusOr<std::string> GetMatmulFunction(xla::PrimitiveType xla_type);
 
   absl::StatusOr<std::string> GetDotThunkRunImpl(
       const xla::cpu::ThunkProto& thunk);

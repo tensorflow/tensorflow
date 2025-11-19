@@ -127,32 +127,23 @@ ThunkProtoExecutionDeserializer::ThunkSpecificRunImplFromThunkSequence(
 }
 
 absl::StatusOr<std::string> ThunkProtoExecutionDeserializer::GetMatmulFunction(
-    xla::PrimitiveType xla_type, bool is_single_threaded) {
+    xla::PrimitiveType xla_type) {
   switch (xla_type) {
     case xla::F16:
-      return is_single_threaded
-                 ? "__xla_cpu_runtime_EigenSingleThreadedMatMulF16"
-                 : "__xla_cpu_runtime_EigenMatMulF16";
+      return "::xla::cpu::internal::TypedMatMul<Eigen::half, Eigen::half, "
+             "Eigen::half>";
     case xla::F32:
-      return is_single_threaded
-                 ? "__xla_cpu_runtime_EigenSingleThreadedMatMulF32"
-                 : "__xla_cpu_runtime_EigenMatMulF32";
+      return "::xla::cpu::internal::TypedMatMul<float, float, float>";
     case xla::F64:
-      return is_single_threaded
-                 ? "__xla_cpu_runtime_EigenSingleThreadedMatMulF64"
-                 : "__xla_cpu_runtime_EigenMatMulF64";
+      return "::xla::cpu::internal::TypedMatMul<double, double, double>";
     case xla::C64:
-      return is_single_threaded
-                 ? "__xla_cpu_runtime_EigenSingleThreadedMatMulC64"
-                 : "__xla_cpu_runtime_EigenMatMulC64";
+      return "::xla::cpu::internal::TypedMatMul<std::complex<float>, "
+             "std::complex<float>, std::complex<float>";
     case xla::C128:
-      return is_single_threaded
-                 ? "__xla_cpu_runtime_EigenSingleThreadedMatMulC128"
-                 : "__xla_cpu_runtime_EigenMatMulC128";
+      return "::xla::cpu::internal::TypedMatMul<std::complex<double>, "
+             "std::complex<double>, std::complex<double>";
     case xla::S32:
-      return is_single_threaded
-                 ? "__xla_cpu_runtime_EigenSingleThreadedMatMulS32"
-                 : "__xla_cpu_runtime_EigenMatMulS32";
+      return "::xla::cpu::internal::TypedMatMul<int32_t, int32_t, int32_t>";
     default:
       return xla::Internal("Unsupported xla type: %d", xla_type);
   }
@@ -166,43 +157,23 @@ absl::StatusOr<std::string> ThunkProtoExecutionDeserializer::GetDotThunkRunImpl(
   }
   const xla::cpu::DotThunkProto& dot_thunk = thunk.dot_thunk();
 
-  absl::string_view dot_thunk_invocation_format = xla_cpu_multi_thread_eigen_
-                                                      ? R"(
+  absl::string_view dot_thunk_invocation_format = R"(
      // Dot Thunk
      {
+        absl::BlockingCounter done({{BATCH_SIZE}});
         for (int64_t i = 0; i < {{BATCH_SIZE}}; ++i) {
-          if (run_options->intra_op_thread_pool() != nullptr) {
-            {{MATMUL_FUNCTION}}(
-              run_options,
-              {{OUTPUT_PTR}} + {{OUTPUT_STRIDE}} * i,
-              {{LHS_PTR}} + {{LHS_STRIDE}} * i,
-              {{RHS_PTR}} + {{RHS_STRIDE}} * i,
-              {{M}}, {{N}}, {{K}}, {{TRANSPOSE_LHS}}, {{TRANSPOSE_RHS}});
-          } else {
-            {{SINGLE_THREADED_MATMUL_FUNCTION}}(
-                nullptr,
-                {{OUTPUT_PTR}} + {{OUTPUT_STRIDE}} * i,
-                {{LHS_PTR}} + {{LHS_STRIDE}} * i,
-                {{RHS_PTR}} + {{RHS_STRIDE}} * i,
-                {{M}}, {{N}}, {{K}}, {{TRANSPOSE_LHS}}, {{TRANSPOSE_RHS}});
-          }
+          {{MATMUL_FUNCTION}}(
+            run_options->intra_op_thread_pool(),
+            {{OUTPUT_PTR}} + {{OUTPUT_STRIDE}} * i,
+            {{LHS_PTR}} + {{LHS_STRIDE}} * i,
+            {{RHS_PTR}} + {{RHS_STRIDE}} * i,
+            {{M}}, {{N}}, {{K}}, {{TRANSPOSE_LHS}}, {{TRANSPOSE_RHS}},
+            [&done] { done.DecrementCount(); }
+          );
         }
+        done.Wait();
      }
-     )"
-                                                      :
-                                                      R"(
-      // Dot Thunk
-      {
-         for (int64_t i = 0; i < {{BATCH_SIZE}}; ++i) {
-          {{SINGLE_THREADED_MATMUL_FUNCTION}}(
-                nullptr,
-                {{OUTPUT_PTR}} + {{OUTPUT_STRIDE}} * i,
-                {{LHS_PTR}} + {{LHS_STRIDE}} * i,
-                {{RHS_PTR}} + {{RHS_STRIDE}} * i,
-                {{M}}, {{N}}, {{K}}, {{TRANSPOSE_LHS}}, {{TRANSPOSE_RHS}});
-         }
-      }
-      )";
+     )";
 
   if (!(dot_thunk.lhs_buffer_shape().shape().element_type() ==
             dot_thunk.rhs_buffer_shape().shape().element_type() &&
@@ -214,13 +185,7 @@ absl::StatusOr<std::string> ThunkProtoExecutionDeserializer::GetDotThunkRunImpl(
 
   TF_ASSIGN_OR_RETURN(
       std::string matmul_function,
-      GetMatmulFunction(dot_thunk.lhs_buffer_shape().shape().element_type(),
-                        /*is_single_threaded=*/false));
-
-  TF_ASSIGN_OR_RETURN(
-      std::string single_threaded_matmul_function,
-      GetMatmulFunction(dot_thunk.lhs_buffer_shape().shape().element_type(),
-                        /*is_single_threaded=*/true));
+      GetMatmulFunction(dot_thunk.lhs_buffer_shape().shape().element_type()));
 
   TF_ASSIGN_OR_RETURN(std::string data_type,
                       CppDataTypeFromXlaType(
@@ -280,7 +245,7 @@ absl::StatusOr<std::string> ThunkProtoExecutionDeserializer::GetDotThunkRunImpl(
   int64_t out_stride = m * n;
 
   std::vector<std::pair<std::string, std::string>> rewrites = {
-      {"{{SINGLE_THREADED_MATMUL_FUNCTION}}", single_threaded_matmul_function},
+      {"{{MATMUL_FUNCTION}}", matmul_function},
       {"{{OUTPUT_PTR}}", output_ptr},
       {"{{OUTPUT_STRIDE}}", absl::StrCat(out_stride)},
       {"{{LHS_PTR}}", lhs_ptr},
@@ -293,10 +258,6 @@ absl::StatusOr<std::string> ThunkProtoExecutionDeserializer::GetDotThunkRunImpl(
       {"{{TRANSPOSE_LHS}}", transpose_lhs ? "true" : "false"},
       {"{{TRANSPOSE_RHS}}", transpose_rhs ? "true" : "false"},
       {"{{BATCH_SIZE}}", absl::StrCat(dot_shape.batch_size)}};
-
-  if (xla_cpu_multi_thread_eigen_) {
-    rewrites.push_back({"{{MATMUL_FUNCTION}}", matmul_function});
-  }
 
   return absl::StrReplaceAll(dot_thunk_invocation_format, rewrites);
 };
