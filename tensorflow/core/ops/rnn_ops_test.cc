@@ -26,7 +26,7 @@ namespace tensorflow {
 static string JoinedCopies(const string& s, int copies) {
   string res;
   for (int i = 0; i < copies; ++i) {
-    strings::StrAppend(&res, i > 0 ? ";" : "", s);
+    absl::StrAppend(&res, i > 0 ? ";" : "", s);
   }
   return res;
 }
@@ -62,7 +62,7 @@ TEST(RnnOpsTest, LSTMBlockCell_ShapeFn) {
   ShapeInferenceTestOp op("LSTMBlockCell");
 
   // Last 6 inputs don't affect shape inference.
-  string input_suffix = strings::StrCat(";", JoinedCopies("?", 6));
+  string input_suffix = absl::StrCat(";", JoinedCopies("?", 6));
 
   // Rank checks.
   INFER_ERROR("must be rank 2", op, "[?];?" + input_suffix);
@@ -77,7 +77,7 @@ TEST(RnnOpsTest, LSTMBlockCellGrad_ShapeFn) {
   ShapeInferenceTestOp op("LSTMBlockCellGrad");
 
   // Last 14 inputs don't affect shape inference.
-  string input_suffix = strings::StrCat(";", JoinedCopies("?", 14));
+  string input_suffix = absl::StrCat(";", JoinedCopies("?", 14));
 
   // Rank checks.
   INFER_ERROR("must be rank 2", op, "[?];?" + input_suffix);
@@ -171,7 +171,7 @@ TEST(RnnOpsTest, BlockLSTMGrad_ShapeFn) {
                                  JoinedCopies("[?]", 4), suffix);
   string expected = "in1";
   for (int i = 1; i < 8; ++i) {
-    strings::StrAppend(&expected, ";in", (i + 1));
+    absl::StrAppend(&expected, ";in", i + 1);
   }
   INFER_OK(op, input, expected);
 }
