@@ -372,8 +372,7 @@ absl::Status runShardingPropagation(HloModule* hloModule,
         spanToArrayRef(hloModule->config()
                            .allow_spmd_sharding_propagation_to_parameters()),
         spanToArrayRef(
-            hloModule->config().allow_spmd_sharding_propagation_to_output()),
-        /*importFuncCalls=*/true);
+            hloModule->config().allow_spmd_sharding_propagation_to_output()));
   } else {
     // This branch is in production.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
