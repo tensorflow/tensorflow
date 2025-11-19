@@ -5432,11 +5432,13 @@ absl::Status CreateOpRunners(
                     .setEngineConfig(filtered_configs[i], op_graph->getTag())
                     .build();
     if (plan.get_status() != CUDNN_STATUS_SUCCESS) {
+#if CUDNN_VERSION >= 90000
       std::string message(65535, '\0');
       cudnnGetLastErrorString(message.data(), message.size());
       VLOG(4) << "Failed building ExecutionPlan: found error: "
               << cudnnGetErrorString(plan.get_status())
               << " with message: " << message;
+#endif
       continue;
     }
 
