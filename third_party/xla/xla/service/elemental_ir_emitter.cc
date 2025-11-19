@@ -1201,14 +1201,38 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
     }
     case HloOpcode::kExp: {
       // e^(a+bi) = e^a*(cos(b)+sin(b)i)
-      TF_ASSIGN_OR_RETURN(
-          auto exp_a,
-          EmitExp(component_type, EmitExtractReal(operand_value), ""));
-      TF_ASSIGN_OR_RETURN(
-          auto cos_b, EmitCos(component_type, EmitExtractImag(operand_value)));
-      TF_ASSIGN_OR_RETURN(
-          auto sin_b, EmitSin(component_type, EmitExtractImag(operand_value)));
-      return EmitComposeComplex(op, FMul(exp_a, cos_b), FMul(exp_a, sin_b));
+      // Handle special cases as StableHLO implementation does:
+      // 1. When b == 0, set imag(exp(z)) = 0
+      // 2. When exp(a) == inf, use exp(a/2) * (cos(b) + I*sin(b)) * exp(a/2)
+      auto a = EmitExtractReal(operand_value);
+      auto b = EmitExtractImag(operand_value);
+      auto type = a->getType();
+      auto zero = llvm::ConstantFP::get(type, 0.0);
+      auto half = llvm::ConstantFP::get(type, 0.5);
+      auto pos_inf = llvm::ConstantFP::getInfinity(type);
+
+      TF_ASSIGN_OR_RETURN(auto exp_a, EmitExp(component_type, a, ""));
+      auto a_half = FMul(a, half);
+      TF_ASSIGN_OR_RETURN(auto exp_a_half, EmitExp(component_type, a_half, ""));
+      TF_ASSIGN_OR_RETURN(auto cos_b, EmitCos(component_type, b));
+      TF_ASSIGN_OR_RETURN(auto sin_b, EmitSin(component_type, b));
+
+      auto exp_a_is_inf = FCmpOEQ(exp_a, pos_inf);
+      auto b_is_zero = FCmpOEQ(b, zero);
+
+      // Real part: select between exp(a)*cos(b) and exp(a/2)*cos(b)*exp(a/2)
+      auto real_normal = FMul(exp_a, cos_b);
+      auto real_overflow = FMul(FMul(exp_a_half, cos_b), exp_a_half);
+      auto real_result = Select(exp_a_is_inf, real_overflow, real_normal);
+
+      // Imaginary part: if b == 0 return 0 else select between exp(a)*sin(b)
+      // and exp(a/2)*sin(b)*exp(a/2)
+      auto imag_normal = FMul(exp_a, sin_b);
+      auto imag_overflow = FMul(FMul(exp_a_half, sin_b), exp_a_half);
+      auto imag_nonzero = Select(exp_a_is_inf, imag_overflow, imag_normal);
+      auto imag_result = Select(b_is_zero, zero, imag_nonzero);
+
+      return EmitComposeComplex(op, real_result, imag_result);
     }
     case HloOpcode::kExpm1: {
       // e^(a+bi)-1 = (e^a*cos(b)-1)+e^a*sin(b)i
