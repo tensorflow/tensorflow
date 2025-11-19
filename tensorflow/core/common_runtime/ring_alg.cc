@@ -16,10 +16,16 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include <atomic>
+#include <cstdint>
 #include <functional>
-#include <utility>
+#include <memory>
+#include <string>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/collective_util.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"

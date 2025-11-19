@@ -15,7 +15,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/simple_propagator_state.h"
 
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/propagator_debug_utils.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
