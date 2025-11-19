@@ -14915,8 +14915,6 @@ ENTRY entry {
                                _, _, _, _));
 }
 
-// TODO: fix this test; right now it breaks in collective_ops_e2e_test.cc, even
-// though it passes the SPMD partitioner unit test.
 TEST_P(SpmdPartitioningTest,
        KeepPartitionedNonSlicedDimensionWithConstantIndices) {
   const char* const hlo_string = R"(
