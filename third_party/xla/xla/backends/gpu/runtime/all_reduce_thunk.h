@@ -38,8 +38,7 @@ struct AllReduceConfig {
   ReductionKind reduction_kind;
 };
 
-template <typename HloInstType>
-AllReduceConfig GetAllReduceConfigInst(HloInstType* inst);
+AllReduceConfig GetAllReduceConfigInst(const HloAllReduceInstructionBase* inst);
 
 // Thunk that performs a NCCL-based All-Reduce or Reduce-Scatter among CUDA
 // GPU-based replicas.

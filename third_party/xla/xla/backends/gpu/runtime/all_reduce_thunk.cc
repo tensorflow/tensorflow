@@ -65,14 +65,14 @@ absl::Status CheckImplementableInst(const HloInstruction* inst,
 }
 
 template <typename HloInstType>
-CollectiveOpGroupMode GetGroupModeInst(HloInstType* inst) {
+CollectiveOpGroupMode GetGroupModeInst(const HloInstType* inst) {
   return GetAllReduceConfigInst(inst).config.group_mode;
 }
 
 }  // namespace
 
-template <typename HloInstType>
-AllReduceConfig GetAllReduceConfigInst(HloInstType* inst) {
+AllReduceConfig GetAllReduceConfigInst(
+    const HloAllReduceInstructionBase* inst) {
   std::optional<ReductionKind> reduction_kind =
       MatchReductionComputation(inst->called_computations().front());
   CHECK(reduction_kind.has_value());
