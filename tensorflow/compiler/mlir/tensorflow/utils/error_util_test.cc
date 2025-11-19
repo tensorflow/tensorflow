@@ -15,57 +15,71 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
-#include "llvm/ADT/Twine.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/testlib/test.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace mlir {
 namespace {
 
-using testing::HasSubstr;
+using ::testing::HasSubstr;
 
-TEST(ErrorUtilTest, StatusScopedDiagnosticHandler) {
-  MLIRContext context;
-  auto id = StringAttr::get(&context, "//tensorflow/python/test.py");
-  auto loc = FileLineColLoc::get(&context, id, 0, 0);
+class ErrorUtilTest : public ::testing::Test {
+ protected:
+  ErrorUtilTest()
+      : id_(StringAttr::get(&context_, "//tensorflow/python/test.py")),
+        loc_(FileLineColLoc::get(&context_, id_, 0, 0)) {}
 
-  // Test OK without diagnostic gets passed through.
-  {
-    TF_ASSERT_OK(
-        StatusScopedDiagnosticHandler(&context).Combine(absl::OkStatus()));
-  }
+  MLIRContext context_;
+  StringAttr id_;
+  FileLineColLoc loc_;
+};
 
-  // Verify diagnostics are captured as Unknown status.
-  {
-    StatusScopedDiagnosticHandler handler(&context);
-    emitError(loc) << "Diagnostic message";
-    ASSERT_TRUE(absl::IsUnknown(handler.ConsumeStatus()));
-  }
+using StatusScopedDiagnosticHandlerTest = ErrorUtilTest;
 
-  // Verify passed in errors are propagated.
-  {
-    Status err = tensorflow::errors::Internal("Passed in error");
-    ASSERT_TRUE(
-        absl::IsInternal(StatusScopedDiagnosticHandler(&context).Combine(err)));
-  }
+TEST_F(StatusScopedDiagnosticHandlerTest,
+       OkWithoutDiagnosticGetsPassedThrough) {
+  TF_ASSERT_OK(
+      StatusScopedDiagnosticHandler(&context_).Combine(tensorflow::OkStatus()));
+}
 
-  // Verify diagnostic reported are append to passed in error.
-  {
-    auto function = [&]() {
-      emitError(loc) << "Diagnostic message reported";
-      emitError(loc) << "Second diagnostic message reported";
-      return tensorflow::errors::Internal("Passed in error");
-    };
-    StatusScopedDiagnosticHandler ssdh(&context);
-    Status s = ssdh.Combine(function());
-    ASSERT_TRUE(absl::IsInternal(s));
-    EXPECT_THAT(s.message(), HasSubstr("Passed in error"));
-    EXPECT_THAT(s.message(), HasSubstr("Diagnostic message reported"));
-    EXPECT_THAT(s.message(), HasSubstr("Second diagnostic message reported"));
-  }
+TEST_F(StatusScopedDiagnosticHandlerTest,
+       VerifyDiagnosticsAreCapturedAsUnknownStatus) {
+  StatusScopedDiagnosticHandler handler(&context_);
+  emitError(loc_) << "Diagnostic message";
+  ASSERT_TRUE(tensorflow::errors::IsUnknown(handler.ConsumeStatus()));
+}
+
+TEST_F(StatusScopedDiagnosticHandlerTest, VerifyPassedInErrorsArePropagated) {
+  const Status err = tensorflow::errors::Internal("Passed in error");
+  ASSERT_TRUE(tensorflow::errors::IsInternal(
+      StatusScopedDiagnosticHandler(&context_).Combine(err)));
+}
+
+TEST_F(StatusScopedDiagnosticHandlerTest,
+       VerifyThatReportedDiagnosticsAreAppendedToPassedInError) {
+  StatusScopedDiagnosticHandler ssdh(&context_);
+  emitError(loc_) << "Diagnostic message reported";
+  emitError(loc_) << "Second diagnostic message reported";
+  const Status s =
+      ssdh.Combine(tensorflow::errors::Internal("Passed in error"));
+  ASSERT_TRUE(tensorflow::errors::IsInternal(s));
+  EXPECT_THAT(s.message(), HasSubstr("Passed in error"));
+  EXPECT_THAT(s.message(), HasSubstr("Diagnostic message reported"));
+  EXPECT_THAT(s.message(), HasSubstr("Second diagnostic message reported"));
+}
+
+TEST_F(StatusScopedDiagnosticHandlerTest, VerifyThatWarningsAreIgnored) {
+  // Note: this logic is actually implemented in BaseScopedDiagnosticHandler's
+  // handler() function, but only StatusScopedDiagnosticHandler uses it.
+  StatusScopedDiagnosticHandler handler(&context_);
+  emitWarning(loc_) << "Warning message";
+  TF_EXPECT_OK(handler.ConsumeStatus());
 }
 
 TEST(ErrorUtilTest, StatusScopedDiagnosticHandlerWithFilter) {
