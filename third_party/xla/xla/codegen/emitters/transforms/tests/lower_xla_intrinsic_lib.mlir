@@ -41,6 +41,21 @@ module {
 // -----
 
 module {
+  func.func @exp_f64_vector_1d(%arg0: vector<1xf64>) -> vector<1xf64> {
+    %ret = math.exp %arg0 : vector<1xf64>
+    return %ret : vector<1xf64>
+  }
+}
+
+// CHECK: func @exp_f64_vector_1d
+// CHECK-NOT: math.exp %arg0
+// CHECK: vector.extract
+// CHECK: @local_xla.exp.f64
+// CHECK: vector.from_elements
+
+// -----
+
+module {
   func.func @trunc(%input: f32) -> bf16 {
     %truncated = arith.truncf %input : f32 to bf16
     func.return %truncated : bf16

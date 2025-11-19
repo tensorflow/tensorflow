@@ -52,6 +52,8 @@ def LinalgElementwiseToVectorPass : Pass<"xtile-cpu-linalg-elementwise-to-vector
   let constructor = "CreateLinalgElementwiseToVectorPass()";
 
   let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::scf::SCFDialect",
     "mlir::vector::VectorDialect",
   ];
 }

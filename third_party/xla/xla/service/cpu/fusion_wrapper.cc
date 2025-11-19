@@ -33,6 +33,7 @@ bool FusionWrapper::MustWrapInstruction(HloOpcode opcode) {
     case HloOpcode::kBroadcast:
     case HloOpcode::kCbrt:
     case HloOpcode::kCeil:
+    case HloOpcode::kCopy:
     case HloOpcode::kClamp:
     case HloOpcode::kClz:
     case HloOpcode::kCompare:

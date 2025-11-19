@@ -587,6 +587,7 @@ cc_library(
     hdrs = [
         "block_level_parameters.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = ["//xla/service/gpu:backend_configs_cc"],
 )
 
@@ -604,6 +605,7 @@ cc_library(
     name = "triton_emitter_constraints",
     srcs = ["triton_emitter_constraints.cc"],
     hdrs = ["triton_emitter_constraints.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla:shape_util",
         "//xla:util",

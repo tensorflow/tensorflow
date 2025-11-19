@@ -410,41 +410,16 @@ Value Maximum(EmitterLocOpBuilder& b, ValueRange values) {
   if (mlir::isa<mlir::FloatType>(mlir::getElementTypeOrSelf(values[0]))) {
     return b.create<ma::MaximumFOp>(values);
   }
-  // logic: isNaN(lhs) || (!isNan(rhs) && lhs >= rhs) ? lhs : rhs
-  // See also: IEEE Std 754-2008 5.11.
-  //
-  // This also works, but we wanted to make it similar to minimum.
-  // logic: isNaN(lhs) || lhs >= rhs ? lhs : rhs
-  Value lhs_is_nan =
-      Compare(b, {values[0], values[0]}, mh::ComparisonDirection::NE);
-  Value rhs_is_not_nan =
-      Compare(b, {values[1], values[1]}, mh::ComparisonDirection::EQ);
-  Value lhs_is_ge = Compare(b, values, mh::ComparisonDirection::GE);
-  return b.create<ma::SelectOp>(
-      b.create<ma::OrIOp>(lhs_is_nan,
-                          b.create<ma::AndIOp>(rhs_is_not_nan, lhs_is_ge)),
-      values[0], values[1]);
+
+  return b.create<ma::MaxSIOp>(values);
 }
 
 Value Minimum(EmitterLocOpBuilder& b, ValueRange values) {
   if (mlir::isa<mlir::FloatType>(mlir::getElementTypeOrSelf(values[0]))) {
     return b.create<ma::MinimumFOp>(values);
   }
-  // logic: isNaN(lhs) || (!isNan(rhs) && lhs <= rhs) ? lhs : rhs
-  // See also: IEEE Std 754-2008 5.11.
-  //
-  // This should also work, but the tests show that it doesn't work for
-  // minimum(x, NaN):
-  // logic: isNaN(lhs) || lhs <= rhs ? lhs : rhs
-  Value lhs_is_nan =
-      Compare(b, {values[0], values[0]}, mh::ComparisonDirection::NE);
-  Value rhs_is_not_nan =
-      Compare(b, {values[1], values[1]}, mh::ComparisonDirection::EQ);
-  Value lhs_is_le = Compare(b, values, mh::ComparisonDirection::LE);
-  return b.create<ma::SelectOp>(
-      b.create<ma::OrIOp>(lhs_is_nan,
-                          b.create<ma::AndIOp>(rhs_is_not_nan, lhs_is_le)),
-      values[0], values[1]);
+
+  return b.create<ma::MinSIOp>(values);
 }
 
 bool IsSupportedElementwiseLibdeviceFunction(const HloInstruction& hlo) {
@@ -551,7 +526,7 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
     case HloOpcode::kMinimum:
       return Minimum(b, inputs);
     case HloOpcode::kClamp:
-      return Maximum(b, {Minimum(b, {inputs[1], inputs[2]}), inputs[0]});
+      return Minimum(b, {Maximum(b, {inputs[0], inputs[1]}), inputs[2]});
     case HloOpcode::kAnd:
       return b.create<ma::AndIOp>(inputs[0], inputs[1]);
     case HloOpcode::kOr:
@@ -561,7 +536,11 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
     case HloOpcode::kDivide:
       if (is_integer) {
         // Unsigned not supported yet.
-        return b.create<ma::DivSIOp>(inputs[0], inputs[1]);
+        auto div = b.create<ma::DivSIOp>(inputs[0], inputs[1]);
+        // Attr signifies that this op should be re-written to guard against
+        // undefined behavior.
+        div->setAttr("xla.guard_ub", b.getUnitAttr());
+        return div;
       }
       return b.create<ma::DivFOp>(inputs[0], inputs[1]);
     case HloOpcode::kCompare:
@@ -607,6 +586,13 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
     case HloOpcode::kPower:
       return b.create<mm::PowFOp>(inputs[0], inputs[1]);
     case HloOpcode::kRemainder:
+      if (is_integer) {
+        auto rem = b.create<ma::RemSIOp>(inputs[0], inputs[1]);
+        // Attr signifies that this op should be re-written to guard against
+        // undefined behavior.
+        rem->setAttr("xla.guard_ub", b.getUnitAttr());
+        return rem;
+      }
       return b.create<ma::RemFOp>(inputs[0], inputs[1]);
     case HloOpcode::kRsqrt:
       return b.create<mm::RsqrtOp>(inputs[0]);
@@ -622,6 +608,8 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
       return b.create<mm::TanhOp>(inputs[0]);
     case HloOpcode::kCbrt:
       return b.create<mm::CbrtOp>(inputs[0]);
+    case HloOpcode::kIsFinite:
+      return b.create<mm::IsFiniteOp>(inputs[0]);
     default:
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported elementwise operation ", hlo.ToString()));

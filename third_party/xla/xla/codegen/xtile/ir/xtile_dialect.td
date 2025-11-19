@@ -33,6 +33,7 @@ def XTileDialect : Dialect {
   ];
 
   let useDefaultAttributePrinterParser = 1;
+  let hasCanonicalizer = 1;
 }
 
 #endif // XLA_CODEGEN_XTILE_IR_XTILE_DIALECT

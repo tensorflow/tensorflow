@@ -78,6 +78,7 @@ cc_library(
     srcs = [
         "xtile_attrs.cc",
         "xtile_bufferization.cc",
+        "xtile_canonicalization.cc",
         "xtile_dialect.cc",
         "xtile_ops.cc",
     ],

@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
@@ -36,21 +38,27 @@ limitations under the License.
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
+#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/codegen/emitters/concatenate_kernel_emitter.h"
 #include "xla/codegen/emitters/dynamic_update_slice_kernel_emitter.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/emitters/loop_kernel_emitter.h"
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/codegen/xtile/ir/xtile_attrs.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/work_cluster.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_group.h"
@@ -58,8 +66,11 @@ limitations under the License.
 #include "xla/runtime/work_tile_size.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -281,12 +292,110 @@ EmitDynamicUpdateSliceFusionKernel(SymbolicExprContext& context,
   return mlir_kernel_definition;
 }
 
+static absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernel(
+    SymbolicExprContext& context, const HloFusionInstruction& fusion,
+    const BufferAssignment* buffer_assignment, absl::string_view name) {
+  bool is_supported = true;
+  for (const HloInstruction* inst : fusion.fused_instructions()) {
+    if (!is_supported) {
+      break;
+    }
+
+    // We don't currently support sub-byte types in the tiled CPU emitter.
+    ShapeUtil::ForEachSubshape(
+        inst->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsArray() &&
+              primitive_util::BitWidth(subshape.element_type()) < 8) {
+            is_supported = false;
+          }
+        });
+
+    if (inst->IsElementwise()) {
+      continue;
+    }
+
+    switch (inst->opcode()) {
+      case xla::HloOpcode::kBitcast:
+      case xla::HloOpcode::kIota:
+      case xla::HloOpcode::kReshape:
+      case xla::HloOpcode::kTranspose:
+      case xla::HloOpcode::kParameter:
+      case xla::HloOpcode::kConstant:
+        break;
+      default:
+        is_supported = false;
+        break;
+    }
+  }
+
+  if (!is_supported) {
+    return absl::UnimplementedError(
+        absl::StrCat("Unsupported fusion: ", fusion.name()));
+  }
+
+  if (!fusion.shape().IsArray()) {
+    return absl::UnimplementedError(
+        absl::StrCat("Unsupported shape: ", fusion.shape().ToString()));
+  }
+
+  std::vector<int64_t> output_tile_sizes;
+  for (int64_t dim : fusion.shape().dimensions()) {
+    output_tile_sizes.push_back(std::min<int64_t>(dim, 8));
+  }
+  gpu::BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes.push_back(output_tile_sizes);
+
+  se::DeviceDescription device_info;
+  auto constraint_builder =
+      gpu::TritonEmitterConstraints::GetBuilder(device_info);
+  TF_ASSIGN_OR_RETURN(
+      auto module,
+      gpu::ir_emitter_triton_internal::EmitXTileModule(
+          name, constraint_builder, &fusion, block_level_parameters, context));
+  module->setName(absl::StrCat("__compute_module", "_", name));
+
+  int64_t num_tiles = 1;
+  for (auto [dim, tile_size] :
+       llvm::zip(fusion.shape().dimensions(),
+                 block_level_parameters.output_tile_sizes.front())) {
+    num_tiles *= CeilOfRatio(dim, tile_size);
+  }
+  auto work_dimensions = GetWorkDimensions(fusion.shape(), fusion);
+  int64_t tiles_per_workgroup =
+      CeilOfRatio<int64_t>(num_tiles, work_dimensions.num_work_groups.x);
+  module->walk([&](xtile::EntryFuncOp op) {
+    auto info = xtile::TilingInfoAttr::get(op->getContext(), num_tiles,
+                                           tiles_per_workgroup);
+    op->setAttr("xtile.tiling_info", info);
+  });
+
+  mlir::OpBuilder builder(context.GetMLIRContext());
+  module->getOperation()->setAttr(
+      xla::CpuMemoryRegionNameAttr::name,
+      builder.getStringAttr(
+          BuildModuleMemoryRegionName("tiled_emitter", &fusion)));
+
+  TF_ASSIGN_OR_RETURN(KernelSpec kernel_spec,
+                      emitters::GetKernelSpec(name, fusion, buffer_assignment,
+                                              work_dimensions));
+  return KernelDefinition<MlirKernelSource>(
+      std::move(kernel_spec), MlirKernelSource(std::move(module)));
+}
+
 absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     MLIRContext& mlir_context, SymbolicExprContext& expr_context,
     const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, bool use_unique_c_name) {
   if (fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
     TF_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
+    auto kernel =
+        EmitTiledFusionKernel(expr_context, fusion, buffer_assignment, name);
+    if (kernel.ok()) {
+      return kernel;
+    }
+
+    VLOG(1) << "Failed to emit tiled fusion kernel: " << kernel.status();
+
     const HloInstruction& hero =
         FindNonTrivialHero(*fusion.fused_expression_root());
     if (hero.opcode() == HloOpcode::kConcatenate) {

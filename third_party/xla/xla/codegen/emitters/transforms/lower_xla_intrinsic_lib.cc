@@ -241,6 +241,38 @@ class LowerIntrinsicPattern : public mlir::OpRewritePattern<Op> {
   mlir::ModuleOp& module_op_;
 };
 
+// Convert a single element vector operation into a extract -> scalar op ->
+// from_elements sequence.
+// This enables correct lowering to XLA intrinsics which don't support
+// single-element vectors.
+template <typename Op>
+class ExpandSingleElementVectorPattern : public mlir::OpRewritePattern<Op> {
+  using mlir::OpRewritePattern<Op>::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      Op op, mlir::PatternRewriter& rewriter) const override {
+    mlir::VectorType vector_type =
+        mlir::dyn_cast<mlir::VectorType>(op.getType());
+    if (!vector_type) {
+      return rewriter.notifyMatchFailure(op, "Not a vector");
+    }
+
+    if (vector_type.getNumElements() != 1) {
+      return rewriter.notifyMatchFailure(op, "Not a single-element vector");
+    }
+
+    llvm::SmallVector<int64_t> indices(vector_type.getRank(), 0);
+    mlir::Value element = mlir::vector::ExtractOp::create(
+        rewriter, op.getLoc(), op.getOperand(), indices);
+    mlir::Type result_type = mlir::getElementTypeOrSelf(op.getType());
+    mlir::Value result =
+        Op::create(rewriter, op.getLoc(), result_type, element);
+    rewriter.replaceOpWithNewOp<mlir::vector::FromElementsOp>(op, vector_type,
+                                                              result);
+    return mlir::success();
+  };
+};
+
 class LowerXlaIntrinsicLibPass
     : public impl::LowerXlaIntrinsicLibPassBase<LowerXlaIntrinsicLibPass> {
  public:
@@ -250,6 +282,14 @@ class LowerXlaIntrinsicLibPass
   void runOnOperation() override {
     mlir::ModuleOp module_op = getOperation();
     mlir::RewritePatternSet patterns(&getContext());
+    patterns.add<ExpandSingleElementVectorPattern<mlir::math::ExpOp>,
+                 ExpandSingleElementVectorPattern<mlir::math::Log1pOp>,
+                 ExpandSingleElementVectorPattern<mlir::math::RsqrtOp>,
+                 ExpandSingleElementVectorPattern<mlir::math::TanhOp>,
+                 ExpandSingleElementVectorPattern<mlir::math::ErfOp>,
+                 ExpandSingleElementVectorPattern<mlir::arith::TruncFOp>>(
+        &getContext());
+
     patterns.add<
         LowerIntrinsicPattern<codegen::intrinsics::Exp, mlir::math::ExpOp>,
         LowerIntrinsicPattern<codegen::intrinsics::Log1p, mlir::math::Log1pOp>,

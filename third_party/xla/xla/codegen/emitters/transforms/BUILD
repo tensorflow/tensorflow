@@ -54,6 +54,7 @@ cc_library(
         "lower_xla_to_scf.cc",
         "merge_pointers_to_same_slice.cc",
         "propagate_slice_indices.cc",
+        "safe_integer_arithmetic.cc",
         "unswitch_loops.cc",
         "vectorize_loads_stores.cc",
     ],
