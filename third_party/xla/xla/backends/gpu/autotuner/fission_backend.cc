@@ -81,9 +81,13 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
   }
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       GetFissionedAndRewrittenModule(instr));
-  TF_ASSIGN_OR_RETURN(HloInstruction * supported_instr,
-                      FindFirstSupportedInstruction(hlo_module.get()));
-  return codegen_backend_->GetSupportedConfigs(*supported_instr);
+  absl::StatusOr<HloInstruction*> supported_instr =
+      FindFirstSupportedInstruction(hlo_module.get());
+  if (supported_instr.status().code() == absl::StatusCode::kNotFound) {
+    return std::vector<std::unique_ptr<BackendConfig>>();
+  }
+  TF_RETURN_IF_ERROR(supported_instr.status());
+  return codegen_backend_->GetSupportedConfigs(**supported_instr);
 
   return std::vector<std::unique_ptr<BackendConfig>>();
 }
@@ -155,7 +159,7 @@ absl::StatusOr<HloInstruction*> FissionBackend::FindFirstSupportedInstruction(
     }
   }
   if (supported_instructions.empty()) {
-    return absl::InvalidArgumentError("No supported instructions found.");
+    return absl::NotFoundError("No supported instructions found.");
   }
   if (supported_instructions.size() > 1) {
     LOG(WARNING) << "Backend " << name()

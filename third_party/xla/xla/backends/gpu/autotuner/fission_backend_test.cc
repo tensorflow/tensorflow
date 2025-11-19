@@ -72,6 +72,23 @@ const char kTritonFusionHlo[] = R"(
       backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
   })";
 
+const char kUnsupportedFusionHlo[] = R"(
+  HloModule module
+  computation {
+    p0 = bf16[1024,1024]{1,0} parameter(0)
+    convert0 = f32[1024,1024]{1,0} convert(p0)
+    p1 = s8[1024,1024]{1,0} parameter(1)
+    convert1 = f32[1024,1024]{1,0} convert(p1)
+    ROOT add = f32[1024,1024]{1,0} add(convert0, convert1)
+  }
+
+  ENTRY main {
+    p0 = bf16[1024,1024]{1,0} parameter(0)
+    p1 = s8[1024,1024]{1,0} parameter(1)
+    ROOT fusion = f32[1024,1024]{1,0} fusion(p0, p1),
+      kind=kCustom, calls=computation
+  })";
+
 class CublasFissionTest : public HloHardwareIndependentTestBase {
  protected:
   DebugOptions debug_options_;
@@ -126,6 +143,16 @@ TEST_F(CublasFissionTest, GetSupportedConfigs) {
       fission_backend_->GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs, IsOkAndHolds(testing::SizeIs(1)));
+}
+
+TEST_F(CublasFissionTest, GetSupportedConfigsForUnsupportedInstruction) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kUnsupportedFusionHlo));
+  HloInstruction* unsupported_instr =
+      module->entry_computation()->root_instruction();
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      fission_backend_->GetSupportedConfigs(*unsupported_instr);
+  EXPECT_THAT(configs, IsOkAndHolds(testing::IsEmpty()));
 }
 
 TEST_F(CublasFissionTest, GetDefaultConfig) {
