@@ -37,7 +37,7 @@ namespace xla::cpu {
 std::unique_ptr<mlir::Pass> CreateLinalgElementwiseToVectorPass();
 std::unique_ptr<mlir::Pass> CreateLowerXTileEntryPass();
 std::unique_ptr<mlir::Pass> CreateShloToVectorPass();
-std::unique_ptr<mlir::Pass> CreateTensorOpsToVectorPass();
+std::unique_ptr<mlir::Pass> CreateTensorOpsToBufferizablePass();
 std::unique_ptr<mlir::Pass> CreateMemrefCopyToLoopsPass();
 std::unique_ptr<mlir::Pass> CreateFuseElementwisePass();
 

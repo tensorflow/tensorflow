@@ -17,74 +17,48 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/Value.h"
-#include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/cpu/codegen/tiled/transforms/lowering_utils.h"
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h"
 
 namespace xla::cpu {
 
-#define GEN_PASS_DECL_TENSOROPSTOVECTORPASS
-#define GEN_PASS_DEF_TENSOROPSTOVECTORPASS
+#define GEN_PASS_DECL_TENSOROPSTOBUFFERIZABLEPASS
+#define GEN_PASS_DEF_TENSOROPSTOBUFFERIZABLEPASS
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h.inc"
 
 namespace {
 
-struct LowerFromElements
-    : mlir::OpRewritePattern<mlir::tensor::FromElementsOp> {
+struct TensorToArithBitcast : mlir::OpRewritePattern<mlir::tensor::BitcastOp> {
   using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
-      mlir::tensor::FromElementsOp op,
+      mlir::tensor::BitcastOp op,
       mlir::PatternRewriter& rewriter) const override {
-    mlir::VectorType vector_type = GetVectorType(op.getType());
-    mlir::Value vector_from_elements =
-        rewriter.create<mlir::vector::FromElementsOp>(op.getLoc(), vector_type,
-                                                      op->getOperands());
-    rewriter.replaceOp(op, WriteVectorToTensor(rewriter, vector_from_elements));
+    rewriter.replaceOpWithNewOp<mlir::arith::BitcastOp>(op, op.getType(),
+                                                        op.getOperand());
     return mlir::success();
   }
 };
 
-struct LowerExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  mlir::LogicalResult matchAndRewrite(
-      mlir::tensor::ExtractOp op,
-      mlir::PatternRewriter& rewriter) const override {
-    mlir::Value vector_input = ReadTensorToVector(rewriter, op.getTensor());
-    llvm::SmallVector<mlir::OpFoldResult> indices(op.getIndices());
-    rewriter.replaceOpWithNewOp<mlir::vector::ExtractOp>(op, vector_input,
-                                                         indices);
-    return mlir::success();
-  }
-};
-
-class TensorOpsToVectorPass
-    : public impl::TensorOpsToVectorPassBase<TensorOpsToVectorPass> {
+class TensorOpsToBufferizablePass
+    : public impl::TensorOpsToBufferizablePassBase<
+          TensorOpsToBufferizablePass> {
  public:
-  using TensorOpsToVectorPassBase::TensorOpsToVectorPassBase;
+  using TensorOpsToBufferizablePassBase::TensorOpsToBufferizablePassBase;
 
   void runOnOperation() override {
     mlir::MLIRContext* context = &getContext();
     mlir::RewritePatternSet patterns(context);
-    patterns.add<LowerFromElements, LowerExtract>(context);
+    patterns.add<TensorToArithBitcast>(context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
@@ -95,8 +69,8 @@ class TensorOpsToVectorPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateTensorOpsToVectorPass() {
-  return std::make_unique<TensorOpsToVectorPass>();
+std::unique_ptr<mlir::Pass> CreateTensorOpsToBufferizablePass() {
+  return std::make_unique<TensorOpsToBufferizablePass>();
 }
 
 }  // namespace xla::cpu

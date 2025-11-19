@@ -317,7 +317,7 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::vector::createLowerVectorMultiReductionPass(
           mlir::vector::VectorMultiReductionLowering::InnerParallel));
-  pm.addPass(CreateTensorOpsToVectorPass());
+  pm.addPass(CreateTensorOpsToBufferizablePass());
 
   pm.addPass(mlir::createConvertElementwiseToLinalgPass());
   pm.addPass(CreateFuseElementwisePass());
