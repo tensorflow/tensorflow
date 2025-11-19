@@ -254,6 +254,68 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_broadcasting.mlir b/stablehlo/stableh
 +  return %0 : !stablehlo.token
 +}
 +
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+@@ -47,8 +47,8 @@
+ ////////
+ // CaseOp
+ 
+-// CHECK-LABEL: func.func @case_fold_constant_branch_index
+-func.func @case_fold_constant_branch_index(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<i32> {
++// CHECK-LABEL: func.func @case_fold_constant_branch_index_int_result
++func.func @case_fold_constant_branch_index_int_result(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<i32> {
+   // CHECK-NEXT: {{(^ *|func\.)}}return %arg1
+   // CHECK-NOT:  stablehlo.case
+   %branch_index = stablehlo.constant dense<1> : tensor<i32>
+@@ -60,6 +60,47 @@
+     stablehlo.return %arg2 : tensor<i32>
+   }) : (tensor<i32>) -> tensor<i32>
+   func.return %result: tensor<i32>
++}
++
++// -----
++
++// CHECK-LABEL: func.func @case_fold_constant_branch_index_complex_result
++func.func @case_fold_constant_branch_index_complex_result(%arg0: tensor<complex<f32>>, %arg1: tensor<complex<f32>>, %arg2: tensor<complex<f32>>) -> tensor<complex<f32>> {
++  // CHECK-NEXT: {{(^ *|func\.)}}return %arg1
++  // CHECK-NOT:  stablehlo.case
++  %branch_index = stablehlo.constant dense<1> : tensor<i32>
++  %result = "stablehlo.case"(%branch_index) ({
++    stablehlo.return %arg0 : tensor<complex<f32>>
++  }, {
++    stablehlo.return %arg1 : tensor<complex<f32>>
++  }, {
++    stablehlo.return %arg2 : tensor<complex<f32>>
++  }) : (tensor<i32>) -> tensor<complex<f32>>
++  func.return %result: tensor<complex<f32>>
++}
++
++// -----
++
++// CHECK-LABEL: func.func @case_fold_inline_call_tf_function
++func.func @case_fold_inline_call_tf_function(%arg0: !stablehlo.token {jax.token = true}, %arg1: tensor<16xi32>, %arg2: tensor<16xi64>) -> (!stablehlo.token {jax.token = true}, tensor<16xi32> {jax.result_info = "result"}) {
++  // CHECK: [[RESULT_TOKEN:%.+]] = stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1, %arg2)
++  // CHECK: [[UNUSED_TOKEN:%.+]] = {{"?}}stablehlo.case{{"?}}(
++  // CHECK: return [[RESULT_TOKEN]], %arg1
++  %c = stablehlo.constant dense<1> : tensor<i32>
++  %c_0 = stablehlo.constant dense<0> : tensor<i32>
++  %0 = "stablehlo.case"(%c_0) ({
++    stablehlo.return %c_0 : tensor<i32>
++  }, {
++    stablehlo.return %c : tensor<i32>
++  }) : (tensor<i32>) -> tensor<i32>
++  %1 = "stablehlo.case"(%0) ({
++    %2 = stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1, %arg2) {api_version = 2 : i32, has_side_effect = true, tf.backend_config = {called_index = 0 : i64, has_token_input_output = true}} : (!stablehlo.token, tensor<16xi32>, tensor<16xi64>) -> !stablehlo.token
++    stablehlo.return %2 : !stablehlo.token
++  }, {
++    %2 = stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1, %arg2) {api_version = 2 : i32, has_side_effect = true, tf.backend_config = {called_index = 1 : i64, has_token_input_output = true}} : (!stablehlo.token, tensor<16xi32>, tensor<16xi64>) -> !stablehlo.token
++    stablehlo.return %2 : !stablehlo.token
++  }) : (tensor<i32>) -> !stablehlo.token
++  return %1, %arg1 : !stablehlo.token, tensor<16xi32>
+ }
+ 
+ // -----
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
@@ -514,6 +576,135 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h b/stabl
  
  // Apply numpy broadcasting to the given operands, returning an error if any
  // operands are not broadcastable.
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+@@ -14,6 +14,7 @@
+ 
+ #include <cassert>
+ #include <cmath>
++#include <complex>
+ #include <cstddef>
+ #include <cstdint>
+ #include <functional>
+@@ -38,6 +39,7 @@
+ #include "mlir/Dialect/CommonFolders.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/Dialect/Utils/IndexingUtils.h"
++#include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributeInterfaces.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinTypeInterfaces.h"
+@@ -82,6 +84,71 @@
+                 /*isUnsigned=*/!isSigned);
+ }
+ 
++class LazyPlaceholderValue {
++ public:
++  static FailureOr<LazyPlaceholderValue> preparePlaceholderFor(
++      PatternRewriter& rewriter, Value likeValue) {
++    Type valueType = likeValue.getType();
++
++    // If `getZeroAttr(valueType)` returns a valid attribute, simply wrap the
++    // result in a `stablehlo.constant` op.
++    if (TypedAttr placeholderAttr = rewriter.getZeroAttr(valueType)) {
++      return LazyPlaceholderValue([&rewriter, placeholderAttr](Location loc) {
++        return ConstantOp::create(rewriter, loc, placeholderAttr);
++      });
++    }
++
++    // `getZeroAttr` doesn't support complex types, so we handle that case here.
++    if (auto shapedType = dyn_cast<ShapedType>(valueType)) {
++      if (auto complexElementType =
++              dyn_cast<ComplexType>(shapedType.getElementType())) {
++        if (!isa<FloatType>(complexElementType.getElementType()))
++          return rewriter.notifyMatchFailure(
++              likeValue.getLoc(),
++              "unexpected real component type for complex element type");
++        auto realImagComponentFloatType =
++            cast<FloatType>(complexElementType.getElementType());
++        APFloat apFloatZero(0.0);
++        bool losesInfo;
++        apFloatZero.convert(realImagComponentFloatType.getFloatSemantics(),
++                            llvm::RoundingMode::NearestTiesToEven, &losesInfo);
++        std::complex<APFloat> complexZeroScalar(apFloatZero, apFloatZero);
++        auto complexZeroSplat =
++            SplatElementsAttr::get(shapedType, complexZeroScalar);
++        return LazyPlaceholderValue(
++            [&rewriter, complexZeroSplat](Location loc) {
++              return ConstantOp::create(rewriter, loc, complexZeroSplat);
++            });
++      }
++    }
++
++    // If `valueType` is a token type, use `stablehlo.after_all` with no
++    // arguments to create a placeholder token.
++    if (isa<TokenType>(valueType)) {
++      return LazyPlaceholderValue([&rewriter](Location loc) {  //
++        return AfterAllOp::create(rewriter, loc, {});
++      });
++    }
++
++    // TODO: Support quantized and buffer types.
++
++    return rewriter.notifyMatchFailure(
++        likeValue.getLoc(), "unable to create placeholder value for type");
++  }
++
++  Value createAt(Location loc) const {
++    if (!lazyInitializer)
++      llvm::report_fatal_error("No lazy initializer for this value type.");
++    return lazyInitializer(loc);
++  }
++
++ private:
++  LazyPlaceholderValue(std::function<Value(Location)> lazyInitializer)
++      : lazyInitializer(std::move(lazyInitializer)) {}
++
++  std::function<Value(Location)> lazyInitializer;
++};
++
+ LogicalResult validateStaticShapeResult(PatternRewriter& rewriter,
+                                         Operation* op, ShapedType resultType) {
+   if (!resultType.hasStaticShape())
+@@ -737,18 +804,14 @@
+     Operation* terminator = blockToInline->getTerminator();
+     ValueRange results = terminator->getOperands();
+ 
+-    // TODO: Add support for complex, quantized, and token return types.
+-    // Currently, this pattern only supports int and float return types. We'll
+-    // need a more general equivalent of `getZeroAttr` to support other types.
+-    SmallVector<TypedAttr> placeholderAttrs;
++    SmallVector<LazyPlaceholderValue> lazyPlaceholderResults;
+     for (auto result : op.getResults()) {
+-      TypedAttr placeholderAttr = rewriter.getZeroAttr(result.getType());
+-      if (!placeholderAttr)
+-        return rewriter.notifyMatchFailure(
+-            op,
+-            "The case op's return type isn't currently supported by this "
+-            "optimization pattern.");
+-      placeholderAttrs.push_back(placeholderAttr);
++      auto placeholder =
++          LazyPlaceholderValue::preparePlaceholderFor(rewriter, result);
++
++      if (failed(placeholder)) return failure();
++
++      lazyPlaceholderResults.push_back(std::move(placeholder.value()));
+     }
+ 
+     // Inline the active branch of the `case` op.
+@@ -763,9 +826,9 @@
+     Block& noopBlock = region.emplaceBlock();
+     SmallVector<Value> placeholderResults;
+     rewriter.setInsertionPointToEnd(&noopBlock);
+-    for (auto placeholderAttr : placeholderAttrs) {
++    for (const auto& lazyPlaceholderResult : lazyPlaceholderResults) {
+       placeholderResults.push_back(
+-          ConstantOp::create(rewriter, region.getLoc(), placeholderAttr));
++          lazyPlaceholderResult.createAt(region.getLoc()));
+     }
+     stablehlo::ReturnOp::create(rewriter, region.getLoc(), placeholderResults);
+ 
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
