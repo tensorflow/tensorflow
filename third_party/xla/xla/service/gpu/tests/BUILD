@@ -644,7 +644,7 @@ lit_test_suite_for_gpus(
         ],
     ),
     cfg = "//xla:lit.cfg.py",
-    default_tags = tf_gpu_tests_tags(),
+    default_tags = ["gpu"],  # Needs to run in a build with a gpu configured.
     disabled_on_gpus = {
         "v100": [
             "kernel_reuse.hlo",
