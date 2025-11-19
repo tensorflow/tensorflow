@@ -157,9 +157,8 @@ bool LooksLikeAnActivation(const HloInstruction* inst, bool permissive_mode) {
           user = user->parent()->FusionInstruction();
           if (LooksLikeAnActivation(user, permissive_mode)) {
             return true;
-          } else {
-            break;
           }
+          break;
         }
         return true;
       case HloOpcode::kDynamicUpdateSlice:
@@ -854,13 +853,12 @@ bool MsaAlgorithm::IsUseAllowedInAlternateMemory(const AllocationValue& value,
                 << ", parameter time = " << parameter_time
                 << ", min use time = " << min_use_time;
         return true;
-      } else {
-        VLOG(4) << "Conditional allocation not allowed in alternate memory for "
-                   "computation = "
-                << called_computation->name()
-                << ", parameter time = " << parameter_time
-                << ", min use time = " << min_use_time;
       }
+      VLOG(4) << "Conditional allocation not allowed in alternate memory for "
+                 "computation = "
+              << called_computation->name()
+              << ", parameter time = " << parameter_time
+              << ", min use time = " << min_use_time;
     }
     return false;
   }
@@ -1511,8 +1509,7 @@ std::vector<const HloValue*> MsaAlgorithm::GenerateJointProcessedValues(
       const HloValue& next_value = alias_analysis_.dataflow_analysis()
                                        .GetValueSet(inst)
                                        .GetUniqueValue();
-      if (std::find(worklist.begin(), worklist.end(), &next_value) ==
-          worklist.end()) {
+      if (absl::c_find(worklist, &next_value) == worklist.end()) {
         worklist.push_back(&next_value);
       }
     };
@@ -1781,9 +1778,8 @@ void FixAllocationSequenceAfterPostAllocationTransformation(
       std::remove_if(
           allocations->begin(), allocations->end(),
           [transformation_info](const std::unique_ptr<Allocation>& allocation) {
-            return std::find(transformation_info.to_be_removed.begin(),
-                             transformation_info.to_be_removed.end(),
-                             allocation->defining_position().instruction) !=
+            return absl::c_find(transformation_info.to_be_removed,
+                                allocation->defining_position().instruction) !=
                    transformation_info.to_be_removed.end();
           }),
       allocations->end());
@@ -4421,11 +4417,15 @@ void MsaAlgorithm::MaybeCreateMirroredParentAllocationForWhileUse(
         preferred_offset_for_computation) {
   const HloUse& hlo_use = use.hlo_use;
 
-  if (hlo_use.instruction->opcode() != HloOpcode::kWhile) return;
+  if (hlo_use.instruction->opcode() != HloOpcode::kWhile) {
+    return;
+  }
 
   Allocation* aliased_allocation =
       GetLiveAllocationAt(*allocation_value.allocation_sequence(), use_time);
-  if (aliased_allocation->memory_space() != MemorySpace::kAlternate) return;
+  if (aliased_allocation->memory_space() != MemorySpace::kAlternate) {
+    return;
+  }
 
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
   if (options_.enable_while_redundant_eviction_elimination &&
@@ -6647,13 +6647,12 @@ bool MsaAlgorithm::ViolatesMaximumOutstandingAsyncCopies(
                              num_additional_copies;
     return num_prefetches >=
            options_.max_outstanding_prefetches + extra_async_copy_limit;
-  } else {
-    int64_t num_evictions = eviction_interval_tree_.NumChunksOverlappingInTime(
-                                inclusive_start_time, end_time) +
-                            num_additional_copies;
-    return num_evictions >=
-           options_.max_outstanding_evictions + extra_async_copy_limit;
   }
+  int64_t num_evictions = eviction_interval_tree_.NumChunksOverlappingInTime(
+                              inclusive_start_time, end_time) +
+                          num_additional_copies;
+  return num_evictions >=
+         options_.max_outstanding_evictions + extra_async_copy_limit;
 }
 
 AllocationResult MsaAlgorithm::ForceAlternateMemoryAllocationForMinTime(

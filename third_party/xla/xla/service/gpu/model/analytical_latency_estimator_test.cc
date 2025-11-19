@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -23,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
 
@@ -51,10 +50,10 @@ namespace {
 
 int64_t GetInstructionIndexInSchedule(
     absl::Span<HloInstruction* const> schedule, absl::string_view hlo_name) {
-  return std::find_if(schedule.begin(), schedule.end(),
-                      [hlo_name](HloInstruction* instruction) {
-                        return instruction->name() == hlo_name;
-                      }) -
+  return absl::c_find_if(schedule,
+                         [hlo_name](HloInstruction* instruction) {
+                           return instruction->name() == hlo_name;
+                         }) -
          schedule.begin();
 }
 

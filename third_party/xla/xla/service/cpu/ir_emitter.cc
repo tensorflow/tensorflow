@@ -26,6 +26,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -75,7 +76,6 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/literal_util.h"
 #include "xla/map_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
@@ -3634,9 +3634,8 @@ llvm_ir::IrArray IrEmitter::GetIrArrayFor(const HloInstruction* hlo) {
 std::vector<llvm_ir::IrArray> IrEmitter::GetIrArraysForOperandsOf(
     const HloInstruction* hlo) {
   std::vector<llvm_ir::IrArray> arrays;
-  std::transform(
-      hlo->operands().begin(), hlo->operands().end(),
-      std::back_inserter(arrays),
+  absl::c_transform(
+      hlo->operands(), std::back_inserter(arrays),
       [&](const HloInstruction* operand) { return GetIrArrayFor(operand); });
   return arrays;
 }

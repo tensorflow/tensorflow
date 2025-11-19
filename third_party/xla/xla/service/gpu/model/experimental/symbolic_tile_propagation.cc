@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -83,8 +84,7 @@ SymbolicTiles PropagateTileToOutputForBroadcastOp(
   dim_tiles.reserve(output_rank);
   for (auto [output_dim_id, output_dim] :
        llvm::enumerate(output_shape.dimensions())) {
-    auto bcast_dim =
-        std::find(bcast_dims.begin(), bcast_dims.end(), output_dim_id);
+    auto bcast_dim = absl::c_find(bcast_dims, output_dim_id);
     // If the dimension is not a broadcast dimension, create a tile that covers
     // the entire dimension.
     if (bcast_dim == bcast_dims.end()) {

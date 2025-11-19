@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/cpu/onednn_matmul.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
@@ -180,9 +179,8 @@ std::unique_ptr<matmul::primitive_desc> CreateMatMulPrimDesc(
   TransposeIfNecessary(matmul_config.result().tensor().dimensions(), false,
                        output_md);
   std::vector<memory::desc> fused_mds;
-  std::transform(fused_shapes.begin(), fused_shapes.end(),
-                 std::back_inserter(fused_mds),
-                 [](const Shape& shape) { return ShapeToMemDesc(shape); });
+  absl::c_transform(fused_shapes, std::back_inserter(fused_mds),
+                    [](const Shape& shape) { return ShapeToMemDesc(shape); });
   return CreateMatMulPrimDesc(engine(engine::kind::cpu, 0), input_md,
                               weights_md, output_md, fused_mds, matmul_config);
 }
@@ -218,9 +216,8 @@ CreateOneDnnPrimDesc<dnnl::matmul::primitive_desc>(HloInstruction* instr) {
   auto fused_operands =
       HloInstruction::InstructionVector(operands.begin() + 2, operands.end());
   std::vector<Shape> fused_shapes;
-  std::transform(fused_operands.begin(), fused_operands.end(),
-                 std::back_inserter(fused_shapes),
-                 [](const HloInstruction* instr) { return instr->shape(); });
+  absl::c_transform(fused_operands, std::back_inserter(fused_shapes),
+                    [](const HloInstruction* instr) { return instr->shape(); });
 
   return CreateMatMulPrimDesc(input_shape, weight_shape, output_shape,
                               fused_shapes, matmul_config);
