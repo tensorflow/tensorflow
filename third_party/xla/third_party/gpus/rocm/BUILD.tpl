@@ -94,6 +94,7 @@ cc_library(
     deps = [
         ":rocm_headers_includes",
         ":rocm_rpath",
+        ":rocm_config",
     ],
 )
 
