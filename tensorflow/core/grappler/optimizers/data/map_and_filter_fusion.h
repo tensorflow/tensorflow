@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_AND_FILTER_FUSION_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_AND_FILTER_FUSION_H_
 
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
