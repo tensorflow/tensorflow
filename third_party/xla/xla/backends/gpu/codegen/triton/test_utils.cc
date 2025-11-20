@@ -173,9 +173,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
           "xtile_dialect_fn",
           TritonEmitterConstraints::GetBuilder(
               TestGpuDeviceInfo::RTXA6000DeviceInfo()),
-          fusion, block_level_parameters, *test->symbolic_expr_context(),
-          ir_emitter_triton_internal::LegacyMatmulEmitter(
-              TestGpuDeviceInfo::RTXA6000DeviceInfo())));
+          fusion, block_level_parameters, *test->symbolic_expr_context()));
 
   std::string out;
   llvm::raw_string_ostream os(out);
