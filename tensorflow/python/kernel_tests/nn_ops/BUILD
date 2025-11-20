@@ -583,6 +583,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:nn_impl",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
