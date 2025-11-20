@@ -39,6 +39,7 @@ cc_library(
         ":cupti_collector",
         ":cupti_tracer",
         ":cupti_tracer_options_utils",
+        ":gpu_metadata",
         "//xla/tsl/platform:errors",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/util:env_var",
@@ -768,5 +769,24 @@ xla_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "gpu_metadata",
+    srcs = ["gpu_metadata.cc"],
+    hdrs = ["gpu_metadata.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/strings",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
