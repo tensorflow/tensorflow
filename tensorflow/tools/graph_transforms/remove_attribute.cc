@@ -36,7 +36,7 @@ absl::Status RemoveAttribute(const GraphDef& input_graph_def,
         "argument, e.g. remove_attribute(op_name=Mul, attribute_name=foo)");
   }
 
-  string op_name;
+  std::string op_name;
   if (context.params.count("op_name")) {
     if (context.params.at("op_name").size() != 1) {
       return errors::InvalidArgument(
@@ -48,7 +48,7 @@ absl::Status RemoveAttribute(const GraphDef& input_graph_def,
     op_name = "*";
   }
 
-  const string attribute_name = context.params.at("attribute_name")[0];
+  const std::string attribute_name = context.params.at("attribute_name")[0];
   output_graph_def->Clear();
   for (const NodeDef& node : input_graph_def.node()) {
     NodeDef* new_node = output_graph_def->mutable_node()->Add();
