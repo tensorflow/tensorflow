@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "mlir/Pass/Pass.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_join.h"

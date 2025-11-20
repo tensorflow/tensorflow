@@ -61,17 +61,14 @@ static void MakeTTIR(mlir::OpPassManager* pm,
 // @triton//:third_party/nvidia/backend/compiler.py
 static void MakeTTGIR(mlir::OpPassManager* pm,
                       const stream_executor::CudaComputeCapability& cuda_cc,
-                      int num_warps, int num_ctas, int num_stages,
-                      mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info) {
+                      int num_warps, int num_ctas, int num_stages) {
   const int cuda_cc_as_int = cuda_cc.major * 10 + cuda_cc.minor;
   pm->addPass(mt::createConvertTritonToTritonGPU(
       {absl::StrFormat("cuda:%u", cuda_cc_as_int), num_warps,
        /*threads_per_warp=*/32, num_ctas}));
   pm->addPass(mt::gpu::createTritonGPUCoalesce());
-  if (cuda_cc.IsAtLeastAmpere()) {
-    pm->addPass(mt::gpu::createTritonGPUF32DotTC());
-  }
-  pm->addPass(ttng::createTritonNvidiaGPUPlanCTAPass(&out_cluster_info));
+  pm->addPass(mt::gpu::createTritonGPUF32DotTC({cuda_cc.IsAtLeastAmpere()}));
+  pm->addPass(ttng::createTritonNvidiaGPUPlanCTAPass());
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
   pm->addPass(mt::gpu::createTritonGPUAccelerateMatmul());
@@ -169,10 +166,9 @@ static void MakeLLIR(mlir::OpPassManager* pm,
 void CreateTritonCudaPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::CudaComputeCapability& cuda_cc, int num_warps,
-    int num_ctas, int num_stages,
-    mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info) {
+    int num_ctas, int num_stages) {
   MakeTTIR(pm, cuda_cc);
-  MakeTTGIR(pm, cuda_cc, num_warps, num_ctas, num_stages, out_cluster_info);
+  MakeTTGIR(pm, cuda_cc, num_warps, num_ctas, num_stages);
   MakeLLIR(pm, cuda_cc);
 }
 

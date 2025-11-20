@@ -63,6 +63,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
       {absl::StrCat("hip:", rocm_cc.gfx_version()), num_warps, threadsPerWarp,
        num_ctas}));
   pm->addPass(mt::gpu::createTritonGPUCoalesce());
+  pm->addPass(mt::gpu::createTritonGPUF32DotTC({false}));
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
   // TODO ROCm Pass rocm_cc.gfx_version() after fixing issue with fmfa
@@ -123,6 +124,7 @@ static void MakeLLIR(mlir::OpPassManager* pm,
                      const stream_executor::RocmComputeCapability& rocm_cc,
                      int num_stages) {
   const int custom_lds_size = 0;
+  pm->addPass(mlir::createTritonAMDGPUUpdateAsyncWaitCount());
   // The `createTritonGPUAllocateWarpGroups` pass is not implemented in the
   // upstream Triton, but is necessary for `ExtractThreadDims` in emitter
   // helpers. It adds the `ttg.total-num-warps` attribute.
