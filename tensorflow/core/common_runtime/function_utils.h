@@ -19,6 +19,8 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/status.h"
 
