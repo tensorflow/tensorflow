@@ -198,6 +198,7 @@ enum HostEventType {
 };
 
 enum StatType {
+  // LINT.IfChange(stat_type_enum)
   kFirstStatType = 0,
   kUnknownStatType = kFirstStatType,
   // TraceMe arguments.
@@ -377,7 +378,16 @@ enum StatType {
   kTcOffloadStartId,
   kOffloadExecutionIndex,
   kMarkerPayloadString,
-  kLastStatType = kMarkerPayloadString,
+  kCorePower,
+  kCorePowerEventCount,
+  kHbmPower,
+  kHbmPowerEventCount,
+  // LINT.ThenChange(:last_stat_type)
+
+  // LINT.IfChange(last_stat_type)
+  // Change this to point to the last stat type when adding a new one.
+  kLastStatType = kHbmPowerEventCount,
+  // LINT.ThenChange(:stat_type_enum)
 };
 
 enum MegaScaleStatType : uint8_t {
