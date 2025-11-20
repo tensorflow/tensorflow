@@ -1,53 +1,144 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/libc/src/stdio/printf_core/vfprintf_internal.h b/libc/src/stdio/printf_core/vfprintf_internal.h
---- a/libc/src/stdio/printf_core/vfprintf_internal.h
-+++ b/libc/src/stdio/printf_core/vfprintf_internal.h
-@@ -51,8 +51,11 @@
- LIBC_INLINE FileIOResult fwrite_unlocked(const void *ptr, size_t size,
-                                          size_t nmemb, ::FILE *f) {
-   // Need to use system errno in this case, as system write will set this errno
--  // which we need to propagate back into our code.
--  return {::fwrite_unlocked(ptr, size, nmemb, f), errno};
-+  // which we need to propagate back into our code. fwrite only modifies errno
-+  // if there was an error, and errno may have previously been nonzero. Only
-+  // return errno if there was an error.
-+  size_t members_written = ::fwrite_unlocked(ptr, size, nmemb, f);
-+  return {members_written, members_written == nmemb ? 0 : errno};
- }
- #endif // LIBC_COPT_STDIO_USE_SYSTEM_FILE
- } // namespace internal
-diff -ruN --strip-trailing-cr a/libcxx/include/fstream b/libcxx/include/fstream
---- a/libcxx/include/fstream
-+++ b/libcxx/include/fstream
-@@ -315,8 +315,14 @@
-         traits_type::copy(__str, this->gptr(), __n);
-         this->__gbump_ptrdiff(__n);
+diff -ruN --strip-trailing-cr a/libcxx/include/__hash_table b/libcxx/include/__hash_table
+--- a/libcxx/include/__hash_table
++++ b/libcxx/include/__hash_table
+@@ -1910,6 +1910,8 @@
+         __bucket_list_[__next_chash] = __before_first;
+         __chash                      = __next_chash;
        }
--      if (__len - __n >= this->egptr() - this->eback())
--        return std::fread(__str + __n, sizeof(char_type), __len - __n, __file_);
-+      const streamsize __remainder    = __len - __n;
-+      const streamsize __buffer_space = this->egptr() - this->eback();
-+
-+      if (__remainder >= __buffer_space)
-+        return std::fread(__str + __n, sizeof(char_type), __remainder, __file_) + __n;
-+      else if (__remainder > 0)
-+        return basic_streambuf<_CharT, _Traits>::xsgetn(__str + __n, __remainder) + __n;
-+      return __n;
++    } else { // When __next is a nullptr we've fully erased the last bucket. Update the bucket list accordingly.
++      __bucket_list_[__chash] = nullptr;
      }
-     return basic_streambuf<_CharT, _Traits>::xsgetn(__str, __len);
    }
-diff -ruN --strip-trailing-cr a/llvm/lib/Passes/PassBuilderPipelines.cpp b/llvm/lib/Passes/PassBuilderPipelines.cpp
---- a/llvm/lib/Passes/PassBuilderPipelines.cpp
-+++ b/llvm/lib/Passes/PassBuilderPipelines.cpp
-@@ -228,7 +228,7 @@
- static cl::opt<bool>
-     EnableDFAJumpThreading("enable-dfa-jump-thread",
-                            cl::desc("Enable DFA jump threading"),
--                           cl::init(true), cl::Hidden);
-+                           cl::init(false), cl::Hidden);
  
- static cl::opt<bool>
-     EnableHotColdSplit("hot-cold-split",
+diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/unord/unord.map/unord.map.modifiers/erase_range.pass.cpp b/libcxx/test/std/containers/unord/unord.map/unord.map.modifiers/erase_range.pass.cpp
+--- a/libcxx/test/std/containers/unord/unord.map/unord.map.modifiers/erase_range.pass.cpp
++++ b/libcxx/test/std/containers/unord/unord.map/unord.map.modifiers/erase_range.pass.cpp
+@@ -57,6 +57,28 @@
+     assert(c.size() == 0);
+     assert(k == c.end());
+   }
++  { // Make sure that we're properly updating the bucket list when we're erasing to the end
++    std::unordered_map<int, int> m;
++    m.insert(std::make_pair(1, 1));
++    m.insert(std::make_pair(2, 2));
++
++    {
++      auto pair = m.equal_range(1);
++      assert(pair.first != pair.second);
++      m.erase(pair.first, pair.second);
++    }
++
++    {
++      auto pair = m.equal_range(2);
++      assert(pair.first != pair.second);
++      m.erase(pair.first, pair.second);
++    }
++
++    m.insert(std::make_pair(3, 3));
++    assert(m.size() == 1);
++    assert(*m.begin() == std::make_pair(3, 3));
++    assert(++m.begin() == m.end());
++  }
+ #if TEST_STD_VER >= 11
+   {
+     typedef std::unordered_map<int,
+diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/unord/unord.multimap/unord.multimap.modifiers/erase_range.pass.cpp b/libcxx/test/std/containers/unord/unord.multimap/unord.multimap.modifiers/erase_range.pass.cpp
+--- a/libcxx/test/std/containers/unord/unord.multimap/unord.multimap.modifiers/erase_range.pass.cpp
++++ b/libcxx/test/std/containers/unord/unord.multimap/unord.multimap.modifiers/erase_range.pass.cpp
+@@ -122,6 +122,28 @@
+     for (const auto& v : map)
+       assert(v.first == 1 || v.first == collision_val);
+   }
++  { // Make sure that we're properly updating the bucket list when we're erasing to the end
++    std::unordered_multimap<int, int> m;
++    m.insert(std::make_pair(1, 1));
++    m.insert(std::make_pair(2, 2));
++
++    {
++      auto pair = m.equal_range(1);
++      assert(pair.first != pair.second);
++      m.erase(pair.first, pair.second);
++    }
++
++    {
++      auto pair = m.equal_range(2);
++      assert(pair.first != pair.second);
++      m.erase(pair.first, pair.second);
++    }
++
++    m.insert(std::make_pair(3, 3));
++    assert(m.size() == 1);
++    assert(*m.begin() == std::make_pair(3, 3));
++    assert(++m.begin() == m.end());
++  }
+ #if TEST_STD_VER >= 11
+   {
+     typedef std::unordered_multimap<int,
+diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/unord/unord.multiset/erase_range.pass.cpp b/libcxx/test/std/containers/unord/unord.multiset/erase_range.pass.cpp
+--- a/libcxx/test/std/containers/unord/unord.multiset/erase_range.pass.cpp
++++ b/libcxx/test/std/containers/unord/unord.multiset/erase_range.pass.cpp
+@@ -64,6 +64,28 @@
+     for (const auto& v : map)
+       assert(v == 1 || v == collision_val);
+   }
++  { // Make sure that we're properly updating the bucket list when we're erasing to the end
++    std::unordered_multiset<int> m;
++    m.insert(1);
++    m.insert(2);
++
++    {
++      auto pair = m.equal_range(1);
++      assert(pair.first != pair.second);
++      m.erase(pair.first, pair.second);
++    }
++
++    {
++      auto pair = m.equal_range(2);
++      assert(pair.first != pair.second);
++      m.erase(pair.first, pair.second);
++    }
++
++    m.insert(3);
++    assert(m.size() == 1);
++    assert(*m.begin() == 3);
++    assert(++m.begin() == m.end());
++  }
+ #if TEST_STD_VER >= 11
+   {
+     typedef std::unordered_multiset<int, std::hash<int>, std::equal_to<int>, min_allocator<int>> C;
+diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/unord/unord.set/erase_range.pass.cpp b/libcxx/test/std/containers/unord/unord.set/erase_range.pass.cpp
+--- a/libcxx/test/std/containers/unord/unord.set/erase_range.pass.cpp
++++ b/libcxx/test/std/containers/unord/unord.set/erase_range.pass.cpp
+@@ -47,6 +47,28 @@
+     assert(c.size() == 0);
+     assert(k == c.end());
+   }
++  { // Make sure that we're properly updating the bucket list when we're erasing to the end
++    std::unordered_set<int> m;
++    m.insert(1);
++    m.insert(2);
++
++    {
++      auto pair = m.equal_range(1);
++      assert(pair.first != pair.second);
++      m.erase(pair.first, pair.second);
++    }
++
++    {
++      auto pair = m.equal_range(2);
++      assert(pair.first != pair.second);
++      m.erase(pair.first, pair.second);
++    }
++
++    m.insert(3);
++    assert(m.size() == 1);
++    assert(*m.begin() == 3);
++    assert(++m.begin() == m.end());
++  }
+ #if TEST_STD_VER >= 11
+   {
+     typedef std::unordered_set<int, std::hash<int>, std::equal_to<int>, min_allocator<int>> C;
 diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/IndVarSimplify.cpp b/llvm/lib/Transforms/Scalar/IndVarSimplify.cpp
 --- a/llvm/lib/Transforms/Scalar/IndVarSimplify.cpp
 +++ b/llvm/lib/Transforms/Scalar/IndVarSimplify.cpp
@@ -60,7 +151,7 @@ diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/IndVarSimplify.cpp b/
  public:
    IndVarSimplify(LoopInfo *LI, ScalarEvolution *SE, DominatorTree *DT,
                   const DataLayout &DL, TargetLibraryInfo *TLI,
-@@ -1077,6 +1079,85 @@
+@@ -1091,6 +1093,85 @@
    return true;
  }
  
@@ -146,7 +237,7 @@ diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/IndVarSimplify.cpp b/
  static void replaceExitCond(BranchInst *BI, Value *NewCond,
                              SmallVectorImpl<WeakTrackingVH> &DeadInsts) {
    auto *OldCond = BI->getCondition();
-@@ -1984,6 +2065,10 @@
+@@ -1998,6 +2079,10 @@
  
    // The Rewriter may not be used from this point on.
  
@@ -493,83 +584,6 @@ diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/PowerPC/combine-sext-and-shl-a
  ; CHECK-P9-BE-NEXT:    #
  ; CHECK-P9-BE-NEXT:    ld r4, 0(r3)
  ; CHECK-P9-BE-NEXT:    extswsli r5, r29, 2
-diff -ruN --strip-trailing-cr a/llvm/test/Other/new-pm-defaults.ll b/llvm/test/Other/new-pm-defaults.ll
---- a/llvm/test/Other/new-pm-defaults.ll
-+++ b/llvm/test/Other/new-pm-defaults.ll
-@@ -208,7 +208,6 @@
- ; CHECK-O-NEXT: Running analysis: DemandedBitsAnalysis
- ; CHECK-O-NEXT: Running pass: InstCombinePass
- ; CHECK-EP-PEEPHOLE-NEXT: Running pass: NoOpFunctionPass
--; CHECK-O23SZ-NEXT: Running pass: DFAJumpThreadingPass
- ; CHECK-O23SZ-NEXT: Running pass: JumpThreadingPass
- ; CHECK-O23SZ-NEXT: Running analysis: LazyValueAnalysis
- ; CHECK-O23SZ-NEXT: Running pass: CorrelatedValuePropagationPass
-diff -ruN --strip-trailing-cr a/llvm/test/Other/new-pm-thinlto-postlink-defaults.ll b/llvm/test/Other/new-pm-thinlto-postlink-defaults.ll
---- a/llvm/test/Other/new-pm-thinlto-postlink-defaults.ll
-+++ b/llvm/test/Other/new-pm-thinlto-postlink-defaults.ll
-@@ -133,7 +133,6 @@
- ; CHECK-O-NEXT: Running pass: BDCEPass
- ; CHECK-O-NEXT: Running analysis: DemandedBitsAnalysis
- ; CHECK-O-NEXT: Running pass: InstCombinePass
--; CHECK-O23SZ-NEXT: Running pass: DFAJumpThreadingPass
- ; CHECK-O23SZ-NEXT: Running pass: JumpThreadingPass
- ; CHECK-O23SZ-NEXT: Running analysis: LazyValueAnalysis
- ; CHECK-O23SZ-NEXT: Running pass: CorrelatedValuePropagationPass
-diff -ruN --strip-trailing-cr a/llvm/test/Other/new-pm-thinlto-postlink-pgo-defaults.ll b/llvm/test/Other/new-pm-thinlto-postlink-pgo-defaults.ll
---- a/llvm/test/Other/new-pm-thinlto-postlink-pgo-defaults.ll
-+++ b/llvm/test/Other/new-pm-thinlto-postlink-pgo-defaults.ll
-@@ -118,7 +118,6 @@
- ; CHECK-O-NEXT: Running pass: BDCEPass
- ; CHECK-O-NEXT: Running analysis: DemandedBitsAnalysis
- ; CHECK-O-NEXT: Running pass: InstCombinePass
--; CHECK-O23SZ-NEXT: Running pass: DFAJumpThreadingPass
- ; CHECK-O23SZ-NEXT: Running pass: JumpThreadingPass
- ; CHECK-O23SZ-NEXT: Running analysis: LazyValueAnalysis
- ; CHECK-O23SZ-NEXT: Running pass: CorrelatedValuePropagationPass
-diff -ruN --strip-trailing-cr a/llvm/test/Other/new-pm-thinlto-postlink-samplepgo-defaults.ll b/llvm/test/Other/new-pm-thinlto-postlink-samplepgo-defaults.ll
---- a/llvm/test/Other/new-pm-thinlto-postlink-samplepgo-defaults.ll
-+++ b/llvm/test/Other/new-pm-thinlto-postlink-samplepgo-defaults.ll
-@@ -127,7 +127,6 @@
- ; CHECK-O-NEXT: Running pass: BDCEPass
- ; CHECK-O-NEXT: Running analysis: DemandedBitsAnalysis
- ; CHECK-O-NEXT: Running pass: InstCombinePass
--; CHECK-O23SZ-NEXT: Running pass: DFAJumpThreadingPass
- ; CHECK-O23SZ-NEXT: Running pass: JumpThreadingPass
- ; CHECK-O23SZ-NEXT: Running analysis: LazyValueAnalysis
- ; CHECK-O23SZ-NEXT: Running pass: CorrelatedValuePropagationPass
-diff -ruN --strip-trailing-cr a/llvm/test/Other/new-pm-thinlto-prelink-defaults.ll b/llvm/test/Other/new-pm-thinlto-prelink-defaults.ll
---- a/llvm/test/Other/new-pm-thinlto-prelink-defaults.ll
-+++ b/llvm/test/Other/new-pm-thinlto-prelink-defaults.ll
-@@ -165,7 +165,6 @@
- ; CHECK-O-NEXT: Running pass: BDCEPass
- ; CHECK-O-NEXT: Running analysis: DemandedBitsAnalysis
- ; CHECK-O-NEXT: Running pass: InstCombinePass
--; CHECK-O23SZ-NEXT: Running pass: DFAJumpThreadingPass
- ; CHECK-O23SZ-NEXT: Running pass: JumpThreadingPass
- ; CHECK-O23SZ-NEXT: Running analysis: LazyValueAnalysis
- ; CHECK-O23SZ-NEXT: Running pass: CorrelatedValuePropagationPass
-diff -ruN --strip-trailing-cr a/llvm/test/Other/new-pm-thinlto-prelink-pgo-defaults.ll b/llvm/test/Other/new-pm-thinlto-prelink-pgo-defaults.ll
---- a/llvm/test/Other/new-pm-thinlto-prelink-pgo-defaults.ll
-+++ b/llvm/test/Other/new-pm-thinlto-prelink-pgo-defaults.ll
-@@ -167,7 +167,6 @@
- ; CHECK-O-NEXT: Running pass: BDCEPass
- ; CHECK-O-NEXT: Running analysis: DemandedBitsAnalysis
- ; CHECK-O-NEXT: Running pass: InstCombinePass
--; CHECK-O23SZ-NEXT: Running pass: DFAJumpThreadingPass
- ; CHECK-O23SZ-NEXT: Running pass: JumpThreadingPass
- ; CHECK-O23SZ-NEXT: Running analysis: LazyValueAnalysis
- ; CHECK-O23SZ-NEXT: Running pass: CorrelatedValuePropagationPass
-diff -ruN --strip-trailing-cr a/llvm/test/Other/new-pm-thinlto-prelink-samplepgo-defaults.ll b/llvm/test/Other/new-pm-thinlto-prelink-samplepgo-defaults.ll
---- a/llvm/test/Other/new-pm-thinlto-prelink-samplepgo-defaults.ll
-+++ b/llvm/test/Other/new-pm-thinlto-prelink-samplepgo-defaults.ll
-@@ -131,7 +131,6 @@
- ; CHECK-O-NEXT: Running pass: BDCEPass
- ; CHECK-O-NEXT: Running analysis: DemandedBitsAnalysis
- ; CHECK-O-NEXT: Running pass: InstCombinePass
--; CHECK-O23SZ-NEXT: Running pass: DFAJumpThreadingPass
- ; CHECK-O23SZ-NEXT: Running pass: JumpThreadingPass
- ; CHECK-O23SZ-NEXT: Running analysis: LazyValueAnalysis
- ; CHECK-O23SZ-NEXT: Running pass: CorrelatedValuePropagationPass
 diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/AMDGPU/addrspace-7-doesnt-crash.ll b/llvm/test/Transforms/IndVarSimplify/AMDGPU/addrspace-7-doesnt-crash.ll
 --- a/llvm/test/Transforms/IndVarSimplify/AMDGPU/addrspace-7-doesnt-crash.ll
 +++ b/llvm/test/Transforms/IndVarSimplify/AMDGPU/addrspace-7-doesnt-crash.ll
@@ -1776,3 +1790,44 @@ diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PhaseOrdering/X86/vdiv.ll b
 +; CHECK: [[META12]] = !{!"llvm.loop.unroll.disable"}
 +; CHECK: [[LOOP13]] = distinct !{[[LOOP13]], [[META8]]}
  ;.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -9794,6 +9794,29 @@
+     deps = [":mlir_float16_utils"],
+ )
+ 
++cc_library(
++    name = "_mlir_apfloat_utils",
++    srcs = ["lib/ExecutionEngine/APFloatWrappers.cpp"],
++    defines = ["mlir_apfloat_wrappers_EXPORTS"],
++    includes = ["include"],
++    deps = [
++        "//llvm:Support",
++    ],
++)
++
++# Indirection to avoid 'libmlir_apfloat_utils.so' filename clash.
++alias(
++    name = "mlir_apfloat_utils",
++    actual = "_mlir_apfloat_utils",
++)
++
++cc_binary(
++    name = "libmlir_apfloat_utils.so",
++    linkshared = True,
++    linkstatic = False,
++    deps = [":mlir_apfloat_utils"],
++)
++
+ # Unlike mlir_float16_utils, mlir_c_runner_utils, etc, we do *not* make
+ # this a shared library: because on the CMake side, doing so causes issues
+ # when building on Windows.  In particular, various functions take/return
+@@ -9837,6 +9860,7 @@
+     deps = [
+         ":SparseTensorEnums",
+         ":SparseTensorRuntime",
++        ":mlir_apfloat_utils",
+         ":mlir_float16_utils",
+         "//llvm:Support",
+     ],

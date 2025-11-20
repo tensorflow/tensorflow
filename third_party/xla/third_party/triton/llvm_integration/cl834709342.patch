@@ -1,0 +1,22 @@
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertWarpSpecializeToLLVM.cpp	2025-10-15 10:11:13.000000000 -0700
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertWarpSpecializeToLLVM.cpp	2025-11-20 05:16:14.000000000 -0800
+@@ -9,6 +9,7 @@
+ #include "mlir/IR/ImplicitLocOpBuilder.h"
+ #include "mlir/Pass/PassManager.h"
+ #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/TypeRange.h"
+ #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
+ #include "triton/Conversion/TritonGPUToLLVM/TypeConverter.h"
+ #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
+@@ -91,7 +92,9 @@
+   if (numThreads == 32)
+     LLVM::NVIDIA::createSyncWarp(b.getLoc(), b);
+   else
+-    b.create<NVVM::BarrierOp>(b.i32_val(barIdx), b.i32_val(numThreads));
++    mlir::NVVM::BarrierOp::create(b, b.getLoc(), mlir::TypeRange(),
++                                  b.i32_val(barIdx), b.i32_val(numThreads), {},
++                                  {});
+ }
+ 
+ static void createAllBarrier(TritonLLVMIRRewriter &b, unsigned barIdx) {
