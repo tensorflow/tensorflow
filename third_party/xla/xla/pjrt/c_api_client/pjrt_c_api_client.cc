@@ -827,6 +827,25 @@ PjRtCApiClient::BufferFromHostBuffer(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtCApiClient::BufferFromHostLiteral(const LiteralSlice& literal,
+                                      PjRtMemorySpace* memory_space,
+                                      const Layout* device_layout) {
+  if (literal.shape().is_dynamic()) {
+    return Unimplemented(
+        "PJRT C API does not support dynamic shapes for "
+        "BufferFromHostLiteral.");
+  }
+  absl::InlinedVector<int64_t, 4> strides(literal.shape().dimensions().size());
+  TF_RETURN_IF_ERROR(
+      ShapeUtil::UnpackedByteStrides(literal.shape(), absl::MakeSpan(strides)));
+  return BufferFromHostBufferInternalImpl(
+      literal.untyped_data(), literal.shape().element_type(),
+      literal.shape().dimensions(), strides,
+      HostBufferSemantics::kImmutableUntilTransferCompletes,
+      /*on_done_with_host_buffer=*/nullptr, memory_space, device_layout);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtCApiClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
     std::function<void()> on_delete_callback,

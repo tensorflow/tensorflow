@@ -112,6 +112,7 @@ xla_cc_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:types",
         "//xla/backends/cpu:alignment",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
