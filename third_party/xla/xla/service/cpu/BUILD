@@ -66,7 +66,6 @@ filegroup(
         # Single-threaded support.
         "runtime_single_threaded_matmul.h",
         # Multi-threaded support.
-        "runtime_lightweight_check.h",
         "//xla/backends/cpu/runtime:runtime_hdrs",
     ],
     visibility = internal_visibility([":friends"]),
@@ -532,13 +531,6 @@ tf_proto_library(
         "//xla:xla_proto",
         "//xla/backends/cpu/runtime:thunk_proto",
     ],
-)
-
-cc_library(
-    name = "runtime_lightweight_check",
-    hdrs = ["runtime_lightweight_check.h"],
-    compatible_with = get_compatible_with_portable(),
-    copts = runtime_copts(),
 )
 
 cc_library(
@@ -1440,7 +1432,6 @@ onednn_cc_library(
     copts = runtime_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":runtime_lightweight_check",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -1448,6 +1439,7 @@ onednn_cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/mkl:onednn",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
@@ -1466,7 +1458,6 @@ onednn_cc_library(
         ":onednn_config_proto_cc",
         ":onednn_memory_util",
         ":onednn_util",
-        ":runtime_lightweight_check",
         "//xla:executable_run_options",
         "//xla:literal",
         "//xla:shape_util",
@@ -1475,6 +1466,7 @@ onednn_cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
@@ -1493,12 +1485,12 @@ onednn_cc_library(
         ":onednn_config_proto_cc",
         ":onednn_memory_util",
         ":onednn_util",
-        ":runtime_lightweight_check",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/mkl:onednn",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@eigen_archive//:eigen3",
     ],
@@ -1516,11 +1508,11 @@ onednn_cc_library(
         ":backend_config_proto_cc",
         ":onednn_config_proto_cc",
         ":onednn_memory_util",
-        ":runtime_lightweight_check",
         "//xla:executable_run_options",
         "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:platform_port",
@@ -1539,11 +1531,11 @@ onednn_cc_library(
         ":backend_config_proto_cc",
         ":onednn_config_proto_cc",
         ":onednn_memory_util",
-        ":runtime_lightweight_check",
         "//xla:executable_run_options",
         "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:platform_port",
