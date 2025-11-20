@@ -1,5 +1,5 @@
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(":cc_to_llvm_ir.bzl", "cc_ir_header")
 
 package(
@@ -33,29 +33,14 @@ cc_library(
 cc_library(
     name = "vector_ops",
     hdrs = ["vector_ops.h"],
+    deps = [
+        "@eigen_archive//:eigen3",
+    ],
 )
-
-cpu_features = select({
-    ":is_x86_64": {
-        "avx2": [
-            "-mavx2",
-            "-mno-avx512f",
-        ],
-        "avx512": [
-            "-mavx2",
-            "-mavx512f",
-        ],
-    },
-    ":is_aarch64": {
-        "neon": [],
-    },
-    "//conditions:default": {},
-})
 
 cc_ir_header(
     name = "tanh_ll",
     src = "tanh.cc",
-    cpu_features = cpu_features,
     deps = [
         ":cpp_context_provider",
         ":tanh",
@@ -85,7 +70,6 @@ cc_library(
 cc_ir_header(
     name = "eigen_unary_ll",
     src = "eigen_unary.cc",
-    cpu_features = cpu_features,
     deps = [
         ":cpp_context_provider",
         ":eigen_unary_lib",
@@ -97,21 +81,10 @@ xla_cc_test(
     name = "eigen_unary_test",
     srcs = ["eigen_unary_test.cc"],
     deps = [
+        ":eigen_unary_lib",
         ":eigen_unary_ll",
+        ":vector_ops",
+        "//xla/codegen/intrinsic:test_matchers",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-config_setting(
-    name = "is_x86_64",
-    constraint_values = [
-        "@platforms//cpu:x86_64",
-    ],
-)
-
-config_setting(
-    name = "is_aarch64",
-    constraint_values = [
-        "@platforms//cpu:aarch64",
     ],
 )

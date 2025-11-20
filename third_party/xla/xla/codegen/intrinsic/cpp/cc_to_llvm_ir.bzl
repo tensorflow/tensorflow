@@ -1,13 +1,12 @@
 """
-A rule to compile a C++ file to a header containing LLVM IR for various
-CPU features on the host platform.
+A rule to compile a C++ file to a header containing LLVM IR.
 """
 
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain", "use_cc_toolchain")
 load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
@@ -26,47 +25,42 @@ def _cc_ir_header_impl(ctx):
     compilation_contexts = [dep[CcInfo].compilation_context for dep in ctx.attr.deps]
     output_header = ctx.outputs.out_header
 
-    ir_files = []
-    ir_definitions = []
+    ir_file = ctx.actions.declare_file("{}.ll".format(ctx.label.name))
 
-    for feature, flags in sorted(ctx.attr.cpu_features.items()):
-        ir_file = ctx.actions.declare_file("{}{}.ll".format(ctx.label.name, to_camel_case(feature)))
-        ir_files.append(ir_file)
+    cxx_flags = [
+        "-S",
+        "-emit-llvm",
+        "-O3",
+        "-DEIGEN_VECTORIZE_GENERIC",
+    ]
+    compilation_outputs = cc_common.compile(
+        actions = ctx.actions,
+        feature_configuration = feature_configuration,
+        cc_toolchain = cc_toolchain,
+        srcs = ctx.files.src,
+        compilation_contexts = compilation_contexts,
+        cxx_flags = cxx_flags,
+        name = "{}_compiler".format(ctx.label.name),
+    )
 
-        cxx_flags = list(flags) + ["-S", "-emit-llvm", "-O3"]
-        compilation_outputs = cc_common.compile(
-            actions = ctx.actions,
-            feature_configuration = feature_configuration,
-            cc_toolchain = cc_toolchain,
-            srcs = ctx.files.src,
-            compilation_contexts = compilation_contexts,
-            cxx_flags = cxx_flags,
-            name = "{}_{}_compiler".format(ctx.label.name, feature),
-        )
-
-        # 3. Copy the compiler's output to our declared intermediate file.
-        temp_ir_output = compilation_outputs[1].pic_objects[0]
-        ctx.actions.run_shell(
-            inputs = [temp_ir_output],
-            outputs = [ir_file],
-            command = "cp {} {}".format(temp_ir_output.path, ir_file.path),
-            mnemonic = "CopyLLVMIR{}".format(to_camel_case(feature)),
-        )
-
-        # 4. Prepare the C++ variable definition for the header.
-        feature_camel_case = to_camel_case(feature)
-        ir_definitions.append(
-            'inline constexpr char k{base_name}{feature}Ir[] = R"IR(\\n$(cat {input})\\n)IR";'.format(
-                base_name = to_camel_case(ctx.attr.base_name),
-                feature = feature_camel_case,
-                input = ir_file.path,
-            ),
-        )
-
-    # 5. Generate the final C++ header file.
-    all_definitions = "\n\n".join(ir_definitions)
+    # Copy the compiler's output to our declared intermediate file.
+    temp_ir_output = compilation_outputs[1].pic_objects[0]
     ctx.actions.run_shell(
-        inputs = ir_files,
+        inputs = [temp_ir_output],
+        outputs = [ir_file],
+        command = "cp {} {}".format(temp_ir_output.path, ir_file.path),
+        mnemonic = "CopyLLVMIR",
+    )
+
+    # Prepare the C++ variable definition for the header.
+    ir_definition = 'inline constexpr char k{base_name}Ir[] = R"IR($(cat {input}))IR";'.format(
+        base_name = to_camel_case(ctx.attr.base_name),
+        input = ir_file.path,
+    )
+
+    # Generate the final C++ header file.
+    ctx.actions.run_shell(
+        inputs = [ir_file],
         outputs = [output_header],
         mnemonic = "EmbeddingLLVMIR",
         command = """
@@ -83,7 +77,7 @@ namespace {namespace} {{
 EOF
 """.format(
             output = output_header.path,
-            defs = all_definitions,
+            defs = ir_definition,
             namespace = ctx.attr.namespace,
         ),
         progress_message = "Embedding LLVM IR into header for %s" % ctx.label,
@@ -106,10 +100,6 @@ _cc_ir_header_rule = rule(
             mandatory = True,
             doc = "The output header file.",
         ),
-        "cpu_features": attr.string_list_dict(
-            mandatory = True,
-            doc = "A dictionary mapping feature names to lists of CXX flags. Use select() here.",
-        ),
         "base_name": attr.string(
             mandatory = True,
             doc = "The base name of the generated IR variables.",
@@ -124,14 +114,13 @@ _cc_ir_header_rule = rule(
     fragments = ["cpp"],
 )
 
-def cc_ir_header(name, src, deps, cpu_features, **kwargs):
+def cc_ir_header(name, src, deps, **kwargs):
     """A macro that generates an IR header and wraps it in a cc_library.
 
     Args:
       name: The name of the generated cc_library.
       src: The C++ source file to compile.
       deps: The C++ dependencies of the source file.
-      cpu_features: A dictionary mapping feature names to lists of CXX flags. Use select() here.
       **kwargs: Additional arguments to pass to the generated cc_library.
     """
     out_header = name + ".h"
@@ -143,8 +132,8 @@ def cc_ir_header(name, src, deps, cpu_features, **kwargs):
         tags = ["manual"],
         src = src,
         deps = deps,
-        cpu_features = cpu_features,
         out_header = out_header,
+        # copybara_removed compatible_with = ["//buildenv/target:non_prod"],
         **kwargs
     )
 
