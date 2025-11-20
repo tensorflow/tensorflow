@@ -54,6 +54,7 @@ cc_library(
         "memref_copy_to_loops.cc",
         "shlo_to_vector.cc",
         "tensor_ops_to_bufferizable.cc",
+        "vector_to_scalar_pass.cc",
     ],
     hdrs = ["passes.h"],
     deps = [

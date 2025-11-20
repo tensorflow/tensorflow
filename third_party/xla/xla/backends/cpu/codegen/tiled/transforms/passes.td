@@ -92,3 +92,16 @@ def FuseElementwisePass : Pass<"xtile-cpu-fuse-elementwise"> {
     and fewer temporary allocations in bufferization.
   }];
 }
+
+def VectorToScalarPass : Pass<"xtile-cpu-vector-to-scalar"> {
+  let summary = "Convert vector ops to scalar ops where possible.";
+
+  let description = [{
+    This pass converts elementwise vector ops to scalar ops if the operation
+    acts on a single element.
+  }];
+
+  let dependentDialects = [
+    "::mlir::vector::VectorDialect",
+  ];
+}

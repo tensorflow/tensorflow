@@ -40,6 +40,7 @@ std::unique_ptr<mlir::Pass> CreateShloToVectorPass();
 std::unique_ptr<mlir::Pass> CreateTensorOpsToBufferizablePass();
 std::unique_ptr<mlir::Pass> CreateMemrefCopyToLoopsPass();
 std::unique_ptr<mlir::Pass> CreateFuseElementwisePass();
+std::unique_ptr<mlir::Pass> CreateVectorToScalarPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h.inc"
