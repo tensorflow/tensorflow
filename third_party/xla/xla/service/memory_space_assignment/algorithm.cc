@@ -2003,13 +2003,12 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
   return absl::OkStatus();
 }
 
-int64_t MsaAlgorithm::MaxScopedMemoryOffset() {
+int64_t MsaAlgorithm::MaxScopedMemorySize() {
   const std::vector<HloInstruction*>& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
   int64_t max_reserved_scoped_memory = 0;
-  for (BreadthFirstMidpointIterator it(0, instruction_sequence.size() - 1);
-       !it.End(); it.Next()) {
-    HloInstruction* instruction = instruction_sequence[it.value()];
+  for (int64_t i = 0; i < instruction_sequence.size(); ++i) {
+    HloInstruction* instruction = instruction_sequence[i];
     int64_t reserved_scoped_memory =
         std::min(options_.reserved_scoped_memory_fn(
                      instruction, /*operands_in_alternate_memory=*/{},
@@ -2172,7 +2171,8 @@ void PopulateExistingBlockPrefetchedValues(
 
 }  // namespace
 
-absl::Status MsaAlgorithm::AllocateAndScheduleExistingBlockPrefetches() {
+absl::Status MsaAlgorithm::AllocateAndScheduleExistingBlockPrefetches(
+    int64_t block_prefetching_starting_offset) {
   if (options_.hlo_position_to_custom_call_prefetch_details.empty()) {
     return absl::OkStatus();
   }
@@ -2215,10 +2215,6 @@ absl::Status MsaAlgorithm::AllocateAndScheduleExistingBlockPrefetches() {
                         value_to_use_intervals.at(b).first_use_time;
                });
 
-  // We need to reserve a continuous block of memory for the block prefetches,
-  // since scoped allocations are initially placed at offset 0 we place the
-  // block prefetches at the end of the reserved scoped allocations.
-  int64_t block_prefetching_starting_offset = MaxScopedMemoryOffset();
   // All block prefetches should be placed within this limit.
   int64_t block_prefetching_limit_bytes =
       block_prefetching_starting_offset +
@@ -2513,7 +2509,8 @@ void MsaAlgorithm::ColocateAndFinalizeValuesAliasedToExistingBlockPrefetches(
   MarkRepackAllocationBlocksColocated(colocations);
 }
 
-absl::Status MsaAlgorithm::CreateNewBlockPrefetches() {
+absl::Status MsaAlgorithm::CreateNewBlockPrefetches(
+    int64_t block_prefetching_starting_offset) {
   if (!options_.hlo_position_to_custom_call_prefetch_details.empty() ||
       options_.reserved_bytes_for_block_prefetches <= 0) {
     return absl::OkStatus();
@@ -2604,10 +2601,6 @@ absl::Status MsaAlgorithm::CreateNewBlockPrefetches() {
                         value_to_use_intervals.at(b).first_use_time;
                });
 
-  // Block allocations can also happen in the fragmented scoped memory, so we
-  // need to account for the max reserved scoped memory in the block prefetched
-  // memory limit.
-  int64_t block_prefetching_starting_offset = MaxScopedMemoryOffset();
   int64_t block_prefetching_limit_bytes =
       block_prefetching_starting_offset +
       options_.reserved_bytes_for_block_prefetches;
@@ -2904,6 +2897,37 @@ void MsaAlgorithm::ColocateAndFinalizeValuesAliasedToNewBlockPrefetches(
   MarkRepackAllocationBlocksColocated(colocations);
 }
 
+int64_t MsaAlgorithm::ReserveAlternateMemoryForScopedMemoryAllocations() {
+  int64_t max_scoped_memory_size = MaxScopedMemorySize();
+  int program_start_time = 0;
+  int program_end_time =
+      hlo_live_range_.flattened_instruction_sequence().instructions().size() -
+      1;
+  MsaBufferInterval interval;
+  interval.buffer = nullptr;
+  interval.size = max_scoped_memory_size;
+  interval.start = program_start_time;
+  interval.end = program_end_time;
+  interval.need_allocation = true;
+  HeapSimulator::Chunk chunk_candidate =
+      FindChunkCandidate(interval, /*preferred_offset=*/0);
+  CHECK_EQ(chunk_candidate.offset, 0);
+  CHECK_EQ(chunk_candidate.size, max_scoped_memory_size);
+  CommitChunk(interval, chunk_candidate);
+  return max_scoped_memory_size;
+}
+
+void MsaAlgorithm::FreeAlternateMemoryForScopedMemoryAllocations(
+    int64_t max_scoped_memory_size) {
+  int program_start_time = 0;
+  int program_end_time =
+      hlo_live_range_.flattened_instruction_sequence().instructions().size() -
+      1;
+  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(
+      /*offset=*/0, /*size=*/max_scoped_memory_size);
+  interval_tree_.Remove(program_start_time, program_end_time, chunk);
+}
+
 absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   // Note: Memory Space Assignment creates a HeapSimulator and passes an
   // MsaAlgorithm object to it. buffer_intervals_ is populated by calling the
@@ -2916,10 +2940,19 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
           << (options_.sliced_prefetch_options.max_slices() >= 2 ? "enabled"
                                                                  : "disabled");
 
-  AllocateReservedScopedAllocations();
+  // Reserve alternate memory for scoped memory allocations before block
+  // prefetches are allocated strictly above the MaxScopedMemorySize().
+  int64_t max_scoped_memory_size =
+      ReserveAlternateMemoryForScopedMemoryAllocations();
 
-  TF_RETURN_IF_ERROR(AllocateAndScheduleExistingBlockPrefetches());
-  TF_RETURN_IF_ERROR(CreateNewBlockPrefetches());
+  TF_RETURN_IF_ERROR(
+      AllocateAndScheduleExistingBlockPrefetches(max_scoped_memory_size));
+  TF_RETURN_IF_ERROR(CreateNewBlockPrefetches(max_scoped_memory_size));
+
+  // Free the alternate memory reserved for scoped memory allocations before
+  // allocating the scoped memory allocations.
+  FreeAlternateMemoryForScopedMemoryAllocations(max_scoped_memory_size);
+  AllocateReservedScopedAllocations();
 
   std::vector<MsaBufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
@@ -5067,12 +5100,7 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
 void MsaAlgorithm::AllocateReservedScopedAllocations() {
   const std::vector<HloInstruction*>& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
-  if (options_.allocate_reserved_scoped_memory_at_same_offset) {
-    // If we are co-locating scoped allocations, then we need to make sure that
-    // the repack allocation blocks are empty, because we mark all the repack
-    // allocation blocks as co-located in a loop below.
-    CHECK(repack_allocation_blocks_.empty());
-  }
+  std::vector<AllocationBlock*> colocations;
   for (BreadthFirstMidpointIterator it(0, instruction_sequence.size() - 1);
        !it.End(); it.Next()) {
     HloInstruction* instruction = instruction_sequence[it.value()];
@@ -5085,7 +5113,7 @@ void MsaAlgorithm::AllocateReservedScopedAllocations() {
       continue;
     }
     AllocateScopedAllocation(instruction, /*is_post_module=*/false,
-                             reserved_scoped_memory, it.value());
+                             reserved_scoped_memory, it.value(), colocations);
   }
   // If requested, make all scoped allocations to colocate with each other so
   // that when we repack, all scoped allocations get the same offsets. Since
@@ -5093,18 +5121,10 @@ void MsaAlgorithm::AllocateReservedScopedAllocations() {
   // opportunity to deduplicate different ops.  However, this may hurt the
   // memory packing efficiency.
   if (options_.allocate_reserved_scoped_memory_at_same_offset) {
-    for (auto allocation_block_it = repack_allocation_blocks_.begin();
-         allocation_block_it != repack_allocation_blocks_.end() &&
-         std::next(allocation_block_it) != repack_allocation_blocks_.end();
-         ++allocation_block_it) {
-      allocation_block_it->next_colocated = &*std::next(allocation_block_it);
-    }
-    if (!repack_allocation_blocks_.empty()) {
-      repack_allocation_blocks_.back().next_colocated =
-          &repack_allocation_blocks_.front();
-    }
+    MarkRepackAllocationBlocksColocated(colocations);
   }
 
+  colocations.clear();
   // Allocate post-module scoped allocation if requested. It never needs to be
   // colocated with other scoped allocations.
   if (options_.post_module_scoped_alternate_memory_size_in_bytes > 0) {
@@ -5112,15 +5132,15 @@ void MsaAlgorithm::AllocateReservedScopedAllocations() {
         /*instruction=*/module_->entry_computation()->root_instruction(),
         /*is_post_module=*/true,
         options_.post_module_scoped_alternate_memory_size_in_bytes,
-        hlo_live_range_.schedule_end_time());
+        hlo_live_range_.schedule_end_time(), colocations);
   }
 
   ClearPendingChunks();
 }
 
-void MsaAlgorithm::AllocateScopedAllocation(HloInstruction* instruction,
-                                            bool is_post_module, int64_t size,
-                                            int64_t time) {
+void MsaAlgorithm::AllocateScopedAllocation(
+    HloInstruction* instruction, bool is_post_module, int64_t size,
+    int64_t time, std::vector<AllocationBlock*>& colocations) {
   VLOG(1) << "Allocate reserved scoped memory at " << time << " ("
           << (is_post_module ? "<post-module>" : instruction->name())
           << "): " << size;
@@ -5147,6 +5167,7 @@ void MsaAlgorithm::AllocateScopedAllocation(HloInstruction* instruction,
       /*initial_offset=*/0, allocations_->back().get()));
   repack_allocation_blocks_.back().next_colocated =
       &repack_allocation_blocks_.back();
+  colocations.push_back(&repack_allocation_blocks_.back());
 }
 
 int64_t MsaAlgorithm::GetCorrectedUseTime(
