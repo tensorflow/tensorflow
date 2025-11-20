@@ -62,6 +62,12 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
     # Additional setup is contained in ci/official/envs/rbe.
     CONTAINER_IP_ADDR=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' tf)
     netsh advfirewall firewall add rule name="Allow Metadata Proxy" dir=in action=allow protocol=TCP localport=80 remoteip="$CONTAINER_IP_ADDR"
+
+    # Stop non-essential indexing and link tracking services that
+    # may lock new files or symlinks.
+    # They may be causing sporadic "Permission denied" errors during Bazel builds.
+    # b/461500885
+    docker exec tf powershell -NoProfile -Command 'Stop-Service -Name SysMain,DiagTrack -Force -ErrorAction SilentlyContinue'
   fi
 
 fi
