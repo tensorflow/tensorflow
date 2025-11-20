@@ -26,8 +26,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
+#include "xla/stream_executor/cuda/subprocess_compilation_support.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/cuda_root_path.h"
 #include "tsl/platform/path.h"
@@ -38,7 +38,6 @@ namespace stream_executor::cuda {
 namespace {
 using ::testing::AllOf;
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 TEST(AssembleCompilationProviderTest, CandidateCudaRootsConsidersCUDA_HOME) {
   const std::string cuda_home = "/my/cuda/home";
@@ -99,6 +98,10 @@ TEST(AssembleCompilationProviderTest,
   if (!tsl::io::GetTestWorkspaceDir(&cuda_dir)) {
     GTEST_SKIP() << "No test workspace directory found which means we can't "
                     "run this test. Was this called in a Bazel environment?";
+  }
+
+  if (!IsSubprocessCompilationSupported()) {
+    GTEST_SKIP() << "Subprocess compilation is not supported in this build.";
   }
 
   CompilationProviderOptions options{

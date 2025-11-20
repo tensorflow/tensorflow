@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/cuda/subprocess_compilation_provider.h"
+#include "xla/stream_executor/cuda/subprocess_compilation_support.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/errors.h"
 
@@ -189,14 +190,22 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
   }
 
   absl::StatusOr<std::string> ptxas_path =
-      FindPtxAsExecutable(options.cuda_data_dir());
+      IsSubprocessCompilationSupported()
+          ? FindPtxAsExecutable(options.cuda_data_dir())
+          : absl::UnavailableError("Subprocess compilation is not supported.");
   absl::StatusOr<SemanticVersion> ptxas_version =
-      GetToolVersionIfToolAvailable(ptxas_path);
+      IsSubprocessCompilationSupported()
+          ? GetToolVersionIfToolAvailable(ptxas_path)
+          : absl::UnavailableError("Subprocess compilation is not supported.");
 
   absl::StatusOr<std::string> nvlink_path =
-      FindNvlinkExecutable(options.cuda_data_dir());
+      IsSubprocessCompilationSupported()
+          ? FindNvlinkExecutable(options.cuda_data_dir())
+          : absl::UnavailableError("Subprocess compilation is not supported.");
   absl::StatusOr<SemanticVersion> nvlink_version =
-      GetToolVersionIfToolAvailable(nvlink_path);
+      IsSubprocessCompilationSupported()
+          ? GetToolVersionIfToolAvailable(nvlink_path)
+          : absl::UnavailableError("Subprocess compilation is not supported.");
 
   append_to_decision_log(
       absl::StrCat("ptxas_path: ", ToDebugString(ptxas_path)));
@@ -208,7 +217,7 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
       absl::StrCat("nvlink_version: ", ToDebugString(nvlink_version)));
 
   const bool has_subprocess_compilation_support =
-      ptxas_path.ok() && nvlink_path.ok();
+      IsSubprocessCompilationSupported() && ptxas_path.ok() && nvlink_path.ok();
 
   if (has_subprocess_compilation_support) {
     VLOG(3) << "Using ptxas(path=" << ptxas_path.value()
