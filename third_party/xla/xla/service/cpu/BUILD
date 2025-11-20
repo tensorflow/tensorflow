@@ -52,15 +52,8 @@ filegroup(
     name = "runtime_srcs",
     srcs = [
         # Single-threaded support.
-        "runtime_single_threaded_matmul_c128.cc",
-        "runtime_single_threaded_matmul_c64.cc",
         "runtime_single_threaded_matmul_common.h",
-        "runtime_single_threaded_matmul_f8.cc",
-        "runtime_single_threaded_matmul_f16.cc",
         "runtime_single_threaded_matmul_f32.cc",
-        "runtime_single_threaded_matmul_f64.cc",
-        "runtime_single_threaded_matmul_s32.cc",
-        "runtime_single_threaded_matmul_u8.cc",
         # Multi-threaded support.
         "//xla/backends/cpu/runtime:runtime_srcs",
     ],
@@ -1054,52 +1047,20 @@ cc_library(
 )
 
 cc_library(
-    name = "runtime_single_threaded_matmul_impl",
-    srcs = [
-        "runtime_single_threaded_matmul_c128.cc",
-        "runtime_single_threaded_matmul_c64.cc",
-        "runtime_single_threaded_matmul_common.h",
-        "runtime_single_threaded_matmul_f16.cc",
-        "runtime_single_threaded_matmul_f32.cc",
-        "runtime_single_threaded_matmul_f64.cc",
-        "runtime_single_threaded_matmul_f8.cc",
-        "runtime_single_threaded_matmul_s32.cc",
-        "runtime_single_threaded_matmul_u8.cc",
-    ],
-    hdrs = ["runtime_single_threaded_matmul.h"],
-    compatible_with = get_compatible_with_portable(),
-    copts = runtime_copts(),
-    linkstatic = 1,
-    visibility = ["//visibility:private"],
-    deps = [
-        "//xla/tsl/framework/contraction:eigen_contraction_kernel_no_mkl",
-        "@com_google_absl//absl/base:core_headers",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:ml_dtypes",
-    ],
-)
-
-cc_library(
     name = "runtime_single_threaded_matmul",
-    hdrs = ["runtime_single_threaded_matmul.h"],
-    compatible_with = get_compatible_with_portable(),
-    copts = runtime_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":runtime_single_threaded_matmul_impl",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:ml_dtypes",
-    ],
 )
 
 cc_library(
     name = "runtime_single_threaded_matmul_nomkl",
+    srcs = [
+        "runtime_single_threaded_matmul_common.h",
+        "runtime_single_threaded_matmul_f32.cc",
+    ],
     hdrs = ["runtime_single_threaded_matmul.h"],
     compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":runtime_single_threaded_matmul_impl",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel_no_mkl",
         "@com_google_absl//absl/base:core_headers",
         "@eigen_archive//:eigen3",
