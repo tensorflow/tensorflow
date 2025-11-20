@@ -21,7 +21,10 @@ cc_library(
         "flags.h",
     ],
     visibility = ["//tensorflow:internal"],
-    deps = ["//tensorflow/core/platform:stringpiece"],
+    deps = [
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 filegroup(
