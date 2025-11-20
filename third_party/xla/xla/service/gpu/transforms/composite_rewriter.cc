@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/Attributes.h"
@@ -50,43 +49,52 @@ absl::StatusOr<DotDimensionNumbers> ParseDimensionNumbers(
   mlir::MLIRContext context;
   mlir::Attribute attr = mlir::parseAttribute(composite_attributes, &context);
   mlir::DictionaryAttr dict_attrs = mlir::dyn_cast<mlir::DictionaryAttr>(attr);
-  auto get_int = [&](absl::string_view key) -> absl::StatusOr<int32_t> {
-    if (!dict_attrs.contains(key)) {
-      return absl::InvalidArgumentError(absl::StrCat(key, " is not set"));
-    }
-    mlir::Attribute attr = dict_attrs.get(key);
-    if (!mlir::isa<mlir::IntegerAttr>(attr)) {
-      return absl::InvalidArgumentError(
-          absl::StrCat(key, " is not an integer"));
-    }
-    return mlir::cast<mlir::IntegerAttr>(attr).getInt();
-  };
-  DotDimensionNumbers dot_dimension_numbers;
-  TF_ASSIGN_OR_RETURN(int32_t lhs_contracting_dim_index,
-                      get_int("lhs_contracting_dim_index"));
-  dot_dimension_numbers.add_lhs_contracting_dimensions(
-      lhs_contracting_dim_index);
-  TF_ASSIGN_OR_RETURN(int32_t rhs_contracting_dim_index,
-                      get_int("rhs_contracting_dim_index"));
-  dot_dimension_numbers.add_rhs_contracting_dimensions(
-      rhs_contracting_dim_index);
-
-  if (dict_attrs.contains("lhs_batch_dim_index")) {
-    TF_ASSIGN_OR_RETURN(int32_t lhs_batch_dim_index,
-                        get_int("lhs_batch_dim_index"));
-    dot_dimension_numbers.add_lhs_batch_dimensions(lhs_batch_dim_index);
-  }
-  if (dict_attrs.contains("rhs_batch_dim_index")) {
-    TF_ASSIGN_OR_RETURN(int32_t rhs_batch_dim_index,
-                        get_int("rhs_batch_dim_index"));
-    dot_dimension_numbers.add_rhs_batch_dimensions(rhs_batch_dim_index);
-  }
-  if (dot_dimension_numbers.lhs_batch_dimensions_size() !=
-      dot_dimension_numbers.rhs_batch_dimensions_size()) {
+  if (!dict_attrs.contains("dimension_numbers")) {
     return absl::InvalidArgumentError(
-        "batch dimension should be specified for both lhs and rhs.");
+        "dimension_numbers are not set in composite attributes");
   }
-  return dot_dimension_numbers;
+
+  mlir::ArrayAttr dim_numbers =
+      mlir::dyn_cast<mlir::ArrayAttr>(dict_attrs.get("dimension_numbers"));
+  if (!dim_numbers || dim_numbers.size() != 2) {
+    return absl::InvalidArgumentError(
+        "dimension_numbers must be array of size 2");
+  }
+
+  mlir::ArrayAttr contracting = mlir::dyn_cast<mlir::ArrayAttr>(dim_numbers[0]);
+  mlir::ArrayAttr batch = mlir::dyn_cast<mlir::ArrayAttr>(dim_numbers[1]);
+  if (!contracting || contracting.size() != 2 || !batch || batch.size() != 2) {
+    return absl::InvalidArgumentError(
+        "invalid contracting or batch dimensions");
+  }
+
+  mlir::ArrayAttr lhs_contracting =
+      mlir::dyn_cast<mlir::ArrayAttr>(contracting[0]);
+  mlir::ArrayAttr rhs_contracting =
+      mlir::dyn_cast<mlir::ArrayAttr>(contracting[1]);
+  mlir::ArrayAttr lhs_batch = mlir::dyn_cast<mlir::ArrayAttr>(batch[0]);
+  mlir::ArrayAttr rhs_batch = mlir::dyn_cast<mlir::ArrayAttr>(batch[1]);
+
+  if (!lhs_contracting || !rhs_contracting || !lhs_batch || !rhs_batch) {
+    return absl::InvalidArgumentError("Invalid dimension_numbers structure");
+  }
+
+  DotDimensionNumbers dnums;
+  for (mlir::Attribute dim : lhs_contracting) {
+    dnums.add_lhs_contracting_dimensions(
+        mlir::cast<mlir::IntegerAttr>(dim).getInt());
+  }
+  for (mlir::Attribute dim : rhs_contracting) {
+    dnums.add_rhs_contracting_dimensions(
+        mlir::cast<mlir::IntegerAttr>(dim).getInt());
+  }
+  for (mlir::Attribute dim : lhs_batch) {
+    dnums.add_lhs_batch_dimensions(mlir::cast<mlir::IntegerAttr>(dim).getInt());
+  }
+  for (mlir::Attribute dim : rhs_batch) {
+    dnums.add_rhs_batch_dimensions(mlir::cast<mlir::IntegerAttr>(dim).getInt());
+  }
+  return dnums;
 }
 
 }  // namespace
@@ -120,6 +128,45 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
     TF_ASSIGN_OR_RETURN(
         DotDimensionNumbers dot_dimension_numbers,
         ParseDimensionNumbers(frontend_attrs.at("composite.attributes")));
+
+    if (dot_dimension_numbers.lhs_contracting_dimensions_size() != 1 ||
+        dot_dimension_numbers.rhs_contracting_dimensions_size() != 1 ||
+        dot_dimension_numbers.lhs_batch_dimensions_size() > 1 ||
+        dot_dimension_numbers.rhs_batch_dimensions_size() > 1) {
+      LOG(ERROR) << "Unsupported dimension numbers: "
+                 << dot_dimension_numbers.DebugString();
+      continue;
+    }
+
+    const HloInstruction* lhs = call->operand(0);
+    const HloInstruction* rhs = call->operand(1);
+    const HloInstruction* lhs_scale = call->operand(2);
+    const HloInstruction* rhs_scale = call->operand(3);
+
+    if (lhs->shape().element_type() != BF16) {
+      int64_t contracting_dim =
+          dot_dimension_numbers.lhs_contracting_dimensions(0);
+      int64_t scale_factor = lhs->shape().dimensions(contracting_dim) /
+                             lhs_scale->shape().dimensions(contracting_dim);
+      if (scale_factor != 32) {
+        VLOG(2) << "LHS scale_factor is not 32: " << scale_factor
+                << " ignore such scaled_dot. It will be inlined later.";
+        continue;
+      }
+    }
+
+    if (rhs->shape().element_type() != BF16) {
+      int64_t contracting_dim =
+          dot_dimension_numbers.rhs_contracting_dimensions(0);
+      int64_t scale_factor = rhs->shape().dimensions(contracting_dim) /
+                             rhs_scale->shape().dimensions(contracting_dim);
+      if (scale_factor != 32) {
+        VLOG(2) << "RHS scale_factor is not 32: " << scale_factor
+                << " ignore such scaled_dot for now. It will be inlined later.";
+        continue;
+      }
+    }
+
     PrecisionConfig precision{};
     precision.mutable_operand_precision()->Resize(2, PrecisionConfig::DEFAULT);
     auto* scaled_dot =

@@ -56,20 +56,14 @@ TEST(CompositeRewriterTest, ScaledDotCompositeRewrite) {
 
     ENTRY %main {
       %lhs = f8e4m3fn[3,128,256]{2,1,0} parameter(0)
-      %rhs = f8e4m3fn[3,128,256]{2,1,0} parameter(1)
+      %rhs = f8e4m3fn[3,256,128]{2,1,0} parameter(1)
       %lhs_scales = f8e8m0fnu[3,128,8]{2,1,0} parameter(2)
-      %rhs_scales = f8e8m0fnu[3,128,8]{2,1,0} parameter(3)
+      %rhs_scales = f8e8m0fnu[3,8,128]{2,1,0} parameter(3)
       ROOT %call.1 = bf16[3,128,128]{2,1,0} call(%lhs, %rhs, %lhs_scales, %rhs_scales),
           to_apply=%xla.scaled_dot.1,
           is_composite=true,
           frontend_attributes={
-            composite.attributes={
-              preferred_element_type = bf16,
-              lhs_contracting_dim_index = 2 : i64,
-              rhs_contracting_dim_index = 1 : i64,
-              lhs_batch_dim_index = 0 : i64,
-              rhs_batch_dim_index = 0 : i64
-            },
+            composite.attributes="{dimension_numbers=[[[2],[1]],[[0],[0]]]}",
             composite.name="xla.scaled_dot",
             composite.version="1"
           }
