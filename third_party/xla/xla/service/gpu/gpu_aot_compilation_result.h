@@ -41,7 +41,7 @@ namespace xla::gpu {
 // HLO.
 class GpuAotCompilationResult : public AotCompilationResult {
  public:
-  static absl::StatusOr<std::unique_ptr<GpuAotCompilationResult>> Create(
+  static absl::StatusOr<std::unique_ptr<GpuAotCompilationResult>> FromProto(
       GpuExecutableProto executable) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         HloModule::CreateFromProtoWithConfig(

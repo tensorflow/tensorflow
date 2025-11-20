@@ -21,11 +21,17 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
@@ -36,22 +42,39 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
-using GpuAotCompilationTest = HloTestBase;
+class GpuAotCompilationTest : public HloTestBase,
+                              public ::testing::WithParamInterface<bool> {
+ protected:
+  void SetUp() override { debug_options_ = GetDebugOptionsForTest(); }
 
-TEST_F(GpuAotCompilationTest, ExportAndLoadExecutable) {
-  const absl::string_view hlo_string = R"(
-HloModule Test
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_aot_compiled_thunks(GetParam());
+    return debug_options;
+  }
 
-ENTRY main {
-  a = f32[100, 200]{1,0} parameter(0)
-  ROOT b = f32[100, 200]{0,1} copy(a)
-}
-)";
+  DebugOptions debug_options_;
+};
+INSTANTIATE_TEST_SUITE_P(NewAotFlow, GpuAotCompilationTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "NewAotFlowEnabled"
+                                             : "NewAotFlowDisabled";
+                         });
+
+TEST_P(GpuAotCompilationTest, ExportAndLoadExecutable) {
+  const absl::string_view hlo_string = R"hlo(
+    HloModule Test
+
+    ENTRY main {
+      a = f32[100, 200]parameter(0)
+      ROOT b = f32[100, 200] copy(a)
+    }
+)hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
@@ -84,15 +107,15 @@ ENTRY main {
       std::move(*aot_result).LoadExecutable(compiler, stream_exec));
 }
 
-TEST_F(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
-  const absl::string_view hlo_string = R"(
-HloModule Test
+TEST_P(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
+  const absl::string_view hlo_string = R"hlo(
+    HloModule Test
 
-ENTRY main {
-  a = f32[100, 200]{1,0} parameter(0)
-  ROOT b = f32[100, 200]{0,1} copy(a)
-}
-)";
+    ENTRY main {
+      a = f32[100, 200] parameter(0)
+      ROOT b = f32[100, 200] copy(a)
+    }
+)hlo";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
@@ -136,20 +159,20 @@ std::string CreateTritonCustomCallBackendConfig() {
   mlir::Builder builder(&context_);
 
   // Create the backend_config for the triton custom call.
-  const std::string kMLIRText = R"(
-  module {
-    tt.func public @add_one(%arg0: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg1: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg2: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg3: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}) {
-      %0 = tt.get_program_id x : i32
-      %1 = tt.load %arg0 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
-      %2 = tt.load %arg1 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
-      %cst = arith.constant 1.000000e+00 : f32
-      %3 = arith.addf %1, %cst : f32
-      tt.store %arg2, %3 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
-      tt.store %arg3, %2 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
-      tt.return
+  const std::string kMLIRText = R"mlir(
+    module {
+      tt.func public @add_one(%arg0: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg1: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg2: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg3: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}) {
+        %0 = tt.get_program_id x : i32
+        %1 = tt.load %arg0 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
+        %2 = tt.load %arg1 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
+        %cst = arith.constant 1.000000e+00 : f32
+        %3 = arith.addf %1, %cst : f32
+        tt.store %arg2, %3 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
+        tt.store %arg3, %2 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
+        tt.return
+      }
     }
-  }
-  )";
+  )mlir";
 
   NamedAttribute name =
       builder.getNamedAttr("name", builder.getStringAttr("add_one"));
@@ -183,7 +206,7 @@ std::string CreateTritonCustomCallBackendConfig() {
 
 }  // namespace
 
-TEST_F(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
+TEST_P(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
   auto triton_support =
       EnsureTritonSupportsComputeCapability(backend()
                                                 .default_stream_executor()
@@ -193,7 +216,7 @@ TEST_F(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
     GTEST_SKIP() << triton_support;
   }
 
-  const absl::string_view hlo_string_template = R"(
+  const absl::string_view hlo_string_template = R"hlo(
     HloModule Test
 
     ENTRY main {
@@ -201,7 +224,7 @@ TEST_F(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
     b = f32[] parameter(1)
     ROOT c = (f32[],f32[]) custom-call(a, b), custom_call_target="__gpu$xla.gpu.triton", backend_config="%s"
     }
-    )";
+    )hlo";
 
   std::string hlo_string =
       absl::StrFormat(hlo_string_template,
