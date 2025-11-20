@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 from tensorflow.python.framework import constant_op
-from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import nn_impl
 from tensorflow.python.platform import test
 
 
@@ -24,7 +24,7 @@ class WeightedMomentsTest(test.TestCase):
                               [6., 7., 8., 9., 10.]])
     weights = constant_op.constant([[1.], [1.]])
     axes = constant_op.constant([0], dtype=constant_op.dtypes.int32)
-    mean, var = nn_ops.weighted_moments(
+    mean, var = nn_impl.weighted_moments(
         x, axes=axes, frequency_weights=weights, keepdims=False)
     self.assertEqual(mean.shape.as_list(), [5])
     self.assertEqual(var.shape.as_list(), [5])
