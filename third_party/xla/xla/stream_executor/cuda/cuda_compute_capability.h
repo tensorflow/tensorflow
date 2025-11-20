@@ -70,6 +70,7 @@ struct CudaComputeCapability {
     kAmpere = 8,
     kHopper = 9,
     kBlackwell = 10,
+    kBlackwell_11 = 11,
     kBlackwell_12 = 12
   };
 

@@ -330,6 +330,7 @@ TEST_F(StatelessAutotunerTest, CublasFallbackForBf16Bf16F32Algorithm) {
                "Hopper";
         break;
       case se::CudaComputeCapability::kBlackwell:
+      case se::CudaComputeCapability::kBlackwell_11:
       case se::CudaComputeCapability::kBlackwell_12:
         EXPECT_TRUE(hasCublasConfig(configs))
             << "There should be a cublas fallback for dot_bf16_bf16_f32 on "
