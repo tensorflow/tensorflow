@@ -21,8 +21,11 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "xla/debug_options_flags.h"
@@ -37,6 +40,7 @@
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt_proxy/client/executable.h"
+#include "xla/python/ifrt_proxy/client/mpmd_executable.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/versions.h"
@@ -138,6 +142,52 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
                         client_->LookupDevice(DeviceId(device_id)));
     addressable_devices.push_back(device);
   }
+  absl::StatusOr<
+      absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>>
+      mpmd_addressable_devices;
+  bool is_mpmd_executable = false;
+
+  if (response->has_mpmd_addressable_devices()) {
+    is_mpmd_executable = true;
+    absl::flat_hash_map<int, xla::ifrt::Device*> device_id_map;
+    for (xla::ifrt::Device* device : addressable_devices) {
+      device_id_map[device->Id().value()] = device;
+    }
+    absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>
+        temp_mpmd_devices;
+    bool lookup_failed = false;
+    for (const auto& [name, devices_proto] :
+         response->mpmd_addressable_devices().mpmd_addressable_devices()) {
+      std::vector<xla::ifrt::Device*> current_devices;
+      current_devices.reserve(devices_proto.device_ids_size());
+
+      for (const auto& device_id : devices_proto.device_ids()) {
+        auto it = device_id_map.find(device_id);
+        if (it != device_id_map.end()) {
+          current_devices.push_back(it->second);
+        } else {
+          mpmd_addressable_devices = absl::NotFoundError(
+              absl::StrCat("Device ID ", device_id, " in mesh '", name,
+                           "' not found in client's addressable devices."));
+          LOG(ERROR) << mpmd_addressable_devices.status();
+          lookup_failed = true;
+          break;
+        }
+      }
+      if (lookup_failed) {
+        break;
+      }
+      temp_mpmd_devices[name] = std::move(current_devices);
+    }
+
+    if (!lookup_failed) {
+      mpmd_addressable_devices = std::move(temp_mpmd_devices);
+    }
+  } else if (response->has_mpmd_addressable_devices_error()) {
+    is_mpmd_executable = true;
+    mpmd_addressable_devices =
+        tsl::StatusFromProto(response->mpmd_addressable_devices_error());
+  }
 
   absl::StatusOr<std::optional<std::string>> fingerprint;
   switch (response->fingerprint_case()) {
@@ -178,6 +228,15 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
   TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
                       client_->MakeDeviceList(devices));
 
+  if (is_mpmd_executable) {
+    return std::make_unique<MpmdLoadedExecutable>(
+        client_, rpc_helper_, response->loaded_executable_handle(),
+        response->name(), response->num_devices(), device_list,
+        std::move(addressable_devices), std::move(mpmd_addressable_devices),
+        std::move(fingerprint), std::move(ready_future),
+        std::move(loaded_host_callbacks),
+        std::move(loaded_host_callback_handles));
+  }
   return std::make_unique<LoadedExecutable>(
       client_, rpc_helper_, response->loaded_executable_handle(),
       response->name(), response->num_devices(), device_list,

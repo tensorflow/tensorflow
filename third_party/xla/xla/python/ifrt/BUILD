@@ -579,6 +579,7 @@ cc_library(
         ":attribute_map",
         ":basic_device_list",
         ":ifrt",
+        ":mpmd_executable",
         ":user_context",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
