@@ -30,14 +30,12 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
 using ::testing::Optional;
-using ::tsl::testing::IsOkAndHolds;
 
 class CollectiveCombinerAnnotatorTest : public HloHardwareIndependentTestBase {
  protected:
