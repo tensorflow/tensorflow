@@ -21,6 +21,10 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
+// Correlate the Mosaic GPU ondevice traces with the CPU/GPU kernel
+// launch/execute event. It should be done before MergeHostPlanes.
+void AlignMosaicGpuOndeviceTrace(tensorflow::profiler::XSpace* space);
+
 // Post process XSpaces collected locally from multiple profilers.
 void PostProcessSingleHostXSpace(tensorflow::profiler::XSpace* space,
                                  uint64_t start_time_ns, uint64_t stop_time_ns);
