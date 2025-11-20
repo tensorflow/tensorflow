@@ -142,7 +142,10 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//third_party/protobuf",
+        "//third_party/protobuf/io",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:protobuf",
@@ -159,6 +162,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -266,6 +270,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
