@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/function.h"
@@ -169,6 +170,7 @@ struct FunctionEmitterContext {
   struct RegInfo {
     int num_uses = 0;
     int id = -1;
+    bool persistent = false;  // True if the register should not be freed
   };
 
   int next_reg_id = 0;
@@ -218,9 +220,12 @@ void EmitKernel(FunctionEmitterContext& function_context,
     int id = iter->second.id;
     CHECK_NE(id, -1);  // Crash Ok
     last_uses.push_back(0);
-    if (--iter->second.num_uses == 0) {
-      function_context.FreeRegId(id);
-      last_uses.back() = 1;
+    auto& reg_info = iter->second;
+    if (!reg_info.persistent) {
+      if (--reg_info.num_uses == 0) {
+        function_context.FreeRegId(id);
+        last_uses.back() = 1;
+      }
     }
     arguments.push_back(id);
   }
@@ -284,16 +289,21 @@ void EmitFunction(const ModuleEmitterContext& module_context,
   for (auto arg : block.getArguments()) {
     int id = function_context.AssignRegId();
     input_regs.push_back(id);
+    bool persistent = mlir::isa<mlrt::compiler::AsyncHandleType>(arg.getType());
     register_table[arg] = {static_cast<int>(std::distance(arg.getUses().begin(),
                                                           arg.getUses().end())),
-                           id};
+                           id, persistent};
   }
   constructor.construct_input_regs(input_regs);
 
   for (auto& op : block) {
     for (auto result : op.getResults()) {
-      register_table[result] = {static_cast<int>(
-          std::distance(result.getUses().begin(), result.getUses().end()))};
+      bool persistent =
+          mlir::isa<mlrt::compiler::AsyncHandleType>(result.getType());
+      register_table[result] = {
+          static_cast<int>(
+              std::distance(result.getUses().begin(), result.getUses().end())),
+          -1, persistent};
     }
   }
 

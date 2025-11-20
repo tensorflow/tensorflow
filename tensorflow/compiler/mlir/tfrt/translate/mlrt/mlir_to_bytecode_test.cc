@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
 #include "xla/tsl/platform/resource_loader.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
@@ -380,6 +381,67 @@ TEST(MlirToByteCodeTest, CustomDense) {
     EXPECT_THAT(custom_dense.shape(), ElementsAreArray({1}));
     EXPECT_THAT(custom_dense.data(), ElementsAreArray({i}));
   }
+}
+
+TEST(MlirToByteCodeTest, Async) {
+  constexpr char kAsyncMlir[] =
+      "tensorflow/compiler/mlir/tfrt/translate/mlrt/testdata/async.mlir";
+
+  mlir::DialectRegistry registry;
+  registry.insert<mlir::func::FuncDialect, mlrt::compiler::MlrtDialect>();
+  mlir::MLIRContext mlir_context(registry);
+  mlir_context.allowUnregisteredDialects();
+  auto mlir_module = mlir::parseSourceFile<mlir::ModuleOp>(
+      tsl::GetDataDependencyFilepath(kAsyncMlir), &mlir_context);
+
+  AttributeEncoderRegistry attribute_encoder_registry;
+  bc::Buffer buffer =
+      EmitExecutable(attribute_encoder_registry, mlir_module.get()).value();
+
+  bc::Executable executable(buffer.data());
+
+  auto kernel_names = executable.kernel_names();
+  EXPECT_THAT(kernel_names,
+              ElementsAreArray({"test_mlbc.add.i32", "return", "mlrt.async",
+                                "mlrt.await_handle"}));
+
+  auto functions = executable.functions();
+  ASSERT_EQ(functions.size(), 2);
+
+  auto function = functions[1];
+  EXPECT_EQ(function.name().str(), "main");
+  EXPECT_EQ(function.num_regs(), 4);
+  EXPECT_THAT(function.input_regs(), ElementsAreArray({0, 1}));
+  EXPECT_THAT(function.output_regs(), ElementsAreArray({1}));
+  EXPECT_THAT(function.output_last_uses(), ElementsAreArray({true}));
+
+  auto kernels = function.kernels();
+  ASSERT_EQ(kernels.size(), 5);
+
+  EXPECT_EQ(kernels[0].code(), 2);  // mlrt.async
+  EXPECT_THAT(kernels[0].arguments(), ElementsAreArray({0, 1}));
+  // The returned handle is in register 2, which is never used by other kernels.
+  EXPECT_THAT(kernels[0].results(), ElementsAreArray({2}));
+  EXPECT_THAT(kernels[0].last_uses(), ElementsAreArray({false, false}));
+
+  EXPECT_EQ(kernels[1].code(), 3);  // mlrt.await_handle
+  EXPECT_THAT(kernels[1].arguments(), ElementsAreArray({2}));
+  EXPECT_THAT(kernels[1].results(), IsEmpty());
+
+  EXPECT_EQ(kernels[2].code(), 0);  // test_mlbc.add.i32
+  EXPECT_THAT(kernels[2].arguments(), ElementsAreArray({0, 1}));
+  EXPECT_THAT(kernels[2].results(), ElementsAreArray({3}));
+  EXPECT_THAT(kernels[2].last_uses(), ElementsAreArray({true, true}));
+
+  EXPECT_EQ(kernels[3].code(), 0);  // test_mlbc.add.i32
+  EXPECT_THAT(kernels[3].arguments(), ElementsAreArray({3, 3}));
+  EXPECT_THAT(kernels[3].results(), ElementsAreArray({1}));
+  EXPECT_THAT(kernels[3].last_uses(), ElementsAreArray({false, true}));
+
+  EXPECT_EQ(kernels[4].code(), 1);  // return
+  EXPECT_THAT(kernels[4].arguments(), ElementsAreArray({1}));
+  EXPECT_THAT(kernels[4].results(), IsEmpty());
+  EXPECT_THAT(kernels[4].last_uses(), ElementsAreArray({true}));
 }
 
 }  // namespace
