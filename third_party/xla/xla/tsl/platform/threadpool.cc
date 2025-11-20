@@ -60,13 +60,13 @@ struct EigenEnvironment {
   struct TaskImpl {
     std::function<void()> fn;
     Context context;
-    uint64 trace_id;
+    uint64_t trace_id;
   };
 
   struct Task {
     Task() = default;
 
-    Task(std::function<void()> fn, Context context, uint64 trace_id)
+    Task(std::function<void()> fn, Context context, uint64_t trace_id)
         : f(TaskImpl{std::move(fn), std::move(context), trace_id}) {}
 
     Task(Task&&) = default;
@@ -97,7 +97,7 @@ struct EigenEnvironment {
   }
 
   Task CreateTask(std::function<void()> f) {
-    uint64 id = 0;
+    uint64_t id = 0;
     if (ABSL_PREDICT_FALSE(tracing::EventCollector::IsEnabled())) {
       id = tracing::GetUniqueArg();
       tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
