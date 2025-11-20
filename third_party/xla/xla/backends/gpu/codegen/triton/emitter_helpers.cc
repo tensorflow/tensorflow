@@ -607,6 +607,9 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
     case HloOpcode::kPower:
       return b.create<mm::PowFOp>(inputs[0], inputs[1]);
     case HloOpcode::kRemainder:
+      if (is_integer) {
+        return b.create<ma::RemSIOp>(inputs[0], inputs[1]);
+      }
       return b.create<ma::RemFOp>(inputs[0], inputs[1]);
     case HloOpcode::kRsqrt:
       return b.create<mm::RsqrtOp>(inputs[0]);
@@ -622,6 +625,8 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
       return b.create<mm::TanhOp>(inputs[0]);
     case HloOpcode::kCbrt:
       return b.create<mm::CbrtOp>(inputs[0]);
+    case HloOpcode::kIsFinite:
+      return b.create<mm::IsFiniteOp>(inputs[0]);
     default:
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported elementwise operation ", hlo.ToString()));
