@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -85,6 +86,10 @@ class CallSplitter : public HloModulePass {
   // given boundary predicate. Returns the two new computations.
   std::pair<HloComputation*, HloComputation*> SplitCallBody(
       HloComputation* body, HloPredicate boundary_predicate);
+
+  absl::flat_hash_map<HloComputation*,
+                      std::pair<HloComputation*, HloComputation*>>
+      split_call_bodies_;
 
  protected:
   HloPredicate call_predicate_;

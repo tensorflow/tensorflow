@@ -276,8 +276,21 @@ absl::StatusOr<bool> CallSplitter::RunImpl(
   }
 
   bool changed = false;
+  split_call_bodies_.clear();
   for (HloInstruction* call : calls_to_process) {
-    auto split_result = SplitCallBody(call->to_apply(), boundary_predicate_);
+    // We may have already split this callee when wer processed another
+    // callsite, in which case we can reuse the results.
+    auto get_split = [&](HloComputation* body) {
+      auto it = split_call_bodies_.find(body);
+      if (it != split_call_bodies_.end()) {
+        return it->second;
+      }
+      auto split = SplitCallBody(body, boundary_predicate_);
+      split_call_bodies_[body] = split;
+      return split;
+    };
+
+    auto split_result = get_split(call->to_apply());
     if (split_result.first != nullptr) {
       changed |= true;
       TF_RETURN_IF_ERROR(
