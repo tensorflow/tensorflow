@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -716,9 +717,37 @@ absl::StatusOr<Decision> CreateDotFusion(
     std::vector<HloInstruction*>& fusion_inputs,
     HloInstruction** fusion_output_ptr) {
   VLOG(5) << dot.ToString();
-  if (CodegenDecision is_supported =
-          legacy_triton::IsTritonSupportedInstruction(dot, gpu_version);
-      !is_supported) {
+
+  CodegenDecision is_supported_legacy =
+      legacy_triton::IsTritonSupportedInstruction(dot, gpu_version);
+  CodegenDecision is_supported = IsTritonSupportedInstruction(
+      dot, gpu_version, /*is_fused_computation=*/false);
+
+  // TODO(b/393299275): legacy triton emitter only accepted dots with unset
+  // algorithm when tf32 was enabled. Keeping this check for now to avoid
+  // performance regressions. We should investigate how to improve performance,
+  // or move this check under IsTritonSupportedInstruction.
+  if (dot.precision_config().algorithm() == PrecisionConfig::ALG_UNSET) {
+    if (absl::c_any_of(dot.precision_config().operand_precision(),
+                       [](int x) { return x != PrecisionConfig::DEFAULT; })) {
+      if (is_supported_legacy.CanFuse()) {
+        QCHECK(false)
+            << "Legacy tells that it is supported fur unset algorithm with "
+               "non-default operand precisions.";
+      }
+      return Decision::Deny(
+          "Non-default operand precisions for Dot op with unset algorithm.");
+    }
+  }
+
+  if (is_supported_legacy.CanFuse() != is_supported.CanFuse()) {
+    LOG(INFO) << dot.GetModule()->ToString(HloPrintOptions::ShortParsable());
+    QCHECK(false) << "Legacy and new Triton support decisions differ. Legacy:"
+                  << is_supported_legacy.Explain()
+                  << ". New: " << is_supported.Explain();
+  }
+
+  if (!is_supported) {
     VLOG(3) << is_supported.Explain();
     return Decision::Deny(is_supported.Explain());
   }

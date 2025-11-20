@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/functional/overload.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -250,7 +251,9 @@ CodegenDecision AreDotInputAndOutputTypesSupportedAndCompatible(
     const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
   auto output_type = dot.shape().element_type();
   if (!IsTritonSupportedDotOutputType(output_type, gpu_version)) {
-    return CodegenDecision::Forbid("Unsupported output data type for Dot op.");
+    return CodegenDecision::Forbid(
+        absl::StrCat("Unsupported output data type for Dot op: ",
+                     PrimitiveType_Name(output_type)));
   }
 
   auto lhs_type = dot.operand(0)->shape().element_type();
