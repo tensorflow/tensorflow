@@ -153,6 +153,7 @@ struct CollectivePermuteProperty {
 std::optional<CollectivePermuteProperty> GetCollectivePermuteProperty(
     const HloCollectivePermuteInstruction& instr,
     int64_t num_devices_per_partition) {
+  CHECK_GT(num_devices_per_partition, 0);
   if (instr.source_target_pairs().empty()) {
     return std::nullopt;
   }

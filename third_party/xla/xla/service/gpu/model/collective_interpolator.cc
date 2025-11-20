@@ -21,9 +21,11 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -76,13 +78,24 @@ constexpr int64_t kMaxDefaultNumberOfParticipatingDevices = 8;
 
 constexpr int64_t kMinDefaultNumberOfParticipatingDevices = 2;
 
+// Collective op specification info, for all-gather, all-reduce, reduce-scatter,
+// etc.
+struct CollectiveOpSpecInfo {
+  CollectiveDeviceList collective_device_list;
+  GPUCommunicationType collective_comm;
+};
+
+// Collective permute op specification info, for collective-permute, etc.
+struct PermuteOpSpecInfo {
+  CollectivePermuteCostModelType permute_type;
+};
+
 struct InterpolationSpecification {
   HloOpcode opcode;
-  GPUCommunicationType comm;
   int64_t num_devices;
   int64_t transfer_size;
-  CollectiveDeviceList device_list;
   PrimitiveType data_type;
+  std::variant<CollectiveOpSpecInfo, PermuteOpSpecInfo> collective_params;
 };
 
 // Returns number of participating devices in an input `device_list`. Supports
@@ -106,13 +119,29 @@ absl::StatusOr<InterpolationSpecification> Spec(
         "Cannot construct module from profile: ", profile.DebugString()));
   }
   auto instr = module->entry_computation()->root_instruction();
-  auto collective = Cast<HloCollectiveInstruction>(instr);
 
+  if (instr->opcode() == HloOpcode::kCollectivePermute) {
+    auto* cp = Cast<HloCollectivePermuteInstruction>(instr);
+    GpuHloCostAnalysis analysis(GpuHloCostAnalysis::Options(), device_info);
+    TF_RETURN_IF_ERROR(cp->Accept(&analysis));
+    int64_t bytes_transferred = analysis.BytesTransferred(*cp);
+    CollectivePermuteCostModelType permute_type =
+        GetCollectivePermuteCostModelType(
+            *cp, /*num_devices_per_partition=*/num_devices_per_host);
+    VLOG(10) << "Spec permute_type: " << static_cast<int>(permute_type);
+    return InterpolationSpecification{/*opcode=*/cp->opcode(),
+                                      /*num_devices=*/2,
+                                      /*transfer_size=*/bytes_transferred,
+                                      /*data_type=*/cp->shape().element_type(),
+                                      /*collective_params=*/
+                                      PermuteOpSpecInfo{permute_type}};
+  }
+
+  auto collective = Cast<HloCollectiveInstruction>(instr);
   GpuHloCostAnalysis analysis(GpuHloCostAnalysis::Options(), device_info);
   TF_RETURN_IF_ERROR(collective->Accept(&analysis));
   int64_t bytes_transferred = analysis.BytesTransferred(*collective);
-
-  TF_ASSIGN_OR_RETURN(auto comm,
+  TF_ASSIGN_OR_RETURN(GPUCommunicationType comm,
                       CommunicationType(num_devices_per_host, *collective,
                                         device_info.gpu_compute_capability()));
   TF_ASSIGN_OR_RETURN(int num_devices,
@@ -120,12 +149,11 @@ absl::StatusOr<InterpolationSpecification> Spec(
 
   return InterpolationSpecification{
       /*opcode=*/collective->opcode(),
-      /*comm=*/comm,
       /*num_devices=*/num_devices,
       /*transfer_size=*/bytes_transferred,
-      /*device_list=*/collective->device_list(),
       /*data_type=*/collective->shape().element_type(),
-  };
+      /*collective_params=*/
+      CollectiveOpSpecInfo{collective->device_list(), comm}};
 }
 
 std::unique_ptr<HloModule> AllReduceModule(
@@ -296,6 +324,30 @@ std::unique_ptr<HloModule> AllToAllModule(
   return module;
 }
 
+std::unique_ptr<HloModule> CollectivePermuteModule(
+    const HloInstructionProfile& profile) {
+  HloModuleConfig config;
+
+  auto module = std::make_unique<HloModule>("m", config);
+  absl::StatusOr<Shape> shape = Shape::FromProto(profile.instruction().shape());
+  if (!shape.ok()) {
+    VLOG(1) << "Cannot parse shape: " << profile.DebugString();
+    return nullptr;
+  }
+
+  HloComputation::Builder entry_builder("entry");
+  HloInstruction* p0 = entry_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, *shape, "p0"));
+  std::vector<std::pair<int64_t, int64_t>> pairs;
+  for (const auto& pair : profile.instruction().source_target_pairs()) {
+    pairs.push_back({pair.source(), pair.target()});
+  }
+  entry_builder.AddInstruction(HloInstruction::CreateCollectivePermute(
+      *shape, p0, pairs, profile.instruction().channel_id()));
+  module->AddEntryComputation(entry_builder.Build());
+  return module;
+}
+
 std::optional<CollectiveDeviceList> CanonicalDeviceList(
     const HloCollectiveInstruction& instr) {
   if (instr.device_list().iota_replica_group_list().has_value()) {
@@ -378,13 +430,24 @@ ConstructExactInterpolators(int num_devices_per_host,
     TF_ASSIGN_OR_RETURN(InterpolationSpecification spec,
                         Spec(num_devices_per_host, profile, device_info));
     // Construct exact interpolators.
-    CollectiveInterpolator::ExactInterpolatorKey exact_key{
-        /*opcode=*/spec.opcode,
-        /*device_list=*/spec.device_list,
-        /*data_type=*/
-        RequiresAccumulation(spec.opcode) ? std::make_optional(spec.data_type)
-                                          : std::nullopt,
-    };
+    CollectiveInterpolator::ExactInterpolatorKey exact_key = std::visit(
+        absl::Overload{[&](PermuteOpSpecInfo permute_op_info) {
+                         return CollectiveInterpolator::ExactInterpolatorKey{
+                             /*opcode=*/spec.opcode,
+                             /*collective_params=*/permute_op_info.permute_type,
+                             /*data_type=*/std::nullopt};
+                       },
+                       [&](const CollectiveOpSpecInfo& op_info) {
+                         return CollectiveInterpolator::ExactInterpolatorKey{
+                             /*opcode=*/spec.opcode,
+                             /*collective_params=*/
+                             op_info.collective_device_list,
+                             /*data_type=*/
+                             RequiresAccumulation(spec.opcode)
+                                 ? std::make_optional(spec.data_type)
+                                 : std::nullopt};
+                       }},
+        spec.collective_params);
     auto exact_it = exact_interpolators->find(exact_key);
     if (exact_it == exact_interpolators->end()) {
       auto interpolator = std::make_unique<
@@ -409,29 +472,72 @@ absl::StatusOr<std::unique_ptr<
 ConstructExactNNInterpolators(int num_devices_per_host,
                               const HloInstructionProfileList& profiles,
                               const se::DeviceDescription& device_info) {
+  VLOG(10) << "ConstructExactNNInterpolators called.";
   auto exact_interpolators = std::make_unique<
       absl::flat_hash_map<CollectiveInterpolator::ExactInterpolatorKey,
                           std::unique_ptr<InterpolatorBase<int64_t, 1>>>>();
 
   for (auto& profile : profiles.entries()) {
+    VLOG(10) << "Processing profile: " << profile.DebugString();
     TF_ASSIGN_OR_RETURN(InterpolationSpecification spec,
                         Spec(num_devices_per_host, profile, device_info));
+    std::visit(absl::Overload{
+                   [&](PermuteOpSpecInfo permute_op_info) {
+                     VLOG(10) << "  Spec: opcode=" << spec.opcode
+                              << ", num_devices=" << spec.num_devices
+                              << ", transfer_size=" << spec.transfer_size
+                              << ", data_type=" << spec.data_type
+                              << ", permute_type="
+                              << static_cast<int>(permute_op_info.permute_type);
+                   },
+                   [&](const CollectiveOpSpecInfo& op_info) {
+                     VLOG(10) << "  Spec: opcode=" << spec.opcode
+                              << ", num_devices=" << spec.num_devices
+                              << ", transfer_size=" << spec.transfer_size
+                              << ", data_type=" << spec.data_type
+                              << ", permute_type=nullopt";
+                   }},
+               spec.collective_params);
+
     // Construct exact interpolators.
-    CollectiveInterpolator::ExactInterpolatorKey exact_key{
-        /*opcode=*/spec.opcode,
-        /*device_list=*/spec.device_list,
-        /*data_type=*/spec.data_type,
-    };
+    CollectiveInterpolator::ExactInterpolatorKey exact_key = std::visit(
+        absl::Overload{[&](PermuteOpSpecInfo permute_op_info) {
+                         return CollectiveInterpolator::ExactInterpolatorKey{
+                             /*opcode=*/spec.opcode,
+                             /*collective_params=*/permute_op_info.permute_type,
+                             /*data_type=*/std::nullopt};
+                       },
+                       [&](const CollectiveOpSpecInfo& op_info) {
+                         return CollectiveInterpolator::ExactInterpolatorKey{
+                             /*opcode=*/spec.opcode,
+                             /*collective_params=*/
+                             op_info.collective_device_list,
+                             /*data_type=*/spec.data_type};
+                       }},
+        spec.collective_params);
+    VLOG(10) << "  Constructed exact_key: opcode=" << exact_key.opcode
+             << ", data_type="
+             << (exact_key.data_type.has_value()
+                     ? std::to_string(static_cast<int>(*exact_key.data_type))
+                     : "nullopt");
+
     auto exact_it = exact_interpolators->find(exact_key);
     if (exact_it == exact_interpolators->end()) {
+      VLOG(10) << "  Exact interpolator not found for key, creating new one.";
       auto interpolator =
           std::make_unique<EuclideanNNInterpolator<int64_t, 1>>();
       (*exact_interpolators)[exact_key] = std::move(interpolator);
+    } else {
+      VLOG(10) << "  Exact interpolator found for key.";
     }
     std::array<int64_t, 1> exact_point = {spec.transfer_size};
+    VLOG(10) << "  Adding point {" << exact_point[0] << "} with throughput: "
+             << profile.network_throughput_bytes_per_sec();
     exact_interpolators->at(exact_key)->Add(
         exact_point, profile.network_throughput_bytes_per_sec());
   }
+  VLOG(10) << "ConstructExactNNInterpolators finished. Total keys: "
+           << exact_interpolators->size();
   return exact_interpolators;
 }
 
@@ -448,12 +554,26 @@ ConstructFallbackInterpolators(int num_devices_per_host,
   for (auto& profile : profiles.entries()) {
     TF_ASSIGN_OR_RETURN(InterpolationSpecification spec,
                         Spec(num_devices_per_host, profile, device_info));
+    std::optional<GPUCommunicationType> collective_comm;
+    std::visit(absl::Overload{[&](PermuteOpSpecInfo permute_op_info) {},
+                              [&](const CollectiveOpSpecInfo& op_info) {
+                                collective_comm = op_info.collective_comm;
+                              }},
+               spec.collective_params);
+
+    if (!collective_comm.has_value()) {
+      // Collective-permute uses exact interpolation only.
+      continue;
+    }
+
     CollectiveInterpolator::FallbackInterpolatorKey key{
         /*opcode=*/spec.opcode,
-        /*communication_type=*/spec.comm,
+        /*communication_type=*/collective_comm.value(),
     };
     auto it = fallback_interpolators->find(key);
     if (it == fallback_interpolators->end()) {
+      // For fallback interpolators, we initialize a EuclideanComplement
+      // Interpolator with default min/max context values.
       auto interpolator =
           std::make_unique<EuclideanComplementInterpolator<int64_t, 2>>(
               /*next_context=*/std::array<int64_t, 2>{-1, -1},
@@ -487,12 +607,26 @@ ConstructFallbackNNInterpolators(int num_devices_per_host,
   for (auto& profile : profiles.entries()) {
     TF_ASSIGN_OR_RETURN(InterpolationSpecification spec,
                         Spec(num_devices_per_host, profile, device_info));
+    std::optional<GPUCommunicationType> collective_comm;
+    std::visit(absl::Overload{[&](PermuteOpSpecInfo permute_op_info) {},
+                              [&](const CollectiveOpSpecInfo& op_info) {
+                                collective_comm = op_info.collective_comm;
+                              }},
+               spec.collective_params);
+
+    if (!collective_comm.has_value()) {
+      // Collective-permute uses exact interpolation only.
+      continue;
+    }
+
     CollectiveInterpolator::FallbackInterpolatorKey key{
         /*opcode=*/spec.opcode,
-        /*communication_type=*/spec.comm,
+        /*communication_type=*/collective_comm.value(),
     };
     auto it = fallback_interpolators->find(key);
     if (it == fallback_interpolators->end()) {
+      // For fallback NN interpolators, we initialize a EuclideanNNInterpolator
+      // without default min/max context values.
       auto interpolator =
           std::make_unique<EuclideanNNInterpolator<int64_t, 2>>();
 
@@ -548,16 +682,49 @@ CollectiveInterpolator::Create(int num_devices_per_host,
 }
 
 absl::StatusOr<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
-    const HloCollectiveInstruction& instr) const {
+    const HloInstruction& instr) const {
   // Exact interpolation.
   int64_t bytes_transferred =
       GetBytesTransferred(instr, device_info_, analysis_);
 
-  std::optional<CollectiveDeviceList> devices = CanonicalDeviceList(instr);
+  if (instr.opcode() == HloOpcode::kCollectivePermute) {
+    auto* cp = Cast<HloCollectivePermuteInstruction>(&instr);
+    const CollectivePermuteCostModelType& permute_type =
+        GetCollectivePermuteCostModelType(
+            *cp, /*num_devices_per_partition=*/cp->GetModule()
+                     ->config()
+                     .num_partitions());
+
+    VLOG(10) << "EstimatedRuntime permute_type: "
+             << static_cast<int>(permute_type)
+             << " for instr: " << instr.ToString() << " num_partitions:"
+             << cp->GetModule()->config().num_partitions();
+    ExactInterpolatorKey exact_key{
+        /*opcode=*/instr.opcode(),
+        /*collective_params=*/permute_type,
+        /*data_type=*/std::nullopt,
+    };
+    VLOG(10) << "Checking exact interpolator for CollectivePermute. Opcode: "
+             << instr.opcode()
+             << ", PermuteType: " << static_cast<int>(permute_type)
+             << ", BytesTransferred: " << bytes_transferred;
+    if (exact_interpolators_->contains(exact_key)) {
+      VLOG(10) << "Exact interpolator found for CollectivePermute.";
+      std::array<int64_t, 1> point({bytes_transferred});
+      return absl::Seconds(1.0 * bytes_transferred /
+                           exact_interpolators_->at(exact_key)->Eval(point));
+    }
+    VLOG(10) << "Exact interpolator NOT found for CollectivePermute.";
+    return absl::NotFoundError(
+        absl::StrCat("Cannot find key for instr: ", instr.ToString()));
+  }
+  auto* collective = Cast<HloCollectiveInstruction>(&instr);
+  std::optional<CollectiveDeviceList> devices =
+      CanonicalDeviceList(*collective);
   if (devices.has_value()) {
     ExactInterpolatorKey exact_key{
         /*opcode=*/instr.opcode(),
-        /*device_list=*/*devices,
+        /*collective_params=*/*devices,
         /*data_type=*/
         RequiresAccumulation(instr.opcode())
             ? std::make_optional(instr.shape().element_type())
@@ -570,14 +737,30 @@ absl::StatusOr<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
                            exact_interpolators_->at(exact_key)->Eval(point));
     }
   }
-  // Fallback interpolation.
+  // No fallback needed for permute.
+  if (instr.opcode() == HloOpcode::kCollectivePermute) {
+    return absl::NotFoundError(
+        absl::StrCat("Cannot find key for instr: ", instr.ToString()));
+  }
+  auto* channel_instr = Cast<HloChannelInstruction>(&instr);
   TF_ASSIGN_OR_RETURN(auto comm,
-                      CommunicationType(num_devices_per_host_, instr,
+                      CommunicationType(num_devices_per_host_, *channel_instr,
                                         device_info_.gpu_compute_capability()));
   TF_ASSIGN_OR_RETURN(auto num_devices, GetReplicaGroupCountAndSize(&instr));
   std::array<int64_t, 2> point({bytes_transferred, num_devices->second});
+  HloOpcode opcode = instr.opcode();
+  if (instr.opcode() == HloOpcode::kAllGatherStart) {
+    opcode = HloOpcode::kAllGather;
+  } else if (instr.opcode() == HloOpcode::kAllReduceStart) {
+    opcode = HloOpcode::kAllReduce;
+  } else if (instr.opcode() == HloOpcode::kAsyncStart) {
+    if (instr.async_wrapped_opcode() == HloOpcode::kReduceScatter) {
+      opcode = HloOpcode::kReduceScatter;
+    }
+  }
+
   CollectiveInterpolator::FallbackInterpolatorKey key{
-      /*opcode=*/AsyncToSyncOpcode(instr),
+      /*opcode=*/opcode,
       /*communication_type=*/comm,
   };
   if (!fallback_interpolators_->contains(key)) {
@@ -591,6 +774,8 @@ absl::StatusOr<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
 /*static*/ std::unique_ptr<HloModule> CollectiveInterpolator::ConstructModule(
     const HloInstructionProfile& profile) {
   switch (*StringToHloOpcode(profile.instruction().opcode())) {
+    case HloOpcode::kCollectivePermute:
+      return CollectivePermuteModule(profile);
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
       return AllReduceModule(profile);

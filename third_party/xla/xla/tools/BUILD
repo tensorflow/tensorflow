@@ -770,6 +770,7 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/service/gpu/model:hlo_op_profiles",
+        "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/tools/multihost_hlo_runner:create_client",
         "//xla/tools/multihost_hlo_runner:functional_hlo_runner",
         "//xla/tsl/platform:env",
