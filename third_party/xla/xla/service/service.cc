@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/initialize.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -149,6 +150,7 @@ Service::Service(const ServiceOptions& options,
     : options_(options),
       allocation_tracker_(execute_backend.get()),
       execute_backend_(std::move(execute_backend)) {
+  absl::InitializeLog();
   CHECK_GT(options_.number_of_replicas(), 0);
   if (execute_backend_) {
     if (execute_backend_->device_count() > 0) {
