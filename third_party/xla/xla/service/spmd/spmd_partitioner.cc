@@ -5609,16 +5609,28 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
   // parameters preserve their signatures.
   auto new_program_shape = module->entry_computation()->ComputeProgramShape();
   if (!options_.allow_module_signature_change) {
-    TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
-        program_shape.result(), new_program_shape.result()))
-        << "Result shape changed for the entry computation";
-    TF_RET_CHECK(program_shape.parameters_size() ==
-                 new_program_shape.parameters_size())
-        << "Parameter count changed for the entry computation";
+    if (!Shape::Equal()(program_shape.result(), new_program_shape.result())) {
+      return absl::InvalidArgumentError(
+          "Result shape changed for the entry computation from: " +
+          program_shape.result().ToString() +
+          " to: " + new_program_shape.result().ToString());
+    }
+    if (program_shape.parameters_size() !=
+        new_program_shape.parameters_size()) {
+      return absl::InvalidArgumentError(
+          "Parameter count changed for the entry computation from: " +
+          std::to_string(program_shape.parameters_size()) +
+          " to: " + std::to_string(new_program_shape.parameters_size()));
+    }
     for (int64_t i = 0; i < program_shape.parameters_size(); ++i) {
-      TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
-          program_shape.parameters(i), new_program_shape.parameters(i)))
-          << "Parameter shape changed for the entry computation";
+      if (!Shape::Equal()(program_shape.parameters(i),
+                          new_program_shape.parameters(i))) {
+        return absl::InvalidArgumentError(
+            "Parameter shape changed for the entry computation parameter " +
+            std::to_string(i) +
+            " from: " + program_shape.parameters(i).ToString() +
+            " to: " + new_program_shape.parameters(i).ToString());
+      }
     }
   } else {
     // Fix up some bad tiling in entry computation layout.
@@ -5711,34 +5723,6 @@ absl::Status SpmdPartitioner::PreprocessSharding(
     }
   }
 
-  // Entry computation's parameter and root sharding must be either all
-  // replicated or all on a single device.
-  if (!options_.allow_module_signature_change) {
-    const HloComputation* entry = module->entry_computation();
-    TF_RET_CHECK(entry->root_instruction()->has_sharding());
-    const HloSharding& root_sharding = entry->root_instruction()->sharding();
-    if (!root_sharding.UniqueDevice().has_value()) {
-      if (root_sharding.IsTuple()) {
-        TF_RET_CHECK(absl::c_all_of(root_sharding.tuple_elements(),
-                                    [](const HloSharding& s) {
-                                      return s.IsReplicated() || s.IsManual();
-                                    }))
-            << "Unsupported entry root sharding: " << root_sharding.ToString();
-
-      } else {
-        TF_RET_CHECK(root_sharding.IsReplicated() || root_sharding.IsManual())
-            << "Unsupported entry root sharding: " << root_sharding.ToString();
-      }
-    }
-
-    for (const HloInstruction* param : entry->parameter_instructions()) {
-      TF_RET_CHECK(param->has_sharding());
-      TF_RET_CHECK(param->sharding().IsReplicated() ||
-                   param->sharding().UniqueDevice().has_value())
-          << "Unsupported entry parameter sharding:"
-          << param->sharding().ToString();
-    }
-  }
   return absl::OkStatus();
 }
 
