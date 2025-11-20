@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -106,9 +107,10 @@ absl::Status SplitCallSite(HloInstruction* call,
   second_call->set_to_apply(second_call_computation);
   return call->ReplaceAllUsesWith(second_call);
 }
+}  // namespace
 
-absl::StatusOr<bool> SplitCall(HloInstruction* call,
-                               HloPredicate boundary_predicate) {
+std::pair<HloComputation*, HloComputation*> CallSplitter::SplitCallBody(
+    HloComputation* body, HloPredicate boundary_predicate) {
   // We need to do several things here:
   // 1. Figure out which instructions go into the first call and which into the
   // second. In particular:
@@ -126,14 +128,12 @@ absl::StatusOr<bool> SplitCall(HloInstruction* call,
   // TODO(mkuper): This splits "down". We also want a version that splits "up",
   // i.e. the boundary ends up in the first call, and the "irrelevant"
   // instructions end up in the second one.
-
-  HloComputation* body = call->to_apply();
   HloModule* module = body->parent();
 
   std::vector<HloInstruction*> boundary_instructions =
       GetBoundaryInstructions(body, boundary_predicate);
   if (boundary_instructions.empty()) {
-    return false;
+    return std::make_pair(nullptr, nullptr);
   }
 
   absl::flat_hash_set<HloInstruction*> second_call_instructions =
@@ -146,7 +146,7 @@ absl::StatusOr<bool> SplitCall(HloInstruction* call,
     }
   }
   if (first_call_instructions.empty() || second_call_instructions.empty()) {
-    return false;
+    return std::make_pair(nullptr, nullptr);
   }
 
   if (VLOG_IS_ON(1)) {
@@ -170,7 +170,7 @@ absl::StatusOr<bool> SplitCall(HloInstruction* call,
       // Don't break the function if it would create a control edge that needs
       // to be threaded between the two new functions.
       if (first_call_instructions.contains(control_pred)) {
-        return false;
+        return std::make_pair(nullptr, nullptr);
       }
     }
     for (HloInstruction* data_pred : instruction->operands()) {
@@ -229,17 +229,12 @@ absl::StatusOr<bool> SplitCall(HloInstruction* call,
           &second_call_replacements, /*extra_parameters=*/{},
           /*context=*/nullptr, /*suffix=*/"second", /*new_root=*/nullptr));
 
-  TF_RETURN_IF_ERROR(
-      SplitCallSite(call, first_call_computation, second_call_computation));
-  return true;
+  return std::make_pair(first_call_computation, second_call_computation);
 }
-
-}  // namespace
 
 absl::StatusOr<bool> CallSplitter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  bool changed = false;
   // Find all the call instructions that match the predicate. We don't process
   // them immediately since we're going to change their enclosing computation.
   // process all calls in a computation together. Note that we want to process
@@ -280,9 +275,14 @@ absl::StatusOr<bool> CallSplitter::RunImpl(
     }
   }
 
+  bool changed = false;
   for (HloInstruction* call : calls_to_process) {
-    TF_ASSIGN_OR_RETURN(bool split, SplitCall(call, boundary_predicate_));
-    changed |= split;
+    auto split_result = SplitCallBody(call->to_apply(), boundary_predicate_);
+    if (split_result.first != nullptr) {
+      changed |= true;
+      TF_RETURN_IF_ERROR(
+          SplitCallSite(call, split_result.first, split_result.second));
+    }
   }
 
   return changed;

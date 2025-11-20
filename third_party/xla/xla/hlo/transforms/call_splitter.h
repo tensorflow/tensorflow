@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_CALL_SPLITTER_H_
 #define XLA_HLO_TRANSFORMS_CALL_SPLITTER_H_
 
+#include <utility>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -78,6 +80,11 @@ class CallSplitter : public HloModulePass {
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  // Splits the body of the given call into two computations, according to the
+  // given boundary predicate. Returns the two new computations.
+  std::pair<HloComputation*, HloComputation*> SplitCallBody(
+      HloComputation* body, HloPredicate boundary_predicate);
 
  protected:
   HloPredicate call_predicate_;
