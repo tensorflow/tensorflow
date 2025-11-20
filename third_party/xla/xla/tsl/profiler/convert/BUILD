@@ -75,7 +75,10 @@ cc_library(
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_utils",
         "//xla/tsl/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
@@ -89,6 +92,7 @@ tsl_cc_test(
         "//xla/tsl/platform:test",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
