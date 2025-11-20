@@ -193,6 +193,7 @@ xla_cc_test(
         "//xla/stream_executor:device_memory_allocator",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

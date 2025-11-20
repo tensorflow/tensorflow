@@ -27,9 +27,12 @@ xla_cc_test(
     srcs = ["tracked_cpu_device_buffer_test.cc"],
     deps = [
         ":abstract_cpu_buffer",
+        ":cpu_client",
         ":cpu_event",
         "//xla:util",
+        "//xla/pjrt:pjrt_client",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",

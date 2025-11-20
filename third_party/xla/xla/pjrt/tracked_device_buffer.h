@@ -103,9 +103,6 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
     bool reference_held;
   };
 
-  // Builds a ShapedBuffer view onto the buffers of 'tree'.
-  ShapedBuffer AsShapedBuffer(const Shape& on_device_shape) const;
-
   // Adds the owned device buffers in order to 'iterator'. Used to add the
   // buffers to an ExecutionInput. We require but do not verify that 'iterator'
   // when passed in is pointing to a sub-tuple of the ExecutionInput whose
@@ -129,10 +126,6 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
       ExecutionInput* execution_input,
       se::DeviceMemoryAllocator* allocator) const;
 
-  const tsl::AsyncValueRef<RawSEDeviceMemory>& device_memory() const {
-    return device_memory_;
-  }
-
   const absl::InlinedVector<BufferSequencingEventRef, 2>& definition_events()
       const {
     return definition_events_;
@@ -140,10 +133,6 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   absl::Span<const StreamAndEvent> usage_events() const {
     return usage_events_;
   }
-
-  // Relinquishes ownership of the buffer's device memory, e.g., after the
-  // buffer is passed to a computation that aliases its inputs to outputs.
-  void ReleaseDeviceMemory();
 
   // Only to be called by ScopedHold to mark a successful donation.
   void ConfirmDonation() override;
@@ -167,15 +156,12 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   StreamAndEventContainer LockUseAndTransferUsageEvents();
 
   TrackedDeviceBuffer(
-      PjRtDevice* device, tsl::AsyncValueRef<RawSEDeviceMemory> device_memory,
+      PjRtDevice* device, tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
       absl::Span<const BufferSequencingEventRef> definition_events);
   ~TrackedDeviceBuffer() override;
 
   std::vector<tsl::RCReference<tsl::AsyncValue>> GetAsyncValueDefinitionEvents()
       override;
-
-  tsl::RCReference<CommonPjRtRawBuffer> GetRawBuffer(
-      PjRtMemorySpace* memory_space) override;
 
   void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) override;
 
@@ -199,10 +185,6 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
  private:
   PjRtDevice* device_;
-
-  // Each host-side buffer may have several buffers on-device.
-  tsl::AsyncValueRef<RawSEDeviceMemory> device_memory_;
-
   // Events that are triggered when the content of one or more buffers is ready
   // during multistream execution. May be nullptr, which is used in the
   // single-stream execution case where events are not necessary for buffer

@@ -78,21 +78,6 @@ class MarkEventReadyOnExit {
 
 class AbstractCpuBuffer {
  public:
-  // Allocates a new `TrackedCpuDeviceBuffer` with the given shape and
-  // definition events.
-  static absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>
-  AllocateTrackedDeviceBuffer(
-      const Shape& on_device_shape,
-      absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events);
-
-  // Allocates new cpu events to `avs` and `definition_events`. If `shape` is a
-  // tuple, multiple events will be allocated. Otherwise, `avs` and
-  // `definition_events` will only contain one event.
-  static void AllocateAvsAndEvents(
-      const Shape& shape,
-      absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
-      absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>* definition_events);
-
   // A helper function to determine if a BufferFromHostBuffer call is eligible
   // for zero copy construction.
   static bool BufferFromHostBufferSupportsZeroCopy(
