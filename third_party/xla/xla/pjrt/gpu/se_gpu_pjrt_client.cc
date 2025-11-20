@@ -297,7 +297,7 @@ StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
       shape_specs, std::move(device_layouts), memory_space);
 }
 
-absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
+absl::flat_hash_map<GlobalDeviceId, IncarnationId>
 StreamExecutorGpuClient::GetLatestIncarnations(const ExecuteOptions& options) {
   // Map every device to its incarnation.
   absl::flat_hash_map<GlobalDeviceId, IncarnationId> device_incarnations;
@@ -307,7 +307,9 @@ StreamExecutorGpuClient::GetLatestIncarnations(const ExecuteOptions& options) {
 
     auto it = options.incarnations.find(task_id);
     if (it == options.incarnations.end()) {
-      return FailedPrecondition("Incarnation for task %d not found", task_id);
+      // The task might be dead.
+      LOG(WARNING) << "Incarnation for task " << task_id << " not found";
+      continue;
     }
     device_incarnations[device_id] = it->second;
   }
@@ -316,13 +318,10 @@ StreamExecutorGpuClient::GetLatestIncarnations(const ExecuteOptions& options) {
 
 gpu::GpuExecutableRunOptions* StreamExecutorGpuClient::gpu_run_options(
     const ExecuteOptions& options) {
-  absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
-      incarnations = GetLatestIncarnations(options);
-  if (!incarnations.ok()) {
-    VLOG(1) << "Unable to set incarnations in GpuExecutableRunOptions: "
-            << incarnations.status();
-  } else {
-    gpu_run_options_->set_incarnations(*std::move(incarnations));
+  if (!options.incarnations.empty()) {
+    absl::flat_hash_map<GlobalDeviceId, IncarnationId> incarnations =
+        GetLatestIncarnations(options);
+    gpu_run_options_->set_incarnations(std::move(incarnations));
   }
   return gpu_run_options_.get();
 }

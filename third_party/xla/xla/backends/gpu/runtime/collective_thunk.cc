@@ -296,7 +296,12 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
   absl::flat_hash_set<IncarnationId> unique_incarnations;
   if (params.incarnations) {
     for (GlobalDeviceId id : participants) {
-      unique_incarnations.insert(params.incarnations->at(id));
+      auto it = params.incarnations->find(id);
+      if (it == params.incarnations->end()) {
+        return FailedPrecondition("Incarnation for device %d not found",
+                                  id.value());
+      }
+      unique_incarnations.insert(it->second);
     }
   }
   std::vector<IncarnationId> incarnations(unique_incarnations.begin(),

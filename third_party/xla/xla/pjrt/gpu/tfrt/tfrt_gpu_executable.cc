@@ -624,14 +624,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         // Set the incarnations in gpu_run_options.
         gpu::GpuExecutableRunOptions* gpu_run_options =
             CHECK_NOTNULL(client->gpu_run_options());
-        absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
-            device_incarnations =
-                GetLatestIncarnations(client->devices(), task_incarnations);
-        if (!device_incarnations.ok()) {
-          VLOG(1) << "Unable to set incarnations in GpuExecutableRunOptions: "
-                  << device_incarnations.status();
-        } else {
-          gpu_run_options->set_incarnations(*std::move(device_incarnations));
+        if (!task_incarnations.empty()) {
+          gpu_run_options->set_incarnations(
+              GetLatestIncarnations(client->devices(), task_incarnations));
         }
 
         auto stream = device->stream();
