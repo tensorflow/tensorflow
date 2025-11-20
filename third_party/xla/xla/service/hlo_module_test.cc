@@ -343,6 +343,53 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
   EXPECT_EQ(post_order.front(), computation1);
 }
 
+TEST_F(HloModuleTest, VerifyPostOrderIsStable) {
+  // Builds `num_computations` computations with `i` constants in each,
+  // where 1 <= i <= `num_computations`.
+  auto build_computations = [&](int num_computations) {
+    std::vector<std::unique_ptr<HloComputation>> computations;
+    for (int i = 0; i < num_computations; ++i) {
+      auto builder = HloComputation::Builder(absl::StrCat("computation_", i));
+      for (int j = 0; j <= i; ++j) {
+        auto constant =
+            HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f));
+        constant->SetAndSanitizeName(absl::StrCat("constant_", j));
+        builder.AddInstruction(std::move(constant));
+      }
+      computations.push_back(builder.Build());
+    }
+    return computations;
+  };
+  // Builds a module from a vector of computations where the first computation
+  // is the entry computation and the rest are embedded computations.
+  auto build_module_from =
+      [&](std::vector<std::unique_ptr<HloComputation>> computations) {
+        auto module = CreateNewVerifiedModule();
+        module->AddEntryComputation(std::move(computations[0]));
+        for (int i = 1; i < computations.size(); ++i) {
+          module->AddEmbeddedComputation(std::move(computations[i]));
+        }
+        return module;
+      };
+
+  const int kNumComputations = 4;
+
+  // Build a module with computations in a particular order.
+  auto module0 = build_module_from(build_computations(kNumComputations));
+  auto post_order0 = module0->MakeComputationCanonicalPostOrder();
+
+  // Build a module with the _same_ computations in a reversed order.
+  auto computations = build_computations(kNumComputations);
+  std::reverse(computations.begin(), computations.end());
+  auto module1 = build_module_from(std::move(computations));
+  auto post_order1 = module1->MakeComputationCanonicalPostOrder();
+
+  // Verify that the two post orders are the same/stable.
+  for (int i = 0; i < post_order0.size(); ++i) {
+    EXPECT_EQ(post_order0[i]->name(), post_order1[i]->name()) << "i=" << i;
+  }
+}
+
 TEST_F(HloModuleTest, LargeConstantToString) {
   // Create a module with a single computation.
   auto module = CreateNewVerifiedModule();
