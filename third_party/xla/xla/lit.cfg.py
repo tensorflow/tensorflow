@@ -21,6 +21,7 @@ import lit.formats
 
 # copybara:uncomment_begin(google-only)
 # from xla.lit_google_cfg import ENV_FLAGS as google_env_flags
+# from xla.sh_test_with_runfiles import ShTestWithRunfiles
 # copybara:uncomment_end
 
 # pylint: disable=undefined-variable
@@ -35,7 +36,6 @@ config.name = "XLA"
 config.suffixes = [".cc", ".hlo", ".json", ".mlir", ".pbtxt", ".py", ".ll"]
 
 config.test_format = lit.formats.ShTest(execute_external=True)
-
 
 for env in [
     # Passthrough XLA_FLAGS.
@@ -75,3 +75,6 @@ if lit_config.params.get("PTX") == "GCN":
 config.substitutions.extend(
     ("%%{%s}" % key, val) for key, val in lit_config.params.items()
 )
+
+# Replace the default test format with our wrapped version
+config.test_format = ShTestWithRunfiles(execute_external=True)

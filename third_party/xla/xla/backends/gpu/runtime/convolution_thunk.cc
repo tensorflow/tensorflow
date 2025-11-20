@@ -69,76 +69,81 @@ ConvolutionThunk::ConvolutionThunk(
       descriptor_(std::move(descriptor)),
       config_(std::move(config)) {}
 
-GenericConvRunner& ConvolutionThunk::GetOrCreateRunner(
-    const stream_executor::Stream* stream, bool* runner_created) {
+std::pair<RunConvOptions, bool> ConvRunnerCache::GetOrCreate(
+    const GpuConvConfig& config, const se::Stream* stream) {
   absl::MutexLock lock(mu_);
-  auto it = runner_cache_.find(stream);
-  *runner_created = (it == runner_cache_.end());
-  if (*runner_created) {
-    it = runner_cache_
-             .insert({stream, std::make_unique<GenericConvRunner>(config_)})
-             .first;
+  auto [it, inserted] =
+      cache_.emplace(stream->parent(), std::unique_ptr<GenericConvRunner>{});
+  if (inserted) {
+    it->second = std::make_unique<GenericConvRunner>(config);
   }
-  return *it->second;
+  return std::pair{RunConvOptions{nullptr, it->second.get()}, inserted};
 }
 
-absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status RunConvolutionOnStream(
+    const Thunk::ExecuteParams& params,
+    const std::vector<BufferAllocation::Slice>& operand_buffers,
+    const std::vector<BufferAllocation::Slice>& result_buffers,
+    const BufferAllocation::Slice& scratch_buffer, const GpuConvConfig& config,
+    ConvRunnerCache& cache, se::Stream* stream) {
   const auto& buffer_allocations = *params.buffer_allocations;
 
   std::vector<se::DeviceMemoryBase> operand_se_buffers, result_se_buffers;
-  operand_se_buffers.reserve(operand_buffers_.size());
-  for (BufferAllocation::Slice buffer : operand_buffers_) {
+  operand_se_buffers.reserve(operand_buffers.size());
+
+  for (BufferAllocation::Slice buffer : operand_buffers) {
     operand_se_buffers.push_back(buffer_allocations.GetDeviceAddress(buffer));
+    VLOG(5) << "operand buffer: " << buffer.ToString()
+            << " addr: " << operand_se_buffers.back().opaque();
   }
 
-  result_se_buffers.reserve(result_buffers_.size());
-  for (BufferAllocation::Slice buffer : result_buffers_) {
+  result_se_buffers.reserve(result_buffers.size());
+  for (BufferAllocation::Slice buffer : result_buffers) {
     result_se_buffers.push_back(buffer_allocations.GetDeviceAddress(buffer));
+    VLOG(5) << "result buffer: " << buffer.ToString()
+            << " addr: " << result_se_buffers.back().opaque();
   }
 
   se::DeviceMemoryBase scratch =
-      buffer_allocations.GetDeviceAddress(scratch_buffer_);
+      buffer_allocations.GetDeviceAddress(scratch_buffer);
+  VLOG(5) << "scratch buffer: " << scratch_buffer
+          << " addr: " << scratch.opaque();
 
-  bool runner_created = false;
-  RunConvOptions opts;
-  opts.runner_cache = &GetOrCreateRunner(params.stream, &runner_created);
-
-  if (runner_created && params.stream->parent()
+  auto [opts, runner_created] = cache.GetOrCreate(config, stream);
+  if (runner_created && stream->parent()
                             ->GetDeviceDescription()
                             .gpu_compute_capability()
                             .IsRocm()) {
     TF_ASSIGN_OR_RETURN(
         GpuConvParams conv_params,
-        GetGpuConvParams(config_, operand_se_buffers, result_se_buffers));
+        GetGpuConvParams(config, operand_se_buffers, result_se_buffers));
 
     TF_ASSIGN_OR_RETURN(se::dnn::DataType input_type,
-                        GetDNNDataTypeFromPrimitiveType(config_.input_type));
+                        GetDNNDataTypeFromPrimitiveType(config.input_type));
 
     TF_ASSIGN_OR_RETURN(se::dnn::DataType output_type,
-                        GetDNNDataTypeFromPrimitiveType(config_.output_type));
+                        GetDNNDataTypeFromPrimitiveType(config.output_type));
 
-    TF_ASSIGN_OR_RETURN(auto dnn,
-                        se::dnn::internal::GetDnnFromStream(params.stream));
+    TF_ASSIGN_OR_RETURN(auto dnn, se::dnn::internal::GetDnnFromStream(stream));
     se::OwningScratchAllocator<> scratch_allocator(
         buffer_allocations.device_ordinal(),
         buffer_allocations.memory_allocator());
 
     std::vector<se::dnn::ProfileResult> profile_results;
     dnn->GetMIOpenConvolveAlgorithms(
-        CudnnConvKindToProto(config_.kind), input_type, output_type,
-        params.stream, config_.input_descriptor, conv_params.input_buf,
-        config_.filter_descriptor, conv_params.filter_buf,
-        config_.output_descriptor, conv_params.output_buf, config_.conv_desc,
+        CudnnConvKindToProto(config.kind), input_type, output_type, stream,
+        config.input_descriptor, conv_params.input_buf,
+        config.filter_descriptor, conv_params.filter_buf,
+        config.output_descriptor, conv_params.output_buf, config.conv_desc,
         &scratch_allocator, &profile_results);
   }
-
-  TF_RETURN_IF_ERROR(RunGpuConv(config_, absl::MakeSpan(operand_se_buffers),
+  TF_RETURN_IF_ERROR(RunGpuConv(config, absl::MakeSpan(operand_se_buffers),
                                 absl::MakeSpan(result_se_buffers), scratch,
-                                params.stream, opts));
+                                stream, opts));
 
   // Note: Convolution has a tuple buffer as an output, but we don't need to
   // populate it as no one should be reading from the tuple directly.
-  if (!params.stream->ok()) {
+  if (!stream->ok()) {
     return Internal("ConvolutionThunk::ExecuteOnStream failed.");
   }
   return absl::OkStatus();
