@@ -464,9 +464,12 @@ tsl_cc_test(
         ":xplane_visitor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
+        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
