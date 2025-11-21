@@ -256,7 +256,7 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
     auto flat_row_splits = row_splits.flat<SPLIT_TYPE>();
     TensorShape dense_values_shape;
     OP_REQUIRES_OK(context,
-                   TensorShapeUtils::MakeShape(context->input(2).vec<int32>(),
+                   TensorShapeUtils::MakeShape(context->input(2).vec<int32_t>(),
                                                &dense_values_shape));
 
     // Validate row_splits.
