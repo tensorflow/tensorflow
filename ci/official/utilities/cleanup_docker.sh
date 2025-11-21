@@ -26,4 +26,5 @@ $ docker exec -it tf bash
 EOF
 
 docker ps
-docker rm -f tf-${TFCI_PYTHON_VERSION}
+echo "Removing container tf-$TFCI_PYTHON_VERSION-$TFCI_DOCKER_CONTAINER_POSTFIX"
+docker rm -f tf-$TFCI_PYTHON_VERSION-$TFCI_DOCKER_CONTAINER_POSTFIX
