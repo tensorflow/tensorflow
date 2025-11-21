@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-enum Enablement : uint8 { kFalse = 0, kTrue = 1, undefined = 2 };
+enum Enablement : uint8_t { kFalse = 0, kTrue = 1, undefined = 2 };
 
 // If this flag is set, we will use it as a signal to decide on whether to
 // use the MLIR based TF-XLA bridge.
@@ -36,7 +36,7 @@ void set_tf2_execution(bool enabled) {
 bool tf2_execution_enabled() {
   if (tf2_enabled == Enablement::undefined) {
     static bool tf2_behavior_env_enabled = [] {
-      string tf2_env;
+      std::string tf2_env;
       TF_CHECK_OK(ReadStringFromEnvVar("TF2_BEHAVIOR", "0", &tf2_env));
       return tf2_env != "0";
     }();
