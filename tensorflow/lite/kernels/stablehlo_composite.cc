@@ -94,7 +94,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
-  // Allocate the memory for the subgraph.
+  // Allocate the memory for the subgraph when not inlined.
+  if (!this_subgraph->GetOptions()->GetShloCompositeInlining()) {
+    TF_LITE_ENSURE_OK(context, decomposition_subgraph->AllocateTensors());
+  }
   TF_LITE_ENSURE_OK(context, decomposition_subgraph->AllocateTensors());
   op_state->subgraph_has_dynamic_output_tensors |=
       decomposition_subgraph->HasDynamicTensors();
