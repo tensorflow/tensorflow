@@ -945,6 +945,33 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     if (minor_version >= 79) {
       add_field("PJRT_LoadedExecutable_GetDeviceAssignment", kFnPtrSize);
     }
+    if (minor_version >= 82) {
+      add_field("PJRT_TopologyDescription_ProcessCount", kFnPtrSize);
+      add_field("PJRT_TopologyDescription_ChipsPerProcess", kFnPtrSize);
+      add_field("PJRT_TopologyDescription_CoreCountPerChip", kFnPtrSize);
+      add_field("PJRT_TopologyDescription_ChipCount", kFnPtrSize);
+      add_field("PJRT_TopologyDescription_CoreCount", kFnPtrSize);
+      add_field("PJRT_TopologyDescription_LogiDeviceCountPerProcess",
+                kFnPtrSize);
+      add_field("PJRT_TopologyDescription_LogiDeviceCount", kFnPtrSize);
+      add_field("PJRT_TopologyDescription_LogiDeviceCountPerChip", kFnPtrSize);
+      add_field("PJRT_TopologyDescription_CoreCountPerProcess", kFnPtrSize);
+      add_field("PJRT_TopologyDescription_ProcessIds", kFnPtrSize);
+      add_field("PJRT_TopologyDescription_LogiDeviceIdsOnProcess", kFnPtrSize);
+      add_field("PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip",
+                kFnPtrSize);
+      add_field("PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice",
+                kFnPtrSize);
+      add_field("PJRT_TopologyDescription_ProcessCoordFromId", kFnPtrSize);
+      add_field("PJRT_TopologyDescription_ChipIdFromCoord", kFnPtrSize);
+      add_field("PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx",
+                kFnPtrSize);
+      add_field("PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice",
+                kFnPtrSize);
+      add_field("PJRT_TopologyDescription_ChipsPerProcessBounds", kFnPtrSize);
+      add_field("PJRT_TopologyDescription_ChipBounds", kFnPtrSize);
+      add_field("PJRT_TopologyDescription_ProcessBounds", kFnPtrSize);
+    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1336,6 +1363,78 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_LoadedExecutable_GetDeviceAssignment",
            {offsetof(PJRT_Api, PJRT_LoadedExecutable_GetDeviceAssignment),
             sizeof(PJRT_Api::PJRT_LoadedExecutable_GetDeviceAssignment)}},
+          {"PJRT_TopologyDescription_ProcessCount",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_ProcessCount),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_ProcessCount)}},
+          {"PJRT_TopologyDescription_ChipsPerProcess",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_ChipsPerProcess),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_ChipsPerProcess)}},
+          {"PJRT_TopologyDescription_CoreCountPerChip",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_CoreCountPerChip),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_CoreCountPerChip)}},
+          {"PJRT_TopologyDescription_ChipCount",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_ChipCount),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_ChipCount)}},
+          {"PJRT_TopologyDescription_CoreCount",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_CoreCount),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_CoreCount)}},
+          {"PJRT_TopologyDescription_LogiDeviceCountPerProcess",
+           {offsetof(PJRT_Api,
+                     PJRT_TopologyDescription_LogiDeviceCountPerProcess),
+            sizeof(
+                PJRT_Api::PJRT_TopologyDescription_LogiDeviceCountPerProcess)}},
+          {"PJRT_TopologyDescription_LogiDeviceCount",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_LogiDeviceCount),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_LogiDeviceCount)}},
+          {"PJRT_TopologyDescription_LogiDeviceCountPerChip",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_LogiDeviceCountPerChip),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_LogiDeviceCountPerChip)}},
+          {"PJRT_TopologyDescription_CoreCountPerProcess",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_CoreCountPerProcess),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_CoreCountPerProcess)}},
+          {"PJRT_TopologyDescription_ProcessIds",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_ProcessIds),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_ProcessIds)}},
+          {"PJRT_TopologyDescription_LogiDeviceIdsOnProcess",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_LogiDeviceIdsOnProcess),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_LogiDeviceIdsOnProcess)}},
+          {"PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip",
+           {offsetof(PJRT_Api,
+                     PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip),
+            sizeof(
+                PJRT_Api::PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip)}},
+          {"PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice",
+           {offsetof(PJRT_Api,
+                     PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice),
+            sizeof(
+                PJRT_Api::
+                    PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice)}},
+          {"PJRT_TopologyDescription_ProcessCoordFromId",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_ProcessCoordFromId),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_ProcessCoordFromId)}},
+          {"PJRT_TopologyDescription_ChipIdFromCoord",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_ChipIdFromCoord),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_ChipIdFromCoord)}},
+          {"PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx",
+           {offsetof(PJRT_Api,
+                     PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx),
+            sizeof(
+                PJRT_Api::
+                    PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx)}},
+          {"PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice",
+           {offsetof(PJRT_Api,
+                     PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice),
+            sizeof(PJRT_Api::
+                       PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice)}},
+          {"PJRT_TopologyDescription_ChipsPerProcessBounds",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_ChipsPerProcessBounds),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_ChipsPerProcessBounds)}},
+          {"PJRT_TopologyDescription_ChipBounds",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_ChipBounds),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_ChipBounds)}},
+          {"PJRT_TopologyDescription_ProcessBounds",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_ProcessBounds),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_ProcessBounds)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

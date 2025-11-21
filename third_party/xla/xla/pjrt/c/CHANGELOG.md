@@ -1,5 +1,30 @@
 # PJRT C API changelog
 
+## 0.82
+
+* Added the following functions to query topology.
+
+  * `PJRT_TopologyDescription_ProcessCount`
+  * `PJRT_TopologyDescription_ChipsPerProcess`
+  * `PJRT_TopologyDescription_CoreCountPerChip`
+  * `PJRT_TopologyDescription_ChipCount`
+  * `PJRT_TopologyDescription_CoreCount`
+  * `PJRT_TopologyDescription_LogiDeviceCountPerProcess`
+  * `PJRT_TopologyDescription_LogiDeviceCount`
+  * `PJRT_TopologyDescription_LogiDeviceCountPerChip`
+  * `PJRT_TopologyDescription_CoreCountPerProcess`
+  * `PJRT_TopologyDescription_ProcessIds`
+  * `PJRT_TopologyDescription_LogiDeviceIdsOnProcess`
+  * `PJRT_TopologyDescription_ProcIdAndIdxOnProcForChip`
+  * `PJRT_TopologyDescription_ProcIdAndIdxOnProcForLogiDevice`
+  * `PJRT_TopologyDescription_ProcessCoordFromId`
+  * `PJRT_TopologyDescription_ChipIdFromCoord`
+  * `PJRT_TopologyDescription_LogiDeviceIdFromChipCoordAndIdx`
+  * `PJRT_TopologyDescription_ChipCoordAndIdxForLogiDevice`
+  * `PJRT_TopologyDescription_ChipsPerProcessBounds`
+  * `PJRT_TopologyDescription_ChipBounds`
+  * `PJRT_TopologyDescription_ProcessBounds`
+
 ## 0.81
 
 * Added `PJRT_Layouts_PJRT_Executable_GetOutputLayouts`.

@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
@@ -250,6 +251,43 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
+
+  absl::StatusOr<PjRtTopologyDescriptionProto> ToProto() const override;
+
+  absl::StatusOr<int> ProcessCount() const override;
+
+  absl::StatusOr<int> ChipsPerProcess() const override;
+
+  absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override;
+
+  absl::StatusOr<int> ChipCount() const override;
+  absl::StatusOr<int> CoreCountOfDefaultType() const override;
+  absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const override;
+  absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerProcess()
+      const override;
+  absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerChip() const override;
+  absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override;
+  absl::StatusOr<PjRtIdContainer<PjRtProcessId>> ProcessIds() const override;
+  absl::StatusOr<PjRtIdContainer<PjRtGlobalDeviceId>>
+  LogicalDeviceOfDefaultTypeIdsOnProcess(
+      PjRtProcessId process_id) const override;
+  absl::StatusOr<std::pair<PjRtProcessId, int>>
+  ProcessIdAndIndexOnProcessForChip(PjRtGlobalChipId chip_id) const override;
+  absl::StatusOr<std::pair<PjRtProcessId, int>>
+  ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+      xla::PjRtGlobalDeviceId device_id) const override;
+  absl::StatusOr<PjRtDeviceDimensions> ProcessCoordFromId(
+      PjRtProcessId process_id) const override;
+  absl::StatusOr<PjRtGlobalChipId> ChipIdFromCoord(
+      const PjRtDeviceDimensions& chip) const override;
+  absl::StatusOr<xla::PjRtGlobalDeviceId> IdForLogicalDeviceOfDefaultType(
+      const PjRtDeviceDimensions& chip, int core_index) const override;
+  absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
+  LogicalDeviceOfDefaultTypeForId(
+      xla::PjRtGlobalDeviceId device_id) const override;
+  absl::StatusOr<PjRtDeviceDimensions> ChipsPerProcessBounds() const override;
+  absl::StatusOr<PjRtDeviceDimensions> ChipBounds() const override;
+  absl::StatusOr<PjRtDeviceDimensions> ProcessBounds() const override;
 
  private:
   std::unique_ptr<PjRtCApiCompiler> compiler_;

@@ -276,6 +276,7 @@ cc_library(
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
+        "//xla/pjrt:pjrt_device_dimensions",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
         "//xla/pjrt:pjrt_stream_executor_client",
