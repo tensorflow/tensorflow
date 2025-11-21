@@ -16,8 +16,13 @@ limitations under the License.
 #include "tensorflow/core/util/batch_util.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
