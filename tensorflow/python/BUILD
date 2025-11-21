@@ -782,6 +782,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/cc/saved_model:metrics_impl",
         "//tensorflow/compiler/mlir/lite/python:converter_python_api",
+        "//tensorflow/compiler/mlir/lite/python/model_utils_core:pybind_api",
         "//tensorflow/compiler/mlir/quantization/stablehlo/python:pywrap_quantization_lib_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
