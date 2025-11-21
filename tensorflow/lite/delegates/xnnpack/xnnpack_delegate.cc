@@ -3063,25 +3063,6 @@ class Subgraph {
       case kTfLiteBuiltinVarHandle:
         return VisitVarHandleNode(subgraph, delegate, logging_context,
                                   node_index, node);
-      case kTfLiteBuiltinStablehloComposite: {
-        const TfLiteStablehloCompositeParams* composite_params =
-            static_cast<const TfLiteStablehloCompositeParams*>(
-                node->builtin_data);
-        if (strcmp(composite_params->name, kOdmlSDPA) == 0) {
-          return VisitScaledDotAttentionCompositeNode(
-              subgraph, delegate, context, node_index, node, context->tensors,
-              composite_params->attributes, composite_params->attributes_size,
-              input_output_tensors);
-        } else {
-#ifdef XNNPACK_DELEGATE_ENABLE_LOGGING
-          TF_LITE_KERNEL_LOG(context,
-                             "unsupported stablehlo.composite operator type "
-                             "\"%s\" in node #%d",
-                             composite_params->name, node_index);
-#endif  // XNNPACK_DELEGATE_ENABLE_LOGGING
-        }
-        return kTfLiteError;
-      }
       case kTfLiteBuiltinCustom: {
         if (strcmp(registration->custom_name, "Convolution2DTransposeBias") ==
             0) {
