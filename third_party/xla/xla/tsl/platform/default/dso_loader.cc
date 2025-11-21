@@ -25,7 +25,9 @@ limitations under the License.
 #include "third_party/gpus/cuda/cuda_config.h"
 #include "third_party/nccl/nccl_config.h"
 #include "third_party/nvshmem/nvshmem_config.h"
+#if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
+#endif
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/load_library.h"
 #include "tsl/platform/path.h"
