@@ -2403,7 +2403,7 @@ void TapeSetRecordBackprop(
     const std::vector<tensorflow::DataType>& input_dtypes,
     const std::function<PyBackwardFunction*()>& backward_function_getter,
     const std::function<void(PyBackwardFunction*)>& backward_function_killer,
-    tensorflow::uint64 max_gradient_tape_id) {
+    uint64_t max_gradient_tape_id) {
   if (!CouldBackprop()) {
     return;
   }
@@ -2424,9 +2424,8 @@ bool TapeSetRecordForwardprop(
     const std::function<PyBackwardFunction*()>& backward_function_getter,
     const std::function<void(PyBackwardFunction*)>& backward_function_killer,
     const tensorflow::eager::ForwardFunction<PyObject>* forward_function,
-    PyObject* forwardprop_output_indices,
-    tensorflow::uint64* max_gradient_tape_id) {
-  *max_gradient_tape_id = std::numeric_limits<tensorflow::uint64>::max();
+    PyObject* forwardprop_output_indices, uint64_t* max_gradient_tape_id) {
+  *max_gradient_tape_id = std::numeric_limits<uint64_t>::max();
   if (!CouldForwardprop()) {
     return true;
   }
@@ -2636,7 +2635,7 @@ bool TapeSetRecordOperation(
   if (!ParseOpTypeString(op_type, &op_type_str)) {
     return false;
   }
-  tensorflow::uint64 max_gradient_tape_id;
+  uint64_t max_gradient_tape_id;
   if (!TapeSetRecordForwardprop(
           op_type_str, output_seq.get(), output_info, input_tensors, input_ids,
           input_dtypes, backward_function_getter, backward_function_killer,
@@ -2746,7 +2745,7 @@ PyObject* TFE_Py_TapeSetRecordOperationForwardprop(
   if (!ParseOpTypeString(op_type, &op_type_str)) {
     return nullptr;
   }
-  tensorflow::uint64 max_gradient_tape_id;
+  uint64_t max_gradient_tape_id;
   if (!TapeSetRecordForwardprop(
           op_type_str, output_seq.get(), output_info, input_tensors, input_ids,
           input_dtypes, backward_function_getter, backward_function_killer,
@@ -2801,7 +2800,7 @@ PyObject* TFE_Py_TapeSetRecordOperationBackprop(PyObject* op_type,
                         backward_function_getter, backward_function_killer,
                         // No filtering based on relative ordering with forward
                         // accumulators.
-                        std::numeric_limits<tensorflow::uint64>::max());
+                        std::numeric_limits<uint64_t>::max());
   Py_RETURN_NONE;
 }
 
