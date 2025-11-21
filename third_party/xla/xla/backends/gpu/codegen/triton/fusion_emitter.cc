@@ -226,11 +226,6 @@ absl::StatusOr<TensorValue> EmitReduce(
   const HloReduceInstruction& hlo_reduce =
       *::xla::Cast<HloReduceInstruction>(tiled_hlo_reduce.hlo());
   TensorValue input = values[tiled_hlo_reduce.operand(0)];
-  llvm::ArrayRef<int64_t> input_shape = input.getType().getShape();
-  absl::Span<const int64_t> source_tensor_shape =
-      hlo_reduce.operand(0)->shape().dimensions();
-
-  int reduction_dimension = hlo_reduce.dimensions().front();
 
   // Since every shape is padded to a power of 2 in Triton, the input tile may
   // be padded with arbitrary values. These values could affect the result of
@@ -240,29 +235,30 @@ absl::StatusOr<TensorValue> EmitReduce(
   // hlo_reduce.operand(1) is thus always the right choice to ensure that the
   // reduction is computed correctly, since it is the neutral value with
   // regards to the reducer.
-  int64_t source_tensor_reduction_dimension_size =
-      source_tensor_shape[reduction_dimension];
-  int64_t input_reduction_dimension_size = input_shape[reduction_dimension];
-  if (input_reduction_dimension_size !=
-      source_tensor_reduction_dimension_size) {
-    TensorValue range = Iota(b, input_reduction_dimension_size);
-    TensorValue bcast =
-        BroadcastInDims(b, range, input_shape, {reduction_dimension});
-    TensorValue constant = CreateConst(
-        b, b.getI32Type(), source_tensor_reduction_dimension_size, input_shape);
-    Value mask =
-        b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, bcast, constant);
 
-    TensorValue neutral = BroadcastInDims(
-        b, values[tiled_hlo_reduce.operand(1)], input_shape, /*dims=*/{});
-    input = mlir::cast<TensorValue>(
-        b.create<arith::SelectOp>(mask, input, neutral).getResult());
+  absl::Span<const int64_t> unpadded_tile_sizes =
+      tiled_hlo_reduce.operand(0)->tile_sizes();
+  llvm::SmallVector<int64_t> mask_dim_bounds;
+  mask_dim_bounds.reserve(unpadded_tile_sizes.size());
+  for (auto [idx, dim_size] : llvm::enumerate(unpadded_tile_sizes)) {
+    if (absl::c_contains(hlo_reduce.dimensions(), idx)) {
+      // We only need to mask the reduction dimensions.
+      mask_dim_bounds.push_back(dim_size);
+    } else {
+      mask_dim_bounds.push_back(input.getType().getDimSize(idx));
+    }
   }
+  mlir::Value neutral_value =
+      mlir::tensor::ExtractOp::create(b, values[tiled_hlo_reduce.operand(1)]);
+  // Use createOrFold as the mask may be be reduntant, in which case it will be
+  // folded away.
+  input = mlir::cast<TensorValue>(
+      b.createOrFold<xtile::MaskOp>(input, mask_dim_bounds, neutral_value));
 
   Value init_value = values[tiled_hlo_reduce.operand(1)];
 
   stablehlo::ReduceOp reduction =
-      b.create<stablehlo::ReduceOp>(input, init_value, reduction_dimension);
+      b.create<stablehlo::ReduceOp>(input, init_value, hlo_reduce.dimensions());
   {
     TF_ASSIGN_OR_RETURN(Type result_ty,
                         TritonType(b, hlo_reduce.shape().element_type()));
@@ -1627,7 +1623,14 @@ absl::Status IsTritonSupportedFusion(const HloFusionInstruction& fusion,
             absl::StrCat("Pad is not supported: ", hlo->ToString()));
       }
     }
+
+    if (hlo->opcode() == HloOpcode::kReduce && hlo->dimensions().size() != 1) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Reduction with only a single dimension is supported: ",
+                       hlo->ToString()));
+    }
   }
+
   return absl::OkStatus();
 }
 
