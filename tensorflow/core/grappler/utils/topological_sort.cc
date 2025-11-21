@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 
 #include <algorithm>
-#include <deque>
-#include <unordered_map>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/graph_view.h"
