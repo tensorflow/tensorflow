@@ -270,6 +270,13 @@ absl::StatusOr<TensorValue> EmitScope(
     absl::Span<const HloInstruction* const> instructions,
     absl::flat_hash_map<const HloInstruction*, TensorValue>& values);
 
+TensorValue BroadcastInDims(EmitterLocOpBuilder b, TensorValue value,
+                            ::mlir::ArrayRef<int64_t> output_shape,
+                            ::mlir::ArrayRef<int64_t> dims);
+
+TensorValue Splat(EmitterLocOpBuilder b, ::mlir::Value value,
+                  ::mlir::ArrayRef<int64_t> output_shape);
+
 }  // namespace xla::gpu::triton
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_EMITTER_HELPERS_H_

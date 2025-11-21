@@ -246,7 +246,6 @@ def TritonXLAMathToLibdevicePass
   ];
 }
 
-
 def XTileLowerToTritonPass
     : Pass<"xtile-lower-to-triton", "mlir::ModuleOp"> {
   let summary = "Lowers XTile operations to their Triton equivalent.";
@@ -255,6 +254,17 @@ def XTileLowerToTritonPass
     "::xla::xtile::XTileDialect",
   ];
   let constructor = "CreateXTileLowerToTritonPass()";
+}
+
+def ArithFP8ConversionToTritonPass
+    : Pass<"arith-fp8-conversion-to-triton", "mlir::ModuleOp"> {
+  let summary =
+    "Converts arith extf and truncf operations to their Triton equivalent.";
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect",
+    "::mlir::triton::TritonDialect",
+  ];
+  let constructor = "CreateArithFP8ConversionToTritonPass()";
 }
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

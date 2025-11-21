@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
@@ -195,7 +196,7 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   const auto ptr_to_i64_type =
       ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace);
   auto remote_input_buffers_i64 =
-      b.create<ttir::BitcastOp>(ptr_to_i64_type, remote_input_buffers);
+      b.create<mlir::tensor::BitcastOp>(ptr_to_i64_type, remote_input_buffers);
   Value remote_buf_ptr_addr = b.create<ttir::AddPtrOp>(
       ptr_to_i64_type, remote_input_buffers_i64, device_rank);
   Value remote_buf_i64 =
@@ -236,7 +237,7 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   mlir::Value accumulator_zero =
       b.create<arith::ConstantOp>(elem_type, b.getZeroAttr(elem_type));
   TensorValue accumulator =
-      b.create<ttir::SplatOp>(input_tile.getType(), accumulator_zero);
+      triton::Splat(b, accumulator_zero, input_tile.getType().getShape());
   for (int rank = 0; rank < world_size; ++rank) {
     Value rank_idx =
         b.create<arith::ConstantOp>(b.getI64Type(), b.getI64IntegerAttr(rank));
