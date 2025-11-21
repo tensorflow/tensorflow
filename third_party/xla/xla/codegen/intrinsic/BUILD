@@ -128,8 +128,6 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/codegen:contiguous_section_memory_manager",
-        "//xla/service/cpu:orc_jit_memory_mapper",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base",

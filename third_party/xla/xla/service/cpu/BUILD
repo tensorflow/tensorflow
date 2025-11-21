@@ -1309,21 +1309,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "orc_jit_memory_mapper",
-    srcs = ["orc_jit_memory_mapper.cc"],
-    hdrs = ["orc_jit_memory_mapper.h"],
-    deps = [
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
-        "@llvm-project//llvm:ExecutionEngine",
-    ],
-)
-
 xla_cc_test(
     name = "cpu_eigen_tensor_alignment_test",
     size = "small",

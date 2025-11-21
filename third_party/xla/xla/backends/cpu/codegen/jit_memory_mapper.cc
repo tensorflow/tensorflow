@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/orc_jit_memory_mapper.h"
+#include "xla/backends/cpu/codegen/jit_memory_mapper.h"
 
 #include <atomic>
 #include <memory>
 #include <string>
 
 #include "absl/base/const_init.h"
+#include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -27,27 +28,34 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 
-namespace xla {
-namespace cpu {
-namespace orc_jit_memory_mapper {
+namespace xla::cpu {
 
-static std::atomic<Registrar::MemoryMapperGetter*> mapper_getter_ptr{nullptr};
+static absl::NoDestructor<
+    std::atomic<internal::JitMemoryMapperRegistration::MemoryMapperGetter*>>
+    mapper_getter(nullptr);
 
 static absl::Mutex mapper_instances_mutex(absl::kConstInit);
-static absl::flat_hash_map<std::string,
-                           llvm::SectionMemoryManager::MemoryMapper*>*
-    mapper_instances ABSL_GUARDED_BY(mapper_instances_mutex) = nullptr;
+static absl::NoDestructor<
+    absl::flat_hash_map<std::string, llvm::SectionMemoryManager::MemoryMapper*>>
+    mapper_instances ABSL_GUARDED_BY(mapper_instances_mutex);
 
-llvm::SectionMemoryManager::MemoryMapper* GetInstance(
+internal::JitMemoryMapperRegistration::JitMemoryMapperRegistration(
+    JitMemoryMapperRegistration::MemoryMapperGetter* getter) {
+  JitMemoryMapperRegistration::MemoryMapperGetter* expected_nullptr = nullptr;
+  CHECK(mapper_getter->compare_exchange_strong(expected_nullptr, getter,
+                                               std::memory_order_release,
+                                               std::memory_order_acquire));
+}
+
+llvm::SectionMemoryManager::MemoryMapper* GetJitMemoryMapper(
     absl::string_view allocation_region_name) {
-  Registrar::MemoryMapperGetter* getter =
-      mapper_getter_ptr.load(std::memory_order_acquire);
+  internal::JitMemoryMapperRegistration::MemoryMapperGetter* getter =
+      mapper_getter->load(std::memory_order_acquire);
 
-  {
-    if (getter == nullptr) {
-      return nullptr;
-    }
+  if (getter == nullptr) {
+    return nullptr;
   }
+
   absl::MutexLock lock(mapper_instances_mutex);
   auto it = mapper_instances->find(allocation_region_name);
   if (it == mapper_instances->end()) {
@@ -60,23 +68,4 @@ llvm::SectionMemoryManager::MemoryMapper* GetInstance(
   return it->second;
 }
 
-Registrar::Registrar(Registrar::MemoryMapperGetter* mapper_getter) {
-  Registrar::MemoryMapperGetter* expected_nullptr = nullptr;
-
-  CHECK(mapper_getter_ptr.compare_exchange_strong(
-      expected_nullptr, mapper_getter, std::memory_order_release,
-      std::memory_order_acquire));
-
-  {
-    absl::MutexLock lock(mapper_instances_mutex);
-    if (mapper_instances == nullptr) {
-      mapper_instances =
-          new absl::flat_hash_map<std::string,
-                                  llvm::SectionMemoryManager::MemoryMapper*>();
-    }
-  }
-}
-
-}  // namespace orc_jit_memory_mapper
-}  // namespace cpu
-}  // namespace xla
+}  // namespace xla::cpu

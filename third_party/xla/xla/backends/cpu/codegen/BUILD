@@ -270,10 +270,10 @@ cc_library(
         ":cpu_features",
         ":execution_engine",
         ":ir_compiler",
+        ":jit_memory_mapper",
         ":object_loader",
         "//xla:util",
         "//xla/backends/cpu/runtime:function_library",
-        "//xla/service/cpu:orc_jit_memory_mapper",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
@@ -311,7 +311,7 @@ cc_library(
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]) + if_llvm_x86_available([
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-    ]) + xla_internal(["service/cpu:named_orc_jit_memory_mapper"]),
+    ]) + xla_internal(["service/cpu:named_jit_memory_mapper"]),
 )
 
 xla_cc_test(
@@ -340,6 +340,22 @@ xla_cc_test(
         "@llvm-project//llvm:OrcShared",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+    ],
+)
+
+cc_library(
+    name = "jit_memory_mapper",
+    srcs = ["jit_memory_mapper.cc"],
+    hdrs = ["jit_memory_mapper.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:ExecutionEngine",
     ],
 )
 
@@ -543,8 +559,8 @@ cc_library(
         ":compiled_function_library",
         ":contiguous_section_memory_manager",
         ":execution_engine",
+        ":jit_memory_mapper",
         "//xla/backends/cpu/runtime:function_library",
-        "//xla/service/cpu:orc_jit_memory_mapper",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -567,7 +583,7 @@ cc_library(
     hdrs = ["execution_engine.h"],
     deps = [
         ":contiguous_section_memory_manager",
-        "//xla/service/cpu:orc_jit_memory_mapper",
+        ":jit_memory_mapper",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
