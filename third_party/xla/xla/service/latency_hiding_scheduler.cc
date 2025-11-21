@@ -1613,7 +1613,9 @@ class ReadySetLt {
             cand_node->GetResources());
     int64_t num_conflicting_resources = 0;
     for (int64_t resource : resources) {
-      if (!sched_state_.resource_occupiers_in_flight.count(resource)) continue;
+      if (!sched_state_.resource_occupiers_in_flight.count(resource)) {
+        continue;
+      }
       num_conflicting_resources +=
           sched_state_.resource_occupiers_in_flight.at(resource).size();
     }
@@ -3244,9 +3246,9 @@ DefaultSchedulerCore::ScheduleComputation(
     XLA_VLOG_LINES(2, [&sched_state]() {
       struct LogFormatter {
         void operator()(std::string* out, const HloGraphNode* n) const {
-          out->append(absl::StrCat("\t", n->GetInstr().name(),
-                                   " Ready time: ", n->GetReadyTime(),
-                                   " Depth: ", n->GetGraphDepth()));
+          absl::StrAppend(out, "\t", n->GetInstr().name(),
+                          " Ready time: ", n->GetReadyTime(),
+                          " Depth: ", n->GetGraphDepth());
         }
       };
       return absl::StrJoin(sched_state->ready_set, "\n", LogFormatter());
