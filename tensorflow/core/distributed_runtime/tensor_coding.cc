@@ -114,14 +114,14 @@ enum WireType {
   WIRETYPE_VARINT = 0,
   WIRETYPE_LENGTH_DELIMITED = 2,
 };
-inline int GetTagFieldNumber(uint32 tag) { return tag >> 3; }
-inline WireType GetTagWireType(uint32 tag) {
+inline int GetTagFieldNumber(uint32_t tag) { return tag >> 3; }
+inline WireType GetTagWireType(uint32_t tag) {
   return static_cast<WireType>(tag & 0x7);
 }
 
 bool ReadVarintSizeAsInt(protobuf::io::CodedInputStream* input, int* result) {
   protobuf_uint64 v;
-  if (input->ReadVarint64(&v) && v <= static_cast<uint64>(INT_MAX)) {
+  if (input->ReadVarint64(&v) && v <= static_cast<uint64_t>(INT_MAX)) {
     *result = static_cast<int>(v);
     return true;
   } else {
@@ -162,7 +162,7 @@ bool TensorResponse::ParseTensorSubmessage(
     }
     switch (tag) {
       case TensorProto::kDtypeFieldNumber: {
-        uint32 v;
+        uint32_t v;
         if ((wt != WIRETYPE_VARINT) || !input->ReadVarint32(&v)) return false;
         if (seen_tensor_content) return false;
         tensor_meta->set_dtype(static_cast<DataType>(static_cast<int>(v)));
@@ -177,10 +177,10 @@ bool TensorResponse::ParseTensorSubmessage(
         break;
       }
       case TensorProto::kVersionNumberFieldNumber: {
-        uint32 v;
+        uint32_t v;
         if ((wt != WIRETYPE_VARINT) || !input->ReadVarint32(&v)) return false;
         if (seen_tensor_content) return false;
-        tensor_meta->set_version_number(static_cast<int32>(v));
+        tensor_meta->set_version_number(static_cast<int32_t>(v));
         break;
       }
       case TensorProto::kTensorContentFieldNumber: {
@@ -242,7 +242,7 @@ bool TensorResponse::ParseFast(Source* source) {
         break;
       }
       case RecvTensorResponse::kIsDeadFieldNumber: {
-        uint32 v;
+        uint32_t v;
         if ((wt != WIRETYPE_VARINT) || !input.ReadVarint32(&v)) return false;
         meta_.set_is_dead(v != 0);
         break;
@@ -260,7 +260,7 @@ bool TensorResponse::ParseFast(Source* source) {
         break;
       }
       case RecvTensorResponse::kRequireAckFieldNumber: {
-        uint32 v;
+        uint32_t v;
         if ((wt != WIRETYPE_VARINT) || !input.ReadVarint32(&v)) return false;
         meta_.set_require_ack(v != 0);
         break;
