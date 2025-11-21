@@ -295,7 +295,7 @@ void DataServiceClient::TaskThreadManager() TF_LOCKS_EXCLUDED(mu_) {
   auto cleanup =
       gtl::MakeCleanup([] { VLOG(1) << "Task thread manager exiting"; });
   VLOG(1) << "Starting task thread manager";
-  uint64 next_check = Env::Default()->NowMicros();
+  uint64_t next_check = Env::Default()->NowMicros();
   while (true) {
     {
       mutex_lock l(mu_);
