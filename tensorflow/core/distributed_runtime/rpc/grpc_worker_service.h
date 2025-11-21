@@ -69,7 +69,7 @@ class GrpcWorker : public Worker {
 
  private:
   std::unique_ptr<RpcResponseCache> response_cache_;
-  const int32 recv_buf_max_chunk_;
+  const int32_t recv_buf_max_chunk_;
 };
 
 std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* worker_env,

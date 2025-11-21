@@ -62,7 +62,7 @@ class GrpcByteSource : public TensorResponse::Source {
   char space_[sizeof(Reader)];
 };
 
-inline string GrpcIdKey() { return "tf-rpc"; }
+inline std::string GrpcIdKey() { return "tf-rpc"; }
 
 // Decode a TensorResponse without extra copying. This function is an optimized
 // variant of tsl::GrpcMaybeParseProto.
