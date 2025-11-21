@@ -59,6 +59,7 @@ class LoopFusionTest(parameterized.TestCase):
         symbolic_expr_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
+        enable_tiled_emitter=False,
     )
 
     kernel_runner = testlib_cpu.KernelRunner.create(
@@ -121,6 +122,7 @@ class LoopFusionTest(parameterized.TestCase):
         symbolic_expr_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
+        enable_tiled_emitter=False,
     )
 
     kernel_runner = testlib_cpu.KernelRunner.create(
@@ -178,6 +180,7 @@ class LoopFusionTest(parameterized.TestCase):
         symbolic_expr_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
+        enable_tiled_emitter=False,
     )
 
     kernel_runner = testlib_cpu.KernelRunner.create(
@@ -232,6 +235,7 @@ class LoopFusionTest(parameterized.TestCase):
         symbolic_expr_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
+        enable_tiled_emitter=False,
     )
 
     kernel_runner = testlib_cpu.KernelRunner.create(
@@ -283,6 +287,7 @@ class FusionEmitterTest(parameterized.TestCase):
         symbolic_expr_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
+        enable_tiled_emitter=False,
     )
 
     kernel_runner = testlib_cpu.KernelRunner.create(

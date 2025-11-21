@@ -205,9 +205,10 @@ NB_MODULE(_extension, kernel_runner_module) {
       "emit_fusion_kernel",
       [](mlir::MLIRContext& mlir_context, SymbolicExprContext& expr_context,
          const HloFusionInstruction& fusion,
-         const BufferAssignment* buffer_assignment) {
-        auto kernel_definition = EmitFusionKernel(
-            mlir_context, expr_context, fusion, buffer_assignment, false);
+         const BufferAssignment* buffer_assignment, bool enable_tiled_emitter) {
+        auto kernel_definition =
+            EmitFusionKernel(mlir_context, expr_context, fusion,
+                             buffer_assignment, false, enable_tiled_emitter);
         if (!kernel_definition.ok()) {
           throw std::runtime_error(kernel_definition.status().ToString());
         }

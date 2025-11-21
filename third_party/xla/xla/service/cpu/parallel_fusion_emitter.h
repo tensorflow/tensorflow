@@ -44,7 +44,7 @@ class ParallelFusionEmitter {
                         FusionCompiler::Options options,
                         FusionCompiler::CompilationHooks hooks,
                         const BufferAssignment* buffer_assignment,
-                        bool use_unique_c_name);
+                        bool use_unique_c_name, bool enable_tiled_emitter);
 
   ~ParallelFusionEmitter();
 
@@ -69,6 +69,7 @@ class ParallelFusionEmitter {
   std::unique_ptr<FusionCompilerPool> fusion_compiler_pool_;
   const BufferAssignment* buffer_assignment_;
   bool use_unique_c_name_;
+  bool enable_tiled_emitter_;
 
   absl::Mutex kernels_mutex_;
   int64_t outstanding_kernels_ ABSL_GUARDED_BY(kernels_mutex_) = 0;

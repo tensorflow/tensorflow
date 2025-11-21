@@ -1,4 +1,5 @@
 load("//xla:py_strict.bzl", "py_strict_test")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -17,5 +18,40 @@ py_strict_test(
         "//xla/backends/cpu/testlib",
         "//xla/codegen/testlib",
         "@absl_py//absl/testing:absltest",
+    ],
+)
+
+cc_library(
+    name = "tiled_fusion_emitter",
+    srcs = ["tiled_fusion_emitter.cc"],
+    hdrs = ["tiled_fusion_emitter.h"],
+    visibility = ["//xla/backends/cpu/codegen:__pkg__"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/backends/cpu/codegen:kernel_api_ir_builder",
+        "//xla/backends/gpu/codegen/triton:fusion_emitter",
+        "//xla/codegen:kernel_definition",
+        "//xla/codegen:kernel_spec",
+        "//xla/codegen:mlir_kernel_source",
+        "//xla/codegen/emitters:kernel_api_builder",
+        "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/codegen/tiling:tiling_specification",
+        "//xla/codegen/xtile/ir:xtile",
+        "//xla/hlo/analysis:symbolic_expr",
+        "//xla/hlo/ir:hlo",
+        "//xla/runtime:work_dimensions",
+        "//xla/service:buffer_assignment",
+        "//xla/service:instruction_fusion",
+        "//xla/service/gpu/model:block_level_parameters",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
