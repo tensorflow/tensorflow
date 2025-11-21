@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/random/bit_gen_ref.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -172,8 +173,9 @@ MiscompareChecker::MiscompareChecker(HloModule* module,
   // Generate input data and store the data for all the execution.
   std::minstd_rand0 rng_engine;
   if (input_data.empty()) {
+    absl::BitGenRef bitgen_ref(rng_engine);
     absl::StatusOr<std::vector<Literal>> input_status =
-        MakeFakeArguments(module, &rng_engine);
+        MakeFakeArguments(module, /*use_large_range=*/false, &bitgen_ref);
     CHECK(input_status.ok());
     input_data_ = std::move(input_status).value();
   } else {
