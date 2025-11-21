@@ -49,28 +49,15 @@ bool IsSinkCandidate(mlir::Operation *op) {
 // Check if the op is allowed to be sinked. We are being conservative here to
 // whilelist very limited set of ops here.
 struct AllowSinkHelper {
-  explicit AllowSinkHelper(mlir::Operation* sinked_op, mlir::Operation* user,
-                           int arg_index) {
+  explicit AllowSinkHelper(mlir::Operation *op, int arg_index) {
     if (llvm::isa<mlir::TF::BatchFunctionOp,
-                  mlir::TF::StatefulPartitionedCallOp>(user)) {
+                  mlir::TF::StatefulPartitionedCallOp>(op)) {
       allow_sink_to = true;
       callee_arg_index = arg_index;
       return;
     }
 
-    // We tend to limit this support on WhileOp to only VarHandleOp to satisfy
-    // IFRT lowering requirements.
-    // Sinking other invariants like ConstOp is error-prone because it requires
-    // non-trivial effort to avoid sinking Consts when they are used by cond
-    // function and we don't need such support.
-    if (llvm::isa<mlir::TF::VarHandleOp>(sinked_op) &&
-        llvm::isa<mlir::TF::WhileOp>(user)) {
-      allow_sink_to = true;
-      callee_arg_index = arg_index;
-      return;
-    }
-
-    if (llvm::isa<mlir::TF::IfOp>(user) && arg_index > 0) {
+    if (llvm::isa<mlir::TF::IfOp>(op) && arg_index > 0) {
       allow_sink_to = true;
       callee_arg_index = arg_index - 1;
       return;
@@ -120,8 +107,7 @@ void FindSinkTarget(
   for (mlir::OpOperand &use : value.getUses()) {
     auto *user = use.getOwner();
 
-    AllowSinkHelper helper(original.getDefiningOp(), user,
-                           use.getOperandNumber());
+    AllowSinkHelper helper(user, use.getOperandNumber());
 
     if (helper.allow_sink_to) {
       auto values = FindValueInCallees(symbol_table, symbol_users, user,
@@ -130,14 +116,6 @@ void FindSinkTarget(
         FindSinkTarget(symbol_table, symbol_users, original, value, targets);
       }
     } else if (value != original) {
-      // If the sinked op is directly used by ReturnOp, we don't sink it.
-      // One example is for tf.WhileOp, the input and output of the cond
-      // function and the body function must be the same. If the cond function
-      // has an input of type tf.VarHandleOp and it just return the VarHandleOp,
-      // we don't need to sink it.
-      if (llvm::isa<mlir::func::ReturnOp>(user)) {
-        continue;
-      }
       targets[&use].insert(original);
     }
   }
