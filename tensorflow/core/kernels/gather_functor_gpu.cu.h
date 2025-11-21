@@ -93,7 +93,8 @@ struct LaunchGatherKernelVectorized {
 
       GpuLaunchConfig config = GetGpuLaunchConfig(
           out_size_vec, d, &GatherOpKernel<Tvec, Index, is_axis_zero>,
-          /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+          /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0,
+          /*allow_int64_work_element_count=*/true);
       return GpuLaunchKernel(
           GatherOpKernel<Tvec, Index, is_axis_zero>, config.block_count,
           config.thread_per_block, 0, d.stream(), params_vec, indices, out_vec,
