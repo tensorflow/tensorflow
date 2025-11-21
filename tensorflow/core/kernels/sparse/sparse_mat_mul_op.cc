@@ -188,7 +188,7 @@ class CSRSparseMatMulCPUOp : public OpKernel {
 
     // Set batch pointers.
     Tensor batch_ptr(cpu_allocator(), DT_INT32, TensorShape({batch_size + 1}));
-    auto batch_ptr_vec = batch_ptr.vec<int32>();
+    auto batch_ptr_vec = batch_ptr.vec<int32_t>();
     batch_ptr_vec(0) = 0;
 
     // Store intermediate matrix products for each batch.
@@ -248,8 +248,8 @@ class CSRSparseMatMulCPUOp : public OpKernel {
     Tensor output_col_ind(cpu_allocator(), DT_INT32, TensorShape({total_nnz}));
     Tensor output_values(cpu_allocator(), DataTypeToEnum<T>::value,
                          TensorShape({total_nnz}));
-    auto output_row_ptr_ptr = output_row_ptr.flat<int32>().data();
-    auto output_col_ind_ptr = output_col_ind.flat<int32>().data();
+    auto output_row_ptr_ptr = output_row_ptr.flat<int32_t>().data();
+    auto output_col_ind_ptr = output_col_ind.flat<int32_t>().data();
     auto output_values_ptr = output_values.flat<T>().data();
 
     // Copy the output matrices from each batch into the CSRSparseMatrix
@@ -411,14 +411,14 @@ class CSRSparseMatMulGPUOp : public OpKernel {
 
     Tensor c_batch_ptr_t(cpu_allocator(), DT_INT32,
                          TensorShape({batch_size + 1}));
-    auto c_batch_ptr = c_batch_ptr_t.vec<int32>();
+    auto c_batch_ptr = c_batch_ptr_t.vec<int32_t>();
     c_batch_ptr(0) = 0;
 
     Tensor c_row_ptr_t;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(
                             DT_INT32, TensorShape({batch_size * (rows + 1)}),
                             &c_row_ptr_t));
-    auto c_row_ptr = c_row_ptr_t.vec<int32>();
+    auto c_row_ptr = c_row_ptr_t.vec<int32_t>();
 
     // Possibly transpose a.
     const CSRSparseMatrix* a_input_matrix;
@@ -643,8 +643,8 @@ class CSRSparseMatMulGPUOp : public OpKernel {
                                   b_input_matrix->values_vec<T>(b_batch),
                                   b_input_dense_shape};
 
-      TTypes<int32>::UnalignedVec c_row_ptr_i(&c_row_ptr(i * (rows + 1)),
-                                              rows + 1);
+      TTypes<int32_t>::UnalignedVec c_row_ptr_i(&c_row_ptr(i * (rows + 1)),
+                                                rows + 1);
 
       int c_nnz_i;
       OP_REQUIRES_OK(ctx,
