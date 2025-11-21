@@ -173,6 +173,8 @@ class HloInstructionUnwrappingIteratorBase {
   using pointer = value_type*;
   using reference = value_type&;
 
+  HloInstructionUnwrappingIteratorBase() = default;
+
   explicit HloInstructionUnwrappingIteratorBase(WrappedIter iter)
       : iter_(std::move(iter)) {}
 
