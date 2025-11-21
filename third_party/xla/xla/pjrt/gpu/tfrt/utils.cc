@@ -640,7 +640,9 @@ absl::StatusOr<std::unique_ptr<tsl::Allocator>> CreateAllocatorForDevice(
       LOG_FIRST_N(INFO, 1) << "Using BFC allocator.";
       return CreateBFCAllocator(executor, allocator_config.memory_fraction,
                                 allocator_config.preallocate,
-                                allocator_config.gpu_system_memory_size);
+                                allocator_config.gpu_system_memory_size,
+                                allocator_config.sub_allocator_alloc_visitors,
+                                allocator_config.sub_allocator_free_visitors);
     case GpuAllocatorConfig::Kind::kPlatform:
       LOG(FATAL) << "Platform allocator should be handled before calling this "
                     "function.";
