@@ -1,0 +1,71 @@
+# Copyright 2025 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+name: CI - Bazel Optional B200 tests
+on:
+  workflow_dispatch:
+    inputs:
+      halt-for-connection:
+        description: 'Should this workflow run wait for a remote connection?'
+        type: choice
+        required: true
+        default: 'no'
+        options:
+        - 'yes'
+        - 'no'
+  pull_request:
+    branches:
+      - main
+    types: [ labeled, synchronize ]
+  schedule:
+    - cron: "0 */2 * * *" # Run once every 2 hours
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  # Don't cancel in-progress jobs for main/release branches.
+  cancel-in-progress: ${{ !contains(github.ref, 'release/') && github.ref != 'main' }}
+jobs:
+  run_tests:
+    if: ${{ github.event.repository.fork == false && (github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'CI Optional B200 Presubmit')) }}
+    runs-on: ${{ matrix.runner }}
+    container: 'us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-cuda12.8-cudnn9.8:latest'
+    strategy:
+      matrix:
+        # Optional gpus to run against
+        runner: ["linux-x86-a4-224-b200-1gpu"]
+    name: "Bazel single accelerator B200 tests (${{ matrix.runner }})"
+# End Presubmit Naming Check github-cuda-presubmits
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - name: Wait For Connection
+        uses: google-ml-infra/actions/ci_connection@main
+        with:
+          halt-dispatch-input: ${{ inputs.halt-for-connection }}
+      - name: Run Bazel CUDA Tests
+        run: |
+            nvidia-smi
+            bazel test --config=ci_linux_x86_64_cuda \
+            --config=resultstore \
+            --config=rbe_cache \
+            --repo_env=HERMETIC_CUDA_VERSION="12.8.0" \
+            --repo_env=HERMETIC_CUDNN_VERSION="9.8.0" \
+            --repo_env=HERMETIC_PYTHON_VERSION="3.13" \
+            --run_under "$(pwd)/build/parallel_accelerator_execute.sh" \
+            --test_output=errors \
+            --local_test_jobs=32 \
+            --test_env=TF_CPP_MIN_LOG_LEVEL=0 \
+            --action_env=NCCL_DEBUG=WARN \
+            --color=yes \
+            //xla/backends/gpu/codegen/triton:gpu_b200_tests
