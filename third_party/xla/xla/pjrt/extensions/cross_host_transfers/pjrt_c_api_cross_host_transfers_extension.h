@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,7 +35,7 @@ extern "C" {
 // CrossHostSendBuffers and CrossHostReceiveBuffers. These methods allow PjRt
 // clients to implement various optimizations for cross-host transfers.
 
-#define PJRT_API_CROSS_HOST_TRANSFERS_EXTENSION_VERSION 2
+#define PJRT_API_CROSS_HOST_TRANSFERS_EXTENSION_VERSION 3
 
 // ---------------------------------- Methods ----------------------------------
 
@@ -112,15 +113,26 @@ PJRT_DEFINE_STRUCT_TRAITS(
 typedef PJRT_Error* PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers(
     PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args* args);
 
+typedef void (*PJRT_Transfers_CrossHostRemoteSendCallback)(
+    PJRT_Error* error, bool sends_were_enqueued, void* user_arg);
+
+struct PJRT_Transfers_CrossHostRemoteSendCallbackInfo {
+  void* user_arg;
+  PJRT_Transfers_CrossHostRemoteSendCallback on_done;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Transfers_CrossHostRemoteSendCallbackInfo,
+                          on_done);
+
 struct PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
   PJRT_Buffer* buffer;
   const char* serialized_descriptor;
   size_t serialized_descriptor_size;
+  PJRT_Transfers_CrossHostRemoteSendCallbackInfo on_done;
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args,
-                          serialized_descriptor_size);
+                          on_done);
 
 typedef void PJRT_Buffer_CopyToRemoteDevice(
     PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args* args);
@@ -153,6 +165,9 @@ PJRT_CrossHostTransfers_Extension CreateCrossHostTransfersExtension(
     PJRT_Extension_Base* next = nullptr);
 PJRT_Transfers_CrossHostRecvNotifierInfo CppCrossHostRecvNotifierToC(
     const PJRT_Api* c_api, xla::PjRtCrossHostRecvNotifier cpp_notifier);
+PJRT_Transfers_CrossHostRemoteSendCallbackInfo
+CppCrossHostRemoteSendCallbackToC(
+    const PJRT_Api* c_api, xla::PjRtBuffer::RemoteSendCallback cpp_callback);
 }  // namespace pjrt
 
 #endif  // XLA_PJRT_EXTENSIONS_CROSS_HOST_TRANSFERS_PJRT_C_API_CROSS_HOST_TRANSFERS_EXTENSION_H_
