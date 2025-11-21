@@ -3115,6 +3115,9 @@ void PjRtCApiBuffer::CopyToRemoteDevice(
                        << descriptor.status();
   args.serialized_descriptor = descriptor->c_str();
   args.serialized_descriptor_size = descriptor->size();
+  PJRT_Transfers_CrossHostRemoteSendCallbackInfo on_done_info =
+      pjrt::CppCrossHostRemoteSendCallbackToC(pjrt_c_api(), std::move(on_done));
+  args.on_done = on_done_info;
   extension->PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice(&args);
 }
 

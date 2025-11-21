@@ -113,7 +113,8 @@ static xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
              absl::StatusOr<xla::PjRtCrossHostRecvState> recv_state) {
     if (!recv_state.ok()) {
       auto error = new PJRT_Error{recv_state.status()};
-      return notifier(error, nullptr, nullptr, 0, user_arg);
+      notifier(error, nullptr, nullptr, 0, user_arg);
+      return;
     }
     auto& descriptors = recv_state->descriptors;
     std::vector<size_t> descriptors_sizes;
@@ -126,8 +127,8 @@ static xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
       descriptors_sizes.push_back(
           descriptors[i].serialized_descriptors.front().size());
     }
-    return notifier(nullptr, serialized_descriptors.data(),
-                    descriptors_sizes.data(), descriptors.size(), user_arg);
+    notifier(nullptr, serialized_descriptors.data(), descriptors_sizes.data(),
+             descriptors.size(), user_arg);
   };
 }
 }  // namespace
@@ -176,6 +177,28 @@ PJRT_Transfers_CrossHostRecvNotifierInfo CppCrossHostRecvNotifierToC(
       }};
 }
 
+PJRT_Transfers_CrossHostRemoteSendCallbackInfo
+CppCrossHostRemoteSendCallbackToC(
+    const PJRT_Api* c_api, xla::PjRtBuffer::RemoteSendCallback cpp_callback) {
+  using RemoteSendCallbackFunction =
+      std::function<void(PJRT_Error * error, bool sends_were_enqueued)>;
+  auto on_done_function = new RemoteSendCallbackFunction(
+      [cpp_callback = std::move(cpp_callback), c_api](
+          PJRT_Error* error, bool sends_were_enqueued) {
+        absl::Status status = ::pjrt::PjrtErrorToStatus(error, c_api);
+        cpp_callback(status, sends_were_enqueued);
+      });
+  return PJRT_Transfers_CrossHostRemoteSendCallbackInfo{
+      /*user_arg=*/on_done_function,
+      /*on_done=*/
+      [](PJRT_Error* error, bool sends_were_enqueued, void* user_arg) {
+        RemoteSendCallbackFunction* on_done_fn =
+            reinterpret_cast<RemoteSendCallbackFunction*>(user_arg);
+        (*on_done_fn)(error, sends_were_enqueued);
+        delete on_done_fn;
+      }};
+}
+
 PJRT_Error* PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers(
     PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -210,9 +233,14 @@ void PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice(
       args->serialized_descriptor, args->serialized_descriptor_size);
   xla::Future<std::string> descriptor_future(std::move(serialized_descriptor));
 
-  // TODO(emilyaf): Support on_done callback.
   xla::PjRtBuffer::RemoteSendCallback on_done =
-      [](absl::Status status, bool sends_were_enqueued) { CHECK_OK(status); };
+      [user_arg = args->on_done.user_arg, on_done = args->on_done.on_done](
+          absl::Status status, bool sends_were_enqueued) {
+        auto error = new PJRT_Error{status};
+        on_done(error, sends_were_enqueued, user_arg);
+        delete error;
+      };
+
   args->buffer->buffer->CopyToRemoteDevice(descriptor_future, on_done);
 }
 
