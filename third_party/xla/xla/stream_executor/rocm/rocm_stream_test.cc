@@ -26,6 +26,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -48,7 +48,6 @@ namespace {
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
-using ::tsl::testing::IsOk;
 
 class RocmStreamTest : public ::testing::Test {
  public:

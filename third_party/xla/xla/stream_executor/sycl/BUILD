@@ -116,7 +116,6 @@ xla_cc_test(
     srcs = ["sycl_status_test.cc"],
     deps = [
         ":sycl_status",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
@@ -252,7 +251,8 @@ xla_test(
         ":sycl_timer",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:typed_kernel_factory",
-        "//xla/tsl/platform:status_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -285,7 +285,8 @@ xla_test(
     deps = [
         ":sycl_gpu_runtime",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:status_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

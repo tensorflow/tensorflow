@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/mock_compilation_provider.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -37,8 +36,6 @@ namespace {
 
 using ::testing::HasSubstr;
 using ::testing::Return;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 TEST(CompositeCompilationProviderTest, CreateFailsWithNoProviders) {
   EXPECT_THAT(CompositeCompilationProvider::Create({}),

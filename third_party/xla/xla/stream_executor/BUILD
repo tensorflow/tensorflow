@@ -275,13 +275,12 @@ xla_cc_test(
     deps = [
         ":launch_dim",
         ":launch_dim_proto_cc",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -920,7 +919,6 @@ xla_cc_test(
         ":generic_memory_allocation",
         ":generic_memory_allocator",
         ":memory_allocation",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
@@ -942,7 +940,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
     ],
 )

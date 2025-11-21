@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -54,16 +55,13 @@ limitations under the License.
 #include "xla/service/legalize_scheduling_annotations.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/service/scheduling_annotations_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
 using ::testing::_;
-using ::tsl::testing::IsOkAndHolds;
 namespace op = xla::testing::opcode_matchers;
 
 class CollectivePipelinerTest : public HloHardwareIndependentTestBase {

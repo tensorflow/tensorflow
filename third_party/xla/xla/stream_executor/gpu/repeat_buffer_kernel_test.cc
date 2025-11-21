@@ -34,13 +34,11 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
 using ::testing::ElementsAreArray;
-using ::tsl::testing::IsOk;
 
 class RepeatBufferKernelTest : public testing::Test {
  public:

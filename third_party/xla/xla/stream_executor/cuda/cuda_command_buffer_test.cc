@@ -39,14 +39,12 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::cuda {
 namespace {
 
 using ::testing::Each;
-using ::tsl::testing::IsOkAndHolds;
 
 static Platform* CudaPlatform() {
   auto name = absl::AsciiStrToUpper(
