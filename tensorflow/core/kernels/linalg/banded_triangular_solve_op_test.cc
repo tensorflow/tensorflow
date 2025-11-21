@@ -34,8 +34,8 @@ namespace {
 Node* SetDiag(int num_bands, Graph* g, Node* bands, Node* triangular) {
   Node* ret;
   Tensor bandwidth(DT_INT32, TensorShape({2}));
-  bandwidth.flat<int32>()(0) = -(num_bands - 1);
-  bandwidth.flat<int32>()(1) = 0;
+  bandwidth.flat<int32_t>()(0) = -(num_bands - 1);
+  bandwidth.flat<int32_t>()(1) = 0;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "MatrixSetDiagV3")
                   .Input(triangular)
                   .Input(bands)
