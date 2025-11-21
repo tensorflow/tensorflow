@@ -31,19 +31,21 @@ class DeviceResolverDistributed : public DeviceResolverInterface {
  public:
   explicit DeviceResolverDistributed(const DeviceMgr* dev_mgr);
 
-  absl::Status GetDeviceAttributes(const string& device,
+  absl::Status GetDeviceAttributes(const std::string& device,
                                    DeviceAttributes* attributes) override;
 
   absl::Status GetAllDeviceAttributes(
-      const string& task, std::vector<DeviceAttributes>* attributes) override;
+      const std::string& task,
+      std::vector<DeviceAttributes>* attributes) override;
 
   absl::Status UpdateDeviceAttributes(
       const std::vector<DeviceAttributes>& attributes) override;
 
  protected:
-  const string task_name_;
+  const std::string task_name_;
   mutex mu_;
-  absl::flat_hash_map<string, DeviceAttributes> attr_table_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<std::string, DeviceAttributes> attr_table_
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow
