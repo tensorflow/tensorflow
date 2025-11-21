@@ -81,7 +81,7 @@ bool IsShapeOp(const Node* n) {
 // in shape_map.
 bool ReadPartialShapesFromShapeMap(
     const Node* n,
-    const std::unordered_map<string, std::vector<PartialTensorShape>>*
+    const std::unordered_map<std::string, std::vector<PartialTensorShape>>*
         shape_map,
     std::vector<PartialTensorShape>* input_shapes) {
   CHECK(shape_map != nullptr);
@@ -124,7 +124,7 @@ bool MaybeReplaceShapeOrShapeNOp(
       }
     } else {
       CHECK(op_type == DT_INT32);
-      auto vec = t.vec<int32>();
+      auto vec = t.vec<int32_t>();
       for (int i = 0; i < rank; ++i) {
         if (shape.dim_size(i) > INT_MAX) {
           VLOG(1) << "Node " << n->name() << " has input shape dimension " << i
@@ -133,7 +133,7 @@ bool MaybeReplaceShapeOrShapeNOp(
                      "runtime error later.";
           return false;
         }
-        vec(i) = static_cast<int32>(shape.dim_size(i));
+        vec(i) = static_cast<int32_t>(shape.dim_size(i));
       }
     }
     defined_shape.push_back(t);
@@ -155,7 +155,7 @@ bool MaybeReplaceRankOp(const Node* n,
     return false;
   }
   Tensor t(DT_INT32, TensorShape({}));
-  t.scalar<int32>()() = input_shapes[0].dims();
+  t.scalar<int32_t>()() = input_shapes[0].dims();
   shape_replacement_map->insert({n, {t}});
   return true;
 }
@@ -184,7 +184,7 @@ bool MaybeReplaceSizeOp(const Node* n,
                  "error later.";
       return false;
     }
-    t.scalar<int32>()() = static_cast<int32>(size);
+    t.scalar<int32_t>()() = static_cast<int32_t>(size);
   }
   shape_replacement_map->insert({n, {t}});
   return true;
@@ -199,7 +199,7 @@ bool MaybeReplaceSizeOp(const Node* n,
 // be replaced.
 bool MaybeReplaceShapeOp(
     const Node* n,
-    const std::unordered_map<string, std::vector<PartialTensorShape>>*
+    const std::unordered_map<std::string, std::vector<PartialTensorShape>>*
         shape_map,
     std::unordered_map<const Node*, std::vector<Tensor>>*
         shape_replacement_map) {
@@ -238,7 +238,7 @@ bool MaybeReplaceShapeOp(
 // (Shape, ShapeN, Size, or Rank).
 bool IsConstantFoldable(
     const Node* n,
-    const std::unordered_map<string, std::vector<PartialTensorShape>>*
+    const std::unordered_map<std::string, std::vector<PartialTensorShape>>*
         shape_map,
     const std::function<bool(const Node*)>& consider,
     int64_t max_constant_size_in_bytes,
@@ -450,7 +450,7 @@ void AddShapeNodeToConstantGraph(
     std::unordered_map<Node*, std::vector<Node*>>* node_map,
     const ConstantFoldNameGenerator& generate_new_name, Graph* constant_graph) {
   std::vector<Node*>& added = (*node_map)[n];
-  const string& node_name = n->name();
+  const std::string& node_name = n->name();
   for (const Tensor& t : shape_replacement_map.at(n)) {
     auto builder =
         NodeDefBuilder(generate_new_name(constant_graph, node_name), "Const")
@@ -573,7 +573,7 @@ bool ReplaceTensorWithConstant(
       edges_to_remove.push_back(out_edge);
     }
   }
-  const string& node_name = n->name();
+  const std::string& node_name = n->name();
   Node* constant_node;
   auto builder = NodeDefBuilder(generate_new_name(graph, node_name), "Const")
                      .Attr("dtype", constant.dtype())
@@ -629,7 +629,8 @@ absl::Status ConstantFold(const ConstantFoldingOptions& opts,
   ConstantFoldNameGenerator generate_new_name = opts.generate_new_name;
   std::atomic_int_fast64_t constant_unique_id{0};
   if (generate_new_name == nullptr) {
-    generate_new_name = [&constant_unique_id](Graph* graph, string old_name) {
+    generate_new_name = [&constant_unique_id](Graph* graph,
+                                              std::string old_name) {
       return absl::StrCat(graph->NewName(old_name), "__cf__",
                           constant_unique_id.fetch_add(1));
     };
@@ -662,7 +663,7 @@ absl::Status ConstantFold(const ConstantFoldingOptions& opts,
   VLOG(1) << "Constant foldable " << constant_graph->num_node_ids() << " : "
           << graph->num_node_ids();
 
-  std::vector<string> tensors_to_fetch_names;
+  std::vector<std::string> tensors_to_fetch_names;
   std::vector<NodeAndOutput> tensors_to_replace;
   // Sorting the nodes based on the name gives us a stable ordering between runs
   // for the same graph.
