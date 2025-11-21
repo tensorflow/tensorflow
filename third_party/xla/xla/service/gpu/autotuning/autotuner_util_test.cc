@@ -78,7 +78,7 @@ static constexpr absl::string_view kDeviceDescriptionTextProto = R"pb(
 static constexpr absl::string_view kDotFusionHloText = R"hlo(
     HloModule module
     fused_computation {
-          tmp_0 = f16[1,16,17,3]{3,2,1,0} parameter(0) 
+          tmp_0 = f16[1,16,17,3]{3,2,1,0} parameter(0)
           tmp_1 = f16[16,51]{1,0} bitcast(f16[1,16,17,3]{3,2,1,0} tmp_0)
           tmp_2 = s8[16,17,3]{2,1,0} parameter(1)
           tmp_3 = s8[51,16]{0,1} bitcast(s8[16,17,3]{2,1,0} tmp_2)
@@ -86,9 +86,9 @@ static constexpr absl::string_view kDotFusionHloText = R"hlo(
           tmp_5 = f16[16,16]{1,0} dot(f16[16,51]{1,0} tmp_1, f16[51,16]{0,1} tmp_4), lhs_contracting_dims={1}, rhs_contracting_dims={0}
           ROOT tmp_6 = f16[1,16,16]{2,1,0} bitcast(f16[16,16]{1,0} tmp_5)
     }
-    
+
     ENTRY main {
-          p0 = f16[1,16,17,3]{3,2,1,0} parameter(0) 
+          p0 = f16[1,16,17,3]{3,2,1,0} parameter(0)
           p1 = s8[16,17,3]{2,1,0} parameter(1)
           ROOT fusion = f16[1,16,16]{2,1,0} fusion(p0, p1), kind=kCustom, calls=fused_computation
     }
@@ -225,8 +225,10 @@ TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
   stream_executor::StreamExecutor* executor = NewStreamExecutor();
-  AutotuneConfig config = AutotuneConfig::FromDebugOptions(
-      DeviceOrDevicelessConfig{DeviceConfig{executor}}, options);
+  TF_ASSERT_OK_AND_ASSIGN(
+      AutotuneConfig config,
+      AutotuneConfig::FromDebugOptions(
+          DeviceOrDevicelessConfig{DeviceConfig{executor}}, options));
 
   EXPECT_THAT(AutotunerUtil::IsInCache(key, config),
               absl_testing::IsOkAndHolds(true))
@@ -278,8 +280,10 @@ TEST_F(AutotunerUtilTest, FailIfRequireCompleteAotAutotuning) {
   stream_executor::StreamExecutor* executor = NewStreamExecutor();
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
-  AutotuneConfig config = AutotuneConfig::FromDebugOptions(
-      DeviceOrDevicelessConfig{DeviceConfig{executor}}, options);
+  TF_ASSERT_OK_AND_ASSIGN(
+      AutotuneConfig config,
+      AutotuneConfig::FromDebugOptions(
+          DeviceOrDevicelessConfig{DeviceConfig{executor}}, options));
   absl::Status s = AutotunerUtil::Autotune(instruction, config, [&] {
                      return AutotuneResult();
                    }).status();
@@ -307,8 +311,10 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
 
   {
     // By default, JIT autotuning is OK.
-    AutotuneConfig config = AutotuneConfig::FromDebugOptions(
-        DeviceOrDevicelessConfig{DeviceConfig{executor}}, DebugOptions());
+    TF_ASSERT_OK_AND_ASSIGN(
+        AutotuneConfig config,
+        AutotuneConfig::FromDebugOptions(
+            DeviceOrDevicelessConfig{DeviceConfig{executor}}, DebugOptions()));
     TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
                    return AutotuneResult();
                  }).status());
@@ -320,8 +326,10 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
 
-  AutotuneConfig config = AutotuneConfig::FromDebugOptions(
-      DeviceOrDevicelessConfig{DeviceConfig{executor}}, options);
+  TF_ASSERT_OK_AND_ASSIGN(
+      AutotuneConfig config,
+      AutotuneConfig::FromDebugOptions(
+          DeviceOrDevicelessConfig{DeviceConfig{executor}}, options));
   // Even though JIT autotuning is disabled, there is no cache miss when running
   // autotuning for the same entry, so no error should be raised either.
   TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
@@ -395,7 +403,8 @@ class FileBasedCacheTest : public AutotunerUtilTest {
         /*exhaustive_tiling_search=*/true,
         /*should_require_complete_aot_autotune_results=*/false,
         /*autotune_cache_dir=*/cache_dir_,
-        /*autotune_cache_mode=*/GetCacheMode());
+        /*autotune_cache_mode=*/GetCacheMode(),
+        /*gemm_config_overrides=*/std::nullopt);
   }
 
   AutotuneCacheKey GetCacheKey() const {

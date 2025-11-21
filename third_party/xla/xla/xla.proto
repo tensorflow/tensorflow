@@ -784,6 +784,10 @@ message DebugOptions {
 
   optional bool xla_gpu_fused_attention_use_cudnn_rng = 235;
 
+  // A textproto file to override autotune results. See also
+  // `xla_gpu_override_gemm_autotuner` to override with a single config.
+  optional string xla_gpu_gemm_autotuner_override_file = 432;
+
   // Threshold to rewrite matmul to cuBLAS or Triton (minimum combined number of
   // elements of both matrices in non-batch dimensions to be considered for a
   // rewrite).
@@ -1430,7 +1434,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 432
+  // Next id: 433
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
