@@ -97,3 +97,22 @@ bzl_library(
     srcs = ["api_init_files.bzl"],
     visibility = ["//tensorflow/python/tools/api/generator2:__subpackages__"],
 )
+
+# bzl_library(
+#     name = "api_init_files_v1_bzl",
+#     srcs = ["api_init_files_v1.bzl"],
+#     parse_tests = False,
+#     visibility = ["//visibility:private"],
+# )
+
+# bzl_library(
+#     name = "api_gen_bzl",
+#     srcs = ["api_gen.bzl"],
+#     parse_tests = False,
+#     visibility = ["//visibility:private"],
+#     deps = [
+#         ":api_init_files",
+#         "//third_party/bazel_rules/rules_python/python:defs_bzl",
+#         "//tensorflow:tensorflow_bzl",
+#     ],
+# )
