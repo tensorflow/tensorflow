@@ -3513,7 +3513,6 @@ cuda_py_strict_test(
     main = "math_ops_test.py",
     tags = [
         "no_windows_gpu",
-        "cuda-only", #TODO(rocm): weekly sync 240919
     ],
     deps = [
         ":array_ops",
