@@ -168,6 +168,7 @@ message CompileOptionsProto {
   map<string, OptionOverrideProto> env_option_overrides = 7;
   stream_executor.GpuTargetConfigProto target_config = 8;
   bool allow_in_place_mlir_modification = 9;
+  PrecisionConfig.Precision matrix_unit_operand_precision = 10;
 }
 
 // Helper for serializing opaque executables alongside CompileOptions.
