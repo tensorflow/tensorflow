@@ -35,6 +35,7 @@
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/serdes_any_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/host_callback.h"
@@ -250,6 +251,25 @@ class IfrtBackend final : public BackendInterface {
   absl::StatusOr<std::shared_ptr<LoadedExecutableWithInfo>> GetLoadedExecutable(
       uint64_t handle);
 
+  //////////////////////////////////////////////////////////////////////////
+  // Methods for tracking destroyed user context IDs.
+  //
+
+  // Updates `response` with a sequence number and the destroyed user context
+  // IDs in `destroyed_user_context_ids_->ids`.
+  //
+  // The sequence number is strictly increasing and indicates the order of
+  // responses. It is sent as part of every valid response so that the client
+  // can determine when it has received all in-flight responses that potentially
+  // reference a deleted user context ID and it can apply the received
+  // `destroyed_user_context_ids_` to drop its own references to those user
+  // contexts.
+  //
+  // `destroyed_user_context_ids_->ids` will be cleared to avoid sending the
+  // same IDs again in the next response.
+  void UpdateResponseWithDestroyedUserContextIds(
+      IfrtBackend::Response& response);
+
   HandleGenerator handle_generator_;
 
   // Must not change during the life of this object.
@@ -286,6 +306,18 @@ class IfrtBackend final : public BackendInterface {
 
   class InOrderRequestsProcessor;
   std::unique_ptr<InOrderRequestsProcessor> in_order_requests_processor_;
+
+  // Tracks destroyed user context IDs. `ids` contains the ID of `UserContext`s
+  // destroyed since the last response identified by `next_seq_num` - 1.
+  //
+  // Uses a shared pointer because `IfrtBackendUserContext` may outlive the
+  // `IfrtBackend`.
+  struct DestroyedUserContextIds {
+    absl::Mutex mutex;
+    int64_t next_seq_num ABSL_GUARDED_BY(mutex) = 0;
+    std::vector<UserContextId> ids ABSL_GUARDED_BY(mutex);
+  };
+  std::shared_ptr<DestroyedUserContextIds> destroyed_user_context_ids_;
 };
 
 }  // namespace proxy

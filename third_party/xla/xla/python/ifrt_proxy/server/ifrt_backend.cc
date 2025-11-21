@@ -44,6 +44,7 @@
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -66,6 +67,7 @@
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
+#include "xla/python/ifrt/with_user_context.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/prof_util.h"
@@ -75,6 +77,7 @@
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/host_callback.h"
+#include "xla/python/ifrt_proxy/server/ifrt_backend_user_context.h"
 #include "xla/python/ifrt_proxy/server/version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/status_macros.h"
@@ -177,11 +180,17 @@ ParseMakeArraysFromHostBufferShardsSpecHostBufferProto(
 // Returns a string_view that is guaranteed to be valid and constant until this
 // process dies.
 absl::string_view GetRequestName(const IfrtRequest* req) {
-  if (IfrtRequest::descriptor() == nullptr) return "unknown";
-  if (req == nullptr) return "unknown";
+  if (IfrtRequest::descriptor() == nullptr) {
+    return "unknown";
+  }
+  if (req == nullptr) {
+    return "unknown";
+  }
   auto* field =
       IfrtRequest::descriptor()->FindFieldByNumber(req->request_case());
-  if (field == nullptr) return "unknown";
+  if (field == nullptr) {
+    return "unknown";
+  }
   return field->name();
 }
 
@@ -385,7 +394,9 @@ class IfrtBackend::InOrderRequestsProcessor {
       return shutdown_msg_.has_value() || !entries_.empty();
     };
     mu_.Await(absl::Condition(&cond));
-    if (shutdown_msg_.has_value()) return std::nullopt;
+    if (shutdown_msg_.has_value()) {
+      return std::nullopt;
+    }
     auto result = std::move(entries_.front());
     entries_.pop_front();
     return result;
@@ -398,7 +409,7 @@ class IfrtBackend::InOrderRequestsProcessor {
       int request_case = entry->req->request_case();
       auto span = entry->xflow.Span<XFlowHelper::kRecvSend>();
       parent_->ProcessInternal(std::move(entry->req))
-          .OnReady([p = std::move(entry->promise),
+          .OnReady([parent = parent_, p = std::move(entry->promise),
                     xflow = std::move(entry->xflow), request_case,
                     op_id](absl::StatusOr<Response> r) mutable {
             auto span = xflow.Span<XFlowHelper::kRecv>();
@@ -412,6 +423,7 @@ class IfrtBackend::InOrderRequestsProcessor {
               LOG(WARNING) << "Responding " << request_type << "(" << op_id
                            << "): " << r.status();
             } else {
+              parent->UpdateResponseWithDestroyedUserContextIds(*r);
               VLOG(3) << "Responding " << op_id << ": "
                       << (*r)->ShortDebugString();
             }
@@ -449,7 +461,9 @@ IfrtBackend::IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
           // TODO(b/282757875): Consider making this configurable.
           /*num_threads=*/32),
       in_order_requests_processor_(
-          std::make_unique<InOrderRequestsProcessor>(this)) {}
+          std::make_unique<InOrderRequestsProcessor>(this)),
+      destroyed_user_context_ids_(std::make_shared<DestroyedUserContextIds>()) {
+}
 
 absl::StatusOr<std::unique_ptr<IfrtBackend>> IfrtBackend::Create(
     IfrtProxyVersion version, uint64_t session_id,
@@ -524,6 +538,13 @@ tsl::Future<BackendInterface::Response> IfrtBackend::Process(
 
 tsl::Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
     std::unique_ptr<IfrtRequest> request) {
+  UserContextScope user_context_scope(IfrtBackendUserContext::Create(
+      UserContextId(request->request_metadata().user_context_id()),
+      [destroyed_user_context_ids =
+           destroyed_user_context_ids_](UserContextId id) {
+        absl::MutexLock l(destroyed_user_context_ids->mutex);
+        destroyed_user_context_ids->ids.push_back(id);
+      }));
   std::optional<ArrayStore::Reservation> asr;
   switch (request->request_case()) {
     case IfrtRequest::RequestCase::kInitRequest:
@@ -677,14 +698,15 @@ tsl::Future<BackendInterface::Response> IfrtBackend::AsyncExecute(
     ++in_flight_count_;
   }
   auto [promise, future] = tsl::Future<Response>::MakePromise();
-  auto f = [this, promise = std::move(promise).ToShared(),
-            handle_fn = std::move(handle_fn)]() mutable {
-    promise->Set(handle_fn());
-    {
-      absl::MutexLock lock(in_flight_count_mutex_);
-      --in_flight_count_;
-    }
-  };
+  auto f =
+      WithCurrentUserContext([this, promise = std::move(promise).ToShared(),
+                              handle_fn = std::move(handle_fn)]() mutable {
+        promise->Set(handle_fn());
+        {
+          absl::MutexLock lock(in_flight_count_mutex_);
+          --in_flight_count_;
+        }
+      });
   if (thread_pool != nullptr) {
     thread_pool->Schedule(std::move(f));
   } else {
@@ -838,7 +860,9 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
       Sharding::FromProto(client_.get(), make_array_request->sharding()));
 
   const auto byte_strides = [&]() -> std::optional<std::vector<int64_t>> {
-    if (!make_array_request->has_byte_strides()) return std::nullopt;
+    if (!make_array_request->has_byte_strides()) {
+      return std::nullopt;
+    }
     return FromByteStridesProto(make_array_request->byte_strides());
   }();
   TF_ASSIGN_OR_RETURN(const auto shape,
@@ -2048,6 +2072,26 @@ IfrtBackend::GetLoadedExecutable(uint64_t handle) {
         absl::StrCat("Unknown loaded executable handle: ", handle));
   }
   return it->second;
+}
+
+void IfrtBackend::UpdateResponseWithDestroyedUserContextIds(
+    IfrtBackend::Response& response) {
+  absl::MutexLock l(destroyed_user_context_ids_->mutex);
+
+  response->mutable_response_metadata()->set_seq_num(
+      destroyed_user_context_ids_->next_seq_num);
+  ++destroyed_user_context_ids_->next_seq_num;
+
+  std::vector<UserContextId>& ids = destroyed_user_context_ids_->ids;
+  if (!ids.empty()) {
+    auto* ids_proto = response->mutable_response_metadata()
+                          ->mutable_destroyed_user_context_ids();
+    ids_proto->Reserve(ids.size());
+    for (UserContextId id : ids) {
+      ids_proto->AddAlreadyReserved(id.value());
+    }
+    ids.clear();
+  }
 }
 
 absl::StatusOr<IfrtArrayRef> IfrtBackend::ArrayStore::Find(uint64_t handle) {
