@@ -14,8 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 
+#include <cstdint>
+#include <cstring>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 
 namespace tensorflow {
 

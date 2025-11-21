@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
+
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace tensorflow {
