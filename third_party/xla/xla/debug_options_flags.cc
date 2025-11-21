@@ -470,6 +470,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_triton_warp_specialization(false);
   opts.set_xla_gpu_experimental_enable_command_buffer_on_thunks(true);
   opts.set_xla_detect_unstable_reductions(DebugOptions::DETECTION_MODE_NONE);
+  opts.set_xla_detect_unstable_reductions_post_optimizations(
+      DebugOptions::DETECTION_MODE_NONE);
   opts.set_xla_gpu_experimental_scaled_dot_with_triton(false);
   opts.set_xla_gpu_experimental_use_raft_select_k(false);
 
@@ -899,6 +901,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       [debug_options, detection_mode](const std::string& value) {
         if (auto mode = detection_mode(debug_options, value)) {
           debug_options->set_xla_detect_unstable_reductions(mode.value());
+          return true;
+        }
+        return false;
+      };
+
+  auto setter_for_xla_detect_unstable_reductions_post_optimizations =
+      [debug_options, detection_mode](const std::string& value) {
+        if (auto mode = detection_mode(debug_options, value)) {
+          debug_options->set_xla_detect_unstable_reductions_post_optimizations(
+              mode.value());
           return true;
         }
         return false;
@@ -2659,6 +2671,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 "that checks for unstable reductions in HLO computations. "
                 "Acceptable values are: 'none', 'log', and 'crash'. 'none' is "
                 "the default."));
+  flag_list->push_back(tsl::Flag(
+      "xla_detect_unstable_reductions_post_optimizations",
+      setter_for_xla_detect_unstable_reductions_post_optimizations,
+      DebugOptions::DetectionMode_Name(
+          debug_options->xla_detect_unstable_reductions_post_optimizations()),
+      "Controls the behavior of the unstable reduction detector pass "
+      "that checks for unstable reductions in HLO computations after "
+      "optimizations. Acceptable values are: 'none', 'log', and "
+      "'crash'. 'none' is the default."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_use_raft_select_k",
       bool_setter_for(

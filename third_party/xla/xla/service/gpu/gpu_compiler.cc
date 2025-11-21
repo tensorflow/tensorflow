@@ -1452,6 +1452,17 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(
       RunCollectiveScheduleLinearizerPasses(hlo_module, stream_exec));
 
+  {
+    HloPassPipeline pipeline("invariant-checkers");
+    if (hlo_module->config()
+            .debug_options()
+            .xla_detect_unstable_reductions_post_optimizations() !=
+        DebugOptions::DETECTION_MODE_NONE) {
+      pipeline.AddPass<UnstableReductionDetector>();
+    }
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
   TF_RETURN_IF_ERROR(RunAsyncDotPasses(hlo_module));
   {
     HloPassPipeline pipeline("autotune-fusion-emitters");

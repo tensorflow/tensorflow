@@ -1328,8 +1328,14 @@ message DebugOptions {
     DETECTION_MODE_WARNING = 1;
     DETECTION_MODE_FAIL = 2;
   }
-  // Whether to enable checks for unstable reductions in computations.
+  // Whether to enable checks for unstable reductions in computations
+  // pre-optimizations.
   optional DetectionMode xla_detect_unstable_reductions = 403;
+
+  // Whether to enable checks for unstable reductions in computations
+  // post-optimizations.
+  optional DetectionMode xla_detect_unstable_reductions_post_optimizations =
+      432;
 
   // Whether to enable checks for NaN values in computations.
   optional DetectionMode xla_gpu_detect_nan = 426;
@@ -1430,7 +1436,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 432
+  // Next id: 433
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
