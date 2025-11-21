@@ -121,7 +121,6 @@ struct CompileOptions {
   bool allow_in_place_mlir_modification = false;
 
   // Used to indicate the precision configuration.
-  // TODO(b/450278657): Not serialized into the proto. Should it be?
   PrecisionConfig::Precision matrix_unit_operand_precision =
       PrecisionConfig::DEFAULT;
 

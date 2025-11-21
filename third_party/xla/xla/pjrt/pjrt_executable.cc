@@ -83,6 +83,7 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
     }
   }
   output.set_allow_in_place_mlir_modification(allow_in_place_mlir_modification);
+  output.set_matrix_unit_operand_precision(matrix_unit_operand_precision);
   output.set_parameter_is_tupled_arguments(parameter_is_tupled_arguments);
   TF_ASSIGN_OR_RETURN(*output.mutable_executable_build_options(),
                       executable_build_options.ToProto());
@@ -126,6 +127,7 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
   }
   output.allow_in_place_mlir_modification =
       proto.allow_in_place_mlir_modification();
+  output.matrix_unit_operand_precision = proto.matrix_unit_operand_precision();
   output.parameter_is_tupled_arguments = proto.parameter_is_tupled_arguments();
   TF_ASSIGN_OR_RETURN(
       ExecutableBuildOptions executable_build_options,

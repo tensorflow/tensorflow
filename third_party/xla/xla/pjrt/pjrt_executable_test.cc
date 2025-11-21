@@ -41,6 +41,7 @@ TEST(CompileOptionsTest, Serialization) {
   src.parameter_is_tupled_arguments = true;
   src.profile_version = 1;
   src.argument_layouts = {ShapeUtil::MakeShape(S32, {1})};
+  src.matrix_unit_operand_precision = PrecisionConfig::HIGHEST;
   src.allow_in_place_mlir_modification = true;
   ExecutableBuildOptions build_option;
   build_option.set_device_assignment(DeviceAssignment(1, 1));
@@ -71,6 +72,7 @@ TEST(CompileOptionsTest, Defaults) {
   EXPECT_EQ(src.compile_portable_executable, false);
   EXPECT_EQ(src.parameter_is_tupled_arguments, false);
   EXPECT_EQ(src.allow_in_place_mlir_modification, false);
+  EXPECT_EQ(src.matrix_unit_operand_precision, PrecisionConfig::DEFAULT);
 }
 
 TEST(ExecuteOptionsTest, Serialization) {
