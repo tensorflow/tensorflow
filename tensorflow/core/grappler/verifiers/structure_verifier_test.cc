@@ -35,7 +35,7 @@ namespace {
 class StructureVerifierTest : public ::testing::Test {
  protected:
   StructureVerifierTest() { verifier_ = std::make_unique<StructureVerifier>(); }
-  void SetGraph(const string& gdef_ascii) {
+  void SetGraph(const std::string& gdef_ascii) {
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &graph_));
   }
   GraphDef graph_;
