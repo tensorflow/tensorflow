@@ -109,11 +109,6 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromPtx) {
 }
 
 TEST_F(GpuKernelTest, LoadAndRunKernelFromCubin) {
-  if (executor_->GetPlatform()->id() ==
-      stream_executor::rocm::kROCmPlatformId) {
-    // TODO(rocm): weekly sync 24-12-10
-    GTEST_SKIP() << "There is no PTX or any equivalent abstraction for ROCm.";
-  }
   TF_ASSERT_OK_AND_ASSIGN(
       auto binary, GetGpuTestKernelsFatbin(executor_->GetPlatform()->Name()));
   KernelLoaderSpec spec =

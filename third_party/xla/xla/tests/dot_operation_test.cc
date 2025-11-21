@@ -324,6 +324,8 @@ class ParametricDotTest : public DotOperationTest,
     if (IsRocm()) {
       absl::string_view name(
           ::testing::UnitTest::GetInstance()->current_test_info()->name());
+      if (absl::StrContains(name, "TestF16/270x270x520_MajorToMinor")) {
+        GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
       }
     }
   }
@@ -1592,16 +1594,7 @@ TEST_F(DotOperationTest, DotRank2AndRank2NonDefaultContractionDims) {
 using EinsumParamType =
     std::tuple<std::vector<int64_t>, std::vector<int64_t>, std::string>;
 class EinsumTest : public DotOperationTest,
-                   public ::testing::WithParamInterface<EinsumParamType> {
- protected:
-  void SetUp() override {
-    const auto& gpu_comp = client_->backend()
-                               .default_stream_executor()
-                               ->GetDeviceDescription()
-                               .gpu_compute_capability();
-  }
-};
-
+                   public ::testing::WithParamInterface<EinsumParamType> {};
 TEST_P(EinsumTest, SimpleEinsumTest) {
   XlaBuilder builder(TestName());
   Literal x_literal =

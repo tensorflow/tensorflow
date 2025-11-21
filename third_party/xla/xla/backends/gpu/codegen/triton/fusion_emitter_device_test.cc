@@ -3205,7 +3205,6 @@ ENTRY entry_computation {
 // Reproducer from b/384110192.
 TEST_F(TritonEmitterTest,
        FusionWithOutputContainingMoreThanInt32MaxElementsExecutesCorrectly) {
-   //               "issue with triton.";
   // The point here is to check the output of the Triton fusion. The `slice` op
   // at the end is inserted to allow the comparison of output to run in a
   // reasonable amount of time, and has been proven to still correctly capture
@@ -3267,12 +3266,6 @@ TEST_F(TritonEmitterTest, ConvertF16ToF8E5M2Exhaustive) {
   if (auto cc = GpuComputeCapability().cuda_compute_capability();
       cc && cc->IsAtLeastHopper()) {
     GTEST_SKIP() << "Skipping tests above Ampere, Triton's conversion isn't "
-                    "always correct";
-  }
-
-  if (std::holds_alternative<se::RocmComputeCapability>(
-          GpuComputeCapability())) {
-    GTEST_SKIP() << "Skipping tests on Rocm, Triton's conversion isn't "
                     "always correct";
   }
 
@@ -4448,22 +4441,9 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
     GTEST_SKIP() << "Warp size is always 32 on CUDA";
   }
 
-  // TODO (rocm) weekly-sync-20251021 Use legacy emitter otherwise test segfaults
-  constexpr absl::string_view kHloText = R"(
-  %gemm_fusion___computation.clone {
-    %parameter_0 = f16[30,30]{1,0} parameter(0)
-    %parameter_1 = s8[30,30]{1,0} parameter(1)
-    %cp1.1 = f16[30,30]{1,0} convert(%parameter_1)
-    ROOT %_.1 = f16[30,30]{1,0} dot(%parameter_0, %cp1.1), lhs_contracting_dims={0}, rhs_contracting_dims={1}
-  }
-  ENTRY %entry_computation {
-    %p1 = s8[30,30]{1,0} parameter(1)
-    %p0 = f16[30,30]{1,0} parameter(0)
-    ROOT %gemm_fusion__ = f16[30,30]{1,0} fusion(%p0, %p1), kind=kCustom, calls=%gemm_fusion___computation.clone, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"16","block_n":"16","block_k":"256","split_k":"1","num_stages":"1","num_warps":"4","num_ctas":"1"}},"force_earliest_schedule":false,"reification_cost":[]}
-  })";
-
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
-                          ParseAndReturnVerifiedModule(kHloText));
+                          ParseAndReturnVerifiedModule(GetDotAlgorithmHlo(
+                              F16, F16, PrecisionConfig::ALG_UNSET)));
 
   std::string output_directory;
   if (!tsl::io::GetTestUndeclaredOutputsDir(&output_directory)) {
@@ -4500,8 +4480,7 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
       // CHECK: "ttg.threads-per-warp" = 64
     )";
   EXPECT_THAT(RunFileCheck(triton_passes_log, kPattern), true);
-  // TODO (rocm) weekly-sync-20251021 Enable this whence test pass
-#if 0
+
   // For RX7900 warp_size should be 32
   const se::DeviceDescription dev_info_n =
       TestGpuDeviceInfo::AMDRX7900DeviceInfo();
@@ -4518,7 +4497,6 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
       // CHECK: "ttg.threads-per-warp" = 32
     )";
   EXPECT_THAT(RunFileCheck(triton_passes_log, kPattern_n), true);
-#endif
 }
 
 TEST_F(TritonEmitterTest, EmitsCorrectlyForReshapeOfPad) {

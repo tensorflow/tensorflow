@@ -141,9 +141,6 @@ class BlasAlgorithmTest : public AlgorithmTest {
 using TritonAlgorithmTest = AlgorithmTest;
 
 TEST_F(AlgorithmTest, Algorithm3xBF16) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
-    GTEST_SKIP() << "ALG_DOT_BF16_BF16_F32_X3 not supported on ROCM.";
-  }
   constexpr absl::string_view kHloText = R"(
     HloModule Algorithm3xBF16
 
@@ -160,9 +157,6 @@ TEST_F(AlgorithmTest, Algorithm3xBF16) {
 }
 
 TEST_F(AlgorithmTest, Algorithm6xBF16) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
-    GTEST_SKIP() << "ALG_DOT_BF16_BF16_F32_X6 not supported on ROCM.";
-  }
   constexpr absl::string_view kHloText = R"(
     HloModule Algorithm6xBF16
 
@@ -870,9 +864,6 @@ TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
 }
 
 TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
-    GTEST_SKIP() << "Triton currently disabled on ROCM.";
-  }
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -899,7 +890,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32) {
 }
 
 TEST_F(TritonAlgorithmTest, Dot_BF16_X6_WithConst) {
-  constexpr std::string_view kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
     HloModule Dot_BF16_X6_WithConst
 
     lhs {
@@ -1576,7 +1567,6 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes, Regular2DDot) {
 
 TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
        IsDotAlgorithmSupportedByTriton) {
-
   // Here we test which dot algorithm is supported by triton.
   // In case of a change you need to update the expected results.
   constexpr absl::string_view kHloText = R"(

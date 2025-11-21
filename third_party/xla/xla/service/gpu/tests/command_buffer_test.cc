@@ -233,9 +233,6 @@ TEST_P(CommandBufferTest, Fusions) {
 }
 
 TEST_P(CommandBufferTest, TrueFalseConditional) {
-  if (IsRocm()) {
-    GTEST_SKIP() << "Test currently failing on ROCm"; //TODO(rocm): weekly sync 25-07-14
-  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -295,9 +292,6 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
 }
 
 TEST_P(CommandBufferTest, IndexConditional) {
-  if (IsRocm()) {
-    GTEST_SKIP() << "Test currently failing on ROCm"; //TODO(rocm): weekly sync 25-07-14
-  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -365,9 +359,6 @@ TEST_P(CommandBufferTest, IndexConditional) {
 }
 
 TEST_P(CommandBufferTest, WhileLoop) {
-  if (IsRocm()) {
-    GTEST_SKIP() << "Test currently failing on ROCm"; //TODO(rocm): weekly sync 25-07-14
-  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 

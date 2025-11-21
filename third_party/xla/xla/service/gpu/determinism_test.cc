@@ -262,9 +262,6 @@ ENTRY e {
 }
 
 TEST_F(DeterminismTest, Conv) {
-  if (IsRocm()) {
-      GTEST_SKIP() << "Test temporarily disabled for ROCm!"; //TODO(rocm): weekly sync 25-08-25
-  }
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   input = f32[16,3,64,64] parameter(0)
