@@ -561,7 +561,11 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
     case HloOpcode::kDivide:
       if (is_integer) {
         // Unsigned not supported yet.
-        return b.create<ma::DivSIOp>(inputs[0], inputs[1]);
+        auto div = b.create<ma::DivSIOp>(inputs[0], inputs[1]);
+        // Attr signifies that this op should be re-written to guard against
+        // undefined behavior.
+        div->setAttr("xla.guard_ub", b.getUnitAttr());
+        return div;
       }
       return b.create<ma::DivFOp>(inputs[0], inputs[1]);
     case HloOpcode::kCompare:
@@ -607,6 +611,13 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
     case HloOpcode::kPower:
       return b.create<mm::PowFOp>(inputs[0], inputs[1]);
     case HloOpcode::kRemainder:
+      if (is_integer) {
+        auto rem = b.create<ma::RemSIOp>(inputs[0], inputs[1]);
+        // Attr signifies that this op should be re-written to guard against
+        // undefined behavior.
+        rem->setAttr("xla.guard_ub", b.getUnitAttr());
+        return rem;
+      }
       return b.create<ma::RemFOp>(inputs[0], inputs[1]);
     case HloOpcode::kRsqrt:
       return b.create<mm::RsqrtOp>(inputs[0]);
@@ -622,6 +633,8 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
       return b.create<mm::TanhOp>(inputs[0]);
     case HloOpcode::kCbrt:
       return b.create<mm::CbrtOp>(inputs[0]);
+    case HloOpcode::kIsFinite:
+      return b.create<mm::IsFiniteOp>(inputs[0]);
     default:
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported elementwise operation ", hlo.ToString()));

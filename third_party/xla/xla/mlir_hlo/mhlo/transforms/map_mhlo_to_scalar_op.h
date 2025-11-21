@@ -893,7 +893,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::ClampOp>(
 }
 
 template <typename U, typename S>
-inline Value makeSafeIntDiv(ImplicitLocOpBuilder& lb, Type originalType,
+inline Value makeSafeIntDiv(ImplicitLocOpBuilder& lb, bool isUnsigned,
                             Value lhs, Value rhs, Value returnedOnZero,
                             Value returnedOnSignedOverflow) {
   Type type = lhs.getType();
@@ -908,7 +908,7 @@ inline Value makeSafeIntDiv(ImplicitLocOpBuilder& lb, Type originalType,
       lb.create<arith::CmpIOp>(arith::CmpIPredicate::eq, rhs, zero);
 
   // For unsigned just set the divisor to 1 when it would be 0.
-  if (originalType.isUnsignedInteger()) {
+  if (isUnsigned) {
     Value safeRhs = lb.create<arith::SelectOp>(rhsIsZero, one, rhs);
     Value safeDiv = lb.create<U>(lhs, safeRhs);
     return lb.create<arith::SelectOp>(rhsIsZero, returnedOnZero, safeDiv);
@@ -956,7 +956,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::DivOp>(
   Value minusOne = makeConstant(APInt::getAllOnes(elementType.getWidth()));
   Value smin = makeConstant(APInt::getSignedMinValue(elementType.getWidth()));
   return makeSafeIntDiv<arith::DivUIOp, arith::DivSIOp>(
-      lb, originalType, adaptor.getLhs(), adaptor.getRhs(),
+      lb, originalType.isUnsignedInteger(), adaptor.getLhs(), adaptor.getRhs(),
       /*returnedOnZero=*/minusOne,
       /*returnedOnSignedOverflow=*/smin);
 }
@@ -980,7 +980,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::RemOp>(
   Type type = adaptor.getLhs().getType();
   Value zero = lb.create<arith::ConstantOp>(lb.getZeroAttr(type));
   return makeSafeIntDiv<arith::RemUIOp, arith::RemSIOp>(
-      lb, originalType, adaptor.getLhs(), adaptor.getRhs(),
+      lb, originalType.isUnsignedInteger(), adaptor.getLhs(), adaptor.getRhs(),
       /*returnedOnZero=*/adaptor.getLhs(),
       /*returnedOnSignedOverflow=*/zero);
 }

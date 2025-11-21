@@ -59,6 +59,7 @@ std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
     const std::string& gpu_device_info = "");
 std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
     const stream_executor::DeviceDescription& device_description);
+std::unique_ptr<mlir::Pass> CreateSafeIntegerArithmeticPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/codegen/emitters/transforms/passes.h.inc"

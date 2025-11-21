@@ -97,6 +97,7 @@ limitations under the License.
 #include "stablehlo/conversions/linalg/transforms/Passes.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/transforms/Passes.h"
+#include "stablehlo/transforms/optimization/Passes.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
@@ -311,6 +312,9 @@ static void AddBufferizationPasses(mlir::OpPassManager& pm) {
 static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
   emitters::RegisterOptimizationPasses(pm);
 
+  pm.addPass(
+      mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
+
   pm.addPass(CreateShloToVectorPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(CreateLowerXTileEntryPass());
@@ -349,6 +353,8 @@ static void AddTiledLoweringPasses(mlir::OpPassManager& pm, bool fast_min_max) {
 
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(mlir::memref::createExpandStridedMetadataPass());
+
+  pm.addPass(emitters::CreateSafeIntegerArithmeticPass());
 
   AddGenericLoweringPasses(pm, fast_min_max);
 }
