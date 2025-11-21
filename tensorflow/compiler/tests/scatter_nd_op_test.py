@@ -30,6 +30,7 @@ def _AsType(v, vtype):
 
 
 def _FlatInnerDims(tensor, ndims=2):
+  print("hello\n")
   shape = list(tensor.shape)
   return tensor.reshape(
       [functools.reduce(lambda x, y: x * y, shape[:-ndims + 1], 1)] +
