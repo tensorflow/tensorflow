@@ -193,7 +193,7 @@ class KernelAndDevice : public core::RefCounted {
 
   virtual int num_inputs() const = 0;
   virtual int num_outputs() const = 0;
-  virtual const string& name() const = 0;
+  virtual const std::string& name() const = 0;
 
  protected:
   std::function<void(std::function<void()>)>* get_runner() const;
@@ -262,7 +262,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   }
   int num_inputs() const override { return kernel_->num_inputs(); }
   int num_outputs() const override { return kernel_->num_outputs(); }
-  const string& name() const override { return kernel_->name(); }
+  const std::string& name() const override { return kernel_->name(); }
 
  private:
   std::unique_ptr<OpKernel> kernel_;
@@ -286,19 +286,20 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   KernelAndDeviceFunc(
       FunctionLibraryRuntime* flr, ProcessFunctionLibraryRuntime* pflr,
       std::vector<Device*> input_devices,
-      absl::flat_hash_map<string, const std::vector<string>*> composite_devices,
+      absl::flat_hash_map<std::string, const std::vector<std::string>*>
+          composite_devices,
       std::unordered_map<int, DtypeAndPartialTensorShape>
           input_resource_dtypes_and_shapes,
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
-      Device* host_cpu_device, const string& name,
+      Device* host_cpu_device, const std::string& name,
       const bool outputs_on_op_device,
       const bool allow_small_function_optimizations,
       const bool allow_control_flow_sync_execution,
       const bool shape_inference_on_tfe_dialect_import,
       const bool int_args_and_retvals_on_device,
       const bool function_runs_at_most_once,
-      std::optional<string> xla_compile_device_type,
+      std::optional<std::string> xla_compile_device_type,
       const bool allow_soft_placement, Rendezvous::Factory rendezvous_factory,
       std::function<int64_t()> get_op_id)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
@@ -366,7 +367,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   }
   int num_inputs() const override { return input_dtypes_.size(); }
   int num_outputs() const override { return output_dtypes_.size(); }
-  const string& name() const override { return name_; };
+  const std::string& name() const override { return name_; };
 
  private:
   std::shared_ptr<FunctionLibraryRuntime::Options> PrepareForRun(
@@ -402,7 +403,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
 
   const bool function_runs_at_most_once_;
 
-  const absl::optional<string> xla_compile_device_type_;
+  const absl::optional<std::string> xla_compile_device_type_;
 
   const bool allow_soft_placement_;
 
@@ -413,13 +414,14 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   // devices.
   std::vector<Device*> input_devices_;
   // Maps from a CompositeDevice name to a list of physical device names.
-  absl::flat_hash_map<string, const std::vector<string>*> composite_devices_;
+  absl::flat_hash_map<std::string, const std::vector<std::string>*>
+      composite_devices_;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_dtypes_and_shapes_;
 
   DataTypeVector input_dtypes_;
   DataTypeVector output_dtypes_;
-  string name_;
+  std::string name_;
 
   Rendezvous::Factory rendezvous_factory_;
   std::function<int64_t()> get_op_id_;
