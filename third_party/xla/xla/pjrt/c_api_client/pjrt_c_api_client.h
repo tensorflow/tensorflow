@@ -165,6 +165,9 @@ class PjRtCApiDevice : public PjRtDevice {
 
   absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override;
 
+  absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind(
+      absl::string_view kind) const override;
+
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {
     LOG(FATAL)

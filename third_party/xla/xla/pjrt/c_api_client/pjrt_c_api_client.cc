@@ -25,6 +25,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -1530,6 +1531,18 @@ absl::StatusOr<PjRtMemorySpace*> PjRtCApiDevice::default_memory_space() const {
   const PJRT_Api* api = client_->pjrt_c_api();
   RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Device_DefaultMemory(&args), api);
   return client_->GetCppMemory(args.memory);
+}
+
+absl::StatusOr<PjRtMemorySpace*> PjRtCApiDevice::memory_space_by_kind(
+    absl::string_view kind) const {
+  auto it = absl::c_find_if(memory_spaces_, [kind](PjRtMemorySpace* ms) {
+    return ms->kind() == kind;
+  });
+  if (it != memory_spaces_.end()) {
+    return *it;
+  }
+  return absl::InternalError(
+      absl::StrCat("No memory space found (kind: ", kind, ")"));
 }
 
 absl::StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
