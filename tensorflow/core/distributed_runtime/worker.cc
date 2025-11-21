@@ -15,8 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/worker.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <utility>
+#include <vector>
 
+#include "base/tracer.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "xla/tsl/protobuf/distributed_runtime_payloads.pb.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -28,7 +36,9 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/profiler/lib/device_profiler_session.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 #include "tsl/platform/tracing.h"
 
 namespace tensorflow {
