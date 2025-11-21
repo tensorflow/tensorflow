@@ -53,14 +53,14 @@ void UnregisterThreadpoolEventCollector() {
 
 }  // namespace
 
-void ThreadpoolEventCollector::RecordEvent(uint64 arg) const {
+void ThreadpoolEventCollector::RecordEvent(uint64_t arg) const {
   int64_t now = GetCurrentTimeNanos();
   TraceMeRecorder::Record(
       {TraceMeEncode(kThreadpoolListenerRecord,
                      {{"_pt", ContextType::kThreadpoolEvent}, {"_p", arg}}),
        now, now});
 }
-void ThreadpoolEventCollector::StartRegion(uint64 arg) const {
+void ThreadpoolEventCollector::StartRegion(uint64_t arg) const {
   int64_t now = GetCurrentTimeNanos();
   TraceMeRecorder::Record(
       {TraceMeEncode(kThreadpoolListenerStartRegion,

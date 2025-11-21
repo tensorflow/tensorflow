@@ -79,7 +79,7 @@ void AnnotationStack::PopAnnotation() {
   scope_range_id_stack->pop_back();
 }
 
-const string& AnnotationStack::Get() {
+const std::string& AnnotationStack::Get() {
   return *std::get<1>(GetAnnotationData(generation_));
 }
 
