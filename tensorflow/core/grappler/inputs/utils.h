@@ -29,18 +29,18 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-bool FilesExist(const std::vector<string>& files,
+bool FilesExist(const std::vector<std::string>& files,
                 std::vector<absl::Status>* status = nullptr);
-bool FilesExist(const std::set<string>& files);
+bool FilesExist(const std::set<std::string>& files);
 
-bool FileExists(const string& file, absl::Status* status);
+bool FileExists(const std::string& file, absl::Status* status);
 
 // Reads GraphDef from file in either text or raw serialized format.
-absl::Status ReadGraphDefFromFile(const string& graph_def_path,
+absl::Status ReadGraphDefFromFile(const std::string& graph_def_path,
                                   GraphDef* result);
 
 // Reads MetaGraphDef from file in either text or raw serialized format.
-absl::Status ReadMetaGraphDefFromFile(const string& meta_graph_def_path,
+absl::Status ReadMetaGraphDefFromFile(const std::string& meta_graph_def_path,
                                       MetaGraphDef* result);
 
 }  // end namespace grappler
