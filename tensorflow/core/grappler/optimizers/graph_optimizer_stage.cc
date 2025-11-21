@@ -19,18 +19,18 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-const NodeScopeAndName ParseNodeScopeAndName(const string& node_name) {
+const NodeScopeAndName ParseNodeScopeAndName(const std::string& node_name) {
   auto pos = node_name.find_last_of('/');
-  if (pos == string::npos) {
+  if (pos == std::string::npos) {
     return {"", node_name};
   } else {
     return {node_name.substr(0, pos), node_name.substr(pos + 1)};
   }
 };
 
-absl::Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
-                          NodeDef** node) {
-  string node_name = NodeName(input);
+absl::Status GetInputNode(const GraphOptimizerContext& ctx,
+                          const std::string& input, NodeDef** node) {
+  std::string node_name = NodeName(input);
   NodeDef* node_by_name = ctx.node_map->GetNode(node_name);
   if (node_by_name == nullptr) {
     return errors::FailedPrecondition("Node ", node_name,
@@ -41,7 +41,7 @@ absl::Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
 }
 
 absl::Status GetTensorProperties(const GraphOptimizerContext& ctx,
-                                 const string& tensor,
+                                 const std::string& tensor,
                                  const OpInfo::TensorProperties** properties) {
   if (ctx.graph_properties == nullptr) {
     return errors::InvalidArgument("Graph properties are unknown.");
@@ -71,7 +71,7 @@ absl::Status GetTensorProperties(const GraphOptimizerContext& ctx,
   return absl::OkStatus();
 }
 
-NodeDef* AddCopyNode(const GraphOptimizerContext& ctx, const string& name,
+NodeDef* AddCopyNode(const GraphOptimizerContext& ctx, const std::string& name,
                      const NodeDef* node_to_copy) {
   CHECK(node_to_copy != nullptr);
   CHECK(!ctx.node_map->NodeExists(name))
@@ -83,7 +83,8 @@ NodeDef* AddCopyNode(const GraphOptimizerContext& ctx, const string& name,
   return new_node;
 }
 
-NodeDef* AddEmptyNode(const GraphOptimizerContext& ctx, const string& name) {
+NodeDef* AddEmptyNode(const GraphOptimizerContext& ctx,
+                      const std::string& name) {
   std::string new_name = name;
   for (int count = 0; ctx.node_map->NodeExists(new_name); ++count) {
     LOG(WARNING) << name << " already exists in the graph.";
@@ -95,12 +96,12 @@ NodeDef* AddEmptyNode(const GraphOptimizerContext& ctx, const string& name) {
   return new_node;
 }
 
-const string MakeOptimizedNodeName(const NodeScopeAndName& node,
-                                   const string& sub_scope,
-                                   const string& prefix) {
+const std::string MakeOptimizedNodeName(const NodeScopeAndName& node,
+                                        const std::string& sub_scope,
+                                        const std::string& prefix) {
   CHECK(!sub_scope.empty() || !prefix.empty())
       << "Either optimized node name prefix or sub-scope must be non-empty";
-  string optimized_node_name;
+  std::string optimized_node_name;
   if (!node.scope.empty()) {
     absl::StrAppend(&optimized_node_name, node.scope, "/");
   }
@@ -114,12 +115,12 @@ const string MakeOptimizedNodeName(const NodeScopeAndName& node,
   return optimized_node_name;
 }
 
-const string MakeOptimizedNodeName(const NodeScopeAndName& root,
-                                   const std::vector<string> node_names,
-                                   const string& sub_scope,
-                                   const string& prefix) {
-  string optimized_node_name = MakeOptimizedNodeName(root, sub_scope, prefix);
-  for (const string& node_name : node_names) {
+const std::string MakeOptimizedNodeName(
+    const NodeScopeAndName& root, const std::vector<std::string> node_names,
+    const std::string& sub_scope, const std::string& prefix) {
+  std::string optimized_node_name =
+      MakeOptimizedNodeName(root, sub_scope, prefix);
+  for (const std::string& node_name : node_names) {
     auto name_and_scope = ParseNodeScopeAndName(node_name);
     absl::StrAppend(&optimized_node_name, "_", name_and_scope.name);
   }
