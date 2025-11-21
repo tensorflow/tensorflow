@@ -24,6 +24,10 @@ limitations under the License.
 #include "xla/types.h"
 
 namespace stream_executor::gpu {
+struct PrefixSumBF16Kernel {
+  using KernelType = TypedKernel<const DeviceMemory<xla::bfloat16>,
+                                 DeviceMemory<xla::bfloat16>, size_t>;
+};
 struct PrefixSumF16Kernel {
   using KernelType = TypedKernel<const DeviceMemory<xla::half>,
                                  DeviceMemory<xla::half>, size_t>;

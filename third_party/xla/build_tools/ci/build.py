@@ -126,6 +126,7 @@ class BuildType(enum.Enum):
   XLA_MACOS_ARM64_CPU_KOKORO = enum.auto()
 
   JAX_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+  JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS = enum.auto()
   JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
 
   TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
@@ -159,6 +160,7 @@ class Build:
   repo_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   override_repository: Dict[str, str] = dataclasses.field(default_factory=dict)
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
+  startup_options: Dict[str, Any] = dataclasses.field(default_factory=dict)
   extra_setup_commands: Tuple[List[str], ...] = ()
 
   def __post_init__(self):
@@ -187,6 +189,7 @@ class Build:
     Returns: List of command line arguments
     """
     options = _dict_to_cli_options(self.options)
+    startup_options = _dict_to_cli_options(self.startup_options)
     configs = [f"--config={config}" for config in self.configs]
     build_tag_filters = (
         f"--build_tag_filters={','.join(self.build_tag_filters)}"
@@ -211,7 +214,14 @@ class Build:
         + options
         + list(extra_options)
     )
-    return ["bazel", subcommand, *all_options, "--", *self.target_patterns]
+    return [
+        "bazel",
+        *startup_options,
+        subcommand,
+        *all_options,
+        "--",
+        *self.target_patterns,
+    ]
 
   def commands(self) -> List[List[str]]:
     """Returns list of commands for a build."""
@@ -228,7 +238,8 @@ class Build:
         self.type_ == BuildType.XLA_MACOS_X86_CPU_KOKORO
         or self.type_ == BuildType.XLA_MACOS_ARM64_CPU_KOKORO
     )
-    if not macos_build:
+    windows_build = (self.type_ == BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS)
+    if not (macos_build or windows_build):
       cmds.append(
           retry(
               self.bazel_command(
@@ -705,6 +716,26 @@ Build(
     ),
     options=_DEFAULT_BAZEL_OPTIONS,
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
+)
+
+Build(
+    type_=BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS,
+    repo="google/jax",
+    configs=("rbe_windows_amd64",),
+    target_patterns=("//tests:cpu_tests", "//tests:backend_independent_tests"),
+    test_env=dict(
+        JAX_NUM_GENERATED_CASES=25,
+        JAX_SKIP_SLOW_TESTS=1,
+    ),
+    override_repository=dict(
+        xla=f"{_GITHUB_WORKSPACE}\\openxla\\xla",
+    ),
+    options={**_DEFAULT_BAZEL_OPTIONS, "build_runfile_links": False},
+    repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
+    subcommand="build",
+    startup_options={
+        "output_base": f"{_GITHUB_WORKSPACE}\\bazel_output_base",
+    },
 )
 
 Build(

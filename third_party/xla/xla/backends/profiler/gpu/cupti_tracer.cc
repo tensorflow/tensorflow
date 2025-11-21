@@ -619,11 +619,11 @@ void SetCuMemHostUnregisterEventUponApiExit(
 struct GraphResourceCreationInfo {
   uint32_t graph_id = 0;
   uint32_t orig_graph_id = 0;
-  absl::flat_hash_map<uint64_t, uint64_t> node_id_map = {};
+  absl::flat_hash_map<uint64_t, uint64_t> node_id_map;
 };
 
 static GraphResourceCreationInfo& GetGraphResourceCreationInfo() {
-  static thread_local GraphResourceCreationInfo per_thread_graph_info{};
+  static thread_local GraphResourceCreationInfo per_thread_graph_info;
   return per_thread_graph_info;
 }
 
@@ -1257,16 +1257,7 @@ CuptiTracer::CreateDefaultCallbackIds() {
       CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithFlags,
       CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams,
       CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams_ptsz,
-      // Following add-node to cuda graph events are needed to trace as they are
-      // used to create graph nodes for different Hlo operations in XLA.
       CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemcpyNode,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddKernelNode,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemsetNode,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddEmptyNode,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddChildGraphNode,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddKernelNode_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode_v2,
 #endif  // CUDA_VERSION >= 12080
   };
 }

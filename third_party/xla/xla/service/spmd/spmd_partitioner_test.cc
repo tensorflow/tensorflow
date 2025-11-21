@@ -96,6 +96,7 @@ class SpmdPartitioningTest
     HloModuleConfig config = GetModuleConfigForTest();
     config.set_use_spmd_partitioning(true);
     config.set_num_partitions(num_devices);
+    config.set_use_shardy_partitioner(true);
     if (enable_enzyme_opt) {
       config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(true);
     }
@@ -14915,8 +14916,6 @@ ENTRY entry {
                                _, _, _, _));
 }
 
-// TODO: fix this test; right now it breaks in collective_ops_e2e_test.cc, even
-// though it passes the SPMD partitioner unit test.
 TEST_P(SpmdPartitioningTest,
        KeepPartitionedNonSlicedDimensionWithConstantIndices) {
   const char* const hlo_string = R"(

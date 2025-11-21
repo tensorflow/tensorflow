@@ -440,7 +440,6 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":gpu_blas_lt_proto_cc",
-        "//xla:protobuf_util",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:types",
@@ -449,7 +448,6 @@ cc_library(
         "//xla/service:algorithm_util",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:statusor",
@@ -464,7 +462,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda_is_configured([
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",

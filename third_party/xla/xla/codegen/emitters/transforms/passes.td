@@ -27,6 +27,7 @@ def LowerXlaIntrinsicLibPass : Pass<"xla-lower-xla-intrinsic-lib", "mlir::Module
   }];
   let dependentDialects = [
     "mlir::func::FuncDialect",
+    "mlir::vector::VectorDialect",
   ];
   let constructor = "CreateLowerXlaIntrinsicLibPass()";
 }

@@ -1043,9 +1043,7 @@ class MoveOperandIntoBranch {
         VLOG(1) << "matching_tuple_indices: "
                 << matching_tuple_indices[matching_index][0] << "\n";
         if (matching_tuple_indices[matching_index].end() ==
-            std::find(matching_tuple_indices[matching_index].begin(),
-                      matching_tuple_indices[matching_index].end(),
-                      tuple_index)) {
+            absl::c_find(matching_tuple_indices[matching_index], tuple_index)) {
           continue;
         }
         for (HloInstruction* param_user : param_users) {
@@ -1115,8 +1113,7 @@ class MoveOperandIntoBranch {
       }
       while (repl_count < new_operands.size()) {
         HloInstruction* new_input = new_operands[repl_count++];
-        auto new_input_in_user = std::find(user->operands().begin(),
-                                           user->operands().end(), new_input);
+        auto new_input_in_user = absl::c_find(user->operands(), new_input);
         int64_t opd_index = (new_input_in_user == user->operands().end())
                                 ? user->operand_count()
                                 : new_input_in_user - user->operands().begin();
@@ -1943,9 +1940,8 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
                           ? Decision::Direction::kMoveOutOfBranch
                           : Decision::Direction::kMoveIntoBranch,
                       benefit);
-    } else {
-      connect.clear_recently_visited();
     }
+    connect.clear_recently_visited();
   } else {
     connect.AddNewBoundaries(new_boundaries);
   }

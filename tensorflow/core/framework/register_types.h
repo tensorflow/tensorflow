@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_REGISTER_TYPES_H_
 // This file is used by cuda code and must remain compilable by nvcc.
 
+#include <cstdint>  // IWYU pragma: export
+
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/variant.h"
@@ -61,19 +63,19 @@ limitations under the License.
 // readability.
 #define TF_CALL_float(m) m(float)
 #define TF_CALL_double(m) m(double)
-#define TF_CALL_int32(m) m(::tensorflow::int32)
-#define TF_CALL_uint32(m) m(::tensorflow::uint32)
-#define TF_CALL_uint8(m) m(::tensorflow::uint8)
-#define TF_CALL_int16(m) m(::tensorflow::int16)
+#define TF_CALL_int32(m) m(::int32_t)
+#define TF_CALL_uint32(m) m(::uint32_t)
+#define TF_CALL_uint8(m) m(::uint8_t)
+#define TF_CALL_int16(m) m(::int16_t)
 
-#define TF_CALL_int8(m) m(::tensorflow::int8)
+#define TF_CALL_int8(m) m(::int8_t)
 #define TF_CALL_string(m) m(::tensorflow::tstring)
 #define TF_CALL_tstring(m) m(::tensorflow::tstring)
 #define TF_CALL_resource(m) m(::tensorflow::ResourceHandle)
 #define TF_CALL_variant(m) m(::tensorflow::Variant)
 #define TF_CALL_complex64(m) m(::tensorflow::complex64)
 #define TF_CALL_int64(m) m(::int64_t)
-#define TF_CALL_uint64(m) m(::tensorflow::uint64)
+#define TF_CALL_uint64(m) m(::uint64_t)
 #define TF_CALL_bool(m) m(bool)
 
 #define TF_CALL_qint8(m) m(::tensorflow::qint8)
@@ -83,7 +85,7 @@ limitations under the License.
 #define TF_CALL_qint16(m) m(::tensorflow::qint16)
 
 #define TF_CALL_quint16(m) m(::tensorflow::quint16)
-#define TF_CALL_uint16(m) m(::tensorflow::uint16)
+#define TF_CALL_uint16(m) m(::uint16_t)
 #define TF_CALL_complex128(m) m(::tensorflow::complex128)
 #define TF_CALL_half(m) m(Eigen::half)
 
@@ -105,7 +107,7 @@ limitations under the License.
 // supported.
 #define TF_CALL_float(m) m(float)
 #define TF_CALL_double(m)
-#define TF_CALL_int32(m) m(::tensorflow::int32)
+#define TF_CALL_int32(m) m(::int32_t)
 #define TF_CALL_uint32(m)
 #define TF_CALL_uint8(m)
 #define TF_CALL_int16(m)
@@ -148,7 +150,7 @@ limitations under the License.
 // Only float, int32, and bool are supported.
 #define TF_CALL_float(m) m(float)
 #define TF_CALL_double(m)
-#define TF_CALL_int32(m) m(::tensorflow::int32)
+#define TF_CALL_int32(m) m(::int32_t)
 #define TF_CALL_uint32(m)
 #define TF_CALL_uint8(m)
 #define TF_CALL_int16(m)

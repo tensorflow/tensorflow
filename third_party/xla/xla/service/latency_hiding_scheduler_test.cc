@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/hlo/testlib/test_helpers.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/collectives/async_collective_creator.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -63,7 +63,7 @@ constexpr int kMaxConcurrentAsyncCollectivePermutes = 5;
 
 int PositionInVector(absl::Span<HloInstruction* const> vec,
                      const HloInstruction* element) {
-  return std::distance(vec.begin(), std::find(vec.begin(), vec.end(), element));
+  return std::distance(vec.begin(), absl::c_find(vec, element));
 }
 
 bool MaxConcurrentCollectivePermutesBelowThreshold(

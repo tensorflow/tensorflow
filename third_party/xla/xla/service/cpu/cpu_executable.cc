@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -89,7 +90,7 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::vector<ConstantAllocation> constants,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-    TargetMachineOptionsProto target_machine_options) {
+    TargetMachineOptions target_machine_options) {
   VLOG(2) << "Create CpuExecutable from a thunk sequence; module="
           << hlo_module->name() << ", constants=" << constants.size();
 
@@ -133,7 +134,7 @@ CpuExecutable::CpuExecutable(
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
     std::unique_ptr<BufferAssignment> assignment,
-    TargetMachineOptionsProto target_machine_options)
+    TargetMachineOptions target_machine_options)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       assignment_(std::move(assignment)),
@@ -274,6 +275,12 @@ absl::Status CpuExecutable::ExecuteThunks(
     TF_ASSIGN_OR_RETURN(xnn_params, Thunk::XnnParams::Create(run_options));
   }
 
+  // Prepare for executing YNNPACK fusions.
+  std::optional<Thunk::YnnParams> ynn_params;
+  if (has_ynn_fusions()) {
+    TF_ASSIGN_OR_RETURN(ynn_params, Thunk::YnnParams::Create(run_options));
+  }
+
   // Use the intra-op thread pool to offload thunk executor tasks.
   auto* intra_op_thread_pool = run_options->intra_op_thread_pool();
   ThreadPoolTaskRunner task_runner(
@@ -287,7 +294,8 @@ absl::Status CpuExecutable::ExecuteThunks(
       &task_runner,
       &collective_execute_params,
       &custom_call_execute_params,
-      xnn_params ? &*xnn_params : nullptr};
+      xnn_params ? &*xnn_params : nullptr,
+      ynn_params ? &*ynn_params : nullptr};
 
   auto executed_event = thunks_->Execute(execute_params);
 

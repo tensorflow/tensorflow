@@ -289,8 +289,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     // Compute dimensions to reduce for inner reduction.
     absl::InlinedVector<int64_t, 2> inner_reduce_dims(
         sorted_dims_to_reduce.begin(), sorted_dims_to_reduce.end());
-    auto split_dim_it = std::find(inner_reduce_dims.begin(),
-                                  inner_reduce_dims.end(), split_params.dim);
+    auto split_dim_it = absl::c_find(inner_reduce_dims, split_params.dim);
     *split_dim_it += 1;
 
     // Compute dimension to reduce for outer reduction.

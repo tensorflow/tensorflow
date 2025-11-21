@@ -100,7 +100,7 @@ absl::Status Autotune(HloModule& module, const std::string& cache_dir,
                       xla::Compiler::GetForPlatform(platform));
   se::StreamExecutor* stream_executor = platform->ExecutorForDevice(0).value();
   DebugOptions debug_options = GetDebugOptionsFromFlags();
-  Compiler::TargetConfig target_config(stream_executor);
+  Compiler::GpuTargetConfig target_config(stream_executor);
 
   auto& registry = stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
   TF_ASSIGN_OR_RETURN(const GetCodegenBackends::Type& get_codegen_backends,

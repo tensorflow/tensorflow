@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -80,8 +81,36 @@ absl::flat_hash_set<HloInstruction*> GetSecondCallInstructions(
   return second_call_instructions;
 }
 
-absl::StatusOr<bool> SplitCall(HloInstruction* call,
-                               HloPredicate boundary_predicate) {
+// Create new call ops, connect them together, and splice them
+// where the original call was.
+absl::Status SplitCallSite(HloInstruction* call,
+                           HloComputation* first_call_computation,
+                           HloComputation* second_call_computation) {
+  HloComputation* enclosing_computation = call->parent();
+  HloInstruction* first_call =
+      enclosing_computation->AddInstruction(call->CloneWithNewOperands(
+          first_call_computation->root_instruction()->shape(),
+          call->operands()));
+  first_call->set_to_apply(first_call_computation);
+  std::vector<HloInstruction*> first_call_output_gtes;
+  int num_outputs =
+      first_call_computation->root_instruction()->shape().tuple_shapes().size();
+  first_call_output_gtes.reserve(num_outputs);
+  for (int i = 0; i < num_outputs; ++i) {
+    first_call_output_gtes.push_back(enclosing_computation->AddInstruction(
+        HloInstruction::CreateGetTupleElement(first_call, i)));
+  }
+  HloInstruction* second_call =
+      enclosing_computation->AddInstruction(call->CloneWithNewOperands(
+          second_call_computation->root_instruction()->shape(),
+          first_call_output_gtes));
+  second_call->set_to_apply(second_call_computation);
+  return call->ReplaceAllUsesWith(second_call);
+}
+}  // namespace
+
+std::pair<HloComputation*, HloComputation*> CallSplitter::SplitCallBody(
+    HloComputation* body, HloPredicate boundary_predicate) {
   // We need to do several things here:
   // 1. Figure out which instructions go into the first call and which into the
   // second. In particular:
@@ -99,15 +128,12 @@ absl::StatusOr<bool> SplitCall(HloInstruction* call,
   // TODO(mkuper): This splits "down". We also want a version that splits "up",
   // i.e. the boundary ends up in the first call, and the "irrelevant"
   // instructions end up in the second one.
-
-  HloComputation* body = call->to_apply();
-  HloComputation* enclosing_computation = call->parent();
   HloModule* module = body->parent();
 
   std::vector<HloInstruction*> boundary_instructions =
       GetBoundaryInstructions(body, boundary_predicate);
   if (boundary_instructions.empty()) {
-    return false;
+    return std::make_pair(nullptr, nullptr);
   }
 
   absl::flat_hash_set<HloInstruction*> second_call_instructions =
@@ -120,7 +146,7 @@ absl::StatusOr<bool> SplitCall(HloInstruction* call,
     }
   }
   if (first_call_instructions.empty() || second_call_instructions.empty()) {
-    return false;
+    return std::make_pair(nullptr, nullptr);
   }
 
   if (VLOG_IS_ON(1)) {
@@ -144,7 +170,7 @@ absl::StatusOr<bool> SplitCall(HloInstruction* call,
       // Don't break the function if it would create a control edge that needs
       // to be threaded between the two new functions.
       if (first_call_instructions.contains(control_pred)) {
-        return false;
+        return std::make_pair(nullptr, nullptr);
       }
     }
     for (HloInstruction* data_pred : instruction->operands()) {
@@ -181,9 +207,9 @@ absl::StatusOr<bool> SplitCall(HloInstruction* call,
           &first_call_replacements, /*extra_parameters=*/{},
           /*context=*/nullptr, /*suffix=*/"first", first_call_outputs_vec));
 
-  // Now construct the second call body. In the call body, the first call
-  // instruction that are directly used are replaced by parameters, and the rest
-  // are deleted.
+  // Now construct the second call body. In the call body, the instructions
+  // that were assigned to the first call that are directly used are replaced by
+  // parameters, and the rest are deleted.
   absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       second_call_replacements;
   for (int i = 0; i < first_call_outputs_vec.size(); ++i) {
@@ -203,34 +229,12 @@ absl::StatusOr<bool> SplitCall(HloInstruction* call,
           &second_call_replacements, /*extra_parameters=*/{},
           /*context=*/nullptr, /*suffix=*/"second", /*new_root=*/nullptr));
 
-  // Now actually create the call ops, connect them together, and splice them
-  // where the original call was.
-  HloInstruction* first_call =
-      enclosing_computation->AddInstruction(call->CloneWithNewOperands(
-          first_call_computation->root_instruction()->shape(),
-          call->operands()));
-  first_call->set_to_apply(first_call_computation);
-  std::vector<HloInstruction*> first_call_output_gtes;
-  first_call_output_gtes.reserve(first_call_outputs_vec.size());
-  for (int i = 0; i < first_call_outputs_vec.size(); ++i) {
-    first_call_output_gtes.push_back(enclosing_computation->AddInstruction(
-        HloInstruction::CreateGetTupleElement(first_call, i)));
-  }
-  HloInstruction* second_call =
-      enclosing_computation->AddInstruction(call->CloneWithNewOperands(
-          second_call_computation->root_instruction()->shape(),
-          first_call_output_gtes));
-  second_call->set_to_apply(second_call_computation);
-  TF_RETURN_IF_ERROR(call->ReplaceAllUsesWith(second_call));
-  return true;
+  return std::make_pair(first_call_computation, second_call_computation);
 }
-
-}  // namespace
 
 absl::StatusOr<bool> CallSplitter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  bool changed = false;
   // Find all the call instructions that match the predicate. We don't process
   // them immediately since we're going to change their enclosing computation.
   // process all calls in a computation together. Note that we want to process
@@ -271,9 +275,27 @@ absl::StatusOr<bool> CallSplitter::RunImpl(
     }
   }
 
+  bool changed = false;
+  split_call_bodies_.clear();
   for (HloInstruction* call : calls_to_process) {
-    TF_ASSIGN_OR_RETURN(bool split, SplitCall(call, boundary_predicate_));
-    changed |= split;
+    // We may have already split this callee when wer processed another
+    // callsite, in which case we can reuse the results.
+    auto get_split = [&](HloComputation* body) {
+      auto it = split_call_bodies_.find(body);
+      if (it != split_call_bodies_.end()) {
+        return it->second;
+      }
+      auto split = SplitCallBody(body, boundary_predicate_);
+      split_call_bodies_[body] = split;
+      return split;
+    };
+
+    auto split_result = get_split(call->to_apply());
+    if (split_result.first != nullptr) {
+      changed |= true;
+      TF_RETURN_IF_ERROR(
+          SplitCallSite(call, split_result.first, split_result.second));
+    }
   }
 
   return changed;

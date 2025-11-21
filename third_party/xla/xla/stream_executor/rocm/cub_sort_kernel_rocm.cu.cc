@@ -284,7 +284,7 @@ static absl::Status CubSortPairsGetScratchSize(size_t* temp_bytes,
 
 // Floating point types.
 #ifdef CUB_TYPE_BF16
-XLA_CUB_DEFINE_SORT_KEYS(bf16, __nv_bfloat16)
+XLA_CUB_DEFINE_SORT_KEYS(bf16, hip_bfloat16)
 #endif
 #ifdef CUB_TYPE_F16
 XLA_CUB_DEFINE_SORT_KEYS(f16, __half)

@@ -365,13 +365,15 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   //
   // REQUIRED: Scoped vmem must be allocated at offset 0 at the time this method
   //           is called.
-  absl::Status AllocateAndScheduleExistingBlockPrefetches();
+  absl::Status AllocateAndScheduleExistingBlockPrefetches(
+      int64_t block_prefetching_starting_offset);
 
   // Create, allocate and schedule new block prefetches.
   //
   // REQUIRED: Scoped vmem must be allocated at offset 0 at the time this method
   //           is called.
-  absl::Status CreateNewBlockPrefetches();
+  absl::Status CreateNewBlockPrefetches(
+      int64_t block_prefetching_starting_offset);
 
   // Creates colocated allocations for values aliased to the new block
   // prefetches and finalizes them.
@@ -401,7 +403,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   // Returns the maximum amount of scoped memory that is reserved at any time in
   // the program.
-  int64_t MaxScopedMemoryOffset();
+  int64_t MaxScopedMemorySize();
 
   // Finds and returns the earliest block prefetch start time subject to the
   // following constraints:
@@ -698,9 +700,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Allocates buffers for instructions that need reserved scoped allocations in
   // the alternate memory space.
   void AllocateReservedScopedAllocations();
+
+  // Creates a ScopedAllocation for the given instruction.
   void AllocateScopedAllocation(HloInstruction* instruction,
-                                bool is_post_module, int64_t size,
-                                int64_t time);
+                                bool is_post_module, int64_t size, int64_t time,
+                                std::vector<AllocationBlock*>& colocations);
 
   // Returns the AliasedOffset object associated with the allocation.
   AliasedOffset* GetAliasedOffset(const Allocation& allocation);
@@ -1233,6 +1237,14 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Whether an hlo position is colored in default memory at the given time.
   bool IsPositionColoredInDefaultMemoryAtTime(const HloPosition& position,
                                               int64_t time) const;
+
+  // Reserves a chunk in alternate memory of size MaxScopedMemorySize() for
+  // the entire program duration for scoped memory allocations.
+  int64_t ReserveAlternateMemoryForScopedMemoryAllocations();
+
+  // Frees the alternate memory reserved for scoped memory allocations.
+  void FreeAlternateMemoryForScopedMemoryAllocations(
+      int64_t max_scoped_memory_size);
 
   HloModule* module_ = nullptr;
   AllocationSequence* allocations_;

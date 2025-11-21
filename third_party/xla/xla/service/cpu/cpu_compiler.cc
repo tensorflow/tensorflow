@@ -100,6 +100,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/cpu/transforms/collectives/all_reduce_combiner.h"
 #include "xla/backends/cpu/transforms/library_rewriter.h"
 #include "xla/backends/cpu/transforms/xnn_graph_fusion.h"
@@ -1225,12 +1226,20 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
         module->config().debug_options().xla_backend_extra_options());
     llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
+    // Use default target machine options if not specified in the target config.
+    TargetMachineOptions target_machine_options(
+        module->config().debug_options());
+    if (options.cpu_target_config &&
+        options.cpu_target_config->cpu_target_machine_options) {
+      target_machine_options =
+          options.cpu_target_config->cpu_target_machine_options.value();
+    }
+
     TF_ASSIGN_OR_RETURN(
         jit_target_machine,
-        IrCompiler::InferTargetMachine(
-            CompilerTargetOptions(config),
-            IrCompiler::GetCodeGenOptLevel(config),
-            CpuFeatureFromString(config.debug_options().xla_cpu_max_isa())));
+        IrCompiler::InferTargetMachine(CompilerTargetOptions(config),
+                                       IrCompiler::GetCodeGenOptLevel(config),
+                                       target_machine_options));
   }
 
   TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
@@ -2006,24 +2015,13 @@ CpuCompiler::CompileCpuExecutable(
   TF_ASSIGN_OR_RETURN(std::vector<ConstantAllocation> constants,
                       CreateConstantAllocations(*assignment));
 
-  TargetMachineOptionsProto target_machine_options_proto;
-  target_machine_options_proto.set_triple(
-      target_machine->getTargetTriple().getTriple());
-  target_machine_options_proto.set_cpu(target_machine->getTargetCPU());
-
-  // TODO(basioli): Target machine features are returning an empty string at the
-  // moment so for now we are using the host CPU features. This should be
-  // updated to use the target machine features of the target we are actually
-  // compiling for as we might want to support cross-compilation.
-  auto host_machine_features = llvm::sys::getHostCPUFeatures();
-  std::vector<absl::string_view> enabled_features;
-  for (const auto& feature : host_machine_features) {
-    if (feature.getValue()) {
-      enabled_features.push_back(feature.getKey());
-    }
-  }
-  target_machine_options_proto.set_features(
-      absl::StrJoin(enabled_features, ","));
+  // We don't use the target machine options from the
+  // CompileOptions::target_config field as we consider TargetMachine to be the
+  // source of truth at this point. This is because the AOT path might set its
+  // own target machine options.
+  TargetMachineOptions target_machine_options(
+      target_machine->getTargetTriple().normalize(),
+      target_machine->getTargetCPU(), target_machine->getTargetFeatureString());
 
   TF_ASSIGN_OR_RETURN(
       auto cpu_executable,
@@ -2031,7 +2029,7 @@ CpuCompiler::CompileCpuExecutable(
           std::move(function_library), std::move(assignment), std::move(module),
           std::move(thunks), std::move(constants),
           std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map),
-          std::move(target_machine_options_proto)));
+          std::move(target_machine_options)));
 
   // Save object files to be able to export them to AOT compilation
   // result.
@@ -2072,12 +2070,19 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       module->config().debug_options().xla_backend_extra_options());
   llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
+  TargetMachineOptions target_machine_options(module->config().debug_options());
+  if (options.cpu_target_config &&
+      options.cpu_target_config->cpu_target_machine_options) {
+    target_machine_options =
+        options.cpu_target_config->cpu_target_machine_options.value();
+  }
+
   // Options for compiling LLVM IR to machine code.
   IrCompiler::Options ir_compiler_options{
       /*optimization_level=*/IrCompiler::GetCodeGenOptLevel(module->config()),
       /*optimize_for_size=*/options::OptimizeForSizeRequested(module->config()),
-      /*max_cpu_isa=*/
-      CpuFeatureFromString(module->config().debug_options().xla_cpu_max_isa()),
+      /*target_machine_options=*/
+      target_machine_options,
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(module->config()),
       /*disable_expensive_passes=*/
       module->config().debug_options().xla_llvm_disable_expensive_passes(),
@@ -2215,12 +2220,15 @@ CpuCompiler::CompileAheadOfTimeThunks(
       /*compile_copy_as_llvm_kernel=*/aot_options.compile_copy_as_llvm_kernel(),
       /*is_aot_compilation=*/true};
 
+  TargetMachineOptions target_machine_options(
+      triple.normalize(), target_machine->getTargetCPU(),
+      target_machine->getTargetFeatureString());
+
   IrCompiler::Options ir_compiler_options = {
       /*optimization_level=*/target_machine->getOptLevel(),
       /*optimize_for_size=*/
       options::OptimizeForSizeRequested(module->config()),
-      /*max_cpu_isa=*/
-      CpuFeatureFromString(module->config().debug_options().xla_cpu_max_isa()),
+      /*target_machine_options=*/target_machine_options,
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(module->config()),
       /*disable_expensive_passes=*/
       module->config().debug_options().xla_llvm_disable_expensive_passes(),
@@ -2269,7 +2277,7 @@ CpuCompiler::CompileAheadOfTimeThunks(
       cpu_executable->get_compiled_symbols_proto(), thunk_sequence,
       std::move(*cpu_executable).consume_function_library(),
       std::move(executable_hlo_profile_printer_data),
-      cpu_executable->target_machine_options());
+      cpu_executable->target_machine_options().ToProto());
 }
 
 se::Platform::Id CpuCompiler::PlatformId() const {
@@ -2310,9 +2318,11 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
   TF_ASSIGN_OR_RETURN(auto compiled_symbols,
                       GetCompiledSymbolsFromProto(compiled_symbols_proto));
 
-  TF_ASSIGN_OR_RETURN(auto function_library,
-                      LoadFunctionLibrary(compiled_symbols, obj_files,
-                                          &cpu_executable->module()));
+  TF_ASSIGN_OR_RETURN(
+      auto function_library,
+      LoadFunctionLibrary(compiled_symbols, obj_files,
+                          &cpu_executable->module(),
+                          cpu_executable->target_machine_options()));
 
   return CpuAotCompilationResult::Create(
       &cpu_executable->module(), &cpu_executable->buffer_assignment(),
@@ -2320,7 +2330,7 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
       std::move(compiled_symbols_proto), *thunk_sequence,
       std::move(function_library),
       std::move(executable_hlo_profile_printer_data),
-      cpu_executable->target_machine_options());
+      cpu_executable->target_machine_options().ToProto());
 }
 
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>

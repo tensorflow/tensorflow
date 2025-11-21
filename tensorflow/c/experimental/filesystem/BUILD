@@ -49,6 +49,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/platform:errors",
     ],

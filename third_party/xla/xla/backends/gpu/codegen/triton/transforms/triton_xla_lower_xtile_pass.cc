@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Inliner.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
@@ -290,6 +291,50 @@ class XTileInsertToTriton
   }
 };
 
+class XTileMaskToTriton : public mlir::OpRewritePattern<::xla::xtile::MaskOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      ::xla::xtile::MaskOp op, mlir::PatternRewriter& rewriter) const override {
+    llvm::SmallVector<int64_t> masked_dimensions = op.getMaskedDimensions();
+    if (masked_dimensions.size() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "triton masking only supports masking over a single dimension");
+    }
+
+    int64_t mask_dimension = masked_dimensions.front();
+    int64_t mask_bound = op.getBounds()[mask_dimension];
+    int64_t masked_dim_size = op.getType().getDimSize(mask_dimension);
+    auto iota_type =
+        mlir::RankedTensorType::get(masked_dim_size, rewriter.getI32Type());
+    auto range = stablehlo::IotaOp::create(rewriter, op.getLoc(), iota_type, 0);
+    auto bcast_type = mlir::RankedTensorType::get(op.getType().getShape(),
+                                                  iota_type.getElementType());
+    auto bcast = stablehlo::BroadcastInDimOp::create(
+        rewriter, op.getLoc(), bcast_type, range, {mask_dimension});
+    auto constant = mlir::arith::ConstantOp::create(
+        rewriter, op.getLoc(),
+        mlir::DenseElementsAttr::get(bcast_type,
+                                     rewriter.getI32IntegerAttr(mask_bound)));
+    Value mask = arith::CmpIOp::create(
+        rewriter, op.getLoc(), arith::CmpIPredicate::slt, bcast, constant);
+
+    auto mask_value_tensor = mlir::tensor::FromElementsOp::create(
+        rewriter, op.getLoc(),
+        mlir::RankedTensorType::get({}, op.getValue().getType()),
+        op.getValue());
+    auto neutral = stablehlo::BroadcastInDimOp::create(
+        rewriter, op.getLoc(), op.getType(), mask_value_tensor,
+        ArrayRef<int64_t>{});
+
+    rewriter.replaceOpWithNewOp<arith::SelectOp>(op, mask, op.getSource(),
+                                                 neutral);
+
+    return mlir::success();
+  }
+};
+
 class FoldIntoMemrefToPtr : public mlir::OpRewritePattern<MemrefToPtrOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -321,7 +366,7 @@ class TritonXLALowerXTilePass
     mlir::RewritePatternSet patterns(context);
 
     patterns.add<XTileEntryToTriton, XTileExtractToTriton, XTileInsertToTriton,
-                 FoldIntoMemrefToPtr>(context);
+                 XTileMaskToTriton, FoldIntoMemrefToPtr>(context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();

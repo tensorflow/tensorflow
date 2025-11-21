@@ -57,7 +57,12 @@ absl::StatusOr<std::unique_ptr<CopyThunk>> CopyThunk::Create(
         "Source shape %s must be compatible with destination shape %s",
         src_shape.ToString(true), dst_shape.ToString(true));
   }
-
+  if (src_shape != dst_shape) {
+    if (!ShapeUtil::ByteStrides(src_shape).has_value()) {
+      return InvalidArgument("Source shape %s must have valid byte strides",
+                             src_shape.ToString(true));
+    }
+  }
   return absl::WrapUnique(new CopyThunk(std::move(info), src_buffer, src_shape,
                                         dst_buffer, dst_shape));
 }
@@ -78,6 +83,7 @@ CopyThunk::CopyThunk(Info info, BufferAllocation::Slice src_buffer,
     options.dims = src_shape_.dimensions();
 
     auto byte_strides = ShapeUtil::ByteStrides(src_shape_);
+    CHECK(byte_strides.has_value());
     options.input_layout = TransposePlan::Striding{*byte_strides};
 
     absl::InlinedVector<int64_t, 4> permutation(options.dims.size());

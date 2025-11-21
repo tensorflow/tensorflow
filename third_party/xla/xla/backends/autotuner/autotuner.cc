@@ -458,8 +458,11 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
 
   std::optional<ScopedShapedBuffer> reference_output;
   if (autotune_config_.check_buffers) {
-    TF_ASSIGN_OR_RETURN(reference_output,
-                        GetReferenceOutput(candidates, *input_buffers));
+    reference_output = GetReferenceOutput(candidates, *input_buffers);
+    if (!reference_output.has_value()) {
+      LOG(WARNING) << "No reference output found even though buffer checking "
+                      "was requested while autotuning";
+    }
   }
 
   for (int i = 0; i < candidates.size(); ++i) {
@@ -475,8 +478,7 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
     } else {
       duration = profile_result->duration;
       scratch_bytes = profile_result->scratch_bytes;
-      if (autotune_config_.check_buffers) {
-        CHECK(reference_output.has_value());
+      if (autotune_config_.check_buffers && reference_output.has_value()) {
         CHECK(profile_result->output_buffer.has_value());
         failure =
             CheckBuffers(*input_buffers, profile_result->output_buffer.value(),
@@ -499,7 +501,7 @@ absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
         std::remove_if(results.begin(), results.end(),
                        [](const ConfigResult& result) {
                          return result.config.codegen_backend->name() ==
-                                "cublas";
+                                "Cublas_fission";
                        }),
         results.end());
   }
@@ -558,7 +560,7 @@ absl::Status Autotuner::DumpHlo(HloInstruction* instr, const Config& config) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<ScopedShapedBuffer> Autotuner::GetReferenceOutput(
+std::optional<ScopedShapedBuffer> Autotuner::GetReferenceOutput(
     std::vector<ExecutableCandidate>& candidates, InputBuffers& input_buffers) {
   for (auto& candidate : candidates) {
     if (candidate.config.codegen_backend->CanProduceWrongResults()) {
@@ -574,8 +576,7 @@ absl::StatusOr<ScopedShapedBuffer> Autotuner::GetReferenceOutput(
       return std::move(profile_result.value().output_buffer.value());
     }
   }
-  return absl::NotFoundError(
-      "No reference output found but correctness checking is enabled!");
+  return std::nullopt;
 }
 
 std::optional<Autotuner::Failure> Autotuner::CheckBuffers(

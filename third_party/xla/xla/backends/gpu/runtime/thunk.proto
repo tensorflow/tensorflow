@@ -25,6 +25,7 @@ import "xla/ffi/attribute_map.proto";
 import "xla/service/buffer_assignment.proto";
 import "xla/service/gpu/gpu_conv_runner.proto";
 import "xla/service/gpu/gpu_norm_runner.proto";
+import "xla/service/gpu/kernels/custom_kernel.proto";
 import "xla/service/gpu/launch_dimensions.proto";
 import "xla/service/hlo.proto";
 import "xla/stream_executor/gpu/gpu_blas_lt.proto";
@@ -85,6 +86,7 @@ message WhileThunkProto {
 
 message KernelThunkProto {
   repeated xla.buffer_assignment.BufferAllocationSliceProto args = 1;
+  repeated xla.ShapeProto args_shape = 8;
   repeated bool written = 2;
   string kernel_name = 3;
   LaunchDimensionsProto launch_dimensions = 4;
@@ -291,6 +293,12 @@ message CustomCallThunkProto {
   optional string called_computation = 7;
 }
 
+message CustomKernelThunkProto {
+  repeated xla.buffer_assignment.BufferAllocationSliceProto args = 1;
+  repeated bool written = 2;
+  CustomKernelProto custom_kernel = 3;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -328,6 +336,7 @@ message ThunkProto {
     HostSendDoneThunkProto host_send_done_thunk = 33;
     HostRecvThunkProto host_recv_thunk = 34;
     HostRecvDoneThunkProto host_recv_done_thunk = 35;
+    CustomKernelThunkProto custom_kernel_thunk = 36;
   }
 }
 

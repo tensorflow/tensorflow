@@ -251,15 +251,6 @@ cc_library(
 )
 
 cc_library(
-    name = "host_or_device_scalar",
-    hdrs = ["host_or_device_scalar.h"],
-    deps = [
-        ":device_memory",
-        "@com_google_absl//absl/log:check",
-    ],
-)
-
-cc_library(
     name = "launch_dim",
     srcs = ["launch_dim.cc"],
     hdrs = ["launch_dim.h"],
@@ -613,14 +604,13 @@ xla_cc_test(
         ":kernel_spec",
         ":kernel_spec_proto_cc",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@com_google_protobuf//:protobuf",
     ],
 )
 

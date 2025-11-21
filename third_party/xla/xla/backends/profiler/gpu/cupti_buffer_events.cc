@@ -155,12 +155,8 @@ const char *getActivityUnifiedMemoryKindString(
 template <typename CuptiActivity>
 void SetEventGraphId(CuptiTracerEvent &event,
                      const CuptiActivity *cupti_activity) {
-  // In current implementation, CuptiActivityKernelTy, CuptiActivityMemcpyTy,
-  // CuptiActivityMemcpyP2PTy and CuptiActivityMemsetTy all have graphNodeId
-  // when they have graphId.
   if constexpr (CuptiActivityHasGraphId<CuptiActivity>::value) {
     event.graph_id = cupti_activity->graphId;
-    event.graph_node_id = cupti_activity->graphNodeId;
   }
 }
 
@@ -662,27 +658,23 @@ absl::string_view StringDeduper::Dedup(absl::string_view str,
   return absl::string_view();
 }
 
-absl::string_view AnnotationMap::Add(uint32_t device_id,
-                                     uint32_t correlation_id,
-                                     const absl::string_view annotation,
-                                     const absl::string_view nvtx_range,
-                                     int64_t scope_range_id) {
-  if ((!annotation.empty() || !nvtx_range.empty()) &&
-      device_id < per_device_map_.size()) {
-    VLOG(3) << "Add annotation: device_id: " << device_id
-            << " correlation_id: " << correlation_id
-            << " annotation: " << annotation;
-    auto& per_device_map = per_device_map_[device_id];
-    if (per_device_map.annotation_deduper.Size() < max_size_) {
-      AnnotationInfo info;
-      info.annotation = per_device_map.annotation_deduper.Dedup(annotation);
-      info.nvtx_range = per_device_map.nvtx_range_deduper.Dedup(nvtx_range);
-      info.scope_range_id = scope_range_id;
-      per_device_map.correlation_map.emplace(correlation_id, info);
-      return info.annotation;
-    }
+void AnnotationMap::Add(uint32_t device_id, uint32_t correlation_id,
+                        const absl::string_view annotation,
+                        const absl::string_view nvtx_range,
+                        int64_t scope_range_id) {
+  if (annotation.empty() && nvtx_range.empty()) return;
+  VLOG(3) << "Add annotation: device_id: " << device_id
+          << " correlation_id: " << correlation_id
+          << " annotation: " << annotation;
+  if (device_id >= per_device_map_.size()) return;
+  auto &per_device_map = per_device_map_[device_id];
+  if (per_device_map.annotation_deduper.Size() < max_size_) {
+    AnnotationInfo info;
+    info.annotation = per_device_map.annotation_deduper.Dedup(annotation);
+    info.nvtx_range = per_device_map.nvtx_range_deduper.Dedup(nvtx_range);
+    info.scope_range_id = scope_range_id;
+    per_device_map.correlation_map.emplace(correlation_id, info);
   }
-  return "";
 }
 
 AnnotationMap::AnnotationInfo AnnotationMap::LookUp(

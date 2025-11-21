@@ -625,6 +625,12 @@ message DebugOptions {
 
   optional bool xla_gpu_exhaustive_tiling_search = 219;
 
+  // If true, allows unroll factor 8 on Blackwell architectures. This is also
+  // guarded with a heuristic, but the heuristic is not perfect, so enabling
+  // this flag can cause both performance improvements and performance
+  // regressions.
+  optional bool xla_gpu_experimental_allow_unroll_factor_eight = 430;
+
   // Specifies the behavior of per kernel autotuning cache.
   optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
@@ -656,6 +662,10 @@ message DebugOptions {
   // This feature is still experimental and effective only
   // xla_gpu_multi_streamed_windowed_einsum is set to true.
   optional bool xla_gpu_experimental_enable_alltoall_windowed_einsum = 360;
+
+  // Enables an experimental feature to record outputs of selected thunks.
+  // Writes to --xla_dump_to.
+  optional bool xla_gpu_experimental_enable_buffer_saver_on_thunks = 431;
 
   // Enables an experimental feature to record checksums of selected thunk
   // inputs/outputs.
@@ -1420,7 +1430,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 429
+  // Next id: 432
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 
-#include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -44,6 +42,7 @@ limitations under the License.
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
+#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -59,6 +58,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/matmul_indexing_utils.h"
@@ -1398,7 +1398,7 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
           << computation->root_instruction()->shape().ToString();
   llvm::SmallVector<int64_t> output_tile_sizes = get_tile_sizes(out_rank);
 
-  std::sort(output_tile_sizes.begin(), output_tile_sizes.end());
+  absl::c_sort(output_tile_sizes);
 
   const TilingSpecification& tiling_specification =
       analysis.GetTilingSpecification();
@@ -1445,8 +1445,7 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     VLOG(4) << "mapped_dot_tile_sizes: "
             << absl::StrJoin(mapped_dot_tile_sizes, ",")
             << " != " << absl::StrJoin(expected_dot_tile_sizes, ",");
-  } while (std::next_permutation(output_tile_sizes.begin(),
-                                 output_tile_sizes.end()));
+  } while (absl::c_next_permutation(output_tile_sizes));
 
   return absl::InternalError(absl::StrCat(
       "Couldn't find output tile sizes that satisfy ", tiled_dot.ToString()));

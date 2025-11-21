@@ -22,14 +22,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -54,7 +52,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -237,18 +234,22 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
     return true;
   }
 
-  if (config.enabled_commands.contains(DebugOptions::CUDNN) &&
-      IsCustomCallToBlockScaledDot(*hlo)) {
-    VLOG(3) << "Recording BlockScaledDot, target " << hlo->custom_call_target()
-            << " into command buffer.";
-    return true;
-  }
-
-  if (config.enabled_commands.contains(DebugOptions::CUDNN) &&
-      IsCustomCallTofMHA(*hlo)) {
-    VLOG(3) << "Recording FusedMHA, target " << hlo->custom_call_target()
-            << " into command buffer.";
-    return true;
+  if (config.enabled_commands.contains(DebugOptions::CUDNN)) {
+    if (IsCustomCallToBlockScaledDot(*hlo)) {
+      VLOG(3) << "Recording BlockScaledDot, target "
+              << hlo->custom_call_target() << " into command buffer.";
+      return true;
+    }
+    if (IsCustomCallTofMHA(*hlo)) {
+      VLOG(3) << "Recording FusedMHA, target " << hlo->custom_call_target()
+              << " into command buffer.";
+      return true;
+    }
+    if (IsCustomCallToDnnConvolution(*hlo)) {
+      VLOG(3) << "Recording convolution, target " << hlo->custom_call_target()
+              << " into command buffer.";
+      return true;
+    }
   }
 
   if (!config.enabled_commands.contains(DebugOptions::CUSTOM_CALL)) {
@@ -393,7 +394,9 @@ CommandBufferScheduling::CollectCommandBufferSequences(
   int64_t num_commands_in_current_seq = 0;
 
   // Adds `current_seq` to `sequences` if it has enough commands in it.
-  auto collect_current_seq = [&]() {
+  auto collect_current_seq = [&](HloInstruction* instr) {
+    VLOG(1) << "Stopped at: " << (instr ? instr->ToString() : "<end>")
+            << " #commands: " << num_commands_in_current_seq;
     if (num_commands_in_current_seq >= std::max(1, min_num_commands)) {
       RemoveTrailingNoOps(current_seq);
       sequences.push_back(std::move(current_seq));
@@ -462,7 +465,7 @@ CommandBufferScheduling::CollectCommandBufferSequences(
   // are captured by the same command buffer.
   auto collect_async_region = [&](const HloInstruction* start) {
     auto get_index = [&](const HloInstruction* inst) -> size_t {
-      auto it = std::find(instructions.begin(), instructions.end(), inst);
+      auto it = absl::c_find(instructions, inst);
       return std::distance(instructions.begin(), it);
     };
 
@@ -544,11 +547,11 @@ CommandBufferScheduling::CollectCommandBufferSequences(
 
     // If we didn't find the next command, collect the current sequence and
     // start a new one.
-    collect_current_seq();
+    collect_current_seq(inst);
   }
 
   // Don't forget to collect the final command sequence.
-  collect_current_seq();
+  collect_current_seq(nullptr);
   return sequences;
 }
 

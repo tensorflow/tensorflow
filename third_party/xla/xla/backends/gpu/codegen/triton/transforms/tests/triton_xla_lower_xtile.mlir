@@ -81,3 +81,24 @@ func.func @fold_transpose_into_ptr(
   // CHECK: return %[[PTR]] : !tt.ptr<f64>
   return %ptr : !tt.ptr<f64>
 }
+
+// -----
+
+// CHECK-LABEL: @mask_lowers_to_stable_hlo(%arg0: tensor<32xf64>, %arg1: f64) -> tensor<32xf64>
+func.func @mask_lowers_to_stable_hlo(%arg0: tensor<32xf64>, %arg1: f64) -> tensor<32xf64> {
+  // CHECK: %[[BOUND:.*]] = arith.constant dense<10> : tensor<32xi32>
+  // CHECK: %[[IDX:.*]] = stablehlo.iota dim = 0 : tensor<32xi32>
+  // CHECK: %[[IDX_BROADCASTED:.*]] = stablehlo.broadcast_in_dim %[[IDX]],
+  // CHECK-SAME: dims = [0] : (tensor<32xi32>) -> tensor<32xi32>
+  // CHECK: %[[MASK:.*]] = arith.cmpi slt, %[[IDX_BROADCASTED]], %[[BOUND]]
+  // CHECK-SAME: : tensor<32xi32>
+  // CHECK: %[[INIT:.*]] = tensor.from_elements %arg1 : tensor<f64>
+  // CHECK: %[[INIT_TENSOR:.*]] = stablehlo.broadcast_in_dim %[[INIT]],
+  // CHECK-SAME: dims = [] : (tensor<f64>) -> tensor<32xf64>
+  // CHECK: %[[RESULT:.*]] = arith.select %[[MASK]], %arg0, %[[INIT_TENSOR]]
+  // CHECK-SAME: : tensor<32xi1>, tensor<32xf64>
+  %paded = xtile.mask %arg0 bounds [10], %arg1 : tensor<32xf64>
+  // CHECK: return %[[RESULT]] : tensor<32xf64>
+  return %paded : tensor<32xf64>
+}
+

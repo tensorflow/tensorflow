@@ -84,6 +84,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/split_k_gemm_rewriter.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
@@ -456,16 +457,25 @@ absl::StatusOr<std::unique_ptr<HloModule>> CuDnnFusionExtractor(
   tsl::profiler::TraceMe traceme("CuDnnFusionExtractor");
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       FusionExtractor(fusion, debug_opts));
+  HloInstruction* root = module->entry_computation()->root_instruction();
 
+  // Swizzle scale tensors for block scaled dot.
+  HloInstruction* scaled_dot = hlo_query::GetFirstInstructionWithOpcode(
+      *root->called_computations()[0], HloOpcode::kScaledDot);
+  if (scaled_dot != nullptr) {
+    TF_ASSIGN_OR_RETURN(root, CudnnScaledDotHelper::AddScaleSwizzle(
+                                  Cast<HloFusionInstruction>(root)));
+  }
+
+  // Update backend config of the root fusion.
   GpuBackendConfig gpu_config;
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
   backend_config.set_kind(std::string(kCuDnnFusionKind));
   // Provided a plan ID the autotuner just compiles one plan.
   backend_config.mutable_cudnn_fusion_config()->set_plan_id(plan_id);
-  TF_RETURN_IF_ERROR(
-      module->entry_computation()->root_instruction()->set_backend_config(
-          gpu_config));
+  TF_RETURN_IF_ERROR(root->set_backend_config(gpu_config));
+
   return module;
 }
 
@@ -764,10 +774,16 @@ absl::Status GemmFusionAutotunerRewriterVisitor::HandleFusion(
 
   // Autotune result has a cuDNN fusion.
   CHECK(autotune_result.has_algorithm());
+  if (fusion_backend_config.kind() == kTritonScaledDotFusionKind) {
+    TF_ASSIGN_OR_RETURN(fusion_instr,
+                        CudnnScaledDotHelper::AddScaleSwizzle(
+                            Cast<HloFusionInstruction>(fusion_instr)));
+  }
   fusion_backend_config.set_kind(kCuDnnFusionKind);
   fusion_backend_config.mutable_cudnn_fusion_config()->set_plan_id(
       autotune_result.algorithm().algo_id());
   TF_RETURN_IF_ERROR(fusion_instr->set_backend_config(gpu_config));
+
   MarkAsChanged();
   return absl::OkStatus();
 }
@@ -907,7 +923,9 @@ GemmFusionAutotunerImpl::GenerateDotConfigs(const HloFusionInstruction& fusion,
     }
 
     // Add lib (e.g. cuDNN) plans, if available.
-    if (AddLibConfigs(fusion, dot, configs)) return configs;
+    if (AddLibConfigs(fusion, dot, configs)) {
+      return configs;
+    }
   }
 
   // Add CustomKernelFusion (Cutlass) configs, if available.
@@ -941,6 +959,10 @@ GemmFusionAutotunerImpl::GenerateScaledDotConfigs(
       IsAutotuningEnabled() && !config_.IsDeviceless()) {
     // Add cuBLAS reference config, if available.
     configs.push_back(CuBlasConfig{});
+    // Add lib (e.g. cuDNN) plans, if available.
+    if (AddLibConfigs(fusion, dot, configs)) {
+      return configs;
+    }
   }
 
   // TODO(b/436988479): fine tune the search space.
@@ -1680,8 +1702,8 @@ absl::StatusOr<bool> GemmFusionAutotuner::RunViaNewInfra(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                       Compiler::GetForPlatform(stream_exec->GetPlatform()));
   se::DeviceMemoryAllocator* device_allocator = config_.GetAllocator();
-  std::unique_ptr<Compiler::TargetConfig> target_config;
-  target_config = std::make_unique<Compiler::TargetConfig>(stream_exec);
+  std::unique_ptr<Compiler::GpuTargetConfig> target_config;
+  target_config = std::make_unique<Compiler::GpuTargetConfig>(stream_exec);
   backends.push_back(std::make_unique<TritonBackend>(
       &debug_options, compiler.get(), target_config.get(),
       symbolic_expr_context_));

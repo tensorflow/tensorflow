@@ -703,7 +703,8 @@ ShapeHandle InferenceContext::UnknownShape() {
 }
 
 ShapeHandle InferenceContext::UnknownShapeOfRank(int64_t rank) {
-  CHECK_LE(rank, kint32max) << "rank must be less than kint32max";
+  CHECK_LE(rank, std::numeric_limits<int32_t>::max())
+      << "rank must be less than kint32max";
   if (rank == kUnknownRank) {
     return UnknownShape();
   }

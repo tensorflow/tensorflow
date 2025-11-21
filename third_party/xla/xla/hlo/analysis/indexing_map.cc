@@ -1155,8 +1155,9 @@ Interval RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
   }
 
   if (use_constraints_) {
-    auto constraint = indexing_map_.GetConstraints().find(expr);
-    if (constraint != indexing_map_.GetConstraints().end()) {
+    auto constraints_map = indexing_map_.GetConstraints();
+    auto constraint = constraints_map.find(expr);
+    if (constraint != constraints_map.end()) {
       return result.Intersect(constraint->second);
     }
   }

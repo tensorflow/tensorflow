@@ -24,6 +24,7 @@ cc_library(
     hdrs = ["kernel_runner.h"],
     deps = [
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu/codegen:builtin_definition_generator",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/codegen:execution_engine",
@@ -41,6 +42,7 @@ cc_library(
         "//xla/codegen/testlib:kernel_runner",
         "//xla/runtime:work_group",
         "//xla/service:hlo_module_config",
+        "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_options",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",

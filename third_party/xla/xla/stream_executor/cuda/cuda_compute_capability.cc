@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.pb.h"
 
 namespace stream_executor {
 

@@ -761,8 +761,8 @@ ENTRY entry_computation.1 {
 
   auto t = gpu_performance_model_.EstimateRunTimesForMultiOutputFusion(
       producer, consumer, &analysis_);
-  EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_unfused), 162, 1);
-  EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_fused), 145, 1);
+  EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_unfused), 120, 1);
+  EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_fused), 103, 1);
 }
 
 }  // namespace

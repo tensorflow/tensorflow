@@ -137,5 +137,12 @@ TEST_F(ComplexUnaryOpTest, AsinhTest) {
       [](XlaOp x) { return Asinh(x); });
 }
 
+TEST_F(ComplexUnaryOpTest, ExpTest) {
+  UnaryTestHelper<complex_unary_op_samples::Exp<float>>(
+      [](XlaOp x) { return Exp(x); });
+  UnaryTestHelper<complex_unary_op_samples::Exp<double>>(
+      [](XlaOp x) { return Exp(x); });
+}
+
 }  // namespace
 }  // namespace xla

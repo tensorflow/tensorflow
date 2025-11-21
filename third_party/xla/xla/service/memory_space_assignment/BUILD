@@ -6,6 +6,7 @@ load(
     "xla_cc_test",
     "xla_py_proto_library",
 )
+load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load(
     "//xla/tsl/platform:build_config.bzl",
@@ -78,9 +79,15 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "memory_space_assignment_test",
     srcs = ["memory_space_assignment_test.cc"],
+    backends = [
+        "cpu",
+    ],
+    tags = [
+        "test_migrated_to_hlo_runner_pjrt",
+    ],
     deps = [
         ":algorithm",
         ":allocation",
@@ -120,7 +127,6 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -134,7 +140,6 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -193,7 +198,7 @@ cc_library(
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_value",
         "//xla/service/cost_modelling:op_cost",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",

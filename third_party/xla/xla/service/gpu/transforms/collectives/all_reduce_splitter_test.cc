@@ -36,14 +36,11 @@ limitations under the License.
 #include "xla/service/gpu/transforms/reduce_scatter_creator.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
-
-using ::tsl::testing::IsOkAndHolds;
 
 class AllReduceSplitterTest : public HloHardwareIndependentTestBase {
  public:

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
 
-#include <stdbool.h>
-
 #include <algorithm>
 #include <cstdint>
 #include <functional>
@@ -53,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_live_range.h"
@@ -87,12 +86,10 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -510,8 +507,7 @@ ENTRY entry {
       module->schedule().sequence(module->entry_computation());
   auto find_index = [&](const HloInstruction* instruction) {
     return std::distance(sequence.instructions().begin(),
-                         std::find(sequence.instructions().begin(),
-                                   sequence.instructions().end(), instruction));
+                         absl::c_find(sequence.instructions(), instruction));
   };
   int64_t copy_done_time = find_index(copy_done);
   int64_t negate9_time = find_index(negate9);
@@ -1501,8 +1497,7 @@ ENTRY entry {
           request_modifier_module->entry_computation());
   auto find_index = [&](const HloInstruction* instruction) {
     return std::distance(sequence.instructions().begin(),
-                         std::find(sequence.instructions().begin(),
-                                   sequence.instructions().end(), instruction));
+                         absl::c_find(sequence.instructions(), instruction));
   };
 
   int negate4_index = find_index(negate4);
@@ -14919,6 +14914,82 @@ ENTRY entry {
       /*module=*/module.get(), /*instruction_names=*/default_memory_uses,
       /*operand_index=*/0, /*operand_opcode=*/HloOpcode::kParameter,
       /*operand_memory_space=*/kDefaultMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       TestBlockPrefetchingWithAliasingAndScopedAllocations) {
+  // Simple block prefetching test where p0 is block prefetched and aliases with
+  // custom_call2 and custom_call8 which is used at add13. This makes the
+  // effective aliased live range of the block prefetch p0 to be the entire
+  // program duration. We also have a scoped allocation for negate10 which
+  // reserves 24 bytes of scoped memory. The alternate memory is enough for
+  // prefetching p0 and allocating scoped memory for negate10.
+
+  // If we allocate scoped memory before block prefetching, 24 bytes of scoped
+  // memory for negate10 will be allocated at offset 0. Block prefetch for p0
+  // will also get offset 0, but we would not be able to extend it past the
+  // scoped allocation of negate10 when we try to extend it for the entire live
+  // range.
+
+  // To make sure we dont allocate block prefetches below MaxScopedMemorySize
+  // we reserve memory for scoped allocations before block prefetching and
+  // process scoped allocations after block prefetching.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  custom_call2 = f32[2,3]{1,0} custom-call(p0), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate3 = f32[2,3]{1,0} negate(p1)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  negate6 = f32[2,3]{1,0} negate(negate5)
+  negate7 = f32[2,3]{1,0} negate(negate6)
+  custom_call8 = f32[2,3]{1,0} custom-call(custom_call2), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (0, {})}
+  negate9 = f32[2,3]{1,0} negate(negate7)
+  negate10 = f32[2,3]{1,0} negate(negate9)
+  negate11 = f32[2,3]{1,0} negate(negate10)
+  negate12 = f32[2,3]{1,0} negate(negate11)
+  ROOT add13 = f32[2,3]{1,0} add(custom_call8, negate12)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 48;
+  memory_space_options.reserved_bytes_for_block_prefetches = 24;
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
+  memory_space_options.block_prefetched_positions = GetHloPositions(
+      /*module=*/module.get(),
+      /*instruction_names=*/{"p0"});
+  memory_space_options.reserved_scoped_memory_fn =
+      [&](const HloInstruction* instruction,
+          const absl::flat_hash_set<std::pair<int, ShapeIndex>>
+              operands_in_alternate_memory,
+          const absl::flat_hash_set<ShapeIndex> outputs_in_alternate_memory) {
+        if (instruction->name() == "negate10") {
+          return 24;
+        }
+        return 0;
+      };
+
+  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+
+  std::vector<std::string> prefetched_uses = {"custom_call2"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/prefetched_uses,
+      /*operand_index=*/0, /*operand_opcode=*/HloOpcode::kCopyDone,
+      /*operand_memory_space=*/kAlternateMemorySpace);
+
+  std::vector<std::string> aliased_uses = {"custom_call8", "add13"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/aliased_uses,
+      /*operand_index=*/0, /*operand_opcode=*/HloOpcode::kCustomCall,
+      /*operand_memory_space=*/kAlternateMemorySpace);
 }
 
 TEST_F(MemorySpaceAssignmentTest,

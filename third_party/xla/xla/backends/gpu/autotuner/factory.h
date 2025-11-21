@@ -32,14 +32,14 @@ namespace gpu {
 struct GetCodegenBackends {
   using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
       stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
-      const Compiler::TargetConfig*,
+      const Compiler::GpuTargetConfig*,
       SymbolicExprContext* symbolic_expr_context)>;
 };
 
 struct GetFissionBackends {
   using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
       stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
-      const Compiler::TargetConfig*,
+      const Compiler::GpuTargetConfig*,
       SymbolicExprContext* symbolic_expr_context)>;
 };
 

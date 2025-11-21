@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -35,12 +36,13 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/codegen/tiling/affine_map_evaluator.h"
+#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -345,7 +347,7 @@ std::vector<Interval> FindIntervals(
   FindAllIndices(expr, 0, 0, dimension_ranges, symbol_ranges, &dimensions,
                  &symbols, &linear_indices);
 
-  std::sort(linear_indices.begin(), linear_indices.end());
+  absl::c_sort(linear_indices);
   linear_indices.erase(
       std::unique(linear_indices.begin(), linear_indices.end()),
       linear_indices.end());

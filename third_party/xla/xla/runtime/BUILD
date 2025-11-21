@@ -33,6 +33,7 @@ xla_cc_test(
     srcs = ["buffer_use_test.cc"],
     deps = [
         ":buffer_use",
+        "//xla:shape_util",
         "//xla/service:buffer_assignment",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -93,6 +94,7 @@ xla_cc_test(
         ":buffer_use",
         ":execution_graph",
         ":resource_use",
+        "//xla:shape_util",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",

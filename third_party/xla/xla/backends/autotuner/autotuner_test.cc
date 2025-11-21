@@ -467,7 +467,7 @@ TEST_F(AutotunerTest, CacheHit) {
   EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), IsOk());
 }
 
-TEST_F(AutotunerTest, AutotuneWithBufferCheck) {
+TEST_F(AutotunerTest, AutotuneWithBufferCheckFiltersWrongResults) {
   config_.check_buffers = true;
 
   std::vector<std::unique_ptr<BackendConfig>> configs_1;
@@ -506,6 +506,43 @@ TEST_F(AutotunerTest, AutotuneWithBufferCheck) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend_1));
   backends.push_back(std::move(backend_2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto autotuner,
+      Autotuner::Create(std::move(backends), std::move(profiler), config_,
+                        std::make_unique<MockAutotunerCache>()));
+  auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
+  EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), IsOk());
+}
+
+TEST_F(AutotunerTest, AutotuneSkipsBufferCheckWhenNoReferenceOutput) {
+  config_.check_buffers = true;
+
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("test_config_1"));
+  configs.push_back(GetTestConfig("test_config_2"));
+  auto backend = std::make_unique<MockCodegenBackendWithWrongResults>();
+  EXPECT_CALL(*backend, GetSupportedConfigs)
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*backend, Compile(_, _))
+      .WillOnce(Return(std::unique_ptr<Executable>()))
+      .WillOnce(Return(std::unique_ptr<Executable>()));
+
+  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("test_config_1")))
+      .Times(1)
+      .WillRepeatedly(Return(absl::OkStatus()));
+
+  auto profiler = std::make_unique<MockProfiler>();
+  ScopedShapedBuffer output_1(Shape(), nullptr, 0),
+      output_2(Shape(), nullptr, 0), output_3(Shape(), nullptr, 0);
+  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+      .WillOnce(Return(std::make_unique<InputBuffers>()));
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce(Return(ProfileResult({absl::Seconds(1), std::move(output_1)})))
+      .WillOnce(Return(ProfileResult({absl::Seconds(2), std::nullopt})));
+  EXPECT_CALL(*profiler, CheckOutputBuffer(_, _, _)).Times(0);
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
   TF_ASSERT_OK_AND_ASSIGN(
       auto autotuner,
       Autotuner::Create(std::move(backends), std::move(profiler), config_,
@@ -667,7 +704,7 @@ TEST_F(AutotunerTest, ExcludeCublasConfig) {
   EXPECT_CALL(*backend, Compile(_, _))
       .WillOnce(Return(std::unique_ptr<Executable>()))
       .WillOnce(Return(std::unique_ptr<Executable>()));
-  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("cublas"));
+  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("Cublas_fission"));
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend));
 

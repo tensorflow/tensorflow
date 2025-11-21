@@ -250,6 +250,38 @@ cc_library(
 )
 
 cc_library(
+    name = "target_machine_options",
+    srcs = ["target_machine_options.cc"],
+    hdrs = ["target_machine_options.h"],
+    deps = [
+        "//xla:util",
+        "//xla:xla_proto_cc",
+        "//xla/backends/cpu/codegen:cpu_features",
+        "//xla/service/cpu:executable_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
+    ],
+)
+
+xla_cc_test(
+    name = "target_machine_options_test",
+    srcs = ["target_machine_options_test.cc"],
+    deps = [
+        ":target_machine_options",
+        "//xla:xla_proto_cc",
+        "//xla/service/cpu:executable_proto_cc",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "constant_allocation",
     srcs = ["constant_allocation.cc"],
     hdrs = ["constant_allocation.h"],

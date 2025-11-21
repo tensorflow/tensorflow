@@ -81,6 +81,12 @@ namespace gpu {
 
 namespace {
 
+// Bitcasts are fusible if they don't change the bit width.
+bool IsFusibleBitcast(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kBitcast &&
+         hlo_instruction_utils::KeepsBitwidth(instr);
+}
+
 bool IsFusible(const HloInstruction& instr) {
   // Side-effecting operations are not fusible.
   if (!instr.IsFusible()) {
@@ -92,13 +98,16 @@ bool IsFusible(const HloInstruction& instr) {
     return true;
   }
 
+  // Bitcasts are fusible if they don't change the bit width.
+  if (IsFusibleBitcast(instr)) {
+    return true;
+  }
+
   // Other non-elementwise ops also supported by elemental fusion.
   switch (instr.opcode()) {
     case HloOpcode::kFusion:
       return IsGenericTritonFusion(instr) ||
              instr.fusion_kind() != HloInstruction::FusionKind::kCustom;
-    case HloOpcode::kBitcast:
-      return hlo_instruction_utils::KeepsBitwidth(instr);
     case HloOpcode::kCopy:
     case HloOpcode::kIota:
     case HloOpcode::kConstant:
@@ -265,7 +274,7 @@ class PriorityFusionQueue {
         current_consumers_ = {*preferred_consumer};
       }
 
-      if (HloPredicateIsOp<HloOpcode::kBitcast>(current_producer_)) {
+      if (IsFusibleBitcast(*current_producer_)) {
         // We don't check if bitcasts can be fused with all consumers, so we
         // have to do it here.
         llvm::erase_if(current_consumers_, [&](HloInstruction* consumer) {
@@ -547,7 +556,7 @@ class PriorityFusionQueue {
       preferred_consumer_.erase(producer);
     }
     // Bitcasts should always be fused first, since they are no-ops.
-    if (HloPredicateIsOp<HloOpcode::kBitcast>(producer)) {
+    if (IsFusibleBitcast(*producer)) {
       return absl::InfiniteDuration();
     }
     // We always fuse constants, but the cost model doesn't handle them very
@@ -790,7 +799,7 @@ class PriorityFusionQueue {
       return can_fuse_triton;
     }
 
-    if (HloPredicateIsOp<HloOpcode::kBitcast>(consumer)) {
+    if (IsFusibleBitcast(*consumer)) {
       return FusionDecision::Forbid(
           "not fusing into a single bitcast as consumer");
     }
@@ -926,7 +935,7 @@ class PriorityFusionQueue {
     }
     std::vector<HloInstruction*> possible_consumers;
     for (const auto& user : producer->users()) {
-      if (HloPredicateIsOp<HloOpcode::kBitcast>(user)) {
+      if (IsFusibleBitcast(*user)) {
         continue;
       }
       if (CanFuseTriton(producer, user, /*use_multi_output_fusion=*/true) &&
@@ -960,7 +969,7 @@ class PriorityFusionQueue {
 
     bool has_non_bitcast_user = false;
     for (const auto& user : producer->users()) {
-      if (HloPredicateIsOp<HloOpcode::kBitcast>(user)) {
+      if (IsFusibleBitcast(*user)) {
         continue;
       }
       has_non_bitcast_user = true;
@@ -1181,7 +1190,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
       for (auto* consumer : consumers) {
         // Don't fuse into single bitcasts. We ignore them in the check
         // CanFuseWithAllNonBitcastUsers(), so we need to check it here.
-        if (HloPredicateIsOp<HloOpcode::kBitcast>(consumer)) {
+        if (IsFusibleBitcast(*consumer)) {
           continue;
         }
         if (!ConsumeFuel(producer, consumer)) {

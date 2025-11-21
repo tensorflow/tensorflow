@@ -963,13 +963,13 @@ absl::Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
   switch (TYPE_ENUM) {                                         \
     CASE(float, SINGLE_ARG(STMTS))                             \
     CASE(double, SINGLE_ARG(STMTS))                            \
-    CASE(int32, SINGLE_ARG(STMTS))                             \
-    CASE(uint8, SINGLE_ARG(STMTS))                             \
-    CASE(uint16, SINGLE_ARG(STMTS))                            \
-    CASE(uint32, SINGLE_ARG(STMTS))                            \
-    CASE(uint64, SINGLE_ARG(STMTS))                            \
-    CASE(int16, SINGLE_ARG(STMTS))                             \
-    CASE(int8, SINGLE_ARG(STMTS))                              \
+    CASE(int32_t, SINGLE_ARG(STMTS))                           \
+    CASE(uint8_t, SINGLE_ARG(STMTS))                           \
+    CASE(uint16_t, SINGLE_ARG(STMTS))                          \
+    CASE(uint32_t, SINGLE_ARG(STMTS))                          \
+    CASE(uint64_t, SINGLE_ARG(STMTS))                          \
+    CASE(int16_t, SINGLE_ARG(STMTS))                           \
+    CASE(int8_t, SINGLE_ARG(STMTS))                            \
     CASE(tstring, SINGLE_ARG(STMTS))                           \
     CASE(complex64, SINGLE_ARG(STMTS))                         \
     CASE(complex128, SINGLE_ARG(STMTS))                        \

@@ -529,6 +529,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:status_matchers",
     ],
     alwayslink = True,
 )
@@ -1283,6 +1284,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",

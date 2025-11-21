@@ -62,6 +62,9 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/types.h"
+
+using ::testing::ElementsAreArray;
 
 namespace xla {
 namespace {
@@ -548,6 +551,20 @@ TEST(PjRtClientTest, DeserializeExecutableWithDifferentDeviceAssignment) {
   // with device id 1.
   EXPECT_EQ(
       deserialized_executable->addressable_devices()[0]->global_device_id(), 1);
+}
+
+TEST(PjRtClientTest, BufferFromLiteralInt4) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  xla::Shape shape = xla::ShapeUtil::MakeShape(S4, {128, 256});
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteral().Await());
+  EXPECT_THAT(received_literal->data<s4>(),
+              ElementsAreArray(literal.data<s4>()));
 }
 
 }  // namespace

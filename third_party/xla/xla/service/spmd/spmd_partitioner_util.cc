@@ -2974,7 +2974,7 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
   }
 
   std::vector<int> transpose_dims(reshape_dimensions.size());
-  std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
+  absl::c_iota(transpose_dims, 0);
   for (int64_t loc : target_dim_locations) {
     if (auto it = absl::c_find(transpose_dims, loc);
         it != transpose_dims.end()) {
@@ -3037,13 +3037,13 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsForReplication(
   // into a tile assignment with dims [M, N], where M is the number of replica
   // groups and N is the size of each replica group.
   std::vector<int> transpose_dims(sharding.tile_assignment().num_dimensions());
-  std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
+  absl::c_iota(transpose_dims, 0);
 
   // Sorting is not necessary but is done to match the non-optimized equivalent
   // function.
   std::vector<int> replication_dims_sorted(replication_dims.begin(),
                                            replication_dims.end());
-  std::sort(replication_dims_sorted.begin(), replication_dims_sorted.end());
+  absl::c_sort(replication_dims_sorted);
   for (int64_t i : replication_dims_sorted) {
     if (auto it = absl::c_find(transpose_dims, i); it != transpose_dims.end()) {
       transpose_dims.erase(it);

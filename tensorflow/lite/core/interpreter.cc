@@ -568,10 +568,18 @@ Interpreter::CreatePlaceholderSignatureDef() {
   auto placeholder_signature_def = std::make_unique<internal::SignatureDef>();
   for (auto i = 0; i < inputs().size(); ++i) {
     auto* name = GetInputName(i);
+    if (*name == 0) {
+      placeholder_input_names_.push_back("input" + std::to_string(i));
+      name = placeholder_input_names_.back().c_str();
+    }
     placeholder_signature_def->inputs[name] = inputs()[i];
   }
   for (auto i = 0; i < outputs().size(); ++i) {
     auto* name = GetOutputName(i);
+    if (*name == 0) {
+      placeholder_output_names_.push_back("output" + std::to_string(i));
+      name = placeholder_output_names_.back().c_str();
+    }
     placeholder_signature_def->outputs[name] = outputs()[i];
   }
   placeholder_signature_def->signature_key = kPlaceholderSignatureDefKey;

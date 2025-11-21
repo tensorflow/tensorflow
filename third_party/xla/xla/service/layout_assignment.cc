@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/layout_assignment.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <iterator>
@@ -58,6 +57,9 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -455,9 +457,8 @@ absl::Status LayoutAssignment::SetInstructionLayout(
         if (subshape.IsArray()) {
           return SetBufferLayout(layout, *buffers[0], mandatory,
                                  /*dfs=*/true, priority);
-        } else {
-          return absl::OkStatus();
         }
+        return absl::OkStatus();
       });
 }
 
@@ -497,9 +498,8 @@ absl::Status LayoutAssignment::SetInstructionLayout(
         if (subshape.IsArray() && subshape.has_layout()) {
           return SetBufferLayout(subshape.layout(), *buffers[0], mandatory,
                                  /*dfs=*/dfs, priority);
-        } else {
-          return absl::OkStatus();
         }
+        return absl::OkStatus();
       }));
   VLOG(3) << "Setting operand layout?\n";
   if (shape_with_layout.IsArray() &&
@@ -3024,10 +3024,10 @@ absl::Status LayoutAssignment::Init(HloModule* module) {
     std::vector<HloInstruction*> copies_to_remove(added_copies_.begin(),
                                                   added_copies_.end());
     // Ensure determinism.
-    std::sort(copies_to_remove.begin(), copies_to_remove.end(),
-              [](const HloInstruction* a, const HloInstruction* b) {
-                return a->unique_id() < b->unique_id();
-              });
+    absl::c_sort(copies_to_remove,
+                 [](const HloInstruction* a, const HloInstruction* b) {
+                   return a->unique_id() < b->unique_id();
+                 });
     for (HloInstruction* instruction : copies_to_remove) {
       VLOG(5) << "Removing added copy: " << instruction->ToString();
       HloComputation* computation = instruction->parent();

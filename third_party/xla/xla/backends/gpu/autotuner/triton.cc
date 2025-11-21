@@ -18,12 +18,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
-#include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/triton_configs.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_float_support.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/split_k_gemm_rewriter.h"
@@ -147,13 +149,13 @@ TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> TritonBackend::GetDefaultConfig(
     const HloInstruction& instr) {
-  if (!IsSupported(instr)) {
+  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                      GetSupportedConfigs(instr));
+  if (configs.empty()) {
     return absl::InvalidArgumentError(
         "TritonBackend does not support this instruction.");
   }
-  auto any = std::make_unique<google::protobuf::Any>();
-  any->PackFrom(TritonGemmConfig(64, 64, 64, 1, 1, 2, 1, false).ToProto());
-  return any;
+  return std::move(configs[0]);
 }
 
 absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
@@ -173,6 +175,7 @@ absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
 
+  backend_config.set_kind(kTritonGemmFusionKind);
   *backend_config.mutable_triton_gemm_config() = triton_config_proto;
   TF_RETURN_IF_ERROR(instr.set_backend_config(gpu_config));
 
@@ -210,6 +213,18 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
 
   NestGemmFusion nest_gemm_fusion(gpu_device_info, symbolic_expr_context_);
   TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(hlo_module.get()).status());
+
+  bool is_legacy_gemm_disabled = absl::c_contains(
+      debug_options().xla_gpu_unsupported_generic_triton_emitter_features(),
+      DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM);
+  bool is_triton_gemm_fusion =
+      IsGpuFusionKind(*hlo_module->entry_computation()->root_instruction(),
+                      kTritonGemmFusionKind);
+  if (is_legacy_gemm_disabled && is_triton_gemm_fusion) {
+    return absl::InternalError(
+        absl::StrCat("Unexpected ", kTritonGemmFusionKind,
+                     " fusion: ", hlo_module->ToString()));
+  }
   return hlo_module;
 }
 

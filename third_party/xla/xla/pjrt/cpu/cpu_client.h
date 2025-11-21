@@ -172,6 +172,10 @@ class PjRtCpuClient final : public CommonPjRtClient {
     return async_work_runner_.get();
   }
 
+  tsl::thread::ThreadPool* eigen_intraop_pool() const {
+    return eigen_intraop_pool_.get();
+  }
+
   Eigen::ThreadPoolDevice* eigen_intraop_device() const {
     return eigen_intraop_device_.get();
   }
@@ -256,7 +260,8 @@ class PjRtCpuClient final : public CommonPjRtClient {
       std::shared_ptr<CpuDeviceMemory::Allocator> allocator,
       std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
       bool asynchronous,
-      std::function<void(HloModuleConfig&)> customize_hlo_module_config);
+      std::function<void(HloModuleConfig&)> customize_hlo_module_config,
+      int max_transpose_threads);
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
       const XlaComputation& computation,
@@ -330,6 +335,10 @@ class PjRtCpuClient final : public CommonPjRtClient {
   // Thread pool for running PjRtClient tasks.
   std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;
+
+  // Maximum number of threads to use for any one transpose. We will use the
+  // the lesser of this number and the thread pool size. 1 = no threading.
+  int max_transpose_threads_;
 };
 
 class PjRtCpuExecutable final : public PjRtLoadedExecutable {
@@ -497,18 +506,6 @@ inline absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
     GetPjRtCpuClient(bool asynchronous) {
   CpuClientOptions options;
   options.asynchronous = asynchronous;
-  return GetPjRtCpuClient(std::move(options));
-}
-
-// Deprecated. Use the overload that takes 'options' instead.
-inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
-    bool asynchronous, int cpu_device_count,
-    int max_inflight_computations_per_device = 32) {
-  CpuClientOptions options;
-  options.asynchronous = asynchronous;
-  options.cpu_device_count = cpu_device_count;
-  options.max_inflight_computations_per_device =
-      max_inflight_computations_per_device;
   return GetPjRtCpuClient(std::move(options));
 }
 

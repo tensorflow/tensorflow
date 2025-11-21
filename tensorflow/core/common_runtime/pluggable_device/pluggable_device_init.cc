@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_init.h"
 
+#include <string>
+
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/stream_executor/platform_manager.h"

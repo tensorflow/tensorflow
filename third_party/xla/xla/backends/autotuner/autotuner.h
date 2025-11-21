@@ -46,6 +46,8 @@ namespace xla {
 struct AutotuneConfig {
   // Whether to check the correctness of the output buffers and OOM reads on
   // Input Buffers.
+  // Correctness check is only performed when a trustable reference output is
+  // available.
   bool check_buffers = true;
   // Relative tolerance for correctness check.
   float relative_tolerance = 1e-6;
@@ -67,9 +69,9 @@ struct AutotuneConfig {
   std::string dump_logs_to = "";
   // TODO b/446618161 - Remove this when old triton emitter is
   // deprecated.
-  // If true, autotuner will not select cublas configs. We still try cublas
-  // configs as they can be used to check numerical issues with triton but they
-  // are not considered for selection, unless there are no other options.
+  // If true, autotuner will not select cublas configs for fusions. We still try
+  // the configs as they can be used to check numerical issues with triton but
+  // they are not considered for selection, unless there are no other options.
   bool exclude_cublas_config = false;
   // TODO b/446870267- Remove this option and use default configs rather than
   // the first config.
@@ -197,7 +199,7 @@ class Autotuner {
   absl::StatusOr<ConfigResult> PickBestConfig(
       std::vector<ConfigResult>& results);
 
-  absl::StatusOr<ScopedShapedBuffer> GetReferenceOutput(
+  std::optional<ScopedShapedBuffer> GetReferenceOutput(
       std::vector<ExecutableCandidate>& candidates,
       InputBuffers& input_buffers);
 

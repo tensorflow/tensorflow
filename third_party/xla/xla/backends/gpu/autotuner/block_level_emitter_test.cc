@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
@@ -82,7 +81,7 @@ class TritonBlockLevelFusionEmitterBackendTest
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
   se::StreamExecutor* stream_executor_;
-  Compiler::TargetConfig target_config_;
+  Compiler::GpuTargetConfig target_config_;
   BlockLevelEmitterBackend backend_;
 };
 

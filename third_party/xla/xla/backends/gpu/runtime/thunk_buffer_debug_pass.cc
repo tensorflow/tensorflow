@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_checksum.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_float_check.h"
+#include "xla/backends/gpu/runtime/thunk_buffer_debug_saver_inserter.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/ffi/ffi.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -51,6 +52,10 @@ absl::StatusOr<bool> ThunkBufferDebugPass::Run(
     case Mode::kFloatChecker:
       TF_RETURN_IF_ERROR(RunFloatCheckPassInternal(root_thunk, debug_options,
                                                    hlo_module, allocator));
+      break;
+    case Mode::kBufferSaver:
+      TF_RETURN_IF_ERROR(
+          RunDebugSaverInserter(*root_thunk, debug_options, *hlo_module));
       break;
   }
 

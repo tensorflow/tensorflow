@@ -24,6 +24,13 @@ filegroup(
     srcs = [
         "convolution_lib_f16.cc",
         "convolution_lib_f32.cc",
+        "dot_lib_c128.cc",
+        "dot_lib_c64.cc",
+        "dot_lib_f16.cc",
+        "dot_lib_f32.cc",
+        "dot_lib_f64.cc",
+        "dot_lib_s32.cc",
+        "dot_lib_s8.cc",
         "rng_state_lib.cc",
         "sort_lib.cc",
     ],
@@ -34,6 +41,7 @@ filegroup(
     name = "runtime_hdrs",
     srcs = [
         "convolution_lib.h",
+        "dot_lib.h",
         "kernel_c_api.h",
         "rng_state_lib.h",
         "sort_lib.h",
@@ -317,6 +325,7 @@ cc_library(
     deps = [
         ":thunk",
         ":thunk_executor",
+        "//xla:shape_util",
         "//xla:util",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
@@ -338,6 +347,7 @@ xla_cc_test(
         ":conditional_thunk",
         ":thunk",
         ":thunk_testlib",
+        "//xla:shape_util",
         "//xla/runtime:buffer_use",
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
@@ -744,6 +754,28 @@ cc_library(
     ],
     hdrs = ["dot_lib.h"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+# By including `eigen_contraction_kernel` into the list of dependencies, we enable the use of
+# oneDNN Eigen contraction kernel for jit-compiling microkernels. This brings oneDNN to the list
+# of transitive dependencies, and some clients (e.g. tfcompile) don't want this extra dependency.
+cc_library(
+    name = "dot_lib_onednn",
+    srcs = [
+        "dot_lib_c128.cc",
+        "dot_lib_c64.cc",
+        "dot_lib_f16.cc",
+        "dot_lib_f32.cc",
+        "dot_lib_f64.cc",
+        "dot_lib_s32.cc",
+        "dot_lib_s8.cc",
+    ],
+    hdrs = ["dot_lib.h"],
+    deps = [
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
@@ -757,7 +789,7 @@ cc_library(
     hdrs = ["dot_thunk.h"],
     deps = [
         ":dot_dims",
-        ":dot_lib",
+        ":dot_lib_onednn",
         ":thunk",
         "//xla:shape_util",
         "//xla:types",
@@ -834,9 +866,8 @@ xla_cc_test(
         "//xla/runtime:buffer_use",
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -1036,6 +1067,7 @@ cc_library(
     hdrs = ["sort_lib.h"],
     deps = [
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -1110,6 +1142,8 @@ cc_library(
         ":buffer_allocations",
         ":thunk",
         ":thunk_executor",
+        "//xla:shape_util",
+        "//xla:util",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_memory",
@@ -1135,6 +1169,7 @@ xla_cc_test(
         ":thunk_testlib",
         ":while_thunk",
         "//xla:literal_util",
+        "//xla:shape_util",
         "//xla/runtime:buffer_use",
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
@@ -1172,17 +1207,28 @@ cc_library(
 )
 
 cc_library(
+    name = "topk_lib",
+    hdrs = ["topk_lib.h"],
+    deps = [
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/numeric:bits",
+    ],
+)
+
+cc_library(
     name = "topk_thunk",
     srcs = ["topk_thunk.cc"],
     hdrs = ["topk_thunk.h"],
     deps = [
         ":thunk",
+        ":topk_lib",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
-        "//xla/service/cpu:runtime_topk",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
     ],

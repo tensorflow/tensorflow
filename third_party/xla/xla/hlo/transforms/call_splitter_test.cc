@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/call_parameter_cleanup.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
@@ -279,6 +280,103 @@ ENTRY entry {
                                   m::Add(m::Parameter(2), m::Parameter(3)))));
   EXPECT_THAT(call2->to_apply()->root_instruction(),
               GmockMatch(m::Tuple(m::Multiply(), m::Subtract())));
+}
+
+TEST_F(CallSplitterTest, SplitDownMultipleCallsites) {
+  const std::string module_str = R"hlo(
+HloModule module
+
+addmul {
+  a = s32[] parameter(0)
+  b = s32[] parameter(1)
+  c = s32[] parameter(2)
+  add = s32[] add(a, b)
+  mul = s32[] multiply(add, c)
+  ROOT tuple = (s32[]) tuple(mul)
+}
+
+ENTRY entry {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  p2 = s32[] parameter(2)
+  call0 = (s32[]) call(p0, p1, p2), to_apply=addmul
+  call1 = (s32[]) call(p2, p1, p0), to_apply=addmul
+  ROOT out = tuple(call0, call1)
+}
+
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  auto split = [](const HloInstruction* instruction) -> bool {
+    return instruction->opcode() == HloOpcode::kMultiply;
+  };
+
+  CallSplitter splitter(/*call_predicate=*/HloPredicateTrue,
+                        /*boundary_predicate=*/split);
+  EXPECT_TRUE(splitter.Run(module.get()).value());
+
+  CallParameterCleanup cleanup;
+  HloDCE dce;
+  TupleSimplifier tuple_simplifier;
+  TF_CHECK_OK(cleanup.Run(module.get()).status());
+  TF_CHECK_OK(dce.Run(module.get()).status());
+  TF_CHECK_OK(tuple_simplifier.Run(module.get()).status());
+
+  HloInstruction* call0_first;
+  HloInstruction* call1_first;
+  HloInstruction* call0_second;
+  HloInstruction* call1_second;
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Call(&call0_second, m::Parameter(2),
+                          m::GetTupleElement(m::Call(&call0_first), 0)),
+                  m::Call(&call1_second, m::Parameter(0),
+                          m::GetTupleElement(m::Call(&call1_first), 0)))));
+
+  EXPECT_EQ(call0_first->to_apply(), call1_first->to_apply());
+  EXPECT_EQ(call0_second->to_apply(), call1_second->to_apply());
+  EXPECT_NE(call0_first->to_apply(), call0_second->to_apply());
+}
+
+TEST_F(CallSplitterTest, ClearCache) {
+  const std::string module_str = R"hlo(
+HloModule module
+
+addrem {
+  a = u32[] parameter(0)
+  b = u32[] parameter(1)
+  c = u32[] constant(8)
+  add = u32[] add(a, b)
+  rem = u32[] remainder(add, c)
+  ROOT tuple = (u32[]) tuple(rem)
+}
+
+ENTRY entry {
+  p0 = u32[] parameter(0)
+  p1 = u32[] parameter(1)
+  ROOT call = (u32[]) call(p0, p1), to_apply=addrem
+}
+
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  auto split = [](const HloInstruction* instruction) -> bool {
+    return instruction->opcode() == HloOpcode::kAnd;
+  };
+
+  CallSplitter splitter(/*call_predicate=*/HloPredicateTrue,
+                        /*boundary_predicate=*/split);
+  EXPECT_FALSE(splitter.Run(module.get()).value());
+
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
+  TF_CHECK_OK(simplifier.Run(module.get()).status());
+
+  EXPECT_TRUE(splitter.Run(module.get()).value());
 }
 
 }  // namespace

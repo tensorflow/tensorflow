@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -46,6 +47,11 @@ namespace {
 // computation.
 absl::Status InlineFissionedComputation(HloInstruction* fusion_instr,
                                         HloComputation* fissioned_computation) {
+  if (fusion_instr->opcode() != HloOpcode::kFusion) {
+    return absl::InvalidArgumentError("Not a fusion instruction.");
+  }
+  HloModule* original_module = fusion_instr->GetModule();
+  HloCloneContext clone_context(original_module);
   absl::flat_hash_map<const HloInstruction*, HloInstruction*>
       cloned_instructions;
   HloComputation* parent_computation = fusion_instr->parent();
@@ -64,7 +70,7 @@ absl::Status InlineFissionedComputation(HloInstruction* fusion_instr,
     }
     HloInstruction* new_instruction = parent_computation->AddInstruction(
         instruction_to_clone->CloneWithNewOperands(
-            instruction_to_clone->shape(), new_operands));
+            instruction_to_clone->shape(), new_operands, &clone_context));
     cloned_instructions[instruction_to_clone] = new_instruction;
   }
   HloInstruction* new_root =
@@ -81,9 +87,13 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
   }
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       GetFissionedAndRewrittenModule(instr));
-  TF_ASSIGN_OR_RETURN(HloInstruction * supported_instr,
-                      FindFirstSupportedInstruction(hlo_module.get()));
-  return codegen_backend_->GetSupportedConfigs(*supported_instr);
+  absl::StatusOr<HloInstruction*> supported_instr =
+      FindFirstSupportedInstruction(hlo_module.get());
+  if (supported_instr.status().code() == absl::StatusCode::kNotFound) {
+    return std::vector<std::unique_ptr<BackendConfig>>();
+  }
+  TF_RETURN_IF_ERROR(supported_instr.status());
+  return codegen_backend_->GetSupportedConfigs(**supported_instr);
 
   return std::vector<std::unique_ptr<BackendConfig>>();
 }
@@ -98,8 +108,6 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> FissionBackend::GetDefaultConfig(
   TF_ASSIGN_OR_RETURN(HloInstruction * supported_instr,
                       FindFirstSupportedInstruction(hlo_module.get()));
   return codegen_backend_->GetDefaultConfig(*supported_instr);
-
-  return absl::InvalidArgumentError("No supported configs found.");
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::RunHloPasses(
@@ -155,7 +163,7 @@ absl::StatusOr<HloInstruction*> FissionBackend::FindFirstSupportedInstruction(
     }
   }
   if (supported_instructions.empty()) {
-    return absl::InvalidArgumentError("No supported instructions found.");
+    return absl::NotFoundError("No supported instructions found.");
   }
   if (supported_instructions.size() > 1) {
     LOG(WARNING) << "Backend " << name()

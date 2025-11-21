@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape_util.h"
@@ -385,8 +386,10 @@ class ConvDimensionAdapter {
                         fusion.backend_config<GpuBackendConfig>());
     const FusionBackendConfig& fusion_backend_config =
         gpu_config.fusion_backend_config();
-    if (!fusion_backend_config.has_cudnn_fusion_config()) {
-      VLOG(3) << "Can't find cudnn fusion config for cudnn conv fusion.";
+    if (!fusion_backend_config.has_cudnn_fusion_config() ||
+        !fusion_backend_config.cudnn_fusion_config().has_kind()) {
+      VLOG(3) << "Can't find cudnn fusion config or conv kind for cudnn conv "
+                 "fusion.";
       return std::nullopt;
     }
     CuDnnFusionConfig_Kind conv_kind =
@@ -533,6 +536,9 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
   VLOG(5) << fusion.ToString();
   VLOG(5) << computation.ToString();
   graph::Graph graph;
+  // Intermediate data type is needed for `block_scale_dequantize` graph nodes.
+  graph.set_intermediate_data_type(cudnn_frontend::DataType_t::FLOAT);
+
   std::vector<HloInstruction*> instructions =
       computation.MakeInstructionPostOrder();
   absl::flat_hash_map<const HloInstruction*,
@@ -733,30 +739,25 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       if (!compute_dtype.has_value()) {
         return std::nullopt;
       }
-      const auto& dimension_numbers = hlo->dot_dimension_numbers();
       std::array<std::shared_ptr<graph::Tensor_attributes>, 2> dot_operands;
       for (int i = 0; i < 2; ++i) {
-        const Shape& input_shape = hlo->operand(i)->shape();
         const Shape& scale_shape = hlo->operand(i + 2)->shape();
-        int dim = i == 0 ? dimension_numbers.lhs_contracting_dimensions(0)
-                         : dimension_numbers.rhs_contracting_dimensions(0);
-        int block_size =
-            input_shape.dimensions(dim) / scale_shape.dimensions(dim);
-
+        int block_size = scale_shape.element_type() == F8E8M0FNU
+                             ? BlockScalingRewriter::kBlockSizeMXFP8
+                             : BlockScalingRewriter::kBlockSizeNVFP4;
         auto scale = operand(i + 2);
         scale->set_reordering_type(fe::TensorReordering_t::F8_128x4);
         auto dq_attrs = graph::Block_scale_dequantize_attributes()
                             .set_block_size(block_size)
-                            .set_compute_data_type(fe::DataType_t::FLOAT);
+                            .set_compute_data_type(*compute_dtype);
         dot_operands[i] =
             graph.block_scale_dequantize(operand(i), scale, dq_attrs);
         dot_operands[i]->set_name(
             absl::StrCat(hlo->name(), i == 0 ? "_lhs" : "_rhs", "_dq"));
       }
-      hlo_to_cudnn[hlo] =
-          graph.matmul(dot_operands[0], dot_operands[1],
-                       graph::Matmul_attributes().set_compute_data_type(
-                           compute_dtype.value()));
+      hlo_to_cudnn[hlo] = graph.matmul(
+          dot_operands[0], dot_operands[1],
+          graph::Matmul_attributes().set_compute_data_type(*compute_dtype));
     } else if (HloPredicateIsOp<HloOpcode::kConvolution>(hlo)) {
       // translate conv windows to cudnn conv attr
       const Window& window = DynCast<HloConvolutionInstruction>(hlo)->window();

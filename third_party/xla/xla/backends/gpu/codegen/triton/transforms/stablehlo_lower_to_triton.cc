@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 

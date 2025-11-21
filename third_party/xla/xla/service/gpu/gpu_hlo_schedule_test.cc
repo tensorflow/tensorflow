@@ -31,7 +31,9 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -64,7 +66,6 @@ namespace gpu {
 using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::EndsWith;
-using ::tsl::testing::StatusIs;
 
 class GpuHloScheduleTest : public HloTestBase {
  protected:

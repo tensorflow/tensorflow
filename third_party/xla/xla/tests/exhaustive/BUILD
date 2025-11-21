@@ -106,7 +106,7 @@ cc_library(
 )
 
 exhaustive_xla_test(
-    name = "exhaustive_unary_test",
+    name = "exhaustive_unary",
     timeout = "long",
     srcs = [
         "exhaustive_unary_test_definitions.h",
@@ -164,7 +164,7 @@ exhaustive_xla_test(
 )
 
 xla_test(
-    name = "exhaustive_unary_complex_test",
+    name = "exhaustive_unary_complex",
     timeout = "long",
     srcs = [
         "exhaustive_unary_complex_test.cc",
@@ -213,7 +213,7 @@ cc_library(
 )
 
 exhaustive_xla_test(
-    name = "exhaustive_binary_test",
+    name = "exhaustive_binary",
     timeout = "long",
     srcs = [
         "exhaustive_binary_test_definitions.h",

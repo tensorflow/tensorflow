@@ -35,7 +35,7 @@ namespace gpu {
 std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
     stream_executor::StreamExecutor* stream_executor,
     const DebugOptions* debug_options, Compiler* compiler,
-    const Compiler::TargetConfig* target_config,
+    const Compiler::GpuTargetConfig* target_config,
     SymbolicExprContext* symbolic_expr_context) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<TritonBackend>(
@@ -48,7 +48,7 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
 std::vector<std::unique_ptr<CodegenBackend>> GetFissionBackendsForROCm(
     stream_executor::StreamExecutor* stream_executor,
     const DebugOptions* debug_options, Compiler* compiler,
-    const Compiler::TargetConfig* target_config,
+    const Compiler::GpuTargetConfig* target_config,
     SymbolicExprContext* symbolic_expr_context) {
   return {};
 }

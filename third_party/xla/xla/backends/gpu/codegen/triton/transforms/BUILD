@@ -55,6 +55,7 @@ cc_library(
         ":passes_inc_gen",
         "//xla:permutation_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen/triton:dot_algorithms",
         "//xla/backends/gpu/codegen/triton:emitter_helpers",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",

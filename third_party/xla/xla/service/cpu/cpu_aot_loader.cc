@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/object_loader.h"
 #include "xla/backends/cpu/runtime/function_library.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/executable.pb.h"
@@ -89,9 +90,9 @@ GetCompiledSymbolsFromProto(
 
 absl::StatusOr<std::unique_ptr<FunctionLibrary>> LoadFunctionLibrary(
     const std::vector<FunctionLibrary::Symbol>& compiled_symbols,
-    absl::Span<const ObjFileProto> obj_files, const HloModule* hlo_module) {
+    absl::Span<const ObjFileProto> obj_files, const HloModule* hlo_module,
+    const TargetMachineOptions& target_machine_options) {
   const HloModuleConfig& config = hlo_module->config();
-  const DebugOptions& debug_options = config.debug_options();
 
   auto llvm_options = llvm_ir::ExtractXlaBackendExtraOptions(
       config.debug_options().xla_backend_extra_options());
@@ -101,8 +102,7 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> LoadFunctionLibrary(
       std::unique_ptr<llvm::TargetMachine> target_machine,
       IrCompiler::InferTargetMachine(
           std::move(CompilerTargetOptions(hlo_module->config())),
-          IrCompiler::GetCodeGenOptLevel(config),
-          CpuFeatureFromString(debug_options.xla_cpu_max_isa())));
+          IrCompiler::GetCodeGenOptLevel(config), target_machine_options));
 
   // Definition generator to link with XLA:CPU host runtime symbols.
   ExecutionEngine::DefinitionGenerator definition_generator =
@@ -172,15 +172,18 @@ CpuAotLoader::LoadAotCompilationResult(
       hlo_module->config().debug_options().xla_backend_extra_options());
   llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
+  TF_ASSIGN_OR_RETURN(TargetMachineOptions target_machine_options,
+                      TargetMachineOptions::FromProto(
+                          aot_result_proto.target_machine_options()));
+
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::TargetMachine> target_machine,
       IrCompiler::InferTargetMachine(
           std::move(CompilerTargetOptions(hlo_module->config())),
           IrCompiler::GetCodeGenOptLevel(hlo_module->config()),
-          CpuFeatureFromString(
-              hlo_module->config().debug_options().xla_cpu_max_isa())));
+          target_machine_options));
 
-  llvm::Triple triple(aot_result_proto.target_machine_options().triple());
+  llvm::Triple triple(target_machine_options.triple());
   llvm::Triple expected_triple(target_machine->getTargetTriple());
   if (triple.getArchName() != expected_triple.getArchName()) {
     return Internal("Target arch mismatch expected %s got %s.",
@@ -188,8 +191,8 @@ CpuAotLoader::LoadAotCompilationResult(
   }
 
   llvm::StringMap<bool> host_machine_features = llvm::sys::getHostCPUFeatures();
-  auto compile_machine_features =
-      absl::StrSplit(aot_result_proto.target_machine_options().features(), ',');
+  std::vector<std::string> compile_machine_features =
+      target_machine_options.GetTargetMachineFeaturesVector();
   // Convert the supported features to a vector of strings.
   std::vector<std::string> host_machine_features_vector;
   for (const auto& [feature, supported] : host_machine_features) {
@@ -199,8 +202,9 @@ CpuAotLoader::LoadAotCompilationResult(
   }
 
   for (const absl::string_view feature : compile_machine_features) {
-    if (!host_machine_features.contains(feature) ||
-        !host_machine_features[feature]) {
+    if (feature[0] == '+' &&
+        (!host_machine_features.contains(feature.substr(1)) ||
+         !host_machine_features[feature.substr(1)])) {
       // TODO: b/457415427 - Turn this warning into an error once a mechanism
       // for passing target machine features to the CPU compiler is implemented.
       LOG(ERROR)
@@ -230,7 +234,8 @@ CpuAotLoader::LoadAotCompilationResult(
 
   TF_ASSIGN_OR_RETURN(
       auto function_library,
-      LoadFunctionLibrary(compiled_symbols, obj_files, hlo_module.get()));
+      LoadFunctionLibrary(compiled_symbols, obj_files, hlo_module.get(),
+                          target_machine_options));
 
   return CpuAotCompilationResult::FromProto(aot_result_proto,
                                             std::move(function_library));

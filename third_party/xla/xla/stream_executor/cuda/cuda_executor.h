@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"

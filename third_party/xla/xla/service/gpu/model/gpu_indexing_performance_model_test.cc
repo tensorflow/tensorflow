@@ -23,11 +23,13 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
+#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -54,7 +56,6 @@ namespace {
 
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
  public:
@@ -534,7 +535,7 @@ ENTRY main {
           *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{{1, 1}}));
 
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.read_time), 2932, 2);
-  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.compute_time), 19, 1);
+  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.compute_time), 14, 1);
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 2932, 2);
 }
 
@@ -682,7 +683,7 @@ ENTRY main {
                           indexing_cost_model_.EstimateRunTimeForTiledFusion(
                               *fusion_adaptor, /*launch_dimensions=*/{1024, 8},
                               /*output_tile_sizes=*/{{4, 4}}));
-  EXPECT_NEAR(absl::ToDoubleMicroseconds(res1.exec_time), 412, 1);
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(res1.exec_time), 292, 1);
 
   TF_ASSERT_OK_AND_ASSIGN(auto res2,
                           indexing_cost_model_.EstimateRunTimeForTiledFusion(

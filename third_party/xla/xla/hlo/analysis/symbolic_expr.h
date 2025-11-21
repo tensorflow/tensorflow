@@ -63,7 +63,7 @@ class SymbolicExpr {
   bool operator!=(SymbolicExpr other) const { return !(*this == other); }
   bool operator<(const SymbolicExpr& other) const;
 
-  SymbolicExprContext* GetContext() const;
+  mlir::MLIRContext* GetContext() const;
   SymbolicExprType GetType() const;
   bool IsBinaryOp() const;
   SymbolicExpr GetLHS() const;
@@ -153,6 +153,25 @@ H AbslHashValue(H h, const SymbolicExpr& expr) {
   return H::combine(std::move(h), hash_value(expr));
 }
 
+// This method should be called once per MLIRContext to register the
+// SymbolicExprStorage type with the MLIRContext's uniquifier. It should be
+// called before any SymbolicExprs are created.
+void RegisterSymbolicExprStorage(mlir::MLIRContext* mlir_context);
+
+// Free functions to create SymbolicExpr.
+SymbolicExpr ParseSymbolicExpr(absl::string_view expr_str,
+                               mlir::MLIRContext* mlir_context);
+SymbolicExpr CreateSymbolicConstant(int64_t value,
+                                    mlir::MLIRContext* mlir_context);
+SymbolicExpr CreateSymbolicVariable(int64_t var_id,
+                                    mlir::MLIRContext* mlir_context);
+SymbolicExpr CreateSymbolicBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
+                                    SymbolicExpr rhs,
+                                    mlir::MLIRContext* mlir_context);
+llvm::SmallVector<SymbolicExpr> CreateSymbolicConstantExprs(
+    llvm::ArrayRef<int64_t> constants, mlir::MLIRContext* mlir_context);
+
+// Deprecated. Use free functions taking mlir::MLIRContext* instead.
 class SymbolicExprContext {
  public:
   explicit SymbolicExprContext(mlir::MLIRContext* mlir_context);
@@ -177,23 +196,6 @@ class SymbolicExprContext {
   // StorageUniquer pointer.
   mlir::MLIRContext* mlir_context_;
 };
-
-// Free function to create a constant SymbolicExpr.
-inline SymbolicExpr GetSymbolicConstantExpr(int64_t constant,
-                                            SymbolicExprContext* context) {
-  return context->CreateConstant(constant);
-}
-
-// Free function to create a vector of constant SymbolicExprs.
-inline llvm::SmallVector<SymbolicExpr> GetSymbolicConstantExprs(
-    llvm::ArrayRef<int64_t> constants, SymbolicExprContext* context) {
-  llvm::SmallVector<SymbolicExpr> exprs;
-  exprs.reserve(constants.size());
-  for (int64_t constant : constants) {
-    exprs.push_back(GetSymbolicConstantExpr(constant, context));
-  }
-  return exprs;
-}
 
 }  // namespace xla
 

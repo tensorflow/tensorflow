@@ -25,6 +25,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -34,6 +35,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -77,6 +79,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
+#include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
+#include "xla/backends/gpu/runtime/collective_metadata_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
@@ -89,6 +93,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/cub_sort_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
+#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/fft_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
@@ -155,6 +160,7 @@ limitations under the License.
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/triton_call.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -163,17 +169,13 @@ limitations under the License.
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/service/llvm_ir/sort_util.h"
 #include "xla/service/name_uniquer.h"
-#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
-#include "xla/stream_executor/gpu_solver_context.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
@@ -195,6 +197,39 @@ bool IsHostExecuteCustomCall(const HloInstruction& hlo) {
          hlo.custom_call_target() ==
              "HostExecute";  // TODO: this constant string should be shared with
                              // the TPU one
+}
+
+template <typename ThunkType>
+static constexpr bool kRequiresCollectiveKernelThunk =
+    std::is_constructible_v<ThunkType, Thunk::ThunkInfo,
+                            const HloAllReduceInstruction*,
+                            std::vector<CollectiveThunk::Buffer>,
+                            std::unique_ptr<CollectiveKernelThunk>,
+                            /*p2p_memcpy_enabled=*/bool>;
+
+// The signature of this function would change to absl::Status once we lift the
+// CollectiveKernelThunk out as a top level thunk. It would then become a member
+// function of IrEmitterUnnested.
+// As it stands now the collective kernel thunk is wrapped inside other
+// collective thunks such as AllReduceStart. So this function is only
+// responsible for emitting the collective kernel thunk and its dependencies.
+// If nullptr is returned it means that the collective kernel thunk could not be
+// emitted. This is not an error.
+absl::StatusOr<std::unique_ptr<CollectiveKernelThunk>>
+EmitCollectiveKernelThunk(IrEmitterContext* ir_emitter_context,
+                          const CallGraph* call_graph,
+                          Thunk::ThunkInfo thunk_info,
+                          std::vector<CollectiveThunk::Buffer> buffers,
+                          const HloAllReduceInstruction* instr,
+                          const AllReduceConfig& config) {
+  return std::make_unique<CollectiveKernelThunk>(
+      thunk_info, config.config, config.reduction_kind,
+      /*is_async=*/!IsGPUSyncCollective(*instr), std::move(buffers),
+      /*is_collective_kernel_enabled=*/
+      instr->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_unsupported_use_all_reduce_one_shot_kernel());
 }
 
 }  // namespace
@@ -1375,9 +1410,10 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
       kernel::topk::GetTopKKernel("topk", dtype, n, k, batch_size,
                                   platform_name(), wavefront_size));
 
+  Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
+      instr, ir_emitter_context_->GetNextThunkId());
   AddThunkToThunkSequence(std::make_unique<CustomKernelThunk>(
-      instr, std::move(kernel), kernel_arguments,
-      ir_emitter_context_->GetNextThunkId()));
+      std::move(thunk_info), std::move(kernel), kernel_arguments));
   return absl::OkStatus();
 }
 
@@ -1402,7 +1438,7 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
         return absl::InvalidArgumentError(
             absl::StrCat("Failed to parse Triton module: ",
                          diagnostic_handler.ConsumeStatus().message(),
-                         "\ninput ir: ", call.ir));
+                         "\ninput ir: \"", absl::CHexEscape(call.ir), "\""));
       }
     }
 
@@ -1902,6 +1938,31 @@ bool IsNvshmemCollective(const HloInstruction* instr) {
   return false;
 }
 
+absl::Status IrEmitterUnnested::EmitCollectiveMetadata(
+    const HloInstruction* instr) {
+  std::vector<CollectiveMetadataThunk::Buffer> buffers;
+  buffers.reserve(instr->operands().size());
+  for (const HloInstruction* operand : instr->operands()) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                        GetAllocationSliceForHlo(operand, {}));
+    buffers.push_back({slice, operand->shape().layout().memory_space()});
+  }
+
+  // Operation result should be a tuple where the last element is the buffer for
+  // the metadata.
+  ShapeIndex result_shape_index = {static_cast<int64_t>(buffers.size())};
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result,
+                      GetAllocationSliceForHlo(instr, result_shape_index));
+
+  auto thunk = std::make_unique<CollectiveMetadataThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(
+          instr, ir_emitter_context_->GetNextThunkId()),
+      CollectiveMetadataThunk::GetCollectiveConfig(*instr), std::move(buffers),
+      result);
+  AddThunkToThunkSequence(std::move(thunk));
+  return absl::OkStatus();
+}
+
 absl::Status IrEmitterUnnested::EmitCollectivePermute(
     const HloCollectivePermuteInstruction* instr) {
   // First output is aliased.
@@ -2099,9 +2160,25 @@ absl::Status IrEmitterUnnested::EmitCollectiveThunk(
     if (ir_emitter_context_->debug_options().xla_syntax_sugar_async_ops()) {
       thunk_info.profile_annotation = async_start->name();
     }
-    auto thunk = std::make_unique<CollectiveThunkType>(
-        thunk_info, inst, /*buffers=*/std::move(buffers),
-        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
+    std::unique_ptr<CollectiveThunkType> thunk;
+    // TODO(b/828435206) Remove this constexpr once collective kernel thunk is
+    // lifted out of the all reduce thunk.
+    if constexpr (kRequiresCollectiveKernelThunk<CollectiveThunkType>) {
+      TF_ASSIGN_OR_RETURN(
+          auto collective_kernel_thunk,
+          EmitCollectiveKernelThunk(ir_emitter_context_, call_graph_.get(),
+                                    thunk_info, buffers,
+                                    Cast<HloAllReduceInstruction>(inst),
+                                    GetAllReduceConfigInst(inst)));
+      thunk = std::make_unique<CollectiveThunkType>(
+          thunk_info, inst, /*buffers=*/std::move(buffers),
+          std::move(collective_kernel_thunk),
+          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
+    } else {
+      thunk = std::make_unique<CollectiveThunkType>(
+          thunk_info, inst, /*buffers=*/std::move(buffers),
+          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
+    }
     GetCollectivesAsyncEvents().insert({async_start, thunk->async_events()});
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();
@@ -2991,6 +3068,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
         case HloOpcode::kCollectiveBroadcast:
           return EmitCollectiveAsyncDone(Thunk::kCollectiveBroadcastDone,
                                          instr);
+        case HloOpcode::kCollectivePermute:
+          return EmitCollectiveAsyncDone(Thunk::kCollectivePermuteDone, instr);
         case HloOpcode::kFusion: {
           auto collective_hero = GetCollectiveHeroForDynamicSliceFusion(
               Cast<HloFusionInstruction>(wrapped));
@@ -3248,6 +3327,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           instr->custom_call_target() == kUnpinCustomCallTarget ||
           instr->custom_call_target() == kCreateBufferCustomCallTarget) {
         return absl::OkStatus();
+      }
+      if (instr->custom_call_target() == kCollectiveMetadataCustomCallTarget) {
+        return EmitCollectiveMetadata(instr);
       }
       return EmitCustomCallThunk(custom_call);
     }

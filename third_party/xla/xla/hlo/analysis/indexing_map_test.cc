@@ -348,6 +348,24 @@ TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
   )"));
 }
 
+TEST_F(IndexingMapTest, ComposeIndexingMapsComputationPartitionerTestCrash) {
+  // This is a simplification of a test case taken from ComputationPartitioner
+  // that used to crash when calling ComposeIndexingMaps.
+  auto indexing_map_identity_7_variables = Parse(R"(
+    (d0, d1, d2, d3, d4, d5, d6)->(d0, d1, d2, d3, d4, d5, d6),
+        domain : d0 in[0, 3],
+                d1 in[0, 3],
+                d2 in[0, 3],
+                d3 in[0, 3],
+                d4 in[0, 3],
+                d5 in[0, 3],
+                d6 in[0, 3]
+  )");
+  auto composed = ComposeIndexingMaps(indexing_map_identity_7_variables,
+                                      indexing_map_identity_7_variables);
+  EXPECT_EQ(composed, indexing_map_identity_7_variables);
+}
+
 TEST_F(IndexingMapTest, KnownEmpty_CreatingIndexingMapWithInfeasibleRange) {
   auto indexing_map = Parse(R"(
     (d0) -> (d0),
@@ -1393,6 +1411,10 @@ TEST_F(IndexingMapTest, RangeEvaluatorTest) {
   // d3 is always 0.
   EXPECT_TRUE(range_evaluator.IsAlwaysPositiveOrZero(d3));
   EXPECT_TRUE(range_evaluator.IsAlwaysNegativeOrZero(d3));
+
+  // d0 * 2 + d1 between [-10, 17].
+  EXPECT_EQ(range_evaluator.ComputeExpressionRange(d0 * 2 + d1),
+            (Interval{-10, 17}));
 }
 
 template <typename T>

@@ -105,9 +105,9 @@ ENTRY main {
                           platform->ExecutorForDevice(0));
 
   // Stream executor is not passed as an option.
-  Compiler::TargetConfig gpu_target_config(stream_exec);
+  Compiler::GpuTargetConfig gpu_target_config(stream_exec);
   AotCompilationOptions aot_options(compiler->PlatformId());
-  aot_options.set_target_config(gpu_target_config);
+  aot_options.set_gpu_target_config(gpu_target_config);
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
