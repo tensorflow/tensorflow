@@ -97,7 +97,7 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
         data, data + size, 0,
         [this](const int x, const T& y) { return checkFloatingElement(x, y); });
     if (fp_props != 0) {
-      const string& status = getErrorString(fp_props);
+      const std::string& status = getErrorString(fp_props);
       if (!status.empty()) {
         context->SetStatus(errors::InvalidArgument(message_, " : Tensor had ",
                                                    status, " values"));
@@ -120,8 +120,8 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
     return result;
   }
 
-  virtual const string getErrorString(const int fp_props) {
-    string status;
+  virtual const std::string getErrorString(const int fp_props) {
+    std::string status;
     if ((fp_props & kInfBit) && (fp_props & kNaNBit)) {
       status = "Inf and NaN";
     } else {
@@ -136,7 +136,7 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
   }
 
  private:
-  string message_;
+  std::string message_;
 };
 
 template <typename Device, typename T>
@@ -165,8 +165,8 @@ class CheckNumericsV2Op<CPUDevice, T> : public CheckNumericsOp<CPUDevice, T> {
     return result;
   }
 
-  const string getErrorString(const int fp_props) override {
-    std::vector<string> anomalies;
+  const std::string getErrorString(const int fp_props) override {
+    std::vector<std::string> anomalies;
     if (fp_props & kNegativeInfBit) {
       anomalies.push_back("-Inf");
     }
