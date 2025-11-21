@@ -114,6 +114,10 @@ class InterpreterWrapper {
   // Adds a delegate to the interpreter.
   PyObject* ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
+  // Loads a delegate from a configuration file in JSON format.
+  // Returns a pointer to the TfLiteDelegate object.
+  PyObject* LoadStableDelegateCPP(const std::string& config_path);
+
   // Experimental and subject to change.
   //
   // Returns a pointer to the underlying interpreter.
