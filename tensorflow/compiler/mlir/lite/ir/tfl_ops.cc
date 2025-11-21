@@ -4374,11 +4374,53 @@ OpFoldResult CastFloatToFloat(DenseFPElementsAttr data, FloatType in_type,
     return DenseFPElementsAttr::get(result_type,
                                     MapStaticCast<double, float>(data));
   }
+
+  if (in_type.isF32() && out_type.isF16()) {
+    return data.mapValues(out_type, [&](const APFloat& old_value) {
+      APFloat value(old_value);
+      bool unused_loses_info;
+      value.convert(out_type.getFloatSemantics(), APFloat::rmNearestTiesToEven,
+                    &unused_loses_info);
+      return value.bitcastToAPInt();
+    });
+  }
   return {};
 }
 
+namespace {
+
+bool IncreasesStorage(Type in_el_type, Type out_el_type) {
+  int in_el_type_width = 0;
+  int out_el_type_width = 0;
+
+  if (auto ft = llvm::dyn_cast_or_null<FloatType>(in_el_type)) {
+    in_el_type_width = ft.getWidth();
+  } else if (auto it = llvm::dyn_cast_or_null<IntegerType>(in_el_type)) {
+    in_el_type_width = it.getWidth();
+  }
+
+  if (auto ft = llvm::dyn_cast_or_null<FloatType>(out_el_type)) {
+    out_el_type_width = ft.getWidth();
+  } else if (auto it = llvm::dyn_cast_or_null<IntegerType>(out_el_type)) {
+    out_el_type_width = it.getWidth();
+  }
+
+  if (in_el_type_width == 0 || out_el_type_width == 0) {
+    return true;
+  }
+
+  return out_el_type_width <= in_el_type_width;
+}
+
+}  // namespace
+
 OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
-  if (!ShouldFoldOperation(this->getOperation())) return {};
+  auto in_type = getInput().getType().getElementType();
+  auto out_type = getType().getElementType();
+
+  if (IncreasesStorage(in_type, out_type) &&
+      !ShouldFoldOperation(this->getOperation()))
+    return {};
 
   auto operands = adaptor.getOperands();
   if (operands.size() != 1) {
@@ -4389,9 +4431,6 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
   }
 
   auto input = operands[0];
-
-  auto in_type = getInput().getType().getElementType();
-  auto out_type = getType().getElementType();
 
   if (auto int_in_type = llvm::dyn_cast_or_null<IntegerType>(in_type)) {
     auto in_data = llvm::dyn_cast_or_null<DenseIntElementsAttr>(input);
