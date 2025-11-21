@@ -177,13 +177,19 @@ struct FunctionEmitterContext {
   llvm::DenseMap<mlir::Value, RegInfo> register_table;
   std::vector<int> free_regs;
 
-  int AssignRegId() {
-    if (free_regs.empty()) {
+  int AssignRegId(bool is_persistent) {
+    if (is_persistent) {
+      // Persistent types ALWAYS get a brand new ID.
       return next_reg_id++;
     }
-    int id = free_regs.back();
-    free_regs.pop_back();
-    return id;
+
+    // Non-persistent types can reuse from free_regs.
+    if (!free_regs.empty()) {
+      int id = free_regs.back();
+      free_regs.pop_back();
+      return id;
+    }
+    return next_reg_id++;
   }
 
   void FreeRegId(int id) { free_regs.push_back(id); }
@@ -204,7 +210,7 @@ void EmitKernel(FunctionEmitterContext& function_context,
     auto iter = function_context.register_table.find(result);
     CHECK(iter != function_context.register_table.end());  // Crash Ok
     CHECK_EQ(iter->second.id, -1);                         // Crash Ok
-    iter->second.id = function_context.AssignRegId();
+    iter->second.id = function_context.AssignRegId(iter->second.persistent);
     results.push_back(iter->second.id);
   }
   constructor.construct_results(results.size())
@@ -287,9 +293,9 @@ void EmitFunction(const ModuleEmitterContext& module_context,
   std::vector<uint32_t> input_regs;
   input_regs.reserve(block.getNumArguments());
   for (auto arg : block.getArguments()) {
-    int id = function_context.AssignRegId();
-    input_regs.push_back(id);
     bool persistent = mlir::isa<mlrt::compiler::AsyncHandleType>(arg.getType());
+    int id = function_context.AssignRegId(persistent);
+    input_regs.push_back(id);
     register_table[arg] = {static_cast<int>(std::distance(arg.getUses().begin(),
                                                           arg.getUses().end())),
                            id, persistent};
