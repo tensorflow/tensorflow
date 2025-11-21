@@ -109,13 +109,13 @@ TF_CALL_int4(REGISTER);
 TF_CALL_uint4(REGISTER);
 
 REGISTER_KERNEL_BUILDER(
-    Name(kDeviceArgOp).Device(DEVICE_DEFAULT).TypeConstraint<int32>("T"),
+    Name(kDeviceArgOp).Device(DEVICE_DEFAULT).TypeConstraint<int32_t>("T"),
     ArgOp);
 
 REGISTER_KERNEL_BUILDER(Name(kArgOp)
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
+                            .TypeConstraint<int32_t>("T"),
                         ArgOp);
 #undef REGISTER
 
@@ -153,10 +153,10 @@ TF_CALL_uint4(REGISTER);
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("input")
-                            .TypeConstraint<int32>("T"),
+                            .TypeConstraint<int32_t>("T"),
                         RetvalOp);
 REGISTER_KERNEL_BUILDER(
-    Name(kDeviceRetOp).Device(DEVICE_DEFAULT).TypeConstraint<int32>("T"),
+    Name(kDeviceRetOp).Device(DEVICE_DEFAULT).TypeConstraint<int32_t>("T"),
     RetvalOp);
 
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
@@ -216,13 +216,13 @@ REGISTER_KERNEL_BUILDER(Name("_ListToArray")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("input")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
+                            .TypeConstraint<int32_t>("T"),
                         PassOn);
 REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("input")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
+                            .TypeConstraint<int32_t>("T"),
                         PassOn);
 
 class SymbolicGradientOp : public AsyncOpKernel {
@@ -298,7 +298,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   OP_REQUIRES_ASYNC(ctx, lib != nullptr,
                     errors::Internal("No function library is provided."), done);
 
-  const string& source_device = lib->device()->name();
+  const std::string& source_device = lib->device()->name();
   const Tensor* target;
   OP_REQUIRES_OK_ASYNC(ctx, ctx->input("target", &target), done);
 
@@ -310,8 +310,8 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       done);
   function_target.second = lib;
 
-  const string& target_device = function_target.first;
-  const string& func_name = func_.name();
+  const std::string& target_device = function_target.first;
+  const std::string& func_name = func_.name();
 
   FunctionLibraryRuntime::Handle handle;
   {
@@ -432,12 +432,12 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       });
 }
 
-string RemoteCallOp::TraceString(const OpKernelContext& ctx,
-                                 bool verbose) const {
-  string trace_string = tsl::profiler::TraceMeOp(
+std::string RemoteCallOp::TraceString(const OpKernelContext& ctx,
+                                      bool verbose) const {
+  std::string trace_string = tsl::profiler::TraceMeOp(
       absl::StrCat(name_view(), "__", func_.name()), type_string_view());
   if (verbose) {
-    string shape = ShapeTraceString(ctx);
+    std::string shape = ShapeTraceString(ctx);
     if (!shape.empty()) {
       trace_string = tsl::profiler::TraceMeEncode(std::move(trace_string),
                                                   {{"shape", shape}});

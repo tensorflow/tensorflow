@@ -45,7 +45,7 @@ template <class T>
 class DynamicStitchOpImplBase : public OpKernel {
  public:
   explicit DynamicStitchOpImplBase(OpKernelConstruction* c,
-                                   const string& op_name)
+                                   const std::string& op_name)
       : OpKernel(c) {
     // Compute expected input signature
     const DataType dt = DataTypeToEnum<T>::v();
@@ -95,8 +95,8 @@ class DynamicStitchOpImplBase : public OpKernel {
     }
     for (const Tensor& indices : *indices_inputs) {
       if (indices.NumElements() > 0) {
-        Eigen::Tensor<int32, 0, Eigen::RowMajor> m =
-            indices.flat<int32>().maximum();
+        Eigen::Tensor<int32_t, 0, Eigen::RowMajor> m =
+            indices.flat<int32_t>().maximum();
         max_index = std::max(m(), max_index);
       }
       if (data_elements_size) {
@@ -107,7 +107,7 @@ class DynamicStitchOpImplBase : public OpKernel {
     *first_dim_size = max_index + 1;
 
     for (const Tensor& indices : *indices_inputs) {
-      auto indices_vec = indices.flat<int32>();
+      auto indices_vec = indices.flat<int32_t>();
 
       for (int i = 0; i < indices_vec.size(); i++) {
         int32_t index = internal::SubtleMustCopy(indices_vec(i));
@@ -276,7 +276,7 @@ class DynamicStitchOpImplCPU : public DynamicStitchOpImplBase<T> {
       const size_t slice_bytes = slice_size * sizeof(T);
       auto OnInputNumber = [&](int input_num) {
         const Tensor& indices = indices_inputs[input_num];
-        auto indices_vec = indices.flat<int32>();
+        auto indices_vec = indices.flat<int32_t>();
         const Tensor& data = data_inputs[input_num];
         auto data_flat =
             data.shaped<T, 2>({indices_vec.dimension(0), slice_size});
