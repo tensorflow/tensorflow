@@ -25,6 +25,7 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -35,7 +36,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/cppitertools/zip.hpp"
+#include "mlir/Support/LLVM.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -45,6 +49,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout.h"
@@ -52,6 +58,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -2904,29 +2911,28 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsAcrossTargetDims(
       group_sizes.begin(), group_sizes.end(), 1, std::multiplies<int64_t>());
   std::vector<std::vector<int64_t>> groups(
       sharding.tile_assignment().num_elements() / total_group_size);
-  sharding.tile_assignment().Each(
-      [&](absl::Span<const int64_t> indices, int64_t device) {
-        int64_t group_id = 0;
-        for (int64_t dim = 0; dim < indices.size(); ++dim) {
-          if (auto it = absl::c_find(target_dims, dim);
-              it != target_dims.end()) {
-            int64_t group_size =
-                group_sizes[std::distance(target_dims.begin(), it)];
-            group_id *= sharding.tile_assignment().dim(dim) / group_size;
-            group_id += indices[dim] / group_size;
-          } else {
-            group_id *= sharding.tile_assignment().dim(dim);
-            group_id += indices[dim];
-          }
-        }
-        groups[group_id].push_back(device);
-      });
+  sharding.tile_assignment().Each([&](absl::Span<const int64_t> indices,
+                                      int64_t device) {
+    int64_t group_id = 0;
+    for (int64_t dim = 0; dim < indices.size(); ++dim) {
+      if (auto it = absl::c_find(target_dims, dim); it != target_dims.end()) {
+        int64_t group_size =
+            group_sizes[std::distance(target_dims.begin(), it)];
+        group_id *= sharding.tile_assignment().dim(dim) / group_size;
+        group_id += indices[dim] / group_size;
+      } else {
+        group_id *= sharding.tile_assignment().dim(dim);
+        group_id += indices[dim];
+      }
+    }
+    groups[group_id].push_back(device);
+  });
   return groups;
 }
 
 std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
     const HloSharding& sharding, std::vector<int64_t> target_dims,
-    std::vector<int64_t> group_sizes, int64_t num_partitions) {
+    std::vector<int64_t> group_sizes) {
   CHECK(target_dims.size() == group_sizes.size());
   // If provided sharding is not HloShardingV2, we cannot generate partition
   // groups in an iota format.
@@ -3014,8 +3020,7 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
 
 // Returns partition groups in an iota format.
 std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsForReplication(
-    const HloSharding& sharding, absl::Span<const int64_t> replication_dims,
-    int64_t num_partitions) {
+    const HloSharding& sharding, absl::Span<const int64_t> replication_dims) {
   // If provided sharding is not HloShardingV2, we cannot generate partition
   // groups in an iota format.
   if (!sharding.tile_assignment().iota().has_value()) {
@@ -3064,6 +3069,85 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsForReplication(
   return IotaReplicaGroupList(num_replica_groups, group_size,
                               transpose_iota_tile_assignment->reshape_dims(),
                               transpose_iota_tile_assignment->transpose_perm());
+}
+
+inline bool V2ShardingOrAbove(const HloSharding& sharding) {
+  return sharding.tile_assignment().iota().has_value() ||
+         sharding.UseNamedShardingLeaf();
+}
+
+std::optional<Mesh> GetMeshFromV2orAboveSharding(const HloSharding& sharding) {
+  if (!V2ShardingOrAbove(sharding)) {
+    return std::nullopt;
+  };
+
+  if (sharding.UseNamedShardingLeaf()) {
+    NamedSharding named_sharding = sharding.named_sharding().value();
+    return named_sharding.mesh();
+  }
+
+  std::vector<int64_t> axis_sizes;
+  mlir::SmallVector<int64_t> sdy_axis_sizes =
+      sdy::getAxisSizes(sharding.tile_assignment());
+  axis_sizes.assign(sdy_axis_sizes.begin(), sdy_axis_sizes.end());
+  std::vector<std::string> axis_names(axis_sizes.size());
+  std::vector<absl::string_view> axis_name_view;
+  for (int64_t i = 0; i < axis_sizes.size(); ++i) {
+    axis_names[i] = absl::StrCat("axis_", i);
+  }
+  axis_name_view.assign(axis_names.begin(), axis_names.end());
+  return Mesh(sharding.tile_assignment(), axis_name_view);
+}
+
+std::optional<MeshAxesReplicaGroupList>
+GetMeshAxesPartitionGroupsAcrossTargetDims(const HloSharding& sharding,
+                                           std::vector<int64_t> target_dims,
+                                           std::vector<int64_t> group_sizes) {
+  CHECK(target_dims.size() == group_sizes.size())
+      << "target_dims and group_sizes must have the same size.";
+  if (target_dims.empty()) {
+    return std::nullopt;
+  }
+
+  // Use the mesh with named axes if HloShardingV3 is used. Otherwise, create a
+  // mesh with generic axis names.
+  std::optional<Mesh> mesh = GetMeshFromV2orAboveSharding(sharding);
+  if (!mesh.has_value()) {
+    return std::nullopt;
+  }
+  std::vector<int64_t> axis_sizes;
+  axis_sizes.assign(mesh->axis_sizes().begin(), mesh->axis_sizes().end());
+
+  std::vector<AxisRef> axis_refs;
+  for (auto [target_dim, group_size] : iter::zip(target_dims, group_sizes)) {
+    int64_t axis_size = axis_sizes[target_dim];
+    if (axis_size == group_size) {
+      axis_refs.push_back(AxisRef(target_dim));
+      continue;
+    }
+    axis_refs.push_back(
+        AxisRef(target_dim, {axis_size / group_size, group_size}));
+  }
+  return MeshAxesReplicaGroupList(mesh.value(), axis_refs);
+}
+
+std::optional<MeshAxesReplicaGroupList>
+GetMeshAxesPartitionGroupsForReplication(
+    const HloSharding& sharding, absl::Span<const int64_t> replication_dims) {
+  if (replication_dims.empty()) {
+    return std::nullopt;
+  }
+  // Use the mesh with named axes if HloShardingV3 is used. Otherwise, create a
+  // mesh with generic axis names.
+  std::optional<Mesh> mesh = GetMeshFromV2orAboveSharding(sharding);
+  if (!mesh.has_value()) {
+    return std::nullopt;
+  }
+  std::vector<AxisRef> axis_refs;
+  for (int64_t dim : replication_dims) {
+    axis_refs.push_back(AxisRef(dim));
+  }
+  return MeshAxesReplicaGroupList(mesh.value(), axis_refs);
 }
 
 // Expands partition group list across all replicas. Expects that provided
