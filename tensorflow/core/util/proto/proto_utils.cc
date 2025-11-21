@@ -79,20 +79,20 @@ absl::Status ParseTextFormatFromString(absl::string_view input,
     return absl::Status(absl::StatusCode::kInvalidArgument,
                         "output must be non NULL");
   }
-  string err;
+  std::string err;
   StringErrorCollector err_collector(&err, /*one-indexing=*/true);
   protobuf::TextFormat::Parser parser;
   parser.RecordErrorsTo(&err_collector);
-  if (!parser.ParseFromString(string(input), output)) {
+  if (!parser.ParseFromString(input, output)) {
     return absl::Status(absl::StatusCode::kInvalidArgument, err);
   }
   return absl::OkStatus();
 }
 
-StringErrorCollector::StringErrorCollector(string* error_text)
+StringErrorCollector::StringErrorCollector(std::string* error_text)
     : StringErrorCollector(error_text, false) {}
 
-StringErrorCollector::StringErrorCollector(string* error_text,
+StringErrorCollector::StringErrorCollector(std::string* error_text,
                                            bool one_indexing)
     : error_text_(error_text), index_offset_(one_indexing ? 1 : 0) {
   DCHECK(error_text_ != nullptr) << "error_text must be non NULL";
