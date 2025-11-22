@@ -567,7 +567,7 @@ StreamExecutorGpuClient::PrepareReceiveBuffer(PjRtDevice* device, Shape shape) {
   TF_ASSIGN_OR_RETURN(
       auto buffer,
       DefineBuffer(
-          on_device_shape, raw_buffer,
+          on_device_shape, memory_space, raw_buffer,
           {tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(definition_event)},
           /*raw_buffer_is_mutable=*/true));
 

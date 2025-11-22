@@ -974,17 +974,22 @@ PjRtCpuClient::CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::DefineBuffer(
-    const Shape& on_device_shape,
+    const Shape& on_device_shape, PjRtMemorySpace* memory_space,
     tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
     absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
         definition_device_events,
     bool raw_buffer_is_mutable) {
+  if (raw_buffer && raw_buffer->memory_space() != memory_space) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("DefineBuffer: Mismatch in memory spaces: %s vs %s",
+                        raw_buffer->memory_space()->DebugString(),
+                        memory_space->DebugString()));
+  }
   absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events;
   for (auto& ev : definition_device_events) {
     definition_events.push_back(
         tsl::down_cast<CpuTrackedDeviceEvent*>(ev.get())->event());
   }
-  auto memory_space = raw_buffer->memory_space();
   return std::unique_ptr<PjRtBuffer>(std::make_unique<CommonPjRtBufferImpl>(
       on_device_shape,
       std::make_unique<TrackedCpuDeviceBuffer>(

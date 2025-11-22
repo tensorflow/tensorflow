@@ -99,7 +99,7 @@ class CommonPjRtClient : public PjRtClient {
 
   // Defines a pjrt buffer from a shape, raw_buffer and definition events.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> DefineBuffer(
-      const Shape& on_device_shape,
+      const Shape& on_device_shape, PjRtMemorySpace* memory_space,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
       absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
           definition_device_events,

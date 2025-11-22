@@ -508,11 +508,17 @@ PjRtStreamExecutorClient::AllocateRawBuffer(
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::DefineBuffer(
-    const Shape& on_device_shape,
+    const Shape& on_device_shape, PjRtMemorySpace* memory_space,
     tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
     absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
         definition_device_events,
     bool raw_buffer_is_mutable) {
+  if (raw_buffer && raw_buffer->memory_space() != memory_space) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("DefineBuffer: Mismatch in memory spaces: %s vs %s",
+                        raw_buffer->memory_space()->DebugString(),
+                        memory_space->DebugString()));
+  }
   absl::InlinedVector<BufferSequencingEventRef, 2> definition_events;
   definition_events.reserve(definition_device_events.size());
   for (auto& ev : definition_device_events) {
@@ -520,7 +526,6 @@ PjRtStreamExecutorClient::DefineBuffer(
         tensorflow::down_cast<PjRtStreamExecutorDeviceEvent*>(ev.get())
             ->event());
   }
-  auto* memory_space = raw_buffer->memory_space();
   auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
       memory_space->devices()[0]);
 

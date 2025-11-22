@@ -218,7 +218,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
                            absl::string_view debug_info) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DefineBuffer(
-      const Shape& on_device_shape,
+      const Shape& on_device_shape, PjRtMemorySpace* memory_space,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
       absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
           definition_device_events,

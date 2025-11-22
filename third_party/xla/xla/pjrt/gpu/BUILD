@@ -264,6 +264,7 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:subprocess",
         "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
