@@ -47,9 +47,9 @@ public final class InterpreterApiNoRuntimeTest {
       fail();
     } catch (IllegalStateException e) {
       // Verify that the error message has some hints about how to link
-      // against the runtime ("org.tensorflow:tensorflow-lite:<version>").
-      assertThat(e).hasMessageThat().contains("org.tensorflow");
-      assertThat(e).hasMessageThat().contains("tensorflow-lite");
+      // against the runtime ("com.google.ai.edge.litert:litert:<version>").
+      assertThat(e).hasMessageThat().contains("com.google.ai.edge.litert");
+      assertThat(e).hasMessageThat().contains("litert");
     }
   }
 
@@ -61,9 +61,9 @@ public final class InterpreterApiNoRuntimeTest {
       fail();
     } catch (IllegalStateException e) {
       // Verify that the error message has some hints about how to link
-      // against the runtime ("org.tensorflow:tensorflow-lite:<version>").
-      assertThat(e).hasMessageThat().contains("org.tensorflow");
-      assertThat(e).hasMessageThat().contains("tensorflow-lite");
+      // against the runtime ("com.google.ai.edge.litert:litert:<version>").
+      assertThat(e).hasMessageThat().contains("com.google.ai.edge.litert");
+      assertThat(e).hasMessageThat().contains("litert");
     }
   }
 
@@ -75,9 +75,9 @@ public final class InterpreterApiNoRuntimeTest {
       fail();
     } catch (IllegalStateException e) {
       // Verify that the error message has some hints about how to link
-      // against the runtime ("org.tensorflow:tensorflow-lite:<version>").
-      assertThat(e).hasMessageThat().contains("org.tensorflow");
-      assertThat(e).hasMessageThat().contains("tensorflow-lite");
+      // against the runtime ("com.google.ai.edge.litert:litert:<version>").
+      assertThat(e).hasMessageThat().contains("com.google.ai.edge.litert");
+      assertThat(e).hasMessageThat().contains("litert");
     }
   }
 
@@ -109,8 +109,8 @@ public final class InterpreterApiNoRuntimeTest {
       // "com.google.android.gms:play-services-tflite-java:<version>").
       assertThat(e).hasMessageThat().contains("com.google.android.gms");
       assertThat(e).hasMessageThat().contains("play-services-tflite-java");
-      assertThat(e).hasMessageThat().contains("org.tensorflow");
-      assertThat(e).hasMessageThat().contains("tensorflow-lite");
+      assertThat(e).hasMessageThat().contains("com.google.ai.edge.litert");
+      assertThat(e).hasMessageThat().contains("litert");
     }
   }
 }
