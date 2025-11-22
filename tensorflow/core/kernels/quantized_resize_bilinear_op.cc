@@ -132,7 +132,7 @@ inline T ComputeLerp(const T top_left, const T top_right, const T bottom_left,
       MulOffset<T, T_SCALE, T_CALC>(bottom_right, bottom_left, x_lerp);
   const T_CALC out = top + (bottom - top) / RESOLUTION_MULT * y_lerp;
   return static_cast<T>(
-      static_cast<int32>((out + RESOLUTION_MULT / 2) / RESOLUTION_MULT));
+      static_cast<int32_t>((out + RESOLUTION_MULT / 2) / RESOLUTION_MULT));
 }
 
 #ifdef QUANTIZED_RESIZE_BILINEAR_USE_NEON
@@ -266,7 +266,7 @@ inline void OutputLerpForChannels(const InterpolationCache<T_SCALE>& xs,
 }
 
 template <int RES>
-inline void OutputLerp8x8x1(const InterpolationCache<int16>& xs,
+inline void OutputLerp8x8x1(const InterpolationCache<int16_t>& xs,
                             const int64_t x_start, const int16_t ys_ilerp,
                             const float min, const float max,
                             const quint8* const ys_input_lower_ptr,
@@ -284,7 +284,7 @@ inline void OutputLerp8x8x1(const InterpolationCache<int16>& xs,
 
 #else
   for (int x = x_start; x < x_start + 8; ++x) {
-    OutputLerpForChannels<RES, quint8, int16, int16>(
+    OutputLerpForChannels<RES, quint8, int16_t, int16_t>(
         xs, x, ys_ilerp, 1, min, max, ys_input_lower_ptr, ys_input_upper_ptr,
         output_y_ptr);
   }
@@ -292,7 +292,7 @@ inline void OutputLerp8x8x1(const InterpolationCache<int16>& xs,
 }
 
 template <int RES>
-inline void OutputLerp8x8x3(const InterpolationCache<int16>& xs,
+inline void OutputLerp8x8x3(const InterpolationCache<int16_t>& xs,
                             const int64_t x_start, const int16_t ys_ilerp,
                             const float min, const float max,
                             const quint8* const ys_input_lower_ptr,
@@ -325,7 +325,7 @@ inline void OutputLerp8x8x3(const InterpolationCache<int16>& xs,
 
 #else
   for (int x = x_start; x < x_start + 8; ++x) {
-    OutputLerpForChannels<RES, quint8, int16, int16>(
+    OutputLerpForChannels<RES, quint8, int16_t, int16_t>(
         xs, x, ys_ilerp, 3, min, max, ys_input_lower_ptr, ys_input_upper_ptr,
         output_y_ptr);
   }
@@ -333,7 +333,7 @@ inline void OutputLerp8x8x3(const InterpolationCache<int16>& xs,
 }
 
 template <int RESOLUTION>
-inline void OutputLerp32x4x1(const InterpolationCache<int32>& xs,
+inline void OutputLerp32x4x1(const InterpolationCache<int32_t>& xs,
                              const int64_t x_start, const int32_t ys_ilerp,
                              const float min, const float max,
                              const qint32* const ys_input_lower_ptr,
@@ -373,7 +373,7 @@ inline void OutputLerp32x4x1(const InterpolationCache<int32>& xs,
 
 #else
   for (int x = x_start; x < x_start + 4; ++x) {
-    OutputLerpForChannels<RESOLUTION, qint32, int32, int64_t>(
+    OutputLerpForChannels<RESOLUTION, qint32, int32_t, int64_t>(
         xs, x, ys_ilerp, 1, min, max, ys_input_lower_ptr, ys_input_upper_ptr,
         output_y_ptr);
   }
@@ -381,7 +381,7 @@ inline void OutputLerp32x4x1(const InterpolationCache<int32>& xs,
 }
 
 template <int RESOLUTION>
-inline void OutputLerp32x4x3(const InterpolationCache<int32>& xs,
+inline void OutputLerp32x4x3(const InterpolationCache<int32_t>& xs,
                              const int64_t x_start, const int32_t ys_ilerp,
                              const float min, const float max,
                              const qint32* const ys_input_lower_ptr,
@@ -458,7 +458,7 @@ inline void OutputLerp32x4x3(const InterpolationCache<int32>& xs,
 
 #else
   for (int x = x_start; x < x_start + 4; ++x) {
-    OutputLerpForChannels<RESOLUTION, qint32, int32, int64_t>(
+    OutputLerpForChannels<RESOLUTION, qint32, int32_t, int64_t>(
         xs, x, ys_ilerp, 3, min, max, ys_input_lower_ptr, ys_input_upper_ptr,
         output_y_ptr);
   }
@@ -543,10 +543,10 @@ void ResizeImage<qint32>(typename TTypes<qint32, 4>::ConstTensor images,
 
   CHECK_NOTNULL(output);
 
-  const InterpolationCache<int32> xs =
-      BuildLerpCache<int32>(out_width, in_width, width_scale, channels,
-                            RESOLUTION, half_pixel_centers);
-  const InterpolationCache<int32> ys = BuildLerpCache<int32>(
+  const InterpolationCache<int32_t> xs =
+      BuildLerpCache<int32_t>(out_width, in_width, width_scale, channels,
+                              RESOLUTION, half_pixel_centers);
+  const InterpolationCache<int32_t> ys = BuildLerpCache<int32_t>(
       out_height, in_height, height_scale, 1, RESOLUTION, half_pixel_centers);
 
   const int64_t in_row_size = in_width * channels;
@@ -581,7 +581,7 @@ void ResizeImage<qint32>(typename TTypes<qint32, 4>::ConstTensor images,
         }
       }
       for (; x < out_width; ++x) {
-        OutputLerpForChannels<RESOLUTION, qint32, int32, int64_t>(
+        OutputLerpForChannels<RESOLUTION, qint32, int32_t, int64_t>(
             xs, x, ys_ilerp, channels, in_min, in_max, ys_input_lower_ptr,
             ys_input_upper_ptr, output_y_ptr);
       }
@@ -606,10 +606,10 @@ void ResizeImage<quint8>(typename TTypes<quint8, 4>::ConstTensor images,
 
   CHECK_NOTNULL(output);
 
-  const InterpolationCache<int16> xs =
-      BuildLerpCache<int16>(out_width, in_width, width_scale, channels,
-                            RESOLUTION, half_pixel_centers);
-  const InterpolationCache<int16> ys = BuildLerpCache<int16>(
+  const InterpolationCache<int16_t> xs =
+      BuildLerpCache<int16_t>(out_width, in_width, width_scale, channels,
+                              RESOLUTION, half_pixel_centers);
+  const InterpolationCache<int16_t> ys = BuildLerpCache<int16_t>(
       out_height, in_height, height_scale, 1, RESOLUTION, half_pixel_centers);
 
   const int64_t in_row_size = in_width * channels;
@@ -646,7 +646,7 @@ void ResizeImage<quint8>(typename TTypes<quint8, 4>::ConstTensor images,
         }
       }
       for (; x < out_width; ++x) {
-        OutputLerpForChannels<RESOLUTION, quint8, int16, int16>(
+        OutputLerpForChannels<RESOLUTION, quint8, int16_t, int16_t>(
             xs, x, ys_ilerp, channels, in_min, in_max, ys_input_lower_ptr,
             ys_input_upper_ptr, output_y_ptr);
       }
