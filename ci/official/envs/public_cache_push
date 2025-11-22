@@ -16,9 +16,15 @@
 # Note that "_push" cache configs write to GCS buckets and require
 # authentication. If you are not a Googler, source "public_cache" to enable the
 # public read-only cache.
-# The cache configs are different for MacOS and Linux
-if [[ $(uname -s) == "Darwin" ]]; then
-  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_macos_cache_push"
-else
-  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_cache_push"
-fi
+# The cache configs are different for MacOS, Linux, and Windows
+case "$(uname -s)" in
+  "Darwin")
+    TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_macos_cache_push"
+    ;;
+  "Linux")
+    TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_cache_push"
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_windows_cache_push"
+    ;;
+esac
