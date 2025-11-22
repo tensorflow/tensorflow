@@ -1,0 +1,17 @@
+licenses(["notice"])
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "skcms",
+    srcs = glob([
+        "src/opts/*.cc",
+        "src/opts/*.S",
+    ]) + ["skcms.cc"],
+    hdrs = ["skcms.h"],
+    copts = [
+        "-DSKCMS_PORTABLE",
+        "-DSKCMS_STANDALONE",
+    ],
+    includes = ["."],
+)

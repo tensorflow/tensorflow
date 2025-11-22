@@ -1,0 +1,25 @@
+load(
+    ":hwy/targets.bzl",
+    "hwy_cc_library",
+)
+
+licenses(["notice"])
+
+package(default_visibility = ["//visibility:public"])
+
+hwy_cc_library(
+    name = "hwy",
+    srcs = ["hwy/aligned_allocator.cc"] + glob([
+        "hwy/contrib/*/*.cc",
+        "hwy/testing/*.cc",
+    ]),
+    hdrs = ["hwy/aligned_allocator.h"] + glob([
+        "hwy/*.h",
+        "hwy/contrib/*/*.h",
+        "hwy/ops/*.h",
+    ]),
+    copts = select({
+        "//conditions:default": [],
+    }),
+    textual_hdrs = glob(["hwy/*-inl.h"]),
+)

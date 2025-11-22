@@ -4994,6 +4994,72 @@ class WebpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.evaluate(op)
 
 
+class JxlTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+
+  def _path(self, name):
+    base = "tensorflow/core/lib/jxl/testdata/"
+    return os.path.join(base, name)
+
+  @parameterized.named_parameters([
+      ("_rgb", "random_128x96_rbg.png", "random_128x96_rbg_q100.jxl"),
+      ("_rgba", "random_128x96_rbga.png", "random_128x96_rbga_q100.jxl"),
+      ("_gray", "random_128x96_gray.png", "random_128x96_gray_q100.jxl"),
+  ])
+  def testDecodeLossless(self, png_filename, jxl_filename):
+    with self.cached_session():
+      png_file = io_ops.read_file(self._path(png_filename))
+      png_image = self.evaluate(image_ops.decode_image(png_file))
+      jxl_file = io_ops.read_file(self._path(jxl_filename))
+      jxl_image0 = self.evaluate(image_ops.decode_image(jxl_file))
+      jxl_image1 = self.evaluate(image_ops.decode_jxl(jxl_file))
+      self.assertAllEqual(jxl_image0, png_image)
+      self.assertAllEqual(jxl_image1, png_image)
+
+  @parameterized.named_parameters([
+      ("_rgb", "random_128x96_rbg_q50.jxl", (96, 128, 3)),
+      ("_rgba", "random_128x96_rbga_q50.jxl", (96, 128, 4)),
+      ("_gray", "random_128x96_gray_q50.jxl", (96, 128, 1)),
+  ])
+  def testDecodeLossy(self, jxl_filename, expected_jxl_shape):
+    with self.cached_session():
+      jxl_file = io_ops.read_file(self._path(jxl_filename))
+      jxl_image0 = self.evaluate(image_ops.decode_image(jxl_file))
+      jxl_image1 = self.evaluate(image_ops.decode_jxl(jxl_file))
+      self.assertEqual(jxl_image0.shape, expected_jxl_shape)
+      self.assertEqual(jxl_image1.shape, expected_jxl_shape)
+
+  @parameterized.named_parameters([
+      ("_rgb_q50", "random_128x96_rbg_q50.jxl"),
+      ("_rgba_q50", "random_128x96_rbga_q50.jxl"),
+      ("_gray_q50", "random_128x96_gray_q50.jxl"),
+      ("_rgb_q100", "random_128x96_rbg_q100.jxl"),
+      ("_rgba_q100", "random_128x96_rbga_q100.jxl"),
+      ("_gray_q100", "random_128x96_gray_q100.jxl"),
+  ])
+  def testChannelsConversion(self, jxl_filename):
+    with self.cached_session():
+      jxl_file = io_ops.read_file(self._path(self._path(jxl_filename)))
+      for channels in 0, 1, 3, 4:
+        image = image_ops.decode_jxl(jxl_file, channels=channels)
+        self.assertEqual(
+            image.get_shape().as_list(), [None, None, channels or None]
+        )
+
+  @parameterized.named_parameters(
+      [("_int8", np.int8), ("_int16", np.int16), ("_float32", np.float32)]
+  )
+  def testUnsupportedDtype(self, dtype):
+    with self.cached_session():
+      jxl_file = io_ops.read_file(self._path("random_128x96_rbga_q50.jxl"))
+      message = "JXL only supports uint8 for dtype"
+      with self.assertRaisesRegex(
+          (errors.InvalidArgumentError, ValueError), message
+      ):
+        # decode_jxl statically does not support anything other than uint8.
+        op = image_ops.decode_image(jxl_file, dtype=dtype)
+        self.evaluate(op)
+
+
 class ConvertImageTest(test_util.TensorFlowTestCase):
 
   def _convert(self, original, original_dtype, output_dtype, expected):
