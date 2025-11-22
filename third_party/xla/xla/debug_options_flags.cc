@@ -1350,6 +1350,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 "Dumps HLO modules as HloProtos to the directory specified by "
                 "--xla_dump_to."));
   flag_list->push_back(
+      tsl::Flag("xla_dump_hlo_as_riegeli",
+                bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_riegeli),
+                debug_options->xla_dump_hlo_as_riegeli(),
+                "Dumps HLO modules as riegeli to the directory specified by "
+                "--xla_dump_to."));
+  flag_list->push_back(
       tsl::Flag("xla_gpu_experimental_dump_fdo_profiles",
                 bool_setter_for(
                     &DebugOptions::set_xla_gpu_experimental_dump_fdo_profiles),
