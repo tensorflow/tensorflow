@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace details {
