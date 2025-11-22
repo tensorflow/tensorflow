@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/common/case_format.h"
 
-#include <cctype>
+#include <string>
 
 #include "absl/strings/ascii.h"
 #include "tensorflow/core/platform/types.h"
