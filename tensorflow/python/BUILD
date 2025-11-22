@@ -10,19 +10,7 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load(
-    "//tensorflow:tensorflow.bzl",
-    "VERSION",
-    "cc_header_only_library",
-    "if_google",
-    "if_nccl",
-    "if_oss",
-    "if_windows",
-    "if_xla_available",
-    "tf_enable_mlir_bridge",
-    "tf_python_pybind_static_deps",
-    "tsl_async_value_deps",
-)
+load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "if_google", "if_nccl", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_openmp_deps", "tf_python_pybind_static_deps", "tsl_async_value_deps")
 load(
     "//tensorflow:tensorflow.default.bzl",
     "get_compatible_with_portable",
@@ -1580,6 +1568,13 @@ pywrap_library(
                 "-ldl",
                 "-lm",
             ],
+            "//tensorflow:linux_aarch64_with_mkl": [
+                "-z defs",
+                "-lpthread",
+                "-ldl",
+                "-lm",
+                #"-lomp",  # OpenMP requires explicit linking when using Hermetic C++
+            ],
             "//conditions:default": [
                 "-z defs",
                 "-lpthread",
@@ -1688,7 +1683,7 @@ pywrap_library(
         "//tensorflow/python/util:_tf_stack",
         "//tensorflow/python/util:fast_module_type",
         "//tensorflow/python/util:pywrap_xla_ops",
-    ],
+    ] + tf_openmp_deps(),
 )
 
 pywrap_common_library(
