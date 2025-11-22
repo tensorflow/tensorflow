@@ -102,7 +102,8 @@ struct SerializeIfrtIRProgramOptions
 // deserialization will use the provided MLIR context and the returned program
 // will not own a MLIR context.
 struct DeserializeIfrtIRProgramOptions
-    : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions, DeserializeOptions> {
+    : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions,
+                        DeserializeExecutableOptions> {
   explicit DeserializeIfrtIRProgramOptions(mlir::MLIRContext* context)
       : context(context) {}
 
