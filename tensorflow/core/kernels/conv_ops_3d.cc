@@ -65,7 +65,7 @@ template <typename Device, typename T>
 class Conv3DOp : public BinaryOp<T> {
  public:
   explicit Conv3DOp(OpKernelConstruction* context) : BinaryOp<T>(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -175,8 +175,8 @@ class Conv3DOp : public BinaryOp<T> {
   }
 
  private:
-  std::vector<int32> dilation_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> dilation_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
   bool cudnn_use_autotune_;
