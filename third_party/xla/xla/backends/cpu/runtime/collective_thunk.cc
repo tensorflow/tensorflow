@@ -153,6 +153,11 @@ CollectiveThunk::GetOpDeviceMemory(const ExecuteParams& params) {
 }
 
 absl::Duration CollectiveThunk::DefaultCollectiveTimeout() {
+  static const int64_t timeout =
+      xla::GetDebugOptionsFromFlags().xla_cpu_collective_timeout_seconds();
+  if (timeout > 0) {
+    return absl::Seconds(timeout);
+  }
   return absl::Minutes(30);
 }
 
