@@ -33,6 +33,13 @@ message SerializedXlaExecutableVersion {
   bytes runtime_abi_version = 3;
 }
 
+// The type of the program executable that is serialized.
+enum SerializedXlaExecutableType {
+  SERIALIZED_XLA_EXECUTABLE_TYPE_UNSPECIFIED = 0;
+  SERIALIZED_XLA_EXECUTABLE_TYPE_IFRT_XLA = 1;
+  SERIALIZED_XLA_EXECUTABLE_TYPE_IFRT_IR = 2;
+}
+
 // This is the definition of a standard format for serializing XLA executables
 // in IFRT in a way that is portable across IFRT runtimes that support XLA.
 //
@@ -61,6 +68,9 @@ message SerializedXlaExecutableMetadata {
 
   // IFRT version
   int32 ifrt_version_number = 1;
+
+  // Program Type
+  SerializedXlaExecutableType executable_type = 10;
 
   // The runtime ABI version at the time this executable was created.
   SerializedXlaExecutableVersion executable_version = 9;
