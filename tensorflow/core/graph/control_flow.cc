@@ -27,7 +27,7 @@ namespace tensorflow {
 namespace {
 // Information about a loop frame structure.
 struct Frame {
-  string name;
+  std::string name;
 
   // Pointer to the parent frame. The root frame has a pointer to itself.
   Frame* parent = nullptr;
@@ -40,7 +40,7 @@ struct Frame {
 // Verify that the ControlFlowInfo of the graph has valid loop structure.
 absl::Status ValidateControlFlowInfo(
     const Graph* graph, const std::vector<ControlFlowInfo>& cf_info) {
-  std::unordered_map<string, Frame> frames;
+  std::unordered_map<std::string, Frame> frames;
   for (const Node* node : graph->op_nodes()) {
     const ControlFlowInfo& cf = cf_info[node->id()];
     if (!cf.frame || !cf.parent_frame) {
@@ -85,7 +85,7 @@ absl::Status ValidateControlFlowInfo(
 
 absl::Status BuildControlFlowInfo(const Graph* g,
                                   std::vector<ControlFlowInfo>* info,
-                                  std::vector<string>* unreachable_nodes) {
+                                  std::vector<std::string>* unreachable_nodes) {
   info->clear();
   info->resize(g->num_node_ids());
 
@@ -97,7 +97,7 @@ absl::Status BuildControlFlowInfo(const Graph* g,
   src_info.frame = src_node;
   src_info.parent_frame = src_node;
 
-  string frame_name;
+  std::string frame_name;
   std::deque<const Node*> ready;
   ready.push_back(src_node);
   while (!ready.empty()) {
@@ -135,7 +135,8 @@ absl::Status BuildControlFlowInfo(const Graph* g,
       // Process the node 'out'.
       if (IsEnter(out)) {
         if (is_visited) {
-          const string& parent_frame = (*info)[out_parent->id()].frame_name;
+          const std::string& parent_frame =
+              (*info)[out_parent->id()].frame_name;
           if (parent_frame != frame_name) {
             return errors::InvalidArgument(
                 FormatNodeForError(*out),
