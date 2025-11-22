@@ -211,6 +211,9 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
     std::vector<PJRT_Buffer*> raw_buffers;
     std::vector<xla::PjRtGlobalDeviceId> dst_device_ids;
     std::vector<xla::CrossHostTransferKey> transfer_keys;
+    raw_buffers.reserve(num_arrays);
+    dst_device_ids.reserve(num_arrays);
+    transfer_keys.reserve(num_arrays);
     for (int i = 0; i < num_arrays; ++i) {
       // Create buffers to send.
       std::vector<float> data = {1, 2, 3, 4, 5, 6 * static_cast<float>(i)};
@@ -287,6 +290,13 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
     std::vector<const int64_t*> num_dims;
     std::vector<PJRT_Buffer_Type> element_types;
     std::vector<PJRT_Buffer_MemoryLayout*> layouts;
+    shapes.reserve(num_arrays);
+    src_device_ids.reserve(num_arrays);
+    transfer_keys.reserve(num_arrays);
+    shape_num_dims.reserve(num_arrays);
+    num_dims.reserve(num_arrays);
+    element_types.reserve(num_arrays);
+    layouts.reserve(num_arrays);
     xla::PjRtGlobalDeviceId dst_device_id =
         GetClientAddressableDevices(create_arg.client, api)[0]
             ->device->global_device_id();
