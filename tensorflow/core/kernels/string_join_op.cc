@@ -72,7 +72,7 @@ class StringJoinOp : public OpKernel {
   }
 
  private:
-  string separator_;
+  std::string separator_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("StringJoin").Device(DEVICE_CPU), StringJoinOp);
