@@ -2950,8 +2950,9 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
   // We perform the following steps on the original tile assignment:
   // 1. Expand target dims: [8,8,16]->[2,4,2,4,16]
   // 2. Transpose to make target dims minor: [2,4,2,4,16]->[2,2,16,4,4] with
-  // (0,1,2,3,4) -> (0,2,4,1,3)
-  // 3. Reshape to get groups of size 16: [2,4,16,2,4]->[2,2,16,16]
+  //    (0,1,2,3,4) -> (0,2,4,1,3)
+  // 3. Reshape to [num_replica_groups, num_devices_per_group]:
+  //    [2,2,16,4,4]->[2x2x16, 4x4].
   int64_t total_group_size = std::accumulate(
       group_sizes.begin(), group_sizes.end(), 1, std::multiplies<int64_t>());
   int64_t num_replica_groups =
@@ -3002,13 +3003,11 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
     return std::nullopt;
   }
 
-  // Step 3: Final reshape to get groups of size total_group_size. This is done
-  // implicitly by creating an IotaReplicaGroupList with num_replica_groups,
-  // total_group_size.
-  IotaReplicaGroupList groups(
-      num_replica_groups, total_group_size,
-      tranposed_tile_assignment.value().reshape_dims(),
-      tranposed_tile_assignment.value().transpose_perm());
+  // Step 3: Final reshape to [num_replica_groups, num_devices_per_group]. This
+  // is done implicitly by creating an IotaReplicaGroupList.
+  IotaReplicaGroupList groups(num_replica_groups, total_group_size,
+                              tranposed_tile_assignment->reshape_dims(),
+                              tranposed_tile_assignment->transpose_perm());
   return groups;
 }
 
@@ -3069,16 +3068,16 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsForReplication(
 // Expands partition group list across all replicas. Expects that provided
 // partition group list utilizes all the partitions.
 CollectiveDeviceList ExpandPartitionGroupListAcrossReplicas(
-    IotaReplicaGroupList partition_group_list, int num_replicas,
-    int num_partitions) {
-  int partition_group_count = partition_group_list.num_replica_groups();
-  int partition_group_size = partition_group_list.num_devices_per_group();
+    IotaReplicaGroupList partition_group_list, int64_t num_replicas,
+    int64_t num_partitions) {
+  int64_t partition_group_count = partition_group_list.num_replica_groups();
+  int64_t partition_group_size = partition_group_list.num_devices_per_group();
   // Verify that partition group list utilizes all partitions.
   CHECK_EQ((partition_group_count * partition_group_size), num_partitions);
 
   // Total number of replica groups is number of partitions groups * num of
   // replicas.
-  int replica_group_count = partition_group_count * num_replicas;
+  int64_t replica_group_count = partition_group_count * num_replicas;
 
   // Newly generated replica group list expands the pattern within one replica
   // across all replicas. For example, if we want to expand a partition group
