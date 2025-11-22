@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/image/sampling_kernels.h"
 
-#include <string>
-
+#include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
