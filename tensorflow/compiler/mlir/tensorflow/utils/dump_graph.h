@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/status/status.h"
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"

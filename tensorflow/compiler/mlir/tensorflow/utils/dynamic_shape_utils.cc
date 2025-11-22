@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 
+#include <cstdint>
+
 #include "llvm/ADT/SmallVector.h"
 
 namespace tensorflow {

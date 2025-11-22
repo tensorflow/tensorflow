@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
