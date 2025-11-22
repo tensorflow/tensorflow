@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/error_spec.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -722,7 +721,6 @@ ENTRY entry {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
 
   auto backend_config_or =
       triton_dot_fusion->backend_config<GpuBackendConfig>();
@@ -747,12 +745,12 @@ ENTRY entry {
   block_level_parameters.num_stages = 4;
   block_level_parameters.num_warps = 8;
 
-  EXPECT_THAT(TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(),
-                            dev_info, block_level_parameters, &llvm_module,
-                            symbolic_expr_context),
-              absl_testing::StatusIs(
-                  tsl::error::RESOURCE_EXHAUSTED,
-                  ::testing::HasSubstr("Shared memory size limit exceeded")));
+  EXPECT_THAT(
+      TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
+                    block_level_parameters, &llvm_module, mlir_context),
+      absl_testing::StatusIs(
+          tsl::error::RESOURCE_EXHAUSTED,
+          ::testing::HasSubstr("Shared memory size limit exceeded")));
 
   config.set_block_m(64);
   config.set_block_n(128);
@@ -763,8 +761,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
       TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
-                    block_level_parameters, &llvm_module,
-                    symbolic_expr_context));
+                    block_level_parameters, &llvm_module, mlir_context));
   // Use optin shared memory which is > shared_memory_per_block.
   EXPECT_GT(result.shmem_bytes, dev_info.shared_memory_per_block());
 }
@@ -1319,7 +1316,6 @@ ENTRY entry {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
 
   auto backend_config_or =
       triton_dot_fusion->backend_config<GpuBackendConfig>();
@@ -1343,12 +1339,12 @@ ENTRY entry {
   block_level_parameters.num_ctas = 1;
   block_level_parameters.num_stages = 1;
   block_level_parameters.num_warps = 2;
-  EXPECT_THAT(TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(),
-                            dev_info, block_level_parameters, &llvm_module,
-                            symbolic_expr_context),
-              absl_testing::StatusIs(
-                  tsl::error::RESOURCE_EXHAUSTED,
-                  "Tiling complexity heuristic exceeded: 147456 > 9000"));
+  EXPECT_THAT(
+      TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
+                    block_level_parameters, &llvm_module, mlir_context),
+      absl_testing::StatusIs(
+          tsl::error::RESOURCE_EXHAUSTED,
+          "Tiling complexity heuristic exceeded: 147456 > 9000"));
 
   // Succeeds if the tiling is not too complex.
   config.set_block_m(32);
@@ -1358,7 +1354,7 @@ ENTRY entry {
 
   TF_ASSERT_OK(TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(),
                              dev_info, block_level_parameters, &llvm_module,
-                             symbolic_expr_context)
+                             mlir_context)
                    .status());
 }
 
@@ -1898,7 +1894,6 @@ ENTRY e  {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto gpu_config, triton_dot_fusion->backend_config<GpuBackendConfig>());
@@ -1911,7 +1906,7 @@ ENTRY e  {
 
   TF_ASSERT_OK(TritonWrapper("test_fn", triton_dot_fusion, GpuComputeComp(),
                              dev_info, block_level_parameters, &llvm_module,
-                             symbolic_expr_context)
+                             mlir_context)
                    .status());
 }
 
@@ -3092,7 +3087,6 @@ ENTRY e {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto gpu_config, triton_dot_fusion->backend_config<GpuBackendConfig>());
@@ -3105,8 +3099,7 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
       TritonWrapper("test_fn", triton_dot_fusion, GpuComputeComp(), dev_info,
-                    block_level_parameters, &llvm_module,
-                    symbolic_expr_context));
+                    block_level_parameters, &llvm_module, mlir_context));
   // The config is chosen so that the used memory size is slightly above the
   // 48 kB boundary of standard / optin shared memory so that any GPU that
   // has the optin one should be able to execute the test.

@@ -43,6 +43,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using ::mlir::MLIRContext;
+
 using KernelEmitter = emitters::ConcatenateFusionKernelEmitter;
 
 ConcatenateFusion::ConcatenateFusion(const HloFusionAnalysis& analysis)
@@ -59,13 +61,13 @@ LaunchDimensions ConcatenateFusion::launch_dimensions() const {
 }
 
 std::optional<IndexingMap> ConcatenateFusion::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, SymbolicExprContext* ctx) const {
+    int64_t root_index, MLIRContext* ctx) const {
   return std::nullopt;
 }
 
 std::optional<std::vector<IndexingMap>>
-ConcatenateFusion::ComputeThreadIdToInputIndexing(
-    int64_t root_index, SymbolicExprContext* ctx) const {
+ConcatenateFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
+                                                  MLIRContext* ctx) const {
   IndexingMap map_for_largest_shape =
       KernelEmitter::ComputeWorkItemIdToOutputIndexing(GetWorkDimensions(),
                                                        largest_shape_, ctx);
@@ -81,9 +83,8 @@ ConcatenateFusion::CreateMLIRModule(
     mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
   emitters::ConcatenateFusionKernelEmitter emitter(
-      symbolic_expr_context, fusion, analysis_.fusion_spec(), buffer_assignment,
+      mlir_context, fusion, analysis_.fusion_spec(), buffer_assignment,
       GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,
       BackendKind::kGpu);
 

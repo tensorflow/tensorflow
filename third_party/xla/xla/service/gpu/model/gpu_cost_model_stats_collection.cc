@@ -125,8 +125,7 @@ absl::StatusOr<bool> GpuCostModelStatsCollection::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Scan all computations for fusion instructions.
 
-  GpuPerformanceModelOwning gpu_performance_model{device_info_,
-                                                  symbolic_expr_context_};
+  GpuPerformanceModelOwning gpu_performance_model{device_info_, mlir_context_};
   for (auto* computation : module->MakeComputationPostOrder()) {
     TF_CHECK_OK(computation->Accept(&cost_analysis_));
 

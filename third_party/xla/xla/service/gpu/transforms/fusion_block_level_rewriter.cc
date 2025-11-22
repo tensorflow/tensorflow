@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/MathExtras.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -164,7 +163,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     HloFusionInstruction* fusion_instruction,
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size,
-    SymbolicExprContext* symbolic_expr_context) {
+    mlir::MLIRContext* mlir_context) {
   TF_ASSIGN_OR_RETURN(bool should_try_rewrite,
                       ShouldTryRewriteFusion(fusion_instruction, device_info));
   if (!should_try_rewrite) {
@@ -195,7 +194,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
 
   HloFusionAnalysisCache fusion_analysis_cache(device_info);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
-      &device_info, &fusion_analysis_cache, shape_size, symbolic_expr_context);
+      &device_info, &fusion_analysis_cache, shape_size, mlir_context);
 
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       Cast<HloFusionInstruction>(fusion_instruction));
@@ -252,9 +251,9 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::RunImpl(
     }
     HloFusionInstruction* fusion_instruction =
         ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction());
-    TF_ASSIGN_OR_RETURN(bool changed, ProcessFusionInstruction(
-                                          fusion_instruction, device_info_,
-                                          shape_size_, symbolic_expr_context_));
+    TF_ASSIGN_OR_RETURN(
+        bool changed, ProcessFusionInstruction(fusion_instruction, device_info_,
+                                               shape_size_, mlir_context_));
 
     has_changed |= changed;
   }

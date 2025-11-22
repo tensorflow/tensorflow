@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/custom_kernel.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -163,7 +162,6 @@ class FissionTest : public HloHardwareIndependentTestBase,
   std::unique_ptr<GpuCodegenBackend> base_codegen_backend_;
   std::unique_ptr<FissionBackend> fission_backend_;
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 
   FissionTest()
       : stream_executor_(PlatformUtil::GetDefaultPlatform()
@@ -178,7 +176,7 @@ class FissionTest : public HloHardwareIndependentTestBase,
         fission_backend_(std::make_unique<FissionBackend>(
             &debug_options_, &compiler_, &target_config_,
             std::move(base_codegen_backend_), std::move(rewriter_pipeline_),
-            &symbolic_expr_context_, stream_executor_)) {}
+            &mlir_context_, stream_executor_)) {}
 };
 
 TEST_P(FissionTest, CanCreateFissionBackend) {

@@ -123,7 +123,7 @@ class GpuCompilerTest : public HloTestBase {
     std::unique_ptr<GpuAliasInfo> alias_info =
         gpu_compiler->GetAliasInfo(gpu_device_info);
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, 4, gpu_device_info,
-                                         gpu_compiler->symbolic_expr_context(),
+                                         gpu_compiler->mlir_context(),
                                          alias_info.get())
                            .status());
     return gpu_compiler->RunPostSchedulingPipelines(

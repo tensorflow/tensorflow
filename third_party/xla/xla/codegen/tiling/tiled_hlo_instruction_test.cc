@@ -40,7 +40,6 @@ using ::tsl::testing::IsOk;
 class TiledHloInstructionTest : public HloHardwareIndependentTestBase {
  public:
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(TiledHloInstructionTest, TileSizesAndStridesShouldMatchHloShapeRank) {
@@ -50,7 +49,7 @@ TEST_F(TiledHloInstructionTest, TileSizesAndStridesShouldMatchHloShapeRank) {
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",
-                     &symbolic_expr_context_),
+                     &mlir_context_),
       /*dim_upper_bounds=*/{8},
       /*symbol_upper_bounds=*/{});
 
@@ -78,7 +77,7 @@ TEST_F(TiledHloInstructionTest,
       ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0) -> (2 * d0)", &symbolic_expr_context_),
+      ParseAffineMap("(d0) -> (2 * d0)", &mlir_context_),
       /*dim_upper_bounds=*/{2},
       /*symbol_upper_bounds=*/{});
 
@@ -93,7 +92,7 @@ TEST_F(TiledHloInstructionTest,
           "must have the same number of results as the rank of the hlo shape"));
 
   IndexingMap tile_offsets_indexing2 = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0, d1) -> (d0, d1)", &symbolic_expr_context_),
+      ParseAffineMap("(d0, d1) -> (d0, d1)", &mlir_context_),
       /*dim_upper_bounds=*/{8, 4},
       /*symbol_upper_bounds=*/{});
 
@@ -120,12 +119,12 @@ TEST_F(TiledHloInstructionTest,
           /*tile_sizes=*/{16},
           /*tile_strides=*/{1},
           IndexingMap::FromTensorSizes(
-              ParseAffineMap("(d0) -> (d0)", &symbolic_expr_context_),
+              ParseAffineMap("(d0) -> (d0)", &mlir_context_),
               /*dim_upper_bounds=*/{4},
               /*symbol_upper_bounds=*/{})));
 
   IndexingMap indexing_map(
-      ParseAffineMap("(d0)[rt0] -> (d0 + rt0)", &symbolic_expr_context_),
+      ParseAffineMap("(d0)[rt0] -> (d0 + rt0)", &mlir_context_),
       /*dimensions=*/
       {IndexingMap::Variable{0, 32, "d0"}},
       /*range_vars=*/{},

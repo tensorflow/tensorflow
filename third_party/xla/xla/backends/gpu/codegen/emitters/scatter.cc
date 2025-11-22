@@ -361,17 +361,16 @@ Value EmitterHelper::GetElement(ImplicitLocOpBuilder& b, int operand_index,
 
 ScatterFusion::ScatterFusion(const HloFusionAnalysis& analysis,
                              const ScatterDescription& description,
-                             int64_t vector_size,
-                             SymbolicExprContext* symbolic_expr_context)
+                             int64_t vector_size, MLIRContext* mlir_context)
     : analysis_(analysis),
       description_(description),
-      symbolic_expr_context_(symbolic_expr_context),
+      mlir_context_(mlir_context),
       warp_size_(WarpSize(analysis_.device_info())),
       vector_size_(vector_size) {}
 
 std::optional<std::vector<IndexingMap>>
 ScatterFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
-                                              SymbolicExprContext* ctx) const {
+                                              MLIRContext* ctx) const {
   CHECK(ScatterSimplifier::IsSimplifiedScatter(description_.scatter))
       << "Non-simplified HLO Scatter is not supported.";
 
@@ -396,19 +395,18 @@ ScatterFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
 }
 
 std::vector<emitters::EpilogueSpecification> ScatterFusion::GetEpilogues(
-    const HloFusionInstruction& fusion,
-    SymbolicExprContext* symbolic_expr_context) const {
+    const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
   // We don't actually support epilogues for scatter, but this is how we tell
   // the base class that we don't want it to generate code for the scatter.
   return {emitters::EpilogueSpecification::FromIdentityIndexing(
       &analysis_.fusion_hero(0).instruction(),
-      &analysis_.fusion_root(0).instruction(), symbolic_expr_context)};
+      &analysis_.fusion_root(0).instruction(), mlir_context)};
 }
 
 ScatterWithDistributedUpdates::ScatterWithDistributedUpdates(
     const HloFusionAnalysis& analysis, const ScatterDescription& description,
-    int64_t vector_size, SymbolicExprContext* symbolic_expr_context)
-    : ScatterFusion(analysis, description, vector_size, symbolic_expr_context) {
+    int64_t vector_size, MLIRContext* mlir_context)
+    : ScatterFusion(analysis, description, vector_size, mlir_context) {
   // We have to make sure that there is no thread that processes elements of
   // two different update slice.
   auto launch_dimensions = CalculateLaunchDimensions(
@@ -421,23 +419,22 @@ ScatterWithDistributedUpdates::ScatterWithDistributedUpdates(
 }
 
 void ScatterWithDistributedUpdates::ComputeIndexing(
-    SymbolicExprContext* symbolic_expr_context, IndexingMap* updates_map,
+    MLIRContext* mlir_context, IndexingMap* updates_map,
     IndexingMap* indices_map) const {
   // Compute thread id mapping based on the first update operand.
-  IndexingMap scatter_update_map = GetDefaultThreadIdIndexingMap(
-      launch_dimensions(), vector_size_, description_.update_shape,
-      symbolic_expr_context);
+  IndexingMap scatter_update_map =
+      GetDefaultThreadIdIndexingMap(launch_dimensions(), vector_size_,
+                                    description_.update_shape, mlir_context);
 
   // For scatter indices we project indexing for scatter updates and take the
   // first result of the affine map only, because they coincide.
   if (indices_map) {
     // Create a map from scatter update to scatter indices.
     *indices_map = IndexingMap{
-        AffineMap::get(
-            6, 1,
-            {scatter_update_map.GetAffineMap().getResult(0),
-             getAffineSymbolExpr(0, symbolic_expr_context->GetMLIRContext())},
-            symbolic_expr_context->GetMLIRContext()),
+        AffineMap::get(6, 1,
+                       {scatter_update_map.GetAffineMap().getResult(0),
+                        getAffineSymbolExpr(0, mlir_context)},
+                       mlir_context),
         DimVarsFromGPUGrid({num_warps_ * warp_size_, 1, 1, num_blocks_, 1, 1}),
         RangeVarsFromTensorSizes({description_.index_vector_length}),
         /*rt_vars=*/{}};
@@ -463,7 +460,7 @@ absl::Status ScatterFusion::EmitEntryFunction(
 
   IndexingMap updates_map = IndexingMap::GetUndefined();
   IndexingMap indices_map = IndexingMap::GetUndefined();
-  ComputeIndexing(symbolic_expr_context_, &updates_map, &indices_map);
+  ComputeIndexing(mlir_context_, &updates_map, &indices_map);
   updates_map.Simplify();
 
   return EmitEntryFunctionImpl(b, helper, updates_map, indices_map,
@@ -552,8 +549,8 @@ ScatterWithDistributedIndices::ScatterWithDistributedIndices(
     const HloFusionAnalysis& analysis, const ScatterDescription& description,
     int64_t vector_size, int64_t num_warps_per_slice,
     int64_t num_indices_per_warp, int64_t indices_vector_size,
-    SymbolicExprContext* symbolic_expr_context)
-    : ScatterFusion(analysis, description, vector_size, symbolic_expr_context),
+    MLIRContext* mlir_context)
+    : ScatterFusion(analysis, description, vector_size, mlir_context),
       num_warps_per_slice_(num_warps_per_slice),
       num_indices_per_warp_(num_indices_per_warp),
       indices_vector_size_(indices_vector_size) {
@@ -563,9 +560,8 @@ ScatterWithDistributedIndices::ScatterWithDistributedIndices(
 }
 
 void ScatterWithDistributedIndices::ComputeIndexing(
-    SymbolicExprContext* symbolic_expr_context, IndexingMap* updates_map,
+    MLIRContext* mlir_context, IndexingMap* updates_map,
     IndexingMap* indices_map) const {
-  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
   // Compute thread id mapping based on the first update operand.
   auto thread_x = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
@@ -887,8 +883,7 @@ int64_t GetNumPossibleValidIndices(absl::Span<const int64_t> slice_shape,
 }
 
 std::unique_ptr<ScatterFusion> CreateScatterFusion(
-    const HloFusionAnalysis& analysis,
-    SymbolicExprContext* symbolic_expr_context) {
+    const HloFusionAnalysis& analysis, MLIRContext* mlir_context) {
   auto description = GetScatterDescription(analysis);
   int64_t warp_size = WarpSize(analysis.device_info());
   int64_t num_elements_per_slice = Product(description.slice_shape);
@@ -938,7 +933,7 @@ std::unique_ptr<ScatterFusion> CreateScatterFusion(
     }
     return std::make_unique<ScatterWithDistributedIndices>(
         analysis, description, vector_size, num_warps_per_slice,
-        num_indices_per_warp, indices_vector_size, symbolic_expr_context);
+        num_indices_per_warp, indices_vector_size, mlir_context);
   }
   // Otherwise, we distribute the linearized updates tensor.
   vector_size =
@@ -946,7 +941,7 @@ std::unique_ptr<ScatterFusion> CreateScatterFusion(
                ComputeLoopFusionConfig(analysis, description.update_shape)
                    .unroll_factor);
   return std::make_unique<ScatterWithDistributedUpdates>(
-      analysis, description, vector_size, symbolic_expr_context);
+      analysis, description, vector_size, mlir_context);
 }
 
 }  // namespace gpu

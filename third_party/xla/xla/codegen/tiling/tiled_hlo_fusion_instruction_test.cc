@@ -37,7 +37,6 @@ using ::testing::HasSubstr;
 class TiledHloFusionInstructionTest : public HloHardwareIndependentTestBase {
  public:
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(TiledHloFusionInstructionTest,
@@ -48,7 +47,7 @@ TEST_F(TiledHloFusionInstructionTest,
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",
-                     &symbolic_expr_context_),
+                     &mlir_context_),
       /*dim_upper_bounds=*/{8},
       /*symbol_upper_bounds=*/{});
 

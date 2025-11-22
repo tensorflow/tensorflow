@@ -123,7 +123,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::RunHloPasses(
   // TODO: b/407494653 - Get rid of PriorityFusion.
   PriorityFusion priority_fusion(
       /*thread_pool=*/nullptr, target_config().device_description,
-      priority_fusion_options, symbolic_expr_context_);
+      priority_fusion_options, mlir_context_);
   TF_RETURN_IF_ERROR(priority_fusion.Run(module.get()).status());
   return module;
 }

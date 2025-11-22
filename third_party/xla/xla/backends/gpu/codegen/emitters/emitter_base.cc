@@ -368,9 +368,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
                           GetDefaultBufferAlignment(), entry_function_name));
   SetBackendKind(&mlir_context, entry_func, BackendKind::kGpu);
 
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
-  TF_RETURN_IF_ERROR(
-      EmitMlir(module.get(), entry_func, fusion, symbolic_expr_context));
+  TF_RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion, mlir_context));
   return module;
 }
 
@@ -378,7 +376,7 @@ emitters::EpilogueSpecification EmitterBase::GetEpilogueForOutputIndexing(
     const HloFusionAnalysis& analysis,
     const std::vector<const HloInstruction*>& heroes,
     const std::vector<const HloInstruction*>& roots,
-    SymbolicExprContext* symbolic_expr_context) const {
+    MLIRContext* mlir_context) const {
   emitters::EpilogueSpecification result;
 
   absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
@@ -394,8 +392,8 @@ emitters::EpilogueSpecification EmitterBase::GetEpilogueForOutputIndexing(
 
   result.root_indexing.reserve(roots.size());
   for (auto* root : roots) {
-    auto indexing = ComputeThreadIdToOutputIndexing(root_to_index[root],
-                                                    symbolic_expr_context);
+    auto indexing =
+        ComputeThreadIdToOutputIndexing(root_to_index[root], mlir_context);
     if (result.index_ranges.empty()) {
       result.index_ranges.reserve(indexing->GetDimensionCount() +
                                   indexing->GetSymbolCount());
@@ -408,8 +406,7 @@ emitters::EpilogueSpecification EmitterBase::GetEpilogueForOutputIndexing(
     }
     auto* hero = root_to_hero[root];
     auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(
-        {*hero, &analysis.fusion()}, {*root, &analysis.fusion()},
-        symbolic_expr_context);
+        {*hero, &analysis.fusion()}, {*root, &analysis.fusion()}, mlir_context);
     result.root_indexing.push_back(
         ComposeIndexingMaps(*indexing, epilogue_indexing));
   }
@@ -436,15 +433,13 @@ mlir::DialectRegistry EmitterBase::GetDialectRegistry() {
   return registry;
 }
 
-absl::Status EmitterBase::EmitMlir(
-    mlir::ModuleOp module, FuncOp entry_function,
-    const HloFusionInstruction& fusion,
-    SymbolicExprContext& symbolic_expr_context) const {
+absl::Status EmitterBase::EmitMlir(mlir::ModuleOp module, FuncOp entry_function,
+                                   const HloFusionInstruction& fusion,
+                                   MLIRContext& mlir_context) const {
   std::vector<emitters::EpilogueSpecification> epilogues =
-      GetEpilogues(fusion, &symbolic_expr_context);
+      GetEpilogues(fusion, &mlir_context);
   emitters::PartitionedComputations computations(
-      fusion.fused_instructions_computation(), &symbolic_expr_context,
-      epilogues);
+      fusion.fused_instructions_computation(), &mlir_context, epilogues);
 
   TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
                                              module, computations));

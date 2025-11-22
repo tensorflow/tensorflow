@@ -37,18 +37,15 @@ namespace gpu {
 // Generic loop fusion. Lowers to LLVM via MLIR.
 class LoopFusion final : public EmitterBase {
  public:
-  LoopFusion(const HloFusionAnalysis& analysis,
-             SymbolicExprContext* symbolic_expr_context)
+  LoopFusion(const HloFusionAnalysis& analysis, mlir::MLIRContext* mlir_context)
       : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index,
-      SymbolicExprContext* symbolic_expr_context) const override;
+      int64_t root_index, mlir::MLIRContext* mlir_context) const override;
 
   std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
-      int64_t root_index,
-      SymbolicExprContext* symbolic_expr_context) const override;
+      int64_t root_index, mlir::MLIRContext* mlir_context) const override;
 
  private:
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(

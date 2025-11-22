@@ -77,14 +77,14 @@ class KernelFusionInterface : public FusionInterface {
   // unsupported (scatter, in-place DUS). Implementations will return nullopt.
   // Note: Work in progress, not implemented for all emitters.
   virtual std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, SymbolicExprContext* ctx) const = 0;
+      int64_t root_index, mlir::MLIRContext* ctx) const = 0;
 
   // Computes indexing maps from thread id to input elements of the root's
   // **hero**. Note that in many cases this is not computable from the output
   // indexing. The indexing may only be known for some operands of the hero.
   virtual std::optional<std::vector<IndexingMap>>
   ComputeThreadIdToInputIndexing(int64_t root_index,
-                                 SymbolicExprContext* ctx) const = 0;
+                                 mlir::MLIRContext* ctx) const = 0;
 
   static constexpr std::array<int, 3> kIndexingMapThreadIdxDims = {0, 1, 2};
   static constexpr std::array<int, 3> kIndexingMapBlockIdxDims = {3, 4, 5};
@@ -96,7 +96,7 @@ class KernelFusionInterface : public FusionInterface {
   // block sizes in the given launch dimensions.
   static IndexingMap GetDefaultThreadIdIndexingMap(
       const LaunchDimensions& launch_dims, int unroll_factor,
-      const Shape& shape, SymbolicExprContext* ctx);
+      const Shape& shape, mlir::MLIRContext* ctx);
 };
 
 absl::StatusOr<llvm::Function*> BuildKernelPrototype(

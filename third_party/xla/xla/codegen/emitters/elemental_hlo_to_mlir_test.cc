@@ -97,7 +97,7 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
       epilogue_spec.push_back(epilogue_spec_fn(entry_computation));
     }
     PartitionedComputations partitioned_computations(
-        entry_computation, &symbolic_expr_context_, epilogue_spec);
+        entry_computation, &mlir_context_, epilogue_spec);
     auto fns = partitioned_computations.DeclareFunctions(module.get());
     auto entry_func = fns[&partitioned_computations
                                .FindPartitionedComputation(entry_computation)
@@ -113,13 +113,12 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
     auto call_targets = partitioned_computations.CreateCallTargetProvider(fns);
     TF_RETURN_IF_ERROR(
         SubgraphToMlirFunction(entry_pc, entry_pc.GetRootSubgraph(), entry_func,
-                               call_targets, &symbolic_expr_context_));
+                               call_targets, &mlir_context_));
 
     if (!partitioned_computations.epilogues().empty()) {
       const auto& epilogue = partitioned_computations.epilogues().front();
-      TF_RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, epilogue,
-                                                fns[&epilogue], call_targets,
-                                                &symbolic_expr_context_));
+      TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
+          entry_pc, epilogue, fns[&epilogue], call_targets, &mlir_context_));
     }
 
     // Canonicalize and CSE for better readability of check tests.
@@ -139,7 +138,6 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
   }
 
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(ElementalHloToMlirTest, Reduce) {

@@ -59,7 +59,7 @@ class TritonEmitterConstraintsTest : public HloHardwareIndependentTestBase {
             *module->entry_computation()
                  ->root_instruction()
                  ->fused_instructions_computation(),
-            &symbolic_expr_context_, constraints_builder);
+            &mlir_context_, constraints_builder);
 
     if (std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error)) {
       return std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
@@ -70,7 +70,6 @@ class TritonEmitterConstraintsTest : public HloHardwareIndependentTestBase {
   }
 
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
   se::DeviceDescription device_description_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
 };

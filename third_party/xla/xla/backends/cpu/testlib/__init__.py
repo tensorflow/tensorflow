@@ -29,7 +29,6 @@ LlvmTestKernelEmitter = _extension.LlvmTestKernelEmitter
 MLIRContext = _extension.MLIRContext
 MlirTestKernelEmitter = _extension.MlirTestKernelEmitter
 ScatterKernelEmitter = _extension.ScatterKernelEmitter
-SymbolicExprContext = _extension.SymbolicExprContext
 TargetMachineFeatures = _extension.TargetMachineFeatures
 # go/keep-sorted end
 

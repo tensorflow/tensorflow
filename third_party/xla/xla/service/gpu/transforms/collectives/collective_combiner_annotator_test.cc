@@ -47,11 +47,10 @@ class CollectiveCombinerAnnotatorTest : public HloHardwareIndependentTestBase {
     GpuAliasInfo alias_info(device_info);
     return RunHloPass(
         CollectiveCombinerAnnotator(std::move(device_info), &alias_info,
-                                    pointer_size, &symbolic_expr_context_),
+                                    pointer_size, &mlir_context_),
         module);
   }
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(CollectiveCombinerAnnotatorTest, SynchronousCollectivesNoOverlap) {

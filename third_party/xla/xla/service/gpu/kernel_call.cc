@@ -52,11 +52,10 @@ absl::StatusOr<KernelCall::KernelType> ParseKernelType(
   }
 }
 
-absl::StatusOr<KernelCall> KernelCall::Parse(
-    absl::string_view backend_config,
-    SymbolicExprContext* symbolic_expr_context) {
-  auto attrs = mlir::cast<mlir::DictionaryAttr>(mlir::parseAttribute(
-      backend_config, symbolic_expr_context->GetMLIRContext()));
+absl::StatusOr<KernelCall> KernelCall::Parse(absl::string_view backend_config,
+                                             mlir::MLIRContext* mlir_context) {
+  auto attrs = mlir::cast<mlir::DictionaryAttr>(
+      mlir::parseAttribute(backend_config, mlir_context));
 
   // Check for required "name" field
   auto name_attr = attrs.getAs<mlir::StringAttr>("name");

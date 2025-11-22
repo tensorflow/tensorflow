@@ -68,8 +68,6 @@ MATCHER_P(MatchIndexingString, indexing_string, "") {
 
 class IndexingTestBase : public HloHardwareIndependentTestBase {
  public:
-  IndexingTestBase() : symbolic_expr_context_(&mlir_context_) {}
-
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string);
 
   HloInstructionIndexing GetOutputToInputIndexing(
@@ -81,15 +79,14 @@ class IndexingTestBase : public HloHardwareIndependentTestBase {
       bool use_physical_layout = false);
 
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_;
   std::unique_ptr<VerifiedHloModule> module_;
 };
 
 mlir::AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
-                               SymbolicExprContext* symbolic_expr_context);
+                               mlir::MLIRContext* mlir_context);
 
 mlir::AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
-                                 SymbolicExprContext* symbolic_expr_context);
+                                 mlir::MLIRContext* mlir_context);
 
 // Safely evaluates the given expression, returning nullopt if the result is
 // undefined (due to undefined behavior, e.g. division by zero or overflow).

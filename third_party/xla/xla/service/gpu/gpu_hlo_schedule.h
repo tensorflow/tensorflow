@@ -57,7 +57,7 @@ uint64_t GetSchedulerMemoryLimit(const HloModule& module,
 absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,
     const se::DeviceDescription& gpu_device_info,
-    SymbolicExprContext* symbolic_expr_context, const GpuAliasInfo* alias_info);
+    mlir::MLIRContext* mlir_context, const GpuAliasInfo* alias_info);
 
 HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
 

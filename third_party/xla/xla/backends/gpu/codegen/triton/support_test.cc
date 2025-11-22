@@ -270,7 +270,7 @@ class TritonSupportTest : public TritonSupportTestBase {
     auto run_triton_codegen = [&]() {
       return TritonWrapper("test_fn", &ti.TritonFusion(), cc, dev_info,
                            block_level_parameters, &llvm_module_,
-                           symbolic_expr_context_);
+                           mlir_context_);
     };
 
     if (IsTritonSupportedInstruction(ti.Instruction(), cc)) {

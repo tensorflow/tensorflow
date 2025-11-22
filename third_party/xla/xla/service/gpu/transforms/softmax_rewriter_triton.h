@@ -51,12 +51,12 @@ class SoftmaxRewriterTriton : public HloModulePass {
  public:
   explicit SoftmaxRewriterTriton(const se::DeviceDescription& device_info,
                                  HloCostAnalysis::ShapeSizeFunction shape_size,
-                                 SymbolicExprContext* symbolic_expr_context,
+                                 mlir::MLIRContext* mlir_context,
                                  bool only_fuse_if_profitable = false)
       : device_info_(device_info),
         shape_size_(shape_size),
         use_cost_model_to_evaluate_fusions_(only_fuse_if_profitable),
-        symbolic_expr_context_(symbolic_expr_context) {}
+        mlir_context_(mlir_context) {}
 
   absl::string_view name() const override { return "triton-softmax-rewriter"; }
 
@@ -106,7 +106,7 @@ class SoftmaxRewriterTriton : public HloModulePass {
   const se::DeviceDescription& device_info_;
   const HloCostAnalysis::ShapeSizeFunction shape_size_;
   bool use_cost_model_to_evaluate_fusions_;
-  SymbolicExprContext* symbolic_expr_context_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

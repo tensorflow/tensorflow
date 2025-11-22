@@ -54,12 +54,11 @@ ENTRY main {
 )"));
 
   mlir::MLIRContext mlir_ctx;
-  SymbolicExprContext symbolic_expr_context(&mlir_ctx);
   auto fusion = module->entry_computation()->root_instruction();
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
 
   auto output_to_input_indexing = ComputeGroupedOutputToInputIndexing(
-      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &symbolic_expr_context);
+      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &mlir_ctx);
 
   HloInstruction* subtract = fusion->fused_expression_root();
   HloInstruction* p0 = subtract->mutable_operand(0)->mutable_operand(0);

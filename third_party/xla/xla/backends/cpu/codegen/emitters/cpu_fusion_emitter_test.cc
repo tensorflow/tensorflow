@@ -116,10 +116,7 @@ TEST_F(CpuFusionEmitterTest, ScatterMlir) {
   auto fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
   auto mlir_context = FusionCompiler::CreateContext();
-  auto symbolic_expr_context =
-      std::make_unique<SymbolicExprContext>(mlir_context.get());
-  CpuScatterFusion emitter(*buffer_assignment, fusion,
-                           symbolic_expr_context.get());
+  CpuScatterFusion emitter(*buffer_assignment, fusion, mlir_context.get());
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());
   const auto& mlir_source = kernel_definition.source();
@@ -147,10 +144,7 @@ TEST_F(CpuFusionEmitterTest, ScatterLlvm) {
   auto fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
   auto mlir_context = FusionCompiler::CreateContext();
-  auto symbolic_expr_context =
-      std::make_unique<SymbolicExprContext>(mlir_context.get());
-  CpuScatterFusion emitter(*buffer_assignment, fusion,
-                           symbolic_expr_context.get());
+  CpuScatterFusion emitter(*buffer_assignment, fusion, mlir_context.get());
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());
   FusionCompiler compiler(mlir_context.get(),

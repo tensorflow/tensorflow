@@ -37,8 +37,6 @@ namespace xla {
 
 absl::StatusOr<MlirKernelSource> MlirKernelSource::ParseFromString(
     absl::string_view ir, std::unique_ptr<mlir::MLIRContext> mlir_context) {
-  auto symbolic_expr_context =
-      std::make_unique<SymbolicExprContext>(mlir_context.get());
   llvm::SourceMgr source_mgr;
 
   std::string error_string;
@@ -57,7 +55,6 @@ absl::StatusOr<MlirKernelSource> MlirKernelSource::ParseFromString(
   }
 
   return MlirKernelSource(std::move(mlir_context),
-                          std::move(symbolic_expr_context),
                           std::move(mlir_module));
 }
 

@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -305,11 +304,9 @@ BlockLevelEmitterBackend::GetCostModelConfig(
     const HloInstruction& instr) const {
   auto device_info = target_config().device_description;
   HloFusionAnalysisCache fusion_analysis_cache(device_info);
-  mlir::MLIRContext ctx;
-  SymbolicExprContext symbolic_expr_context(&ctx);
+  mlir::MLIRContext mlir_context;
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
-      &device_info, &fusion_analysis_cache, shape_size_fn_,
-      &symbolic_expr_context);
+      &device_info, &fusion_analysis_cache, shape_size_fn_, &mlir_context);
 
   auto fusion_adaptor =
       HloFusionAdaptor::ForInstruction(Cast<HloFusionInstruction>(&instr));

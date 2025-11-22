@@ -79,7 +79,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    llvm::Module* llvm_module, SymbolicExprContext& symbolic_expr_context);
+    llvm::Module* llvm_module, mlir::MLIRContext& mlir_context);
 
 // Creates the initial Triton module for the given fusion. Visible for testing,
 // use TritonWrapper instead.
@@ -87,7 +87,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    SymbolicExprContext& symbolic_expr_context);
+    mlir::MLIRContext& mlir_context);
 
 // Compiles a given Triton module to LLVM IR.
 // If `emit_kernels` is false, then the function skips emitting
@@ -171,7 +171,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
     const HloFusionInstruction* fusion,
     const BlockLevelParameters& block_level_parameters,
-    SymbolicExprContext& symbolic_expr_context,
+    mlir::MLIRContext& mlir_context,
     std::optional<LegacyMatmulEmitter> legacy_matmul_emitter = std::nullopt);
 
 // This function lowers the shared dialect module to Triton. It is exposed for

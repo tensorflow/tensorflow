@@ -68,9 +68,8 @@ ENTRY entry_computation {
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
-  std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(
-      PreBufferAssignmentFusionInfo{analysis}, &symbolic_expr_context);
+  std::unique_ptr<FusionInterface> emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}, &mlir_context);
   auto triton_fusion = dynamic_cast<TritonFusion*>(emitter.get());
   ASSERT_NE(triton_fusion, nullptr);
   std::optional<TritonFusion::LaunchConfig> launch_config =
@@ -107,9 +106,8 @@ ENTRY entry_computation {
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
-  std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(
-      PreBufferAssignmentFusionInfo{analysis}, &symbolic_expr_context);
+  std::unique_ptr<FusionInterface> emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}, &mlir_context);
   auto triton_fusion_emitter = dynamic_cast<TritonFusion*>(emitter.get());
   ASSERT_NE(triton_fusion_emitter, nullptr);
   EXPECT_EQ(triton_fusion_emitter->GetLaunchConfig(), std::nullopt);
@@ -117,7 +115,7 @@ ENTRY entry_computation {
   // Ensure that the emitter fails gracefully when the launch config is not set.
   EXPECT_THAT(triton_fusion_emitter->GenerateTritonKernelAndWrapper(
                   *::xla::Cast<HloFusionInstruction>(root), "random_name",
-                  device_info, /*llvm_module=*/nullptr, &symbolic_expr_context),
+                  device_info, /*llvm_module=*/nullptr, &mlir_context),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
@@ -147,9 +145,8 @@ ENTRY entry_computation {
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
-  std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(
-      PreBufferAssignmentFusionInfo{analysis}, &symbolic_expr_context);
+  std::unique_ptr<FusionInterface> emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}, &mlir_context);
   auto triton_fusion = dynamic_cast<TritonFusion*>(emitter.get());
 
   ASSERT_NE(triton_fusion, nullptr);

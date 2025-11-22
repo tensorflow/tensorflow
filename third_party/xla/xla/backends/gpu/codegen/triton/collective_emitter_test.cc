@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -71,7 +70,6 @@ struct ModuleWithFusion {
 
 struct ModuleWithEmitter : public ModuleWithFusion {
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context{&mlir_context};
   std::optional<HloFusionAnalysis> analysis;
   std::unique_ptr<TritonFusion> emitter;
   llvm::LLVMContext llvm_context;
@@ -144,7 +142,7 @@ class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
         HloFusionAnalysis::Create(*result->FusionInstr(), device_info);
     std::unique_ptr<FusionInterface> fusion_emitter =
         GetFusionEmitter(PreBufferAssignmentFusionInfo{*result->analysis},
-                         &result->symbolic_expr_context);
+                         &result->mlir_context);
     TritonFusion* triton_emitter =
         dynamic_cast<TritonFusion*>(fusion_emitter.get());
     TF_RET_CHECK(triton_emitter != nullptr);
@@ -232,7 +230,7 @@ TEST_F(CollectiveEmitterTest, AllReduceWithTritonGenerateTritonKernel) {
       TritonWrapperResult triton_kernel,
       triton_fusion->GenerateTritonKernelAndWrapper(
           *result->FusionInstr(), "test-all-reduce-start", device_info_,
-          &result->llvm_module, &result->symbolic_expr_context));
+          &result->llvm_module, &result->mlir_context));
 }
 
 }  // namespace

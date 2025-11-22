@@ -142,7 +142,7 @@ ENTRY e {
       EXPECT_THAT(
           TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                         dev_info, block_level_parameters, &llvm_module_,
-                        symbolic_expr_context_),
+                        mlir_context_),
           absl_testing::StatusIs(
               absl::StatusCode::kInternal,
               ::testing::HasSubstr("Failed to compile Triton kernel")));
@@ -470,7 +470,7 @@ ENTRY e {
               .block_level_fusion_config());
   TF_EXPECT_OK(TritonWrapper(
       "test_fn", &ti.TritonFusion(), GetComputeCapability(), dev_info,
-      block_level_parameters, &llvm_module_, symbolic_expr_context_));
+      block_level_parameters, &llvm_module_, mlir_context_));
 }
 
 TEST_F(TritonSupportTestBase,

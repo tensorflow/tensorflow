@@ -164,24 +164,22 @@ absl::Status TransposeFusionBase::EmitEntryFunction(
 }
 
 std::vector<emitters::EpilogueSpecification> TransposeFusionBase::GetEpilogues(
-    const HloFusionInstruction& fusion,
-    SymbolicExprContext* symbolic_expr_context) const {
+    const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
   std::vector<emitters::EpilogueSpecification> epilogues{
       GetEpilogueForOutputIndexing(analysis_, shmem_transposes_,
-                                   shmem_transpose_roots_,
-                                   symbolic_expr_context)};
+                                   shmem_transpose_roots_, mlir_context)};
   // Add empty epilogues for the side outputs. This ensures their roots don't
   // get "fused" into the tuple function.
   for (const auto* root : side_output_roots_) {
     epilogues.push_back(emitters::EpilogueSpecification::FromIdentityIndexing(
-        root, root, symbolic_expr_context));
+        root, root, mlir_context));
   }
   return epilogues;
 }
 
 TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis,
-                                 SymbolicExprContext* symbolic_expr_context)
-    : TransposeFusionBase(analysis, symbolic_expr_context),
+                                 MLIRContext* mlir_context)
+    : TransposeFusionBase(analysis, mlir_context),
       transpose_(analysis.tiled_transpose()),
       permutation_(transpose_.permutation),
       input_shape_(
@@ -263,30 +261,29 @@ TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis,
 }
 
 std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, SymbolicExprContext* symbolic_expr_context) const {
+    int64_t root_index, MLIRContext* mlir_context) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
   if (!GetDescriptionForTiledTransposeEmitter(hero)) {
     // The shape of non-transpose roots are bitcast compatible with the input
     // shape of transpose heroes.
     return GetIndexing(/*input=*/true,
-                       analysis_.fusion_root(root_index).shape(),
-                       symbolic_expr_context);
+                       analysis_.fusion_root(root_index).shape(), mlir_context);
   }
-  return GetIndexing(/*input=*/false, hero.shape(), symbolic_expr_context);
+  return GetIndexing(/*input=*/false, hero.shape(), mlir_context);
 }
 
 std::optional<std::vector<IndexingMap>>
 TransposeFusion::ComputeThreadIdToInputIndexing(
-    int64_t root_index, SymbolicExprContext* symbolic_expr_context) const {
+    int64_t root_index, MLIRContext* mlir_context) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
   if (GetDescriptionForTiledTransposeEmitter(hero)) {
     return std::vector<IndexingMap>{GetIndexing(
-        /*input=*/true, hero.operand(0)->shape(), symbolic_expr_context)};
+        /*input=*/true, hero.operand(0)->shape(), mlir_context)};
   }
   std::vector<IndexingMap> result;
   result.reserve(hero.operand_count());
   auto thread_id_to_output_indexing =
-      ComputeThreadIdToOutputIndexing(root_index, symbolic_expr_context);
+      ComputeThreadIdToOutputIndexing(root_index, mlir_context);
   if (!thread_id_to_output_indexing.has_value()) {
     return std::nullopt;
   }
@@ -295,8 +292,7 @@ TransposeFusion::ComputeThreadIdToInputIndexing(
     auto map = ComposeIndexingMaps(
         *thread_id_to_output_indexing,
         ComputeOutputToInputIndexing(
-            &analysis_.fusion_root(root_index).instruction(), 0,
-            symbolic_expr_context)
+            &analysis_.fusion_root(root_index).instruction(), 0, mlir_context)
             .indexing_maps[operand_index]
             .begin()
             ->map());
@@ -311,9 +307,8 @@ LaunchDimensions TransposeFusion::launch_dimensions() const {
 }
 
 IndexingMap TransposeFusion::GetSharedMemoryIndexing(
-    bool read, SymbolicExprContext* symbolic_expr_context) const {
-  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
-  auto thread_offsets = GetThreadOffsets(/*read=*/true, symbolic_expr_context);
+    bool read, MLIRContext* mlir_context) const {
+  auto thread_offsets = GetThreadOffsets(/*read=*/true, mlir_context);
   if (!read) {
     // Regarding shared memory indexing, the permutation we need to apply is
     // just a swap of the two dimensions that are tiled.
@@ -367,13 +362,13 @@ TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
   }
 
   IndexingMap write_indexing =
-      GetSharedMemoryIndexing(/*read=*/false, symbolic_expr_context_);
+      GetSharedMemoryIndexing(/*read=*/false, mlir_context_);
   auto body_builder = [&](ImplicitLocOpBuilder& nested_b,
                           ValueRange symbol_values, ValueRange map_results,
                           ValueRange output_tensors) -> SmallVector<Value> {
     auto input_indices = [&](const HloInstruction* instr) {
       return ApplyIndexing(
-          GetIndexing(/*input=*/true, instr->shape(), symbolic_expr_context_),
+          GetIndexing(/*input=*/true, instr->shape(), mlir_context_),
           thread_and_block_ids, symbol_values, nested_b);
     };
 
@@ -416,7 +411,7 @@ TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
 
   auto indexing = GetIndexing(
       /*input=*/true, shmem_transposes_.front()->operand(0)->shape(),
-      symbolic_expr_context_);
+      mlir_context_);
   auto written_vector = emitters::EmitXlaLoopOp(builder, thread_and_block_ids,
                                                 inits, indexing, body_builder);
   ValueRange written = written_vector;
@@ -442,9 +437,9 @@ void TransposeFusion::EmitReadFromShMemMlir(
     const emitters::PartitionedComputations& computations,
     const WriteResult& written, mlir::ValueRange thread_and_block_ids) const {
   auto output_indexing = *ComputeThreadIdToOutputIndexing(
-      shmem_transpose_root_indices_[0], symbolic_expr_context_);
+      shmem_transpose_root_indices_[0], mlir_context_);
   auto shmem_read_indexing =
-      GetSharedMemoryIndexing(/*read=*/true, symbolic_expr_context_);
+      GetSharedMemoryIndexing(/*read=*/true, mlir_context_);
   auto result_tensors = emitters::EmitXlaLoopOp(
       builder, thread_and_block_ids, written.updated_outputs, output_indexing,
       [&](ImplicitLocOpBuilder& nested_b, ValueRange symbol_values,
@@ -481,8 +476,7 @@ void TransposeFusion::EmitReadFromShMemMlir(
 }
 
 llvm::SmallVector<mlir::AffineExpr, 4> TransposeFusion::GetThreadOffsets(
-    bool read, SymbolicExprContext* symbolic_expr_context) const {
-  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
+    bool read, MLIRContext* mlir_context) const {
   auto thread = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
   auto loop = getAffineSymbolExpr(0, mlir_context);
@@ -496,17 +490,15 @@ llvm::SmallVector<mlir::AffineExpr, 4> TransposeFusion::GetThreadOffsets(
                                   read ? block_sizes_ : output_block_sizes_);
 }
 
-IndexingMap TransposeFusion::GetIndexing(
-    bool input, const xla::Shape& shape,
-    SymbolicExprContext* symbolic_expr_context) const {
-  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
+IndexingMap TransposeFusion::GetIndexing(bool input, const xla::Shape& shape,
+                                         MLIRContext* mlir_context) const {
   auto raw_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
   auto block_ids = DelinearizeInBoundsIndex(raw_id, block_counts_);
   if (!input) {
     absl::c_copy(Permute(block_ids, permutation_), block_ids.begin());
   }
-  auto thread_offsets = GetThreadOffsets(input, symbolic_expr_context);
+  auto thread_offsets = GetThreadOffsets(input, mlir_context);
   const auto& permuted_block_sizes = input ? block_sizes_ : output_block_sizes_;
   llvm::SmallVector<AffineExpr, 3> offsets;
   for (auto [block_id, block_size, thread] :
@@ -531,7 +523,7 @@ IndexingMap TransposeFusion::GetIndexing(
     result.AddConstraint(dim, {0, size - 1});
   }
   result = ComposeIndexingMaps(
-      result, GetBitcastMap(normalized_shape, shape, symbolic_expr_context));
+      result, GetBitcastMap(normalized_shape, shape, mlir_context));
   result.Simplify();
   return result;
 }
@@ -552,9 +544,8 @@ std::vector<int64_t> GetBlockCounts(absl::Span<const int64_t> shape,
 PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
                                  const TransposeSpec& spec,
                                  absl::Span<const int64_t> output_block_tile,
-                                 int64_t num_warps,
-                                 SymbolicExprContext* symbolic_expr_context)
-    : TransposeFusionBase(analysis, symbolic_expr_context),
+                                 int64_t num_warps, MLIRContext* mlir_context)
+    : TransposeFusionBase(analysis, mlir_context),
       spec_(spec),
       output_tile_(output_block_tile.begin(), output_block_tile.end()),
       input_tile_(Permute(output_tile_, spec_.canonical_inv_permutation)),
@@ -591,21 +582,21 @@ PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
 }
 
 std::optional<IndexingMap> PackedTranspose::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, SymbolicExprContext* symbolic_expr_context) const {
-  return GetOutputIndexing(symbolic_expr_context);
+    int64_t root_index, MLIRContext* mlir_context) const {
+  return GetOutputIndexing(mlir_context);
 }
 
 std::optional<std::vector<IndexingMap>>
 PackedTranspose::ComputeThreadIdToInputIndexing(
-    int64_t root_index, SymbolicExprContext* symbolic_expr_context) const {
+    int64_t root_index, MLIRContext* mlir_context) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
   if (GetDescriptionForTiledTransposeEmitter(hero)) {
-    return std::vector<IndexingMap>{GetInputIndexing(symbolic_expr_context)};
+    return std::vector<IndexingMap>{GetInputIndexing(mlir_context)};
   }
   std::vector<IndexingMap> result;
   result.reserve(hero.operand_count());
   auto thread_id_to_output_indexing =
-      ComputeThreadIdToOutputIndexing(root_index, symbolic_expr_context);
+      ComputeThreadIdToOutputIndexing(root_index, mlir_context);
   if (!thread_id_to_output_indexing.has_value()) {
     return std::nullopt;
   }
@@ -614,8 +605,7 @@ PackedTranspose::ComputeThreadIdToInputIndexing(
     auto map = ComposeIndexingMaps(
         *thread_id_to_output_indexing,
         ComputeOutputToInputIndexing(
-            &analysis_.fusion_root(root_index).instruction(), 0,
-            symbolic_expr_context)
+            &analysis_.fusion_root(root_index).instruction(), 0, mlir_context)
             .indexing_maps[operand_index]
             .begin()
             ->map());
@@ -635,9 +625,8 @@ PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
     const emitters::PartitionedComputation& root_computation,
     const emitters::CallTargetProvider& call_target_provider,
     ValueRange output_args, mlir::ValueRange thread_and_block_ids) const {
-  IndexingMap input_indexing = GetInputIndexing(symbolic_expr_context_);
-  IndexingMap shmem_write_indexing =
-      GetShmemWriteIndexing(symbolic_expr_context_);
+  IndexingMap input_indexing = GetInputIndexing(mlir_context_);
+  IndexingMap shmem_write_indexing = GetShmemWriteIndexing(mlir_context_);
 
   int64_t shmem_dim = kNumShmemBanks * vector_size_;
   SmallVector<Value> shmem_tensors;
@@ -685,8 +674,8 @@ PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
     auto* root_tuple = fusion.fused_expression_root();
     for (auto root : side_output_roots_) {
       auto indexing = ComposeIndexingMaps(
-          input_indexing, GetBitcastMap(spec_.input_shape(), root->shape(),
-                                        symbolic_expr_context_));
+          input_indexing,
+          GetBitcastMap(spec_.input_shape(), root->shape(), mlir_context_));
       indexing.Simplify();
       side_output_indices.push_back(ApplyIndexing(
           indexing, thread_and_block_ids, symbol_values, nested_b));
@@ -739,10 +728,10 @@ void PackedTranspose::EmitReadFromShMemMlir(
     const HloFusionInstruction& fusion,
     const emitters::PartitionedComputations& computations,
     const WriteResult& written, mlir::ValueRange thread_and_block_ids) const {
-  auto shmem_read_indexing = GetShmemReadIndexing(symbolic_expr_context_);
+  auto shmem_read_indexing = GetShmemReadIndexing(mlir_context_);
   auto outer_loop_indexing = ConvertRangeVariablesToDimensions(
       shmem_read_indexing, /*range_var_indices=*/{1, 2});
-  auto output_indexing = GetOutputIndexing(symbolic_expr_context_);
+  auto output_indexing = GetOutputIndexing(mlir_context_);
   auto output_indexing_over_vectors = ConvertRangeVariablesToDimensions(
       output_indexing, /*range_var_indices=*/{0});
 
@@ -817,9 +806,7 @@ void PackedTranspose::EmitReadFromShMemMlir(
   builder.create<ReturnOp>(outer_loop_results);
 }
 
-IndexingMap PackedTranspose::GetInputIndexing(
-    SymbolicExprContext* symbolic_expr_context) const {
-  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
+IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* mlir_context) const {
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
@@ -872,7 +859,7 @@ IndexingMap PackedTranspose::GetInputIndexing(
 
   // Actual indexing.
   auto canonical_input_shape_to_real_shape = GetBitcastMap(
-      spec_.canonical_input_shape, spec_.input_shape(), symbolic_expr_context);
+      spec_.canonical_input_shape, spec_.input_shape(), mlir_context);
   // When we compose, the constraints w.r.t. to the input dimension sizes will
   // be added.
   auto input_indexing = ComposeIndexingMaps(
@@ -882,8 +869,7 @@ IndexingMap PackedTranspose::GetInputIndexing(
 }
 
 IndexingMap PackedTranspose::GetShmemWriteIndexing(
-    SymbolicExprContext* symbolic_expr_context) const {
-  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
+    MLIRContext* mlir_context) const {
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
@@ -915,8 +901,7 @@ IndexingMap PackedTranspose::GetShmemWriteIndexing(
 }
 
 IndexingMap PackedTranspose::GetShmemReadIndexing(
-    SymbolicExprContext* symbolic_expr_context) const {
-  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
+    MLIRContext* mlir_context) const {
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
@@ -952,8 +937,7 @@ IndexingMap PackedTranspose::GetShmemReadIndexing(
 }
 
 IndexingMap PackedTranspose::GetOutputIndexing(
-    SymbolicExprContext* symbolic_expr_context) const {
-  MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
+    MLIRContext* mlir_context) const {
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
@@ -1005,9 +989,8 @@ IndexingMap PackedTranspose::GetOutputIndexing(
   canonical_output_indexing.Simplify();
 
   // Actual indexing.
-  auto canonical_output_shape_to_real_shape =
-      GetBitcastMap(spec_.canonical_output_shape, spec_.output_shape(),
-                    symbolic_expr_context);
+  auto canonical_output_shape_to_real_shape = GetBitcastMap(
+      spec_.canonical_output_shape, spec_.output_shape(), mlir_context);
   // When we compose, the constraints w.r.t. to the output dimension sizes will
   // be added.
   auto output_indexing = ComposeIndexingMaps(
@@ -1017,17 +1000,16 @@ IndexingMap PackedTranspose::GetOutputIndexing(
 }
 
 std::unique_ptr<EmitterBase> CreateTransposeFusion(
-    const HloFusionAnalysis& analysis,
-    SymbolicExprContext* symbolic_expr_context) {
+    const HloFusionAnalysis& analysis, MLIRContext* mlir_context) {
   auto spec = GetTransposeSpec(
       Cast<HloTransposeInstruction>(analysis.tiled_transpose().instr));
   auto packed_transpose_tile = GetPackedTransposeTileSizes(spec);
   if (packed_transpose_tile.ok()) {
-    return std::make_unique<PackedTranspose>(
-        analysis, spec, *packed_transpose_tile,
-        /* num_warps= */ 4, symbolic_expr_context);
+    return std::make_unique<PackedTranspose>(analysis, spec,
+                                             *packed_transpose_tile,
+                                             /* num_warps= */ 4, mlir_context);
   }
-  return std::make_unique<TransposeFusion>(analysis, symbolic_expr_context);
+  return std::make_unique<TransposeFusion>(analysis, mlir_context);
 }
 
 }  // namespace gpu

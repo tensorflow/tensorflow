@@ -64,9 +64,8 @@ class SoftmaxRewriterTritonTest
  protected:
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
   SoftmaxRewriterTriton fusion_rewriter_{
-      device_info_, HloCostAnalysis::DefaultShapeSize, &symbolic_expr_context_};
+      device_info_, HloCostAnalysis::DefaultShapeSize, &mlir_context_};
 };
 
 TEST_F(SoftmaxRewriterTritonTest, CanFuseSingleNormalizationF32) {
@@ -566,7 +565,7 @@ ENTRY main {
       SoftmaxRewriterTriton(
           TestGpuDeviceInfo::RTXA6000DeviceInfo(
               se::CudaComputeCapability{se::CudaComputeCapability::kVolta, 0}),
-          HloCostAnalysis::DefaultShapeSize, &symbolic_expr_context_)
+          HloCostAnalysis::DefaultShapeSize, &mlir_context_)
           .Run(module.get()),
       absl_testing::StatusIs(
           tsl::error::FAILED_PRECONDITION,
@@ -595,7 +594,7 @@ ENTRY main {
 
   EXPECT_TRUE(SoftmaxRewriterTriton(TestGpuDeviceInfo::AMDMI210DeviceInfo(),
                                     HloCostAnalysis::DefaultShapeSize,
-                                    &symbolic_expr_context_)
+                                    &mlir_context_)
                   .Run(module.get())
                   .ok());
 }
@@ -681,7 +680,7 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   SoftmaxRewriterTriton fusion_rewriter(
-      device_info_, HloCostAnalysis::DefaultShapeSize, &symbolic_expr_context_);
+      device_info_, HloCostAnalysis::DefaultShapeSize, &mlir_context_);
   EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
@@ -828,7 +827,7 @@ ENTRY main {
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   SoftmaxRewriterTriton softmax_rewriter_triton(
-      device_info_, HloCostAnalysis::DefaultShapeSize, &symbolic_expr_context_);
+      device_info_, HloCostAnalysis::DefaultShapeSize, &mlir_context_);
   int unmatched = 0, matched = 0;
   for (HloInstruction* instruction :
        module->entry_computation()->MakeInstructionPostOrder()) {
@@ -1083,8 +1082,7 @@ ENTRY main {
     // Verify that SoftmaxRewriterTriton without Cost Model will fuse the
     // normalization diamond.
     SoftmaxRewriterTriton fusion_rewriter_without_cost_model{
-        device_info_, HloCostAnalysis::DefaultShapeSize,
-        &symbolic_expr_context_,
+        device_info_, HloCostAnalysis::DefaultShapeSize, &mlir_context_,
         /*only_fuse_if_profitable=*/false};
 
     auto module = ParseAndReturnVerifiedModule(hlo_string).value();
@@ -1099,8 +1097,7 @@ ENTRY main {
     // SoftmaxRewriterTriton with Cost Model will discard the normalization
     // diamond, because row size is too large.
     SoftmaxRewriterTriton fusion_rewriter_with_cost_model{
-        device_info_, HloCostAnalysis::DefaultShapeSize,
-        &symbolic_expr_context_,
+        device_info_, HloCostAnalysis::DefaultShapeSize, &mlir_context_,
         /*only_fuse_if_profitable=*/true};
 
     auto module = ParseAndReturnVerifiedModule(hlo_string).value();

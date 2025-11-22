@@ -159,7 +159,7 @@ class PriorityFusionQueue {
                       const se::DeviceDescription* device_info,
                       FusionProcessDumpProto* fusion_process_dump,
                       tsl::thread::ThreadPool* thread_pool,
-                      SymbolicExprContext* symbolic_expr_context,
+                      mlir::MLIRContext* mlir_context,
                       HloFusionAnalysisCache& fusion_analysis_cache,
                       FusionDeduplicationCache& fusion_deduplication_cache,
                       bool triton_heroless_fusion_enabled)
@@ -168,13 +168,12 @@ class PriorityFusionQueue {
         cost_analysis_(cost_analysis_options, *device_info),
         gpu_indexing_performance_model_(device_info, &fusion_analysis_cache,
                                         cost_analysis_options.shape_size,
-                                        symbolic_expr_context),
+                                        mlir_context),
         fusion_process_dump_(fusion_process_dump),
         thread_pool_(thread_pool),
         fusion_analysis_cache_(fusion_analysis_cache),
         gpu_performance_model_(*device_info, fusion_analysis_cache,
-                               gpu_performance_model_cache_,
-                               symbolic_expr_context),
+                               gpu_performance_model_cache_, mlir_context),
         fusion_deduplication_cache_(fusion_deduplication_cache),
         fusion_info_cache_(*device_info_),
         reachability_(HloDfsReachability::Build(computation)),
@@ -1170,7 +1169,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
 
     auto fusion_queue = std::make_unique<PriorityFusionQueue>(
         computation, cost_analysis_options_, &device_info_,
-        fusion_process_dump_.get(), thread_pool_, symbolic_expr_context_,
+        fusion_process_dump_.get(), thread_pool_, mlir_context_,
         fusion_analysis_cache_, fusion_deduplication_cache,
         triton_heroless_fusion_enabled);
 

@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
-#include "xla/tests/hlo_test_base_with_symbolic_expr_context.h"
+#include "xla/tests/hlo_test_base_with_mlir_context.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -37,7 +37,7 @@ namespace {
 // emitter becomes a reality.
 // *****************************************************************************
 
-using XTileDialectTest = HloTestBaseWithSymbolicExprContext;
+using XTileDialectTest = HloTestBaseWithMLIRContext;
 
 TEST_F(XTileDialectTest, HloTransposeIsLoweredToStableHloTranspose) {
   constexpr absl::string_view kHloText = R"(

@@ -77,10 +77,10 @@ AnalyticalLatencyEstimator::AnalyticalLatencyEstimator(
     std::unique_ptr<LatencyEstimator> latency_estimator,
     const se::DeviceDescription& gpu_info,
     HloCostAnalysis::ShapeSizeFunction shape_size_function,
-    HloComputation* computation, SymbolicExprContext* symbolic_expr_context)
+    HloComputation* computation, mlir::MLIRContext* mlir_context)
     : config_(config),
       gpu_info_(gpu_info),
-      gpu_performance_model_(gpu_info, symbolic_expr_context),
+      gpu_performance_model_(gpu_info, mlir_context),
       latency_estimator_(std::move(latency_estimator)),
       shape_size_function_(shape_size_function) {
   cost_analysis_.emplace(

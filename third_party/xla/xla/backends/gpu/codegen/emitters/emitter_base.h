@@ -79,7 +79,7 @@ class EmitterBase : public KernelFusionInterface {
   // functions for these instructions.
   virtual std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
-      SymbolicExprContext* symbolic_expr_context) const {
+      mlir::MLIRContext* mlir_context) const {
     return {};
   }
 
@@ -89,7 +89,7 @@ class EmitterBase : public KernelFusionInterface {
       const HloFusionAnalysis& analysis,
       const std::vector<const HloInstruction*>& heroes,
       const std::vector<const HloInstruction*>& roots,
-      SymbolicExprContext* symbolic_expr_context) const;
+      mlir::MLIRContext* mlir_context) const;
 
   virtual absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
@@ -111,7 +111,7 @@ class EmitterBase : public KernelFusionInterface {
   absl::Status EmitMlir(mlir::ModuleOp module,
                         mlir::func::FuncOp entry_function,
                         const HloFusionInstruction& fusion,
-                        SymbolicExprContext& symbolic_expr_context) const;
+                        mlir::MLIRContext& mlir_context) const;
 };
 
 // Adds passes that transform XLA_GPU and SCF loops, e.g. peel, pipeline,

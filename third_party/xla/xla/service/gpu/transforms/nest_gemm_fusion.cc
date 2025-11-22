@@ -74,8 +74,9 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
-
 namespace {
+
+using ::mlir::MLIRContext;
 
 // Creates a fusion for instructions starting from 'root' and returns it.
 absl::StatusOr<HloInstruction*> FuseInstructionsFromRoot(HloInstruction& root) {
@@ -268,7 +269,7 @@ absl::Status FuseAndAnnotateConcatOperands(HloComputation* computation) {
 // Transforms a fusion into an equivalent nested fusion if it has a single dot.
 // Returns ok if the transformation was successful.
 absl::Status MakeNestedFusionFromGemmFusion(
-    HloFusionInstruction* fusion, HloInstruction* dot, SymbolicExprContext* ctx,
+    HloFusionInstruction* fusion, HloInstruction* dot, MLIRContext* ctx,
     const se::DeviceDescription& device_description) {
   TF_RETURN_IF_ERROR(IsDot(*dot));
   const bool is_scaled_dot = dot->opcode() == HloOpcode::kScaledDot;
@@ -1110,9 +1111,9 @@ bool IsFeatureEnabled(const HloModule* module,
 class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
  public:
   explicit NestGemmFusionVisitor(
-      SymbolicExprContext* symbolic_expr_context, CallGraph* call_graph,
+      MLIRContext* mlir_context, CallGraph* call_graph,
       const se::DeviceDescription& device_description)
-      : symbolic_expr_context_(symbolic_expr_context),
+      : mlir_context_(mlir_context),
         call_graph_(call_graph),
         device_description_(device_description) {}
 
@@ -1220,7 +1221,7 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(
         TryHoistBitcastsInComputationToCallers(instr, call_graph));
     TF_RETURN_IF_ERROR(MakeNestedFusionFromGemmFusion(
-        fusion, instr, symbolic_expr_context_, device_description_));
+        fusion, instr, mlir_context_, device_description_));
 
     MarkAsChanged();
     bool scaled_dot_enabled =
@@ -1299,7 +1300,7 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  SymbolicExprContext* symbolic_expr_context_;
+  MLIRContext* mlir_context_;
   CallGraph* call_graph_;
   const se::DeviceDescription& device_description_;
 };
@@ -1313,7 +1314,7 @@ absl::StatusOr<bool> NestGemmFusion::RunOnModule(
   auto call_graph = CallGraph::Build(module, execution_threads);
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    NestGemmFusionVisitor visitor(symbolic_expr_context_, call_graph.get(),
+    NestGemmFusionVisitor visitor(mlir_context_, call_graph.get(),
                                   device_description_);
     TF_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
@@ -1341,8 +1342,8 @@ absl::StatusOr<bool> NestGemmFusion::RunImpl(
 namespace detail {
 
 absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
-    HloInstruction* dot, const TritonGemmConfig& config,
-    SymbolicExprContext* ctx, const se::DeviceDescription& device_description) {
+    HloInstruction* dot, const TritonGemmConfig& config, MLIRContext* ctx,
+    const se::DeviceDescription& device_description) {
   TF_RETURN_IF_ERROR(IsDot(*dot));
   HloComputation* computation = dot->parent();
   VLOG(3) << "FindOutputTileSizesForEpilogue of computation: "

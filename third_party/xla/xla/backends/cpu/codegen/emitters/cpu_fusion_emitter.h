@@ -42,7 +42,7 @@ namespace cpu {
 
 IndexingMap GetDefaultIndexingMap(absl::Span<const int64_t> thread_tile_sizes,
                                   absl::Span<const int64_t> shape,
-                                  SymbolicExprContext* symbolic_expr_context);
+                                  mlir::MLIRContext* mlir_context);
 
 absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
     mlir::ModuleOp fusion_module, const HloFusionInstruction& fusion,

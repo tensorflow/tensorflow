@@ -57,12 +57,12 @@ class DummyCopyEmitter : public EmitterBase {
   LaunchDimensions launch_dimensions() const final { return {1, 100}; }
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t, SymbolicExprContext*) const final {
+      int64_t, mlir::MLIRContext*) const final {
     return std::nullopt;
   }
 
   std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
-      int64_t, SymbolicExprContext*) const final {
+      int64_t, mlir::MLIRContext*) const final {
     return std::nullopt;
   }
 

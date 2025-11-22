@@ -54,7 +54,7 @@ class TilingSpecificationTest : public HloHardwareIndependentTestBase {
             *module->entry_computation()
                  ->root_instruction()
                  ->fused_instructions_computation(),
-            &symbolic_expr_context_,
+            &mlir_context_,
             /*emitter_specific_constraints_builder=*/nullptr);
 
     CHECK(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
@@ -62,7 +62,6 @@ class TilingSpecificationTest : public HloHardwareIndependentTestBase {
   }
 
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(TilingSpecificationTest, TilingSpecificationDerivesOutputParameters) {

@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -44,12 +44,12 @@ class PriorityFusion : public HloModulePass {
   PriorityFusion(tsl::thread::ThreadPool* thread_pool,
                  const se::DeviceDescription& device,
                  GpuHloCostAnalysis::Options cost_analysis_options,
-                 SymbolicExprContext* symbolic_expr_context)
+                 mlir::MLIRContext* mlir_context)
       : thread_pool_(thread_pool),
         device_info_(device),
         cost_analysis_options_(std::move(cost_analysis_options)),
         fusion_analysis_cache_(device_info_),
-        symbolic_expr_context_(symbolic_expr_context) {}
+        mlir_context_(mlir_context) {}
 
   absl::string_view name() const override { return "priority-fusion"; }
 
@@ -85,7 +85,7 @@ class PriorityFusion : public HloModulePass {
 
   HloFusionAnalysisCache fusion_analysis_cache_;
 
-  SymbolicExprContext* symbolic_expr_context_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

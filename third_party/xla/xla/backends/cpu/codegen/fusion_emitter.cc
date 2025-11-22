@@ -211,7 +211,7 @@ static HloFusionSpec GetLoopFusionSpec(const HloFusionInstruction& fusion) {
 }
 
 static absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitLoopFusionKernel(
-    SymbolicExprContext& context, const HloFusionInstruction& fusion,
+    MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name) {
   VLOG(2) << "Emitting loop fusion kernel: " << name;
   HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
@@ -223,7 +223,7 @@ static absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitLoopFusionKernel(
   TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
                       loop_fusion_emitter.EmitKernelDefinition());
 
-  mlir::OpBuilder builder(context.GetMLIRContext());
+  mlir::OpBuilder builder(&context);
   mlir_kernel_definition.source().module().getOperation()->setAttr(
       xla::CpuMemoryRegionNameAttr::name,
       builder.getStringAttr(
@@ -233,7 +233,7 @@ static absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitLoopFusionKernel(
 }
 
 static absl::StatusOr<KernelDefinition<MlirKernelSource>>
-EmitConcatenateFusionKernel(SymbolicExprContext& context,
+EmitConcatenateFusionKernel(MLIRContext& context,
                             const HloFusionInstruction& fusion,
                             const BufferAssignment* buffer_assignment,
                             absl::string_view name) {
@@ -247,7 +247,7 @@ EmitConcatenateFusionKernel(SymbolicExprContext& context,
   TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
                       concatenate_fusion_emitter.EmitKernelDefinition());
 
-  mlir::OpBuilder builder(context.GetMLIRContext());
+  mlir::OpBuilder builder(&context);
   mlir_kernel_definition.source().module().getOperation()->setAttr(
       xla::CpuMemoryRegionNameAttr::name,
       builder.getStringAttr(BuildModuleMemoryRegionName(
@@ -257,7 +257,7 @@ EmitConcatenateFusionKernel(SymbolicExprContext& context,
 }
 
 static absl::StatusOr<KernelDefinition<MlirKernelSource>>
-EmitDynamicUpdateSliceFusionKernel(SymbolicExprContext& context,
+EmitDynamicUpdateSliceFusionKernel(MLIRContext& context,
                                    const HloFusionInstruction& fusion,
                                    const BufferAssignment* buffer_assignment,
                                    absl::string_view name) {
@@ -272,7 +272,7 @@ EmitDynamicUpdateSliceFusionKernel(SymbolicExprContext& context,
   TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
                       emitter.EmitKernelDefinition());
 
-  mlir::OpBuilder builder(context.GetMLIRContext());
+  mlir::OpBuilder builder(&context);
   mlir_kernel_definition.source().module().getOperation()->setAttr(
       xla::CpuMemoryRegionNameAttr::name,
       builder.getStringAttr(
@@ -282,15 +282,14 @@ EmitDynamicUpdateSliceFusionKernel(SymbolicExprContext& context,
 }
 
 absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
-    MLIRContext& mlir_context, SymbolicExprContext& expr_context,
-    const HloFusionInstruction& fusion,
+    MLIRContext& mlir_context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, bool use_unique_c_name) {
   if (fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
     TF_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
     const HloInstruction& hero =
         FindNonTrivialHero(*fusion.fused_expression_root());
     if (hero.opcode() == HloOpcode::kConcatenate) {
-      return EmitConcatenateFusionKernel(expr_context, fusion,
+      return EmitConcatenateFusionKernel(mlir_context, fusion,
                                          buffer_assignment, name);
     }
     auto fusion_spec = GetLoopFusionSpec(fusion);
@@ -300,11 +299,11 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
           CanEmitFusedDynamicUpdateSliceInPlace(fusion_spec.fusion(),
                                                 buffer_assignment, &fusion));
       if (dus_inplace) {
-        return EmitDynamicUpdateSliceFusionKernel(expr_context, fusion,
+        return EmitDynamicUpdateSliceFusionKernel(mlir_context, fusion,
                                                   buffer_assignment, name);
       }
     }
-    return EmitLoopFusionKernel(expr_context, fusion, buffer_assignment, name);
+    return EmitLoopFusionKernel(mlir_context, fusion, buffer_assignment, name);
   }
 
   return absl::UnimplementedError("Fusion kind not supported.");

@@ -505,9 +505,9 @@ bool IsIndexingCoalesced(IndexingMap& thread_x_to_linearized_input,
 std::optional<CoalescingMap> ComputeCoalescingForAllOperands(
     const HloFusionAnalysis& fusion_analysis,
     absl::Span<const HloInstruction* const> operands,
-    SymbolicExprContext* symbolic_expr_context) {
+    MLIRContext* mlir_context) {
   auto emitter = GetFusionEmitter(
-      PreBufferAssignmentFusionInfo{fusion_analysis}, symbolic_expr_context);
+      PreBufferAssignmentFusionInfo{fusion_analysis}, mlir_context);
   const auto* fusion_interface =
       dynamic_cast<const KernelFusionInterface*>(emitter.get());
 
@@ -516,21 +516,21 @@ std::optional<CoalescingMap> ComputeCoalescingForAllOperands(
   }
   llvm::SmallVector<IndexingMap, 4>
       operand_logical_to_linearized_physical_maps =
-          MapLogicalToLinearizedPhysicalShape(operands, symbolic_expr_context);
+          MapLogicalToLinearizedPhysicalShape(operands, mlir_context);
   GroupedByOpIndexingMap thread_id_to_input_memory_layouts;
   for (const auto& [root_index, hero] :
        llvm::enumerate(fusion_analysis.fusion_heroes())) {
     // Compute thread ID -> hero operand indexing maps.
     std::optional<std::vector<IndexingMap>> hero_indexing_maps =
         fusion_interface->ComputeThreadIdToInputIndexing(root_index,
-                                                         symbolic_expr_context);
+                                                         mlir_context);
     if (!hero_indexing_maps.has_value()) {
       return std::nullopt;
     }
     GetThreadIdToInputMemoryLayoutsMaps(
         fusion_analysis.fusion(), *hero_indexing_maps,
         fusion_analysis.fusion_hero(root_index), operands,
-        operand_logical_to_linearized_physical_maps, symbolic_expr_context,
+        operand_logical_to_linearized_physical_maps, mlir_context,
         thread_id_to_input_memory_layouts);
   }
 
@@ -570,23 +570,23 @@ std::optional<CoalescingMap> ComputeCoalescingForAllOperands(
 CoalescingAnalysis CoalescingAnalysis::Create(
     const HloInstruction* instr,
     absl::Span<const HloInstruction* const> operands,
-    const HloFusionAnalysis& fusion_analysis,
-    SymbolicExprContext* symbolic_expr_context, bool use_heuristic) {
+    const HloFusionAnalysis& fusion_analysis, MLIRContext* mlir_context,
+    bool use_heuristic) {
   return Create(/*producer=*/instr, /*consumer=*/nullptr, operands,
-                fusion_analysis, symbolic_expr_context, use_heuristic);
+                fusion_analysis, mlir_context, use_heuristic);
 }
 
 /*static*/
 CoalescingAnalysis CoalescingAnalysis::Create(
     const HloInstruction* producer, const HloInstruction* consumer,
     absl::Span<const HloInstruction* const> operands,
-    const HloFusionAnalysis& fusion_analysis,
-    SymbolicExprContext* symbolic_expr_context, bool use_heuristic) {
+    const HloFusionAnalysis& fusion_analysis, MLIRContext* mlir_context,
+    bool use_heuristic) {
   std::optional<CoalescingMap> coalescing_per_operand;
 
   if (!use_heuristic) {
     coalescing_per_operand = ComputeCoalescingForAllOperands(
-        fusion_analysis, operands, symbolic_expr_context);
+        fusion_analysis, operands, mlir_context);
   }
 
   if (coalescing_per_operand.has_value()) {

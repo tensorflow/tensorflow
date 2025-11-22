@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/statusor.h"
@@ -45,7 +44,6 @@ namespace xla::cpu {
 
 struct ParallelFusionEmitter::CompilerInstance {
   std::unique_ptr<mlir::MLIRContext> mlir_context;
-  std::unique_ptr<SymbolicExprContext> symbolic_expr_context;
   std::unique_ptr<FusionCompiler> compiler;
 };
 
@@ -101,14 +99,10 @@ auto ParallelFusionEmitter::FusionCompilerPool::GetInstance()
   std::unique_ptr<mlir::MLIRContext> mlir_context =
       FusionCompiler::CreateContext();
 
-  auto symbolic_expr_context =
-      std::make_unique<SymbolicExprContext>(mlir_context.get());
-
   auto compiler = std::make_unique<FusionCompiler>(mlir_context.get(), options_,
                                                    GetNestedHooks());
 
   return CreateSharedInstance({std::move(mlir_context),
-                               std::move(symbolic_expr_context),
                                std::move(compiler)});
 }
 
@@ -172,8 +166,7 @@ absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
   auto compiler_instance = fusion_compiler_pool_->GetInstance();
   TF_ASSIGN_OR_RETURN(
       KernelDefinition mlir_kernel_definition,
-      EmitFusionKernel(*compiler_instance->mlir_context,
-                       *compiler_instance->symbolic_expr_context, *fusion,
+      EmitFusionKernel(*compiler_instance->mlir_context, *fusion,
                        buffer_assignment_, use_unique_c_name_));
 
   {

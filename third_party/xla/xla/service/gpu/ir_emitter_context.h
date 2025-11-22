@@ -78,7 +78,6 @@ class IrEmitterContext {
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
         mlir_context_(mlir_context),
-        expr_context_(mlir_context_),
         llvm_module_(llvm_module),
         llvm_module_constants_(llvm_module_constants),
         emit_kernels_(emit_kernels) {}
@@ -103,13 +102,8 @@ class IrEmitterContext {
   }
 
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
-
-  // TODO: b/451959933 - Add nullability annotation to be explicit about this
-  // pointer: go/totw/230. Alternatively, return by reference instead of pointer
-  // (and require reference in ctor) to signal that it is always present.
-  SymbolicExprContext* expr_context() { return &expr_context_; }
-
   llvm::Module* llvm_module() { return llvm_module_; }
+
   // A separate module can optionally be used to emit constants.
   llvm::Module* llvm_module_constants() {
     return (llvm_module_constants_ == nullptr) ? llvm_module_
@@ -160,7 +154,7 @@ class IrEmitterContext {
   std::string platform_name_;
   const se::DeviceDescription& gpu_device_info_;
   mlir::MLIRContext* mlir_context_;
-  SymbolicExprContext expr_context_;
+  mlir::MLIRContext expr_context_;
   llvm::Module* llvm_module_;
   llvm::Module* llvm_module_constants_;
   NameUniquer name_uniquer_;

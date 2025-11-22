@@ -121,10 +121,8 @@ TritonEmitterConstraints::DeriveCustomConstraints(
 
       // TODO(b/446856820): Remove this once we use SymbolicMap here and
       // therefore we can get the context directly.
-      SymbolicExprContext symbolic_expr_context{ctx};
       IndexingMap reshape_indexing_map =
-          ComputeOutputToInputIndexing(hlo, /*output_id=*/0,
-                                       &symbolic_expr_context)
+          ComputeOutputToInputIndexing(hlo, /*output_id=*/0, ctx)
               .indexing_maps[0]
               .begin()
               ->map();

@@ -37,6 +37,7 @@ namespace gpu {
 namespace {
 
 using ::absl_testing::IsOkAndHolds;
+using ::mlir::MLIRContext;
 using ::testing::Contains;
 using ::testing::Truly;
 
@@ -45,11 +46,10 @@ class GpuCostModelStatsCollectionTest : public HloHardwareIndependentTestBase {
   GpuCostModelStatsCollection cost_model_stats_{
       TestGpuDeviceInfo::RTXH100SXMDeviceInfo(),
       GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
-      &symbolic_expr_context_};
+      &mlir_context_};
 
  protected:
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(GpuCostModelStatsCollectionTest, FusionInEntryComputation) {

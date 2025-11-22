@@ -47,9 +47,8 @@ namespace xla::gpu {
 class NestGemmFusion : public HloModulePass {
  public:
   explicit NestGemmFusion(const se::DeviceDescription& device_description,
-                          SymbolicExprContext* symbolic_expr_context)
-      : device_description_(device_description),
-        symbolic_expr_context_(symbolic_expr_context) {}
+                          mlir::MLIRContext* mlir_context)
+      : device_description_(device_description), mlir_context_(mlir_context) {}
 
   absl::string_view name() const override { return "nest_gemm_fusion"; }
 
@@ -60,7 +59,7 @@ class NestGemmFusion : public HloModulePass {
 
  private:
   const se::DeviceDescription device_description_;
-  SymbolicExprContext* symbolic_expr_context_;
+  mlir::MLIRContext* mlir_context_;
   absl::StatusOr<bool> RunOnModule(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
@@ -79,7 +78,7 @@ namespace detail {
 // is implemented.
 absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     HloInstruction* dot, const TritonGemmConfig& config,
-    SymbolicExprContext* symbolic_expr_context,
+    mlir::MLIRContext* mlir_context,
     const se::DeviceDescription& device_description);
 
 }  // namespace detail

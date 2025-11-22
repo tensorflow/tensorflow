@@ -947,7 +947,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:hlo_test_base_with_symbolic_expr_context",
+        "//xla/tests:hlo_test_base_with_mlir_context",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -1069,7 +1069,7 @@ xla_cc_test(
         ":test_utils",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu/model:block_level_parameters",
-        "//xla/tests:hlo_test_base_with_symbolic_expr_context",
+        "//xla/tests:hlo_test_base_with_mlir_context",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",

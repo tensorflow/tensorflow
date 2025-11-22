@@ -33,7 +33,7 @@ HloPassPipeline FusionPipeline(
     HloCostAnalysis::ShapeSizeFunction shape_size_bytes_function,
     tsl::thread::ThreadPool* thread_pool,
     const se::DeviceDescription& gpu_device_info,
-    SymbolicExprContext* symbolic_expr_context);
+    mlir::MLIRContext* mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

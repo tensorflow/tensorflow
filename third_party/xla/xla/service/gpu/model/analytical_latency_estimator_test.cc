@@ -166,13 +166,11 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   auto mlir_context = std::make_unique<mlir::MLIRContext>();
-  auto symbolic_expr_context =
-      std::make_unique<SymbolicExprContext>(mlir_context.get());
   auto scheduler_config = GetDefaultSchedulerConfig();
   auto latency_estimator = std::make_unique<AnalyticalLatencyEstimator>(
       scheduler_config, std::make_unique<ApproximateLatencyEstimator>(),
       dev_info, HloCostAnalysis::DefaultShapeSize,
-      hlo_module->entry_computation(), symbolic_expr_context.get());
+      hlo_module->entry_computation(), mlir_context.get());
   auto alias_info = GetAliasInfo();
   EXPECT_TRUE(RunScheduler(hlo_module.get(), scheduler_config, alias_info.get(),
                            std::move(latency_estimator))

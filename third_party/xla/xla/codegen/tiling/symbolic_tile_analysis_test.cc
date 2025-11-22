@@ -152,7 +152,7 @@ class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
             *module->entry_computation()
                  ->root_instruction()
                  ->fused_instructions_computation(),
-            &symbolic_expr_context_, emitter_specific_constraints_builder);
+            &mlir_context_, emitter_specific_constraints_builder);
 
     if (std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error)) {
       SymbolicTileAnalysis analysis =
@@ -195,7 +195,6 @@ class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
   mlir::MLIRContext mlir_context_;
   TiledHloScheduleBuilder default_schedule_builder_ =
       CreateMajorToMinorTiledHloSchedule;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(SymbolicTileAnalysisTest, SimpleNormalizationDiamondIsSupported) {
@@ -368,7 +367,7 @@ ENTRY main {
   auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
 
   SymbolicTileAnalysisOrError analysis_or_error =
-      SymbolicTileAnalysis::AnalyzeFusion(*fusion, &symbolic_expr_context_);
+      SymbolicTileAnalysis::AnalyzeFusion(*fusion, &mlir_context_);
   ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
@@ -436,7 +435,7 @@ ENTRY entry_computation {
       producer, consumer, /*with_extra_outputs=*/true);
 
   SymbolicTileAnalysisOrError analysis_or_error =
-      SymbolicTileAnalysis::AnalyzeFusion(*fusion, &symbolic_expr_context_);
+      SymbolicTileAnalysis::AnalyzeFusion(*fusion, &mlir_context_);
   ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
@@ -1833,7 +1832,7 @@ ENTRY main {
           *module->entry_computation()
                ->root_instruction()
                ->fused_instructions_computation(),
-          &symbolic_expr_context_,
+          &mlir_context_,
           /*emitter_specific_constraints_builder=*/nullptr);
 
   ASSERT_TRUE(std::holds_alternative<FusionDecision>(analysis_or_error));

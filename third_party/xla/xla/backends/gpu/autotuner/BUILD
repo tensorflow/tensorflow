@@ -427,7 +427,6 @@ cc_library(
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:call_inliner",
@@ -453,6 +452,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -504,7 +504,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/simplifiers:float_normalization",
         "//xla/hlo/utils:hlo_query",
@@ -534,6 +533,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -727,9 +727,9 @@ cc_library(
     hdrs = ["factory.h"],
     deps = [
         "//xla/backends/autotuner:codegen_backend",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/service:compiler",
         "//xla/stream_executor:stream_executor_h",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -801,7 +801,6 @@ cc_library(
     deps = [
         ":gpu_codegen_backend",
         "//xla/backends/autotuner:codegen_backend",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/service:compiler",
@@ -816,6 +815,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
     ],
 )
 

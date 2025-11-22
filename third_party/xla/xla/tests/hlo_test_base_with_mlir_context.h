@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TESTS_HLO_TEST_BASE_WITH_SYMBOLIC_EXPR_CONTEXT_H_
-#define XLA_TESTS_HLO_TEST_BASE_WITH_SYMBOLIC_EXPR_CONTEXT_H_
+#ifndef XLA_TESTS_HLO_TEST_BASE_WITH_MLIR_CONTEXT_H_
+#define XLA_TESTS_HLO_TEST_BASE_WITH_MLIR_CONTEXT_H_
 
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -22,17 +22,14 @@ limitations under the License.
 
 namespace xla {
 
-class HloTestBaseWithSymbolicExprContext : public HloTestBase {
+class HloTestBaseWithMLIRContext : public HloTestBase {
  public:
-  SymbolicExprContext* symbolic_expr_context() {
-    return &symbolic_expr_context_;
-  }
+  mlir::MLIRContext* mlir_context() { return &mlir_context_; }
 
  private:
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 }  // namespace xla
 
-#endif  // XLA_TESTS_HLO_TEST_BASE_WITH_SYMBOLIC_EXPR_CONTEXT_H_
+#endif  // XLA_TESTS_HLO_TEST_BASE_WITH_MLIR_CONTEXT_H_

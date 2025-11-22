@@ -46,6 +46,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::mlir::MLIRContext;
+
 constexpr int kDUSUpdateIndex = 1;
 
 }  // namespace
@@ -59,7 +61,7 @@ LaunchDimensions InPlaceDynamicUpdateSliceFusion::launch_dimensions() const {
 
 std::optional<std::vector<IndexingMap>>
 InPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
-    int64_t root_index, SymbolicExprContext* symbolic_expr_context) const {
+    int64_t root_index, MLIRContext* mlir_context) const {
   // TODO(b/331355203): Implement thread ID -> operand indexing.
   std::vector<IndexingMap> result(
       analysis_.fusion_hero(root_index).GetOperands().size(),
@@ -68,22 +70,20 @@ InPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
   using KernelEmitter = emitters::DynamicUpdateSliceKernelEmitter;
   result[kDUSUpdateIndex] = KernelEmitter::ComputeWorkItemIdToOutputIndexing(
       GetWorkDimensions(),
-      KernelEmitter::GetIndexingShape(analysis_.fusion_spec()),
-      symbolic_expr_context);
+      KernelEmitter::GetIndexingShape(analysis_.fusion_spec()), mlir_context);
   return result;
 }
 
 std::vector<emitters::EpilogueSpecification>
 InPlaceDynamicUpdateSliceFusion::GetEpilogues(
-    const HloFusionInstruction& fusion,
-    SymbolicExprContext* symbolic_expr_context) const {
+    const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
   // We don't actually support epilogues for DUS, but this is how we tell
   // the base class that we don't want it to generate code for the DUS.
   std::vector<emitters::EpilogueSpecification> epilogues;
   for (const auto& [dus_op, root] :
        llvm::zip(dus_ops_, analysis_.fusion_roots())) {
     epilogues.push_back(emitters::EpilogueSpecification::FromIdentityIndexing(
-        &dus_op.instruction(), &root.instruction(), symbolic_expr_context));
+        &dus_op.instruction(), &root.instruction(), mlir_context));
   }
   return epilogues;
 }
@@ -99,9 +99,8 @@ InPlaceDynamicUpdateSliceFusion::CreateMLIRModule(
     mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
   emitters::DynamicUpdateSliceKernelEmitter emitter(
-      symbolic_expr_context, fusion, analysis_.fusion_spec(), buffer_assignment,
+      mlir_context, fusion, analysis_.fusion_spec(), buffer_assignment,
       GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,
       BackendKind::kGpu);
 

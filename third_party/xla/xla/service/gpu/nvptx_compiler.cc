@@ -386,7 +386,7 @@ absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
     se::StreamExecutor* stream_executor) {
   pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
                                          thread_pool, key_value_store,
-                                         symbolic_expr_context());
+                                         mlir_context());
   return absl::OkStatus();
 }
 

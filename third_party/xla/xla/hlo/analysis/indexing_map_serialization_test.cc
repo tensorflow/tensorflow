@@ -35,10 +35,8 @@ using ::testing::HasSubstr;
 class IndexingMapSerializationTest : public HloHardwareIndependentTestBase {
  public:
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
   void ParseAndCheck(absl::string_view indexing_map_str) {
-    auto indexing_map =
-        ParseIndexingMap(indexing_map_str, &symbolic_expr_context_);
+    auto indexing_map = ParseIndexingMap(indexing_map_str, &mlir_context_);
     ASSERT_TRUE(indexing_map.has_value());
     EXPECT_THAT(ToString(*indexing_map), MatchIndexingString(indexing_map_str));
   }
@@ -52,8 +50,8 @@ TEST_F(IndexingMapSerializationTest, UndefinedMap) {
 }
 
 TEST_F(IndexingMapSerializationTest, KnownEmptyMap) {
-  auto map = ParseIndexingMap("(d0) -> (), domain: d0 in [1, 0]",
-                              &symbolic_expr_context_);
+  auto map =
+      ParseIndexingMap("(d0) -> (), domain: d0 in [1, 0]", &mlir_context_);
   EXPECT_TRUE(map->IsKnownEmpty());
   EXPECT_THAT(ToString(*map), MatchIndexingString("KNOWN EMPTY"));
 }

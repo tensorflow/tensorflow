@@ -66,7 +66,7 @@ class TritonFusion : public FusionInterface {
   absl::StatusOr<TritonWrapperResult> GenerateTritonKernelAndWrapper(
       const HloFusionInstruction& fusion, absl::string_view impl_fn_name,
       const se::DeviceDescription& device_info, llvm::Module* llvm_module,
-      SymbolicExprContext* symbolic_expr_context) const;
+      mlir::MLIRContext* mlir_context) const;
 
  private:
   const HloFusionAnalysis& analysis_;

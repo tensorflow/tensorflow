@@ -21,7 +21,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -34,14 +33,11 @@ namespace {
 
 TEST(TritonStub, CallStubApi) {
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
 
   LoadMlirDialectsForTriton(mlir_context);
   EXPECT_FALSE(
-      TritonWrapper({}, nullptr, {}, {}, {}, nullptr, symbolic_expr_context)
-          .ok());
-  EXPECT_FALSE(
-      CreateTritonModule({}, nullptr, {}, {}, symbolic_expr_context).ok());
+      TritonWrapper({}, nullptr, {}, {}, {}, nullptr, mlir_context).ok());
+  EXPECT_FALSE(CreateTritonModule({}, nullptr, {}, {}, mlir_context).ok());
   EXPECT_FALSE(CompileTritonToLLVM("", HloModule("test", HloModuleConfig()), {},
                                    {}, {}, nullptr, mlir_context,
                                    /*is_xla_fusion=*/true, {})

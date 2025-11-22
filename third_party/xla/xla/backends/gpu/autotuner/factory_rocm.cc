@@ -32,14 +32,15 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using ::mlir::MLIRContext;
+
 std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
     stream_executor::StreamExecutor* stream_executor,
     const DebugOptions* debug_options, Compiler* compiler,
-    const Compiler::GpuTargetConfig* target_config,
-    SymbolicExprContext* symbolic_expr_context) {
+    const Compiler::GpuTargetConfig* target_config, MLIRContext* mlir_context) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<TritonBackend>(
-      debug_options, compiler, target_config, symbolic_expr_context));
+      debug_options, compiler, target_config, mlir_context));
   backends.push_back(std::make_unique<CublasBackend>(
       stream_executor, debug_options, compiler, target_config));
   return backends;
@@ -48,8 +49,7 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
 std::vector<std::unique_ptr<CodegenBackend>> GetFissionBackendsForROCm(
     stream_executor::StreamExecutor* stream_executor,
     const DebugOptions* debug_options, Compiler* compiler,
-    const Compiler::GpuTargetConfig* target_config,
-    SymbolicExprContext* symbolic_expr_context) {
+    const Compiler::GpuTargetConfig* target_config, MLIRContext* mlir_context) {
   return {};
 }
 

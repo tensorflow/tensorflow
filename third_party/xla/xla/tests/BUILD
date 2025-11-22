@@ -417,7 +417,7 @@ cc_library(
     srcs = ["codegen_test_base.cc"],
     hdrs = ["codegen_test_base.h"],
     deps = [
-        ":hlo_test_base_with_symbolic_expr_context",
+        ":hlo_test_base_with_mlir_context",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
         "//xla/service:executable",
@@ -3891,9 +3891,9 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_test_base_with_symbolic_expr_context",
+    name = "hlo_test_base_with_mlir_context",
     testonly = True,
-    hdrs = ["hlo_test_base_with_symbolic_expr_context.h"],
+    hdrs = ["hlo_test_base_with_mlir_context.h"],
     deps = [
         ":hlo_test_base",
         "//xla/hlo/analysis:symbolic_expr",
