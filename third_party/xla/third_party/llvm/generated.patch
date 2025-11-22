@@ -1,4 +1,47 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/libcxx/docs/ReleaseNotes/22.rst b/libcxx/docs/ReleaseNotes/22.rst
+--- a/libcxx/docs/ReleaseNotes/22.rst
++++ b/libcxx/docs/ReleaseNotes/22.rst
+@@ -67,8 +67,8 @@
+   by up to 2.5x
+ - The performance of ``erase(iterator, iterator)`` in the unordered containers has been improved by up to 1.9x
+ - The performance of ``map::insert_or_assign`` has been improved by up to 2x
+-- ``ofstream::write`` and ``ifstream::read`` have been optimized to pass through large reads and writes to system calls
+-  directly instead of copying them in chunks.
++- ``ofstream::write`` has been optimized to pass through large strings to system calls directly instead of copying them
++  in chunks into a buffer.
+ - Multiple internal types have been refactored to use ``[[no_unique_address]]``, resulting in faster compile times and
+   reduced debug information.
+ 
+diff -ruN --strip-trailing-cr a/libcxx/include/fstream b/libcxx/include/fstream
+--- a/libcxx/include/fstream
++++ b/libcxx/include/fstream
+@@ -308,25 +308,6 @@
+     return basic_streambuf<_CharT, _Traits>::xsputn(__str, __len);
+   }
+ 
+-  _LIBCPP_HIDE_FROM_ABI_VIRTUAL streamsize xsgetn(char_type* __str, streamsize __len) override {
+-    if (__always_noconv_) {
+-      const streamsize __n = std::min(this->egptr() - this->gptr(), __len);
+-      if (__n != 0) {
+-        traits_type::copy(__str, this->gptr(), __n);
+-        this->__gbump_ptrdiff(__n);
+-      }
+-      const streamsize __remainder    = __len - __n;
+-      const streamsize __buffer_space = this->egptr() - this->eback();
+-
+-      if (__remainder >= __buffer_space)
+-        return std::fread(__str + __n, sizeof(char_type), __remainder, __file_) + __n;
+-      else if (__remainder > 0)
+-        return basic_streambuf<_CharT, _Traits>::xsgetn(__str + __n, __remainder) + __n;
+-      return __n;
+-    }
+-    return basic_streambuf<_CharT, _Traits>::xsgetn(__str, __len);
+-  }
+-
+ private:
+   char* __extbuf_;
+   const char* __extbufnext_;
 diff -ruN --strip-trailing-cr a/libcxx/include/__hash_table b/libcxx/include/__hash_table
 --- a/libcxx/include/__hash_table
 +++ b/libcxx/include/__hash_table
@@ -11,6 +54,103 @@ diff -ruN --strip-trailing-cr a/libcxx/include/__hash_table b/libcxx/include/__h
      }
    }
  
+diff -ruN --strip-trailing-cr a/libcxx/test/benchmarks/streams/fstream.bench.cpp b/libcxx/test/benchmarks/streams/fstream.bench.cpp
+--- a/libcxx/test/benchmarks/streams/fstream.bench.cpp
++++ b/libcxx/test/benchmarks/streams/fstream.bench.cpp
+@@ -1,43 +0,0 @@
+-//===----------------------------------------------------------------------===//
+-//
+-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+-// See https://llvm.org/LICENSE.txt for license information.
+-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-//
+-//===----------------------------------------------------------------------===//
+-
+-#include <fstream>
+-#include <vector>
+-
+-#include <benchmark/benchmark.h>
+-
+-static void bm_ofstream_write(benchmark::State& state) {
+-  std::vector<char> buffer;
+-  buffer.resize(16384);
+-
+-  std::ofstream stream("/dev/null");
+-
+-  for (auto _ : state)
+-    stream.write(buffer.data(), buffer.size());
+-}
+-BENCHMARK(bm_ofstream_write);
+-
+-static void bm_ifstream_read(benchmark::State& state) {
+-  std::vector<char> buffer;
+-  buffer.resize(16384);
+-
+-  std::ofstream gen_testfile("testfile");
+-  gen_testfile.write(buffer.data(), buffer.size());
+-
+-  std::ifstream stream("testfile");
+-  assert(stream);
+-
+-  for (auto _ : state) {
+-    stream.read(buffer.data(), buffer.size());
+-    benchmark::DoNotOptimize(buffer);
+-    stream.seekg(0);
+-  }
+-}
+-BENCHMARK(bm_ifstream_read);
+-
+-BENCHMARK_MAIN();
+diff -ruN --strip-trailing-cr a/libcxx/test/benchmarks/streams/ofstream.bench.cpp b/libcxx/test/benchmarks/streams/ofstream.bench.cpp
+--- a/libcxx/test/benchmarks/streams/ofstream.bench.cpp
++++ b/libcxx/test/benchmarks/streams/ofstream.bench.cpp
+@@ -0,0 +1,25 @@
++//===----------------------------------------------------------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#include <fstream>
++#include <vector>
++
++#include <benchmark/benchmark.h>
++
++static void bm_write(benchmark::State& state) {
++  std::vector<char> buffer;
++  buffer.resize(16384);
++
++  std::ofstream stream("/dev/null");
++
++  for (auto _ : state)
++    stream.write(buffer.data(), buffer.size());
++}
++BENCHMARK(bm_write);
++
++BENCHMARK_MAIN();
+diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/input.output/file.streams/fstreams/filebuf/traits_mismatch.verify.cpp b/libcxx/test/libcxx/input.output/file.streams/fstreams/filebuf/traits_mismatch.verify.cpp
+--- a/libcxx/test/libcxx/input.output/file.streams/fstreams/filebuf/traits_mismatch.verify.cpp
++++ b/libcxx/test/libcxx/input.output/file.streams/fstreams/filebuf/traits_mismatch.verify.cpp
+@@ -19,4 +19,4 @@
+ 
+ std::basic_filebuf<char, std::char_traits<wchar_t> > f;
+ // expected-error-re@*:* {{static assertion failed{{.*}}traits_type::char_type must be the same type as CharT}}
+-// expected-error@*:* 11 {{only virtual member functions can be marked 'override'}}
++// expected-error@*:* 10 {{only virtual member functions can be marked 'override'}}
+diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/input.output/file.streams/fstreams/traits_mismatch.verify.cpp b/libcxx/test/libcxx/input.output/file.streams/fstreams/traits_mismatch.verify.cpp
+--- a/libcxx/test/libcxx/input.output/file.streams/fstreams/traits_mismatch.verify.cpp
++++ b/libcxx/test/libcxx/input.output/file.streams/fstreams/traits_mismatch.verify.cpp
+@@ -21,7 +21,7 @@
+ // expected-error-re@*:* {{static assertion failed{{.*}}traits_type::char_type must be the same type as CharT}}
+ // expected-error-re@*:* {{static assertion failed{{.*}}traits_type::char_type must be the same type as CharT}}
+ 
+-// expected-error@*:* 13 {{only virtual member functions can be marked 'override'}}
++// expected-error@*:* 12 {{only virtual member functions can be marked 'override'}}
+ 
+ // FIXME: As of commit r324062 Clang incorrectly generates a diagnostic about mismatching
+ // exception specifications for types which are already invalid for one reason or another.
 diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/unord/unord.map/unord.map.modifiers/erase_range.pass.cpp b/libcxx/test/std/containers/unord/unord.map/unord.map.modifiers/erase_range.pass.cpp
 --- a/libcxx/test/std/containers/unord/unord.map/unord.map.modifiers/erase_range.pass.cpp
 +++ b/libcxx/test/std/containers/unord/unord.map/unord.map.modifiers/erase_range.pass.cpp
@@ -139,1695 +279,1732 @@ diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/unord/unord.set/erase
  #if TEST_STD_VER >= 11
    {
      typedef std::unordered_set<int, std::hash<int>, std::equal_to<int>, min_allocator<int>> C;
-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/IndVarSimplify.cpp b/llvm/lib/Transforms/Scalar/IndVarSimplify.cpp
---- a/llvm/lib/Transforms/Scalar/IndVarSimplify.cpp
-+++ b/llvm/lib/Transforms/Scalar/IndVarSimplify.cpp
-@@ -162,6 +162,8 @@
-                                  const SCEV *ExitCount,
-                                  PHINode *IndVar, SCEVExpander &Rewriter);
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -1103,6 +1103,7 @@
+         ":func_realloc",
+         ":hdr_stdio_macros",
+         ":hdr_stdio_overlay",
++        ":string_memory_utils",
+         ":types_off_t",
+     ],
+ )
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -2193,92 +2193,253 @@
+     {
+         "name": "AArch64",
+         "short_name": "AArch64",
+-        "tbl_outs": {
+-            "lib/Target/AArch64/AArch64GenRegisterBank.inc": ["-gen-register-bank"],
+-            "lib/Target/AArch64/AArch64GenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/AArch64/AArch64GenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/AArch64/AArch64GenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/AArch64/AArch64GenMCPseudoLowering.inc": ["-gen-pseudo-lowering"],
+-            "lib/Target/AArch64/AArch64GenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/AArch64/AArch64GenAsmWriter1.inc": [
+-                "-gen-asm-writer",
+-                "-asmwriternum=1",
+-            ],
+-            "lib/Target/AArch64/AArch64GenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/AArch64/AArch64GenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/AArch64/AArch64GenFastISel.inc": ["-gen-fast-isel"],
+-            "lib/Target/AArch64/AArch64GenGlobalISel.inc": ["-gen-global-isel"],
+-            "lib/Target/AArch64/AArch64GenO0PreLegalizeGICombiner.inc": [
+-                "-gen-global-isel-combiner",
+-                "-combiners=AArch64O0PreLegalizerCombiner",
+-            ],
+-            "lib/Target/AArch64/AArch64GenPreLegalizeGICombiner.inc": [
+-                "-gen-global-isel-combiner",
+-                "-combiners=AArch64PreLegalizerCombiner",
+-            ],
+-            "lib/Target/AArch64/AArch64GenPostLegalizeGICombiner.inc": [
+-                "-gen-global-isel-combiner",
+-                "-combiners=AArch64PostLegalizerCombiner",
+-            ],
+-            "lib/Target/AArch64/AArch64GenPostLegalizeGILowering.inc": [
+-                "-gen-global-isel-combiner",
+-                "-combiners=AArch64PostLegalizerLowering",
+-            ],
+-            "lib/Target/AArch64/AArch64GenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/AArch64/AArch64GenSDNodeInfo.inc": ["-gen-sd-node-info"],
+-            "lib/Target/AArch64/AArch64GenSubtargetInfo.inc": ["-gen-subtarget"],
+-            "lib/Target/AArch64/AArch64GenDisassemblerTables.inc": [
+-                "-gen-disassembler",
+-            ],
+-            "lib/Target/AArch64/AArch64GenSystemOperands.inc": ["-gen-searchable-tables"],
+-            "lib/Target/AArch64/AArch64GenExegesis.inc": ["-gen-exegesis"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-register-bank"],
++                "lib/Target/AArch64/AArch64GenRegisterBank.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/AArch64/AArch64GenRegisterInfo.inc",
++                    "lib/Target/AArch64/AArch64GenRegisterInfoEnums.inc",
++                    "lib/Target/AArch64/AArch64GenRegisterInfoMCDesc.inc",
++                    "lib/Target/AArch64/AArch64GenRegisterInfoHeader.inc",
++                    "lib/Target/AArch64/AArch64GenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/AArch64/AArch64GenInstrInfo.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/AArch64/AArch64GenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-pseudo-lowering"],
++                "lib/Target/AArch64/AArch64GenMCPseudoLowering.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/AArch64/AArch64GenAsmWriter.inc",
++            ),
++            (
++                [
++                    "-gen-asm-writer",
++                    "-asmwriternum=1",
++                ],
++                "lib/Target/AArch64/AArch64GenAsmWriter1.inc",
++            ),
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/AArch64/AArch64GenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/AArch64/AArch64GenDAGISel.inc",
++            ),
++            (
++                ["-gen-fast-isel"],
++                "lib/Target/AArch64/AArch64GenFastISel.inc",
++            ),
++            (
++                ["-gen-global-isel"],
++                "lib/Target/AArch64/AArch64GenGlobalISel.inc",
++            ),
++            (
++                [
++                    "-gen-global-isel-combiner",
++                    "-combiners=AArch64O0PreLegalizerCombiner",
++                ],
++                "lib/Target/AArch64/AArch64GenO0PreLegalizeGICombiner.inc",
++            ),
++            (
++                [
++                    "-gen-global-isel-combiner",
++                    "-combiners=AArch64PreLegalizerCombiner",
++                ],
++                "lib/Target/AArch64/AArch64GenPreLegalizeGICombiner.inc",
++            ),
++            (
++                [
++                    "-gen-global-isel-combiner",
++                    "-combiners=AArch64PostLegalizerCombiner",
++                ],
++                "lib/Target/AArch64/AArch64GenPostLegalizeGICombiner.inc",
++            ),
++            (
++                [
++                    "-gen-global-isel-combiner",
++                    "-combiners=AArch64PostLegalizerLowering",
++                ],
++                "lib/Target/AArch64/AArch64GenPostLegalizeGILowering.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/AArch64/AArch64GenCallingConv.inc",
++            ),
++            (
++                ["-gen-sd-node-info"],
++                "lib/Target/AArch64/AArch64GenSDNodeInfo.inc",
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/AArch64/AArch64GenSubtargetInfo.inc",
++            ),
++            (
++                ["-gen-disassembler"],
++                "lib/Target/AArch64/AArch64GenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-searchable-tables"],
++                "lib/Target/AArch64/AArch64GenSystemOperands.inc",
++            ),
++            (
++                ["-gen-exegesis"],
++                "lib/Target/AArch64/AArch64GenExegesis.inc",
++            ),
++        ],
+     },
+     {
+         "name": "ARM",
+         "short_name": "ARM",
+-        "tbl_outs": {
+-            "lib/Target/ARM/ARMGenRegisterBank.inc": ["-gen-register-bank"],
+-            "lib/Target/ARM/ARMGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/ARM/ARMGenSystemRegister.inc": ["-gen-searchable-tables"],
+-            "lib/Target/ARM/ARMGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/ARM/ARMGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/ARM/ARMGenMCPseudoLowering.inc": ["-gen-pseudo-lowering"],
+-            "lib/Target/ARM/ARMGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/ARM/ARMGenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/ARM/ARMGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/ARM/ARMGenFastISel.inc": ["-gen-fast-isel"],
+-            "lib/Target/ARM/ARMGenGlobalISel.inc": ["-gen-global-isel"],
+-            "lib/Target/ARM/ARMGenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/ARM/ARMGenSubtargetInfo.inc": ["-gen-subtarget"],
+-            "lib/Target/ARM/ARMGenDisassemblerTables.inc": [
+-                "-gen-disassembler",
+-                "-ignore-non-decodable-operands",
+-            ],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-register-bank"],
++                "lib/Target/ARM/ARMGenRegisterBank.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/ARM/ARMGenRegisterInfo.inc",
++                    "lib/Target/ARM/ARMGenRegisterInfoEnums.inc",
++                    "lib/Target/ARM/ARMGenRegisterInfoMCDesc.inc",
++                    "lib/Target/ARM/ARMGenRegisterInfoHeader.inc",
++                    "lib/Target/ARM/ARMGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-searchable-tables"],
++                "lib/Target/ARM/ARMGenSystemRegister.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/ARM/ARMGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/ARM/ARMGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-pseudo-lowering"],
++                "lib/Target/ARM/ARMGenMCPseudoLowering.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/ARM/ARMGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/ARM/ARMGenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/ARM/ARMGenDAGISel.inc",
++            ),
++            (
++                ["-gen-fast-isel"],
++                "lib/Target/ARM/ARMGenFastISel.inc",
++            ),
++            (
++                ["-gen-global-isel"],
++                "lib/Target/ARM/ARMGenGlobalISel.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/ARM/ARMGenCallingConv.inc",
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/ARM/ARMGenSubtargetInfo.inc",
++            ),
++            (
++                [
++                    "-gen-disassembler",
++                    "-ignore-non-decodable-operands",
++                ],
++                "lib/Target/ARM/ARMGenDisassemblerTables.inc",
++            ),
++        ],
+     },
+     {
+         "name": "AMDGPU",
+         "short_name": "AMDGPU",
+-        "tbl_outs": {
+-            "lib/Target/AMDGPU/AMDGPUGenRegisterBank.inc": ["-gen-register-bank"],
+-            "lib/Target/AMDGPU/AMDGPUGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/AMDGPU/AMDGPUGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/AMDGPU/AMDGPUGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/AMDGPU/AMDGPUGenMCPseudoLowering.inc": ["-gen-pseudo-lowering"],
+-            "lib/Target/AMDGPU/AMDGPUGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/AMDGPU/AMDGPUGenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/AMDGPU/AMDGPUGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/AMDGPU/AMDGPUGenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/AMDGPU/AMDGPUGenSubtargetInfo.inc": ["-gen-subtarget"],
+-            "lib/Target/AMDGPU/AMDGPUGenDisassemblerTables.inc": [
+-                "-gen-disassembler",
+-                "--specialize-decoders-per-bitwidth",
+-                "-ignore-non-decodable-operands",
+-                "-ignore-fully-defined-operands",
+-            ],
+-            "lib/Target/AMDGPU/AMDGPUGenSearchableTables.inc": ["-gen-searchable-tables"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-register-bank"],
++                "lib/Target/AMDGPU/AMDGPUGenRegisterBank.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/AMDGPU/AMDGPUGenRegisterInfo.inc",
++                    "lib/Target/AMDGPU/AMDGPUGenRegisterInfoEnums.inc",
++                    "lib/Target/AMDGPU/AMDGPUGenRegisterInfoMCDesc.inc",
++                    "lib/Target/AMDGPU/AMDGPUGenRegisterInfoHeader.inc",
++                    "lib/Target/AMDGPU/AMDGPUGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/AMDGPU/AMDGPUGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/AMDGPU/AMDGPUGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-pseudo-lowering"],
++                "lib/Target/AMDGPU/AMDGPUGenMCPseudoLowering.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/AMDGPU/AMDGPUGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/AMDGPU/AMDGPUGenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/AMDGPU/AMDGPUGenDAGISel.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/AMDGPU/AMDGPUGenCallingConv.inc",
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/AMDGPU/AMDGPUGenSubtargetInfo.inc",
++            ),
++            (
++                [
++                    "-gen-disassembler",
++                    "--specialize-decoders-per-bitwidth",
++                    "-ignore-non-decodable-operands",
++                    "-ignore-fully-defined-operands",
++                ],
++                "lib/Target/AMDGPU/AMDGPUGenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-searchable-tables"],
++                "lib/Target/AMDGPU/AMDGPUGenSearchableTables.inc",
++            ),
++            (
++                ["-gen-sd-node-info"],
++                "lib/Target/AMDGPU/AMDGPUGenSDNodeInfo.inc",
++            ),
++        ],
+         "tbl_deps": [
+             ":InstCombineTableGen",
+             ":amdgpu_isel_target_gen",
+@@ -2288,184 +2449,567 @@
+     {
+         "name": "AVR",
+         "short_name": "AVR",
+-        "tbl_outs": {
+-            "lib/Target/AVR/AVRGenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/AVR/AVRGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/AVR/AVRGenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/AVR/AVRGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/AVR/AVRGenDisassemblerTables.inc": [
+-                "-gen-disassembler",
+-            ],
+-            "lib/Target/AVR/AVRGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/AVR/AVRGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/AVR/AVRGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/AVR/AVRGenSDNodeInfo.inc": ["-gen-sd-node-info"],
+-            "lib/Target/AVR/AVRGenSubtargetInfo.inc": ["-gen-subtarget"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/AVR/AVRGenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/AVR/AVRGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/AVR/AVRGenCallingConv.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/AVR/AVRGenDAGISel.inc",
++            ),
++            (
++                ["-gen-disassembler"],
++                "lib/Target/AVR/AVRGenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/AVR/AVRGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/AVR/AVRGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/AVR/AVRGenRegisterInfo.inc",
++                    "lib/Target/AVR/AVRGenRegisterInfoEnums.inc",
++                    "lib/Target/AVR/AVRGenRegisterInfoMCDesc.inc",
++                    "lib/Target/AVR/AVRGenRegisterInfoHeader.inc",
++                    "lib/Target/AVR/AVRGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-sd-node-info"],
++                "lib/Target/AVR/AVRGenSDNodeInfo.inc",
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/AVR/AVRGenSubtargetInfo.inc",
++            ),
++        ],
+     },
+     {
+         "name": "BPF",
+         "short_name": "BPF",
+-        "tbl_outs": {
+-            "lib/Target/BPF/BPFGenRegisterBank.inc": ["-gen-register-bank"],
+-            "lib/Target/BPF/BPFGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/BPF/BPFGenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/BPF/BPFGenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/BPF/BPFGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/BPF/BPFGenGlobalISel.inc": ["-gen-global-isel"],
+-            "lib/Target/BPF/BPFGenDisassemblerTables.inc": ["-gen-disassembler"],
+-            "lib/Target/BPF/BPFGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/BPF/BPFGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/BPF/BPFGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/BPF/BPFGenSubtargetInfo.inc": ["-gen-subtarget"],
+-            "lib/Target/BPF/BPFGenSDNodeInfo.inc": ["-gen-sd-node-info"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-register-bank"],
++                "lib/Target/BPF/BPFGenRegisterBank.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/BPF/BPFGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/BPF/BPFGenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/BPF/BPFGenCallingConv.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/BPF/BPFGenDAGISel.inc",
++            ),
++            (
++                ["-gen-global-isel"],
++                "lib/Target/BPF/BPFGenGlobalISel.inc",
++            ),
++            (
++                ["-gen-disassembler"],
++                "lib/Target/BPF/BPFGenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/BPF/BPFGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/BPF/BPFGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/BPF/BPFGenRegisterInfo.inc",
++                    "lib/Target/BPF/BPFGenRegisterInfoEnums.inc",
++                    "lib/Target/BPF/BPFGenRegisterInfoMCDesc.inc",
++                    "lib/Target/BPF/BPFGenRegisterInfoHeader.inc",
++                    "lib/Target/BPF/BPFGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/BPF/BPFGenSubtargetInfo.inc",
++            ),
++            (
++                ["-gen-sd-node-info"],
++                "lib/Target/BPF/BPFGenSDNodeInfo.inc",
++            ),
++        ],
+     },
+     {
+         "name": "Hexagon",
+         "short_name": "Hexagon",
+-        "tbl_outs": {
+-            "lib/Target/Hexagon/HexagonGenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/Hexagon/HexagonGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/Hexagon/HexagonGenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/Hexagon/HexagonGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/Hexagon/HexagonGenDFAPacketizer.inc": ["-gen-dfa-packetizer"],
+-            "lib/Target/Hexagon/HexagonGenDisassemblerTables.inc": [
+-                "-gen-disassembler",
+-            ],
+-            "lib/Target/Hexagon/HexagonGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/Hexagon/HexagonGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/Hexagon/HexagonGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/Hexagon/HexagonGenSubtargetInfo.inc": ["-gen-subtarget"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/Hexagon/HexagonGenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/Hexagon/HexagonGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/Hexagon/HexagonGenCallingConv.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/Hexagon/HexagonGenDAGISel.inc",
++            ),
++            (
++                ["-gen-dfa-packetizer"],
++                "lib/Target/Hexagon/HexagonGenDFAPacketizer.inc",
++            ),
++            (
++                ["-gen-disassembler"],
++                "lib/Target/Hexagon/HexagonGenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/Hexagon/HexagonGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/Hexagon/HexagonGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/Hexagon/HexagonGenRegisterInfo.inc",
++                    "lib/Target/Hexagon/HexagonGenRegisterInfoEnums.inc",
++                    "lib/Target/Hexagon/HexagonGenRegisterInfoMCDesc.inc",
++                    "lib/Target/Hexagon/HexagonGenRegisterInfoHeader.inc",
++                    "lib/Target/Hexagon/HexagonGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/Hexagon/HexagonGenSubtargetInfo.inc",
++            ),
++        ],
+     },
+     {
+         "name": "Lanai",
+         "short_name": "Lanai",
+-        "tbl_outs": {
+-            "lib/Target/Lanai/LanaiGenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/Lanai/LanaiGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/Lanai/LanaiGenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/Lanai/LanaiGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/Lanai/LanaiGenDisassemblerTables.inc": ["-gen-disassembler"],
+-            "lib/Target/Lanai/LanaiGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/Lanai/LanaiGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/Lanai/LanaiGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/Lanai/LanaiGenSDNodeInfo.inc": ["-gen-sd-node-info"],
+-            "lib/Target/Lanai/LanaiGenSubtargetInfo.inc": ["-gen-subtarget"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/Lanai/LanaiGenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/Lanai/LanaiGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/Lanai/LanaiGenCallingConv.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/Lanai/LanaiGenDAGISel.inc",
++            ),
++            (
++                ["-gen-disassembler"],
++                "lib/Target/Lanai/LanaiGenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/Lanai/LanaiGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/Lanai/LanaiGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/Lanai/LanaiGenRegisterInfo.inc",
++                    "lib/Target/Lanai/LanaiGenRegisterInfoEnums.inc",
++                    "lib/Target/Lanai/LanaiGenRegisterInfoMCDesc.inc",
++                    "lib/Target/Lanai/LanaiGenRegisterInfoHeader.inc",
++                    "lib/Target/Lanai/LanaiGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-sd-node-info"],
++                "lib/Target/Lanai/LanaiGenSDNodeInfo.inc",
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/Lanai/LanaiGenSubtargetInfo.inc",
++            ),
++        ],
+     },
+     {
+         "name": "LoongArch",
+         "short_name": "LoongArch",
+-        "tbl_outs": {
+-            "lib/Target/LoongArch/LoongArchGenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/LoongArch/LoongArchGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/LoongArch/LoongArchGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/LoongArch/LoongArchGenDisassemblerTables.inc": ["-gen-disassembler"],
+-            "lib/Target/LoongArch/LoongArchGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/LoongArch/LoongArchGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/LoongArch/LoongArchGenMCPseudoLowering.inc": ["-gen-pseudo-lowering"],
+-            "lib/Target/LoongArch/LoongArchGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/LoongArch/LoongArchGenSubtargetInfo.inc": ["-gen-subtarget"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/LoongArch/LoongArchGenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/LoongArch/LoongArchGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/LoongArch/LoongArchGenDAGISel.inc",
++            ),
++            (
++                ["-gen-disassembler"],
++                "lib/Target/LoongArch/LoongArchGenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/LoongArch/LoongArchGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/LoongArch/LoongArchGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-pseudo-lowering"],
++                "lib/Target/LoongArch/LoongArchGenMCPseudoLowering.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/LoongArch/LoongArchGenRegisterInfo.inc",
++                    "lib/Target/LoongArch/LoongArchGenRegisterInfoEnums.inc",
++                    "lib/Target/LoongArch/LoongArchGenRegisterInfoMCDesc.inc",
++                    "lib/Target/LoongArch/LoongArchGenRegisterInfoHeader.inc",
++                    "lib/Target/LoongArch/LoongArchGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/LoongArch/LoongArchGenSubtargetInfo.inc",
++            ),
++        ],
+     },
+     {
+         "name": "Mips",
+         "short_name": "Mips",
+-        "tbl_outs": {
+-            "lib/Target/Mips/MipsGenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/Mips/MipsGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/Mips/MipsGenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/Mips/MipsGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/Mips/MipsGenDisassemblerTables.inc": [
+-                "-gen-disassembler",
+-                "-ignore-non-decodable-operands",
+-            ],
+-            "lib/Target/Mips/MipsGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/Mips/MipsGenExegesis.inc": ["-gen-exegesis"],
+-            "lib/Target/Mips/MipsGenFastISel.inc": ["-gen-fast-isel"],
+-            "lib/Target/Mips/MipsGenGlobalISel.inc": ["-gen-global-isel"],
+-            "lib/Target/Mips/MipsGenPostLegalizeGICombiner.inc": [
+-                "-gen-global-isel-combiner",
+-                "-combiners=MipsPostLegalizerCombiner",
+-            ],
+-            "lib/Target/Mips/MipsGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/Mips/MipsGenMCPseudoLowering.inc": ["-gen-pseudo-lowering"],
+-            "lib/Target/Mips/MipsGenRegisterBank.inc": ["-gen-register-bank"],
+-            "lib/Target/Mips/MipsGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/Mips/MipsGenSubtargetInfo.inc": ["-gen-subtarget"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/Mips/MipsGenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/Mips/MipsGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/Mips/MipsGenCallingConv.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/Mips/MipsGenDAGISel.inc",
++            ),
++            (
++                [
++                    "-gen-disassembler",
++                    "-ignore-non-decodable-operands",
++                ],
++                "lib/Target/Mips/MipsGenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/Mips/MipsGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-exegesis"],
++                "lib/Target/Mips/MipsGenExegesis.inc",
++            ),
++            (
++                ["-gen-fast-isel"],
++                "lib/Target/Mips/MipsGenFastISel.inc",
++            ),
++            (
++                ["-gen-global-isel"],
++                "lib/Target/Mips/MipsGenGlobalISel.inc",
++            ),
++            (
++                [
++                    "-gen-global-isel-combiner",
++                    "-combiners=MipsPostLegalizerCombiner",
++                ],
++                "lib/Target/Mips/MipsGenPostLegalizeGICombiner.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/Mips/MipsGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-pseudo-lowering"],
++                "lib/Target/Mips/MipsGenMCPseudoLowering.inc",
++            ),
++            (
++                ["-gen-register-bank"],
++                "lib/Target/Mips/MipsGenRegisterBank.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/Mips/MipsGenRegisterInfo.inc",
++                    "lib/Target/Mips/MipsGenRegisterInfoEnums.inc",
++                    "lib/Target/Mips/MipsGenRegisterInfoMCDesc.inc",
++                    "lib/Target/Mips/MipsGenRegisterInfoHeader.inc",
++                    "lib/Target/Mips/MipsGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/Mips/MipsGenSubtargetInfo.inc",
++            ),
++        ],
+     },
+     {
+         "name": "MSP430",
+         "short_name": "MSP430",
+-        "tbl_outs": {
+-            "lib/Target/MSP430/MSP430GenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/MSP430/MSP430GenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/MSP430/MSP430GenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/MSP430/MSP430GenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/MSP430/MSP430GenDisassemblerTables.inc": ["-gen-disassembler"],
+-            "lib/Target/MSP430/MSP430GenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/MSP430/MSP430GenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/MSP430/MSP430GenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/MSP430/MSP430GenSDNodeInfo.inc": ["-gen-sd-node-info"],
+-            "lib/Target/MSP430/MSP430GenSubtargetInfo.inc": ["-gen-subtarget"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/MSP430/MSP430GenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/MSP430/MSP430GenAsmWriter.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/MSP430/MSP430GenCallingConv.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/MSP430/MSP430GenDAGISel.inc",
++            ),
++            (
++                ["-gen-disassembler"],
++                "lib/Target/MSP430/MSP430GenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/MSP430/MSP430GenInstrInfo.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/MSP430/MSP430GenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/MSP430/MSP430GenRegisterInfo.inc",
++                    "lib/Target/MSP430/MSP430GenRegisterInfoEnums.inc",
++                    "lib/Target/MSP430/MSP430GenRegisterInfoMCDesc.inc",
++                    "lib/Target/MSP430/MSP430GenRegisterInfoHeader.inc",
++                    "lib/Target/MSP430/MSP430GenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-sd-node-info"],
++                "lib/Target/MSP430/MSP430GenSDNodeInfo.inc",
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/MSP430/MSP430GenSubtargetInfo.inc",
++            ),
++        ],
+     },
+     {
+         "name": "NVPTX",
+         "short_name": "NVPTX",
+-        "tbl_outs": {
+-            "lib/Target/NVPTX/NVPTXGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/NVPTX/NVPTXGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/NVPTX/NVPTXGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/NVPTX/NVPTXGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/NVPTX/NVPTXGenSubtargetInfo.inc": ["-gen-subtarget"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/NVPTX/NVPTXGenRegisterInfo.inc",
++                    "lib/Target/NVPTX/NVPTXGenRegisterInfoEnums.inc",
++                    "lib/Target/NVPTX/NVPTXGenRegisterInfoMCDesc.inc",
++                    "lib/Target/NVPTX/NVPTXGenRegisterInfoHeader.inc",
++                    "lib/Target/NVPTX/NVPTXGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/NVPTX/NVPTXGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/NVPTX/NVPTXGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/NVPTX/NVPTXGenDAGISel.inc",
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/NVPTX/NVPTXGenSubtargetInfo.inc",
++            ),
++        ],
+     },
+     {
+         "name": "PowerPC",
+         "short_name": "PPC",
+-        "tbl_outs": {
+-            "lib/Target/PowerPC/PPCGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/PowerPC/PPCGenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/PowerPC/PPCGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/PowerPC/PPCGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/PowerPC/PPCGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/PowerPC/PPCGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/PowerPC/PPCGenFastISel.inc": ["-gen-fast-isel"],
+-            "lib/Target/PowerPC/PPCGenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/PowerPC/PPCGenSubtargetInfo.inc": ["-gen-subtarget"],
+-            "lib/Target/PowerPC/PPCGenDisassemblerTables.inc": ["-gen-disassembler"],
+-            "lib/Target/PowerPC/PPCGenRegisterBank.inc": ["-gen-register-bank"],
+-            "lib/Target/PowerPC/PPCGenGlobalISel.inc": ["-gen-global-isel"],
+-            "lib/Target/PowerPC/PPCGenExegesis.inc": ["-gen-exegesis"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/PowerPC/PPCGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/PowerPC/PPCGenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/PowerPC/PPCGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/PowerPC/PPCGenRegisterInfo.inc",
++                    "lib/Target/PowerPC/PPCGenRegisterInfoEnums.inc",
++                    "lib/Target/PowerPC/PPCGenRegisterInfoMCDesc.inc",
++                    "lib/Target/PowerPC/PPCGenRegisterInfoHeader.inc",
++                    "lib/Target/PowerPC/PPCGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/PowerPC/PPCGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/PowerPC/PPCGenDAGISel.inc",
++            ),
++            (
++                ["-gen-fast-isel"],
++                "lib/Target/PowerPC/PPCGenFastISel.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/PowerPC/PPCGenCallingConv.inc",
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/PowerPC/PPCGenSubtargetInfo.inc",
++            ),
++            (
++                ["-gen-disassembler"],
++                "lib/Target/PowerPC/PPCGenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-register-bank"],
++                "lib/Target/PowerPC/PPCGenRegisterBank.inc",
++            ),
++            (
++                ["-gen-global-isel"],
++                "lib/Target/PowerPC/PPCGenGlobalISel.inc",
++            ),
++            (
++                ["-gen-exegesis"],
++                "lib/Target/PowerPC/PPCGenExegesis.inc",
++            ),
++        ],
+     },
+     {
+         "name": "RISCV",
+         "short_name": "RISCV",
+-        "tbl_outs": {
+-            "lib/Target/RISCV/RISCVGenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/RISCV/RISCVGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/RISCV/RISCVGenCompressInstEmitter.inc": ["-gen-compress-inst-emitter"],
+-            "lib/Target/RISCV/RISCVGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/RISCV/RISCVGenDisassemblerTables.inc": [
+-                "-gen-disassembler",
+-                "--specialize-decoders-per-bitwidth",
+-            ],
+-            "lib/Target/RISCV/RISCVGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/RISCV/RISCVGenMacroFusion.inc": ["-gen-macro-fusion-pred"],
+-            "lib/Target/RISCV/RISCVGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/RISCV/RISCVGenMCPseudoLowering.inc": ["-gen-pseudo-lowering"],
+-            "lib/Target/RISCV/RISCVGenRegisterBank.inc": ["-gen-register-bank"],
+-            "lib/Target/RISCV/RISCVGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/RISCV/RISCVGenSubtargetInfo.inc": ["-gen-subtarget"],
+-            "lib/Target/RISCV/RISCVGenSearchableTables.inc": ["-gen-searchable-tables"],
+-            "lib/Target/RISCV/RISCVGenExegesis.inc": ["-gen-exegesis"],
+-            "lib/Target/RISCV/RISCVGenSDNodeInfo.inc": ["-gen-sd-node-info"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/RISCV/RISCVGenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/RISCV/RISCVGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-compress-inst-emitter"],
++                "lib/Target/RISCV/RISCVGenCompressInstEmitter.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/RISCV/RISCVGenDAGISel.inc",
++            ),
++            (
++                [
++                    "-gen-disassembler",
++                    "--specialize-decoders-per-bitwidth",
++                ],
++                "lib/Target/RISCV/RISCVGenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/RISCV/RISCVGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-macro-fusion-pred"],
++                "lib/Target/RISCV/RISCVGenMacroFusion.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/RISCV/RISCVGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-pseudo-lowering"],
++                "lib/Target/RISCV/RISCVGenMCPseudoLowering.inc",
++            ),
++            (
++                ["-gen-register-bank"],
++                "lib/Target/RISCV/RISCVGenRegisterBank.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/RISCV/RISCVGenRegisterInfo.inc",
++                    "lib/Target/RISCV/RISCVGenRegisterInfoEnums.inc",
++                    "lib/Target/RISCV/RISCVGenRegisterInfoMCDesc.inc",
++                    "lib/Target/RISCV/RISCVGenRegisterInfoHeader.inc",
++                    "lib/Target/RISCV/RISCVGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/RISCV/RISCVGenSubtargetInfo.inc",
++            ),
++            (
++                ["-gen-searchable-tables"],
++                "lib/Target/RISCV/RISCVGenSearchableTables.inc",
++            ),
++            (
++                ["-gen-exegesis"],
++                "lib/Target/RISCV/RISCVGenExegesis.inc",
++            ),
++            (
++                ["-gen-sd-node-info"],
++                "lib/Target/RISCV/RISCVGenSDNodeInfo.inc",
++            ),
++        ],
+         "tbl_deps": [
+             ":riscv_isel_target_gen",
+         ],
+@@ -2473,135 +3017,400 @@
+     {
+         "name": "Sparc",
+         "short_name": "Sparc",
+-        "tbl_outs": {
+-            "lib/Target/Sparc/SparcGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/Sparc/SparcGenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/Sparc/SparcGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/Sparc/SparcGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/Sparc/SparcGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/Sparc/SparcGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/Sparc/SparcGenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/Sparc/SparcGenSubtargetInfo.inc": ["-gen-subtarget"],
+-            "lib/Target/Sparc/SparcGenDisassemblerTables.inc": ["-gen-disassembler"],
+-            "lib/Target/Sparc/SparcGenSearchableTables.inc": ["-gen-searchable-tables"],
+-            "lib/Target/Sparc/SparcGenSDNodeInfo.inc": [
+-                "-gen-sd-node-info",
+-                "-sdnode-namespace=SPISD",
+-            ],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/Sparc/SparcGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/Sparc/SparcGenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/Sparc/SparcGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/Sparc/SparcGenRegisterInfo.inc",
++                    "lib/Target/Sparc/SparcGenRegisterInfoEnums.inc",
++                    "lib/Target/Sparc/SparcGenRegisterInfoMCDesc.inc",
++                    "lib/Target/Sparc/SparcGenRegisterInfoHeader.inc",
++                    "lib/Target/Sparc/SparcGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/Sparc/SparcGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/Sparc/SparcGenDAGISel.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/Sparc/SparcGenCallingConv.inc",
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/Sparc/SparcGenSubtargetInfo.inc",
++            ),
++            (
++                ["-gen-disassembler"],
++                "lib/Target/Sparc/SparcGenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-searchable-tables"],
++                "lib/Target/Sparc/SparcGenSearchableTables.inc",
++            ),
++            (
++                [
++                    "-gen-sd-node-info",
++                    "-sdnode-namespace=SPISD",
++                ],
++                "lib/Target/Sparc/SparcGenSDNodeInfo.inc",
++            ),
++        ],
+     },
+     {
+         "name": "SPIRV",
+         "short_name": "SPIRV",
+-        "tbl_outs": {
+-            "lib/Target/SPIRV/SPIRVGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/SPIRV/SPIRVGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/SPIRV/SPIRVGenGlobalISel.inc": ["-gen-global-isel"],
+-            "lib/Target/SPIRV/SPIRVGenPreLegalizeGICombiner.inc": [
+-                "-gen-global-isel-combiner",
+-                "-combiners=SPIRVPreLegalizerCombiner",
+-            ],
+-            "lib/Target/SPIRV/SPIRVGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/SPIRV/SPIRVGenRegisterBank.inc": ["-gen-register-bank"],
+-            "lib/Target/SPIRV/SPIRVGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/SPIRV/SPIRVGenTables.inc": ["-gen-searchable-tables"],
+-            "lib/Target/SPIRV/SPIRVGenSubtargetInfo.inc": ["-gen-subtarget"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/SPIRV/SPIRVGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/SPIRV/SPIRVGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-global-isel"],
++                "lib/Target/SPIRV/SPIRVGenGlobalISel.inc",
++            ),
++            (
++                [
++                    "-gen-global-isel-combiner",
++                    "-combiners=SPIRVPreLegalizerCombiner",
++                ],
++                "lib/Target/SPIRV/SPIRVGenPreLegalizeGICombiner.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/SPIRV/SPIRVGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-register-bank"],
++                "lib/Target/SPIRV/SPIRVGenRegisterBank.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/SPIRV/SPIRVGenRegisterInfo.inc",
++                    "lib/Target/SPIRV/SPIRVGenRegisterInfoEnums.inc",
++                    "lib/Target/SPIRV/SPIRVGenRegisterInfoMCDesc.inc",
++                    "lib/Target/SPIRV/SPIRVGenRegisterInfoHeader.inc",
++                    "lib/Target/SPIRV/SPIRVGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-searchable-tables"],
++                "lib/Target/SPIRV/SPIRVGenTables.inc",
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/SPIRV/SPIRVGenSubtargetInfo.inc",
++            ),
++        ],
+     },
+     {
+         "name": "SystemZ",
+         "short_name": "SystemZ",
+-        "tbl_outs": {
+-            "lib/Target/SystemZ/SystemZGenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/SystemZ/SystemZGenGNUAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/SystemZ/SystemZGenHLASMAsmWriter.inc": [
+-                "-gen-asm-writer",
+-                "-asmwriternum=1",
+-            ],
+-            "lib/Target/SystemZ/SystemZGenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/SystemZ/SystemZGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/SystemZ/SystemZGenDisassemblerTables.inc": ["-gen-disassembler"],
+-            "lib/Target/SystemZ/SystemZGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/SystemZ/SystemZGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/SystemZ/SystemZGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/SystemZ/SystemZGenSubtargetInfo.inc": ["-gen-subtarget"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/SystemZ/SystemZGenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/SystemZ/SystemZGenGNUAsmWriter.inc",
++            ),
++            (
++                [
++                    "-gen-asm-writer",
++                    "-asmwriternum=1",
++                ],
++                "lib/Target/SystemZ/SystemZGenHLASMAsmWriter.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/SystemZ/SystemZGenCallingConv.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/SystemZ/SystemZGenDAGISel.inc",
++            ),
++            (
++                ["-gen-disassembler"],
++                "lib/Target/SystemZ/SystemZGenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/SystemZ/SystemZGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/SystemZ/SystemZGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/SystemZ/SystemZGenRegisterInfo.inc",
++                    "lib/Target/SystemZ/SystemZGenRegisterInfoEnums.inc",
++                    "lib/Target/SystemZ/SystemZGenRegisterInfoMCDesc.inc",
++                    "lib/Target/SystemZ/SystemZGenRegisterInfoHeader.inc",
++                    "lib/Target/SystemZ/SystemZGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/SystemZ/SystemZGenSubtargetInfo.inc",
++            ),
++        ],
+     },
+     {
+         "name": "VE",
+         "short_name": "VE",
+-        "tbl_outs": {
+-            "lib/Target/VE/VEGenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/VE/VEGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/VE/VEGenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/VE/VEGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/VE/VEGenDisassemblerTables.inc": ["-gen-disassembler"],
+-            "lib/Target/VE/VEGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/VE/VEGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/VE/VEGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/VE/VEGenSubtargetInfo.inc": ["-gen-subtarget"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/VE/VEGenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/VE/VEGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/VE/VEGenCallingConv.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/VE/VEGenDAGISel.inc",
++            ),
++            (
++                ["-gen-disassembler"],
++                "lib/Target/VE/VEGenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/VE/VEGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/VE/VEGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/VE/VEGenRegisterInfo.inc",
++                    "lib/Target/VE/VEGenRegisterInfoEnums.inc",
++                    "lib/Target/VE/VEGenRegisterInfoMCDesc.inc",
++                    "lib/Target/VE/VEGenRegisterInfoHeader.inc",
++                    "lib/Target/VE/VEGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/VE/VEGenSubtargetInfo.inc",
++            ),
++            (
++                ["-gen-sd-node-info"],
++                "lib/Target/VE/VEGenSDNodeInfo.inc",
++            ),
++        ],
+     },
+     {
+         "name": "WebAssembly",
+         "short_name": "WebAssembly",
+-        "tbl_outs": {
+-            "lib/Target/WebAssembly/WebAssemblyGenDisassemblerTables.inc": ["-gen-disassembler"],
+-            "lib/Target/WebAssembly/WebAssemblyGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/WebAssembly/WebAssemblyGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/WebAssembly/WebAssemblyGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/WebAssembly/WebAssemblyGenFastISel.inc": ["-gen-fast-isel"],
+-            "lib/Target/WebAssembly/WebAssemblyGenMCCodeEmitter.inc": ["-gen-emitter"],
+-            "lib/Target/WebAssembly/WebAssemblyGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/WebAssembly/WebAssemblyGenSubtargetInfo.inc": ["-gen-subtarget"],
+-            "lib/Target/WebAssembly/WebAssemblyGenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/WebAssembly/WebAssemblyGenSDNodeInfo.inc": ["-gen-sd-node-info"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-disassembler"],
++                "lib/Target/WebAssembly/WebAssemblyGenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/WebAssembly/WebAssemblyGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/WebAssembly/WebAssemblyGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/WebAssembly/WebAssemblyGenDAGISel.inc",
++            ),
++            (
++                ["-gen-fast-isel"],
++                "lib/Target/WebAssembly/WebAssemblyGenFastISel.inc",
++            ),
++            (
++                ["-gen-emitter"],
++                "lib/Target/WebAssembly/WebAssemblyGenMCCodeEmitter.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/WebAssembly/WebAssemblyGenRegisterInfo.inc",
++                    "lib/Target/WebAssembly/WebAssemblyGenRegisterInfoEnums.inc",
++                    "lib/Target/WebAssembly/WebAssemblyGenRegisterInfoMCDesc.inc",
++                    "lib/Target/WebAssembly/WebAssemblyGenRegisterInfoHeader.inc",
++                    "lib/Target/WebAssembly/WebAssemblyGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/WebAssembly/WebAssemblyGenSubtargetInfo.inc",
++            ),
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/WebAssembly/WebAssemblyGenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-sd-node-info"],
++                "lib/Target/WebAssembly/WebAssemblyGenSDNodeInfo.inc",
++            ),
++        ],
+     },
+     {
+         "name": "X86",
+         "short_name": "X86",
+-        "tbl_outs": {
+-            "lib/Target/X86/X86GenRegisterBank.inc": ["-gen-register-bank"],
+-            "lib/Target/X86/X86GenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/X86/X86GenDisassemblerTables.inc": ["-gen-disassembler"],
+-            "lib/Target/X86/X86GenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/X86/X86GenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/X86/X86GenAsmWriter1.inc": [
+-                "-gen-asm-writer",
+-                "-asmwriternum=1",
+-            ],
+-            "lib/Target/X86/X86GenAsmMatcher.inc": ["-gen-asm-matcher"],
+-            "lib/Target/X86/X86GenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/X86/X86GenFastISel.inc": ["-gen-fast-isel"],
+-            "lib/Target/X86/X86GenGlobalISel.inc": ["-gen-global-isel"],
+-            "lib/Target/X86/X86GenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/X86/X86GenSubtargetInfo.inc": ["-gen-subtarget"],
+-            "lib/Target/X86/X86GenFoldTables.inc": [
+-                "-gen-x86-fold-tables",
+-                "-asmwriternum=1",
+-            ],
+-            "lib/Target/X86/X86GenInstrMapping.inc": ["-gen-x86-instr-mapping"],
+-            "lib/Target/X86/X86GenExegesis.inc": ["-gen-exegesis"],
+-            "lib/Target/X86/X86GenMnemonicTables.inc": [
+-                "-gen-x86-mnemonic-tables",
+-                "-asmwriternum=1",
+-            ],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-register-bank"],
++                "lib/Target/X86/X86GenRegisterBank.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/X86/X86GenRegisterInfo.inc",
++                    "lib/Target/X86/X86GenRegisterInfoEnums.inc",
++                    "lib/Target/X86/X86GenRegisterInfoMCDesc.inc",
++                    "lib/Target/X86/X86GenRegisterInfoHeader.inc",
++                    "lib/Target/X86/X86GenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-disassembler"],
++                "lib/Target/X86/X86GenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/X86/X86GenInstrInfo.inc",
++            ),
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/X86/X86GenAsmWriter.inc",
++            ),
++            (
++                [
++                    "-gen-asm-writer",
++                    "-asmwriternum=1",
++                ],
++                "lib/Target/X86/X86GenAsmWriter1.inc",
++            ),
++            (
++                ["-gen-asm-matcher"],
++                "lib/Target/X86/X86GenAsmMatcher.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/X86/X86GenDAGISel.inc",
++            ),
++            (
++                ["-gen-fast-isel"],
++                "lib/Target/X86/X86GenFastISel.inc",
++            ),
++            (
++                ["-gen-global-isel"],
++                "lib/Target/X86/X86GenGlobalISel.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/X86/X86GenCallingConv.inc",
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/X86/X86GenSubtargetInfo.inc",
++            ),
++            (
++                [
++                    "-gen-x86-fold-tables",
++                    "-asmwriternum=1",
++                ],
++                "lib/Target/X86/X86GenFoldTables.inc",
++            ),
++            (
++                ["-gen-x86-instr-mapping"],
++                "lib/Target/X86/X86GenInstrMapping.inc",
++            ),
++            (
++                ["-gen-exegesis"],
++                "lib/Target/X86/X86GenExegesis.inc",
++            ),
++            (
++                [
++                    "-gen-x86-mnemonic-tables",
++                    "-asmwriternum=1",
++                ],
++                "lib/Target/X86/X86GenMnemonicTables.inc",
++            ),
++        ],
+     },
+     {
+         "name": "XCore",
+         "short_name": "XCore",
+-        "tbl_outs": {
+-            "lib/Target/XCore/XCoreGenAsmWriter.inc": ["-gen-asm-writer"],
+-            "lib/Target/XCore/XCoreGenCallingConv.inc": ["-gen-callingconv"],
+-            "lib/Target/XCore/XCoreGenDAGISel.inc": ["-gen-dag-isel"],
+-            "lib/Target/XCore/XCoreGenDisassemblerTables.inc": ["-gen-disassembler"],
+-            "lib/Target/XCore/XCoreGenInstrInfo.inc": ["-gen-instr-info"],
+-            "lib/Target/XCore/XCoreGenRegisterInfo.inc": ["-gen-register-info"],
+-            "lib/Target/XCore/XCoreGenSDNodeInfo.inc": ["-gen-sd-node-info"],
+-            "lib/Target/XCore/XCoreGenSubtargetInfo.inc": ["-gen-subtarget"],
+-        },
++        "tbl_outs": [
++            (
++                ["-gen-asm-writer"],
++                "lib/Target/XCore/XCoreGenAsmWriter.inc",
++            ),
++            (
++                ["-gen-callingconv"],
++                "lib/Target/XCore/XCoreGenCallingConv.inc",
++            ),
++            (
++                ["-gen-dag-isel"],
++                "lib/Target/XCore/XCoreGenDAGISel.inc",
++            ),
++            (
++                ["-gen-disassembler"],
++                "lib/Target/XCore/XCoreGenDisassemblerTables.inc",
++            ),
++            (
++                ["-gen-instr-info"],
++                "lib/Target/XCore/XCoreGenInstrInfo.inc",
++            ),
++            (
++                ["-gen-register-info"],
++                [
++                    "lib/Target/XCore/XCoreGenRegisterInfo.inc",
++                    "lib/Target/XCore/XCoreGenRegisterInfoEnums.inc",
++                    "lib/Target/XCore/XCoreGenRegisterInfoMCDesc.inc",
++                    "lib/Target/XCore/XCoreGenRegisterInfoHeader.inc",
++                    "lib/Target/XCore/XCoreGenRegisterInfoTargetDesc.inc",
++                ],
++            ),
++            (
++                ["-gen-sd-node-info"],
++                "lib/Target/XCore/XCoreGenSDNodeInfo.inc",
++            ),
++            (
++                ["-gen-subtarget"],
++                "lib/Target/XCore/XCoreGenSubtargetInfo.inc",
++            ),
++        ],
+     },
+ ] if lib["name"] in llvm_targets]
  
-+  bool sinkUnusedInvariants(Loop *L);
-+
- public:
-   IndVarSimplify(LoopInfo *LI, ScalarEvolution *SE, DominatorTree *DT,
-                  const DataLayout &DL, TargetLibraryInfo *TLI,
-@@ -1091,6 +1093,85 @@
-   return true;
- }
- 
-+//===----------------------------------------------------------------------===//
-+//  sinkUnusedInvariants. A late subpass to cleanup loop preheaders.
-+//===----------------------------------------------------------------------===//
-+
-+/// If there's a single exit block, sink any loop-invariant values that
-+/// were defined in the preheader but not used inside the loop into the
-+/// exit block to reduce register pressure in the loop.
-+bool IndVarSimplify::sinkUnusedInvariants(Loop *L) {
-+  BasicBlock *ExitBlock = L->getExitBlock();
-+  if (!ExitBlock) return false;
-+
-+  BasicBlock *Preheader = L->getLoopPreheader();
-+  if (!Preheader) return false;
-+
-+  bool MadeAnyChanges = false;
-+  for (Instruction &I : llvm::make_early_inc_range(llvm::reverse(*Preheader))) {
-+
-+    // Skip BB Terminator.
-+    if (Preheader->getTerminator() == &I)
-+      continue;
-+
-+    // New instructions were inserted at the end of the preheader.
-+    if (isa<PHINode>(I))
-+      break;
-+
-+    // Don't move instructions which might have side effects, since the side
-+    // effects need to complete before instructions inside the loop.  Also don't
-+    // move instructions which might read memory, since the loop may modify
-+    // memory. Note that it's okay if the instruction might have undefined
-+    // behavior: LoopSimplify guarantees that the preheader dominates the exit
-+    // block.
-+    if (I.mayHaveSideEffects() || I.mayReadFromMemory())
-+      continue;
-+
-+    // Skip debug or pseudo instructions.
-+    if (I.isDebugOrPseudoInst())
-+      continue;
-+
-+    // Skip eh pad instructions.
-+    if (I.isEHPad())
-+      continue;
-+
-+    // Don't sink alloca: we never want to sink static alloca's out of the
-+    // entry block, and correctly sinking dynamic alloca's requires
-+    // checks for stacksave/stackrestore intrinsics.
-+    // FIXME: Refactor this check somehow?
-+    if (isa<AllocaInst>(&I))
-+      continue;
-+
-+    // Determine if there is a use in or before the loop (direct or
-+    // otherwise).
-+    bool UsedInLoop = false;
-+    for (Use &U : I.uses()) {
-+      Instruction *User = cast<Instruction>(U.getUser());
-+      BasicBlock *UseBB = User->getParent();
-+      if (PHINode *P = dyn_cast<PHINode>(User)) {
-+        unsigned i =
-+          PHINode::getIncomingValueNumForOperand(U.getOperandNo());
-+        UseBB = P->getIncomingBlock(i);
-+      }
-+      if (UseBB == Preheader || L->contains(UseBB)) {
-+        UsedInLoop = true;
-+        break;
-+      }
-+    }
-+
-+    // If there is, the def must remain in the preheader.
-+    if (UsedInLoop)
-+      continue;
-+
-+    // Otherwise, sink it to the exit block.
-+    I.moveBefore(ExitBlock->getFirstInsertionPt());
-+    SE->forgetValue(&I);
-+    MadeAnyChanges = true;
-+  }
-+
-+  return MadeAnyChanges;
-+}
-+
- static void replaceExitCond(BranchInst *BI, Value *NewCond,
-                             SmallVectorImpl<WeakTrackingVH> &DeadInsts) {
-   auto *OldCond = BI->getCondition();
-@@ -1998,6 +2079,10 @@
- 
-   // The Rewriter may not be used from this point on.
- 
-+  // Loop-invariant instructions in the preheader that aren't used in the
-+  // loop may be sunk below the loop to reduce register pressure.
-+  Changed |= sinkUnusedInvariants(L);
-+
-   // rewriteFirstIterationLoopExitValues does not rely on the computation of
-   // trip count and therefore can further simplify exit values in addition to
-   // rewriteLoopExitValues.
-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/LICM.cpp b/llvm/lib/Transforms/Scalar/LICM.cpp
---- a/llvm/lib/Transforms/Scalar/LICM.cpp
-+++ b/llvm/lib/Transforms/Scalar/LICM.cpp
-@@ -211,15 +211,9 @@
- static void eraseInstruction(Instruction &I, ICFLoopSafetyInfo &SafetyInfo,
-                              MemorySSAUpdater &MSSAU);
- 
--static void moveInstructionBefore(
--    Instruction &I, BasicBlock::iterator Dest, ICFLoopSafetyInfo &SafetyInfo,
--    MemorySSAUpdater &MSSAU, ScalarEvolution *SE,
--    MemorySSA::InsertionPlace Point = MemorySSA::BeforeTerminator);
--
--static bool sinkUnusedInvariantsFromPreheaderToExit(
--    Loop *L, AAResults *AA, ICFLoopSafetyInfo *SafetyInfo,
--    MemorySSAUpdater &MSSAU, ScalarEvolution *SE, DominatorTree *DT,
--    SinkAndHoistLICMFlags &SinkFlags, OptimizationRemarkEmitter *ORE);
-+static void moveInstructionBefore(Instruction &I, BasicBlock::iterator Dest,
-+                                  ICFLoopSafetyInfo &SafetyInfo,
-+                                  MemorySSAUpdater &MSSAU, ScalarEvolution *SE);
- 
- static void foreachMemoryAccess(MemorySSA *MSSA, Loop *L,
-                                 function_ref<void(Instruction *)> Fn);
-@@ -477,12 +471,6 @@
-                                     TLI, TTI, L, MSSAU, &SafetyInfo, Flags, ORE)
-             : sinkRegion(DT->getNode(L->getHeader()), AA, LI, DT, TLI, TTI, L,
-                          MSSAU, &SafetyInfo, Flags, ORE);
--
--  // sink pre-header defs that are unused in-loop into the unique exit to reduce
--  // pressure.
--  Changed |= sinkUnusedInvariantsFromPreheaderToExit(L, AA, &SafetyInfo, MSSAU,
--                                                     SE, DT, Flags, ORE);
--
-   Flags.setIsSink(false);
-   if (Preheader)
-     Changed |= hoistRegion(DT->getNode(L->getHeader()), AA, LI, DT, AC, TLI, L,
-@@ -1468,80 +1456,19 @@
- 
- static void moveInstructionBefore(Instruction &I, BasicBlock::iterator Dest,
-                                   ICFLoopSafetyInfo &SafetyInfo,
--                                  MemorySSAUpdater &MSSAU, ScalarEvolution *SE,
--                                  MemorySSA::InsertionPlace Point) {
-+                                  MemorySSAUpdater &MSSAU,
-+                                  ScalarEvolution *SE) {
-   SafetyInfo.removeInstruction(&I);
-   SafetyInfo.insertInstructionTo(&I, Dest->getParent());
-   I.moveBefore(*Dest->getParent(), Dest);
-   if (MemoryUseOrDef *OldMemAcc = cast_or_null<MemoryUseOrDef>(
-           MSSAU.getMemorySSA()->getMemoryAccess(&I)))
--    MSSAU.moveToPlace(OldMemAcc, Dest->getParent(), Point);
-+    MSSAU.moveToPlace(OldMemAcc, Dest->getParent(),
-+                      MemorySSA::BeforeTerminator);
-   if (SE)
-     SE->forgetBlockAndLoopDispositions(&I);
- }
- 
--// If there's a single exit block, sink any loop-invariant values that were
--// defined in the preheader but not used inside the loop into the exit block
--// to reduce register pressure in the loop.
--static bool sinkUnusedInvariantsFromPreheaderToExit(
--    Loop *L, AAResults *AA, ICFLoopSafetyInfo *SafetyInfo,
--    MemorySSAUpdater &MSSAU, ScalarEvolution *SE, DominatorTree *DT,
--    SinkAndHoistLICMFlags &SinkFlags, OptimizationRemarkEmitter *ORE) {
--  BasicBlock *ExitBlock = L->getExitBlock();
--  if (!ExitBlock)
--    return false;
--
--  BasicBlock *Preheader = L->getLoopPreheader();
--  if (!Preheader)
--    return false;
--
--  bool MadeAnyChanges = false;
--
--  for (Instruction &I : llvm::make_early_inc_range(llvm::reverse(*Preheader))) {
--
--    // Skip terminator.
--    if (Preheader->getTerminator() == &I)
--      continue;
--
--    // New instructions were inserted at the end of the preheader.
--    if (isa<PHINode>(I))
--      break;
--
--    // Don't move instructions which might have side effects, since the side
--    // effects need to complete before instructions inside the loop. Note that
--    // it's okay if the instruction might have undefined behavior: LoopSimplify
--    // guarantees that the preheader dominates the exit block.
--    if (I.mayHaveSideEffects())
--      continue;
--
--    if (!canSinkOrHoistInst(I, AA, DT, L, MSSAU, true, SinkFlags, nullptr))
--      continue;
--
--    // Determine if there is a use in or before the loop (direct or
--    // otherwise).
--    bool UsedInLoopOrPreheader = false;
--    for (Use &U : I.uses()) {
--      auto *UserI = cast<Instruction>(U.getUser());
--      BasicBlock *UseBB = UserI->getParent();
--      if (auto *PN = dyn_cast<PHINode>(UserI)) {
--        UseBB = PN->getIncomingBlock(U);
--      }
--      if (UseBB == Preheader || L->contains(UseBB)) {
--        UsedInLoopOrPreheader = true;
--        break;
--      }
--    }
--    if (UsedInLoopOrPreheader)
--      continue;
--
--    moveInstructionBefore(I, ExitBlock->getFirstInsertionPt(), *SafetyInfo,
--                          MSSAU, SE, MemorySSA::Beginning);
--    MadeAnyChanges = true;
--  }
--
--  return MadeAnyChanges;
--}
--
- static Instruction *sinkThroughTriviallyReplaceablePHI(
-     PHINode *TPN, Instruction *I, LoopInfo *LI,
-     SmallDenseMap<BasicBlock *, Instruction *, 32> &SunkCopies,
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/schedule-amdgpu-trackers.ll b/llvm/test/CodeGen/AMDGPU/schedule-amdgpu-trackers.ll
---- a/llvm/test/CodeGen/AMDGPU/schedule-amdgpu-trackers.ll
-+++ b/llvm/test/CodeGen/AMDGPU/schedule-amdgpu-trackers.ll
-@@ -73,10 +73,10 @@
- }
- 
- ; CHECK-LABEL: {{^}}excess_soft_clause_reg_pressure:
--; GFX908:    NumSgprs: 56
--; GFX908-GCNTRACKERS:    NumSgprs: 56
-+; GFX908:    NumSgprs: 64
-+; GFX908-GCNTRACKERS:    NumSgprs: 64
- ; GFX908:    NumVgprs: 43
--; GFX908-GCNTRACKERS:    NumVgprs: 40
-+; GFX908-GCNTRACKERS:    NumVgprs: 39
- ; GFX908:    Occupancy: 5
- ; GFX908-GCNTRACKERS:    Occupancy: 6
- 
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/vgpr-spill-emergency-stack-slot.ll b/llvm/test/CodeGen/AMDGPU/vgpr-spill-emergency-stack-slot.ll
---- a/llvm/test/CodeGen/AMDGPU/vgpr-spill-emergency-stack-slot.ll
-+++ b/llvm/test/CodeGen/AMDGPU/vgpr-spill-emergency-stack-slot.ll
-@@ -22,6 +22,8 @@
- ; GFX9-DAG: s_mov_b32 s[[DESC3:[0-9]+]], 0xe00000
- 
- ; OFFREG is offset system SGPR
-+; GCN: buffer_store_dword {{v[0-9]+}}, off, s[[[DESC0]]:[[DESC3]]], 0 offset:{{[0-9]+}} ; 4-byte Folded Spill
-+; GCN: buffer_load_dword v{{[0-9]+}}, off, s[[[DESC0]]:[[DESC3]]], 0 offset:{{[0-9]+}} ; 4-byte Folded Reload
- ; GCN: NumVgprs: 256
- ; GCN: ScratchSize: 640
- 
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/PowerPC/combine-sext-and-shl-after-isel.ll b/llvm/test/CodeGen/PowerPC/combine-sext-and-shl-after-isel.ll
---- a/llvm/test/CodeGen/PowerPC/combine-sext-and-shl-after-isel.ll
-+++ b/llvm/test/CodeGen/PowerPC/combine-sext-and-shl-after-isel.ll
-@@ -212,33 +212,37 @@
- ; CHECK-NEXT:    std r30, 48(r1) # 8-byte Folded Spill
- ; CHECK-NEXT:    andi. r3, r3, 1
- ; CHECK-NEXT:    li r3, -1
--; CHECK-NEXT:    li r4, 0
- ; CHECK-NEXT:    li r30, 0
- ; CHECK-NEXT:    crmove 4*cr2+lt, gt
- ; CHECK-NEXT:    std r29, 40(r1) # 8-byte Folded Spill
- ; CHECK-NEXT:    b .LBB3_2
-+; CHECK-NEXT:    .p2align 4
- ; CHECK-NEXT:  .LBB3_1: # %if.end116
- ; CHECK-NEXT:    #
- ; CHECK-NEXT:    bl callee
- ; CHECK-NEXT:    nop
- ; CHECK-NEXT:    mr r3, r29
--; CHECK-NEXT:    li r4, 0
--; CHECK-NEXT:    .p2align 4
--; CHECK-NEXT:  .LBB3_2: # %while.body5.i
--; CHECK-NEXT:    #
--; CHECK-NEXT:    addi r4, r4, -1
--; CHECK-NEXT:    cmpwi r4, 0
--; CHECK-NEXT:    bgt cr0, .LBB3_2
--; CHECK-NEXT:  # %bb.3: # %while.cond12.preheader.i
--; CHECK-NEXT:    #
-+; CHECK-NEXT:  .LBB3_2: # %cond.end.i.i
-+; CHECK-NEXT:    # =>This Loop Header: Depth=1
-+; CHECK-NEXT:    # Child Loop BB3_3 Depth 2
- ; CHECK-NEXT:    lwz r29, 0(r3)
-+; CHECK-NEXT:    li r5, 0
-+; CHECK-NEXT:    extsw r4, r29
-+; CHECK-NEXT:    .p2align 5
-+; CHECK-NEXT:  .LBB3_3: # %while.body5.i
-+; CHECK-NEXT:    # Parent Loop BB3_2 Depth=1
-+; CHECK-NEXT:    # => This Inner Loop Header: Depth=2
-+; CHECK-NEXT:    addi r5, r5, -1
-+; CHECK-NEXT:    cmpwi r5, 0
-+; CHECK-NEXT:    bgt cr0, .LBB3_3
-+; CHECK-NEXT:  # %bb.4: # %while.cond12.preheader.i
-+; CHECK-NEXT:    #
- ; CHECK-NEXT:    bc 12, 4*cr2+lt, .LBB3_1
--; CHECK-NEXT:  # %bb.4: # %for.cond99.preheader
-+; CHECK-NEXT:  # %bb.5: # %for.cond99.preheader
- ; CHECK-NEXT:    #
--; CHECK-NEXT:    extsw r4, r29
- ; CHECK-NEXT:    ld r5, 0(r3)
--; CHECK-NEXT:    stw r3, 0(r3)
- ; CHECK-NEXT:    sldi r4, r4, 2
-+; CHECK-NEXT:    stw r3, 0(r3)
- ; CHECK-NEXT:    stwx r30, r5, r4
- ; CHECK-NEXT:    b .LBB3_1
- ;
-@@ -252,33 +256,37 @@
- ; CHECK-BE-NEXT:    std r30, 64(r1) # 8-byte Folded Spill
- ; CHECK-BE-NEXT:    andi. r3, r3, 1
- ; CHECK-BE-NEXT:    li r3, -1
--; CHECK-BE-NEXT:    li r4, 0
- ; CHECK-BE-NEXT:    li r30, 0
- ; CHECK-BE-NEXT:    crmove 4*cr2+lt, gt
- ; CHECK-BE-NEXT:    std r29, 56(r1) # 8-byte Folded Spill
- ; CHECK-BE-NEXT:    b .LBB3_2
-+; CHECK-BE-NEXT:    .p2align 4
- ; CHECK-BE-NEXT:  .LBB3_1: # %if.end116
- ; CHECK-BE-NEXT:    #
- ; CHECK-BE-NEXT:    bl callee
- ; CHECK-BE-NEXT:    nop
- ; CHECK-BE-NEXT:    mr r3, r29
--; CHECK-BE-NEXT:    li r4, 0
--; CHECK-BE-NEXT:    .p2align 4
--; CHECK-BE-NEXT:  .LBB3_2: # %while.body5.i
--; CHECK-BE-NEXT:    #
--; CHECK-BE-NEXT:    addi r4, r4, -1
--; CHECK-BE-NEXT:    cmpwi r4, 0
--; CHECK-BE-NEXT:    bgt cr0, .LBB3_2
--; CHECK-BE-NEXT:  # %bb.3: # %while.cond12.preheader.i
--; CHECK-BE-NEXT:    #
-+; CHECK-BE-NEXT:  .LBB3_2: # %cond.end.i.i
-+; CHECK-BE-NEXT:    # =>This Loop Header: Depth=1
-+; CHECK-BE-NEXT:    # Child Loop BB3_3 Depth 2
- ; CHECK-BE-NEXT:    lwz r29, 0(r3)
-+; CHECK-BE-NEXT:    li r5, 0
-+; CHECK-BE-NEXT:    extsw r4, r29
-+; CHECK-BE-NEXT:    .p2align 5
-+; CHECK-BE-NEXT:  .LBB3_3: # %while.body5.i
-+; CHECK-BE-NEXT:    # Parent Loop BB3_2 Depth=1
-+; CHECK-BE-NEXT:    # => This Inner Loop Header: Depth=2
-+; CHECK-BE-NEXT:    addi r5, r5, -1
-+; CHECK-BE-NEXT:    cmpwi r5, 0
-+; CHECK-BE-NEXT:    bgt cr0, .LBB3_3
-+; CHECK-BE-NEXT:  # %bb.4: # %while.cond12.preheader.i
-+; CHECK-BE-NEXT:    #
- ; CHECK-BE-NEXT:    bc 12, 4*cr2+lt, .LBB3_1
--; CHECK-BE-NEXT:  # %bb.4: # %for.cond99.preheader
-+; CHECK-BE-NEXT:  # %bb.5: # %for.cond99.preheader
- ; CHECK-BE-NEXT:    #
--; CHECK-BE-NEXT:    extsw r4, r29
- ; CHECK-BE-NEXT:    ld r5, 0(r3)
--; CHECK-BE-NEXT:    stw r3, 0(r3)
- ; CHECK-BE-NEXT:    sldi r4, r4, 2
-+; CHECK-BE-NEXT:    stw r3, 0(r3)
- ; CHECK-BE-NEXT:    stwx r30, r5, r4
- ; CHECK-BE-NEXT:    b .LBB3_1
- ;
-@@ -292,28 +300,32 @@
- ; CHECK-P9-NEXT:    std r0, 80(r1)
- ; CHECK-P9-NEXT:    std r30, 48(r1) # 8-byte Folded Spill
- ; CHECK-P9-NEXT:    li r3, -1
--; CHECK-P9-NEXT:    li r4, 0
- ; CHECK-P9-NEXT:    li r30, 0
- ; CHECK-P9-NEXT:    std r29, 40(r1) # 8-byte Folded Spill
- ; CHECK-P9-NEXT:    crmove 4*cr2+lt, gt
- ; CHECK-P9-NEXT:    b .LBB3_2
-+; CHECK-P9-NEXT:    .p2align 4
- ; CHECK-P9-NEXT:  .LBB3_1: # %if.end116
- ; CHECK-P9-NEXT:    #
- ; CHECK-P9-NEXT:    bl callee
- ; CHECK-P9-NEXT:    nop
- ; CHECK-P9-NEXT:    mr r3, r29
-+; CHECK-P9-NEXT:  .LBB3_2: # %cond.end.i.i
-+; CHECK-P9-NEXT:    # =>This Loop Header: Depth=1
-+; CHECK-P9-NEXT:    # Child Loop BB3_3 Depth 2
-+; CHECK-P9-NEXT:    lwz r29, 0(r3)
- ; CHECK-P9-NEXT:    li r4, 0
--; CHECK-P9-NEXT:    .p2align 4
--; CHECK-P9-NEXT:  .LBB3_2: # %while.body5.i
--; CHECK-P9-NEXT:    #
-+; CHECK-P9-NEXT:    .p2align 5
-+; CHECK-P9-NEXT:  .LBB3_3: # %while.body5.i
-+; CHECK-P9-NEXT:    # Parent Loop BB3_2 Depth=1
-+; CHECK-P9-NEXT:    # => This Inner Loop Header: Depth=2
- ; CHECK-P9-NEXT:    addi r4, r4, -1
- ; CHECK-P9-NEXT:    cmpwi r4, 0
--; CHECK-P9-NEXT:    bgt cr0, .LBB3_2
--; CHECK-P9-NEXT:  # %bb.3: # %while.cond12.preheader.i
-+; CHECK-P9-NEXT:    bgt cr0, .LBB3_3
-+; CHECK-P9-NEXT:  # %bb.4: # %while.cond12.preheader.i
- ; CHECK-P9-NEXT:    #
--; CHECK-P9-NEXT:    lwz r29, 0(r3)
- ; CHECK-P9-NEXT:    bc 12, 4*cr2+lt, .LBB3_1
--; CHECK-P9-NEXT:  # %bb.4: # %for.cond99.preheader
-+; CHECK-P9-NEXT:  # %bb.5: # %for.cond99.preheader
- ; CHECK-P9-NEXT:    #
- ; CHECK-P9-NEXT:    ld r4, 0(r3)
- ; CHECK-P9-NEXT:    extswsli r5, r29, 2
-@@ -331,28 +343,32 @@
- ; CHECK-P9-BE-NEXT:    std r0, 96(r1)
- ; CHECK-P9-BE-NEXT:    std r30, 64(r1) # 8-byte Folded Spill
- ; CHECK-P9-BE-NEXT:    li r3, -1
--; CHECK-P9-BE-NEXT:    li r4, 0
- ; CHECK-P9-BE-NEXT:    li r30, 0
- ; CHECK-P9-BE-NEXT:    std r29, 56(r1) # 8-byte Folded Spill
- ; CHECK-P9-BE-NEXT:    crmove 4*cr2+lt, gt
- ; CHECK-P9-BE-NEXT:    b .LBB3_2
-+; CHECK-P9-BE-NEXT:    .p2align 4
- ; CHECK-P9-BE-NEXT:  .LBB3_1: # %if.end116
- ; CHECK-P9-BE-NEXT:    #
- ; CHECK-P9-BE-NEXT:    bl callee
- ; CHECK-P9-BE-NEXT:    nop
- ; CHECK-P9-BE-NEXT:    mr r3, r29
-+; CHECK-P9-BE-NEXT:  .LBB3_2: # %cond.end.i.i
-+; CHECK-P9-BE-NEXT:    # =>This Loop Header: Depth=1
-+; CHECK-P9-BE-NEXT:    # Child Loop BB3_3 Depth 2
-+; CHECK-P9-BE-NEXT:    lwz r29, 0(r3)
- ; CHECK-P9-BE-NEXT:    li r4, 0
--; CHECK-P9-BE-NEXT:    .p2align 4
--; CHECK-P9-BE-NEXT:  .LBB3_2: # %while.body5.i
--; CHECK-P9-BE-NEXT:    #
-+; CHECK-P9-BE-NEXT:    .p2align 5
-+; CHECK-P9-BE-NEXT:  .LBB3_3: # %while.body5.i
-+; CHECK-P9-BE-NEXT:    # Parent Loop BB3_2 Depth=1
-+; CHECK-P9-BE-NEXT:    # => This Inner Loop Header: Depth=2
- ; CHECK-P9-BE-NEXT:    addi r4, r4, -1
- ; CHECK-P9-BE-NEXT:    cmpwi r4, 0
--; CHECK-P9-BE-NEXT:    bgt cr0, .LBB3_2
--; CHECK-P9-BE-NEXT:  # %bb.3: # %while.cond12.preheader.i
-+; CHECK-P9-BE-NEXT:    bgt cr0, .LBB3_3
-+; CHECK-P9-BE-NEXT:  # %bb.4: # %while.cond12.preheader.i
- ; CHECK-P9-BE-NEXT:    #
--; CHECK-P9-BE-NEXT:    lwz r29, 0(r3)
- ; CHECK-P9-BE-NEXT:    bc 12, 4*cr2+lt, .LBB3_1
--; CHECK-P9-BE-NEXT:  # %bb.4: # %for.cond99.preheader
-+; CHECK-P9-BE-NEXT:  # %bb.5: # %for.cond99.preheader
- ; CHECK-P9-BE-NEXT:    #
- ; CHECK-P9-BE-NEXT:    ld r4, 0(r3)
- ; CHECK-P9-BE-NEXT:    extswsli r5, r29, 2
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/AMDGPU/addrspace-7-doesnt-crash.ll b/llvm/test/Transforms/IndVarSimplify/AMDGPU/addrspace-7-doesnt-crash.ll
---- a/llvm/test/Transforms/IndVarSimplify/AMDGPU/addrspace-7-doesnt-crash.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/AMDGPU/addrspace-7-doesnt-crash.ll
-@@ -7,11 +7,11 @@
- ; CHECK-LABEL: define void @f
- ; CHECK-SAME: (ptr addrspace(7) [[ARG:%.*]]) {
- ; CHECK-NEXT:  bb:
--; CHECK-NEXT:    [[SCEVGEP:%.*]] = getelementptr i8, ptr addrspace(7) [[ARG]], i32 8
- ; CHECK-NEXT:    br label [[BB1:%.*]]
- ; CHECK:       bb1:
- ; CHECK-NEXT:    br i1 false, label [[BB2:%.*]], label [[BB1]]
- ; CHECK:       bb2:
-+; CHECK-NEXT:    [[SCEVGEP:%.*]] = getelementptr i8, ptr addrspace(7) [[ARG]], i32 8
- ; CHECK-NEXT:    br label [[BB3:%.*]]
- ; CHECK:       bb3:
- ; CHECK-NEXT:    [[I4:%.*]] = load i32, ptr addrspace(7) [[SCEVGEP]], align 4
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/ARM/code-size.ll b/llvm/test/Transforms/IndVarSimplify/ARM/code-size.ll
---- a/llvm/test/Transforms/IndVarSimplify/ARM/code-size.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/ARM/code-size.ll
-@@ -4,31 +4,33 @@
- 
- define i32 @remove_loop(i32 %size) #0 {
- ; CHECK-V8M-LABEL: @remove_loop(
-+; CHECK-V8M-SAME: i32 [[SIZE:%.*]]) #[[ATTR0:[0-9]+]] {
- ; CHECK-V8M-NEXT:  entry:
--; CHECK-V8M-NEXT:    [[TMP0:%.*]] = add i32 [[SIZE:%.*]], 31
-+; CHECK-V8M-NEXT:    br label %[[WHILE_COND:.*]]
-+; CHECK-V8M:       while.cond:
-+; CHECK-V8M-NEXT:    br i1 false, label %[[WHILE_COND]], label %[[WHILE_END:.*]]
-+; CHECK-V8M:       while.end:
-+; CHECK-V8M-NEXT:    [[TMP0:%.*]] = add i32 [[SIZE]], 31
- ; CHECK-V8M-NEXT:    [[UMIN:%.*]] = call i32 @llvm.umin.i32(i32 [[SIZE]], i32 31)
- ; CHECK-V8M-NEXT:    [[TMP1:%.*]] = sub i32 [[TMP0]], [[UMIN]]
- ; CHECK-V8M-NEXT:    [[TMP2:%.*]] = lshr i32 [[TMP1]], 5
- ; CHECK-V8M-NEXT:    [[TMP3:%.*]] = shl nuw i32 [[TMP2]], 5
- ; CHECK-V8M-NEXT:    [[TMP4:%.*]] = sub i32 [[SIZE]], [[TMP3]]
--; CHECK-V8M-NEXT:    br label [[WHILE_COND:%.*]]
--; CHECK-V8M:       while.cond:
--; CHECK-V8M-NEXT:    br i1 false, label [[WHILE_COND]], label [[WHILE_END:%.*]]
--; CHECK-V8M:       while.end:
- ; CHECK-V8M-NEXT:    ret i32 [[TMP4]]
- ;
- ; CHECK-V8A-LABEL: @remove_loop(
-+; CHECK-V8A-SAME: i32 [[SIZE:%.*]]) #[[ATTR0:[0-9]+]] {
- ; CHECK-V8A-NEXT:  entry:
--; CHECK-V8A-NEXT:    [[TMP0:%.*]] = add i32 [[SIZE:%.*]], 31
-+; CHECK-V8A-NEXT:    br label %[[WHILE_COND:.*]]
-+; CHECK-V8A:       while.cond:
-+; CHECK-V8A-NEXT:    br i1 false, label %[[WHILE_COND]], label %[[WHILE_END:.*]]
-+; CHECK-V8A:       while.end:
-+; CHECK-V8A-NEXT:    [[TMP0:%.*]] = add i32 [[SIZE]], 31
- ; CHECK-V8A-NEXT:    [[UMIN:%.*]] = call i32 @llvm.umin.i32(i32 [[SIZE]], i32 31)
- ; CHECK-V8A-NEXT:    [[TMP1:%.*]] = sub i32 [[TMP0]], [[UMIN]]
- ; CHECK-V8A-NEXT:    [[TMP2:%.*]] = lshr i32 [[TMP1]], 5
- ; CHECK-V8A-NEXT:    [[TMP3:%.*]] = shl nuw i32 [[TMP2]], 5
- ; CHECK-V8A-NEXT:    [[TMP4:%.*]] = sub i32 [[SIZE]], [[TMP3]]
--; CHECK-V8A-NEXT:    br label [[WHILE_COND:%.*]]
--; CHECK-V8A:       while.cond:
--; CHECK-V8A-NEXT:    br i1 false, label [[WHILE_COND]], label [[WHILE_END:%.*]]
--; CHECK-V8A:       while.end:
- ; CHECK-V8A-NEXT:    ret i32 [[TMP4]]
- ;
- entry:
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/ARM/indvar-unroll-imm-cost.ll b/llvm/test/Transforms/IndVarSimplify/ARM/indvar-unroll-imm-cost.ll
---- a/llvm/test/Transforms/IndVarSimplify/ARM/indvar-unroll-imm-cost.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/ARM/indvar-unroll-imm-cost.ll
-@@ -77,8 +77,6 @@
- ; CHECK-NEXT:    [[CMP2780:%.*]] = icmp ugt i32 [[ADD25]], [[J_0_LCSSA]]
- ; CHECK-NEXT:    br i1 [[CMP2780]], label [[FOR_BODY29_PREHEADER:%.*]], label [[FOR_END40]]
- ; CHECK:       for.body29.preheader:
--; CHECK-NEXT:    [[TMP10:%.*]] = sub nsw i32 [[ADD25]], [[J_0_LCSSA]]
--; CHECK-NEXT:    [[SCEVGEP93:%.*]] = getelementptr i16, ptr [[PSRCB_ADDR_1_LCSSA]], i32 [[TMP10]]
- ; CHECK-NEXT:    br label [[FOR_BODY29:%.*]]
- ; CHECK:       for.body29:
- ; CHECK-NEXT:    [[J_184:%.*]] = phi i32 [ [[INC:%.*]], [[FOR_BODY29]] ], [ [[J_0_LCSSA]], [[FOR_BODY29_PREHEADER]] ]
-@@ -102,6 +100,8 @@
- ; CHECK-NEXT:    [[EXITCOND:%.*]] = icmp eq i32 [[INC]], [[ADD25]]
- ; CHECK-NEXT:    br i1 [[EXITCOND]], label [[FOR_END40_LOOPEXIT:%.*]], label [[FOR_BODY29]]
- ; CHECK:       for.end40.loopexit:
-+; CHECK-NEXT:    [[TMP10:%.*]] = sub nsw i32 [[ADD25]], [[J_0_LCSSA]]
-+; CHECK-NEXT:    [[SCEVGEP93:%.*]] = getelementptr i16, ptr [[PSRCB_ADDR_1_LCSSA]], i32 [[TMP10]]
- ; CHECK-NEXT:    [[SCEVGEP:%.*]] = getelementptr i16, ptr [[PSRCA_ADDR_1_LCSSA]], i32 [[TMP10]]
- ; CHECK-NEXT:    [[SCEVGEP94:%.*]] = getelementptr i32, ptr [[PDEST_ADDR_1_LCSSA]], i32 [[TMP10]]
- ; CHECK-NEXT:    br label [[FOR_END40]]
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/exit-count-select.ll b/llvm/test/Transforms/IndVarSimplify/exit-count-select.ll
---- a/llvm/test/Transforms/IndVarSimplify/exit-count-select.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/exit-count-select.ll
-@@ -1,5 +1,5 @@
- ; NOTE: Assertions have been autogenerated by utils/update_test_checks.py
--; RUN: opt < %s -passes='require<scalar-evolution>,indvars,loop-mssa(licm)' -S | FileCheck %s
-+; RUN: opt < %s -passes=indvars -S | FileCheck %s
- 
- define i32 @logical_and_2ops(i32 %n, i32 %m) {
- ; CHECK-LABEL: @logical_and_2ops(
-@@ -56,10 +56,10 @@
- ; CHECK:       loop:
- ; CHECK-NEXT:    br i1 false, label [[LOOP]], label [[EXIT:%.*]]
- ; CHECK:       exit:
-+; CHECK-NEXT:    [[TMP0:%.*]] = freeze i32 [[K:%.*]]
- ; CHECK-NEXT:    [[TMP1:%.*]] = freeze i32 [[M:%.*]]
--; CHECK-NEXT:    [[N:%.*]] = freeze i32 [[K:%.*]]
--; CHECK-NEXT:    [[UMIN:%.*]] = call i32 @llvm.umin.i32(i32 [[TMP1]], i32 [[N]])
--; CHECK-NEXT:    [[UMIN1:%.*]] = call i32 @llvm.umin.i32(i32 [[UMIN]], i32 [[N1:%.*]])
-+; CHECK-NEXT:    [[UMIN:%.*]] = call i32 @llvm.umin.i32(i32 [[TMP0]], i32 [[TMP1]])
-+; CHECK-NEXT:    [[UMIN1:%.*]] = call i32 @llvm.umin.i32(i32 [[UMIN]], i32 [[N:%.*]])
- ; CHECK-NEXT:    ret i32 [[UMIN1]]
- ;
- entry:
-@@ -84,10 +84,10 @@
- ; CHECK:       loop:
- ; CHECK-NEXT:    br i1 true, label [[EXIT:%.*]], label [[LOOP]]
- ; CHECK:       exit:
-+; CHECK-NEXT:    [[TMP0:%.*]] = freeze i32 [[K:%.*]]
- ; CHECK-NEXT:    [[TMP1:%.*]] = freeze i32 [[M:%.*]]
--; CHECK-NEXT:    [[N:%.*]] = freeze i32 [[K:%.*]]
--; CHECK-NEXT:    [[UMIN:%.*]] = call i32 @llvm.umin.i32(i32 [[TMP1]], i32 [[N]])
--; CHECK-NEXT:    [[UMIN1:%.*]] = call i32 @llvm.umin.i32(i32 [[UMIN]], i32 [[N1:%.*]])
-+; CHECK-NEXT:    [[UMIN:%.*]] = call i32 @llvm.umin.i32(i32 [[TMP0]], i32 [[TMP1]])
-+; CHECK-NEXT:    [[UMIN1:%.*]] = call i32 @llvm.umin.i32(i32 [[UMIN]], i32 [[N:%.*]])
- ; CHECK-NEXT:    ret i32 [[UMIN1]]
- ;
- entry:
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/finite-exit-comparisons.ll b/llvm/test/Transforms/IndVarSimplify/finite-exit-comparisons.ll
---- a/llvm/test/Transforms/IndVarSimplify/finite-exit-comparisons.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/finite-exit-comparisons.ll
-@@ -932,9 +932,6 @@
- define i16 @ult_multiuse_profit(i16 %n.raw, i8 %start) mustprogress {
- ; CHECK-LABEL: @ult_multiuse_profit(
- ; CHECK-NEXT:  entry:
--; CHECK-NEXT:    [[TMP2:%.*]] = add i8 [[START:%.*]], 1
--; CHECK-NEXT:    [[TMP1:%.*]] = zext i8 [[TMP2]] to i16
--; CHECK-NEXT:    [[UMAX:%.*]] = call i16 @llvm.umax.i16(i16 [[TMP1]], i16 254)
- ; CHECK-NEXT:    [[TMP0:%.*]] = trunc i16 254 to i8
- ; CHECK-NEXT:    br label [[FOR_BODY:%.*]]
- ; CHECK:       for.body:
-@@ -943,6 +940,9 @@
- ; CHECK-NEXT:    [[CMP:%.*]] = icmp ult i8 [[IV_NEXT]], [[TMP0]]
- ; CHECK-NEXT:    br i1 [[CMP]], label [[FOR_BODY]], label [[FOR_END:%.*]]
- ; CHECK:       for.end:
-+; CHECK-NEXT:    [[TMP1:%.*]] = add i8 [[START:%.*]], 1
-+; CHECK-NEXT:    [[TMP2:%.*]] = zext i8 [[TMP1]] to i16
-+; CHECK-NEXT:    [[UMAX:%.*]] = call i16 @llvm.umax.i16(i16 [[TMP2]], i16 254)
- ; CHECK-NEXT:    ret i16 [[UMAX]]
- ;
- entry:
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/pr116483.ll b/llvm/test/Transforms/IndVarSimplify/pr116483.ll
---- a/llvm/test/Transforms/IndVarSimplify/pr116483.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/pr116483.ll
-@@ -4,16 +4,16 @@
- define i32 @test() {
- ; CHECK-LABEL: define i32 @test() {
- ; CHECK-NEXT:  [[ENTRY:.*:]]
-+; CHECK-NEXT:    br label %[[LOOP_BODY:.*]]
-+; CHECK:       [[LOOP_BODY]]:
-+; CHECK-NEXT:    br i1 true, label %[[EXIT:.*]], label %[[LOOP_BODY]]
-+; CHECK:       [[EXIT]]:
- ; CHECK-NEXT:    [[XOR:%.*]] = xor i32 0, 3
- ; CHECK-NEXT:    [[MUL:%.*]] = mul i32 [[XOR]], 329
- ; CHECK-NEXT:    [[CONV:%.*]] = trunc i32 [[MUL]] to i16
- ; CHECK-NEXT:    [[SEXT:%.*]] = shl i16 [[CONV]], 8
- ; CHECK-NEXT:    [[CONV1:%.*]] = ashr i16 [[SEXT]], 8
- ; CHECK-NEXT:    [[CONV3:%.*]] = zext i16 [[CONV1]] to i32
--; CHECK-NEXT:    br label %[[LOOP_BODY:.*]]
--; CHECK:       [[LOOP_BODY]]:
--; CHECK-NEXT:    br i1 true, label %[[EXIT:.*]], label %[[LOOP_BODY]]
--; CHECK:       [[EXIT]]:
- ; CHECK-NEXT:    ret i32 [[CONV3]]
- ;
- entry:
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/pr24783.ll b/llvm/test/Transforms/IndVarSimplify/pr24783.ll
---- a/llvm/test/Transforms/IndVarSimplify/pr24783.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/pr24783.ll
-@@ -7,11 +7,11 @@
- define void @f(ptr %end.s, ptr %loc, i32 %p) {
- ; CHECK-LABEL: @f(
- ; CHECK-NEXT:  entry:
--; CHECK-NEXT:    [[END:%.*]] = getelementptr inbounds i32, ptr [[END_S:%.*]], i32 [[P:%.*]]
- ; CHECK-NEXT:    br label [[WHILE_BODY_I:%.*]]
- ; CHECK:       while.body.i:
- ; CHECK-NEXT:    br i1 true, label [[LOOP_EXIT:%.*]], label [[WHILE_BODY_I]]
- ; CHECK:       loop.exit:
-+; CHECK-NEXT:    [[END:%.*]] = getelementptr inbounds i32, ptr [[END_S:%.*]], i32 [[P:%.*]]
- ; CHECK-NEXT:    store ptr [[END]], ptr [[LOC:%.*]], align 8
- ; CHECK-NEXT:    ret void
- ;
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/pr39673.ll b/llvm/test/Transforms/IndVarSimplify/pr39673.ll
---- a/llvm/test/Transforms/IndVarSimplify/pr39673.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/pr39673.ll
-@@ -148,7 +148,6 @@
- define i16 @neg_loop_carried(i16 %arg) {
- ; CHECK-LABEL: @neg_loop_carried(
- ; CHECK-NEXT:  entry:
--; CHECK-NEXT:    [[TMP0:%.*]] = add i16 [[ARG:%.*]], 2
- ; CHECK-NEXT:    br label [[LOOP1:%.*]]
- ; CHECK:       loop1:
- ; CHECK-NEXT:    [[L1:%.*]] = phi i16 [ 0, [[ENTRY:%.*]] ], [ [[L1_ADD:%.*]], [[LOOP1]] ]
-@@ -156,6 +155,7 @@
- ; CHECK-NEXT:    [[CMP1:%.*]] = icmp ult i16 [[L1_ADD]], 2
- ; CHECK-NEXT:    br i1 [[CMP1]], label [[LOOP1]], label [[LOOP2_PREHEADER:%.*]]
- ; CHECK:       loop2.preheader:
-+; CHECK-NEXT:    [[TMP0:%.*]] = add i16 [[ARG:%.*]], 2
- ; CHECK-NEXT:    br label [[LOOP2:%.*]]
- ; CHECK:       loop2:
- ; CHECK-NEXT:    [[K2:%.*]] = phi i16 [ [[K2_ADD:%.*]], [[LOOP2]] ], [ [[TMP0]], [[LOOP2_PREHEADER]] ]
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/pr63763.ll b/llvm/test/Transforms/IndVarSimplify/pr63763.ll
---- a/llvm/test/Transforms/IndVarSimplify/pr63763.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/pr63763.ll
-@@ -16,13 +16,13 @@
- ; CHECK-NEXT:    [[CONV2:%.*]] = ashr exact i32 [[SEXT]], 24
- ; CHECK-NEXT:    [[INVARIANT_OP:%.*]] = sub nsw i32 7, [[CONV2]]
- ; CHECK-NEXT:    call void @use(i32 [[INVARIANT_OP]])
--; CHECK-NEXT:    [[SEXT_US:%.*]] = shl i32 [[SEL]], 24
--; CHECK-NEXT:    [[CONV2_US:%.*]] = ashr exact i32 [[SEXT_US]], 24
--; CHECK-NEXT:    [[INVARIANT_OP_US:%.*]] = sub nsw i32 7, [[CONV2_US]]
- ; CHECK-NEXT:    br label [[LOOP:%.*]]
- ; CHECK:       loop:
- ; CHECK-NEXT:    br i1 true, label [[EXIT:%.*]], label [[LOOP]]
- ; CHECK:       exit:
-+; CHECK-NEXT:    [[SEXT_US:%.*]] = shl i32 [[SEL]], 24
-+; CHECK-NEXT:    [[CONV2_US:%.*]] = ashr exact i32 [[SEXT_US]], 24
-+; CHECK-NEXT:    [[INVARIANT_OP_US:%.*]] = sub nsw i32 7, [[CONV2_US]]
- ; CHECK-NEXT:    ret i32 [[INVARIANT_OP_US]]
- ;
- entry:
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/replace-loop-exit-folds.ll b/llvm/test/Transforms/IndVarSimplify/replace-loop-exit-folds.ll
---- a/llvm/test/Transforms/IndVarSimplify/replace-loop-exit-folds.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/replace-loop-exit-folds.ll
-@@ -4,21 +4,22 @@
- target datalayout = "e-m:e-p:32:32-i64:64-v128:64:128-a:0:32-n32-S64"
- 
- define i32 @remove_loop(i32 %size) {
--; CHECK-LABEL: @remove_loop(
--; CHECK-NEXT:  entry:
--; CHECK-NEXT:    [[TMP0:%.*]] = add i32 [[SIZE:%.*]], 31
-+; CHECK-LABEL: define i32 @remove_loop(
-+; CHECK-SAME: i32 [[SIZE:%.*]]) {
-+; CHECK-NEXT:  [[ENTRY:.*]]:
-+; CHECK-NEXT:    br label %[[WHILE_COND:.*]]
-+; CHECK:       [[WHILE_COND]]:
-+; CHECK-NEXT:    [[SIZE_ADDR_0:%.*]] = phi i32 [ [[SIZE]], %[[ENTRY]] ], [ [[SUB:%.*]], %[[WHILE_COND]] ]
-+; CHECK-NEXT:    [[CMP:%.*]] = icmp ugt i32 [[SIZE_ADDR_0]], 31
-+; CHECK-NEXT:    [[SUB]] = add i32 [[SIZE_ADDR_0]], -32
-+; CHECK-NEXT:    br i1 [[CMP]], label %[[WHILE_COND]], label %[[WHILE_END:.*]]
-+; CHECK:       [[WHILE_END]]:
-+; CHECK-NEXT:    [[TMP0:%.*]] = add i32 [[SIZE]], 31
- ; CHECK-NEXT:    [[UMIN:%.*]] = call i32 @llvm.umin.i32(i32 [[SIZE]], i32 31)
- ; CHECK-NEXT:    [[TMP1:%.*]] = sub i32 [[TMP0]], [[UMIN]]
- ; CHECK-NEXT:    [[TMP2:%.*]] = lshr i32 [[TMP1]], 5
- ; CHECK-NEXT:    [[TMP3:%.*]] = shl nuw i32 [[TMP2]], 5
- ; CHECK-NEXT:    [[TMP4:%.*]] = sub i32 [[SIZE]], [[TMP3]]
--; CHECK-NEXT:    br label [[WHILE_COND:%.*]]
--; CHECK:       while.cond:
--; CHECK-NEXT:    [[SIZE_ADDR_0:%.*]] = phi i32 [ [[SIZE]], [[ENTRY:%.*]] ], [ [[SUB:%.*]], [[WHILE_COND]] ]
--; CHECK-NEXT:    [[CMP:%.*]] = icmp ugt i32 [[SIZE_ADDR_0]], 31
--; CHECK-NEXT:    [[SUB]] = add i32 [[SIZE_ADDR_0]], -32
--; CHECK-NEXT:    br i1 [[CMP]], label [[WHILE_COND]], label [[WHILE_END:%.*]]
--; CHECK:       while.end:
- ; CHECK-NEXT:    ret i32 [[TMP4]]
- ;
- entry:
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/rewrite-loop-exit-values-phi.ll b/llvm/test/Transforms/IndVarSimplify/rewrite-loop-exit-values-phi.ll
---- a/llvm/test/Transforms/IndVarSimplify/rewrite-loop-exit-values-phi.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/rewrite-loop-exit-values-phi.ll
-@@ -76,10 +76,6 @@
- ; CHECK-LABEL: @narow_canonical_iv_wide_multiplied_iv(
- ; CHECK-NEXT:  entry:
- ; CHECK-NEXT:    [[SMAX:%.*]] = tail call i32 @llvm.smax.i32(i32 [[X:%.*]], i32 1)
--; CHECK-NEXT:    [[TMP1:%.*]] = zext nneg i32 [[SMAX]] to i64
--; CHECK-NEXT:    [[TMP2:%.*]] = mul i64 [[Y:%.*]], [[TMP1]]
--; CHECK-NEXT:    [[TMP3:%.*]] = shl i64 [[TMP2]], 1
--; CHECK-NEXT:    [[TMP6:%.*]] = add nuw nsw i64 [[TMP3]], 1
- ; CHECK-NEXT:    br label [[LOOP:%.*]]
- ; CHECK:       loop:
- ; CHECK-NEXT:    [[IV:%.*]] = phi i32 [ 0, [[ENTRY:%.*]] ], [ [[IV_NEXT:%.*]], [[LOOP]] ]
-@@ -88,6 +84,10 @@
- ; CHECK-NEXT:    [[EC:%.*]] = icmp ne i32 [[IV_NEXT]], [[SMAX]]
- ; CHECK-NEXT:    br i1 [[EC]], label [[LOOP]], label [[EXIT:%.*]]
- ; CHECK:       exit:
-+; CHECK-NEXT:    [[TMP1:%.*]] = zext nneg i32 [[SMAX]] to i64
-+; CHECK-NEXT:    [[TMP2:%.*]] = mul i64 [[Y:%.*]], [[TMP1]]
-+; CHECK-NEXT:    [[TMP3:%.*]] = shl i64 [[TMP2]], 1
-+; CHECK-NEXT:    [[TMP6:%.*]] = add nuw nsw i64 [[TMP3]], 1
- ; CHECK-NEXT:    ret i64 [[TMP6]]
- ;
- entry:
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/scev-expander-preserve-lcssa.ll b/llvm/test/Transforms/IndVarSimplify/scev-expander-preserve-lcssa.ll
---- a/llvm/test/Transforms/IndVarSimplify/scev-expander-preserve-lcssa.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/scev-expander-preserve-lcssa.ll
-@@ -23,8 +23,8 @@
- ; CHECK-NEXT:    br label [[WHILE_COND192:%.*]]
- ; CHECK:       while.cond192:
- ; CHECK-NEXT:    switch i8 [[X:%.*]], label [[WHILE_BODY205:%.*]] [
--; CHECK-NEXT:      i8 59, label [[WHILE_COND215_PREHEADER:%.*]]
--; CHECK-NEXT:      i8 10, label [[IF_END224_LOOPEXIT1:%.*]]
-+; CHECK-NEXT:    i8 59, label [[WHILE_COND215_PREHEADER:%.*]]
-+; CHECK-NEXT:    i8 10, label [[IF_END224_LOOPEXIT1:%.*]]
- ; CHECK-NEXT:    ]
- ; CHECK:       while.cond215.preheader:
- ; CHECK-NEXT:    br label [[WHILE_COND215:%.*]]
-@@ -103,8 +103,8 @@
- ; CHECK-NEXT:    br label [[FOR_COND:%.*]]
- ; CHECK:       for.cond:
- ; CHECK-NEXT:    switch i16 [[X:%.*]], label [[RETURN_LOOPEXIT1:%.*]] [
--; CHECK-NEXT:      i16 41, label [[FOR_END:%.*]]
--; CHECK-NEXT:      i16 43, label [[FOR_COND]]
-+; CHECK-NEXT:    i16 41, label [[FOR_END:%.*]]
-+; CHECK-NEXT:    i16 43, label [[FOR_COND]]
- ; CHECK-NEXT:    ]
- ; CHECK:       for.end:
- ; CHECK-NEXT:    [[I_0_LCSSA2:%.*]] = phi i32 [ 0, [[FOR_COND]] ]
-@@ -336,7 +336,6 @@
- define void @test5(ptr %header, i32 %conv, i8 %n) {
- ; CHECK-LABEL: @test5(
- ; CHECK-NEXT:  entry:
--; CHECK-NEXT:    [[SHL:%.*]] = shl nuw nsw i32 [[CONV:%.*]], 2
- ; CHECK-NEXT:    br label [[FOR_BODY:%.*]]
- ; CHECK:       for.body:
- ; CHECK-NEXT:    br label [[FOR_INNER:%.*]]
-@@ -359,6 +358,7 @@
- ; CHECK-NEXT:    br i1 false, label [[FOR_BODY]], label [[WHILE_COND_PREHEADER:%.*]]
- ; CHECK:       while.cond.preheader:
- ; CHECK-NEXT:    [[ADD85_LCSSA:%.*]] = phi i32 [ [[ADD85]], [[FOR_INC]] ]
-+; CHECK-NEXT:    [[SHL:%.*]] = shl nuw nsw i32 [[CONV:%.*]], 2
- ; CHECK-NEXT:    br label [[WHILE_COND:%.*]]
- ; CHECK:       while.cond:
- ; CHECK-NEXT:    [[POS_8:%.*]] = phi i32 [ [[INC114:%.*]], [[WHILE_BODY:%.*]] ], [ [[ADD85_LCSSA]], [[WHILE_COND_PREHEADER]] ]
-@@ -427,8 +427,8 @@
- ; CHECK-NEXT:    br label [[WHILE_COND192:%.*]]
- ; CHECK:       while.cond192:
- ; CHECK-NEXT:    switch i8 [[X:%.*]], label [[WHILE_BODY205:%.*]] [
--; CHECK-NEXT:      i8 59, label [[WHILE_COND215_PREHEADER:%.*]]
--; CHECK-NEXT:      i8 10, label [[IF_END224:%.*]]
-+; CHECK-NEXT:    i8 59, label [[WHILE_COND215_PREHEADER:%.*]]
-+; CHECK-NEXT:    i8 10, label [[IF_END224:%.*]]
- ; CHECK-NEXT:    ]
- ; CHECK:       while.cond215.preheader:
- ; CHECK-NEXT:    [[I_7_LCSSA:%.*]] = phi i32 [ 0, [[WHILE_COND192]] ]
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/scev-invalidation.ll b/llvm/test/Transforms/IndVarSimplify/scev-invalidation.ll
---- a/llvm/test/Transforms/IndVarSimplify/scev-invalidation.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/scev-invalidation.ll
-@@ -46,12 +46,12 @@
- define i32 @test_pr58439(i32 %a) {
- ; CHECK-LABEL: @test_pr58439(
- ; CHECK-NEXT:  entry:
--; CHECK-NEXT:    [[OR:%.*]] = or i32 [[A:%.*]], 1
- ; CHECK-NEXT:    br label [[LOOP:%.*]]
- ; CHECK:       loop:
- ; CHECK-NEXT:    br i1 false, label [[LOOP]], label [[EXIT:%.*]]
- ; CHECK:       exit:
- ; CHECK-NEXT:    [[C_EXT_LCSSA:%.*]] = phi i32 [ 0, [[LOOP]] ]
-+; CHECK-NEXT:    [[OR:%.*]] = or i32 [[A:%.*]], 1
- ; CHECK-NEXT:    [[RES:%.*]] = add i32 [[C_EXT_LCSSA]], [[OR]]
- ; CHECK-NEXT:    ret i32 [[RES]]
- ;
-@@ -76,7 +76,6 @@
- ; CHECK-NEXT:  entry:
- ; CHECK-NEXT:    br label [[OUTER_HEADER:%.*]]
- ; CHECK:       outer.header:
--; CHECK-NEXT:    [[AND:%.*]] = and i32 1, [[INC:%.*]]
- ; CHECK-NEXT:    br label [[INNER:%.*]]
- ; CHECK:       inner:
- ; CHECK-NEXT:    [[C_05_I:%.*]] = phi i32 [ [[INC_I:%.*]], [[INNER]] ], [ 0, [[OUTER_HEADER]] ]
-@@ -87,6 +86,7 @@
- ; CHECK:       outer.latch:
- ; CHECK-NEXT:    [[C_05_I_LCSSA:%.*]] = phi i32 [ [[C_05_I]], [[INNER]] ]
- ; CHECK-NEXT:    [[LCSSA:%.*]] = phi i32 [ 0, [[INNER]] ]
-+; CHECK-NEXT:    [[AND:%.*]] = and i32 1, [[INC:%.*]]
- ; CHECK-NEXT:    [[TMP0:%.*]] = trunc i32 [[AND]] to i8
- ; CHECK-NEXT:    [[TMP1:%.*]] = trunc i32 [[C_05_I_LCSSA]] to i8
- ; CHECK-NEXT:    [[TMP2:%.*]] = sub i8 [[TMP0]], [[TMP1]]
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/sentinel.ll b/llvm/test/Transforms/IndVarSimplify/sentinel.ll
---- a/llvm/test/Transforms/IndVarSimplify/sentinel.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/sentinel.ll
-@@ -9,19 +9,19 @@
- ; CHECK-NEXT:  bb:
- ; CHECK-NEXT:    br label [[BB4:%.*]]
- ; CHECK:       bb1:
-+; CHECK-NEXT:    [[INDVARS_IV_NEXT:%.*]] = add i32 [[INDVARS_IV:%.*]], 1
-+; CHECK-NEXT:    [[TMP0:%.*]] = add i32 [[TMP6:%.*]], [[INDVARS_IV]]
-+; CHECK-NEXT:    [[TMP1:%.*]] = sub i32 [[TMP0]], [[SMAX:%.*]]
- ; CHECK-NEXT:    br i1 [[ARG:%.*]], label [[BB2:%.*]], label [[BB4]]
- ; CHECK:       bb2:
--; CHECK-NEXT:    [[TMP3:%.*]] = phi i32 [ [[TMP1:%.*]], [[BB1:%.*]] ]
-+; CHECK-NEXT:    [[TMP3:%.*]] = phi i32 [ [[TMP1]], [[BB1:%.*]] ]
- ; CHECK-NEXT:    ret void
- ; CHECK:       bb4:
--; CHECK-NEXT:    [[INDVARS_IV:%.*]] = phi i32 [ [[INDVARS_IV_NEXT:%.*]], [[BB1]] ], [ undef, [[BB:%.*]] ]
--; CHECK-NEXT:    [[SMAX:%.*]] = call i32 @llvm.smax.i32(i32 [[INDVARS_IV]], i32 36)
--; CHECK-NEXT:    [[TMP6:%.*]] = invoke i32 @quux() [ "deopt"(i32 0, i32 0, i32 0, i32 180, i32 0, i32 25, i32 0, i32 7, ptr null, i32 7, ptr null, i32 7, ptr null, i32 3, i32 [[INDVARS_IV]], i32 3, i32 undef, i32 7, ptr null, i32 3, i32 undef, i32 3, i32 undef, i32 3, i32 undef, i32 3, i32 undef, i32 4, double undef, i32 7, ptr null, i32 4, i64 undef, i32 7, ptr null, i32 0, ptr addrspace(1) undef, i32 3, i32 undef, i32 0, ptr addrspace(1) undef, i32 0, ptr addrspace(1) undef, i32 0, ptr addrspace(1) undef, i32 0, ptr addrspace(1) undef, i32 0, ptr addrspace(1) undef, i32 0, ptr addrspace(1) undef, i32 0, ptr addrspace(1) undef, i32 0, ptr addrspace(1) undef, i32 7, ptr null) ]
-+; CHECK-NEXT:    [[INDVARS_IV]] = phi i32 [ [[INDVARS_IV_NEXT]], [[BB1]] ], [ undef, [[BB:%.*]] ]
-+; CHECK-NEXT:    [[SMAX]] = call i32 @llvm.smax.i32(i32 [[INDVARS_IV]], i32 36)
-+; CHECK-NEXT:    [[TMP6]] = invoke i32 @quux() [ "deopt"(i32 0, i32 0, i32 0, i32 180, i32 0, i32 25, i32 0, i32 7, ptr null, i32 7, ptr null, i32 7, ptr null, i32 3, i32 [[INDVARS_IV]], i32 3, i32 undef, i32 7, ptr null, i32 3, i32 undef, i32 3, i32 undef, i32 3, i32 undef, i32 3, i32 undef, i32 4, double undef, i32 7, ptr null, i32 4, i64 undef, i32 7, ptr null, i32 0, ptr addrspace(1) undef, i32 3, i32 undef, i32 0, ptr addrspace(1) undef, i32 0, ptr addrspace(1) undef, i32 0, ptr addrspace(1) undef, i32 0, ptr addrspace(1) undef, i32 0, ptr addrspace(1) undef, i32 0, ptr addrspace(1) undef, i32 0, ptr addrspace(1) undef, i32 0, ptr addrspace(1) undef, i32 7, ptr null) ]
- ; CHECK-NEXT:            to label [[BB7:%.*]] unwind label [[BB15:%.*]]
- ; CHECK:       bb7:
--; CHECK-NEXT:    [[INDVARS_IV_NEXT]] = add i32 [[INDVARS_IV]], 1
--; CHECK-NEXT:    [[TMP0:%.*]] = add i32 [[TMP6]], [[INDVARS_IV]]
--; CHECK-NEXT:    [[TMP1]] = sub i32 [[TMP0]], [[SMAX]]
- ; CHECK-NEXT:    br label [[BB9:%.*]]
- ; CHECK:       bb9:
- ; CHECK-NEXT:    br i1 true, label [[BB1]], label [[BB9]]
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/sink-alloca.ll b/llvm/test/Transforms/IndVarSimplify/sink-alloca.ll
---- a/llvm/test/Transforms/IndVarSimplify/sink-alloca.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/sink-alloca.ll
-@@ -0,0 +1,56 @@
-+; RUN: opt < %s -passes=indvars -S | FileCheck %s
-+target datalayout = "e-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-f32:32:32-f64:32:64-v64:64:64-v128:128:128-a0:0:64-f80:128:128"
-+target triple = "i386-apple-darwin10.0"
-+
-+; PR4775
-+; Indvars shouldn't sink the alloca out of the entry block, even though
-+; it's not used until after the loop.
-+define i32 @main() nounwind {
-+; CHECK: entry:
-+; CHECK-NEXT: %result.i = alloca i32, align 4
-+entry:
-+  %result.i = alloca i32, align 4                 ; <ptr> [#uses=2]
-+  br label %while.cond
-+
-+while.cond:                                       ; preds = %while.cond, %entry
-+  %call = call i32 @bar() nounwind                ; <i32> [#uses=1]
-+  %tobool = icmp eq i32 %call, 0                  ; <i1> [#uses=1]
-+  br i1 %tobool, label %while.end, label %while.cond
-+
-+while.end:                                        ; preds = %while.cond
-+  store volatile i32 0, ptr %result.i
-+  %tmp.i = load volatile i32, ptr %result.i           ; <i32> [#uses=0]
-+  ret i32 0
-+}
-+declare i32 @bar()
-+
-+; <rdar://problem/10352360>
-+; Indvars shouldn't sink the first alloca between the stacksave and stackrestore
-+; intrinsics.
-+declare ptr @a(...)
-+declare ptr @llvm.stacksave() nounwind
-+declare void @llvm.stackrestore(ptr) nounwind
-+define void @h(i64 %n) nounwind uwtable ssp {
-+; CHECK: entry:
-+; CHECK-NEXT: %vla = alloca ptr
-+; CHECK-NEXT: %savedstack = call ptr @llvm.stacksave.p0()
-+entry:
-+  %vla = alloca ptr, i64 %n, align 16
-+  %savedstack = call ptr @llvm.stacksave() nounwind
-+  %vla.i = alloca ptr, i64 %n, align 16
-+  br label %for.body.i
-+
-+for.body.i:
-+  %indvars.iv37.i = phi i64 [ %indvars.iv.next38.i, %for.body.i ], [ 0, %entry ]
-+  %call.i = call ptr (...) @a() nounwind
-+  %arrayidx.i = getelementptr inbounds ptr, ptr %vla.i, i64 %indvars.iv37.i
-+  store ptr %call.i, ptr %arrayidx.i, align 8
-+  %indvars.iv.next38.i = add i64 %indvars.iv37.i, 1
-+  %exitcond5 = icmp eq i64 %indvars.iv.next38.i, %n
-+  br i1 %exitcond5, label %g.exit, label %for.body.i
-+
-+g.exit:
-+  call void @llvm.stackrestore(ptr %savedstack) nounwind
-+  %call1 = call ptr (...) @a(ptr %vla) nounwind
-+  ret void
-+}
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/sink-from-preheader.ll b/llvm/test/Transforms/IndVarSimplify/sink-from-preheader.ll
---- a/llvm/test/Transforms/IndVarSimplify/sink-from-preheader.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/sink-from-preheader.ll
-@@ -0,0 +1,32 @@
-+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py
-+; RUN: opt < %s -passes=indvars -indvars-predicate-loops=0 -S | FileCheck %s
-+target datalayout = "e-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-f32:32:32-f64:32:64-v64:64:64-v128:128:128-a0:0:64-f80:128:128"
-+target triple = "i386-apple-darwin10.0"
-+
-+; We make sinking here, Changed flag should be set properly.
-+define i32 @test(i32 %a, i32 %b, i32 %N) {
-+; CHECK-LABEL: @test(
-+; CHECK-NEXT:  entry:
-+; CHECK-NEXT:    br label [[LOOP:%.*]]
-+; CHECK:       loop:
-+; CHECK-NEXT:    [[IV:%.*]] = phi i32 [ 0, [[ENTRY:%.*]] ], [ [[IV_NEXT:%.*]], [[LOOP]] ]
-+; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i32 [[IV]], 1
-+; CHECK-NEXT:    [[CMP:%.*]] = icmp slt i32 [[IV_NEXT]], [[N:%.*]]
-+; CHECK-NEXT:    br i1 [[CMP]], label [[LOOP]], label [[EXIT:%.*]]
-+; CHECK:       exit:
-+; CHECK-NEXT:    [[ADD:%.*]] = add i32 [[A:%.*]], [[B:%.*]]
-+; CHECK-NEXT:    ret i32 [[ADD]]
-+;
-+entry:
-+  %add = add i32 %a, %b
-+  br label %loop
-+
-+loop:
-+  %iv = phi i32 [ 0, %entry ], [ %iv.next, %loop ]
-+  %iv.next = add i32 %iv, 1
-+  %cmp = icmp slt i32 %iv.next, %N
-+  br i1 %cmp, label %loop, label %exit
-+
-+exit:
-+  ret i32 %add
-+}
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/sink-trapping.ll b/llvm/test/Transforms/IndVarSimplify/sink-trapping.ll
---- a/llvm/test/Transforms/IndVarSimplify/sink-trapping.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/sink-trapping.ll
-@@ -0,0 +1,19 @@
-+; RUN: opt < %s -passes=indvars -S | FileCheck %s
-+
-+declare i1 @b()
-+
-+define i32 @a(i32 %x) nounwind {
-+for.body.preheader:
-+    %y = sdiv i32 10, %x
-+	br label %for.body
-+
-+for.body:
-+    %cmp = call i1 @b()
-+	br i1 %cmp, label %for.body, label %for.end.loopexit
-+
-+for.end.loopexit:
-+	ret i32 %y
-+}
-+; CHECK: for.end.loopexit:
-+; CHECK: sdiv
-+; CHECK: ret
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/X86/inner-loop-by-latch-cond.ll b/llvm/test/Transforms/IndVarSimplify/X86/inner-loop-by-latch-cond.ll
---- a/llvm/test/Transforms/IndVarSimplify/X86/inner-loop-by-latch-cond.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/X86/inner-loop-by-latch-cond.ll
-@@ -14,7 +14,6 @@
- ; CHECK:       outer_header:
- ; CHECK-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ [[INDVARS_IV_NEXT:%.*]], [[OUTER_LATCH:%.*]] ], [ 21, [[ENTRY:%.*]] ]
- ; CHECK-NEXT:    [[I:%.*]] = phi i64 [ 20, [[ENTRY]] ], [ [[I_NEXT:%.*]], [[OUTER_LATCH]] ]
--; CHECK-NEXT:    [[I_NEXT]] = add nuw nsw i64 [[I]], 1
- ; CHECK-NEXT:    br label [[INNER_HEADER:%.*]]
- ; CHECK:       inner_header:
- ; CHECK-NEXT:    [[J:%.*]] = phi i64 [ 1, [[OUTER_HEADER]] ], [ [[J_NEXT:%.*]], [[INNER_HEADER]] ]
-@@ -23,6 +22,7 @@
- ; CHECK-NEXT:    [[EXITCOND:%.*]] = icmp ne i64 [[J_NEXT]], [[INDVARS_IV]]
- ; CHECK-NEXT:    br i1 [[EXITCOND]], label [[INNER_HEADER]], label [[OUTER_LATCH]]
- ; CHECK:       outer_latch:
-+; CHECK-NEXT:    [[I_NEXT]] = add nuw nsw i64 [[I]], 1
- ; CHECK-NEXT:    [[COND2:%.*]] = icmp ne i64 [[I_NEXT]], 40
- ; CHECK-NEXT:    [[INDVARS_IV_NEXT]] = add nuw nsw i64 [[INDVARS_IV]], 1
- ; CHECK-NEXT:    br i1 [[COND2]], label [[OUTER_HEADER]], label [[RETURN:%.*]]
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/IndVarSimplify/zext-nuw.ll b/llvm/test/Transforms/IndVarSimplify/zext-nuw.ll
---- a/llvm/test/Transforms/IndVarSimplify/zext-nuw.ll
-+++ b/llvm/test/Transforms/IndVarSimplify/zext-nuw.ll
-@@ -24,13 +24,13 @@
- ; CHECK-NEXT:    [[X8:%.*]] = icmp ult i32 0, 4
- ; CHECK-NEXT:    br i1 [[X8]], label [[DOTPREHEADER_LR_PH:%.*]], label [[X22]]
- ; CHECK:       .preheader.lr.ph:
--; CHECK-NEXT:    [[SCEVGEP:%.*]] = getelementptr i8, ptr [[K_09]], i64 [[TMP5]]
- ; CHECK-NEXT:    br label [[DOTPREHEADER:%.*]]
- ; CHECK:       .preheader:
- ; CHECK-NEXT:    br label [[X17:%.*]]
- ; CHECK:       x17:
- ; CHECK-NEXT:    br i1 false, label [[DOTPREHEADER]], label [[DOT_CRIT_EDGE_8:%.*]]
- ; CHECK:       ._crit_edge.8:
-+; CHECK-NEXT:    [[SCEVGEP:%.*]] = getelementptr i8, ptr [[K_09]], i64 [[TMP5]]
- ; CHECK-NEXT:    br label [[X22]]
- ; CHECK:       x22:
- ; CHECK-NEXT:    [[K_1_LCSSA:%.*]] = phi ptr [ [[SCEVGEP]], [[DOT_CRIT_EDGE_8]] ], [ [[K_09]], [[DOTPREHEADER4]] ]
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LICM/scalar-promote.ll b/llvm/test/Transforms/LICM/scalar-promote.ll
---- a/llvm/test/Transforms/LICM/scalar-promote.ll
-+++ b/llvm/test/Transforms/LICM/scalar-promote.ll
-@@ -43,9 +43,9 @@
- ; CHECK-LABEL: define void @test2(
- ; CHECK-SAME: i32 [[I:%.*]]) {
- ; CHECK-NEXT:  [[ENTRY:.*]]:
-+; CHECK-NEXT:    [[X1:%.*]] = getelementptr i32, ptr @X, i64 1
- ; CHECK-NEXT:    [[X2:%.*]] = getelementptr i32, ptr @X, i64 1
--; CHECK-NEXT:    [[X3:%.*]] = getelementptr i32, ptr @X, i64 1
--; CHECK-NEXT:    [[X1_PROMOTED:%.*]] = load i32, ptr [[X2]], align 4
-+; CHECK-NEXT:    [[X1_PROMOTED:%.*]] = load i32, ptr [[X1]], align 4
- ; CHECK-NEXT:    br label %[[LOOP:.*]]
- ; CHECK:       [[LOOP]]:
- ; CHECK-NEXT:    [[A1:%.*]] = phi i32 [ [[V:%.*]], %[[LOOP]] ], [ [[X1_PROMOTED]], %[[ENTRY]] ]
-@@ -53,7 +53,7 @@
- ; CHECK-NEXT:    br i1 false, label %[[LOOP]], label %[[EXIT:.*]]
- ; CHECK:       [[EXIT]]:
- ; CHECK-NEXT:    [[V_LCSSA:%.*]] = phi i32 [ [[V]], %[[LOOP]] ]
--; CHECK-NEXT:    store i32 [[V_LCSSA]], ptr [[X2]], align 4
-+; CHECK-NEXT:    store i32 [[V_LCSSA]], ptr [[X1]], align 4
- ; CHECK-NEXT:    ret void
- ;
- Entry:
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LICM/sink-alloca.ll b/llvm/test/Transforms/LICM/sink-alloca.ll
---- a/llvm/test/Transforms/LICM/sink-alloca.ll
-+++ b/llvm/test/Transforms/LICM/sink-alloca.ll
-@@ -1,56 +0,0 @@
--; RUN: opt < %s -passes=licm -verify-memoryssa -S | FileCheck %s
--target datalayout = "e-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-f32:32:32-f64:32:64-v64:64:64-v128:128:128-a0:0:64-f80:128:128"
--target triple = "i386-apple-darwin10.0"
--
--; PR4775
--; LICM shouldn't sink the alloca out of the entry block, even though
--; it's not used until after the loop.
--define i32 @main() nounwind {
--; CHECK: entry:
--; CHECK-NEXT: %result.i = alloca i32, align 4
--entry:
--  %result.i = alloca i32, align 4                 ; <ptr> [#uses=2]
--  br label %while.cond
--
--while.cond:                                       ; preds = %while.cond, %entry
--  %call = call i32 @bar() nounwind                ; <i32> [#uses=1]
--  %tobool = icmp eq i32 %call, 0                  ; <i1> [#uses=1]
--  br i1 %tobool, label %while.end, label %while.cond
--
--while.end:                                        ; preds = %while.cond
--  store volatile i32 0, ptr %result.i
--  %tmp.i = load volatile i32, ptr %result.i           ; <i32> [#uses=0]
--  ret i32 0
--}
--declare i32 @bar()
--
--; <rdar://problem/10352360>
--; LICM shouldn't sink the first alloca between the stacksave and stackrestore
--; intrinsics.
--declare ptr @a(...)
--declare ptr @llvm.stacksave() nounwind
--declare void @llvm.stackrestore(ptr) nounwind
--define void @h(i64 %n) nounwind uwtable ssp {
--; CHECK: entry:
--; CHECK-NEXT: %vla = alloca ptr
--; CHECK-NEXT: %savedstack = call ptr @llvm.stacksave.p0()
--entry:
--  %vla = alloca ptr, i64 %n, align 16
--  %savedstack = call ptr @llvm.stacksave() nounwind
--  %vla.i = alloca ptr, i64 %n, align 16
--  br label %for.body.i
--
--for.body.i:
--  %indvars.iv37.i = phi i64 [ %indvars.iv.next38.i, %for.body.i ], [ 0, %entry ]
--  %call.i = call ptr (...) @a() nounwind
--  %arrayidx.i = getelementptr inbounds ptr, ptr %vla.i, i64 %indvars.iv37.i
--  store ptr %call.i, ptr %arrayidx.i, align 8
--  %indvars.iv.next38.i = add i64 %indvars.iv37.i, 1
--  %exitcond5 = icmp eq i64 %indvars.iv.next38.i, %n
--  br i1 %exitcond5, label %g.exit, label %for.body.i
--
--g.exit:
--  call void @llvm.stackrestore(ptr %savedstack) nounwind
--  %call1 = call ptr (...) @a(ptr %vla) nounwind
--  ret void
--}
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LICM/sink-from-preheader.ll b/llvm/test/Transforms/LICM/sink-from-preheader.ll
---- a/llvm/test/Transforms/LICM/sink-from-preheader.ll
-+++ b/llvm/test/Transforms/LICM/sink-from-preheader.ll
-@@ -1,185 +0,0 @@
--; NOTE: Assertions have been autogenerated by utils/update_test_checks.py
--; RUN: opt < %s -passes=licm -verify-memoryssa -S | FileCheck %s
--
--; We perform sinking here, Changed flag should be set properly.
--define i32 @test(i32 %a, i32 %b, i32 %N) {
--; CHECK-LABEL: @test(
--; CHECK-NEXT:  entry:
--; CHECK-NEXT:    br label [[LOOP:%.*]]
--; CHECK:       loop:
--; CHECK-NEXT:    [[IV:%.*]] = phi i32 [ 0, [[ENTRY:%.*]] ], [ [[IV_NEXT:%.*]], [[LOOP]] ]
--; CHECK-NEXT:    [[IV_NEXT]] = add i32 [[IV]], 1
--; CHECK-NEXT:    [[CMP:%.*]] = icmp slt i32 [[IV_NEXT]], [[N:%.*]]
--; CHECK-NEXT:    br i1 [[CMP]], label [[LOOP]], label [[EXIT:%.*]]
--; CHECK:       exit:
--; CHECK-NEXT:    [[ADD:%.*]] = add i32 [[A:%.*]], [[B:%.*]]
--; CHECK-NEXT:    ret i32 [[ADD]]
--;
--entry:
--  %add = add i32 %a, %b
--  br label %loop
--
--loop:
--  %iv = phi i32 [ 0, %entry ], [ %iv.next, %loop ]
--  %iv.next = add i32 %iv, 1
--  %cmp = icmp slt i32 %iv.next, %N
--  br i1 %cmp, label %loop, label %exit
--
--exit:
--  ret i32 %add
--}
--
--define i32 @test_with_unused_load(i32 %a, ptr %b, i32 %N) {
--; CHECK-LABEL: @test_with_unused_load(
--; CHECK-NEXT:  entry:
--; CHECK-NEXT:    br label [[LOOP:%.*]]
--; CHECK:       loop:
--; CHECK-NEXT:    [[IV:%.*]] = phi i32 [ 0, [[ENTRY:%.*]] ], [ [[IV_NEXT:%.*]], [[LOOP]] ]
--; CHECK-NEXT:    [[IV_NEXT]] = add i32 [[IV]], 1
--; CHECK-NEXT:    [[CMP:%.*]] = icmp slt i32 [[IV_NEXT]], [[N:%.*]]
--; CHECK-NEXT:    br i1 [[CMP]], label [[LOOP]], label [[EXIT:%.*]]
--; CHECK:       exit:
--; CHECK-NEXT:    [[LOAD:%.*]] = load i32, ptr [[B:%.*]], align 4
--; CHECK-NEXT:    [[ADD:%.*]] = add i32 [[A:%.*]], [[LOAD]]
--; CHECK-NEXT:    ret i32 [[ADD]]
--;
--entry:
--  %load = load i32, ptr %b
--  %add = add i32 %a, %load
--  br label %loop
--
--loop:
--  %iv = phi i32 [ 0, %entry ], [ %iv.next, %loop ]
--  %iv.next = add i32 %iv, 1
--  %cmp = icmp slt i32 %iv.next, %N
--  br i1 %cmp, label %loop, label %exit
--
--exit:
--  ret i32 %add
--}
--
--define i32 @test_with_unused_load_modified_store(i32 %a, ptr %b, i32 %N) {
--; CHECK-LABEL: @test_with_unused_load_modified_store(
--; CHECK-NEXT:  entry:
--; CHECK-NEXT:    [[LOAD:%.*]] = load i32, ptr [[B:%.*]], align 4
--; CHECK-NEXT:    br label [[LOOP:%.*]]
--; CHECK:       loop:
--; CHECK-NEXT:    [[IV:%.*]] = phi i32 [ 0, [[ENTRY:%.*]] ], [ [[IV_NEXT:%.*]], [[LOOP]] ]
--; CHECK-NEXT:    [[IV_NEXT]] = add i32 [[IV]], [[A:%.*]]
--; CHECK-NEXT:    [[CMP:%.*]] = icmp slt i32 [[IV_NEXT]], [[N:%.*]]
--; CHECK-NEXT:    br i1 [[CMP]], label [[LOOP]], label [[EXIT:%.*]]
--; CHECK:       exit:
--; CHECK-NEXT:    [[SMAX:%.*]] = phi i32 [ [[IV_NEXT]], [[LOOP]] ]
--; CHECK-NEXT:    store i32 [[SMAX]], ptr [[B]], align 4
--; CHECK-NEXT:    [[ADD:%.*]] = add i32 [[A]], [[LOAD]]
--; CHECK-NEXT:    ret i32 [[ADD]]
--;
--entry:
--  %load = load i32, ptr %b
--  %add = add i32 %a, %load
--  br label %loop
--
--loop:
--  %iv = phi i32 [ 0, %entry ], [ %iv.next, %loop ]
--  %iv.next = add i32 %iv, %a
--  store i32 %iv.next, ptr %b
--  %cmp = icmp slt i32 %iv.next, %N
--  br i1 %cmp, label %loop, label %exit
--
--exit:
--  ret i32 %add
--}
--
--; Volatile loads must not be sunk.
--define i32 @test_with_volatile_load_no_sink(i32 %a, ptr %b, i32 %N) {
--; CHECK-LABEL: @test_with_volatile_load_no_sink(
--; CHECK-NEXT:  entry:
--; CHECK-NEXT:    [[LD:%.*]] = load volatile i32, ptr [[B:%.*]], align 4
--; CHECK-NEXT:    br label [[LOOP:%.*]]
--; CHECK:       loop:
--; CHECK-NEXT:    [[IV:%.*]] = phi i32 [ 0, [[ENTRY:%.*]] ], [ [[IV_NEXT:%.*]], [[LOOP]] ]
--; CHECK-NEXT:    [[IV_NEXT]] = add i32 [[IV]], 1
--; CHECK-NEXT:    [[CMP:%.*]] = icmp slt i32 [[IV_NEXT]], [[N:%.*]]
--; CHECK-NEXT:    br i1 [[CMP]], label [[LOOP]], label [[EXIT:%.*]]
--; CHECK:       exit:
--; CHECK-NEXT:    [[ADD:%.*]] = add i32 [[A:%.*]], [[LD]]
--; CHECK-NEXT:    ret i32 [[ADD]]
--;
--entry:
--  %ld = load volatile i32, ptr %b, align 4
--  %add = add i32 %a, %ld
--  br label %loop
--
--loop:
--  %iv = phi i32 [ 0, %entry ], [ %iv.next, %loop ]
--  %iv.next = add i32 %iv, 1
--  %cmp = icmp slt i32 %iv.next, %N
--  br i1 %cmp, label %loop, label %exit
--
--exit:
--  ret i32 %add
--}
--
--; Ordered/atomic loads must not be sunk.
--define i32 @test_with_atomic_load_no_sink(i32 %a, ptr %b, i32 %N) {
--; CHECK-LABEL: @test_with_atomic_load_no_sink(
--; CHECK-NEXT:  entry:
--; CHECK-NEXT:    [[LD:%.*]] = load atomic i32, ptr [[B:%.*]] acquire, align 4
--; CHECK-NEXT:    br label [[LOOP:%.*]]
--; CHECK:       loop:
--; CHECK-NEXT:    [[IV:%.*]] = phi i32 [ 0, [[ENTRY:%.*]] ], [ [[IV_NEXT:%.*]], [[LOOP]] ]
--; CHECK-NEXT:    [[IV_NEXT]] = add i32 [[IV]], 1
--; CHECK-NEXT:    [[CMP:%.*]] = icmp slt i32 [[IV_NEXT]], [[N:%.*]]
--; CHECK-NEXT:    br i1 [[CMP]], label [[LOOP]], label [[EXIT:%.*]]
--; CHECK:       exit:
--; CHECK-NEXT:    [[ADD:%.*]] = add i32 [[A:%.*]], [[LD]]
--; CHECK-NEXT:    ret i32 [[ADD]]
--;
--entry:
--  %ld = load atomic i32, ptr %b acquire, align 4
--  %add = add i32 %a, %ld
--  br label %loop
--
--loop:
--  %iv = phi i32 [ 0, %entry ], [ %iv.next, %loop ]
--  %iv.next = add i32 %iv, 1
--  %cmp = icmp slt i32 %iv.next, %N
--  br i1 %cmp, label %loop, label %exit
--
--exit:
--  ret i32 %add
--}
--
--declare void @clobber(ptr)
--
--; Calls that may write memory in the loop should prevent sinking the load.
--define i32 @test_with_unused_load_clobbered_by_call(i32 %a, ptr %b, i32 %N) {
--; CHECK-LABEL: @test_with_unused_load_clobbered_by_call(
--; CHECK-NEXT:  entry:
--; CHECK-NEXT:    [[LD:%.*]] = load i32, ptr [[B:%.*]], align 4
--; CHECK-NEXT:    br label [[LOOP:%.*]]
--; CHECK:       loop:
--; CHECK-NEXT:    [[IV:%.*]] = phi i32 [ 0, [[ENTRY:%.*]] ], [ [[IV_NEXT:%.*]], [[LOOP]] ]
--; CHECK-NEXT:    [[IV_NEXT]] = add i32 [[IV]], 1
--; CHECK-NEXT:    call void @clobber(ptr [[B]])
--; CHECK-NEXT:    [[CMP:%.*]] = icmp slt i32 [[IV_NEXT]], [[N:%.*]]
--; CHECK-NEXT:    br i1 [[CMP]], label [[LOOP]], label [[EXIT:%.*]]
--; CHECK:       exit:
--; CHECK-NEXT:    [[ADD:%.*]] = add i32 [[A:%.*]], [[LD]]
--; CHECK-NEXT:    ret i32 [[ADD]]
--;
--entry:
--  %ld = load i32, ptr %b, align 4
--  %add = add i32 %a, %ld
--  br label %loop
--
--loop:
--  %iv = phi i32 [ 0, %entry ], [ %iv.next, %loop ]
--  %iv.next = add i32 %iv, 1
--  call void @clobber(ptr %b)
--  %cmp = icmp slt i32 %iv.next, %N
--  br i1 %cmp, label %loop, label %exit
--
--exit:
--  ret i32 %add
--}
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LICM/sink-trapping.ll b/llvm/test/Transforms/LICM/sink-trapping.ll
---- a/llvm/test/Transforms/LICM/sink-trapping.ll
-+++ b/llvm/test/Transforms/LICM/sink-trapping.ll
-@@ -1,28 +0,0 @@
--; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 6
--; RUN: opt < %s -passes=licm -verify-memoryssa -S | FileCheck %s
--
--declare i1 @b()
--
--define i32 @a(i32 %x) nounwind {
--; CHECK-LABEL: define i32 @a(
--; CHECK-SAME: i32 [[X:%.*]]) #[[ATTR0:[0-9]+]] {
--; CHECK-NEXT:  [[FOR_BODY_PREHEADER:.*:]]
--; CHECK-NEXT:    br label %[[FOR_BODY:.*]]
--; CHECK:       [[FOR_BODY]]:
--; CHECK-NEXT:    [[CMP:%.*]] = call i1 @b()
--; CHECK-NEXT:    br i1 [[CMP]], label %[[FOR_BODY]], label %[[FOR_END_LOOPEXIT:.*]]
--; CHECK:       [[FOR_END_LOOPEXIT]]:
--; CHECK-NEXT:    [[Y:%.*]] = sdiv i32 10, [[X]]
--; CHECK-NEXT:    ret i32 [[Y]]
--;
--for.body.preheader:
--  %y = sdiv i32 10, %x
--  br label %for.body
--
--for.body:
--  %cmp = call i1 @b()
--  br i1 %cmp, label %for.body, label %for.end.loopexit
--
--for.end.loopexit:
--  ret i32 %y
--}
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopDeletion/invalidate-scev-after-hoisting.ll b/llvm/test/Transforms/LoopDeletion/invalidate-scev-after-hoisting.ll
---- a/llvm/test/Transforms/LoopDeletion/invalidate-scev-after-hoisting.ll
-+++ b/llvm/test/Transforms/LoopDeletion/invalidate-scev-after-hoisting.ll
-@@ -84,13 +84,13 @@
- ; CHECK:       inner.2.preheader:
- ; CHECK-NEXT:    br label [[INNER_3_PH:%.*]]
- ; CHECK:       inner.3.ph:
--; CHECK-NEXT:    [[TRUNC:%.*]] = trunc i64 0 to i32
- ; CHECK-NEXT:    br label [[INNER_3:%.*]]
- ; CHECK:       inner.3:
- ; CHECK-NEXT:    [[L:%.*]] = load i32, ptr [[SRC:%.*]], align 4
- ; CHECK-NEXT:    br i1 false, label [[OUTER_LATCH]], label [[INNER_3]]
- ; CHECK:       outer.latch:
- ; CHECK-NEXT:    [[L_LCSSA:%.*]] = phi i32 [ [[L]], [[INNER_3]] ]
-+; CHECK-NEXT:    [[TRUNC:%.*]] = trunc i64 0 to i32
- ; CHECK-NEXT:    [[OUTER_IV_NEXT]] = add nsw i32 [[L_LCSSA]], [[TRUNC]]
- ; CHECK-NEXT:    br label [[OUTER_HEADER]]
- ;
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopDistribute/laa-invalidation.ll b/llvm/test/Transforms/LoopDistribute/laa-invalidation.ll
---- a/llvm/test/Transforms/LoopDistribute/laa-invalidation.ll
-+++ b/llvm/test/Transforms/LoopDistribute/laa-invalidation.ll
-@@ -4,11 +4,11 @@
- define void @test_pr50940(ptr %A, ptr %B) {
- ; CHECK-LABEL: @test_pr50940(
- ; CHECK-NEXT:  entry:
--; CHECK-NEXT:    [[UGLYGEP:%.*]] = getelementptr i8, ptr [[A:%.*]], i64 4
- ; CHECK-NEXT:    br label [[OUTER_HEADER:%.*]]
- ; CHECK:       outer.header:
- ; CHECK-NEXT:    br i1 false, label [[OUTER_LATCH:%.*]], label [[INNER_PH:%.*]]
- ; CHECK:       inner.ph:
-+; CHECK-NEXT:    [[UGLYGEP:%.*]] = getelementptr i8, ptr [[A:%.*]], i64 4
- ; CHECK-NEXT:    [[GEP_A_3:%.*]] = getelementptr inbounds i16, ptr [[A]], i64 3
- ; CHECK-NEXT:    br label [[INNER_LVER_CHECK:%.*]]
- ; CHECK:       inner.lver.check:
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/invariant-store-vectorization.ll b/llvm/test/Transforms/LoopVectorize/invariant-store-vectorization.ll
---- a/llvm/test/Transforms/LoopVectorize/invariant-store-vectorization.ll
-+++ b/llvm/test/Transforms/LoopVectorize/invariant-store-vectorization.ll
-@@ -380,6 +380,7 @@
- ; CHECK-NEXT:    br i1 [[FOUND_CONFLICT]], label [[SCALAR_PH]], label [[VECTOR_PH:%.*]]
- ; CHECK:       vector.ph:
- ; CHECK-NEXT:    [[N_VEC:%.*]] = and i64 [[TMP8]], 8589934588
-+; CHECK-NEXT:    [[IND_END:%.*]] = add nuw nsw i64 [[N_VEC]], [[TMP4]]
- ; CHECK-NEXT:    [[TMP15:%.*]] = insertelement <4 x i32> <i32 poison, i32 0, i32 0, i32 0>, i32 [[ARRAYIDX5_PROMOTED]], i64 0
- ; CHECK-NEXT:    [[INVARIANT_GEP:%.*]] = getelementptr i32, ptr [[VAR2]], i64 [[TMP4]]
- ; CHECK-NEXT:    br label [[VECTOR_BODY:%.*]]
-@@ -395,7 +396,6 @@
- ; CHECK-NEXT:    br i1 [[TMP18]], label [[MIDDLE_BLOCK:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP26:![0-9]+]]
- ; CHECK:       middle.block:
- ; CHECK-NEXT:    [[DOTLCSSA:%.*]] = phi <4 x i32> [ [[TMP17]], [[VECTOR_BODY]] ]
--; CHECK-NEXT:    [[IND_END:%.*]] = add nuw nsw i64 [[N_VEC]], [[TMP4]]
- ; CHECK-NEXT:    [[TMP19:%.*]] = call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> [[DOTLCSSA]])
- ; CHECK-NEXT:    store i32 [[TMP19]], ptr [[ARRAYIDX5]], align 4, !alias.scope [[META27:![0-9]+]], !noalias [[META23]]
- ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[TMP8]], [[N_VEC]]
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PhaseOrdering/AArch64/indvars-vectorization.ll b/llvm/test/Transforms/PhaseOrdering/AArch64/indvars-vectorization.ll
---- a/llvm/test/Transforms/PhaseOrdering/AArch64/indvars-vectorization.ll
-+++ b/llvm/test/Transforms/PhaseOrdering/AArch64/indvars-vectorization.ll
-@@ -43,6 +43,7 @@
- ; CHECK-NEXT:    br i1 [[FOUND_CONFLICT]], label [[FOR_BODY_PREHEADER13]], label [[VECTOR_PH:%.*]]
- ; CHECK:       vector.ph:
- ; CHECK-NEXT:    [[N_VEC:%.*]] = and i64 [[TMP8]], -8
-+; CHECK-NEXT:    [[IND_END:%.*]] = add i64 [[N_VEC]], [[TMP0]]
- ; CHECK-NEXT:    br label [[VECTOR_BODY:%.*]]
- ; CHECK:       vector.body:
- ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
-@@ -63,7 +64,6 @@
- ; CHECK-NEXT:    [[TMP26:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
- ; CHECK-NEXT:    br i1 [[TMP26]], label [[MIDDLE_BLOCK:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP5:![0-9]+]]
- ; CHECK:       middle.block:
--; CHECK-NEXT:    [[IND_END:%.*]] = add i64 [[N_VEC]], [[TMP0]]
- ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[TMP8]], [[N_VEC]]
- ; CHECK-NEXT:    br i1 [[CMP_N]], label [[FOR_END]], label [[FOR_BODY_PREHEADER13]]
- ; CHECK:       for.body.preheader14:
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PhaseOrdering/AArch64/interleave_vec.ll b/llvm/test/Transforms/PhaseOrdering/AArch64/interleave_vec.ll
---- a/llvm/test/Transforms/PhaseOrdering/AArch64/interleave_vec.ll
-+++ b/llvm/test/Transforms/PhaseOrdering/AArch64/interleave_vec.ll
-@@ -1040,6 +1040,7 @@
- ; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK]], label %[[LOOP_PREHEADER11:.*]], label %[[VECTOR_PH:.*]]
- ; CHECK:       [[VECTOR_PH]]:
- ; CHECK-NEXT:    [[N_VEC:%.*]] = and i64 [[TMP3]], 9223372036854775806
-+; CHECK-NEXT:    [[TMP4:%.*]] = mul i64 [[N_VEC]], 5
- ; CHECK-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <2 x float> poison, float [[A]], i64 0
- ; CHECK-NEXT:    [[TMP5:%.*]] = shufflevector <2 x float> [[BROADCAST_SPLATINSERT]], <2 x float> poison, <10 x i32> zeroinitializer
- ; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
-@@ -1057,11 +1058,10 @@
- ; CHECK-NEXT:    [[TMP9:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
- ; CHECK-NEXT:    br i1 [[TMP9]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP9:![0-9]+]]
- ; CHECK:       [[MIDDLE_BLOCK]]:
--; CHECK-NEXT:    [[TMP16:%.*]] = mul i64 [[N_VEC]], 5
- ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[TMP3]], [[N_VEC]]
- ; CHECK-NEXT:    br i1 [[CMP_N]], label %[[EXIT]], label %[[LOOP_PREHEADER11]]
- ; CHECK:       [[LOOP_PREHEADER11]]:
--; CHECK-NEXT:    [[I1_PH:%.*]] = phi i64 [ 0, %[[LOOP_PREHEADER]] ], [ [[TMP16]], %[[MIDDLE_BLOCK]] ]
-+; CHECK-NEXT:    [[I1_PH:%.*]] = phi i64 [ 0, %[[LOOP_PREHEADER]] ], [ [[TMP4]], %[[MIDDLE_BLOCK]] ]
- ; CHECK-NEXT:    [[TMP10:%.*]] = insertelement <4 x float> poison, float [[A]], i64 0
- ; CHECK-NEXT:    [[TMP11:%.*]] = shufflevector <4 x float> [[TMP10]], <4 x float> poison, <4 x i32> zeroinitializer
- ; CHECK-NEXT:    br label %[[LOOP:.*]]
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PhaseOrdering/AArch64/std-find.ll b/llvm/test/Transforms/PhaseOrdering/AArch64/std-find.ll
---- a/llvm/test/Transforms/PhaseOrdering/AArch64/std-find.ll
-+++ b/llvm/test/Transforms/PhaseOrdering/AArch64/std-find.ll
-@@ -8,6 +8,7 @@
- ; CHECK-SAME: ptr [[FIRST_COERCE:%.*]], i16 noundef signext [[S:%.*]]) local_unnamed_addr #[[ATTR0:[0-9]+]] {
- ; CHECK-NEXT:  [[ENTRY:.*]]:
- ; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(ptr [[FIRST_COERCE]], i64 2) ]
-+; CHECK-NEXT:    [[COERCE_VAL_IP:%.*]] = getelementptr i8, ptr [[FIRST_COERCE]], i64 256
- ; CHECK-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <8 x i16> poison, i16 [[S]], i64 0
- ; CHECK-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <8 x i16> [[BROADCAST_SPLATINSERT]], <8 x i16> poison, <8 x i32> zeroinitializer
- ; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
-@@ -25,7 +26,6 @@
- ; CHECK-NEXT:    [[TMP4:%.*]] = or i1 [[TMP2]], [[TMP3]]
- ; CHECK-NEXT:    br i1 [[TMP4]], label %[[MIDDLE_SPLIT:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
- ; CHECK:       [[MIDDLE_SPLIT]]:
--; CHECK-NEXT:    [[COERCE_VAL_IP:%.*]] = getelementptr i8, ptr [[FIRST_COERCE]], i64 256
- ; CHECK-NEXT:    br i1 [[TMP2]], label %[[VECTOR_EARLY_EXIT:.*]], label %[[RETURN:.*]]
- ; CHECK:       [[VECTOR_EARLY_EXIT]]:
- ; CHECK-NEXT:    [[TMP5:%.*]] = tail call i64 @llvm.experimental.cttz.elts.i64.v8i1(<8 x i1> [[TMP0]], i1 true)
-@@ -149,7 +149,8 @@
- ; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK]], label %[[LOOP_HEADER_I_PREHEADER2:.*]], label %[[VECTOR_PH:.*]]
- ; CHECK:       [[VECTOR_PH]]:
- ; CHECK-NEXT:    [[XTRAITER:%.*]] = and i64 [[TMP3]], -8
--; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
-+; CHECK:         [[TMP9:%.*]] = getelementptr
-+; CHECK-NEXT:         br label %[[VECTOR_BODY:.*]]
- ; CHECK:       [[VECTOR_BODY]]:
- ; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[PROL_ITER_NEXT:%.*]], %[[VECTOR_BODY]] ]
- ; CHECK-NEXT:    [[OFFSET_IDX:%.*]] = shl i64 [[INDEX]], 1
-@@ -164,14 +165,12 @@
- ; CHECK-NEXT:    [[TMP8:%.*]] = or i1 [[TMP6]], [[PROL_ITER_CMP_NOT]]
- ; CHECK-NEXT:    br i1 [[TMP8]], label %[[MIDDLE_SPLIT:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP3:![0-9]+]]
- ; CHECK:       [[MIDDLE_SPLIT]]:
--; CHECK-NEXT:    [[TMP9:%.*]] = shl i64 [[XTRAITER]], 1
--; CHECK-NEXT:    [[TMP10:%.*]] = getelementptr i8, ptr [[FIRST]], i64 [[TMP9]]
- ; CHECK-NEXT:    br i1 [[TMP6]], label %[[VECTOR_EARLY_EXIT:.*]], label %[[MIDDLE_BLOCK:.*]]
- ; CHECK:       [[MIDDLE_BLOCK]]:
- ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[TMP3]], [[XTRAITER]]
- ; CHECK-NEXT:    br i1 [[CMP_N]], label %[[STD_FIND_GENERIC_IMPL_EXIT]], label %[[LOOP_HEADER_I_PREHEADER2]]
- ; CHECK:       [[LOOP_HEADER_I_PREHEADER2]]:
--; CHECK-NEXT:    [[PTR_IV_I_PH:%.*]] = phi ptr [ [[FIRST]], %[[LOOP_HEADER_I_PREHEADER]] ], [ [[TMP10]], %[[MIDDLE_BLOCK]] ]
-+; CHECK-NEXT:    [[PTR_IV_I_PH:%.*]] = phi ptr [ [[FIRST]], %[[LOOP_HEADER_I_PREHEADER]] ], [ [[TMP9]], %[[MIDDLE_BLOCK]] ]
- ; CHECK-NEXT:    br label %[[LOOP_HEADER_I:.*]]
- ; CHECK:       [[VECTOR_EARLY_EXIT]]:
- ; CHECK-NEXT:    [[TMP11:%.*]] = tail call i64 @llvm.experimental.cttz.elts.i64.v8i1(<8 x i1> [[TMP4]], i1 true)
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PhaseOrdering/ARM/arm_mult_q15.ll b/llvm/test/Transforms/PhaseOrdering/ARM/arm_mult_q15.ll
---- a/llvm/test/Transforms/PhaseOrdering/ARM/arm_mult_q15.ll
-+++ b/llvm/test/Transforms/PhaseOrdering/ARM/arm_mult_q15.ll
-@@ -18,15 +18,22 @@
- ; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK]], label [[WHILE_BODY_PREHEADER15:%.*]], label [[VECTOR_PH:%.*]]
- ; CHECK:       vector.ph:
- ; CHECK-NEXT:    [[N_VEC:%.*]] = and i32 [[BLOCKSIZE]], -8
-+; CHECK-NEXT:    [[IND_END:%.*]] = and i32 [[BLOCKSIZE]], 7
-+; CHECK-NEXT:    [[TMP0:%.*]] = shl i32 [[N_VEC]], 1
-+; CHECK-NEXT:    [[IND_END7:%.*]] = getelementptr i8, ptr [[PSRCA:%.*]], i32 [[TMP0]]
-+; CHECK-NEXT:    [[TMP1:%.*]] = shl i32 [[N_VEC]], 1
-+; CHECK-NEXT:    [[IND_END9:%.*]] = getelementptr i8, ptr [[PDST:%.*]], i32 [[TMP1]]
-+; CHECK-NEXT:    [[TMP2:%.*]] = shl i32 [[N_VEC]], 1
-+; CHECK-NEXT:    [[IND_END11:%.*]] = getelementptr i8, ptr [[PSRCB:%.*]], i32 [[TMP2]]
- ; CHECK-NEXT:    br label [[VECTOR_BODY:%.*]]
- ; CHECK:       vector.body:
- ; CHECK-NEXT:    [[INDEX:%.*]] = phi i32 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
- ; CHECK-NEXT:    [[OFFSET_IDX:%.*]] = shl i32 [[INDEX]], 1
--; CHECK-NEXT:    [[NEXT_GEP:%.*]] = getelementptr i8, ptr [[PSRCA:%.*]], i32 [[OFFSET_IDX]]
-+; CHECK-NEXT:    [[NEXT_GEP:%.*]] = getelementptr i8, ptr [[PSRCA]], i32 [[OFFSET_IDX]]
- ; CHECK-NEXT:    [[OFFSET_IDX13:%.*]] = shl i32 [[INDEX]], 1
--; CHECK-NEXT:    [[NEXT_GEP14:%.*]] = getelementptr i8, ptr [[PDST:%.*]], i32 [[OFFSET_IDX13]]
-+; CHECK-NEXT:    [[NEXT_GEP14:%.*]] = getelementptr i8, ptr [[PDST]], i32 [[OFFSET_IDX13]]
- ; CHECK-NEXT:    [[OFFSET_IDX15:%.*]] = shl i32 [[INDEX]], 1
--; CHECK-NEXT:    [[NEXT_GEP16:%.*]] = getelementptr i8, ptr [[PSRCB:%.*]], i32 [[OFFSET_IDX15]]
-+; CHECK-NEXT:    [[NEXT_GEP16:%.*]] = getelementptr i8, ptr [[PSRCB]], i32 [[OFFSET_IDX15]]
- ; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <8 x i16>, ptr [[NEXT_GEP]], align 2
- ; CHECK-NEXT:    [[TMP3:%.*]] = sext <8 x i16> [[WIDE_LOAD]] to <8 x i32>
- ; CHECK-NEXT:    [[WIDE_LOAD17:%.*]] = load <8 x i16>, ptr [[NEXT_GEP16]], align 2
-@@ -40,13 +47,6 @@
- ; CHECK-NEXT:    [[TMP9:%.*]] = icmp eq i32 [[INDEX_NEXT]], [[N_VEC]]
- ; CHECK-NEXT:    br i1 [[TMP9]], label [[MIDDLE_BLOCK:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
- ; CHECK:       middle.block:
--; CHECK-NEXT:    [[IND_END:%.*]] = and i32 [[BLOCKSIZE]], 7
--; CHECK-NEXT:    [[TMP13:%.*]] = shl i32 [[N_VEC]], 1
--; CHECK-NEXT:    [[IND_END7:%.*]] = getelementptr i8, ptr [[PSRCA]], i32 [[TMP13]]
--; CHECK-NEXT:    [[TMP14:%.*]] = shl i32 [[N_VEC]], 1
--; CHECK-NEXT:    [[IND_END9:%.*]] = getelementptr i8, ptr [[PDST]], i32 [[TMP14]]
--; CHECK-NEXT:    [[TMP12:%.*]] = shl i32 [[N_VEC]], 1
--; CHECK-NEXT:    [[IND_END11:%.*]] = getelementptr i8, ptr [[PSRCB]], i32 [[TMP12]]
- ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i32 [[BLOCKSIZE]], [[N_VEC]]
- ; CHECK-NEXT:    br i1 [[CMP_N]], label [[WHILE_END]], label [[WHILE_BODY_PREHEADER15]]
- ; CHECK:       while.body.preheader15:
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PhaseOrdering/X86/pr48844-br-to-switch-vectorization.ll b/llvm/test/Transforms/PhaseOrdering/X86/pr48844-br-to-switch-vectorization.ll
---- a/llvm/test/Transforms/PhaseOrdering/X86/pr48844-br-to-switch-vectorization.ll
-+++ b/llvm/test/Transforms/PhaseOrdering/X86/pr48844-br-to-switch-vectorization.ll
-@@ -46,6 +46,7 @@
- ; AVX2-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ult i64 [[TMP1]], 124
- ; AVX2-NEXT:    br i1 [[MIN_ITERS_CHECK]], label [[BB12_PREHEADER11:%.*]], label [[VECTOR_PH:%.*]]
- ; AVX2:       vector.ph:
-+; AVX2-NEXT:    [[N_VEC_REMAINING:%.*]] = and i64 [[TMP3]], 24
- ; AVX2-NEXT:    [[N_VEC:%.*]] = and i64 [[TMP3]], 9223372036854775776
- ; AVX2-NEXT:    br label [[VECTOR_BODY:%.*]]
- ; AVX2:       vector.body:
-@@ -79,7 +80,6 @@
- ; AVX2-NEXT:    [[TMP20:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
- ; AVX2-NEXT:    br i1 [[TMP20]], label [[MIDDLE_BLOCK:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
- ; AVX2:       middle.block:
--; AVX2-NEXT:    [[N_VEC_REMAINING:%.*]] = and i64 [[TMP3]], 24
- ; AVX2-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[TMP3]], [[N_VEC]]
- ; AVX2-NEXT:    br i1 [[CMP_N]], label [[EXIT]], label [[VEC_EPILOG_ITER_CHECK:%.*]]
- ; AVX2:       vec.epilog.iter.check:
-@@ -90,6 +90,8 @@
- ; AVX2:       vec.epilog.ph:
- ; AVX2-NEXT:    [[VEC_EPILOG_RESUME_VAL:%.*]] = phi i64 [ [[N_VEC]], [[VEC_EPILOG_ITER_CHECK]] ], [ 0, [[VECTOR_MAIN_LOOP_ITER_CHECK]] ]
- ; AVX2-NEXT:    [[N_VEC10:%.*]] = and i64 [[TMP3]], 9223372036854775800
-+; AVX2-NEXT:    [[TMP21:%.*]] = shl i64 [[N_VEC10]], 2
-+; AVX2-NEXT:    [[IND_END:%.*]] = getelementptr i8, ptr [[START]], i64 [[TMP21]]
- ; AVX2-NEXT:    br label [[BB12:%.*]]
- ; AVX2:       vec.epilog.vector.body:
- ; AVX2-NEXT:    [[INDEX12:%.*]] = phi i64 [ [[VEC_EPILOG_RESUME_VAL]], [[BB12_PREHEADER11]] ], [ [[INDEX_NEXT16:%.*]], [[BB12]] ]
-@@ -104,8 +106,6 @@
- ; AVX2-NEXT:    [[TMP25:%.*]] = icmp eq i64 [[INDEX_NEXT16]], [[N_VEC10]]
- ; AVX2-NEXT:    br i1 [[TMP25]], label [[VEC_EPILOG_MIDDLE_BLOCK:%.*]], label [[BB12]], !llvm.loop [[LOOP4:![0-9]+]]
- ; AVX2:       vec.epilog.middle.block:
--; AVX2-NEXT:    [[TMP27:%.*]] = shl i64 [[N_VEC10]], 2
--; AVX2-NEXT:    [[IND_END:%.*]] = getelementptr i8, ptr [[START]], i64 [[TMP27]]
- ; AVX2-NEXT:    [[CMP_N17:%.*]] = icmp eq i64 [[TMP3]], [[N_VEC10]]
- ; AVX2-NEXT:    br i1 [[CMP_N17]], label [[EXIT]], label [[BB12_PREHEADER1]]
- ; AVX2:       bb12.preheader:
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PhaseOrdering/X86/vdiv.ll b/llvm/test/Transforms/PhaseOrdering/X86/vdiv.ll
---- a/llvm/test/Transforms/PhaseOrdering/X86/vdiv.ll
-+++ b/llvm/test/Transforms/PhaseOrdering/X86/vdiv.ll
-@@ -16,8 +16,8 @@
- ; CHECK-SAME: ptr writeonly captures(none) [[X:%.*]], ptr readonly captures(none) [[Y:%.*]], double [[A:%.*]], i32 [[N:%.*]]) local_unnamed_addr #[[ATTR0:[0-9]+]] {
- ; CHECK-NEXT:  [[ENTRY:.*:]]
- ; CHECK-NEXT:    [[CMP1:%.*]] = icmp sgt i32 [[N]], 0
--; CHECK-NEXT:    br i1 [[CMP1]], label %[[ITER_CHECK:.*]], label %[[FOR_END:.*]]
--; CHECK:       [[ITER_CHECK]]:
-+; CHECK-NEXT:    br i1 [[CMP1]], label %[[FOR_BODY_PREHEADER:.*]], label %[[FOR_END:.*]]
-+; CHECK:       [[FOR_BODY_PREHEADER]]:
- ; CHECK-NEXT:    [[X4:%.*]] = ptrtoint ptr [[X]] to i64
- ; CHECK-NEXT:    [[Y5:%.*]] = ptrtoint ptr [[Y]] to i64
- ; CHECK-NEXT:    [[WIDE_TRIP_COUNT:%.*]] = zext nneg i32 [[N]] to i64
-@@ -25,11 +25,12 @@
- ; CHECK-NEXT:    [[TMP0:%.*]] = sub i64 [[X4]], [[Y5]]
- ; CHECK-NEXT:    [[DIFF_CHECK:%.*]] = icmp ult i64 [[TMP0]], 128
- ; CHECK-NEXT:    [[OR_COND:%.*]] = select i1 [[MIN_ITERS_CHECK]], i1 true, i1 [[DIFF_CHECK]]
--; CHECK-NEXT:    br i1 [[OR_COND]], label %[[FOR_BODY_PREHEADER:.*]], label %[[VECTOR_MAIN_LOOP_ITER_CHECK:.*]]
--; CHECK:       [[VECTOR_MAIN_LOOP_ITER_CHECK]]:
--; CHECK-NEXT:    [[MIN_ITERS_CHECK6:%.*]] = icmp ult i32 [[N]], 16
--; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK6]], label %[[VEC_EPILOG_PH:.*]], label %[[VECTOR_PH:.*]]
-+; CHECK-NEXT:    br i1 [[OR_COND]], label %[[FOR_BODY_PREHEADER9:.*]], label %[[VECTOR_PH:.*]]
- ; CHECK:       [[VECTOR_PH]]:
-+; CHECK-NEXT:    [[MIN_ITERS_CHECK6:%.*]] = icmp ult i32 [[N]], 16
-+; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK6]], label %[[VEC_EPILOG_PH:.*]], label %[[VECTOR_PH1:.*]]
-+; CHECK:       [[VECTOR_PH1]]:
-+; CHECK-NEXT:    [[N_VEC_REMAINING:%.*]] = and i64 [[WIDE_TRIP_COUNT]], 12
- ; CHECK-NEXT:    [[N_VEC:%.*]] = and i64 [[WIDE_TRIP_COUNT]], 2147483632
- ; CHECK-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <4 x double> poison, double [[A]], i64 0
- ; CHECK-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <4 x double> [[BROADCAST_SPLATINSERT]], <4 x double> poison, <4 x i32> zeroinitializer
-@@ -39,7 +40,7 @@
- ; CHECK-NEXT:    [[TMP4:%.*]] = fdiv fast <4 x double> splat (double 1.000000e+00), [[BROADCAST_SPLAT]]
- ; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
- ; CHECK:       [[VECTOR_BODY]]:
--; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
-+; CHECK-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH1]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
- ; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds nuw double, ptr [[Y]], i64 [[INDEX]]
- ; CHECK-NEXT:    [[TMP6:%.*]] = getelementptr inbounds nuw i8, ptr [[TMP5]], i64 32
- ; CHECK-NEXT:    [[TMP7:%.*]] = getelementptr inbounds nuw i8, ptr [[TMP5]], i64 64
-@@ -64,14 +65,13 @@
- ; CHECK-NEXT:    [[TMP17:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
- ; CHECK-NEXT:    br i1 [[TMP17]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP7:![0-9]+]]
- ; CHECK:       [[MIDDLE_BLOCK]]:
--; CHECK-NEXT:    [[N_VEC_REMAINING:%.*]] = and i64 [[WIDE_TRIP_COUNT]], 12
- ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[N_VEC]], [[WIDE_TRIP_COUNT]]
- ; CHECK-NEXT:    br i1 [[CMP_N]], label %[[FOR_END]], label %[[VEC_EPILOG_ITER_CHECK:.*]]
- ; CHECK:       [[VEC_EPILOG_ITER_CHECK]]:
- ; CHECK-NEXT:    [[MIN_EPILOG_ITERS_CHECK:%.*]] = icmp eq i64 [[N_VEC_REMAINING]], 0
--; CHECK-NEXT:    br i1 [[MIN_EPILOG_ITERS_CHECK]], label %[[FOR_BODY_PREHEADER]], label %[[VEC_EPILOG_PH]], !prof [[PROF10:![0-9]+]]
-+; CHECK-NEXT:    br i1 [[MIN_EPILOG_ITERS_CHECK]], label %[[FOR_BODY_PREHEADER9]], label %[[VEC_EPILOG_PH]]
- ; CHECK:       [[VEC_EPILOG_PH]]:
--; CHECK-NEXT:    [[VEC_EPILOG_RESUME_VAL:%.*]] = phi i64 [ [[N_VEC]], %[[VEC_EPILOG_ITER_CHECK]] ], [ 0, %[[VECTOR_MAIN_LOOP_ITER_CHECK]] ]
-+; CHECK-NEXT:    [[VEC_EPILOG_RESUME_VAL:%.*]] = phi i64 [ [[N_VEC]], %[[VEC_EPILOG_ITER_CHECK]] ], [ 0, %[[VECTOR_PH]] ]
- ; CHECK-NEXT:    [[N_VEC11:%.*]] = and i64 [[WIDE_TRIP_COUNT]], 2147483644
- ; CHECK-NEXT:    [[BROADCAST_SPLATINSERT14:%.*]] = insertelement <4 x double> poison, double [[A]], i64 0
- ; CHECK-NEXT:    [[BROADCAST_SPLAT15:%.*]] = shufflevector <4 x double> [[BROADCAST_SPLATINSERT14]], <4 x double> poison, <4 x i32> zeroinitializer
-@@ -86,12 +86,12 @@
- ; CHECK-NEXT:    store <4 x double> [[TMP40]], ptr [[TMP41]], align 8, !tbaa [[DOUBLE_TBAA3]]
- ; CHECK-NEXT:    [[INDEX_NEXT16]] = add nuw i64 [[INDEX12]], 4
- ; CHECK-NEXT:    [[TMP42:%.*]] = icmp eq i64 [[INDEX_NEXT16]], [[N_VEC11]]
--; CHECK-NEXT:    br i1 [[TMP42]], label %[[VEC_EPILOG_MIDDLE_BLOCK:.*]], label %[[VEC_EPILOG_VECTOR_BODY]], !llvm.loop [[LOOP11:![0-9]+]]
-+; CHECK-NEXT:    br i1 [[TMP42]], label %[[VEC_EPILOG_MIDDLE_BLOCK:.*]], label %[[VEC_EPILOG_VECTOR_BODY]], !llvm.loop [[LOOP10:![0-9]+]]
- ; CHECK:       [[VEC_EPILOG_MIDDLE_BLOCK]]:
- ; CHECK-NEXT:    [[CMP_N17:%.*]] = icmp eq i64 [[N_VEC11]], [[WIDE_TRIP_COUNT]]
--; CHECK-NEXT:    br i1 [[CMP_N17]], label %[[FOR_END]], label %[[FOR_BODY_PREHEADER]]
--; CHECK:       [[FOR_BODY_PREHEADER]]:
--; CHECK-NEXT:    [[INDVARS_IV_PH:%.*]] = phi i64 [ 0, %[[ITER_CHECK]] ], [ [[N_VEC]], %[[VEC_EPILOG_ITER_CHECK]] ], [ [[N_VEC11]], %[[VEC_EPILOG_MIDDLE_BLOCK]] ]
-+; CHECK-NEXT:    br i1 [[CMP_N17]], label %[[FOR_END]], label %[[FOR_BODY_PREHEADER9]]
-+; CHECK:       [[FOR_BODY_PREHEADER9]]:
-+; CHECK-NEXT:    [[INDVARS_IV_PH:%.*]] = phi i64 [ 0, %[[FOR_BODY_PREHEADER]] ], [ [[N_VEC]], %[[VEC_EPILOG_ITER_CHECK]] ], [ [[N_VEC11]], %[[VEC_EPILOG_MIDDLE_BLOCK]] ]
- ; CHECK-NEXT:    [[TMP43:%.*]] = sub nsw i64 [[WIDE_TRIP_COUNT]], [[INDVARS_IV_PH]]
- ; CHECK-NEXT:    [[XTRAITER:%.*]] = and i64 [[TMP43]], 7
- ; CHECK-NEXT:    [[LCMP_MOD_NOT:%.*]] = icmp eq i64 [[XTRAITER]], 0
-@@ -110,13 +110,13 @@
- ; CHECK-NEXT:    [[INDVARS_IV_NEXT_PROL]] = add nuw nsw i64 [[INDVARS_IV_PROL]], 1
- ; CHECK-NEXT:    [[PROL_ITER_NEXT]] = add i64 [[PROL_ITER]], 1
- ; CHECK-NEXT:    [[PROL_ITER_CMP_NOT:%.*]] = icmp eq i64 [[PROL_ITER_NEXT]], [[XTRAITER]]
--; CHECK-NEXT:    br i1 [[PROL_ITER_CMP_NOT]], label %[[FOR_BODY_PROL_LOOPEXIT]], label %[[FOR_BODY_PROL]], !llvm.loop [[LOOP12:![0-9]+]]
-+; CHECK-NEXT:    br i1 [[PROL_ITER_CMP_NOT]], label %[[FOR_BODY_PROL_LOOPEXIT]], label %[[FOR_BODY_PROL]], !llvm.loop [[LOOP11:![0-9]+]]
- ; CHECK:       [[FOR_BODY_PROL_LOOPEXIT]]:
--; CHECK-NEXT:    [[INDVARS_IV_UNR:%.*]] = phi i64 [ [[INDVARS_IV_PH]], %[[FOR_BODY_PREHEADER]] ], [ [[INDVARS_IV_NEXT_PROL]], %[[FOR_BODY_PROL]] ]
-+; CHECK-NEXT:    [[INDVARS_IV_UNR:%.*]] = phi i64 [ [[INDVARS_IV_PH]], %[[FOR_BODY_PREHEADER9]] ], [ [[INDVARS_IV_NEXT_PROL]], %[[FOR_BODY_PROL]] ]
- ; CHECK-NEXT:    [[TMP20:%.*]] = sub nsw i64 [[INDVARS_IV_PH]], [[WIDE_TRIP_COUNT]]
- ; CHECK-NEXT:    [[TMP21:%.*]] = icmp ugt i64 [[TMP20]], -8
--; CHECK-NEXT:    br i1 [[TMP21]], label %[[FOR_END]], label %[[FOR_BODY_PREHEADER_NEW:.*]]
--; CHECK:       [[FOR_BODY_PREHEADER_NEW]]:
-+; CHECK-NEXT:    br i1 [[TMP21]], label %[[FOR_END]], label %[[FOR_BODY_PREHEADER9_NEW:.*]]
-+; CHECK:       [[FOR_BODY_PREHEADER9_NEW]]:
- ; CHECK-NEXT:    [[TMP22:%.*]] = fdiv fast double 1.000000e+00, [[A]]
- ; CHECK-NEXT:    [[TMP23:%.*]] = fdiv fast double 1.000000e+00, [[A]]
- ; CHECK-NEXT:    [[TMP24:%.*]] = fdiv fast double 1.000000e+00, [[A]]
-@@ -127,7 +127,7 @@
- ; CHECK-NEXT:    [[TMP29:%.*]] = fdiv fast double 1.000000e+00, [[A]]
- ; CHECK-NEXT:    br label %[[FOR_BODY:.*]]
- ; CHECK:       [[FOR_BODY]]:
--; CHECK-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ [[INDVARS_IV_UNR]], %[[FOR_BODY_PREHEADER_NEW]] ], [ [[INDVARS_IV_NEXT_7:%.*]], %[[FOR_BODY]] ]
-+; CHECK-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ [[INDVARS_IV_UNR]], %[[FOR_BODY_PREHEADER9_NEW]] ], [ [[INDVARS_IV_NEXT_7:%.*]], %[[FOR_BODY]] ]
- ; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds nuw double, ptr [[Y]], i64 [[INDVARS_IV]]
- ; CHECK-NEXT:    [[T0:%.*]] = load double, ptr [[ARRAYIDX]], align 8, !tbaa [[DOUBLE_TBAA3]]
- ; CHECK-NEXT:    [[TMP30:%.*]] = fmul fast double [[T0]], [[TMP22]]
-@@ -177,7 +177,7 @@
- ; CHECK-NEXT:    store double [[TMP37]], ptr [[ARRAYIDX2_7]], align 8, !tbaa [[DOUBLE_TBAA3]]
- ; CHECK-NEXT:    [[INDVARS_IV_NEXT_7]] = add nuw nsw i64 [[INDVARS_IV]], 8
- ; CHECK-NEXT:    [[EXITCOND_NOT_7:%.*]] = icmp eq i64 [[INDVARS_IV_NEXT_7]], [[WIDE_TRIP_COUNT]]
--; CHECK-NEXT:    br i1 [[EXITCOND_NOT_7]], label %[[FOR_END]], label %[[FOR_BODY]], !llvm.loop [[LOOP14:![0-9]+]]
-+; CHECK-NEXT:    br i1 [[EXITCOND_NOT_7]], label %[[FOR_END]], label %[[FOR_BODY]], !llvm.loop [[LOOP13:![0-9]+]]
- ; CHECK:       [[FOR_END]]:
- ; CHECK-NEXT:    ret void
- ;
-@@ -232,9 +232,8 @@
- ; CHECK: [[LOOP7]] = distinct !{[[LOOP7]], [[META8:![0-9]+]], [[META9:![0-9]+]]}
- ; CHECK: [[META8]] = !{!"llvm.loop.isvectorized", i32 1}
- ; CHECK: [[META9]] = !{!"llvm.loop.unroll.runtime.disable"}
--; CHECK: [[PROF10]] = !{!"branch_weights", i32 4, i32 12}
--; CHECK: [[LOOP11]] = distinct !{[[LOOP11]], [[META8]], [[META9]]}
--; CHECK: [[LOOP12]] = distinct !{[[LOOP12]], [[META13:![0-9]+]]}
--; CHECK: [[META13]] = !{!"llvm.loop.unroll.disable"}
--; CHECK: [[LOOP14]] = distinct !{[[LOOP14]], [[META8]]}
-+; CHECK: [[LOOP10]] = distinct !{[[LOOP10]], [[META8]], [[META9]]}
-+; CHECK: [[LOOP11]] = distinct !{[[LOOP11]], [[META12:![0-9]+]]}
-+; CHECK: [[META12]] = !{!"llvm.loop.unroll.disable"}
-+; CHECK: [[LOOP13]] = distinct !{[[LOOP13]], [[META8]]}
- ;.
+@@ -2639,16 +3448,46 @@
+ gentbl_cc_library(
+     name = "r600_target_gen",
+     strip_include_prefix = "lib/Target/AMDGPU",
+-    tbl_outs = {
+-        "lib/Target/AMDGPU/R600GenAsmWriter.inc": ["-gen-asm-writer"],
+-        "lib/Target/AMDGPU/R600GenCallingConv.inc": ["-gen-callingconv"],
+-        "lib/Target/AMDGPU/R600GenDAGISel.inc": ["-gen-dag-isel"],
+-        "lib/Target/AMDGPU/R600GenDFAPacketizer.inc": ["-gen-dfa-packetizer"],
+-        "lib/Target/AMDGPU/R600GenInstrInfo.inc": ["-gen-instr-info"],
+-        "lib/Target/AMDGPU/R600GenMCCodeEmitter.inc": ["-gen-emitter"],
+-        "lib/Target/AMDGPU/R600GenRegisterInfo.inc": ["-gen-register-info"],
+-        "lib/Target/AMDGPU/R600GenSubtargetInfo.inc": ["-gen-subtarget"],
+-    },
++    tbl_outs = [
++        (
++            ["-gen-asm-writer"],
++            "lib/Target/AMDGPU/R600GenAsmWriter.inc",
++        ),
++        (
++            ["-gen-callingconv"],
++            "lib/Target/AMDGPU/R600GenCallingConv.inc",
++        ),
++        (
++            ["-gen-dag-isel"],
++            "lib/Target/AMDGPU/R600GenDAGISel.inc",
++        ),
++        (
++            ["-gen-dfa-packetizer"],
++            "lib/Target/AMDGPU/R600GenDFAPacketizer.inc",
++        ),
++        (
++            ["-gen-instr-info"],
++            "lib/Target/AMDGPU/R600GenInstrInfo.inc",
++        ),
++        (
++            ["-gen-emitter"],
++            "lib/Target/AMDGPU/R600GenMCCodeEmitter.inc",
++        ),
++        (
++            ["-gen-register-info"],
++            [
++                "lib/Target/AMDGPU/R600GenRegisterInfo.inc",
++                "lib/Target/AMDGPU/R600GenRegisterInfoEnums.inc",
++                "lib/Target/AMDGPU/R600GenRegisterInfoMCDesc.inc",
++                "lib/Target/AMDGPU/R600GenRegisterInfoHeader.inc",
++                "lib/Target/AMDGPU/R600GenRegisterInfoTargetDesc.inc",
++            ],
++        ),
++        (
++            ["-gen-subtarget"],
++            "lib/Target/AMDGPU/R600GenSubtargetInfo.inc",
++        ),
++    ],
+     tblgen = ":llvm-tblgen",
+     td_file = "lib/Target/AMDGPU/R600.td",
+     deps = [
+@@ -3381,7 +4220,10 @@
+ gentbl_cc_library(
+     name = "LibOptionsTableGen",
+     strip_include_prefix = "lib/ToolDrivers/llvm-lib",
+-    tbl_outs = {"lib/ToolDrivers/llvm-lib/Options.inc": ["-gen-opt-parser-defs"]},
++    tbl_outs = [(
++        ["-gen-opt-parser-defs"],
++        "lib/ToolDrivers/llvm-lib/Options.inc",
++    )],
+     tblgen = ":llvm-tblgen",
+     td_file = "lib/ToolDrivers/llvm-lib/Options.td",
+     deps = [":OptParserTdFiles"],
 diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
 --- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-@@ -9794,6 +9794,29 @@
-     deps = [":mlir_float16_utils"],
+@@ -10318,6 +10318,8 @@
+     ),
+     includes = ["include"],
+     deps = [
++        ":FunctionInterfaces",
++        ":IR",
+         ":OpenACCDialect",
+         ":OpenACCOpsIncGen",
+         ":OpenACCPassIncGen",
+@@ -10325,6 +10327,7 @@
+         ":Support",
+         ":ViewLikeInterface",
+         "//llvm:Support",
++        "//llvm:ir_headers",
+     ],
  )
  
-+cc_library(
-+    name = "_mlir_apfloat_utils",
-+    srcs = ["lib/ExecutionEngine/APFloatWrappers.cpp"],
-+    defines = ["mlir_apfloat_wrappers_EXPORTS"],
-+    includes = ["include"],
-+    deps = [
-+        "//llvm:Support",
-+    ],
-+)
-+
-+# Indirection to avoid 'libmlir_apfloat_utils.so' filename clash.
-+alias(
-+    name = "mlir_apfloat_utils",
-+    actual = "_mlir_apfloat_utils",
-+)
-+
-+cc_binary(
-+    name = "libmlir_apfloat_utils.so",
-+    linkshared = True,
-+    linkstatic = False,
-+    deps = [":mlir_apfloat_utils"],
-+)
-+
- # Unlike mlir_float16_utils, mlir_c_runner_utils, etc, we do *not* make
- # this a shared library: because on the CMake side, doing so causes issues
- # when building on Windows.  In particular, various functions take/return
-@@ -9837,6 +9860,7 @@
-     deps = [
-         ":SparseTensorEnums",
-         ":SparseTensorRuntime",
-+        ":mlir_apfloat_utils",
-         ":mlir_float16_utils",
+@@ -13105,6 +13108,7 @@
+         ":RuntimeVerifiableOpInterface",
+         ":ShapedOpInterfaces",
+         ":SideEffectInterfaces",
++        ":UBDialect",
+         ":ValueBoundsOpInterface",
+         ":ViewLikeInterface",
          "//llvm:Support",
-     ],
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl b/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
+--- a/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
++++ b/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
+@@ -153,7 +153,7 @@
+     args.add("-o", ctx.outputs.out)
+ 
+     ctx.actions.run(
+-        outputs = [ctx.outputs.out],
++        outputs = [ctx.outputs.out] + ctx.outputs.additional_outputs,
+         inputs = trans_srcs,
+         executable = ctx.executable.tblgen,
+         execution_requirements = {"supports-path-mapping": "1"},
+@@ -195,6 +195,9 @@
+             doc = "The output file for the TableGen invocation.",
+             mandatory = True,
+         ),
++        "additional_outputs": attr.output_list(
++            doc = "Extra output files from the TableGen invocation. The primary 'out' is used for the -o argument.",
++        ),
+         "opts": attr.string_list(
+             doc = "Additional command line options to add to the TableGen" +
+                   " invocation. For include arguments, prefer to use" +
+@@ -313,9 +316,12 @@
+       name: The name of the generated filegroup rule for use in dependencies.
+       tblgen: The binary used to produce the output.
+       td_file: The primary table definitions file.
+-      tbl_outs: Either a dict {out: [opts]} or a list of tuples ([opts], out),
+-        where each 'opts' is a list of options passed to tblgen, each option
+-        being a string, and 'out' is the corresponding output file produced.
++      tbl_outs: Either a dict {out: [opts]}, a list of tuples ([opts], out),
++        or a list of tuples ([opts], [outs]). Each 'opts' is a list of options
++        passed to tblgen, each option being a string,
++        and 'out' is the corresponding output file produced. If 'outs' are used,
++        the first path in the list is passed to '-o' but tblgen is expected
++        to produce all listed outputs.
+       td_srcs: See gentbl_rule.td_srcs
+       includes: See gentbl_rule.includes
+       deps: See gentbl_rule.deps
+@@ -325,9 +331,14 @@
+       **kwargs: Extra keyword arguments to pass to all generated rules.
+     """
+ 
++    included_srcs = []
+     if type(tbl_outs) == type({}):
+         tbl_outs = [(v, k) for k, v in tbl_outs.items()]
+-    for (opts, out) in tbl_outs:
++    for (opts, output_or_outputs) in tbl_outs:
++        outs = output_or_outputs if type(output_or_outputs) == type([]) else [output_or_outputs]
++        out = outs[0]
++        if not any([skip_opt in opts for skip_opt in skip_opts]):
++            included_srcs.extend(outs)
+         first_opt = opts[0] if opts else ""
+         rule_suffix = "_{}_{}".format(
+             first_opt.replace("-", "_").replace("=", "_"),
+@@ -343,6 +354,7 @@
+             deps = deps,
+             includes = includes,
+             out = out,
++            additional_outputs = outs[1:],
+             **kwargs
+         )
+ 
+@@ -364,7 +376,6 @@
+                 **kwargs
+             )
+ 
+-    included_srcs = [f for (opts, f) in tbl_outs if not any([skip_opt in opts for skip_opt in skip_opts])]
+     native.filegroup(
+         name = name,
+         srcs = included_srcs,
