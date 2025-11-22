@@ -44,11 +44,13 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_tpu_topology_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
@@ -254,9 +256,54 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
 
+  absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> Subslice(
+      const PjRtDeviceDimensions& chips_per_host_bounds,
+      const PjRtDeviceDimensions& host_bounds) const override;
+
+  bool is_subslice_topology() const override;
+
+  absl::StatusOr<PjRtTopologyDescriptionProto> ToProto() const override;
+
+  absl::StatusOr<int> ProcessCount() const override;
+
+  absl::StatusOr<int> ChipsPerProcess() const override;
+
+  absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override;
+
+  absl::StatusOr<int> ChipCount() const override;
+  absl::StatusOr<int> CoreCountOfDefaultType() const override;
+  absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const override;
+  absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerProcess()
+      const override;
+  absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerChip() const override;
+  absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override;
+  absl::StatusOr<PjRtIdContainer<PjRtProcessId>> ProcessIds() const override;
+  absl::StatusOr<PjRtIdContainer<PjRtGlobalDeviceId>>
+  LogicalDeviceOfDefaultTypeIdsOnProcess(
+      PjRtProcessId process_id) const override;
+  absl::StatusOr<std::pair<PjRtProcessId, int>>
+  ProcessIdAndIndexOnProcessForChip(PjRtGlobalChipId chip_id) const override;
+  absl::StatusOr<std::pair<PjRtProcessId, int>>
+  ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+      xla::PjRtGlobalDeviceId device_id) const override;
+  absl::StatusOr<PjRtDeviceDimensions> ProcessCoordFromId(
+      PjRtProcessId process_id) const override;
+  absl::StatusOr<PjRtGlobalChipId> ChipIdFromCoord(
+      const PjRtDeviceDimensions& chip) const override;
+  absl::StatusOr<xla::PjRtGlobalDeviceId>
+  LogicalDeviceOfDefaultTypeIdFromChipCoordAndCoreIndex(
+      const PjRtDeviceDimensions& chip, int core_index) const override;
+  absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
+  ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
+      xla::PjRtGlobalDeviceId device_id) const override;
+  absl::StatusOr<PjRtDeviceDimensions> ChipsPerProcessBounds() const override;
+  absl::StatusOr<PjRtDeviceDimensions> ChipBounds() const override;
+  absl::StatusOr<PjRtDeviceDimensions> ProcessBounds() const override;
+
  private:
   std::unique_ptr<PjRtCApiCompiler> compiler_;
   const PJRT_Api* c_api_;
+  const PJRT_TpuTopology_Extension* tpu_topology_extension_;
   // nullptr iff the PJRT_TopologyDescription isn't owned by this wrapper
   // (i.e. by the caller).
   std::unique_ptr<PJRT_TopologyDescription,
