@@ -61,8 +61,8 @@ class ReshapeOp : public OpKernel {
     switch (sizes.dtype()) {
       case DT_INT32:
         OP_REQUIRES_OK(context,
-                       ValidateSizes<int32>(sizes, &product, &unknown_index,
-                                            &shape, &sizes_has_zero_dim));
+                       ValidateSizes<int32_t>(sizes, &product, &unknown_index,
+                                              &shape, &sizes_has_zero_dim));
         break;
       case DT_INT64:
         OP_REQUIRES_OK(context,
@@ -145,7 +145,7 @@ class ReshapeOp : public OpKernel {
         *has_zero_dim = true;
       } else {
         if (MultiplyWithoutOverflow(shape->num_elements(), size) < 0) {
-          string msg;
+          std::string msg;
           for (int ii = 0; ii < num_dims; ++ii) {
             if (ii != 0) {
               absl::StrAppend(&msg, ", ");
