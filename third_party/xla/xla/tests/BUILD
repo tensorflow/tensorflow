@@ -1248,9 +1248,9 @@ xla_test(
     deps = [
         ":hlo_pjrt_test_base",
         "//xla/service:platform_util",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_TSL_LIB_CORE_STATUS_TEST_UTIL_H_
 
 #include "absl/status/status_matchers.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 
 // Macros for testing the results of functions that return tensorflow::Status.

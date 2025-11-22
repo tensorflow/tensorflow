@@ -493,7 +493,6 @@ cc_test(
     srcs = ["iopddl_test.cc"],
     deps = [
         ":iopddl_lib",
-        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/time",
