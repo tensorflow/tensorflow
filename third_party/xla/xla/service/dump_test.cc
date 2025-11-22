@@ -165,6 +165,44 @@ TEST(DumpHloModule, WithBufferAssignment) {
   EXPECT_TRUE(ReadFileToString(env, paths[3], &data).ok());
 }
 
+TEST(DumpHloModule, DumpRiegeli) {
+  HloModuleConfig config;
+  DebugOptions options = config.debug_options();
+  tsl::Env* env = tsl::Env::Default();
+  std::string dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
+  options.set_xla_dump_to(dump_dir);
+  options.set_xla_dump_hlo_as_riegeli(true);
+  config.set_debug_options(options);
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[11] parameter(0)
+      c = s32[11] constant({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
+      ROOT x = s32[11] multiply(p0, c)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  AliasInfo alias_info;
+  std::unique_ptr<BufferAssignment> buffer_assignment =
+      BufferAssigner::Run(
+          /*module=*/&*m,
+          /*hlo_ordering=*/std::make_unique<DependencyHloOrdering>(&*m),
+          /*buffer_size=*/
+          [](const BufferValue& buffer) -> int64_t {
+            return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
+          },
+          &alias_info,
+          /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
+          /*allocate_buffers_for_constants=*/true)
+          .value();
+  std::string dump_name = "dump";
+  std::vector<std::string> paths =
+      DumpHloModuleIfEnabled(*m, *buffer_assignment, dump_name);
+  EXPECT_EQ(paths.size(), 2);
+}
+
 TEST(DumpTest, NoDumpingToFileWhenNotEnabled) {
   std::string filename =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "disable_override");
