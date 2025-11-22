@@ -2,6 +2,7 @@ load("@cuda_cudart//:version.bzl", cuda_major_version = "VERSION")
 load("@nightly_timestamp//:timestamp.bzl", "XLA_NIGHTLY_TIMESTAMP")
 load("@rc_number//:rc_number.bzl", "XLA_RC_NUMBER")
 load("@rules_python//python:packaging.bzl", "py_wheel")
+load("//xla/tsl:tsl.bzl", "if_windows")
 
 # This ensures we can only build plugins for selected CUDA versions.
 cuda_label = "cuda" + cuda_major_version if cuda_major_version else "null"
@@ -136,6 +137,7 @@ cc_test(
         "PJRT_PLUGIN_PATH": "build_tools/pjrt_wheels/xla_plugins/xla_cpu_pjrt/xla_cpu_pjrt.so",
     },
     linkopts = ["-ldl"],
+    local_defines = if_windows(["PLATFORM_WINDOWS"]),
     deps = ["//xla/pjrt/c:pjrt_c_api_hdrs"],
 )
 
@@ -147,6 +149,7 @@ cc_test(
         "PJRT_PLUGIN_PATH": "build_tools/pjrt_wheels/xla_plugins/xla_" + cuda_label + "_pjrt/xla_gpu_pjrt.so",
     },
     linkopts = ["-ldl"],
+    local_defines = if_windows(["PLATFORM_WINDOWS"]),
     deps = ["//xla/pjrt/c:pjrt_c_api_hdrs"],
 )
 

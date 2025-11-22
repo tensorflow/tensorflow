@@ -1,5 +1,5 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_windows", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -107,6 +107,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_c_api_client_test",
     srcs = ["pjrt_c_api_client_test.cc"],
+    local_defines = if_windows(["PLATFORM_WINDOWS"]),
     tags = [
         "nomsan",
     ],

@@ -49,6 +49,12 @@ jobs:
             repo: "openxla/xla",
           },
           {
+            pool: "windows-x86-n2-16",
+            container: null,
+            name: "XLA Windows x86 CPU",
+            repo: "openxla/xla",
+          },
+          {
             pool: "linux-x86-n2-16",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "XLA Linux x86 CPU Bzlmod",

@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 
+#if defined(PLATFORM_WINDOWS)
+#include <windows.h>
+#else
 #include <unistd.h>
+#endif
 
 #include <array>
 #include <cstddef>

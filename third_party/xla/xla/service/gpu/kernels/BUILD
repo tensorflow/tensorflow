@@ -263,6 +263,7 @@ cc_library(
     name = "cutlass_gemm",
     srcs = ["cutlass_gemm.cc"],
     hdrs = ["cutlass_gemm.h"],
+    local_defines = if_windows(["PLATFORM_WINDOWS"]),
     deps = ["//xla/tsl/platform:logging"],
 )
 
