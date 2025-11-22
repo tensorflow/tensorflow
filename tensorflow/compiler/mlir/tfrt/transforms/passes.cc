@@ -152,7 +152,6 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateRemoveUnusedWhileResultsPass());
-  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 
   // Apply standard optimization after optimizing control flow ops.
   pm.addPass(mlir::createInlinerPass());
@@ -163,6 +162,7 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   // by performing shape inference again after reference variable to resource
   // variable conversion. We should remove this after b/187876545 is fixed.
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateLaunchToDeviceAttributePass());
