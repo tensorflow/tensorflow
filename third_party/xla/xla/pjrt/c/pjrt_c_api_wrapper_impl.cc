@@ -412,6 +412,15 @@ PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Error_CreateError(PJRT_Error_CreateError_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Error_CreateError_Args", PJRT_Error_CreateError_Args_STRUCT_SIZE,
+      args->struct_size));
+  return new PJRT_Error{absl::Status(
+      PjrtErrorCodeToStatusCode(args->code),
+      absl::string_view(args->error_message, args->error_message_size))};
+}
+
 // ---------------------------------- Plugin -----------------------------------
 
 PJRT_Error* PJRT_Plugin_Attributes_Empty(PJRT_Plugin_Attributes_Args* args) {
@@ -974,6 +983,26 @@ PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
                                     shape, memory_space));
 
   args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Client_CreateErrorBuffer(
+    PJRT_Client_CreateErrorBuffer_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Client_CreateErrorBuffer_Args",
+      PJRT_Client_CreateErrorBuffer_Args_STRUCT_SIZE, args->struct_size));
+
+  PJRT_ASSIGN_OR_RETURN(
+      xla::Shape shape,
+      pjrt::BuildXlaShapeFromC(args->shape_element_type, args->shape_dims,
+                               args->shape_num_dims, args->shape_layout));
+
+  PJRT_ASSIGN_OR_RETURN(
+      auto error_buffer,
+      args->client->client->CreateErrorBuffer(args->error->status, shape,
+                                              args->memory->memory_space));
+
+  args->buffer = new PJRT_Buffer{std::move(error_buffer), args->client};
   return nullptr;
 }
 
@@ -3124,6 +3153,10 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_Client_FulfillAliasBuffer,
       /*PJRT_LoadedExecutable_GetDeviceAssignment=*/
       pjrt::PJRT_LoadedExecutable_GetDeviceAssignment,
+      /*PJRT_Error_CreateError=*/
+      pjrt::PJRT_Error_CreateError,
+      /*PJRT_Client_CreateErrorBuffer=*/
+      pjrt::PJRT_Client_CreateErrorBuffer,
   };
 }
 

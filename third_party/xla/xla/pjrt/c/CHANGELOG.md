@@ -1,5 +1,10 @@
 # PJRT C API changelog
 
+## 0.82
+
+* Add `PJRT_Error_CreateError`.
+* Add `PJRT_Client_CreateErrorBuffer`.
+
 ## 0.81
 
 * Added `PJRT_Layouts_PJRT_Executable_GetOutputLayouts`.
