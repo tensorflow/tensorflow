@@ -21,7 +21,9 @@ genrule(
     name = "nvidia_constraints",
     srcs = ["nvidia-requirements.txt"],
     outs = ["nvidia-constraints.txt"],
-    cmd = """sed -E "s/>=/==/" $(location nvidia-requirements.txt) > $@;""",
+    cmd = """sed -E "s/>=/==/" $(location nvidia-requirements.txt) > $@""",
+    visibility = ["//visibility:public"],
+    tags = ["ci_tool"],
 )
 
 compile_pip_requirements(
@@ -39,4 +41,7 @@ compile_pip_requirements(
     ],
     generate_hashes = True,
     requirements_txt = REQUIREMENTS,
+    visibility = ["//visibility:public"],
+    tags = ["ci_tool"],
+    timeout = "long",
 )
