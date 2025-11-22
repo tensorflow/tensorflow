@@ -411,6 +411,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   TF_RETURN_IF_ERROR(FixSchedule());
   TF_ASSIGN_OR_RETURN(auto alias, HloAliasAnalysis::Run(module_, alias_info_));
   TF_RETURN_IF_ERROR(ExportAndColorBuffers(*alias));
+  TF_RETURN_IF_ERROR(VerifyMemorySpaceColoring());
   std::vector<int64_t> alt_mem_bytes_occupied;
   // alt_mem_bytes_occupied is used for logging in the RuntimeSimulator below.
   // We only populate it in VerifyAndExportHeapSimulatorTrace if the
@@ -569,6 +570,16 @@ absl::Status MemorySpaceAssignment::Process(
             << "Multiple pinned allocations defined for position "
             << allocation->defining_position().ToString();
       }
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status MemorySpaceAssignment::VerifyMemorySpaceColoring() const {
+  for (HloComputation* computation : module_->MakeNonfusionComputations()) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
+      TF_RETURN_IF_ERROR(options_.verify_memory_space_coloring_fn(instruction));
     }
   }
   return absl::OkStatus();

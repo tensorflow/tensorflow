@@ -424,6 +424,8 @@ class MemorySpaceAssignment {
   void RemoveScopedMemoryAssignments(
       const absl::flat_hash_set<const HloInstruction*>& instructions);
 
+  absl::Status VerifyMemorySpaceColoring() const;
+
   HloModule* module_;
   // Backend specific aliasing information.
   const AliasInfo* alias_info_;
