@@ -42,11 +42,11 @@ TEST_F(SparseFillEmptyRowsTest, SparseFillEmptyRows) {
   MakeOp(DT_INT64, DT_FLOAT);
 
   // sparse_indices
-  AddInputFromArray<int64>(TensorShape({4, 2}), {0, 1, 0, 3, 2, 0, 3, 1});
+  AddInputFromArray<int64_t>(TensorShape({4, 2}), {0, 1, 0, 3, 2, 0, 3, 1});
   // sparse_values
   AddInputFromArray<float>(TensorShape({4}), {0, 3, 1, 2});
   // dense_shape
-  AddInputFromArray<int64>(TensorShape({2}), {5, 6});
+  AddInputFromArray<int64_t>(TensorShape({2}), {5, 6});
   // default_value
   AddInputFromArray<float>(TensorShape({}), {4});
 
@@ -54,20 +54,20 @@ TEST_F(SparseFillEmptyRowsTest, SparseFillEmptyRows) {
 
   // Checks the output indices.
   Tensor expected0(allocator(), DT_INT64, {6, 2});
-  expected0.tensor<int64, 2>()(0, 0) = 0;
-  expected0.tensor<int64, 2>()(0, 1) = 1;
-  expected0.tensor<int64, 2>()(1, 0) = 0;
-  expected0.tensor<int64, 2>()(1, 1) = 3;
-  expected0.tensor<int64, 2>()(2, 0) = 1;
-  expected0.tensor<int64, 2>()(2, 1) = 0;
-  expected0.tensor<int64, 2>()(3, 0) = 2;
-  expected0.tensor<int64, 2>()(3, 1) = 0;
-  expected0.tensor<int64, 2>()(4, 0) = 3;
-  expected0.tensor<int64, 2>()(4, 1) = 1;
-  expected0.tensor<int64, 2>()(5, 0) = 4;
-  expected0.tensor<int64, 2>()(5, 1) = 0;
+  expected0.tensor<int64_t, 2>()(0, 0) = 0;
+  expected0.tensor<int64_t, 2>()(0, 1) = 1;
+  expected0.tensor<int64_t, 2>()(1, 0) = 0;
+  expected0.tensor<int64_t, 2>()(1, 1) = 3;
+  expected0.tensor<int64_t, 2>()(2, 0) = 1;
+  expected0.tensor<int64_t, 2>()(2, 1) = 0;
+  expected0.tensor<int64_t, 2>()(3, 0) = 2;
+  expected0.tensor<int64_t, 2>()(3, 1) = 0;
+  expected0.tensor<int64_t, 2>()(4, 0) = 3;
+  expected0.tensor<int64_t, 2>()(4, 1) = 1;
+  expected0.tensor<int64_t, 2>()(5, 0) = 4;
+  expected0.tensor<int64_t, 2>()(5, 1) = 0;
 
-  test::ExpectTensorEqual<int64>(expected0, *GetOutput(0));
+  test::ExpectTensorEqual<int64_t>(expected0, *GetOutput(0));
 
   // Checks the output values.
   Tensor expected1(allocator(), DT_FLOAT, {6});
@@ -81,19 +81,19 @@ TEST_F(SparseFillEmptyRowsTest, SparseFillEmptyRows) {
 
   // Checks the reverse index map.
   Tensor expected3(allocator(), DT_INT64, {4});
-  test::FillValues<int64>(&expected3, {0, 1, 3, 4});
-  test::ExpectTensorEqual<int64>(expected3, *GetOutput(3));
+  test::FillValues<int64_t>(&expected3, {0, 1, 3, 4});
+  test::ExpectTensorEqual<int64_t>(expected3, *GetOutput(3));
 }
 
 TEST_F(SparseFillEmptyRowsTest, IndicesValuesUnmatch) {
   MakeOp(DT_INT64, DT_FLOAT);
 
   // sparse_indices
-  AddInputFromArray<int64>(TensorShape({4, 2}), {0, 1, 0, 3, 2, 0, 3, 1});
+  AddInputFromArray<int64_t>(TensorShape({4, 2}), {0, 1, 0, 3, 2, 0, 3, 1});
   // sparse_values
   AddInputFromArray<float>(TensorShape({3}), {0, 3, 1});
   // dense_shape
-  AddInputFromArray<int64>(TensorShape({2}), {5, 6});
+  AddInputFromArray<int64_t>(TensorShape({2}), {5, 6});
   // default_value
   AddInputFromArray<float>(TensorShape({}), {4});
 
@@ -107,11 +107,11 @@ TEST_F(SparseFillEmptyRowsTest, IndicesDenseShapeUnmatch) {
   MakeOp(DT_INT64, DT_FLOAT);
 
   // sparse_indices
-  AddInputFromArray<int64>(TensorShape({4, 0}), {});
+  AddInputFromArray<int64_t>(TensorShape({4, 0}), {});
   // sparse_values
   AddInputFromArray<float>(TensorShape({4}), {0, 3, 1, 2});
   // dense_shape
-  AddInputFromArray<int64>(TensorShape({2}), {5, 6});
+  AddInputFromArray<int64_t>(TensorShape({2}), {5, 6});
   // default_value
   AddInputFromArray<float>(TensorShape({}), {4});
 
