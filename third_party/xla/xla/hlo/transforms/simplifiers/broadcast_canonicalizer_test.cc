@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <optional>
 
+#include <gtest/gtest.h>
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla {
