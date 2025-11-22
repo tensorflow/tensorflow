@@ -103,7 +103,7 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-static const char kMemoryKind[] = "";
+static const char kMemoryKind[] = "device";
 
 // Returns a Future that is immediately ready with the given status. This is
 // mostly useful because everything NanoRT does is immediately ready.
