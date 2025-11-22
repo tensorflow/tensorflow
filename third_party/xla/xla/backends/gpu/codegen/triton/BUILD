@@ -7,6 +7,7 @@ load(
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -239,8 +240,8 @@ cc_library(
         ["fusion_emitter_stub.cc"],
     ),
     hdrs = ["fusion_emitter.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
-        ":collective_emitter",
         "//xla:autotuning_proto_cc",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/codegen:emitter_loc_op_builder",
@@ -272,6 +273,7 @@ cc_library(
         "@triton//:TritonDialects",
     ] + if_cuda_or_rocm_is_configured([
         ":compilation_pipeline",
+        ":collective_emitter",
         ":dot_algorithms",
         ":emitter_helpers",
         ":fusion_emitter_legacy_matmul",
