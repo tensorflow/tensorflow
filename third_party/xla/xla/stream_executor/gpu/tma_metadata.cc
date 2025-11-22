@@ -20,7 +20,6 @@ limitations under the License.
 #include <initializer_list>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
