@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -160,14 +161,12 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
   auto generate = [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
     VLOG(3) << "Generating: " << suggested_kernel_name;
 
-    const std::string impl_fn_name =
-        ir_emitter_context.name_uniquer()->GetUniqueName(
-            llvm_ir::SanitizeFunctionName(
-                absl::StrCat(suggested_kernel_name, "_impl")));
+    const std::string sanitized_kernel_name =
+        GetSanitizedUniqueName(ir_emitter_context, suggested_kernel_name);
 
     TF_ASSIGN_OR_RETURN(
         TritonWrapperResult triton_wrapper_result,
-        GenerateTritonKernelAndWrapper(fusion, impl_fn_name,
+        GenerateTritonKernelAndWrapper(fusion, sanitized_kernel_name,
                                        ir_emitter_context.gpu_device_info(),
                                        ir_emitter_context.llvm_module(),
                                        ir_emitter_context.mlir_context()));
@@ -233,40 +232,17 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
                                     analysis_.device_info()));
     }
 
-    llvm::Function* impl_fn =
-        ir_emitter_context.llvm_module()->getFunction(impl_fn_name);
-    TF_RET_CHECK(impl_fn);
+    TF_ASSIGN_OR_RETURN(llvm::Function * kernel,
+                        RemoveUnusedTritonAbiArguments(ir_emitter_context,
+                                                       sanitized_kernel_name));
 
-    TF_ASSIGN_OR_RETURN(
-        llvm::Function * kernel,
-        BuildKernelPrototype(ir_emitter_context, impl_fn_name,
-                             suggested_kernel_name, kernel_arguments,
-                             launch_dimensions, &builder));
-
+    AnnotateAttrsIfUnset(kernel_arguments, *kernel);
     PopulateNvvmAnnotations(ir_emitter_context.llvm_module(), kernel,
                             triton_wrapper_result);
 
-    // Move function body into kernel prototype.
-    llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
-    prototype_func->splice(prototype_func->begin(), impl_fn);
-    for (const auto& [impl_fn_arg, kernel_arg] :
-         llvm::zip(impl_fn->args(), kernel->args())) {
-      impl_fn_arg.replaceAllUsesWith(&kernel_arg);
-    }
-    // Triton's kernel ABI expects additional scratchpad global memory for
-    // TMA and profiling information.
-    // For now it is only used for on-device creation of TMA descriptors, which
-    // we do not use yet, so we are just replacing this argument with a null
-    // pointer.
-    // TODO: b/381242007 - Allocate a proper buffer if we want to use
-    // device-side TMA APIs.
-    CHECK_EQ(impl_fn->arg_size(), kernel->arg_size() + 2);
-    auto tma_scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 2);
-    tma_scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
-        llvm::cast<llvm::PointerType>(tma_scratchpad_arg->getType())));
-    auto profiling_scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 1);
-    profiling_scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
-        llvm::cast<llvm::PointerType>(profiling_scratchpad_arg->getType())));
+    TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
+        ir_emitter_context.gpu_device_info(), launch_dimensions, kernel,
+        ir_emitter_context.llvm_module()));
 
     return {{kernel->getName().str(), launch_dimensions,
              triton_wrapper_result.cluster_dim,

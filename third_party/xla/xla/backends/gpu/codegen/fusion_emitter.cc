@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
@@ -34,6 +36,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/AffineExpr.h"
@@ -53,6 +56,54 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+void CopySelectAttrs(const llvm::Function& src, llvm::Function& dst) {
+  for (uint32_t arg_idx = 0; arg_idx < src.arg_size(); arg_idx++) {
+    // Get the original argument to extract attributes from if they exist.
+    llvm::Argument* src_arg = src.getArg(arg_idx);
+    llvm::Argument& dst_arg = *dst.getArg(arg_idx);
+    dst_arg.setName(absl::StrCat("arg", arg_idx));
+
+    if (src_arg->hasByValAttr()) {
+      dst.addParamAttr(arg_idx, src_arg->getAttribute(llvm::Attribute::ByVal));
+    }
+
+    // If the alignment has been specified in the original function, use it.
+    // Otherwise, use the alignment from the kernel argument.
+    if (src_arg->hasAttribute(llvm::Attribute::Alignment)) {
+      dst.addParamAttr(arg_idx,
+                       src_arg->getAttribute(llvm::Attribute::Alignment));
+    }
+    if (src_arg->hasAttribute("nvvm.grid_constant")) {
+      dst.addParamAttr(arg_idx, llvm::Attribute::get(dst_arg.getContext(),
+                                                     "nvvm.grid_constant"));
+    }
+  }
+}
+
+void AnnotateAttrsIfUnset(const emitters::KernelArguments& arguments,
+                          llvm::Function& dst) {
+  for (auto&& [arg_idx, kernel_argument] : llvm::enumerate(arguments.args())) {
+    llvm::Argument& dst_arg = *dst.getArg(arg_idx);
+    dst_arg.setName(absl::StrCat("arg", arg_idx));
+
+    if (!dst_arg.hasByValAttr()) {
+      dst.addDereferenceableParamAttr(arg_idx, kernel_argument.slice().size());
+    }
+    // If the alignment has been specified in the original function, use it.
+    // Otherwise, use the alignment from the kernel argument.
+    if (!dst_arg.hasAttribute(llvm::Attribute::Alignment)) {
+      dst.addParamAttr(
+          arg_idx,
+          llvm::Attribute::get(dst_arg.getContext(), llvm::Attribute::Alignment,
+                               kernel_argument.alignment()));
+    }
+    if (!kernel_argument.aliased()) {
+      dst.addParamAttr(arg_idx, llvm::Attribute::get(dst_arg.getContext(),
+                                                     llvm::Attribute::NoAlias));
+    }
+  }
+}
 
 // Annotates the launch dimensions of the corresponding IR kernel in
 // `llvm_module`.
@@ -113,17 +164,6 @@ std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
       llvm_ir::SanitizeFunctionName(suggested_name));
 }
 
-absl::StatusOr<llvm::Function*> BuildKernelPrototype(
-    IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
-    const std::string& suggested_name,
-    const emitters::KernelArguments& arguments,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
-  return BuildKernelPrototypeFromUniqueName(
-      ir_emitter_context, impl_fn_name,
-      GetSanitizedUniqueName(ir_emitter_context, suggested_name), arguments,
-      launch_dimensions, builder);
-}
-
 absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
     IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
     const std::string& unique_kernel_name,
@@ -156,43 +196,84 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
   // that return instruction.
   builder->SetInsertPoint(llvm::ReturnInst::Create(context, entry_bb));
   // Get the original function to extract attributes.
-  auto impl_func = llvm_module->getFunction(impl_fn_name);
+  llvm::Function* impl_func = llvm_module->getFunction(impl_fn_name);
 
-  for (auto&& [arg_idx, kernel_argument] : llvm::enumerate(arguments.args())) {
-    // Get the original argument to extract attributes from if they exist.
-    llvm::Argument* impl_arg = impl_func ? impl_func->getArg(arg_idx) : nullptr;
-    llvm::Argument& llvm_arg = *kernel->getArg(arg_idx);
-    llvm_arg.setName(absl::StrCat("arg", arg_idx));
+  if (impl_func) {
+    CopySelectAttrs(*impl_func, *kernel);
+  }
+  AnnotateAttrsIfUnset(arguments, *kernel);
+  return kernel;
+}
 
-    if (impl_arg && impl_arg->hasByValAttr()) {
-      kernel->addParamAttr(arg_idx,
-                           impl_arg->getAttribute(llvm::Attribute::ByVal));
+absl::StatusOr<llvm::Function*> BuildKernelPrototype(
+    IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
+    const std::string& suggested_name,
+    const emitters::KernelArguments& arguments,
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
+  return BuildKernelPrototypeFromUniqueName(
+      ir_emitter_context, impl_fn_name,
+      GetSanitizedUniqueName(ir_emitter_context, suggested_name), arguments,
+      launch_dimensions, builder);
+}
+
+// Triton's kernel ABI expects additional scratchpad global memory for
+// TMA and profiling information.
+// For now it is only used for on-device creation of TMA descriptors, which
+// we do not use yet, so we are just replacing this argument with a null
+// pointer.
+// TODO: b/381242007 - Allocate a proper buffer if we want to use
+// device-side TMA APIs.
+absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
+    IrEmitterContext& ir_emitter_context,
+    const std::string& sanitized_kernel_name) {
+  llvm::Function* impl_fn =
+      ir_emitter_context.llvm_module()->getFunction(sanitized_kernel_name);
+  TF_RET_CHECK(impl_fn);
+  impl_fn->setName(ir_emitter_context.name_uniquer()->GetUniqueName(
+      sanitized_kernel_name + "_impl"));
+
+  constexpr int arg_to_remove = 2;
+
+  auto fn_attrs = impl_fn->getAttributes();
+  llvm::SmallVector<llvm::Type*, 8> arg_types;
+
+  for (uint32_t i = 0; i < impl_fn->arg_size(); i++) {
+    if (i < impl_fn->arg_size() - arg_to_remove) {
+      arg_types.push_back(impl_fn->getArg(i)->getType());
     } else {
-      kernel->addDereferenceableParamAttr(arg_idx,
-                                          kernel_argument.slice().size());
-    }
-    // If the alignment has been specified in the original function, use it.
-    // Otherwise, use the alignment from the kernel argument.
-    if (impl_arg && impl_arg->hasAttribute(llvm::Attribute::Alignment)) {
-      kernel->addParamAttr(arg_idx,
-                           impl_arg->getAttribute(llvm::Attribute::Alignment));
-    } else {
-      kernel->addParamAttr(arg_idx,
-                           llvm::Attribute::get(llvm_arg.getContext(),
-                                                llvm::Attribute::Alignment,
-                                                kernel_argument.alignment()));
-    }
-    if (!kernel_argument.aliased()) {
-      kernel->addParamAttr(arg_idx,
-                           llvm::Attribute::get(llvm_arg.getContext(),
-                                                llvm::Attribute::NoAlias));
-    }
-    if (impl_arg && impl_arg->hasAttribute("nvvm.grid_constant")) {
-      kernel->addParamAttr(arg_idx, llvm::Attribute::get(llvm_arg.getContext(),
-                                                         "nvvm.grid_constant"));
+      fn_attrs = fn_attrs.removeParamAttributes(
+          ir_emitter_context.llvm_module()->getContext(), i);
+
+      auto arg = impl_fn->getArg(i);
+      arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
+          llvm::cast<llvm::PointerType>(arg->getType())));
     }
   }
-  return kernel;
+
+  llvm::FunctionType* new_type =
+      llvm::FunctionType::get(impl_fn->getReturnType(), arg_types, false);
+
+  auto inserted =
+      ir_emitter_context.llvm_module()
+          ->getOrInsertFunction(sanitized_kernel_name, new_type, fn_attrs)
+          .getCallee();
+  llvm::Function* new_function = static_cast<llvm::Function*>(inserted);
+
+  new_function->setCallingConv(impl_fn->getCallingConv());
+  new_function->copyMetadata(impl_fn, 0);
+  new_function->setAttributes(impl_fn->getAttributes());
+
+  new_function->splice(new_function->begin(), impl_fn);
+
+  for (const auto& [impl_fn_arg, kernel_arg] :
+       llvm::zip(impl_fn->args(), new_function->args())) {
+    kernel_arg.setName(impl_fn_arg.getName());
+    impl_fn_arg.replaceAllUsesWith(&kernel_arg);
+  }
+
+  impl_fn->eraseFromParent();
+
+  return new_function;
 }
 
 }  // namespace gpu
