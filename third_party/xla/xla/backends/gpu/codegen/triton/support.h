@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/instruction_fusion.h"
-#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
@@ -37,6 +36,11 @@ using CodegenDecision = FusionDecision;
 // Currently does not perform any check for non-CUDA compute capabilities.
 absl::Status EnsureTritonSupportsComputeCapability(
     const se::GpuComputeCapability& gpu_compute_capability);
+
+// Checks if the given data type is supported by Triton for the given compute
+// capability.
+bool IsTritonSupportedDataType(PrimitiveType type,
+                               const se::GpuComputeCapability& gpu_version);
 
 // Return `CodegenDecision`'s equivalent of `true` if the parameter instruction
 // is supported by the Triton emitters for the given compute capability. Note
@@ -65,6 +69,16 @@ CodegenDecision IsTritonSupportedComputation(
 // `backend_config<gpu::GpuBackendConfig>()` with `kind` set to
 // `kTritonGemmFusionKind`.
 bool IsTritonFusedComputation(const HloComputation& computation);
+
+// Checks elementwise operation against unary, binary, and ternary elementwise
+// operations supported by the legacy Triton emitters assuming that
+// FloatNormalization will be run later.
+// TODO(b/393299275): check if we can expand the set of supported operations
+// as generic emitter can handle more operations.
+bool IsTritonSupportedElementwiseUpToFloatNormalization(
+    HloOpcode opcode, PrimitiveType element_type);
+CodegenDecision IsTritonSupportedDynamicSlice(
+    const HloDynamicSliceInstruction& instr);
 
 namespace internal {
 // TODO(b/363981282): Remove the function below once all ops are tested via
