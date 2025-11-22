@@ -245,7 +245,7 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
   TF_ASSIGN_OR_RETURN(auto ptx, LLVMToPTX(*module_op, arch_name));
 
   return CompilationResult{
-      ptx,
+      AsmText{ptx},
       shared_mem_bytes,
       cluster_info.clusterDimX,
       cluster_info.clusterDimY,
