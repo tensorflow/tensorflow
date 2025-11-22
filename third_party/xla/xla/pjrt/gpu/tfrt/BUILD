@@ -254,7 +254,6 @@ xla_cc_test(
     deps = [
         ":gpu_event",
         "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",

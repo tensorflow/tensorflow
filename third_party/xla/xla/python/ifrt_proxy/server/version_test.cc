@@ -21,15 +21,11 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
 namespace {
-
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 struct Param {
   int client_min_version;

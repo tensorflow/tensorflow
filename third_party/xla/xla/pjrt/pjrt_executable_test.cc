@@ -33,8 +33,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::tsl::testing::StatusIs;
-
 TEST(CompileOptionsTest, Serialization) {
   CompileOptions src;
   src.compile_portable_executable = true;

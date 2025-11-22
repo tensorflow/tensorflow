@@ -51,7 +51,6 @@ ifrt_proxy_cc_test(
     deps = [
         ":grpc_server",
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
@@ -109,7 +108,6 @@ ifrt_proxy_cc_test(
         "//xla/python/ifrt_proxy/client:grpc_host_buffer",
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
@@ -345,7 +343,6 @@ ifrt_proxy_cc_test(
     deps = [
         ":version",
         "//xla/python/ifrt:serdes_version",
-        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
@@ -359,7 +356,6 @@ ifrt_proxy_cc_test(
         ":host_buffer",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/synchronization",

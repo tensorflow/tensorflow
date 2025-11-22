@@ -23,7 +23,6 @@
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -33,8 +32,6 @@ namespace proxy {
 namespace {
 
 using ::testing::Not;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 // A fake IFRT service that fails all the Session creation attempts.
 class FakeIfrtService : public grpc::GrpcIfrtService::Service {};

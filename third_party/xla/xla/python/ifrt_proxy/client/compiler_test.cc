@@ -47,9 +47,6 @@
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -62,8 +59,6 @@ using ::testing::Invoke;
 using ::testing::Optional;
 using ::testing::Return;
 using ::tsl::protobuf::TextFormat;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 struct TestProgram : llvm::RTTIExtends<TestProgram, Program> {
   static char ID;  // NOLINT

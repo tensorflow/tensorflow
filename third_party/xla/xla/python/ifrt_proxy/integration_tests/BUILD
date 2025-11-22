@@ -127,6 +127,7 @@ ifrt_proxy_cc_test(
     size = "small",
     srcs = ["mock_array_test.cc"],
     deps = [
+        "//xla:future",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/python/ifrt",
@@ -139,7 +140,6 @@ ifrt_proxy_cc_test(
         "//xla/python/pjrt_ifrt",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base:core_headers",

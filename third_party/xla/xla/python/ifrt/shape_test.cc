@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -39,7 +38,6 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 TEST(ShapeTest, LargeDim) {
   Shape shape({std::numeric_limits<int64_t>::max()});

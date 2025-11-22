@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -66,8 +65,6 @@ namespace {
 
 using ::testing::Eq;
 using ::testing::HasSubstr;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 absl::StatusOr<ArrayRef> MakeArrayFromLiteral(Client* absl_nonnull client,
                                               const xla::LiteralBase& literal,
