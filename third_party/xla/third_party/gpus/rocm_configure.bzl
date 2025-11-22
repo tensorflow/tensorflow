@@ -11,6 +11,7 @@
   * `TF_ROCM_AMDGPU_TARGETS`: The AMDGPU targets.
 """
 
+load("@bazel_skylib//lib:paths.bzl", "paths")
 load(
     "//third_party/gpus/rocm:rocm_redist.bzl",
     "rocm_redist",
@@ -49,8 +50,7 @@ _ROCM_TOOLKIT_PATH = "ROCM_PATH"
 _TF_ROCM_AMDGPU_TARGETS = "TF_ROCM_AMDGPU_TARGETS"
 _TF_ROCM_CONFIG_REPO = "TF_ROCM_CONFIG_REPO"
 _DISTRIBUTION_PATH = "rocm/rocm_dist"
-_OS = "OS"
-_ROCM_VERSION = "ROCM_VERSION"
+_ROCM_DISTRO_VERSION = "ROCM_DISTRO_VERSION"
 _TMPDIR = "TMPDIR"
 
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
@@ -503,29 +503,32 @@ def _compute_rocm_extra_copts(repository_ctx, amdgpu_targets):
                            amdgpu_target for amdgpu_target in amdgpu_targets]
     return str(amdgpu_target_flags)
 
+def _canonical_path(p):
+    parts = [x for x in p.split("/") if x != ""]
+    return paths.join(*parts)
+
 def _get_file_name(url):
     last_slash_index = url.rfind("/")
     return url[last_slash_index + 1:]
 
-def _download_package(repository_ctx, archive):
-    file_name = _get_file_name(archive.url)
-    tmp_dir = "tmp"
-    repository_ctx.file(tmp_dir + "/.idx")  # create tmp dir
+def _download_package(repository_ctx, pkg):
+    file_name = _get_file_name(pkg["url"])
 
-    repository_ctx.report_progress("Downloading and extracting {}, expected hash is {}".format(archive.url, archive.sha256))  # buildifier: disable=print
+    repository_ctx.report_progress("Downloading and extracting {}, expected hash is {}".format(pkg["url"], pkg["sha256"]))  # buildifier: disable=print
     repository_ctx.download_and_extract(
-        url = archive.url,
-        output = tmp_dir if archive.url.endswith(".deb") else _DISTRIBUTION_PATH,
-        sha256 = archive.sha256,
+        url = pkg["url"],
+        output = _DISTRIBUTION_PATH,
+        sha256 = pkg["sha256"],
+        type = "zip" if pkg["url"].endswith(".whl") else "",
     )
 
-    all_files = repository_ctx.path(tmp_dir).readdir()
+    if pkg.get("sub_package", None):
+        repository_ctx.report_progress("Extracting {}".format(pkg["sub_package"]))  # buildifier: disable=print
+        repository_ctx.extract(
+            archive = "{}/{}".format(_DISTRIBUTION_PATH, pkg["sub_package"]),
+            output = _DISTRIBUTION_PATH,
+        )
 
-    matched_files = [f for f in all_files if _get_file_name(str(f)).startswith("data.")]
-    for f in matched_files:
-        repository_ctx.extract(f, _DISTRIBUTION_PATH)
-
-    repository_ctx.delete(tmp_dir)
     repository_ctx.delete(file_name)
 
 def _remove_root_dir(path, root_dir):
@@ -536,15 +539,20 @@ def _remove_root_dir(path, root_dir):
 def _setup_rocm_distro_dir(repository_ctx):
     """Sets up the rocm hermetic installation directory to be used in hermetic build"""
     bash_bin = get_bash_bin(repository_ctx)
-    os = repository_ctx.os.environ.get(_OS)
-    rocm_version = repository_ctx.os.environ.get(_ROCM_VERSION)
+    rocm_distro = repository_ctx.os.environ.get(_ROCM_DISTRO_VERSION)
     multiple_paths = repository_ctx.os.environ.get(_TF_ROCM_MULTIPLE_PATHS)
-    if os and rocm_version:
-        redist = rocm_redist[os][rocm_version]
+    if rocm_distro:
+        redist = rocm_redist[rocm_distro]
         repository_ctx.file("rocm/.index")
-        for archive in redist["archives"]:
-            _download_package(repository_ctx, archive)
-        return _get_rocm_config(repository_ctx, bash_bin, "{}/{}".format(_DISTRIBUTION_PATH, redist["rocm_root"]), "/{}".format(redist["rocm_root"]))
+        for pkg in redist.packages:
+            _download_package(repository_ctx, pkg)
+
+        for entry in redist.required_softlinks:
+            repository_ctx.symlink(
+                "{}/{}".format(_DISTRIBUTION_PATH, entry.target),
+                "{}/{}".format(_DISTRIBUTION_PATH, entry.link),
+            )
+        return _get_rocm_config(repository_ctx, bash_bin, _canonical_path("{}/{}".format(_DISTRIBUTION_PATH, redist.rocm_root)), "")
     elif multiple_paths:
         paths_list = multiple_paths.split(":")
         for rocm_custom_path in paths_list:
@@ -835,8 +843,7 @@ _ENVIRONS = [
     "TF_NEED_CUDA",  # Needed by the `if_gpu_is_configured` macro
     _ROCM_TOOLKIT_PATH,
     _TF_ROCM_AMDGPU_TARGETS,
-    _OS,
-    _ROCM_VERSION,
+    _ROCM_DISTRO_VERSION,
     _TF_ROCM_RBE_DOCKER_IMAGE,
     _TF_ROCM_MULTIPLE_PATHS,
 ]
