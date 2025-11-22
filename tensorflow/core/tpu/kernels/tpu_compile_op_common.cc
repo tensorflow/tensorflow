@@ -167,7 +167,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   });
 
   absl::Status compile_status = ComputeInternal(ctx);
-  string status_payload;
+  std::string status_payload;
   // Construct payload if compile_status is not ok and there's no payload for
   // compilation yet.
   if (!compile_status.ok() &&

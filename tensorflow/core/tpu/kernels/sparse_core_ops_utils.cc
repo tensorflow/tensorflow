@@ -44,10 +44,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-std::vector<int> ConvertBinarySplitsToBucketSplits(int64 split,
+std::vector<int> ConvertBinarySplitsToBucketSplits(int64_t split,
                                                    int max_division_level) {
   std::vector<int> bucket_splits;
-  uint32 current_index = 0;
+  uint32_t current_index = 0;
   while (split > 0) {
     if (split % 2 == 1) {
       int split_level = absl::bit_width(current_index + 1) - 1;
@@ -62,9 +62,9 @@ std::vector<int> ConvertBinarySplitsToBucketSplits(int64 split,
   return bucket_splits;
 }
 
-int64 ConvertBucketSplitsToBinarySplits(std::vector<int> bucket_splits,
-                                        int max_division_level) {
-  int64 binary_splits = 0;
+int64_t ConvertBucketSplitsToBinarySplits(std::vector<int> bucket_splits,
+                                          int max_division_level) {
+  int64_t binary_splits = 0;
   for (auto& bucket_split : bucket_splits) {
     int split_level = max_division_level - 1;
     while (bucket_split > 0 && bucket_split % 2 == 0) {
