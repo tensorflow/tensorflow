@@ -1620,6 +1620,35 @@ ENTRY %entry_spmd () -> s32[1,3] {
 
 )"
 },
+{
+  "StackFrameIndex",
+R"(HloModule m, entry_computation_layout={()->pred[]}
+
+FileNames
+1 "<embedded module>"
+2 "experimental/module.py"
+3 "yet/another/test.py"
+
+FunctionNames
+1 "main"
+2 "method"
+
+FileLocations
+1 {file_name_id=1 function_name_id=1 line=153 end_line=153 column=2 end_column=31}
+2 {file_name_id=3 function_name_id=2 line=35 end_line=35 column=2 end_column=24}
+3 {file_name_id=2 function_name_id=2 line=83 end_line=83 column=2 end_column=15}
+
+StackFrames
+1 {file_location_id=1 parent_frame_id=1}
+2 {file_location_id=2 parent_frame_id=2}
+
+
+ENTRY %constant_pred () -> pred[] {
+  ROOT %constant = pred[] constant(true), metadata={op_type="const" op_name="opname" stack_frame_id=1}
+}
+
+)"
+}
 });
   // clang-format on
 }
