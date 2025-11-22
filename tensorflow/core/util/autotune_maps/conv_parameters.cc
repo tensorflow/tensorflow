@@ -16,12 +16,15 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 
+#include <cstddef>
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_replace.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
+#include "tsl/platform/regexp.h"
 
 namespace tensorflow {
 
@@ -36,6 +39,22 @@ uint64 ComputeHash(int device_id, const MatmulParametersProto& proto) {
   return Hash64Combine(device_id, tsl::DeterministicProtoHash64(proto));
 }
 }  // namespace
+
+std::string DeviceIdentifierForAutotuning(absl::string_view device_identifier) {
+  static const LazyRE2 kDevicePattern = {
+      R"regexp(^sm_[^ ]+ with ([\d]+)B RAM, [\d]+ cores, [\d]+KHz clock, [\d]+KHz mem clock, [\d]+B L2\$$)regexp"};
+
+  uint64_t ram_bytes;
+  if (!RE2::FullMatch(device_identifier, *kDevicePattern, &ram_bytes)) {
+    return std::string(device_identifier);
+  }
+
+  // Round up RAM to GB with 1 decimal place.
+  double ram_gb = static_cast<double>(ram_bytes) / 1e9;
+  return absl::StrReplaceAll(device_identifier,
+                             {{absl::StrCat(ram_bytes, "B RAM"),
+                               absl::StrFormat("%.1fGB RAM", ram_gb)}});
+}
 
 ConvParameters::ConvParameters(
     se::StreamExecutor* stream_exec, int64_t batch, int64_t in_depths,
@@ -65,10 +84,8 @@ ConvParameters::ConvParameters(
     fusion_proto.set_is_contrib(fusion_info.value().is_contrib);
     *proto_.mutable_fusion() = fusion_proto;
   }
-  // Have to convert to std::string because apparently our open-source protobuf
-  // does not speak absl::string_view.
-  proto_.set_device_identifier(
-      std::string(stream_exec->GetDeviceDescription().model_str()));
+  proto_.set_device_identifier(DeviceIdentifierForAutotuning(
+      stream_exec->GetDeviceDescription().model_str()));
   proto_.set_version(version);
   hash_code_ = ComputeHash(device_id_, proto_);
 }
@@ -103,10 +120,8 @@ MatmulParameters::MatmulParameters(
   proto_.set_ldc(ldc);
   proto_.set_activation_mode(activation_mode);
 
-  // Have to convert to std::string because apparently our open-source protobuf
-  // does not speak absl::string_view.
-  proto_.set_device_identifier(
-      std::string(stream_exec->GetDeviceDescription().model_str()));
+  proto_.set_device_identifier(DeviceIdentifierForAutotuning(
+      stream_exec->GetDeviceDescription().model_str()));
   proto_.set_version(version);
   hash_code_ = ComputeHash(device_id_, proto_);
 }
