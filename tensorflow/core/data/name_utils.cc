@@ -31,43 +31,46 @@ constexpr char kDataset[] = "Dataset";
 constexpr char kOp[] = "Op";
 constexpr char kVersion[] = "V";
 
-string OpName(const string& dataset_type) {
+std::string OpName(const std::string& dataset_type) {
   return OpName(dataset_type, OpNameParams());
 }
 
-string OpName(const string& dataset_type, const OpNameParams& params) {
+std::string OpName(const std::string& dataset_type,
+                   const OpNameParams& params) {
   if (params.op_version == 1) {
     return absl::StrCat(dataset_type, kDataset);
   }
   return absl::StrCat(dataset_type, kDataset, kVersion, params.op_version);
 }
 
-string ArgsToString(const std::vector<string>& args) {
+std::string ArgsToString(const std::vector<std::string>& args) {
   if (args.empty()) {
     return "";
   }
   return absl::StrCat("(", absl::StrJoin(args, ", "), ")");
 }
 
-string DatasetDebugString(const string& dataset_type) {
+std::string DatasetDebugString(const std::string& dataset_type) {
   return DatasetDebugString(dataset_type, DatasetDebugStringParams());
 }
 
-string DatasetDebugString(const string& dataset_type,
-                          const DatasetDebugStringParams& params) {
+std::string DatasetDebugString(const std::string& dataset_type,
+                               const DatasetDebugStringParams& params) {
   OpNameParams op_name_params;
   op_name_params.op_version = params.op_version;
-  string op_name = OpName(dataset_type, op_name_params);
+  std::string op_name = OpName(dataset_type, op_name_params);
   return strings::StrCat(op_name, kOp, ArgsToString(params.args), kDelimiter,
                          params.dataset_prefix, kDataset);
 }
 
-string IteratorPrefix(const string& dataset_type, const string& prefix) {
+std::string IteratorPrefix(const std::string& dataset_type,
+                           const std::string& prefix) {
   return IteratorPrefix(dataset_type, prefix, IteratorPrefixParams());
 }
 
-string IteratorPrefix(const string& dataset_type, const string& prefix,
-                      const IteratorPrefixParams& params) {
+std::string IteratorPrefix(const std::string& dataset_type,
+                           const std::string& prefix,
+                           const IteratorPrefixParams& params) {
   if (params.op_version == 1) {
     return absl::StrCat(prefix, kDelimiter, params.dataset_prefix,
                         dataset_type);
