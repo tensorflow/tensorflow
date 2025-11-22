@@ -1353,22 +1353,11 @@ void BufferAssignment::Finalize() {
 absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info,
-    LogicalBuffer::AlignmentFunction color_alignment,
-    bool allocate_buffers_for_constants, BufferAssigner::Colorer colorer,
-    std::optional<BufferAssigner::MustNotLiveOut> must_not_live_out,
-    std::unique_ptr<PresetAssignments> preset_assignments,
-    const PrivateStacks& private_stacks,
-    GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
-        heap_buffer_interval_compare,
-    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
-    std::optional<BufferValue::Color> temp_buffer_color) {
-  BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
-                          must_not_live_out, std::move(preset_assignments),
-                          alias_info);
-  return assigner.CreateAssignment(
-      module, std::move(hlo_ordering), std::move(buffer_size),
-      std::move(color_alignment), private_stacks, heap_buffer_interval_compare,
-      isolation_options, temp_buffer_color);
+    LogicalBuffer::AlignmentFunction color_alignment, Options opts) {
+  BufferAssigner assigner(alias_info, std::move(opts));
+  return assigner.CreateAssignment(module, std::move(hlo_ordering),
+                                   std::move(buffer_size),
+                                   std::move(color_alignment));
 }
 
 bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
@@ -1469,13 +1458,13 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
     return false;
   }
 
-  if (must_not_live_out_.has_value()) {
+  if (opts_.must_not_live_out.has_value()) {
     if (allocation->maybe_live_out()) {
       // If a buffer maybe live out, the allocation cannot contain any node
-      // where must_not_live_out_ returns true.
+      // where must_not_live_out returns true.
       for (const HloValue* value : hlo_buffer.values()) {
-        if ((*must_not_live_out_)(assignment->alias_analysis(),
-                                  value->instruction(), value->index())) {
+        if ((*opts_.must_not_live_out)(assignment->alias_analysis(),
+                                       value->instruction(), value->index())) {
           VLOG(4) << "Can't assign: " << value->instruction()->ToString()
                   << " cannot live out of the module";
           return false;
@@ -1490,8 +1479,8 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
     if (assignment->alias_analysis().BufferLivesOut(hlo_buffer)) {
       for (const auto& buffer_offset_size : allocation->assigned_buffers()) {
         const HloValue* value = buffer_offset_size.first;
-        if ((*must_not_live_out_)(assignment->alias_analysis(),
-                                  value->instruction(), value->index())) {
+        if ((*opts_.must_not_live_out)(assignment->alias_analysis(),
+                                       value->instruction(), value->index())) {
           VLOG(4) << "Can't assign: " << value->instruction()
                   << " cannot live out of the module";
           return false;
@@ -1569,7 +1558,7 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
   const int64_t buffer_size = assignment->HloBufferSize(*hlo_buffer);
   for (const HloValue* value : hlo_buffer->values()) {
     if (value->instruction()->opcode() == HloOpcode::kConstant) {
-      if (allocate_buffers_for_constants_) {
+      if (opts_.allocate_buffers_for_constants) {
         TF_ASSIGN_OR_RETURN(
             BufferAllocation * allocation,
             assignment->NewAllocation(*hlo_buffer, buffer_size));
@@ -1856,14 +1845,15 @@ BufferAssigner::SplitBuffersByPrivateStackComputation(
 absl::Status BufferAssigner::AssignPresetBuffers(
     absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
     BufferAssignment* assignment) {
-  if (!preset_assignments_) {
+  if (!opts_.preset_assignments) {
     return absl::OkStatus();
   }
 
   // Create an allocation for each preset color.
   absl::flat_hash_map<LogicalBuffer::Color, BufferAllocation*>
       preset_allocations;
-  for (auto& color_and_info : preset_assignments_->assignment_informations()) {
+  for (auto& color_and_info :
+       opts_.preset_assignments->assignment_informations()) {
     LogicalBuffer::Color color(color_and_info.first);
     auto inserted = preset_allocations.emplace(
         color,
@@ -1879,7 +1869,7 @@ absl::Status BufferAssigner::AssignPresetBuffers(
 
   const HloAliasAnalysis& alias_analysis = assignment->alias_analysis();
 
-  for (auto& position_and_chunk : preset_assignments_->chunks()) {
+  for (auto& position_and_chunk : opts_.preset_assignments->chunks()) {
     const HloPosition& defining_position = position_and_chunk.first;
     const HloBuffer& buffer = alias_analysis.GetUniqueBufferAt(
         defining_position.instruction, defining_position.index);
@@ -1899,7 +1889,7 @@ absl::Status BufferAssigner::AssignPresetBuffers(
 
   // Upon consumption of the preset assignments, delete it so that if this
   // method is called again, it does not assign the same buffers multiple times.
-  preset_assignments_ = {};
+  opts_.preset_assignments = {};
 
   return absl::OkStatus();
 }
@@ -1971,7 +1961,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       VLOG(2) << "Simulating heap for color " << color;
       int64_t alignment = assignment->color_alignment_(color);
       HeapSimulator::Options options;
-      options.alloc_constants = allocate_buffers_for_constants_;
+      options.alloc_constants = opts_.allocate_buffers_for_constants;
       auto private_stacks_it = private_stacks.find(color);
       if (private_stacks_it != private_stacks.end()) {
         // For private stack colors, we collect all of the buffers that are
@@ -2279,12 +2269,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>>
 BufferAssigner::CreateAssignment(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     BufferValue::SizeFunction buffer_size,
-    LogicalBuffer::AlignmentFunction color_alignment,
-    const PrivateStacks& private_stacks,
-    GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
-        heap_buffer_interval_compare,
-    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
-    std::optional<BufferValue::Color> temp_buffer_color) {
+    LogicalBuffer::AlignmentFunction color_alignment) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, alias_info_));
 
@@ -2318,7 +2303,7 @@ BufferAssigner::CreateAssignment(
       std::move(hlo_live_range)));
 
   TF_RETURN_IF_ERROR(
-      colorer_(&assignment->alias_analysis(), assignment->hlo_ordering()));
+      opts_.colorer(&assignment->alias_analysis(), assignment->hlo_ordering()));
   VLOG(3) << "After coloring:";
   XLA_VLOG_LINES(3,
                  assignment->alias_analysis().dataflow_analysis().ToString());
@@ -2348,10 +2333,12 @@ BufferAssigner::CreateAssignment(
       module->config().debug_options().xla_multiheap_size_constraint_per_heap();
   VLOG(2) << "Multiheap per heap size limit: "
           << multiheap_size_constraint_per_heap;
+  const PrivateStacks private_stacks;
   TF_RETURN_IF_ERROR(AssignBuffersWithSequentialOrdering(
       buffers_to_assign_sequentially, run_whole_module_heap_simulation,
-      assignment.get(), private_stacks, heap_buffer_interval_compare,
-      isolation_options));
+      assignment.get(),
+      opts_.private_stacks ? *opts_.private_stacks : private_stacks,
+      opts_.heap_buffer_interval_compare, opts_.isolation_options));
 
   std::vector<const HloComputation*> thread_local_computations_no_fusion;
   // Now assign buffers for thread-local computations. All LogicalBuffers get
@@ -2389,12 +2376,14 @@ BufferAssigner::CreateAssignment(
   // is marked, since it is used to determine whether an allocation contains
   // temporary buffers or not.
   absl::flat_hash_set<BufferValue::Color> private_stack_colors;
-  for (const auto& [color, computations] : private_stacks) {
-    private_stack_colors.insert(color);
+  if (opts_.private_stacks) {
+    for (const auto& [color, computations] : *opts_.private_stacks) {
+      private_stack_colors.insert(color);
+    }
   }
 
-  TF_RETURN_IF_ERROR(assignment->CombineTempAllocations(private_stack_colors,
-                                                        temp_buffer_color));
+  TF_RETURN_IF_ERROR(assignment->CombineTempAllocations(
+      private_stack_colors, opts_.temp_buffer_color));
 
   XLA_VLOG_LINES(2, assignment->ToString());
   assignment->ComputeSummaryStats();
