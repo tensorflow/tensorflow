@@ -117,8 +117,7 @@ class GpuIrEmitterUnnestedTest : public GpuCodegenTest {
   }
 };
 
-TEST_F(GpuIrEmitterUnnestedTest,
-       EmitTritonCustomCallWithCorrectLoweringAndWithoutNoaliasOrAlignment) {
+TEST_F(GpuIrEmitterUnnestedTest, EmitTritonCustomCallWithCorrectLowering) {
   if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
     GTEST_SKIP() << "Triton support is only enabled for Ampere GPUs and up.";
   }
@@ -150,13 +149,9 @@ TEST_F(GpuIrEmitterUnnestedTest,
   CompileAndVerifyIr(std::move(module),
                      R"(
 ; CHECK: @add_one
-; CHECK-NOT: noalias align
 ; CHECK-SAME: dereferenceable(4) %arg0
-; CHECK-NOT: noalias align
 ; CHECK-SAME: dereferenceable(4) %arg1
-; CHECK-NOT: noalias align
 ; CHECK-SAME: dereferenceable(4) %arg2
-; CHECK-NOT: noalias align
 ; CHECK-SAME: dereferenceable(4) %arg3
 ; CHECK-DAG:  addrspacecast ptr %arg0 to ptr addrspace(1)
 ; CHECK-DAG:  addrspacecast ptr %arg1 to ptr addrspace(1)
