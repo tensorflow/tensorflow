@@ -93,10 +93,23 @@ TEST(SPMDPartitionerUtilTest, GetPartitionGroupsForReplication2) {
               testing::ContainerEq(expected_partition_groups));
 }
 
+TEST(SPMDPartitionerUtilTest, GetIotaPartitionGroupsAcrossTargetDims) {
+  HloSharding sharding = HloSharding::IotaTile({8, 8, 16});
+  std::optional<IotaReplicaGroupList> actual_partition_group_list =
+      GetIotaPartitionGroupsAcrossTargetDims(sharding, {0, 1}, {4, 4});
+  EXPECT_TRUE(actual_partition_group_list.has_value());
+  EXPECT_EQ(actual_partition_group_list->num_replica_groups(), 64);
+  EXPECT_EQ(actual_partition_group_list->num_devices_per_group(), 16);
+  EXPECT_THAT(actual_partition_group_list->reshape_dims(),
+              testing::ElementsAre(2, 4, 2, 4, 16));
+  EXPECT_THAT(actual_partition_group_list->transpose_perm(),
+              testing::ElementsAre(0, 2, 4, 1, 3));
+}
+
 TEST(SPMDPartitionerUtilTest, GetIotaPartitionGroupsForReplication) {
   HloSharding sharding = HloSharding::IotaTile({2, 2, 2});
   std::optional<IotaReplicaGroupList> actual_partition_group_list =
-      GetIotaPartitionGroupsForReplication(sharding, {1}, 8);
+      GetIotaPartitionGroupsForReplication(sharding, {1});
   EXPECT_TRUE(actual_partition_group_list.has_value());
   EXPECT_EQ(actual_partition_group_list->num_replica_groups(), 4);
   EXPECT_EQ(actual_partition_group_list->num_devices_per_group(), 2);
@@ -109,7 +122,7 @@ TEST(SPMDPartitionerUtilTest, GetIotaPartitionGroupsForReplication) {
 TEST(SPMDPartitionerUtilTest, GetIotaPartitionGroupsForReplication2) {
   HloSharding sharding = HloSharding::IotaTile({2, 2, 2}, {2, 2, 2}, {0, 2, 1});
   std::optional<IotaReplicaGroupList> actual_partition_group_list =
-      GetIotaPartitionGroupsForReplication(sharding, {0, 2}, 8);
+      GetIotaPartitionGroupsForReplication(sharding, {0, 2});
   EXPECT_TRUE(actual_partition_group_list.has_value());
   EXPECT_EQ(actual_partition_group_list->num_replica_groups(), 2);
   EXPECT_EQ(actual_partition_group_list->num_devices_per_group(), 4);
