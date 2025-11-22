@@ -540,6 +540,10 @@ class HloModule {
 
   // Convert an HloModule to or from a proto that includes module configuration
   HloModuleProtoWithConfig ToProtoWithConfig() const;
+
+  // Convert HloModule to HloModuleProto without computations.
+  HloModuleProto ToProtoWithoutComputations() const;
+
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
       const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal = true,
       std::unique_ptr<CompilationEnvironments> comp_envs = nullptr,
