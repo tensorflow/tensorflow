@@ -59,7 +59,7 @@ absl::Status GetInitOp(const string& export_dir,
   if (init_op_it != collection_def_map.end()) {
     if (init_op_it->second.node_list().value_size() != 1) {
       return errors::FailedPrecondition(
-          strings::StrCat("Expected exactly one main op in : ", export_dir));
+          absl::StrCat("Expected exactly one main op in : ", export_dir));
     }
     *init_op_name = init_op_it->second.node_list().value(0);
   }
