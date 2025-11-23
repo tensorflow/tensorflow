@@ -67,7 +67,7 @@ TEST(TraversalTest, OutputsDfsNoLoop) {
 }
 
 TEST(TraversalTest, InputsDfsNoLoop) {
-  const string op = "OpIsNotImportantInThisTest";
+  const std::string op = "OpIsNotImportantInThisTest";
 
   GraphDef graph = ::tensorflow::test::function::GDef(  //
       {NDef("2", op, {"5"}, {}),                        //
