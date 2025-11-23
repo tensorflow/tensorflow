@@ -36,16 +36,14 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
 using std::nullopt;
 using ::testing::AllOf;
-using tsl::testing::IsOkAndHolds;
 namespace op = xla::testing::opcode_matchers;
 
 int64_t kMaxCombineCount = 256;
