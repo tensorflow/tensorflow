@@ -50,7 +50,8 @@ class RemoteProfilerSession {
   // Response must outlive the instantiation.
   static std::unique_ptr<RemoteProfilerSession> Create(
       const std::string& service_address, absl::Time deadline,
-      const tensorflow::ProfileRequest& profile_request);
+      const tensorflow::ProfileRequest& profile_request,
+      ::grpc::CompletionQueue* cq, int64 client_id);
 
   // Not copyable or movable.
   RemoteProfilerSession(const RemoteProfilerSession&) = delete;
@@ -60,23 +61,27 @@ class RemoteProfilerSession {
 
   absl::string_view GetServiceAddress() const { return service_address_; }
 
-  // Blocks until a response has been received or until deadline expiry,
-  // whichever is first. Subsequent calls after the first will yield nullptr and
-  // an error status.
-  std::unique_ptr<tensorflow::ProfileResponse> WaitForCompletion(
-      absl::Status& out_status);
+  // Processes a completion event that has been received from the gRPC
+  // completion queue. Updates internal state with the final status and returns
+  // the response. Subsequent calls after the first will yield nullptr and an
+  // error status.
+  std::unique_ptr<tensorflow::ProfileResponse> HandleCompletion(
+      absl::Status& out_status, void* got_tag, bool ok);
 
  private:
+  // Constructs a new RemoteProfilerSession instance.
+  // client_id is a unique identifier used as a tag for gRPC completion queue
+  // operations.
   explicit RemoteProfilerSession(
       const std::string& service_addr, absl::Time deadline,
-      const tensorflow::ProfileRequest& profile_request);
+      const tensorflow::ProfileRequest& profile_request, int64 client_id);
 
   // Starts a remote profiling session. This is a non-blocking call.
   // Will be called exactly once during instantiation.
   // RPC will write to response.profile_response eagerly. However, since
   // response.status requires a conversion from grpc::Status, it can only be
   //  evaluated lazily at WaitForCompletion() time.
-  void ProfileAsync();
+  void ProfileAsync(::grpc::CompletionQueue* cq);
 
   absl::Status status_on_completion_;
   std::unique_ptr<tensorflow::ProfileResponse> response_;
@@ -90,8 +95,7 @@ class RemoteProfilerSession {
       rpc_;
   ::grpc::Status grpc_status_ = ::grpc::Status::OK;
 
-  // Asynchronous completion queue states.
-  ::grpc::CompletionQueue cq_;
+  int64 client_id_;
 
   tensorflow::ProfileRequest profile_request_;
 };
