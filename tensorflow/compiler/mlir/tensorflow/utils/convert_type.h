@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_CONVERT_TYPE_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_CONVERT_TYPE_H_
 
+#include "absl/base/macros.h"
+#include "absl/status/statusor.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -24,7 +26,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-using tsl::StatusOr;
+template <typename T>
+using StatusOr ABSL_DEPRECATE_AND_INLINE() = ::absl::StatusOr<T>;
 
 // Converts the TensorFlow DataType 'dtype' into an MLIR (scalar) type.
 absl::Status ConvertDataType(DataType dtype, mlir::Builder builder,

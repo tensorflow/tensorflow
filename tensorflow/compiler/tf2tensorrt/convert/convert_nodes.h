@@ -43,7 +43,8 @@ namespace tensorflow {
 namespace tensorrt {
 
 namespace convert {
-using ::tsl::StatusOr;
+template <typename T>
+using StatusOr ABSL_DEPRECATE_AND_INLINE() = ::absl::StatusOr<T>;
 
 struct EngineConnection {
   // Constructs a non-control edge.

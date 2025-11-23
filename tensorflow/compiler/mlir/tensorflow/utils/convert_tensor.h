@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_CONVERT_TENSOR_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_CONVERT_TENSOR_H_
 
+#include "absl/base/macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -28,7 +29,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-using tsl::StatusOr;
+template <typename T>
+using StatusOr ABSL_DEPRECATE_AND_INLINE() = ::absl::StatusOr<T>;
 
 // Converts an TensorFlow tensor proto into an MLIR elements attribute.
 absl::StatusOr<mlir::ElementsAttr> ConvertTensorProto(
