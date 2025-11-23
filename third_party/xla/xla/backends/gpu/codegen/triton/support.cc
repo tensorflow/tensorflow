@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/support.h"
 
+#include <cstdint>
 #include <string>
 #include <variant>
 #include <vector>
@@ -652,10 +653,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kParameter:
       return CodegenDecision::Allow();
     case HloOpcode::kDynamicSlice:
-      // TODO(b/417172838): enable this once we confirm that no benchmarks were
-      // regressed.
-      return CodegenDecision::Forbid(
-          "dynamic slice is supported but not enabled yet");
+      return IsTritonSupportedDynamicSlice(
+          *Cast<HloDynamicSliceInstruction>(&instr));
     case HloOpcode::kBitcast:
       if (ShapeUtil::ElementsIn(instr.operand(0)->shape()) !=
           ShapeUtil::ElementsIn(instr.shape())) {
@@ -703,7 +702,6 @@ namespace internal {
 bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kDynamicReshape:
-    case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGather:
     case HloOpcode::kRaggedDot:
@@ -740,6 +738,49 @@ absl::Status EnsureTritonSupportsComputeCapability(
   }
 
   return absl::OkStatus();
+}
+
+CodegenDecision IsTritonSupportedDynamicSlice(
+    const HloDynamicSliceInstruction& instr) {
+  for (const HloInstruction* index_operand : instr.index_operands()) {
+    switch (index_operand->shape().element_type()) {
+      case S8:
+      case S16:
+      case S32:
+      case S64:
+        break;  // supported
+      default:
+        return CodegenDecision::Forbid(
+            "Dynamic slice is only supported S8, S16, S32, or S64 offsets.");
+    }
+  }
+
+  if (instr.shape().element_type() == PrimitiveType::S4) {
+    return CodegenDecision::Forbid("S4 is not supported.");
+  }
+
+  // Similar to normal slice, we cannot slice a non-major-most dimension as
+  // that would introduce non-contiguous strides under tiling. The existing
+  // check against this in GetRequirementsIfSupportedOrder is not suitable for
+  // dynamic slices, so we instead check for this here.
+  const HloInstruction* input = instr.operand(0);
+  Layout in_layout = input->shape().layout();
+  int64_t majormost_dim_id =
+      in_layout.minor_to_major(in_layout.minor_to_major().size() - 1);
+
+  for (int i = 0; i < input->shape().dimensions().size(); ++i) {
+    if (i == majormost_dim_id) {
+      continue;
+    }
+    if (input->shape().dimensions(i) != instr.slice_sizes(i)) {
+      return CodegenDecision::Forbid(
+          "Unsupported dynamic slice on non-major-most dimension.");
+    }
+  }
+
+  // TODO(b/343143854): Check the subtleties of which dynamic slices are
+  // supported, for example that a fragmented dimension cannot be sliced.
+  return CodegenDecision::Allow();
 }
 
 CodegenDecision IsTritonSupportedInstruction(

@@ -414,10 +414,14 @@ FusionPlanAndRequirements BuildFusionPlanTowardOperands(
     // replaces unsupported F8E8M0FNU with u8. We should have a more principled
     // way check if we will be able to emit the triton code for the fusion.
     if (original_hlo.opcode() == HloOpcode::kDynamicSlice) {
-      // TODO(b/417172838): support dynamic slice op.
-      fusion_builder.SetShouldFuseNode(node_id, false);
-      LOG(INFO) << "Not fusing dynamic slice: " << original_hlo.ToString();
-      continue;
+      if (CodegenDecision decision = IsTritonSupportedDynamicSlice(
+              *Cast<HloDynamicSliceInstruction>(&original_hlo));
+          !decision.CanFuse()) {
+        VLOG(5) << "Not fusing " << original_hlo.ToString()
+                << " to the output due to the decision: " << decision.Explain();
+        fusion_builder.SetShouldFuseNode(node_id, false);
+        continue;
+      }
     }
 
     auto opt_result = GetOperandDimOrdersAndCombinedReqsIfProfitable(

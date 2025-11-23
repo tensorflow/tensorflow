@@ -1156,6 +1156,32 @@ absl::StatusOr<TensorValue> EmitPad(
           .getResult());
 }
 
+absl::StatusOr<TensorValue> EmitTiledDynamicSlice(
+    EmitterLocOpBuilder b, const TiledHloInstruction& tiled_dynamic_slice,
+    absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
+  const HloDynamicSliceInstruction& hlo =
+      *::xla::Cast<HloDynamicSliceInstruction>(tiled_dynamic_slice.hlo());
+  VLOG(4) << "EmitTiledDynamicSlice: " << hlo.ToString();
+  // Ensure that the dynamic slice is on the major-most dimension.
+  const HloInstruction* input = hlo.operand(0);
+  Layout in_layout = input->shape().layout();
+  int64_t majormost_dim_id =
+      in_layout.minor_to_major(in_layout.minor_to_major().size() - 1);
+
+  for (int i = 0; i < input->shape().dimensions().size(); ++i) {
+    if (i == majormost_dim_id) {
+      continue;
+    }
+    if (input->shape().dimensions(i) != hlo.slice_sizes(i)) {
+      return absl::UnimplementedError(
+          "Unsupported dynamic slice on non-major-most dimension.");
+    }
+  }
+  // Dynamic slice is implemented as a load and does not require any further
+  // processing.
+  return values[tiled_dynamic_slice.operand(0)];
+}
+
 absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     EmitterLocOpBuilder b, const HloFusionInstruction* fusion,
     const TiledHloInstruction& tiled_hlo,
@@ -1286,9 +1312,7 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kDynamicSlice) {
-    // Dynamic slice is implemented as a load and does not require any further
-    // processing.
-    return values[tiled_hlo.operand(0)];
+    return EmitTiledDynamicSlice(b, tiled_hlo, values);
   }
 
   return absl::UnimplementedError(
