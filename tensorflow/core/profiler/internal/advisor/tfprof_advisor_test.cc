@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/strings/match.h"
