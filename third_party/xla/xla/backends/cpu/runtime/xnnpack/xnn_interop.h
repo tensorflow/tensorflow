@@ -32,6 +32,11 @@ namespace xla::cpu {
 // XNNPACK status to ABSL status conversion macros.
 //===----------------------------------------------------------------------===//
 
+// Undefine XNNPACK's definition of this macro.
+#ifdef XNN_RETURN_IF_ERROR
+#undef XNN_RETURN_IF_ERROR
+#endif  // XNN_RETURN_IF_ERROR
+
 #define XNN_RETURN_IF_ERROR(expr)             \
   do {                                        \
     absl::Status s = XnnStatusToStatus(expr); \
