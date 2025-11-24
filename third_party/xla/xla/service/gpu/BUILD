@@ -582,6 +582,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Linker",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:BuiltinToLLVMIRTranslation",

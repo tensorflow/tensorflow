@@ -319,7 +319,8 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitSliceToDynamic(const HloCustomCallInstruction* instr);
 
   absl::StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkForNonFusionOp(
-      const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
+      llvm::Module* llvm_module, const HloInstruction* instr,
+      const LaunchDimensions& launch_dimensions);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction.

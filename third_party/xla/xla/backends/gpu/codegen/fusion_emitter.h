@@ -100,14 +100,14 @@ class KernelFusionInterface : public FusionInterface {
 };
 
 absl::StatusOr<llvm::Function*> BuildKernelPrototype(
-    IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
-    const std::string& suggested_name,
+    llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
+    const std::string& impl_fn_name, const std::string& unique_kernel_name,
     const emitters::KernelArguments& arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
 absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
-    IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
-    const std::string& unique_kernel_name,
+    llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
+    const std::string& impl_fn_name, const std::string& unique_kernel_name,
     const emitters::KernelArguments& arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
