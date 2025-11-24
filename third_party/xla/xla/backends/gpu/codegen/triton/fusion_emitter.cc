@@ -2045,6 +2045,7 @@ absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
     if (fusion_kind != kTritonGemmFusionKind) {
       pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
     }
+    pm.addPass(mlir::triton::xla::CreateArithFP8ConversionToTritonPass());
     pm.addPass(mlir::triton::xla::CreateTensorLowerToTritonPass());
     pm.addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass());
     pm.addPass(mlir::triton::xla::CreateXTileLowerToTritonPass());
