@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -35,14 +36,13 @@ limitations under the License.
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
-#include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -53,15 +53,14 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
-#include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -177,61 +176,37 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     absl::string_view fusion_kind = backend_config.kind();
 
     LaunchDimensions launch_dimensions;
-    if (fusion_kind == kTritonFusionKind ||
-        fusion_kind == kTritonNestedGemmFusionKind ||
-        fusion_kind == kTritonScaledDotFusionKind ||
-        fusion_kind == kTritonCollectiveFusionKind) {
-      std::optional<LaunchConfig> launch_config;
-      // Currently GetLaunchConfig will compute the same value as the extracted
-      // one. They are different only when warp specialization is enabled.
-      // Ideally we should always pass the thread_dims value extracted from
-      // the Triton compilation. However, we are keeping the old code path
-      // to maintain the current behavior and be safe.
-      if (fusion.GetModule()
-              ->config()
-              .debug_options()
-              .xla_gpu_experimental_enable_triton_warp_specialization()) {
-        launch_config =
-            this->GetLaunchConfig(triton_wrapper_result.thread_dims);
-      } else {
-        launch_config = this->GetLaunchConfig();
-      }
-      // This check should be enforced by `GenerateTritonKernelWrapper`.
-      CHECK(launch_config.has_value());
-      launch_dimensions = std::move(launch_config->launch_dimensions);
-    } else {  // Must be a MatMul
-      CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
-      // TODO(bchetioui): port matmul emitter to fully use the new
-      // infrastructure.
-      BlockLevelParameters block_level_parameters;
-      if (!backend_config.has_triton_gemm_config()) {
-        LOG(WARNING) << "Using fallback triton GEMM config for op "
-                     << fusion.name();
-        // TODO(bchetioui): deduplicate default matmul config information.
-        auto& triton_config = *backend_config.mutable_triton_gemm_config();
-        triton_config.set_block_m(64);
-        triton_config.set_block_k(64);
-        triton_config.set_block_n(64);
-        triton_config.set_split_k(1);
-        triton_config.set_num_stages(1);
-        triton_config.set_num_warps(2);
-        triton_config.set_num_ctas(1);
-      }
 
-      // TODO(bchetioui): move calculation of launch dimensions to
-      // 'launch_config()'.
-      TF_ASSIGN_OR_RETURN(
-          TritonGemmConfig config,
-          TritonGemmConfig::FromProto(backend_config.triton_gemm_config()));
+    // TODO(bchetioui,pifon): this list should be consolidated; why do we need
+    // so many different fusion kinds?
+    const std::vector<absl::string_view> kSupportedFusionKinds = {
+        kTritonFusionKind,
+        kTritonNestedGemmFusionKind,
+        kTritonScaledDotFusionKind,
+        kTritonCollectiveFusionKind,
+    };
 
-      TF_ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(
-                                             *hlo_computation, config.split_k));
-
-      TF_ASSIGN_OR_RETURN(
-          launch_dimensions,
-          GetMatMulLaunchDimensions(analysis, analysis_.fusion(), config,
-                                    analysis_.device_info()));
+    if (!absl::c_linear_search(kSupportedFusionKinds, fusion_kind)) {
+      return Internal("Unsupported fusion kind: %s", fusion_kind);
     }
+
+    std::optional<LaunchConfig> launch_config;
+    // Currently GetLaunchConfig will compute the same value as the extracted
+    // one. They are different only when warp specialization is enabled.
+    // Ideally we should always pass the thread_dims value extracted from
+    // the Triton compilation. However, we are keeping the old code path
+    // to maintain the current behavior and be safe.
+    if (fusion.GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_experimental_enable_triton_warp_specialization()) {
+      launch_config = this->GetLaunchConfig(triton_wrapper_result.thread_dims);
+    } else {
+      launch_config = this->GetLaunchConfig();
+    }
+    // This check should be enforced by `GenerateTritonKernelWrapper`.
+    CHECK(launch_config.has_value());
+    launch_dimensions = std::move(launch_config->launch_dimensions);
 
     llvm::Function* impl_fn =
         ir_emitter_context.llvm_module()->getFunction(impl_fn_name);
