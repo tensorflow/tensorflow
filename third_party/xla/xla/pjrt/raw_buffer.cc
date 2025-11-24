@@ -59,7 +59,7 @@ CommonPjRtRawBuffer::RemoveDynamicShapeMetadataIfPresent(
 
 absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
 CommonPjRtRawBuffer::Slice(int64_t offset, int64_t size) {
-  TF_ASSIGN_OR_RETURN(auto results, MultiSlice({{offset, size}}));
+  TF_XLA_ASSIGN_OR_RETURN(auto results, MultiSlice({{offset, size}}));
   return results[0];
 }
 

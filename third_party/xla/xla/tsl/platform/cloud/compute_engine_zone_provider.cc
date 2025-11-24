@@ -34,7 +34,7 @@ absl::Status ComputeEngineZoneProvider::GetZone(std::string* zone) {
     return absl::OkStatus();
   }
   std::vector<char> response_buffer;
-  TF_RETURN_IF_ERROR(google_metadata_client_->GetMetadata(kGceMetadataZonePath,
+  TF_XLA_RETURN_IF_ERROR(google_metadata_client_->GetMetadata(kGceMetadataZonePath,
                                                           &response_buffer));
   absl::string_view location(&response_buffer[0], response_buffer.size());
 

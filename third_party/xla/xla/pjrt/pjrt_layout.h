@@ -45,7 +45,7 @@ class PjRtLayout {
 
   static absl::StatusOr<std::shared_ptr<const PjRtLayout>> Deserialize(
       absl::string_view serialized) {
-    TF_ASSIGN_OR_RETURN(Layout xla_layout, ParseLayout(serialized));
+    TF_XLA_ASSIGN_OR_RETURN(Layout xla_layout, ParseLayout(serialized));
     return std::make_shared<PjRtLayout>(std::move(xla_layout));
   }
 

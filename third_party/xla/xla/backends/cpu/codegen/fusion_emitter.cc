@@ -220,7 +220,7 @@ static absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitLoopFusionKernel(
   emitters::LoopFusionKernelEmitter loop_fusion_emitter(
       context, fusion, std::move(fusion_spec), buffer_assignment,
       GetDefaultBufferAlignment(), work_dimensions, name, BackendKind::kCpu);
-  TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
+  TF_XLA_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
                       loop_fusion_emitter.EmitKernelDefinition());
 
   mlir::OpBuilder builder(&context);
@@ -244,7 +244,7 @@ EmitConcatenateFusionKernel(MLIRContext& context,
   emitters::ConcatenateFusionKernelEmitter concatenate_fusion_emitter(
       context, fusion, std::move(fusion_spec), buffer_assignment,
       GetDefaultBufferAlignment(), work_dimensions, name, BackendKind::kCpu);
-  TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
+  TF_XLA_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
                       concatenate_fusion_emitter.EmitKernelDefinition());
 
   mlir::OpBuilder builder(&context);
@@ -269,7 +269,7 @@ EmitDynamicUpdateSliceFusionKernel(MLIRContext& context,
   emitters::DynamicUpdateSliceKernelEmitter emitter(
       context, fusion, std::move(fusion_spec), buffer_assignment,
       GetDefaultBufferAlignment(), work_dimensions, name, BackendKind::kCpu);
-  TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
+  TF_XLA_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
                       emitter.EmitKernelDefinition());
 
   mlir::OpBuilder builder(&context);
@@ -285,7 +285,7 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     MLIRContext& mlir_context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, bool use_unique_c_name) {
   if (fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
-    TF_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
+    TF_XLA_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
     const HloInstruction& hero =
         FindNonTrivialHero(*fusion.fused_expression_root());
     if (hero.opcode() == HloOpcode::kConcatenate) {
@@ -294,7 +294,7 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     }
     auto fusion_spec = GetLoopFusionSpec(fusion);
     if (IsDynamicUpdateSliceFusion(fusion_spec)) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           bool dus_inplace,
           CanEmitFusedDynamicUpdateSliceInPlace(fusion_spec.fusion(),
                                                 buffer_assignment, &fusion));

@@ -51,7 +51,7 @@ class BufferedWritableFile : public WritableFile {
       crc32_ = crc32c::Extend(crc32_, &buffer_[buffer_pos_], append_bytes);
       buffer_pos_ += append_bytes;
       if (buffer_pos_ == buffer_.size()) {
-        TF_RETURN_IF_ERROR(file_->Append(buffer_));
+        TF_XLA_RETURN_IF_ERROR(file_->Append(buffer_));
         buffer_pos_ = 0;
       }
       data = data + append_bytes;
@@ -63,19 +63,19 @@ class BufferedWritableFile : public WritableFile {
 
   absl::Status Append(const absl::Cord& data) override {
     for (absl::string_view fragment : data.Chunks()) {
-      TF_RETURN_IF_ERROR(Append(fragment));
+      TF_XLA_RETURN_IF_ERROR(Append(fragment));
     }
     return absl::OkStatus();
   }
 
   absl::Status Close() override {
-    TF_RETURN_IF_ERROR(Flush());
+    TF_XLA_RETURN_IF_ERROR(Flush());
     return file_->Close();
   }
 
   absl::Status Flush() override {
     if (buffer_pos_ > 0) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           file_->Append(absl::string_view(&buffer_[0], buffer_pos_)));
       buffer_pos_ = 0;
     }

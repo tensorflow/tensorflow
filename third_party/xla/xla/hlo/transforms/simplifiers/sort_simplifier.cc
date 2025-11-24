@@ -140,9 +140,9 @@ absl::StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
   std::vector<HloInstruction*> users(sort->users().begin(),
                                      sort->users().end());
   for (HloInstruction* user : users) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         user->ReplaceAllUsesWith(result_map.at(user->tuple_index())));
-    TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(user));
+    TF_XLA_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(user));
   }
   return true;
 }
@@ -162,7 +162,7 @@ absl::StatusOr<bool> SortSimplifier::RunImpl(
   }
 
   for (HloInstruction* sort_instr : sort_instrs) {
-    TF_ASSIGN_OR_RETURN(bool result, RemoveUnusedOperandFromSort(sort_instr));
+    TF_XLA_ASSIGN_OR_RETURN(bool result, RemoveUnusedOperandFromSort(sort_instr));
     changed |= result;
   }
 

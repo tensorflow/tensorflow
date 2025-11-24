@@ -35,7 +35,7 @@ namespace xla {
 QrDecomposition Qr(XlaOp a) {
   auto result = [&]() -> absl::StatusOr<QrDecomposition> {
     XlaBuilder* builder = a.builder();
-    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    TF_XLA_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int num_dims = a_shape.dimensions().size();
     if (num_dims < 2) {
       return InvalidArgument(
@@ -68,8 +68,8 @@ QrDecomposition Qr(XlaOp a) {
 XlaOp ProductOfElementaryHouseholderReflectors(XlaOp a, XlaOp taus) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    TF_ASSIGN_OR_RETURN(Shape taus_shape, builder->GetShape(taus));
+    TF_XLA_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    TF_XLA_ASSIGN_OR_RETURN(Shape taus_shape, builder->GetShape(taus));
     if (a_shape.dimensions().size() < 2) {
       return InvalidArgument(
           "Matrix `a` must have >= 2 dimensions: got shape %s",

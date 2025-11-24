@@ -55,7 +55,7 @@ absl::StatusOr<HloInstruction*> TupleSimplifier::RemoveWholeTuple(
   if (top_tuple == nullptr) {
     return nullptr;
   }
-  TF_ASSIGN_OR_RETURN(bool changed,
+  TF_XLA_ASSIGN_OR_RETURN(bool changed,
                       tuple->parent()->ReplaceInstruction(
                           tuple, top_tuple, /*preserve_sharding=*/true));
   if (changed) {
@@ -77,7 +77,7 @@ absl::StatusOr<bool> TupleSimplifier::RunImpl(
     }
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kTuple) {
-        TF_ASSIGN_OR_RETURN(HloInstruction * instr,
+        TF_XLA_ASSIGN_OR_RETURN(HloInstruction * instr,
                             RemoveWholeTuple(instruction));
         if (instr != nullptr) {
           replaced_instrs.push_back(instr);
@@ -117,7 +117,7 @@ absl::StatusOr<bool> TupleSimplifier::RunImpl(
         }
 
         if (replacement) {
-          TF_ASSIGN_OR_RETURN(bool replaced,
+          TF_XLA_ASSIGN_OR_RETURN(bool replaced,
                               computation->ReplaceInstruction(
                                   instruction, replacement,
                                   /*preserve_sharding=*/true,
@@ -140,7 +140,7 @@ absl::StatusOr<bool> TupleSimplifier::RunImpl(
   }
 
   if (module->has_schedule()) {
-    TF_RETURN_IF_ERROR(module->schedule().Update());
+    TF_XLA_RETURN_IF_ERROR(module->schedule().Update());
   }
 
   return changed;

@@ -1467,12 +1467,12 @@ absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
 
   auto dataflow_analysis = absl::WrapUnique(new HloDataflowAnalysis(
       module, ssa_form, bitcast_defines_value, execution_threads));
-  TF_RETURN_IF_ERROR(dataflow_analysis->RunImpl());
+  TF_XLA_RETURN_IF_ERROR(dataflow_analysis->RunImpl());
   return dataflow_analysis;
 }
 
 absl::Status HloDataflowAnalysis::RunImpl() {
-  TF_RETURN_IF_ERROR(InitializeInstructionValueSets());
+  TF_XLA_RETURN_IF_ERROR(InitializeInstructionValueSets());
   Propagate();
   OptimizePhiValues();
 

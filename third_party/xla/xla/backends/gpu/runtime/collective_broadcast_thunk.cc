@@ -64,10 +64,10 @@ CollectiveBroadcastStartThunk::CollectiveBroadcastStartThunk(
 absl::StatusOr<bool> CollectiveBroadcastStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_, config_.operand_element_type));
-  TF_RETURN_IF_ERROR(::xla::gpu::RunCollectiveBroadcast(device_buffers, stream,
+  TF_XLA_RETURN_IF_ERROR(::xla::gpu::RunCollectiveBroadcast(device_buffers, stream,
                                                         comm_handle.comm));
   return true;
 }
@@ -80,7 +80,7 @@ absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
         for (auto buffer : buffers) {
           se::DeviceMemoryBase src_addr = buffer.source_buffer;
           se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
-          TF_RETURN_IF_ERROR(comm->LaunchBroadcast(
+          TF_XLA_RETURN_IF_ERROR(comm->LaunchBroadcast(
               // Always use rank 0 since we always broadcast from the first id
               // in replica_groups
               src_addr, dest_addr, buffer.element_type, buffer.element_count,

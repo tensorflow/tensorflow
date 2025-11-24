@@ -55,12 +55,12 @@ ReadTFRecordIOLiteral(const std::string& dir) {
   auto* env = tsl::Env::Default();
 
   std::vector<std::string> files;
-  TF_RETURN_IF_ERROR(env->GetChildren(dir, &files));
+  TF_XLA_RETURN_IF_ERROR(env->GetChildren(dir, &files));
 
   std::vector<std::pair<std::string, Literal>> result;
   for (const std::string& path : files) {
     std::unique_ptr<tsl::RandomAccessFile> file;
-    TF_RETURN_IF_ERROR(tsl::Env::Default()->NewRandomAccessFile(
+    TF_XLA_RETURN_IF_ERROR(tsl::Env::Default()->NewRandomAccessFile(
         tsl::io::JoinPath(dir, path), &file));
     tsl::io::RecordReader reader(file.get());
 
@@ -73,10 +73,10 @@ ReadTFRecordIOLiteral(const std::string& dir) {
       if (absl::IsOutOfRange(status)) {
         break;
       }
-      TF_RETURN_IF_ERROR(status);
+      TF_XLA_RETURN_IF_ERROR(status);
 
-      TF_RETURN_IF_ERROR(reader.ReadRecord(&offset, &record));
-      TF_ASSIGN_OR_RETURN(Literal literal,
+      TF_XLA_RETURN_IF_ERROR(reader.ReadRecord(&offset, &record));
+      TF_XLA_ASSIGN_OR_RETURN(Literal literal,
                           Literal::DeserializeFromString(record));
       result.emplace_back(metadata, std::move(literal));
     }

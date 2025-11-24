@@ -109,7 +109,7 @@ TritonFusion::GenerateTritonKernelAndWrapper(
           "Block level fusion config is required for Triton fusions: ",
           fusion.ToString()));
     }
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         triton_wrapper_result,
         TritonWrapper(
             impl_fn_name, &fusion, cc, device_info,
@@ -132,7 +132,7 @@ TritonFusion::GenerateTritonKernelAndWrapper(
       block_level_parameters.num_warps = triton_config.num_warps();
     }
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         triton_wrapper_result,
         TritonWrapper(impl_fn_name, &fusion, cc, device_info,
                       block_level_parameters, llvm_module, *mlir_context));
@@ -147,7 +147,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
   llvm::IRBuilder builder(ir_emitter_context.llvm_module()->getContext());
   VLOG(3) << fusion.ToString();
   std::string suggested_kernel_name = std::string(fusion.name());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto kernel_arguments,
       emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
                                         GetDefaultBufferAlignment(), &fusion));
@@ -164,7 +164,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
             llvm_ir::SanitizeFunctionName(
                 absl::StrCat(suggested_kernel_name, "_impl")));
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         TritonWrapperResult triton_wrapper_result,
         GenerateTritonKernelAndWrapper(fusion, impl_fn_name,
                                        ir_emitter_context.gpu_device_info(),
@@ -212,7 +212,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
         ir_emitter_context.llvm_module()->getFunction(impl_fn_name);
     TF_RET_CHECK(impl_fn);
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         llvm::Function * kernel,
         BuildKernelPrototype(ir_emitter_context, impl_fn_name,
                              suggested_kernel_name, kernel_arguments,
@@ -253,7 +253,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
       ir_emitter_context.kernel_cache().GetWithStatus(
           hlo_computation, kernel_arguments.args(),
           /*discriminator=*/"", generate);
-  TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
+  TF_XLA_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
 
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(

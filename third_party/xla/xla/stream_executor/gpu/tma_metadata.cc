@@ -217,14 +217,14 @@ absl::StatusOr<TmaDescriptor> TmaDescriptor::Create(
         absl::StrFormat("unsupported element size: %d", element_byte_width));
   }
 
-  TF_RETURN_IF_ERROR(ValidateRank(global_dims, global_strides, box_dims,
+  TF_XLA_RETURN_IF_ERROR(ValidateRank(global_dims, global_strides, box_dims,
                                   element_strides, interleave));
-  TF_RETURN_IF_ERROR(ValidateGlobalDims(global_dims));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(ValidateGlobalDims(global_dims));
+  TF_XLA_RETURN_IF_ERROR(
       ValidateGlobalStrides(global_dims, global_strides, interleave));
-  TF_RETURN_IF_ERROR(ValidateBoxDims(box_dims, element_byte_width, interleave));
-  TF_RETURN_IF_ERROR(ValidateElementStrides(element_strides));
-  TF_RETURN_IF_ERROR(ValidateInterleaveAndSwizzleCombos(
+  TF_XLA_RETURN_IF_ERROR(ValidateBoxDims(box_dims, element_byte_width, interleave));
+  TF_XLA_RETURN_IF_ERROR(ValidateElementStrides(element_strides));
+  TF_XLA_RETURN_IF_ERROR(ValidateInterleaveAndSwizzleCombos(
       interleave, swizzle, box_dims, element_byte_width));
 
   return TmaDescriptor(global_dims, global_strides, box_dims, element_strides,
@@ -453,7 +453,7 @@ absl::StatusOr<TmaMetadata> TmaMetadata::FromProto(
     const TmaMetadataProto& proto) {
   TmaMetadata metadata;
   for (const auto& [arg_index, tma_info] : proto.arg_index_to_tma_info()) {
-    TF_ASSIGN_OR_RETURN(TmaDescriptor descriptor,
+    TF_XLA_ASSIGN_OR_RETURN(TmaDescriptor descriptor,
                         TmaDescriptor::FromProto(tma_info));
     metadata.arg_index_to_tma_info.insert({arg_index, std::move(descriptor)});
   }
@@ -522,7 +522,7 @@ absl::Status IsTmaCompatible(absl::Span<const int64_t> global_shape,
 
   // Attempt to construct a TmaDescriptor with the default values. If this
   // fails, then TMA is not compatible.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto tma_desc, TmaDescriptor::Create(
                          normalized_global_shape, global_strides, box_dims,
                          element_strides, element_byte_size, default_interleave,

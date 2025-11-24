@@ -99,7 +99,7 @@ absl::Status createFromProtoAndReplaceComputations(
 
   // Create HLO computations from proto.
   for (const HloComputationProto& computationProto : proto.computations()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<HloComputation> computation,
         HloComputation::CreateFromProto(computationProto, idToComputation));
     CHECK_NE(computation.get(), nullptr);
@@ -344,7 +344,7 @@ absl::Status runShardingPropagation(HloModule* hloModule,
         tsl::io::JoinPath(shardyDir, "shardy", uniqueModuleName(*hloModule));
     LOG(INFO) << "Using Shardy output directory: " << shardyDir;
   }
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(shardyDir));
+  TF_XLA_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(shardyDir));
   // MLIR pipeline: (1) import, (2) Shardy, and (3) export.
 
   bool enableVerifier = false;
@@ -451,7 +451,7 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
   // HLO -> StableHLO
   auto mlirContext = std::make_unique<mlir::MLIRContext>();
   loadAllRequiredDialects(mlirContext.get());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlirModule,
       xla::ConvertHloToStablehlo(*mlirContext.get(), hloModule));
 
@@ -473,7 +473,7 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
                                      useTupleArgs);
 
   if (runSdyShardingPropagation) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         runShardingPropagation(hloModule, mlirModule.get(), importMhloShardings,
                                defaultOptions, dedupFunctionsFully, name()));
   }
@@ -487,9 +487,9 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
 
   // StableHlo -> HLO
   HloProto hloProto;
-  TF_RETURN_IF_ERROR(ConvertStablehloWithManyArgsToHloProto(
+  TF_XLA_RETURN_IF_ERROR(ConvertStablehloWithManyArgsToHloProto(
       *mlirModule, &hloProto, useTupleArgs));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       createFromProtoAndReplaceComputations(hloModule, hloProto.hlo_module()));
 
   // If the module returns a single tensor as result with sharding,
@@ -504,7 +504,7 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
       std::move(flattenedInputOutputAliasConfig));
   hloModule->set_buffer_donor_config(std::move(flattenedBufferDonorsConfig));
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
           hloModule,
           hloModule->config().allow_spmd_sharding_propagation_to_output(),

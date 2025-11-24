@@ -46,8 +46,8 @@ namespace gpu {
 absl::Status RunNvshmemAllReduce(ReductionKind reduction_kind,
                                  std::vector<DeviceBufferPair>& buffers,
                                  se::Stream& stream) {
-  TF_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
+  TF_XLA_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
                       collectives->CreateCommunicator());
 
   VLOG(3) << "Performing nvshmem all-reduce from device ordinal: "
@@ -56,7 +56,7 @@ absl::Status RunNvshmemAllReduce(ReductionKind reduction_kind,
     auto future = nvshmem_comm->AllReduce(
         buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
         buffer.element_count, reduction_kind, GpuCollectives::On(stream));
-    TF_RETURN_IF_ERROR(future.Await());
+    TF_XLA_RETURN_IF_ERROR(future.Await());
   }
 
   return absl::OkStatus();
@@ -67,7 +67,7 @@ namespace impl {
 absl::Status CheckNvshmemImplementableInst(const HloInstruction* inst,
                                            Thunk::Kind reduction_op) {
   for (HloInstruction* operand : inst->operands()) {
-    TF_RETURN_IF_ERROR(IsValidNvshmemOperand(operand->shape(), reduction_op));
+    TF_XLA_RETURN_IF_ERROR(IsValidNvshmemOperand(operand->shape(), reduction_op));
   }
 
   if (!MatchReductionComputation(inst->called_computations().front())
@@ -117,7 +117,7 @@ CollectiveOpGroupMode NvshmemAllReduceStartThunk::GetGroupMode(
 
 absl::Status NvshmemAllReduceStartThunk::RunNvshmemCollective(
     const ExecuteParams& params, se::Stream& stream) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));

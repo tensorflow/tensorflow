@@ -268,7 +268,7 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
       IrCompiler::Create(target_options, std::move(ir_compiler_options),
                          IrCompiler::CompilationHooks());
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       JitCompiler jit_compiler,
       JitCompiler::Create(std::move(jit_compiler_options),
                           std::move(ir_compiler), compilation_task_runner));
@@ -284,13 +284,13 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
           : std::make_unique<DFSMemoryScheduler>(&alias_info,
                                                  buffer_size_bytes_function);
 
-  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
+  TF_XLA_ASSIGN_OR_RETURN(HloSchedule schedule,
                       ScheduleModule(&module, *scheduler));
-  TF_RETURN_IF_ERROR(module.set_schedule(schedule));
+  TF_XLA_RETURN_IF_ERROR(module.set_schedule(schedule));
 
   auto memory_alignment = [](LogicalBuffer::Color) { return MinAlign(); };
   // Run buffer allocation on the HLO graph.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(
           &module, std::make_unique<SequentialHloOrdering>(schedule),

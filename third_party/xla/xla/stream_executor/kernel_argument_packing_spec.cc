@@ -100,7 +100,7 @@ KernelArgumentsPackingSpec::BuildArguments(
   std::vector<std::vector<char>> result;
   result.reserve(kernel_arguments_.size());
   for (const SingleArgumentPackingSpec& kernel_argument : kernel_arguments_) {
-    TF_ASSIGN_OR_RETURN(result.emplace_back(),
+    TF_XLA_ASSIGN_OR_RETURN(result.emplace_back(),
                         kernel_argument.BuildArgument(thunk_arguments));
   }
   return std::make_unique<KernelArgsPackedVector>(std::move(result),
@@ -110,7 +110,7 @@ absl::StatusOr<SingleArgumentPackingSpecProto>
 SingleArgumentPackingSpec::ToProto() const {
   SingleArgumentPackingSpecProto proto;
   for (const ArgumentPackingRelocation& relocation : relocations_) {
-    TF_ASSIGN_OR_RETURN(*proto.add_relocations(), relocation.ToProto());
+    TF_XLA_ASSIGN_OR_RETURN(*proto.add_relocations(), relocation.ToProto());
   }
   proto.set_data(storage_.data(), storage_.size());
   return proto;
@@ -122,7 +122,7 @@ absl::StatusOr<SingleArgumentPackingSpec> SingleArgumentPackingSpec::FromProto(
   std::vector<ArgumentPackingRelocation> relocations;
   for (const ArgumentPackingRelocationProto& relocation_proto :
        proto.relocations()) {
-    TF_ASSIGN_OR_RETURN(ArgumentPackingRelocation relocation,
+    TF_XLA_ASSIGN_OR_RETURN(ArgumentPackingRelocation relocation,
                         ArgumentPackingRelocation::FromProto(relocation_proto));
     relocations.push_back(std::move(relocation));
   }
@@ -140,7 +140,7 @@ ArgumentPackingRelocation::ToProto() const {
 
 absl::StatusOr<ArgumentPackingRelocation> ArgumentPackingRelocation::FromProto(
     const ArgumentPackingRelocationProto& proto) {
-  TF_ASSIGN_OR_RETURN(ArgumentPackingRelocation::Type type,
+  TF_XLA_ASSIGN_OR_RETURN(ArgumentPackingRelocation::Type type,
                       FromProtoType(proto.type()));
   return ArgumentPackingRelocation(type, proto.argument_index(),
                                    proto.offset());
@@ -150,7 +150,7 @@ absl::StatusOr<KernelArgumentsPackingSpecProto>
 KernelArgumentsPackingSpec::ToProto() const {
   KernelArgumentsPackingSpecProto proto;
   for (const SingleArgumentPackingSpec& kernel_argument : kernel_arguments_) {
-    TF_ASSIGN_OR_RETURN(*proto.add_kernel_arguments(),
+    TF_XLA_ASSIGN_OR_RETURN(*proto.add_kernel_arguments(),
                         kernel_argument.ToProto());
   }
   return proto;
@@ -162,7 +162,7 @@ KernelArgumentsPackingSpec::FromProto(
   std::vector<SingleArgumentPackingSpec> kernel_arguments;
   for (const SingleArgumentPackingSpecProto& kernel_argument_proto :
        proto.kernel_arguments()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         SingleArgumentPackingSpec kernel_argument,
         SingleArgumentPackingSpec::FromProto(kernel_argument_proto));
     kernel_arguments.push_back(std::move(kernel_argument));

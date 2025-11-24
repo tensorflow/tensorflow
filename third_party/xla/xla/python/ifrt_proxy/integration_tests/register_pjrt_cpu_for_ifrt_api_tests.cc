@@ -47,7 +47,7 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::Client>> CreateIfrtBackendClient(
   xla::CpuClientOptions options;
   options.asynchronous = true;
   options.cpu_device_count = 4;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> pjrt_cpu_client,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> pjrt_cpu_client,
                       xla::GetXlaPjrtCpuClient(options));
   return xla::ifrt::PjRtClient::Create(std::move(pjrt_cpu_client));
 }
@@ -57,11 +57,11 @@ const bool kUnused =
          []() -> absl::StatusOr<std::shared_ptr<xla::ifrt::Client>> {
            std::string address =
                absl::StrCat("localhost:", tsl::testing::PickUnusedPortOrDie());
-           TF_ASSIGN_OR_RETURN(auto server,
+           TF_XLA_ASSIGN_OR_RETURN(auto server,
                                GrpcServer::CreateFromIfrtClientFactory(
                                    address, CreateIfrtBackendClient));
 
-           TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::ifrt::Client> client,
+           TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<xla::ifrt::Client> client,
                                CreateClient(absl::StrCat("grpc://", address)));
 
            return std::shared_ptr<xla::ifrt::Client>(

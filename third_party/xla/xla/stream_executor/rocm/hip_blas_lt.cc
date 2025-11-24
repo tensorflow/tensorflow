@@ -66,7 +66,7 @@ limitations under the License.
   [&]() -> absl::StatusOr<ValueT> {                                     \
     ValueT value;                                                       \
     size_t size;                                                        \
-    TF_RETURN_IF_ERROR(ToStatus(                                        \
+    TF_XLA_RETURN_IF_ERROR(ToStatus(                                        \
         getter(handle, attr, &value, sizeof(ValueT), &size), #getter)); \
     return std::move(value);                                            \
   }()
@@ -148,7 +148,7 @@ static absl::StatusOr<hipblasLtEpilogue_t> AsHipblasLtEpilogue(
 
 absl::Status BlasLt::Init() {
   hipblasLtHandle_t blas_lt;
-  SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtCreate(&blas_lt));
+  SE_HIPBLAS_XLA_RETURN_IF_ERROR(wrap::hipblasLtCreate(&blas_lt));
   absl::MutexLock lock(mu_);
   blas_lt_.reset(blas_lt);
   return absl::OkStatus();
@@ -156,18 +156,18 @@ absl::Status BlasLt::Init() {
 
 /*static*/ absl::StatusOr<BlasLt::MatrixLayout> BlasLt::MatrixLayout::Create(
     const gpu::MatrixLayout& m) {
-  TF_ASSIGN_OR_RETURN(auto type, gpu::AsBlasDataType(m.dtype));
+  TF_XLA_ASSIGN_OR_RETURN(auto type, gpu::AsBlasDataType(m.dtype));
 
   auto hipblas_data_type_ = AsHipblasDataType(type);
   hipblasLtMatrixLayout_t hip_layout;
-  SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatrixLayoutCreate(
+  SE_HIPBLAS_XLA_RETURN_IF_ERROR(wrap::hipblasLtMatrixLayoutCreate(
       &hip_layout, hipblas_data_type_, m.num_rows, m.num_cols,
       m.leading_dim_stride));
   // Wrap hipblas handle immediately, so it is cleaned up if an error occurs.
   BlasLt::MatrixLayout layout(hip_layout, hipblas_data_type_);
   if (m.order != gpu::MatrixLayout::Order::kColumnMajor)
     return absl::InternalError("HipblasLT does not support row-major matrices");
-  TF_RETURN_IF_ERROR(SetAttr(hip_layout, HIPBLASLT_MATRIX_LAYOUT_BATCH_COUNT,
+  TF_XLA_RETURN_IF_ERROR(SetAttr(hip_layout, HIPBLASLT_MATRIX_LAYOUT_BATCH_COUNT,
                              static_cast<int32_t>(m.batch_size)));
 
   VLOG(2) << "BlasLt::MatrixLayout::Create type: " << (int)type
@@ -176,7 +176,7 @@ absl::Status BlasLt::Init() {
           << " leading_dim_stride: " << m.leading_dim_stride
           << " batch_stride: " << m.batch_stride;
 
-  TF_RETURN_IF_ERROR(SetAttr(hip_layout,
+  TF_XLA_RETURN_IF_ERROR(SetAttr(hip_layout,
                              HIPBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET,
                              m.batch_stride));
   return std::move(layout);
@@ -194,7 +194,7 @@ absl::Status BlasLt::Init() {
           << int(pointer_mode);
   auto hip_scale_type = AsHipblasDataType(scale_type);
   auto hip_compute_type = AsHipblasComputeType(compute_type);
-  SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatmulDescCreate(
+  SE_HIPBLAS_XLA_RETURN_IF_ERROR(wrap::hipblasLtMatmulDescCreate(
       &hip_desc, hip_compute_type, hip_scale_type));
 
   int32_t bias_flag =
@@ -206,12 +206,12 @@ absl::Status BlasLt::Init() {
     return absl::InternalError("hipblaslt does not support device pointers");
   }
 
-  TF_RETURN_IF_ERROR(SetAttr(hip_desc, HIPBLASLT_MATMUL_DESC_TRANSA,
+  TF_XLA_RETURN_IF_ERROR(SetAttr(hip_desc, HIPBLASLT_MATMUL_DESC_TRANSA,
                              AsHipblasOperation(trans_a)));
-  TF_RETURN_IF_ERROR(SetAttr(hip_desc, HIPBLASLT_MATMUL_DESC_TRANSB,
+  TF_XLA_RETURN_IF_ERROR(SetAttr(hip_desc, HIPBLASLT_MATMUL_DESC_TRANSB,
                              AsHipblasOperation(trans_b)));
-  TF_ASSIGN_OR_RETURN(hipblasLtEpilogue_t epi, AsHipblasLtEpilogue(epilogue));
-  TF_RETURN_IF_ERROR(SetAttr(hip_desc, HIPBLASLT_MATMUL_DESC_EPILOGUE, epi));
+  TF_XLA_ASSIGN_OR_RETURN(hipblasLtEpilogue_t epi, AsHipblasLtEpilogue(epilogue));
+  TF_XLA_RETURN_IF_ERROR(SetAttr(hip_desc, HIPBLASLT_MATMUL_DESC_EPILOGUE, epi));
   return std::move(desc);
 }
 
@@ -227,14 +227,14 @@ auto BlasLt::MatmulPlan::GetAlgorithms(const Stream* stream,
     TF_RET_CHECK(blas_lt->blas_lt_ != nullptr);
 
     hipblasLtMatmulPreference_t hip_preference;
-    SE_HIPBLAS_RETURN_IF_ERROR(
+    SE_HIPBLAS_XLA_RETURN_IF_ERROR(
         wrap::hipblasLtMatmulPreferenceCreate(&hip_preference));
 
     // Wrap hipblas handle immediately, so it is cleaned up if an error occurs.
     Owned<hipblasLtMatmulPreference_t> preference(
         hip_preference, wrap::hipblasLtMatmulPreferenceDestroy);
 
-    TF_RETURN_IF_ERROR(SetAttr<uint64_t>(
+    TF_XLA_RETURN_IF_ERROR(SetAttr<uint64_t>(
         hip_preference, HIPBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
         max_workspace_size));
 
@@ -245,7 +245,7 @@ auto BlasLt::MatmulPlan::GetAlgorithms(const Stream* stream,
     // later when this limitation is gone.
     if (op_desc_.has_bias_epilogue()) {
       static int64_t dummy_pointer = 0xACEBALL;
-      TF_RETURN_IF_ERROR(SetAttr(
+      TF_XLA_RETURN_IF_ERROR(SetAttr(
           op_desc_.get(), HIPBLASLT_MATMUL_DESC_BIAS_POINTER, &dummy_pointer));
     }
 
@@ -259,10 +259,10 @@ auto BlasLt::MatmulPlan::GetAlgorithms(const Stream* stream,
     };
     if (IsFP8(a_desc_) && IsFP8(b_desc_)) {
       static int64_t dummy_pointer = 0xACEBALL;
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  HIPBLASLT_MATMUL_DESC_A_SCALE_POINTER,
                                  &dummy_pointer));
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  HIPBLASLT_MATMUL_DESC_B_SCALE_POINTER,
                                  &dummy_pointer));
     }
@@ -274,7 +274,7 @@ auto BlasLt::MatmulPlan::GetAlgorithms(const Stream* stream,
         results.data(), &found_algorithm_count);
     if (error != 0) {
       VLOG(0) << "hipblasLtMatmulAlgoGetHeuristic returned " << (int)error;
-      SE_HIPBLAS_RETURN_IF_ERROR(error);
+      SE_HIPBLAS_XLA_RETURN_IF_ERROR(error);
     }
     results.resize(found_algorithm_count);
   }  // end mutex block
@@ -321,12 +321,12 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
     return xla::Internal("The F8 RHS must be row-major");
   }
 
-  TF_ASSIGN_OR_RETURN(auto output_dtype,
+  TF_XLA_ASSIGN_OR_RETURN(auto output_dtype,
                       gpu::AsBlasDataType(output_layout.dtype));
 
   auto compute_type = cfg.compute_type;
   if (!compute_type) {  // obtain compute_type unless provided by the user
-    TF_ASSIGN_OR_RETURN(compute_type,
+    TF_XLA_ASSIGN_OR_RETURN(compute_type,
                         gpu::GetBlasComputationType(
                             cfg.precision_algorithm, lhs_layout.dtype,
                             output_layout.dtype, cfg.compute_precision));
@@ -341,16 +341,16 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
     rhs_layout.Transpose();
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto op_desc,
       MatmulDesc::Create(*compute_type,
                          gpu::GetScaleType(output_dtype, *compute_type),
                          trans_a, trans_b, epilogue));
 
-  TF_ASSIGN_OR_RETURN(auto a_desc, MatrixLayout::Create(lhs_layout));
-  TF_ASSIGN_OR_RETURN(auto b_desc, MatrixLayout::Create(rhs_layout));
-  TF_ASSIGN_OR_RETURN(auto c_desc, MatrixLayout::Create(c_layout));
-  TF_ASSIGN_OR_RETURN(auto d_desc, MatrixLayout::Create(output_layout));
+  TF_XLA_ASSIGN_OR_RETURN(auto a_desc, MatrixLayout::Create(lhs_layout));
+  TF_XLA_ASSIGN_OR_RETURN(auto b_desc, MatrixLayout::Create(rhs_layout));
+  TF_XLA_ASSIGN_OR_RETURN(auto c_desc, MatrixLayout::Create(c_layout));
+  TF_XLA_ASSIGN_OR_RETURN(auto d_desc, MatrixLayout::Create(output_layout));
 
 #if TF_ROCM_VERSION >= 60000
   // Currently, the default bias data type in hipblasLt is the same with output
@@ -369,7 +369,7 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
       }
 
       if (bias_dtype != d_dtype) {
-        TF_RETURN_IF_ERROR(SetAttr(
+        TF_XLA_RETURN_IF_ERROR(SetAttr(
             op_desc.get(), HIPBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, bias_dtype));
       }
     }
@@ -404,7 +404,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
   std::unique_ptr<EventBasedTimer> timer;
 
   if (profile_result != nullptr) {
-    TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+    TF_XLA_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
                                    profile_result->warmup_run_executed()));
   }
 
@@ -412,7 +412,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
   uint64_t workspace_size = algorithm_->workspace_size;
   if (workspace_size > 0) {
     if (args.scratch_allocator != nullptr) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           DeviceMemory<uint8_t> alloc,
           args.scratch_allocator->AllocateBytes(workspace_size));
       workspace_addr = gpu::GpuMemoryMutable(&alloc);
@@ -431,29 +431,29 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     // We must set the bias and aux pointers while holding the mutex, to avoid a
     // potential race condition from multiple threads sharing the same plan.
     if (op_desc_.has_bias_epilogue() && args.bias != nullptr) {
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  HIPBLASLT_MATMUL_DESC_BIAS_POINTER,
                                  args.bias.opaque()));
     }
 
 #if TF_ROCM_VERSION >= 60000
     if (args.a_scale != nullptr) {
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  HIPBLASLT_MATMUL_DESC_A_SCALE_POINTER,
                                  args.a_scale.opaque()));
     }
     if (args.b_scale != nullptr) {
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  HIPBLASLT_MATMUL_DESC_B_SCALE_POINTER,
                                  args.b_scale.opaque()));
     }
     if (args.c_scale != nullptr) {
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  HIPBLASLT_MATMUL_DESC_C_SCALE_POINTER,
                                  args.c_scale.opaque()));
     }
     if (args.d_scale != nullptr) {
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  HIPBLASLT_MATMUL_DESC_D_SCALE_POINTER,
                                  args.d_scale.opaque()));
     }
@@ -476,7 +476,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     std::unique_ptr<ActivateContext> activation = blas_lt->parent_->Activate();
 
     if (palgo != nullptr) {
-      SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatmul(
+      SE_HIPBLAS_XLA_RETURN_IF_ERROR(wrap::hipblasLtMatmul(
           blas_lt->blas_lt_.get(), op_desc_.get(), alpha, a.opaque(),
           a_desc_.get(), b.opaque(), b_desc_.get(), beta, args.c.opaque(),
           c_desc_.get(), args.d.opaque(), d_desc_.get(), palgo, workspace_addr,
@@ -495,7 +495,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
   } rocblaslt_matmul_algo;
 
   if (profile_result != nullptr) {
-    TF_ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
+    TF_XLA_ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
     // set algorithm ID to be unique (otherwise it gets kDefaultAlgorithm ID)
     auto roc_algo = (const rocblaslt_matmul_algo*)palgo;
     auto pindex = (int*)roc_algo->data;

@@ -126,12 +126,12 @@ absl::Status CommandBufferThunk::Prepare(
     return absl::OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(commands_.Prepare(params, resource_requests));
+  TF_XLA_RETURN_IF_ERROR(commands_.Prepare(params, resource_requests));
 
   // Always prepare thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.
   if (thunks_) {
-    TF_RETURN_IF_ERROR(thunks_->Prepare(params, resource_requests));
+    TF_XLA_RETURN_IF_ERROR(thunks_->Prepare(params, resource_requests));
   }
 
   return absl::OkStatus();
@@ -144,17 +144,17 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     return absl::OkStatus();
   }
 
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
                       GetOrCreateCommandBuffer(params.executor));
   absl::MutexLock lock(cmd_buffer->mutex);
 
   // Initialize commands.
-  TF_RETURN_IF_ERROR(commands_.Initialize(params, cmd_buffer->state));
+  TF_XLA_RETURN_IF_ERROR(commands_.Initialize(params, cmd_buffer->state));
 
   // Always initialize thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.
   if (thunks_) {
-    TF_RETURN_IF_ERROR(thunks_->Initialize(params));
+    TF_XLA_RETURN_IF_ERROR(thunks_->Initialize(params));
   }
 
   // If there are no thunks, or command buffer does not require initialization,
@@ -207,7 +207,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     CommandBufferCmd::RecordParams record_params = {cmd_buffer->state,
                                                     std::move(updated_allocs),
                                                     /*is_initialization=*/true};
-    TF_RETURN_IF_ERROR(commands_.Record(execute_params, record_params,
+    TF_XLA_RETURN_IF_ERROR(commands_.Record(execute_params, record_params,
                                         CommandBufferCmd::RecordCreate{},
                                         cmd_buffer->command_buffer.get()));
 
@@ -241,7 +241,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   se::StreamExecutor* executor = params.stream->parent();
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
                       GetOrCreateCommandBuffer(executor));
 
   absl::MutexLock lock(cmd_buffer->mutex);
@@ -249,7 +249,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   // warm up iteration, run through thunks if they are present.
   if (!cmd_buffer->warmup_done && thunks_) {
     VLOG(2) << "Executing warm up iteration of command buffer thunk";
-    TF_RETURN_IF_ERROR(thunks_->ExecuteOnStream(params));
+    TF_XLA_RETURN_IF_ERROR(thunks_->ExecuteOnStream(params));
     cmd_buffer->warmup_done = true;
     return absl::OkStatus();
   }
@@ -277,7 +277,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     CommandBufferCmd::RecordParams record_params = {cmd_buffer->state,
                                                     std::move(updated_allocs)};
-    TF_RETURN_IF_ERROR(commands_.Record(params, record_params,
+    TF_XLA_RETURN_IF_ERROR(commands_.Record(params, record_params,
                                         CommandBufferCmd::RecordCreate{},
                                         cmd_buffer->command_buffer.get()));
 
@@ -314,7 +314,7 @@ CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
   }
 
   // Create a new empty command buffer.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto command_buffer,
       executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
   auto emplaced = state_->command_buffers.emplace(

@@ -167,7 +167,7 @@ absl::Status NvshmemCommunicator::Barrier(
     return FailedPrecondition("NvshmemCollectives not initialized.");
   }
 
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+  TF_XLA_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   auto gpu_stream = se::gpu::AsGpuStreamValue(stream);
 
@@ -223,7 +223,7 @@ Future<> NvshmemCommunicator::AllReduce(
     return FailedPrecondition("NvshmemCollectives not initialized.");
   }
 
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+  TF_XLA_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   void* source_ptr = send_buffer.opaque();
   void* dest_ptr = recv_buffer.opaque();
@@ -366,7 +366,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
   void* source_ptr = send_buffer.opaque();
   void* dest_ptr = recv_buffer.opaque();
 
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+  TF_XLA_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   switch (type) {
     case PrimitiveType::F64:
@@ -461,7 +461,7 @@ Future<> NvshmemCommunicator::Send(se::DeviceMemoryBase recv_buffer,
   }
 
   count = ToRealCount(dtype, count);
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       P2P("send", dtype, recv_buffer, send_buffer, count, peer, executor));
   return absl::OkStatus();
 }
@@ -479,7 +479,7 @@ Future<> NvshmemCommunicator::Recv(se::DeviceMemoryBase recv_buffer,
   }
 
   count = ToRealCount(dtype, count);
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       P2P("recv", dtype, recv_buffer, send_buffer, count, peer, executor));
   return absl::OkStatus();
 }
@@ -493,7 +493,7 @@ absl::Status NvshmemCommunicator::Quiet(const Executor& executor) {
     return absl::FailedPreconditionError("NvshmemCollectives not initialized.");
   }
 
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+  TF_XLA_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
   nvshmemx_quiet_on_stream(se::gpu::AsGpuStreamValue(stream));
   return absl::OkStatus();
 }

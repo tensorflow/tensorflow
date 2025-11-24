@@ -46,7 +46,7 @@ absl::Status CheckIfXnnFusion(const HloInstruction& instr) {
                                 instr.ToString());
   }
 
-  TF_ASSIGN_OR_RETURN(auto backend_config,
+  TF_XLA_ASSIGN_OR_RETURN(auto backend_config,
                       instr.backend_config<BackendConfig>());
 
   if (!backend_config.has_fusion_config()) {
@@ -75,7 +75,7 @@ bool XnnpackBackend::IsSupported(const HloInstruction& instr) {
 
 absl::StatusOr<std::vector<std::unique_ptr<xla::BackendConfig>>>
 XnnpackBackend::GetSupportedConfigs(const HloInstruction& instr) {
-  TF_RETURN_IF_ERROR(CheckIfXnnFusion(instr));
+  TF_XLA_RETURN_IF_ERROR(CheckIfXnnFusion(instr));
   std::vector<std::unique_ptr<xla::BackendConfig>> configs;
   {
     XnnFusionOptions options;
@@ -96,7 +96,7 @@ XnnpackBackend::GetSupportedConfigs(const HloInstruction& instr) {
 }
 absl::StatusOr<std::unique_ptr<xla::BackendConfig>>
 XnnpackBackend::GetDefaultConfig(const HloInstruction& instr) {
-  TF_RETURN_IF_ERROR(CheckIfXnnFusion(instr));
+  TF_XLA_RETURN_IF_ERROR(CheckIfXnnFusion(instr));
   auto config = std::make_unique<XnnFusionOptions>();
   config->set_use_threadpool(true);
   auto any = std::make_unique<xla::BackendConfig>();
@@ -106,8 +106,8 @@ XnnpackBackend::GetDefaultConfig(const HloInstruction& instr) {
 
 absl::Status XnnpackBackend::ApplyConfig(HloInstruction& instr,
                                          const xla::BackendConfig& config) {
-  TF_RETURN_IF_ERROR(CheckIfXnnFusion(instr));
-  TF_ASSIGN_OR_RETURN(auto backend_config,
+  TF_XLA_RETURN_IF_ERROR(CheckIfXnnFusion(instr));
+  TF_XLA_ASSIGN_OR_RETURN(auto backend_config,
                       instr.backend_config<xla::cpu::BackendConfig>());
 
   XnnFusionOptions options;
@@ -116,7 +116,7 @@ absl::Status XnnpackBackend::ApplyConfig(HloInstruction& instr,
   *backend_config.mutable_fusion_config()->mutable_xnn_fusion_options() =
       options;
 
-  TF_RETURN_IF_ERROR(instr.set_backend_config(backend_config));
+  TF_XLA_RETURN_IF_ERROR(instr.set_backend_config(backend_config));
 
   return absl::OkStatus();
 }

@@ -69,7 +69,7 @@ absl::Status InitializationTestBody(const int node_id, const int num_nodes) {
   if (node_id == 0) {
     xla::CoordinationServiceImpl::Options service_options;
     service_options.num_nodes = num_nodes;
-    TF_ASSIGN_OR_RETURN(service, xla::GetDistributedRuntimeService(
+    TF_XLA_ASSIGN_OR_RETURN(service, xla::GetDistributedRuntimeService(
                                      "[::]:12345", service_options));
   }
 
@@ -84,10 +84,10 @@ absl::Status InitializationTestBody(const int node_id, const int num_nodes) {
 
   NvshmemCollectives::Default()->SetEnvInfo(node_id, num_nodes, 1, kv_store);
   cudaSetDevice(node_id);
-  TF_ASSIGN_OR_RETURN(void* ptr, NvshmemCollectives::Default()->Allocate(1024));
+  TF_XLA_ASSIGN_OR_RETURN(void* ptr, NvshmemCollectives::Default()->Allocate(1024));
   TF_RET_CHECK(ptr != nullptr);
-  TF_RETURN_IF_ERROR(NvshmemCollectives::Default()->Deallocate(ptr));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> comm,
+  TF_XLA_RETURN_IF_ERROR(NvshmemCollectives::Default()->Deallocate(ptr));
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> comm,
                       NvshmemCollectives::Default()->CreateCommunicator());
   TF_RET_CHECK(*comm->NumRanks() == num_nodes);
   TF_RET_CHECK(*comm->CurrentRank() == node_id);

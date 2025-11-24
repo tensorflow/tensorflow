@@ -19,11 +19,11 @@ limitations under the License.
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
 
-#define TF_ASSIGN_OR_RETURN(lhs, rexpr) \
-  TF_ASSIGN_OR_RETURN_IMPL(             \
+#define TF_XLA_ASSIGN_OR_RETURN(lhs, rexpr) \
+  TF_XLA_ASSIGN_OR_RETURN_IMPL(             \
       TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, rexpr)
 
-#define TF_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr) \
+#define TF_XLA_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr) \
   auto statusor = (rexpr);                             \
   if (TF_PREDICT_FALSE(!statusor.ok())) {              \
     return statusor.status();                          \

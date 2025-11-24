@@ -37,7 +37,7 @@ class CycleDetectionVisitor : public DfsHloVisitorWithDefault {
   // detection by default.
   absl::Status VerifyNoCycle(HloModule* module) {
     for (auto* comp : module->computations()) {
-      TF_RETURN_IF_ERROR(comp->Accept(this));
+      TF_XLA_RETURN_IF_ERROR(comp->Accept(this));
     }
     return absl::OkStatus();
   }
@@ -57,7 +57,7 @@ class HloCycleDetection : public HloModulePass {
   absl::StatusOr<bool> RunImpl(HloModule* module,
                                const absl::flat_hash_set<absl::string_view>&
                                    execution_threads) override {
-    TF_RETURN_IF_ERROR(visitor_.VerifyNoCycle(module));
+    TF_XLA_RETURN_IF_ERROR(visitor_.VerifyNoCycle(module));
     return false;
   }
 

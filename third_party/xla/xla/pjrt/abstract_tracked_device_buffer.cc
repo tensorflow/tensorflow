@@ -286,7 +286,7 @@ absl::Status CommonPjRtBuffer::AcquireScopedRawBuffer(
     return InvalidArgument("%s called on deleted or donated buffer: %s",
                            caller_name, device_buffer.status().ToString());
   }
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto device_event,
       std::move(scoped_acquire)(
           device_buffer.buffer()->raw_buffer(),

@@ -43,7 +43,7 @@ PjRtClient* TfPjRtExecutable::client() const { return client_; }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtBuffer::CopyToMemorySpace(
     PjRtMemorySpace* dst_memory_space) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> result,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> result,
                       wrapped_->CopyToMemorySpace(dst_memory_space));
   return std::unique_ptr<PjRtBuffer>(
       std::make_unique<TfPjRtBuffer>(client_, std::move(result)));
@@ -69,7 +69,7 @@ TfPjRtExecutable::Execute(
           tensorflow::down_cast<TfPjRtBuffer*>(buffer)->wrapped());
     }
   }
-  TF_ASSIGN_OR_RETURN(auto out, wrapped_->Execute(unwrapped_argument_handles,
+  TF_XLA_ASSIGN_OR_RETURN(auto out, wrapped_->Execute(unwrapped_argument_handles,
                                                   options, returned_futures));
   for (auto& buffer_list : out) {
     for (std::unique_ptr<PjRtBuffer>& buffer : buffer_list) {
@@ -91,7 +91,7 @@ TfPjRtExecutable::ExecuteSharded(absl::Span<PjRtBuffer* const> argument_handles,
     unwrapped_argument_handles.push_back(
         tensorflow::down_cast<TfPjRtBuffer*>(buffer)->wrapped());
   }
-  TF_ASSIGN_OR_RETURN(auto out, wrapped_->ExecuteSharded(
+  TF_XLA_ASSIGN_OR_RETURN(auto out, wrapped_->ExecuteSharded(
                                     unwrapped_argument_handles, device, options,
                                     returned_future, fill_future));
   for (std::unique_ptr<PjRtBuffer>& buffer : out) {
@@ -110,7 +110,7 @@ TfPjRtExecutable::ExecutePortable(
     unwrapped_argument_handles.push_back(
         tensorflow::down_cast<TfPjRtBuffer*>(buffer)->wrapped());
   }
-  TF_ASSIGN_OR_RETURN(auto out, wrapped_->ExecutePortable(
+  TF_XLA_ASSIGN_OR_RETURN(auto out, wrapped_->ExecutePortable(
                                     unwrapped_argument_handles, device, options,
                                     returned_future, fill_future));
   for (std::unique_ptr<PjRtBuffer>& buffer : out) {
@@ -134,7 +134,7 @@ TfPjRtClient::~TfPjRtClient() { LOG(INFO) << "TfPjRtClient destroyed."; }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtClient::WrapBuffer(
     absl::StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
   return std::unique_ptr<PjRtBuffer>(
       std::make_unique<TfPjRtBuffer>(this, std::move(buffer)));
 }
@@ -142,7 +142,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtClient::WrapBuffer(
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 TfPjRtClient::WrapExecutable(
     absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> to_wrap) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       std::move(to_wrap));
   return std::unique_ptr<PjRtLoadedExecutable>(
       std::make_unique<TfPjRtExecutable>(this, std::move(executable)));

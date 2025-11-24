@@ -64,8 +64,8 @@ using absl_testing::StatusIs;
 using ::testing::HasSubstr;
 
 static absl::StatusOr<se::StreamExecutor*> GpuExecutor() {
-  TF_ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));
-  TF_ASSIGN_OR_RETURN(auto* platform,
+  TF_XLA_ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));
+  TF_XLA_ASSIGN_OR_RETURN(auto* platform,
                       se::PlatformManager::PlatformWithName(name));
   return platform->ExecutorForDevice(0);
 }

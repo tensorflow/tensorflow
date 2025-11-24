@@ -109,7 +109,7 @@ absl::Status RecordReader::ReadChecksummed(uint64_t offset, size_t n,
   }
 
   const size_t expected = n + sizeof(uint32_t);
-  TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(expected, result));
+  TF_XLA_RETURN_IF_ERROR(input_stream_->ReadNBytes(expected, result));
 
   if (result->size() != expected) {
     if (result->empty()) {
@@ -137,7 +137,7 @@ absl::Status RecordReader::GetMetadata(Metadata* md) {
 
   // Compute the metadata of the TFRecord file if not cached.
   if (!cached_metadata_) {
-    TF_RETURN_IF_ERROR(input_stream_->Reset());
+    TF_XLA_RETURN_IF_ERROR(input_stream_->Reset());
 
     int64_t data_size = 0;
     int64_t entries = 0;
@@ -163,7 +163,7 @@ absl::Status RecordReader::GetMetadata(Metadata* md) {
 
       // Skip reading the actual data since we just want the number
       // of records and the size of the data.
-      TF_RETURN_IF_ERROR(input_stream_->SkipNBytes(length + kFooterSize));
+      TF_XLA_RETURN_IF_ERROR(input_stream_->SkipNBytes(length + kFooterSize));
       offset += kHeaderSize + length + kFooterSize;
 
       // Increment running stats.
@@ -188,17 +188,17 @@ absl::Status RecordReader::PositionInputStream(uint64_t offset) {
   if (curr_pos > desired_pos || curr_pos < 0 /* EOF */ ||
       (curr_pos == desired_pos && last_read_failed_)) {
     last_read_failed_ = false;
-    TF_RETURN_IF_ERROR(input_stream_->Reset());
-    TF_RETURN_IF_ERROR(input_stream_->SkipNBytes(desired_pos));
+    TF_XLA_RETURN_IF_ERROR(input_stream_->Reset());
+    TF_XLA_RETURN_IF_ERROR(input_stream_->SkipNBytes(desired_pos));
   } else if (curr_pos < desired_pos) {
-    TF_RETURN_IF_ERROR(input_stream_->SkipNBytes(desired_pos - curr_pos));
+    TF_XLA_RETURN_IF_ERROR(input_stream_->SkipNBytes(desired_pos - curr_pos));
   }
   DCHECK_EQ(desired_pos, input_stream_->Tell());
   return absl::OkStatus();
 }
 
 absl::Status RecordReader::ReadRecord(uint64_t* offset, tstring* record) {
-  TF_RETURN_IF_ERROR(PositionInputStream(*offset));
+  TF_XLA_RETURN_IF_ERROR(PositionInputStream(*offset));
 
   // Read header data.
   absl::Status s = ReadChecksummed(*offset, sizeof(uint64_t), record);
@@ -226,7 +226,7 @@ absl::Status RecordReader::ReadRecord(uint64_t* offset, tstring* record) {
 
 absl::Status RecordReader::SkipRecords(uint64_t* offset, int num_to_skip,
                                        int* num_skipped) {
-  TF_RETURN_IF_ERROR(PositionInputStream(*offset));
+  TF_XLA_RETURN_IF_ERROR(PositionInputStream(*offset));
 
   absl::Status s;
   tstring record;

@@ -218,11 +218,11 @@ absl::Status CUDAFftPlan::Initialize(
     // For either multiple batches or rank higher than 3, use cufft*PlanMany*().
     if (scratch_allocator == nullptr) {
       // Downsize 64b arrays to 32b as there's no 64b version of cufftPlanMany
-      TF_ASSIGN_OR_RETURN(auto elem_count_32b_,
+      TF_XLA_ASSIGN_OR_RETURN(auto elem_count_32b_,
                           Downsize64bArray(elem_count_, rank));
-      TF_ASSIGN_OR_RETURN(auto input_embed_32b_,
+      TF_XLA_ASSIGN_OR_RETURN(auto input_embed_32b_,
                           Downsize64bArray(input_embed_, rank));
-      TF_ASSIGN_OR_RETURN(auto output_embed_32b_,
+      TF_XLA_ASSIGN_OR_RETURN(auto output_embed_32b_,
                           Downsize64bArray(output_embed_, rank));
       auto ret = cufftPlanMany(
           &plan_, rank, elem_count_32b_.data(),

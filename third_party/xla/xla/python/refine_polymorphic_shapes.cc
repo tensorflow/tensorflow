@@ -341,8 +341,8 @@ absl::Status RefinePolymorphicShapes(llvm::StringRef module_str,
     }
   }
 
-  TF_RETURN_IF_ERROR(RefinePolymorphicShapes(*module, enable_shape_assertions));
-  if (validate_static_shapes) TF_RETURN_IF_ERROR(ValidateStaticShapes(*module));
+  TF_XLA_RETURN_IF_ERROR(RefinePolymorphicShapes(*module, enable_shape_assertions));
+  if (validate_static_shapes) TF_XLA_RETURN_IF_ERROR(ValidateStaticShapes(*module));
   if (mlir::failed(mlir::writeBytecodeToFile(*module, os))) {
     return absl::InternalError("Cannot serialize module.");
   }

@@ -119,7 +119,7 @@ RawCompileOptionsFromFlags(const PyHloRunnerConfig& opts) {
   out.hlo_passes_mode = opts.hlo_pass_mode;
   out.spmd_mode = opts.spmd_mode;
   if (!opts.execution_options_path.empty()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         out.execution_options,
         FunctionalHloRunner::LoadExecutionOptions(opts.execution_options_path));
   }
@@ -144,13 +144,13 @@ RawCompileOptionsFromFlags(const PyHloRunnerConfig& opts) {
 
 absl::Status RunHloFiles(const std::vector<std::string>& hlo_files,
                          const PyHloRunnerConfig& opts) {
-  TF_ASSIGN_OR_RETURN(FunctionalHloRunner::PreprocessingOptions preproc_options,
+  TF_XLA_ASSIGN_OR_RETURN(FunctionalHloRunner::PreprocessingOptions preproc_options,
                       PreprocessingOptionsFromFlags(opts));
   preproc_options.annotate_while_loop_trip_count = true;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       FunctionalHloRunner::RawCompileOptions raw_compile_options,
       RawCompileOptionsFromFlags(opts));
-  TF_ASSIGN_OR_RETURN(FunctionalHloRunner::RunningOptions running_options,
+  TF_XLA_ASSIGN_OR_RETURN(FunctionalHloRunner::RunningOptions running_options,
                       RunningOptionsFromFlags(opts));
 
   // tsl::Flags::Parse() leaves unknown flags in argv, we assume that those are
@@ -178,18 +178,18 @@ absl::Status RunHloFiles(const std::vector<std::string>& hlo_files,
     gpu_options.num_nodes = opts.num_nodes;
     gpu_options.enable_mock_nccl = opts.enable_mock_nccl;
     gpu_options.allocator_config.memory_fraction = opts.gpu_client_mem_fraction;
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         env, GetPjRtEnvironmentForGpu(
                  opts.address, gpu_options,
                  absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
   } else {
     QCHECK(opts.device_type == DeviceType::kHost) << "Invalid device type";
-    TF_ASSIGN_OR_RETURN(env, GetPjRtEnvironmentForHostCpu());
+    TF_XLA_ASSIGN_OR_RETURN(env, GetPjRtEnvironmentForHostCpu());
   }
 
   CHECK(env.client != nullptr);
   if (!opts.xla_gpu_dump_xspace_to.empty()) {
-    TF_ASSIGN_OR_RETURN(hlo_runner_profiler,
+    TF_XLA_ASSIGN_OR_RETURN(hlo_runner_profiler,
                         HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
                                                   /*keep_xspace=*/false));
     running_options.profiler = hlo_runner_profiler.get();
@@ -201,12 +201,12 @@ absl::Status RunHloFiles(const std::vector<std::string>& hlo_files,
       running_options.execution_profiles = &execution_profiles;
     }
     if (opts.should_run) {
-      TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndRunAndDump(
+      TF_XLA_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndRunAndDump(
           *env.client, GetDebugOptionsFromFlags(), preproc_options,
           raw_compile_options, running_options, hlo_file, opts.input_format,
           opts.dump_output_literal_to, opts.task_id));
     } else {
-      TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
+      TF_XLA_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
           *env.client, GetDebugOptionsFromFlags(), preproc_options,
           raw_compile_options, hlo_file, opts.input_format, opts.task_id));
     }
@@ -270,10 +270,10 @@ absl::Status RegisterCustomCallTarget(const std::string& fn_name, nb::object fn,
       };
 
       XLA_FFI_Handler_Bundle bundle;
-      TF_ASSIGN_OR_RETURN(bundle.instantiate, handler("instantiate"));
-      TF_ASSIGN_OR_RETURN(bundle.prepare, handler("prepare"));
-      TF_ASSIGN_OR_RETURN(bundle.initialize, handler("initialize"));
-      TF_ASSIGN_OR_RETURN(bundle.execute, handler("execute"));
+      TF_XLA_ASSIGN_OR_RETURN(bundle.instantiate, handler("instantiate"));
+      TF_XLA_ASSIGN_OR_RETURN(bundle.prepare, handler("prepare"));
+      TF_XLA_ASSIGN_OR_RETURN(bundle.initialize, handler("initialize"));
+      TF_XLA_ASSIGN_OR_RETURN(bundle.execute, handler("execute"));
 
       return ffi::TakeStatus(ffi::Ffi::RegisterStaticHandler(
           ffi::GetXlaFfiApi(), fn_name, platform, bundle, traits));

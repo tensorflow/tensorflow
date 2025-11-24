@@ -311,7 +311,7 @@ BlockLevelEmitterBackend::GetCostModelConfig(
   auto fusion_adaptor =
       HloFusionAdaptor::ForInstruction(Cast<HloFusionInstruction>(&instr));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       TiledRunTimeDataOrError tiled_runtime_data_or_error,
       indexing_performance_model.TryFindBestTilingForFusion(*fusion_adaptor));
 
@@ -341,7 +341,7 @@ BlockLevelEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
   //     └── FusionBackendConfig
   //         └── BlockLevelFusionConfig
   if (instr.has_backend_config()) {
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+    TF_XLA_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                         instr.backend_config<GpuBackendConfig>());
     if (gpu_backend_config.has_fusion_backend_config()) {
       const FusionBackendConfig& fusion_backend_config =
@@ -356,7 +356,7 @@ BlockLevelEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
   }
 
   // No explicit config found - create one from the cost model if possible.
-  TF_ASSIGN_OR_RETURN(BlockLevelFusionConfig config, GetCostModelConfig(instr));
+  TF_XLA_ASSIGN_OR_RETURN(BlockLevelFusionConfig config, GetCostModelConfig(instr));
   auto any = std::make_unique<google::protobuf::Any>();
   any->PackFrom(config);
   return any;
@@ -377,7 +377,7 @@ absl::Status BlockLevelEmitterBackend::ApplyConfig(
   }
   // Extract the current GPU backend config from the instruction.
   // This contains the nested FusionBackendConfig we want to modify.
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+  TF_XLA_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                       instr.backend_config<GpuBackendConfig>());
   FusionBackendConfig& backend_config =
       *gpu_backend_config.mutable_fusion_backend_config();
@@ -386,7 +386,7 @@ absl::Status BlockLevelEmitterBackend::ApplyConfig(
   *backend_config.mutable_block_level_fusion_config() =
       block_level_fusion_config;
   // Re-attach the modified GPU config back to the instruction.
-  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_backend_config)));
+  TF_XLA_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_backend_config)));
   instr.set_fusion_kind(HloInstruction::FusionKind::kCustom);
   return absl::OkStatus();
 }

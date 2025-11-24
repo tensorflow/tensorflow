@@ -115,7 +115,7 @@ std::unique_ptr<GpuProfiler> GpuProfiler::Create(
 
 absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
     const Executable* executable) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       RedzoneBuffers buffers,
       RedzoneBuffers::FromProgramShape(
           executable->compute_computation_layout().ComputeProgramShape(),
@@ -140,11 +140,11 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
     std::vector<ExecutionInput> execution_inputs =
         CreateExecutionInputsFromBuffers(rz_buffers.input_buffers(),
                                          rz_buffers.input_shapes());
-    TF_RETURN_IF_ERROR(Execute(executable, std::move(execution_inputs),
+    TF_XLA_RETURN_IF_ERROR(Execute(executable, std::move(execution_inputs),
                                /*profile=*/nullptr)
                            .status());
 
-    TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    TF_XLA_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
   }
 
   ExecutionProfile profile;
@@ -153,7 +153,7 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
       CreateExecutionInputsFromBuffers(rz_buffers.input_buffers(),
                                        rz_buffers.input_shapes());
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       ExecutionOutput execution_output,
       Execute(executable, std::move(execution_inputs), &profile));
 
@@ -194,7 +194,7 @@ absl::Status GpuProfiler::CheckInputBuffers(InputBuffers& buffers) {
   const GpuInputBuffers& gpu_buffers =
       tsl::down_cast<const GpuInputBuffers&>(buffers);
   const RedzoneBuffers& rz_buffers = gpu_buffers.redzone_buffers;
-  TF_ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
+  TF_XLA_ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
                       rz_buffers.RedzoneAllocator().CheckRedzones());
   if (rz_check_status.ok()) {
     return absl::OkStatus();
@@ -212,7 +212,7 @@ absl::Status GpuProfiler::CheckOutputBuffer(ScopedShapedBuffer& output,
         BufferComparator comparator(subshape, rtol,
                                     /*verbose=*/false);
 
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             bool outputs_match,
             comparator.CompareEqual(stream_, output.buffer(index),
                                     reference.buffer(index)));

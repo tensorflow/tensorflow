@@ -191,13 +191,13 @@ absl::Status LocalDeviceState::ThenExecuteCallback(
     absl::MutexLock lock(callback_stream_map_mu_);
     auto callback_stream = callback_stream_map_->find(stream);
     if (callback_stream == callback_stream_map_->end()) {
-      TF_ASSIGN_OR_RETURN(auto new_stream, executor_->CreateStream());
+      TF_XLA_ASSIGN_OR_RETURN(auto new_stream, executor_->CreateStream());
       new_stream->SetName(
           absl::StrFormat("Callback for %s", stream->GetName()));
       callback_stream =
           callback_stream_map_->insert({stream, std::move(new_stream)}).first;
     }
-    TF_RETURN_IF_ERROR(callback_stream->second->WaitFor(stream));
+    TF_XLA_RETURN_IF_ERROR(callback_stream->second->WaitFor(stream));
     stream = callback_stream->second.get();
   }
   return stream->DoHostCallback(
@@ -310,7 +310,7 @@ int LocalDeviceState::GetNewPrngSeed() {
 absl::Status LocalDeviceState::AllocateAndRecordEvent(
     BufferSequencingEventRef event, se::Stream* stream) {
   auto status = [&]() {
-    TF_ASSIGN_OR_RETURN(EventPool::Handle device_event,
+    TF_XLA_ASSIGN_OR_RETURN(EventPool::Handle device_event,
                         event_pool().AllocateEvent(stream->parent()));
     event_pool().ThenRecordEvent(stream, device_event);
     event->SetSequencingEvent(std::move(device_event), stream);

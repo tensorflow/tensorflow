@@ -75,7 +75,7 @@ HloInstruction* FindInstruction(const HloModule* module, HloOpcode opcode) {
 absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
     absl::string_view program, xla::PjRtClient& client,
     xla::CompileOptions compile_options = xla::CompileOptions()) {
-  TF_ASSIGN_OR_RETURN(auto hlo_module,
+  TF_XLA_ASSIGN_OR_RETURN(auto hlo_module,
                       ParseAndReturnUnverifiedModule(program, {}));
 
   xla::XlaComputation xla_computation(hlo_module->ToProto());
@@ -226,7 +226,7 @@ ROOT all-reduce = u32[] all-reduce(id), to_apply=apply_op
   if (node_id == 0) {
     xla::CoordinationServiceImpl::Options service_options;
     service_options.num_nodes = num_nodes;
-    TF_ASSIGN_OR_RETURN(service, xla::GetDistributedRuntimeService(
+    TF_XLA_ASSIGN_OR_RETURN(service, xla::GetDistributedRuntimeService(
                                      "[::]:12346", service_options));
   }
 
@@ -243,7 +243,7 @@ ROOT all-reduce = u32[] all-reduce(id), to_apply=apply_op
   client_options.kv_store =
       GetDistributedKeyValueStore(distributed_client, /*key_prefix=*/"gpu:");
   ;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                       GetStreamExecutorGpuClient(client_options));
   xla::CompileOptions options;
   options.executable_build_options.set_num_replicas(num_nodes);
@@ -252,14 +252,14 @@ ROOT all-reduce = u32[] all-reduce(id), to_apply=apply_op
   options.executable_build_options.mutable_debug_options()
       ->set_xla_gpu_enable_nccl_user_buffers(true);
 
-  TF_ASSIGN_OR_RETURN(auto hlo_module,
+  TF_XLA_ASSIGN_OR_RETURN(auto hlo_module,
                       ParseAndReturnUnverifiedModule(kModuleStr, {}));
   xla::XlaComputation xla_computation(hlo_module->ToProto());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
                       client->CompileAndLoad(xla_computation, options));
 
   // Verify that the collective memory space is used.
-  TF_ASSIGN_OR_RETURN(auto modules, executable->GetHloModules());
+  TF_XLA_ASSIGN_OR_RETURN(auto modules, executable->GetHloModules());
   HloInstruction* all_reduce_start =
       FindInstruction(modules[0].get(), HloOpcode::kAllReduceStart);
   EXPECT_THAT(all_reduce_start, NotNull());
@@ -268,12 +268,12 @@ ROOT all-reduce = u32[] all-reduce(id), to_apply=apply_op
   const HloInstruction* input = all_reduce_start->operand(0);
   EXPECT_EQ(input->shape().layout().memory_space(), 1);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
       executable->Execute(/*argument_handles=*/{{}}, /*options=*/{}));
   EXPECT_EQ(results.size(), 1);
   EXPECT_EQ(results[0].size(), 1);
-  TF_ASSIGN_OR_RETURN(auto literal, results[0][0]->ToLiteralSync());
+  TF_XLA_ASSIGN_OR_RETURN(auto literal, results[0][0]->ToLiteralSync());
   if (node_id == 0) {
     LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, *literal);
   } else if (node_id == 1) {

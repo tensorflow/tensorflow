@@ -117,7 +117,7 @@ absl::StatusOr<ThunkProto> SelectKThunk::ToProto() const {
   select_k_proto->set_dtype(dtype_);
 
   for (const BufferAllocation::Slice& arg : args_) {
-    TF_ASSIGN_OR_RETURN(*select_k_proto->add_args(), arg.ToProto());
+    TF_XLA_ASSIGN_OR_RETURN(*select_k_proto->add_args(), arg.ToProto());
   }
   return proto;
 }
@@ -129,7 +129,7 @@ absl::StatusOr<std::unique_ptr<SelectKThunk>> SelectKThunk::FromProto(
   arguments.reserve(proto.args().size());
   for (const xla::buffer_assignment::BufferAllocationSliceProto& arg :
        proto.args()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         BufferAllocation::Slice::FromProto(arg, buffer_allocations));
     emitters::KernelArgument argument{Shape{}, slice};

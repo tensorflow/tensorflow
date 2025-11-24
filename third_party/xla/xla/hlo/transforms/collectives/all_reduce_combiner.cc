@@ -103,7 +103,7 @@ absl::Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   for (int64_t i = 0; i < to_combine.size(); ++i) {
     auto replace_with = HloInstruction::CreateGetTupleElement(
         to_combine[i]->shape(), combined, i);
-    TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
+    TF_XLA_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
         to_combine[i], std::move(replace_with)));
   }
   return absl::OkStatus();
@@ -148,7 +148,7 @@ absl::StatusOr<bool> AllReduceCombiner::RunWithKeyCombiner(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
+    TF_XLA_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&domain_map, &combine_key](const HloInstruction* instruction)
         -> std::optional<AllReduceCombiner::GroupKey> {
@@ -158,7 +158,7 @@ absl::StatusOr<bool> AllReduceCombiner::RunWithKeyCombiner(
       return combine_key(instruction, *domain_map);
     };
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool computation_changed,
         CombineInstructionsByKey<AllReduceCombiner::GroupKey>(
             computation, key_fn, &CombineAllReduces,

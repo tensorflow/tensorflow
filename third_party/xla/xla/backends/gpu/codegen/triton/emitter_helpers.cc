@@ -110,7 +110,7 @@ Value EmitClampedIndex(EmitterLocOpBuilder b, Value value, int64_t lower,
 absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
     EmitterLocOpBuilder b, Value pid, ValueRange runtime_values,
     const TiledHloInstruction& tiled_hlo) {
-  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+  TF_XLA_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
                       tiled_hlo.tile_offsets_indexing());
   const std::vector<IndexingMap::Variable>& rt_vars =
       tile_offsets_indexing.GetRTVars();
@@ -285,23 +285,10 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
   auto src_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(src_element_ty);
   auto dst_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(dst_element_ty);
   if (src_fp_element_ty && dst_fp_element_ty) {
-    // F8 <-> FP16, BF16, FP32, FP64 need to be handled via Triton's tt.fp_to_fp
-    // because LLVM doesn't support casts from/to FP8.
-    // TODO(b/413272992): Add better test coverage for FpToFpOp.
-    if (IsFp8Type(src_element_ty) && !IsFp8Type(dst_element_ty)) {
-      return b.create<mt::FpToFpOp>(dst_ty, value);
-    }
-    if (IsFp8Type(dst_element_ty) && !IsFp8Type(src_element_ty)) {
-      return b.create<mt::FpToFpOp>(
-          dst_ty, value,
-          mt::RoundingModeAttr::get(b.getContext(), mt::RoundingMode::RTNE));
-    }
     if (IsFp8Type(src_element_ty) && IsFp8Type(dst_element_ty)) {
       // FP8 <-> FP8 conversion needs to go through FP16
-      auto fp16_value = b.create<mt::FpToFpOp>(fp16_ty, value);
-      return b.create<mt::FpToFpOp>(
-          dst_ty, fp16_value,
-          mt::RoundingModeAttr::get(b.getContext(), mt::RoundingMode::RTNE));
+      auto fp16_value = b.create<ma::ExtFOp>(fp16_ty, value);
+      return b.create<ma::TruncFOp>(dst_ty, fp16_value);
     }
 
     if (src_fp_element_ty.getFPMantissaWidth() >
@@ -479,7 +466,7 @@ absl::StatusOr<Value> EmitElementwiseLibdeviceFunction(
       /*pure=*/true);
   if (output_type == PrimitiveType::BF16 || output_type == PrimitiveType::F16) {
     // Downcast back to the original output type.
-    TF_ASSIGN_OR_RETURN(auto dst_ty, TritonType(b, output_type));
+    TF_XLA_ASSIGN_OR_RETURN(auto dst_ty, TritonType(b, output_type));
     res = Cast(b, res, dst_ty);
   }
   return res;
@@ -510,7 +497,7 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
       // NegFOp is not supported by Triton.
       return Subtract(b, {ZerosLike(b, inputs[0]), inputs[0]});
     case HloOpcode::kConvert: {
-      TF_ASSIGN_OR_RETURN(Type dst_ty,
+      TF_XLA_ASSIGN_OR_RETURN(Type dst_ty,
                           TritonType(b, hlo.shape().element_type()));
       return Cast(b, inputs[0], dst_ty);
     }
@@ -615,7 +602,7 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
 
 absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
     EmitterLocOpBuilder& b, const HloInstruction& constant) {
-  TF_ASSIGN_OR_RETURN(Type ty, TritonType(b, constant.shape().element_type()));
+  TF_XLA_ASSIGN_OR_RETURN(Type ty, TritonType(b, constant.shape().element_type()));
   llvm::SmallVector<int64_t> shape{constant.shape().dimensions().begin(),
                                    constant.shape().dimensions().end()};
 
@@ -713,7 +700,7 @@ absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
     if (auto attr =
             func_op.getArgAttrOfType<mlir::triton::xla::TmaDescriptorAttr>(
                 idx, "tt.tma_descriptor")) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           auto tma_desc,
           CreateTmaDescriptor(attr.getGlobalShape(), attr.getTileShape(),
                               attr.getTileStrides(), attr.getLayout(),
@@ -732,7 +719,7 @@ mt::PointerType GetGlobalPointerType(mlir::Type element_type) {
 /*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
     EmitterLocOpBuilder b, Value pid, ValueRange runtime_values,
     const TiledHloInstruction& tiled_hlo) {
-  TF_ASSIGN_OR_RETURN(SmallVector<Value> offsets,
+  TF_XLA_ASSIGN_OR_RETURN(SmallVector<Value> offsets,
                       ComputeOffsetsForTile(b, pid, runtime_values, tiled_hlo));
 
   // Triton requires that all block dimensions are a power of 2.
@@ -742,7 +729,7 @@ mt::PointerType GetGlobalPointerType(mlir::Type element_type) {
                         tiled_hlo.hlo()->shape().dimensions().end());
 
   const Shape& shape = tiled_hlo.hlo()->shape();
-  TF_ASSIGN_OR_RETURN(Type expected_element_type,
+  TF_XLA_ASSIGN_OR_RETURN(Type expected_element_type,
                       TritonType(b, shape.element_type()));
   auto storage_type = StorageType(expected_element_type);
 
@@ -788,14 +775,14 @@ absl::StatusOr<TensorValue> EmitScope(
           "Broadcast is not yet supported in EmitScope().");
     }
     if (hlo->opcode() == HloOpcode::kConstant) {
-      TF_ASSIGN_OR_RETURN(result, EmitConstant(b, *hlo));
+      TF_XLA_ASSIGN_OR_RETURN(result, EmitConstant(b, *hlo));
     } else if (HloInstruction::IsOpElementwise(hlo->opcode())) {
       std::vector<Value> operands;
       operands.reserve(hlo->operands().size());
       for (const HloInstruction* operand : hlo->operands()) {
         operands.push_back(values[operand]);
       }
-      TF_ASSIGN_OR_RETURN(Value elementwise_result,
+      TF_XLA_ASSIGN_OR_RETURN(Value elementwise_result,
                           EmitElementwise(b, *hlo, operands));
       result = mlir::cast<TensorValue>(elementwise_result);
     } else if (hlo->opcode() == HloOpcode::kTuple) {
@@ -811,7 +798,7 @@ absl::StatusOr<TensorValue> EmitScope(
       result = values[hlo->operand(0)];
     } else if (hlo->opcode() == HloOpcode::kFusion) {
       const auto* fusion_instruction = ::xla::Cast<HloFusionInstruction>(hlo);
-      TF_ASSIGN_OR_RETURN(result,
+      TF_XLA_ASSIGN_OR_RETURN(result,
                           EmitNestedFusion(b, *fusion_instruction, values));
     } else {
       return absl::InvalidArgumentError(

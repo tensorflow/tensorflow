@@ -150,7 +150,7 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
       std::move(bound_executable_map)));
 
   if (!ifrt_to_dot_pass_options.dot_graph_dump_to.empty()) {
-    TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(
+    TF_XLA_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(
         ifrt_to_dot_pass_options.dot_graph_dump_to));
     pm.addPass(createIfrtToDotPass(std::move(ifrt_to_dot_pass_options),
                                    std::move(atom_executable_map_copy)));

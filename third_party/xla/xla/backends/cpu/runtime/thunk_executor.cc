@@ -193,7 +193,7 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
 absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
     ThunkSequence thunk_sequence, const ThunkExecutor::Options& options) {
   // Construct an execution graph for the given thunk sequence.
-  TF_ASSIGN_OR_RETURN(ExecutionGraph execution_graph,
+  TF_XLA_ASSIGN_OR_RETURN(ExecutionGraph execution_graph,
                       ExecutionGraph::Create<ThunkOperation>(
                           CreateThunkOperations(thunk_sequence)));
 

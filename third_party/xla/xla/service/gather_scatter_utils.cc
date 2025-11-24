@@ -99,20 +99,20 @@ absl::StatusOr<HloInstruction*> TransformStartIndices(
   if (index_vector_dim == rank) {
     // Add a size 1 dimension to the indices if the index_vector_dim is
     // implicit.
-    TF_ASSIGN_OR_RETURN(indices,
+    TF_XLA_ASSIGN_OR_RETURN(indices,
                         InsertDegenerateDims(indices, {index_vector_dim}));
     ++rank;
   } else if (index_vector_dim < rank - 1) {
     // Ensure index_vector_dim is the last dimension in scatter_indices.
-    TF_ASSIGN_OR_RETURN(indices,
+    TF_XLA_ASSIGN_OR_RETURN(indices,
                         MoveDimensionToEnd(indices, index_vector_dim, rank));
   }
 
   // Flatten indices, making it two-dimensional.
   if (rank > 2) {
-    TF_ASSIGN_OR_RETURN(indices, CollapseFirstNDims(indices, rank - 1));
+    TF_XLA_ASSIGN_OR_RETURN(indices, CollapseFirstNDims(indices, rank - 1));
   } else if (rank == 1) {
-    TF_ASSIGN_OR_RETURN(indices, InsertDegenerateDims(indices, {0}));
+    TF_XLA_ASSIGN_OR_RETURN(indices, InsertDegenerateDims(indices, {0}));
   }
   return indices;
 }
@@ -136,7 +136,7 @@ absl::StatusOr<HloInstruction*> MaybeTranspose(
   if (IsIdentityPermutation(permutation)) {
     return operand;
   }
-  TF_ASSIGN_OR_RETURN(auto* result, MakeTransposeHlo(operand, permutation));
+  TF_XLA_ASSIGN_OR_RETURN(auto* result, MakeTransposeHlo(operand, permutation));
   // Assign the default layout to the transpose. This method is also used after
   // layout normalization, and before, we don't care about the layout.
   *result->mutable_shape()->mutable_layout() =
@@ -158,7 +158,7 @@ absl::StatusOr<std::vector<HloInstruction*>> MaybeTranspose(
   std::vector<HloInstruction*> result;
   result.reserve(operands.size());
   for (auto* operand : operands) {
-    TF_ASSIGN_OR_RETURN(result.emplace_back(),
+    TF_XLA_ASSIGN_OR_RETURN(result.emplace_back(),
                         MaybeTranspose(operand, operand_permutation));
   }
   return result;
@@ -213,7 +213,7 @@ absl::StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
   for (int i = 0; i < operand_rank; i++) {
     int64_t index_vector_dim_index = FindIndex(start_index_map, i);
     if (index_vector_dim_index != start_index_map.size()) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           HloInstruction * component_to_concat,
           MakeSliceHlo(index_vector, /*start_indices=*/{index_vector_dim_index},
                        /*limit_indices=*/{index_vector_dim_index + 1},

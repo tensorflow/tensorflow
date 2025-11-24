@@ -54,7 +54,7 @@ absl::StatusOr<DeviceMemory<uint8_t>> BufferDebugLogBase::CreateOnDevice(
       /*write_idx=*/0,
       /*capacity=*/max_entries,
   };
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       stream.Memcpy(&memory, &empty_header, sizeof(empty_header)));
   return memory;
 }
@@ -62,8 +62,8 @@ absl::StatusOr<DeviceMemory<uint8_t>> BufferDebugLogBase::CreateOnDevice(
 absl::StatusOr<BufferDebugLogHeader> BufferDebugLogBase::ReadHeaderFromDevice(
     Stream& stream, DeviceMemory<uint8_t> memory) const {
   BufferDebugLogHeader header;
-  TF_RETURN_IF_ERROR(stream.Memcpy(&header, memory, sizeof(header)));
-  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+  TF_XLA_RETURN_IF_ERROR(stream.Memcpy(&header, memory, sizeof(header)));
+  TF_XLA_RETURN_IF_ERROR(stream.BlockHostUntilDone());
   return header;
 }
 
@@ -71,8 +71,8 @@ absl::StatusOr<size_t> BufferDebugLogBase::ReadFromDevice(
     Stream& stream, DeviceMemory<uint8_t> memory, size_t entry_size,
     void* entries_data) const {
   std::vector<uint8_t> buffer(memory.size());
-  TF_RETURN_IF_ERROR(stream.Memcpy(buffer.data(), memory, memory.size()));
-  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+  TF_XLA_RETURN_IF_ERROR(stream.Memcpy(buffer.data(), memory, memory.size()));
+  TF_XLA_RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
   BufferDebugLogHeader header;
   memcpy(&header, buffer.data(), sizeof(header));

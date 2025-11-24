@@ -62,7 +62,7 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_Start(PLUGIN_Profiler_Start_Args* args) {
     return nullptr;
   }
   args->profiler->byte_size = 0;
-  PLUGIN_PROFILER_RETURN_IF_ERROR(args->profiler->impl->Start());
+  PLUGIN_PROFILER_XLA_RETURN_IF_ERROR(args->profiler->impl->Start());
   args->profiler->stopped = false;
   return nullptr;
 }
@@ -73,7 +73,7 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_Stop(PLUGIN_Profiler_Stop_Args* args) {
     VLOG(1) << "Profiler is already stopped";
     return nullptr;
   }
-  PLUGIN_PROFILER_RETURN_IF_ERROR(args->profiler->impl->Stop());
+  PLUGIN_PROFILER_XLA_RETURN_IF_ERROR(args->profiler->impl->Stop());
   args->profiler->stopped = false;
   return nullptr;
 }
@@ -84,7 +84,7 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_CollectData(
   tensorflow::profiler::XSpace space;
   if (!args->profiler->space) {
     VLOG(1) << "TpuProfiler CollectData";
-    PLUGIN_PROFILER_RETURN_IF_ERROR(args->profiler->impl->CollectData(&space));
+    PLUGIN_PROFILER_XLA_RETURN_IF_ERROR(args->profiler->impl->CollectData(&space));
     args->profiler->byte_size = space.ByteSizeLong();
     VLOG(2) << "TpuProfiler CollectData: Number of XPlanes: "
             << space.planes_size();

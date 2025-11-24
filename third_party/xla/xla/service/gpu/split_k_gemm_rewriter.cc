@@ -172,10 +172,10 @@ absl::StatusOr<HloInstruction*> MakeSplitKOperand(
   // up for the scope parameters. We just check some basics here, and we check
   // the full analysis after the split-k transform at the end of
   // MakeDotComputationSplitKBatch.
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       check_if_supported(*operand, /*check_divisibility=*/!need_padding));
   for (const HloInstruction* param : analysis.ScopeParameters(scope)) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         check_if_supported(*param, /*check_divisibility=*/!need_padding));
   }
 
@@ -191,7 +191,7 @@ absl::StatusOr<HloInstruction*> MakeSplitKOperand(
     padding_config.mutable_dimensions(contracting_dim_idx)
         ->set_edge_padding_high(padding);
 
-    TF_ASSIGN_OR_RETURN(HloInstruction * pad,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * pad,
                         MakePadHlo(operand, zero, padding_config));
     *pad->mutable_shape()->mutable_layout() = operand->shape().layout();
     operand = pad;
@@ -242,12 +242,12 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
     CHECK(dot != nullptr);
   }
 
-  TF_ASSIGN_OR_RETURN(const auto analysis,
+  TF_XLA_ASSIGN_OR_RETURN(const auto analysis,
                       TritonFusionAnalysis::Execute(*computation));
   const DotDimensionNumbers& old_dim_numbers = dot->dot_dimension_numbers();
   DotDimensionNumbers new_dim_numbers;
 
-  TF_ASSIGN_OR_RETURN(const int64_t lhs_contracting_idx,
+  TF_XLA_ASSIGN_OR_RETURN(const int64_t lhs_contracting_idx,
                       ContractingDimensionIndex(*dot, 0));
   CopyIncrementingAboveThreshold(
       old_dim_numbers.lhs_contracting_dimensions(),
@@ -258,7 +258,7 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
       old_dim_numbers.lhs_batch_dimensions(),
       *new_dim_numbers.mutable_lhs_batch_dimensions(), lhs_contracting_idx);
 
-  TF_ASSIGN_OR_RETURN(const int64_t rhs_contracting_idx,
+  TF_XLA_ASSIGN_OR_RETURN(const int64_t rhs_contracting_idx,
                       ContractingDimensionIndex(*dot, 1));
   CopyIncrementingAboveThreshold(
       old_dim_numbers.rhs_contracting_dimensions(),
@@ -308,17 +308,17 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
     if (current == dot) {
       if (dot_cast != nullptr) {
         // Dot operation.
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             HloInstruction * lhs,
             MakeSplitKOperand(*dot, analysis, config, lhs_contracting_idx,
                               TritonFusionAnalysis::Scope::LHS, 0));
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             HloInstruction * rhs,
             MakeSplitKOperand(*dot, analysis, config, rhs_contracting_idx,
                               TritonFusionAnalysis::Scope::RHS, 1));
         did_pad = is_padded(lhs) || is_padded(rhs);
         // Keep the precision of the accumulator type for the dot output.
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             expanded, MakeDotHlo(lhs, rhs, new_dim_numbers,
                                  dot->precision_config(), accumulator_dtype));
       } else {
@@ -330,7 +330,7 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
             [&](TritonFusionAnalysis::Scope scope, int contracting_idx,
                 int operand_idx,
                 int64_t block_size) -> absl::StatusOr<HloInstruction*> {
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               HloInstruction * scale,
               MakeSplitKOperand(*dot, analysis, config, contracting_idx, scope,
                                 operand_idx));
@@ -340,7 +340,7 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
         };
         HloInstruction* lhs_scale = dot->mutable_operand(2);
         if (analysis.lhs_scale_block_size().has_value()) {
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               lhs_scale,
               assign_scale_operand(TritonFusionAnalysis::Scope::LHS_SCALE,
                                    lhs_contracting_idx, 2,
@@ -353,13 +353,13 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
             if (*padded_k_size % (rhs_block_size * config.split_k) != 0) {
               return UncompilableMatmul("Unable to split-K block scaled dot.");
             }
-            TF_ASSIGN_OR_RETURN(
+            TF_XLA_ASSIGN_OR_RETURN(
                 rhs_scale,
                 MakeSplitKOperand(*dot, analysis, config, rhs_contracting_idx,
                                   TritonFusionAnalysis::Scope::RHS_SCALE, 3,
                                   *padded_k_size / rhs_block_size));
           } else {
-            TF_ASSIGN_OR_RETURN(
+            TF_XLA_ASSIGN_OR_RETURN(
                 rhs_scale,
                 assign_scale_operand(TritonFusionAnalysis::Scope::RHS_SCALE,
                                      rhs_contracting_idx, 3,
@@ -368,17 +368,17 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
         }
         did_pad = is_padded(lhs_scale) || is_padded(rhs_scale);
         // Make LHS/RHS input operands with fixed contracting dimension size.
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             HloInstruction * lhs,
             MakeSplitKOperand(*dot, analysis, config, lhs_contracting_idx,
                               TritonFusionAnalysis::Scope::LHS, 0,
                               padded_k_size));
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             HloInstruction * rhs,
             MakeSplitKOperand(*dot, analysis, config, rhs_contracting_idx,
                               TritonFusionAnalysis::Scope::RHS, 1,
                               padded_k_size));
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             expanded,
             MakeScaledDotHlo(lhs, rhs, lhs_scale, rhs_scale, new_dim_numbers,
                              dot->precision_config(), accumulator_dtype));
@@ -412,8 +412,8 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
         }
       }
     }
-    TF_RETURN_IF_ERROR(current->ReplaceAllUsesWithDifferentShape(expanded));
-    TF_RETURN_IF_ERROR(computation->RemoveInstruction(current));
+    TF_XLA_RETURN_IF_ERROR(current->ReplaceAllUsesWithDifferentShape(expanded));
+    TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(current));
     // Broadcast operands.
     if (current == dot) {
       continue;
@@ -427,7 +427,7 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
         std::vector<int64_t> broadcast_dimensions(
             operand->shape().dimensions().size());
         absl::c_iota(broadcast_dimensions, 1);
-        TF_RETURN_IF_ERROR(expanded->ReplaceOperandWithDifferentShape(
+        TF_XLA_RETURN_IF_ERROR(expanded->ReplaceOperandWithDifferentShape(
             i,
             MakeBroadcastHlo(convert, broadcast_dimensions,
                              ShapeUtil::PrependMajorDimension(
@@ -443,7 +443,7 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
     // We can fail gracefully here, but not in IrEmitterTriton.
     // For the case without padding, we already checked this in
     // MakeSplitKOperand with the divisibility check.
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         TritonFusionAnalysis::Execute(*computation, config.split_k).status());
   }
 
@@ -464,7 +464,7 @@ absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
   auto status = MakeDotComputationSplitKBatch(
       dot_fusion->fused_instructions_computation(), config);
   if (!status.ok()) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         HloDCE()
             .RunOnComputation(dot_fusion->fused_instructions_computation())
             .status());
@@ -478,7 +478,7 @@ absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
           LiteralUtil::Zero(root->shape().element_type())));
   auto initial_dot_fusion_users = dot_fusion->users();
   // The batch dimension to reduce is the first one by construction.
-  TF_ASSIGN_OR_RETURN(HloInstruction * reduce,
+  TF_XLA_ASSIGN_OR_RETURN(HloInstruction * reduce,
                       MakeReduceHlo(dot_fusion, zero, /*dimensions=*/{0},
                                     HloOpcode::kAdd, &dot_fusion->metadata()));
 
@@ -492,7 +492,7 @@ absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
                                                /*accept_different_shape=*/true);
   } else {
     // Replace all users expect for convert created above to avoid cycles.
-    TF_RETURN_IF_ERROR(dot_fusion->ReplaceAllUsesWithDifferentShape(
+    TF_XLA_RETURN_IF_ERROR(dot_fusion->ReplaceAllUsesWithDifferentShape(
         initial_dot_fusion_users, convert));
   }
 

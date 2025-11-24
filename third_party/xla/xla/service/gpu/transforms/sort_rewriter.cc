@@ -482,8 +482,8 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   int64_t batch_size = Product(operand_shape.dimensions()) /
                        operand_shape.dimensions(sort_op->sort_dimension());
 
-  TF_ASSIGN_OR_RETURN(auto runner, CreateRunner(sort_analysis, platform_name_));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(auto runner, CreateRunner(sort_analysis, platform_name_));
+  TF_XLA_ASSIGN_OR_RETURN(
       int64_t scratch_size,
       runner->GetScratchSize(Product(operand_shape.dimensions()), batch_size));
 
@@ -530,7 +530,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
 
   xla::SortOptions backend_config;
   backend_config.set_descending(sort_analysis.descending);
-  TF_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
+  TF_XLA_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
 
   // Build the replacement instruction.
   HloInstruction* replacement;
@@ -548,7 +548,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   }
 
   // Replace sort operation with custom call followed by GTE.
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       sort_op->parent()->ReplaceInstruction(sort_op, replacement));
   return true;
 }
@@ -566,7 +566,7 @@ absl::StatusOr<bool> SortRewriter::RunOnComputation(
   }
   bool changed = false;
   for (auto* sort : sort_ops) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(sort));
+    TF_XLA_ASSIGN_OR_RETURN(bool result, RunOnInstruction(sort));
     changed |= result;
   }
   return changed;
@@ -580,7 +580,7 @@ absl::StatusOr<bool> SortRewriter::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    TF_XLA_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
   XLA_VLOG_LINES(3, "SortRewriter::RunImpl(), after:\n" + module->ToString());

@@ -78,7 +78,7 @@ absl::StatusOr<const HloFusionInstruction*> AsTritonFusion(
     return nullptr;
   }
   const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(hlo);
-  TF_ASSIGN_OR_RETURN(auto gpu_config,
+  TF_XLA_ASSIGN_OR_RETURN(auto gpu_config,
                       fusion->backend_config<GpuBackendConfig>());
   const FusionBackendConfig& backend_config =
       gpu_config.fusion_backend_config();
@@ -106,7 +106,7 @@ absl::Status InlineModuleFusions(HloModule* hlo_module) {
   // Other emitters might not support them, thus we need to inline all fusions.
   while (true) {
     FusionToCallVisitor visitor;
-    TF_RETURN_IF_ERROR(hlo_module->entry_computation()->Accept(&visitor));
+    TF_XLA_RETURN_IF_ERROR(hlo_module->entry_computation()->Accept(&visitor));
     if (!visitor.changed()) {
       return absl::OkStatus();
     }
@@ -114,7 +114,7 @@ absl::Status InlineModuleFusions(HloModule* hlo_module) {
     pipeline.AddPass<CallInliner>();
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+    TF_XLA_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
     VLOG(2) << "After inline call: " << hlo_module->ToString();
   }
   return absl::OkStatus();
@@ -130,18 +130,18 @@ absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleFromFusionComputation(
   std::unique_ptr<HloModule> new_module =
       ExtractComputationIntoNewModule(*fusion.fused_instructions_computation());
   new_module->mutable_config().set_debug_options(debug_opts);
-  TF_RETURN_IF_ERROR(InlineModuleFusions(new_module.get()));
+  TF_XLA_RETURN_IF_ERROR(InlineModuleFusions(new_module.get()));
   TreeReductionRewriter tree_reduction_rewriter(gpu_device_info);
-  TF_RETURN_IF_ERROR(tree_reduction_rewriter.Run(new_module.get()).status());
-  TF_RETURN_IF_ERROR(DotAlgorithmRewriter().Run(new_module.get()).status());
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(tree_reduction_rewriter.Run(new_module.get()).status());
+  TF_XLA_RETURN_IF_ERROR(DotAlgorithmRewriter().Run(new_module.get()).status());
+  TF_XLA_RETURN_IF_ERROR(
       GemmRewriter(gpu_device_info.gpu_compute_capability(),
                    gpu_device_info.runtime_version(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only,
                                        GemmRewriterOptions::BiasMode::kBias})
           .Run(new_module.get())
           .status());
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       GemmRewriter(gpu_device_info.gpu_compute_capability(),
                    gpu_device_info.runtime_version(),
                    GemmRewriterOptions{GemmRewriterOptions::DType::kNonFp8Only,
@@ -151,12 +151,12 @@ absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleFromFusionComputation(
   PriorityFusion fusion_pass(
       /*thread_pool=*/nullptr, gpu_device_info, HloCostAnalysis::Options{},
       mlir_context);
-  TF_RETURN_IF_ERROR(fusion_pass.Run(new_module.get()).status());
+  TF_XLA_RETURN_IF_ERROR(fusion_pass.Run(new_module.get()).status());
 
   // If the priority fusion pass above skipped some instructions, turn them
   // into fusions.
   FusionWrapper fusion_wrapper(gpu_device_info);
-  TF_RETURN_IF_ERROR(fusion_wrapper.Run(new_module.get()).status());
+  TF_XLA_RETURN_IF_ERROR(fusion_wrapper.Run(new_module.get()).status());
 
   return new_module;
 }
@@ -177,7 +177,7 @@ absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
     AutotunerCompileUtil& util, const HloFusionInstruction& fusion,
     const DeviceOrDevicelessConfig& config, const DebugOptions& debug_opts,
     bool disable_triton, MLIRContext* mlir_context) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       util.Compile([&](const DebugOptions& opts) {
         return disable_triton ? NewHloModuleFromFusionComputation(
@@ -194,13 +194,13 @@ absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
   bool should_init_buffers = true;
   bool should_check_correctness = true;
   int redzone_padding_bytes = debug_opts.xla_gpu_redzone_padding_bytes();
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, config.GetStream());
-  TF_ASSIGN_OR_RETURN(auto rz_buffers,
+  TF_XLA_ASSIGN_OR_RETURN(se::Stream * stream, config.GetStream());
+  TF_XLA_ASSIGN_OR_RETURN(auto rz_buffers,
                       RedzoneBuffers::FromInstruction(
                           fusion, config.GetAllocator(), stream,
                           RedzoneBuffers::kAllInputs, should_init_buffers,
                           should_check_correctness, redzone_padding_bytes));
-  TF_ASSIGN_OR_RETURN(ProfilingOutput profiling_output,
+  TF_XLA_ASSIGN_OR_RETURN(ProfilingOutput profiling_output,
                       util.ProfileExecutable(executable.get(), stream,
                                              rz_buffers.input_buffers(),
                                              rz_buffers.input_shapes()));
@@ -217,7 +217,7 @@ absl::Status CompareBuffers(const ScopedShapedBuffer& current,
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         BufferComparator comparator(subshape,
                                     debug_opts.xla_gpu_autotune_gemm_rtol());
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             bool outputs_match,
             comparator.CompareEqual(stream, current.buffer(index),
                                     expected.buffer(index)));
@@ -237,10 +237,10 @@ absl::Status ForAllTritonFusions(
   for (HloComputation* computation :
        module.MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
-      TF_ASSIGN_OR_RETURN(auto triton_fusion, AsTritonFusion(instruction));
+      TF_XLA_ASSIGN_OR_RETURN(auto triton_fusion, AsTritonFusion(instruction));
       if (triton_fusion != nullptr) {
         VLOG(2) << "processing fusion " << triton_fusion->name();
-        TF_RETURN_IF_ERROR(fn(*triton_fusion));
+        TF_XLA_RETURN_IF_ERROR(fn(*triton_fusion));
       }
     }
   }
@@ -255,16 +255,16 @@ absl::Status VerifyTritonFusion(AutotunerCompileUtil& util,
                                 const DeviceOrDevicelessConfig& config,
                                 const DebugOptions& debug_opts,
                                 MLIRContext* mlir_context) {
-  TF_ASSIGN_OR_RETURN(auto triton_result,
+  TF_XLA_ASSIGN_OR_RETURN(auto triton_result,
                       triton_fusion_numerics_pass_internal::CompileAndRunFusion(
                           util, fusion, config, debug_opts,
                           /*disable_triton=*/false, mlir_context));
-  TF_ASSIGN_OR_RETURN(auto emitters_result,
+  TF_XLA_ASSIGN_OR_RETURN(auto emitters_result,
                       triton_fusion_numerics_pass_internal::CompileAndRunFusion(
                           util, fusion, config, debug_opts,
                           /*disable_triton=*/true, mlir_context));
 
-  TF_ASSIGN_OR_RETURN(auto stream, config.GetStream());
+  TF_XLA_ASSIGN_OR_RETURN(auto stream, config.GetStream());
   auto status = triton_fusion_numerics_pass_internal::CompareBuffers(
       triton_result, emitters_result, fusion.shape(), debug_opts, stream);
   VLOG(2) << "CompareBuffers result: " << status;
@@ -313,10 +313,10 @@ absl::StatusOr<bool> TritonFusionNumericsVerifier::RunImpl(
   debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
       false);
 
-  TF_ASSIGN_OR_RETURN(AutotunerCompileUtil compile_util,
+  TF_XLA_ASSIGN_OR_RETURN(AutotunerCompileUtil compile_util,
                       AutotunerCompileUtil::Create(config_, debug_options));
 
-  TF_RETURN_IF_ERROR(triton_fusion_numerics_pass_internal::ForAllTritonFusions(
+  TF_XLA_RETURN_IF_ERROR(triton_fusion_numerics_pass_internal::ForAllTritonFusions(
       *module, execution_threads, [&](const HloFusionInstruction& fusion) {
         auto key = CacheKeyForFusion(fusion);
         if (auto it = fusion_result_cache_.find(key);

@@ -56,7 +56,7 @@ class AllGatherPadDsSimplifierTest : public HloHardwareIndependentTestBase {
         /*replica_count=*/num_replicas,
         /*num_partitions=*/num_partitions);
     config.set_use_spmd_partitioning(num_partitions > 1);
-    TF_ASSIGN_OR_RETURN(auto module,
+    TF_XLA_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
     auto changed = AllGatherPadDsSimplifier().Run(module.get(), {});
     if (!changed.ok()) {

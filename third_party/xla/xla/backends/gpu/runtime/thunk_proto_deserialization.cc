@@ -89,7 +89,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     HostSendRecvAsyncEventsMap& host_send_recv_async_events_map,
     const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver) {
-  TF_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
+  TF_XLA_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
                       Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
   auto deserializer = [&](const ThunkProto& thunk_proto) {
     return DeserializeThunkProtoImpl(

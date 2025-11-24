@@ -66,9 +66,9 @@ namespace triton_fusion {
   // There can be either none or one split-K batch dimension.
   const int num_split_k_batch_dims = split_k > 1;
   int split_k_dimension_index = kNoDimensionIndex;
-  TF_ASSIGN_OR_RETURN(int contracting_dimension_index,
+  TF_XLA_ASSIGN_OR_RETURN(int contracting_dimension_index,
                       ContractingDimensionIndex(dot, operand_number));
-  TF_ASSIGN_OR_RETURN(int non_contracting_dimension_index,
+  TF_XLA_ASSIGN_OR_RETURN(int non_contracting_dimension_index,
                       NonContractingDimensionIndex(dot, operand_number));
   if (split_k > 1) {
     split_k_dimension_index = contracting_dimension_index - 1;
@@ -196,7 +196,7 @@ absl::StatusOr<std::optional<int64_t>> GetBlockSize(
   const Shape& scale = dot.operand(operand_number + 2)->shape();
 
   if (!ShapeUtil::IsScalar(scale)) {
-    TF_ASSIGN_OR_RETURN(int dim_idx,
+    TF_XLA_ASSIGN_OR_RETURN(int dim_idx,
                         ContractingDimensionIndex(dot, operand_number));
     return input.dimensions(dim_idx) / scale.dimensions(dim_idx);
   }
@@ -235,14 +235,14 @@ absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
                                                    HloOpcode::kScaledDot);
   }
   TF_RET_CHECK(dot != nullptr);
-  TF_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(*dot, split_k));
+  TF_XLA_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(*dot, split_k));
   return analysis;
 }
 
 absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
     const HloInstruction& dot, int split_k) {
   TritonFusionAnalysis analysis;
-  TF_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(dot, split_k));
+  TF_XLA_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(dot, split_k));
   return analysis;
 }
 
@@ -275,9 +275,9 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
     const HloInstruction& dot, const int split_k) {
   is_scaled_dot_ = dot.opcode() == HloOpcode::kScaledDot;
   if (is_scaled_dot_) {
-    TF_ASSIGN_OR_RETURN(lhs_scale_block_size_,
+    TF_XLA_ASSIGN_OR_RETURN(lhs_scale_block_size_,
                         triton_fusion::GetBlockSize(dot, Scope::LHS));
-    TF_ASSIGN_OR_RETURN(rhs_scale_block_size_,
+    TF_XLA_ASSIGN_OR_RETURN(rhs_scale_block_size_,
                         triton_fusion::GetBlockSize(dot, Scope::RHS));
   }
 
@@ -297,9 +297,9 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
         continue;
       }
     }
-    TF_ASSIGN_OR_RETURN(auto context, FusionContext::FromDotOperand(
+    TF_XLA_ASSIGN_OR_RETURN(auto context, FusionContext::FromDotOperand(
                                           dot, operand_number, split_k));
-    TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
+    TF_XLA_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
         *dot.operand(operand_number), parameters_[scope], iter_specs_[scope]));
     if (scope == Scope::LHS) {
       lhs_requirements = context.requirements();
@@ -350,7 +350,7 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
   parameters_[Scope::OUTPUT] = {};
   if (output != &dot) {
     // Propagate back to parameters of the output fusion.
-    TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
+    TF_XLA_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
         *output, parameters_[Scope::OUTPUT], iter_specs_[Scope::OUTPUT]));
   }
   return absl::OkStatus();

@@ -82,7 +82,7 @@ using se::dnn::MatmulTensorDescriptor;
 using se::dnn::TensorDescriptor;
 
 absl::StatusOr<TensorDescriptor> TensorDescriptorFor(const Shape &shape) {
-  TF_ASSIGN_OR_RETURN(const DataType type,
+  TF_XLA_ASSIGN_OR_RETURN(const DataType type,
                       GetDNNDataTypeFromPrimitiveType(shape.element_type()));
   return TensorDescriptor::For(type, shape.dimensions(),
                                shape.layout().minor_to_major());
@@ -92,7 +92,7 @@ enum Side { LHS, RHS };
 
 absl::StatusOr<MatmulTensorDescriptor> MatmulTensorDescriptorFor(
     const Shape &shape, const DotDimensionNumbers &dnums, const Side side) {
-  TF_ASSIGN_OR_RETURN(const DataType type,
+  TF_XLA_ASSIGN_OR_RETURN(const DataType type,
                       GetDNNDataTypeFromPrimitiveType(shape.element_type()));
   return MatmulTensorDescriptor::For(
       type, shape.dimensions(), shape.layout().minor_to_major(),
@@ -104,27 +104,27 @@ absl::StatusOr<MatmulTensorDescriptor> MatmulTensorDescriptorFor(
 
 absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
     se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
-  TF_ASSIGN_OR_RETURN(const xla::gpu::CudnnfMHAKind kind,
+  TF_XLA_ASSIGN_OR_RETURN(const xla::gpu::CudnnfMHAKind kind,
                       xla::gpu::GetCudnnfMHAKind(custom_call));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const auto gpu_config,
       custom_call->backend_config<xla::gpu::GpuBackendConfig>());
   const xla::gpu::CudnnfMHABackendConfig &config =
       gpu_config.cudnn_fmha_backend_config();
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor q,
       MatmulTensorDescriptorFor(custom_call->operand(0)->shape(),
                                 config.bmm1_dot_dimension_numbers(), LHS));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor k,
       MatmulTensorDescriptorFor(custom_call->operand(1)->shape(),
                                 config.bmm1_dot_dimension_numbers(), RHS));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor v,
       MatmulTensorDescriptorFor(custom_call->operand(2)->shape(),
                                 config.bmm2_dot_dimension_numbers(), RHS));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       TensorDescriptor output,
       TensorDescriptorFor(ShapeUtil::GetSubshape(custom_call->shape(), {0})));
 
@@ -132,7 +132,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
   const bool has_activation =
       xla::ShapeUtil::TupleElementCount(custom_call->shape()) == 3;
   if (has_activation) {
-    TF_ASSIGN_OR_RETURN(activation, TensorDescriptorFor(ShapeUtil::GetSubshape(
+    TF_XLA_ASSIGN_OR_RETURN(activation, TensorDescriptorFor(ShapeUtil::GetSubshape(
                                         custom_call->shape(), {1})));
   }
 
@@ -141,15 +141,15 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
   if (kind == CudnnfMHAKind::kScaleBiasSoftmax ||
       kind == CudnnfMHAKind::kScaleBiasSoftmaxDropout) {
     const HloInstruction &bias_hlo = *custom_call->operand(3);
-    TF_ASSIGN_OR_RETURN(bias, TensorDescriptorFor(bias_hlo.shape()));
+    TF_XLA_ASSIGN_OR_RETURN(bias, TensorDescriptorFor(bias_hlo.shape()));
     input_index++;
   }
 
   const double dropout_rate = config.dropout_rate();
 
-  TF_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
+  TF_XLA_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));
-  TF_ASSIGN_OR_RETURN(se::dnn::FMHAMaskKind dnn_mask_type,
+  TF_XLA_ASSIGN_OR_RETURN(se::dnn::FMHAMaskKind dnn_mask_type,
                       GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(cudnn_mask_type));
 
   const int sliding_window_length = config.sliding_window_length();
@@ -171,10 +171,10 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
   std::optional<se::dnn::TensorDescriptor> page_table_k;
   std::optional<se::dnn::TensorDescriptor> page_table_v;
   if (is_paged_attention) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         page_table_k,
         TensorDescriptorFor(custom_call->operand(input_index++)->shape()));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         page_table_v,
         TensorDescriptorFor(custom_call->operand(input_index++)->shape()));
   }
@@ -191,7 +191,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
   }
   auto score_mod_ptr = score_mod.has_value() ? &score_mod.value() : nullptr;
   TF_RET_CHECK(input_index == custom_call->operand_count());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::gpu::CudnnGraph graph,
       se::gpu::GetCudnnFlashAttentionOperationGraph(
           dnn_support, q, k, v, output, bias, activation, page_table_k,
@@ -203,31 +203,31 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
 
 absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHAF8(
     se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const auto gpu_config,
       custom_call->backend_config<xla::gpu::GpuBackendConfig>());
   const xla::gpu::CudnnfMHABackendConfig &config =
       gpu_config.cudnn_fmha_backend_config();
-  TF_ASSIGN_OR_RETURN(Shape intermediate_tensor_shape,
+  TF_XLA_ASSIGN_OR_RETURN(Shape intermediate_tensor_shape,
                       Shape::FromProto(config.intermediate_tensor_shape()));
 
-  TF_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
+  TF_XLA_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));
-  TF_ASSIGN_OR_RETURN(se::dnn::FMHAMaskKind dnn_mask_type,
+  TF_XLA_ASSIGN_OR_RETURN(se::dnn::FMHAMaskKind dnn_mask_type,
                       GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(cudnn_mask_type));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor q,
       MatmulTensorDescriptorFor(custom_call->operand(0)->shape(),
                                 config.bmm1_dot_dimension_numbers(), LHS));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor k,
       MatmulTensorDescriptorFor(custom_call->operand(1)->shape(),
                                 config.bmm1_dot_dimension_numbers(), RHS));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor v,
       MatmulTensorDescriptorFor(custom_call->operand(2)->shape(),
                                 config.bmm2_dot_dimension_numbers(), RHS));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       TensorDescriptor output,
       TensorDescriptorFor(ShapeUtil::GetSubshape(custom_call->shape(), {0})));
 
@@ -235,10 +235,10 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHAF8(
   bool has_activation =
       xla::ShapeUtil::TupleElementCount(custom_call->shape()) == 5;
   if (has_activation) {
-    TF_ASSIGN_OR_RETURN(activation, TensorDescriptorFor(ShapeUtil::GetSubshape(
+    TF_XLA_ASSIGN_OR_RETURN(activation, TensorDescriptorFor(ShapeUtil::GetSubshape(
                                         custom_call->shape(), {3})));
   }
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::gpu::CudnnGraph graph,
       se::gpu::GetCudnnFlashAttentionF8OperationGraph(
           dnn_support, q, k, v, output, activation,
@@ -248,7 +248,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHAF8(
 
 absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
     se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto gpu_config,
       custom_call->backend_config<xla::gpu::GpuBackendConfig>());
   xla::gpu::CudnnfMHABackendConfig &config =
@@ -258,12 +258,12 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
   const Shape &q_shape = custom_call->operand(input_index++)->shape();
   const Shape &k_shape = custom_call->operand(input_index++)->shape();
   const Shape &v_shape = custom_call->operand(input_index++)->shape();
-  TF_ASSIGN_OR_RETURN(const Shape p_shape,
+  TF_XLA_ASSIGN_OR_RETURN(const Shape p_shape,
                       Shape::FromProto(config.intermediate_tensor_shape()));
   ++input_index;
   const Shape &d_output_shape = custom_call->operand(input_index++)->shape();
 
-  TF_ASSIGN_OR_RETURN(const CudnnfMHAKind kind, GetCudnnfMHAKind(custom_call));
+  TF_XLA_ASSIGN_OR_RETURN(const CudnnfMHAKind kind, GetCudnnfMHAKind(custom_call));
 
   bool has_bias = (kind == CudnnfMHAKind::kBackwardScaleBiasSoftmax ||
                    kind == CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout);
@@ -307,48 +307,48 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
   const bool force_deterministic =
       RequireDeterminism(custom_call->GetModule()->config());
   config.set_force_deterministic(force_deterministic);
-  TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_config));
+  TF_XLA_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_config));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor q,
       MatmulTensorDescriptorFor(
           q_shape, config.bmm1_grad_gemm1_dot_dimension_numbers(), RHS));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor k,
       MatmulTensorDescriptorFor(
           k_shape, config.bmm1_grad_gemm2_dot_dimension_numbers(), RHS));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor p,
       MatmulTensorDescriptorFor(
           p_shape, config.bmm2_grad_gemm1_dot_dimension_numbers(), LHS));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor v,
       MatmulTensorDescriptorFor(
           v_shape, config.bmm2_grad_gemm2_dot_dimension_numbers(), RHS));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor d_output,
       MatmulTensorDescriptorFor(
           d_output_shape, config.bmm2_grad_gemm1_dot_dimension_numbers(), RHS));
 
-  TF_ASSIGN_OR_RETURN(TensorDescriptor dq, TensorDescriptorFor(dq_shape));
-  TF_ASSIGN_OR_RETURN(TensorDescriptor dk, TensorDescriptorFor(dk_shape));
-  TF_ASSIGN_OR_RETURN(TensorDescriptor dv, TensorDescriptorFor(dv_shape));
+  TF_XLA_ASSIGN_OR_RETURN(TensorDescriptor dq, TensorDescriptorFor(dq_shape));
+  TF_XLA_ASSIGN_OR_RETURN(TensorDescriptor dk, TensorDescriptorFor(dk_shape));
+  TF_XLA_ASSIGN_OR_RETURN(TensorDescriptor dv, TensorDescriptorFor(dv_shape));
 
   std::optional<se::dnn::TensorDescriptor> bias;
   std::optional<se::dnn::TensorDescriptor> dbias;
   if (bias_shape.has_value()) {
-    TF_ASSIGN_OR_RETURN(bias, TensorDescriptorFor(*bias_shape));
+    TF_XLA_ASSIGN_OR_RETURN(bias, TensorDescriptorFor(*bias_shape));
   }
 
   if (dbias_shape.has_value()) {
-    TF_ASSIGN_OR_RETURN(dbias, TensorDescriptorFor(*dbias_shape));
+    TF_XLA_ASSIGN_OR_RETURN(dbias, TensorDescriptorFor(*dbias_shape));
   }
 
   const double dropout_rate = config.dropout_rate();
 
-  TF_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
+  TF_XLA_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));
-  TF_ASSIGN_OR_RETURN(se::dnn::FMHAMaskKind dnn_mask_type,
+  TF_XLA_ASSIGN_OR_RETURN(se::dnn::FMHAMaskKind dnn_mask_type,
                       GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(cudnn_mask_type));
 
   const int sliding_window_length = config.sliding_window_length();
@@ -373,7 +373,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
   }
   TF_RET_CHECK(input_index == custom_call->operand_count());
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::gpu::CudnnGraph graph,
       se::gpu::GetCudnnFlashAttentionBackwardOperationGraph(
           dnn_support, q, k, p, v, d_output, dq, dk, dv, bias, dbias,
@@ -385,7 +385,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
 
 absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHAF8(
     se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto gpu_config,
       custom_call->backend_config<xla::gpu::GpuBackendConfig>());
   xla::gpu::CudnnfMHABackendConfig &config =
@@ -398,47 +398,47 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHAF8(
   Shape fwd_output_shape = custom_call->operand(3)->shape();
   Shape d_output_shape = custom_call->operand(4)->shape();
 
-  TF_ASSIGN_OR_RETURN(Shape p_shape,
+  TF_XLA_ASSIGN_OR_RETURN(Shape p_shape,
                       Shape::FromProto(config.intermediate_tensor_shape()));
 
   Shape dq_shape = ShapeUtil::GetSubshape(custom_call->shape(), {0});
   Shape dk_shape = ShapeUtil::GetSubshape(custom_call->shape(), {1});
   Shape dv_shape = ShapeUtil::GetSubshape(custom_call->shape(), {2});
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor q,
       MatmulTensorDescriptorFor(
           q_shape, config.bmm1_grad_gemm1_dot_dimension_numbers(), RHS));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor k,
       MatmulTensorDescriptorFor(
           k_shape, config.bmm1_grad_gemm2_dot_dimension_numbers(), RHS));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor p,
       MatmulTensorDescriptorFor(
           p_shape, config.bmm2_grad_gemm1_dot_dimension_numbers(), LHS));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor v,
       MatmulTensorDescriptorFor(
           v_shape, config.bmm2_grad_gemm2_dot_dimension_numbers(), RHS));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor d_output,
       MatmulTensorDescriptorFor(
           d_output_shape, config.bmm2_grad_gemm1_dot_dimension_numbers(), RHS));
 
-  TF_ASSIGN_OR_RETURN(TensorDescriptor dq, TensorDescriptorFor(dq_shape));
-  TF_ASSIGN_OR_RETURN(TensorDescriptor dk, TensorDescriptorFor(dk_shape));
-  TF_ASSIGN_OR_RETURN(TensorDescriptor dv, TensorDescriptorFor(dv_shape));
+  TF_XLA_ASSIGN_OR_RETURN(TensorDescriptor dq, TensorDescriptorFor(dq_shape));
+  TF_XLA_ASSIGN_OR_RETURN(TensorDescriptor dk, TensorDescriptorFor(dk_shape));
+  TF_XLA_ASSIGN_OR_RETURN(TensorDescriptor dv, TensorDescriptorFor(dv_shape));
   // 3 gradients, 4 amaxs and one workspace
   TF_RET_CHECK(8 == custom_call->shape().tuple_shapes().size());
 
-  TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_config));
+  TF_XLA_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_config));
 
-  TF_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
+  TF_XLA_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));
-  TF_ASSIGN_OR_RETURN(se::dnn::FMHAMaskKind dnn_mask_type,
+  TF_XLA_ASSIGN_OR_RETURN(se::dnn::FMHAMaskKind dnn_mask_type,
                       GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(cudnn_mask_type));
-  TF_ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
+  TF_XLA_ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
                       se::gpu::GetCudnnFlashAttentionBackwardF8OperationGraph(
                           dnn_support, q, k, p, v, d_output, dq, dk, dv,
                           config.fmha_scale(), dnn_mask_type));
@@ -451,13 +451,13 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBlockScaledDot(
   TF_RET_CHECK(custom_call->operand_count() == 4 || has_global_scale);
   TF_RET_CHECK(custom_call->shape().tuple_shapes().size() == 2);
 
-  TF_ASSIGN_OR_RETURN(TensorDescriptor lhs_data,
+  TF_XLA_ASSIGN_OR_RETURN(TensorDescriptor lhs_data,
                       TensorDescriptorFor(custom_call->operand(0)->shape()));
-  TF_ASSIGN_OR_RETURN(TensorDescriptor rhs_data,
+  TF_XLA_ASSIGN_OR_RETURN(TensorDescriptor rhs_data,
                       TensorDescriptorFor(custom_call->operand(1)->shape()));
-  TF_ASSIGN_OR_RETURN(TensorDescriptor lhs_scale,
+  TF_XLA_ASSIGN_OR_RETURN(TensorDescriptor lhs_scale,
                       TensorDescriptorFor(custom_call->operand(2)->shape()));
-  TF_ASSIGN_OR_RETURN(TensorDescriptor rhs_scale,
+  TF_XLA_ASSIGN_OR_RETURN(TensorDescriptor rhs_scale,
                       TensorDescriptorFor(custom_call->operand(3)->shape()));
 
   DataType result_type;
@@ -484,7 +484,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBlockScaledDot(
                              ? BlockScalingRewriter::kBlockSizeMXFP8
                              : BlockScalingRewriter::kBlockSizeNVFP4;
 
-  TF_ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
+  TF_XLA_ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
                       se::gpu::GetCudnnBlockScaledDotOperationGraph(
                           dnn_support, lhs_data, lhs_scale, rhs_data, rhs_scale,
                           result_type, block_size, has_global_scale));
@@ -531,12 +531,12 @@ class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
-    TF_ASSIGN_OR_RETURN(const std::string fingerprint_without_workspace,
+    TF_XLA_ASSIGN_OR_RETURN(const std::string fingerprint_without_workspace,
                         FingerprintWithBackendConfig<GpuBackendConfig>(*hlo));
     auto workspace_size_it =
         workspace_sizes_.find(fingerprint_without_workspace);
     if (workspace_size_it == workspace_sizes_.cend()) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           se::gpu::CudnnGraph graph,
           HloCustomCallToCuDnnGraph(dnn_support_,
                                     DynCast<HloCustomCallInstruction>(hlo)));
@@ -550,7 +550,7 @@ class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
       RETURN_IF_CUDNN_FRONTEND_ERROR(graph.Graph().serialize(serialized_graph));
       // Compute a new fingerprint with a potential workspace for the
       // compilation results to match a fingerprint computed by the emitter.
-      TF_ASSIGN_OR_RETURN(const std::string fingerprint_with_workspace,
+      TF_XLA_ASSIGN_OR_RETURN(const std::string fingerprint_with_workspace,
                           FingerprintWithBackendConfig<GpuBackendConfig>(*hlo));
       compilation_results_[fingerprint_with_workspace] =
           std::string(reinterpret_cast<char *>(serialized_graph.data()),

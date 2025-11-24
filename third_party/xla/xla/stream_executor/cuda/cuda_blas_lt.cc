@@ -59,7 +59,7 @@ limitations under the License.
 #define GET_ATTR(getter, handle, attr, ValueT)                            \
   [&]() -> absl::StatusOr<ValueT> {                                       \
     ValueT value;                                                         \
-    TF_RETURN_IF_ERROR(ToStatus(                                          \
+    TF_XLA_RETURN_IF_ERROR(ToStatus(                                          \
         getter(handle, attr, &value, sizeof(ValueT), nullptr), #getter)); \
     return std::move(value);                                              \
   }()
@@ -151,7 +151,7 @@ absl::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
 
 absl::Status BlasLt::Init() {
   cublasLtHandle_t blas_lt;
-  SE_CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&blas_lt));
+  SE_CUBLAS_XLA_RETURN_IF_ERROR(cublasLtCreate(&blas_lt));
   absl::MutexLock lock(mu_);
   blas_lt_.reset(blas_lt);
   return absl::OkStatus();
@@ -159,20 +159,20 @@ absl::Status BlasLt::Init() {
 
 /*static*/ absl::StatusOr<BlasLt::MatrixLayout> BlasLt::MatrixLayout::Create(
     const gpu::MatrixLayout& m) {
-  TF_ASSIGN_OR_RETURN(auto type, gpu::AsBlasDataType(m.dtype));
+  TF_XLA_ASSIGN_OR_RETURN(auto type, gpu::AsBlasDataType(m.dtype));
 
   cublasLtMatrixLayout_t cu_layout;
-  SE_CUBLAS_RETURN_IF_ERROR(
+  SE_CUBLAS_XLA_RETURN_IF_ERROR(
       cublasLtMatrixLayoutCreate(&cu_layout, AsCudaDataType(type), m.num_rows,
                                  m.num_cols, m.leading_dim_stride));
   // Wrap cublas handle immediately, so it is cleaned up if an error occurs.
   BlasLt::MatrixLayout layout(cu_layout);
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       SetAttr(cu_layout, CUBLASLT_MATRIX_LAYOUT_ORDER,
               int32_t{(m.order == gpu::MatrixLayout::Order::kRowMajor)
                           ? CUBLASLT_ORDER_ROW
                           : CUBLASLT_ORDER_COL}));
-  TF_RETURN_IF_ERROR(SetAttr(cu_layout, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT,
+  TF_XLA_RETURN_IF_ERROR(SetAttr(cu_layout, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT,
                              static_cast<int32_t>(m.batch_size)));
 
   VLOG(2) << "MatrixLayout::Create: num_rows: " << m.num_rows
@@ -181,7 +181,7 @@ absl::Status BlasLt::Init() {
           << " leaddimstride: " << m.leading_dim_stride
           << " batch_stride: " << m.batch_stride;
 
-  TF_RETURN_IF_ERROR(SetAttr(
+  TF_XLA_RETURN_IF_ERROR(SetAttr(
       cu_layout, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, m.batch_stride));
   return std::move(layout);
 }
@@ -202,22 +202,22 @@ cudaDataType_t BlasLt::MatrixLayout::type() const {
           << " pointer: " << (int)pointer_mode;
 
   cublasLtMatmulDesc_t cu_desc;
-  SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescCreate(
+  SE_CUBLAS_XLA_RETURN_IF_ERROR(cublasLtMatmulDescCreate(
       &cu_desc, AsCublasComputeType(compute_type), AsCudaDataType(scale_type)));
   // Wrap cublas handle immediately, so it is cleaned up if an error occurs.
   BlasLt::MatmulDesc desc(cu_desc);
-  TF_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_POINTER_MODE,
+  TF_XLA_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_POINTER_MODE,
                              AsCublasLtPointerMode(pointer_mode)));
-  TF_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_TRANSA,
+  TF_XLA_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_TRANSA,
                              AsCublasOperation(trans_a)));
-  TF_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_TRANSB,
+  TF_XLA_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_TRANSB,
                              AsCublasOperation(trans_b)));
-  TF_ASSIGN_OR_RETURN(cublasLtEpilogue_t epi, AsCublasLtEpilogue(epilogue));
-  TF_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_EPILOGUE, epi));
+  TF_XLA_ASSIGN_OR_RETURN(cublasLtEpilogue_t epi, AsCublasLtEpilogue(epilogue));
+  TF_XLA_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_EPILOGUE, epi));
   // The CUBLASLT_MATMUL_DESC_FAST_ACCUM flag only impacts FP8 gemms. It speeds
   // up gemms at the expense of accumulation precision. In practice, it is safe
   // to set on the forward pass but not the backward pass.
-  TF_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_FAST_ACCUM,
+  TF_XLA_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_FAST_ACCUM,
                              static_cast<int8_t>(enable_fast_accum)));
   return std::move(desc);
 }
@@ -251,20 +251,20 @@ auto BlasLt::MatmulPlan::GetAlgorithms(const Stream* stream,
     TF_RET_CHECK(blas_lt->blas_lt_ != nullptr);
 
     cublasLtMatmulPreference_t cu_preference;
-    SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmulPreferenceCreate(&cu_preference));
+    SE_CUBLAS_XLA_RETURN_IF_ERROR(cublasLtMatmulPreferenceCreate(&cu_preference));
     // Wrap cublas handle immediately, so it is cleaned up if an error occurs.
     // Wrap hipblas handle immediately, so it is cleaned up if an error occurs.
     Owned<cublasLtMatmulPreference_t> preference(
         cu_preference, cublasLtMatmulPreferenceDestroy);
 
-    TF_RETURN_IF_ERROR(SetAttr<uint64_t>(
+    TF_XLA_RETURN_IF_ERROR(SetAttr<uint64_t>(
         cu_preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
         max_workspace_size));
 
     std::unique_ptr<ActivateContext> activation = blas_lt->parent_->Activate();
 
     int found_algorithm_count = 0;
-    SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmulAlgoGetHeuristic(
+    SE_CUBLAS_XLA_RETURN_IF_ERROR(cublasLtMatmulAlgoGetHeuristic(
         blas_lt->blas_lt_.get(), op_desc_.get(), a_desc_.get(), b_desc_.get(),
         c_desc_.get(), d_desc_.get(), preference.get(), max_algorithm_count,
         results.data(), &found_algorithm_count));
@@ -313,12 +313,12 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
   bool must_swap_operands =
       MakeOutputColumnMajor(lhs_layout, rhs_layout, output_layout, &c_layout);
 
-  TF_ASSIGN_OR_RETURN(auto output_dtype,
+  TF_XLA_ASSIGN_OR_RETURN(auto output_dtype,
                       gpu::AsBlasDataType(output_layout.dtype));
 
   auto compute_type = cfg.compute_type;
   if (!compute_type) {  // obtain compute_type unless provided by the user
-    TF_ASSIGN_OR_RETURN(compute_type,
+    TF_XLA_ASSIGN_OR_RETURN(compute_type,
                         gpu::GetBlasComputationType(
                             cfg.precision_algorithm, lhs_layout.dtype,
                             output_layout.dtype, cfg.compute_precision));
@@ -331,16 +331,16 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
       IsFastAccumEnabled(cfg.precision_algorithm, lhs_layout.dtype,
                          rhs_layout.dtype, cfg.compute_precision);
   auto trans_a = lhs_layout.transpose, trans_b = rhs_layout.transpose;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto op_desc,
       MatmulDesc::Create(*compute_type,
                          gpu::GetScaleType(output_dtype, *compute_type),
                          trans_a, trans_b, epilogue, enable_fast_accum));
 
-  TF_ASSIGN_OR_RETURN(auto a_desc, MatrixLayout::Create(lhs_layout));
-  TF_ASSIGN_OR_RETURN(auto b_desc, MatrixLayout::Create(rhs_layout));
-  TF_ASSIGN_OR_RETURN(auto c_desc, MatrixLayout::Create(c_layout));
-  TF_ASSIGN_OR_RETURN(auto d_desc, MatrixLayout::Create(output_layout));
+  TF_XLA_ASSIGN_OR_RETURN(auto a_desc, MatrixLayout::Create(lhs_layout));
+  TF_XLA_ASSIGN_OR_RETURN(auto b_desc, MatrixLayout::Create(rhs_layout));
+  TF_XLA_ASSIGN_OR_RETURN(auto c_desc, MatrixLayout::Create(c_layout));
+  TF_XLA_ASSIGN_OR_RETURN(auto d_desc, MatrixLayout::Create(output_layout));
 
   return std::make_unique<MatmulPlan>(std::move(op_desc), std::move(a_desc),
                                       std::move(b_desc), std::move(c_desc),
@@ -366,7 +366,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
 
   std::unique_ptr<EventBasedTimer> timer;
   if (profile_result != nullptr) {
-    TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+    TF_XLA_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
                                    profile_result->warmup_run_executed()));
   }
 
@@ -374,7 +374,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
   uint64_t workspace_size = algorithm_->workspace_size;
   if (workspace_size > 0) {
     if (args.scratch_allocator != nullptr) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           DeviceMemory<uint8_t> alloc,
           args.scratch_allocator->AllocateBytes(workspace_size));
       workspace_addr = gpu::GpuMemoryMutable(&alloc);
@@ -393,33 +393,33 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     // We must set the bias and aux pointers while holding the mutex, to avoid a
     // potential race condition from multiple threads sharing the same plan.
     if (args.bias != nullptr) {
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  CUBLASLT_MATMUL_DESC_BIAS_POINTER,
                                  args.bias.opaque()));
     }
 #if CUDA_VERSION >= 11080
     if (args.a_scale != nullptr) {
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  CUBLASLT_MATMUL_DESC_A_SCALE_POINTER,
                                  args.a_scale.opaque()));
     }
     if (args.b_scale != nullptr) {
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  CUBLASLT_MATMUL_DESC_B_SCALE_POINTER,
                                  args.b_scale.opaque()));
     }
     if (args.c_scale != nullptr) {
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  CUBLASLT_MATMUL_DESC_C_SCALE_POINTER,
                                  args.c_scale.opaque()));
     }
     if (args.d_scale != nullptr) {
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  CUBLASLT_MATMUL_DESC_D_SCALE_POINTER,
                                  args.d_scale.opaque()));
     }
     if (args.d_amax != nullptr) {
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  CUBLASLT_MATMUL_DESC_AMAX_D_POINTER,
                                  args.d_amax.opaque()));
     }
@@ -434,26 +434,26 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
 
     if (args.aux != nullptr) {
 #if CUDA_VERSION >= 11040
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER,
                                  args.aux.opaque()));
 
       // Set leading dim and batch stride of auxiliary output to match output.
       // TODO(cjfj): Set this once at initialization.
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           int64_t output_leading_dim,
           GetAttr<int64_t>(d_desc_.get(), CUBLASLT_MATRIX_LAYOUT_LD));
 
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_LD,
                                  output_leading_dim));
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           int64_t output_batch_stride,
           GetAttr<int64_t>(d_desc_.get(),
                            CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET));
 
-      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+      TF_XLA_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_BATCH_STRIDE,
                                  output_batch_stride));
 #else
@@ -465,7 +465,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     std::unique_ptr<ActivateContext> activation = blas_lt->parent_->Activate();
 
     if (palgo != nullptr) {
-      SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(
+      SE_CUBLAS_XLA_RETURN_IF_ERROR(cublasLtMatmul(
           blas_lt->blas_lt_.get(), op_desc_.get(), alpha, a.opaque(),
           a_desc_.get(), b.opaque(), b_desc_.get(), beta, args.c.opaque(),
           c_desc_.get(), args.d.opaque(), d_desc_.get(), palgo, workspace_addr,
@@ -477,7 +477,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
   }
 
   if (profile_result != nullptr) {
-    TF_ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
+    TF_XLA_ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
     // set algorithm ID to be unique (otherwise it gets kDefaultAlgorithm ID)
     profile_result->set_algorithm(reinterpret_cast<blas::AlgorithmType>(palgo));
     profile_result->set_is_valid(true);

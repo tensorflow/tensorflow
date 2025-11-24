@@ -68,15 +68,15 @@ absl::StatusOr<HloInstruction*> ConvertSmallFpRngToF32Rng(HloInstruction* rng) {
   HloCloneContext context(computation->parent());
   HloInstruction* new_rng = computation->AddInstruction(
       rng->CloneWithNewOperands(shape, new_operands, &context));
-  TF_RETURN_IF_ERROR(new_rng->CopyAllControlDepsFrom(rng));
+  TF_XLA_RETURN_IF_ERROR(new_rng->CopyAllControlDepsFrom(rng));
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       rng->ReplaceAllUsesWith(MakeConvertToHlo(new_rng, primitive_type)));
-  TF_RETURN_IF_ERROR(rng->DropAllControlDeps());
+  TF_XLA_RETURN_IF_ERROR(rng->DropAllControlDeps());
 
   // Since rng is a side-effecting instruction, we can't rely on DCE to remove
   // it.
-  TF_RETURN_IF_ERROR(computation->RemoveInstruction(rng));
+  TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(rng));
 
   return new_rng;
 }
@@ -120,7 +120,7 @@ absl::StatusOr<HloComputation*> GetComputationForRng(HloInstruction* rng) {
     }
   }
 
-  TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
+  TF_XLA_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
   return XlaComputationToHloComputation(xla_computation, rng->GetModule());
 }
 
@@ -135,13 +135,13 @@ absl::StatusOr<HloInstruction*> RngExpander::ExpandInstruction(
   VLOG(2) << "Expand rng instruction " << rng->ToString();
   PrimitiveType old_primitive_type = rng->shape().element_type();
   if (primitive_util::BitWidth(old_primitive_type) < 32) {
-    TF_ASSIGN_OR_RETURN(rng, ConvertSmallFpRngToF32Rng(rng));
+    TF_XLA_ASSIGN_OR_RETURN(rng, ConvertSmallFpRngToF32Rng(rng));
   }
   HloComputation*& rng_computation = expanded_rng_instructions_[std::make_tuple(
       rng->random_distribution(), rng->shape(), rng->operand(0)->shape(),
       rng->operand(1)->shape())];
   if (!rng_computation) {
-    TF_ASSIGN_OR_RETURN(rng_computation, GetComputationForRng(rng));
+    TF_XLA_ASSIGN_OR_RETURN(rng_computation, GetComputationForRng(rng));
   }
   HloComputation* computation = rng->parent();
 
@@ -172,14 +172,14 @@ absl::StatusOr<HloInstruction*> RngExpander::ExpandInstruction(
           {key, state, rng->mutable_operand(0), rng->mutable_operand(1)},
           rng_computation));
 
-  TF_RETURN_IF_ERROR(new_rng->CopyAllControlDepsFrom(rng));
+  TF_XLA_RETURN_IF_ERROR(new_rng->CopyAllControlDepsFrom(rng));
 
-  TF_RETURN_IF_ERROR(rng->ReplaceAllUsesWith(new_rng));
-  TF_RETURN_IF_ERROR(rng->DropAllControlDeps());
+  TF_XLA_RETURN_IF_ERROR(rng->ReplaceAllUsesWith(new_rng));
+  TF_XLA_RETURN_IF_ERROR(rng->DropAllControlDeps());
 
   // Since rng is a side-effecting instruction, we can't rely on DCE to remove
   // it.
-  TF_RETURN_IF_ERROR(computation->RemoveInstruction(rng));
+  TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(rng));
 
   // Returns nullptr to OpExpanderPass::Run to indicate the old rng instruction
   // has been replaced with the new rng instruction.

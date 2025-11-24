@@ -56,9 +56,9 @@ absl::Status CpuTransferManager::ReadDynamicShapes(
     return TransferManager::ReadDynamicShapes(stream, device_buffer,
                                               device_shape);
   }
-  TF_ASSIGN_OR_RETURN(auto platform,
+  TF_XLA_ASSIGN_OR_RETURN(auto platform,
                       se::PlatformManager::PlatformWithId(PlatformId()));
-  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
+  TF_XLA_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
   return ReadDynamicShapesOnCpu(device_buffer, device_shape,
                                 compiler->ShapeSizeBytesFunction());
 }

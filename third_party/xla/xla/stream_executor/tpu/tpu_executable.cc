@@ -222,7 +222,7 @@ absl::StatusOr<std::unique_ptr<TpuExecutable>> TpuExecutable::Deserialize(
   absl::Cleanup cleanup_c_module = [&c_module]() {
     ApiConverter::Destroy(&c_module);
   };
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       ApiConverter::FromC(c_module));
   return std::make_unique<TpuExecutable>(se_executable, std::move(hlo_module));
 }

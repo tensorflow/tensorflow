@@ -76,7 +76,7 @@ absl::Status BackendConfigWrapper::GetProto(
   if (raw_string_.empty()) {
     return absl::OkStatus();
   }
-  TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string_, output_proto));
+  TF_XLA_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string_, output_proto));
   // Cache the proto into the empty proto_.
   proto_ = CloneBackendConfigProto(output_proto);
   return absl::OkStatus();

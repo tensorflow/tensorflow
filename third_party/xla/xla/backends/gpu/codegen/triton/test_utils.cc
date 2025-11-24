@@ -98,7 +98,7 @@ absl::Status CreateTritonIrAndFileCheck(HloTestBase* test,
                                         absl::string_view hlo_text,
                                         absl::string_view triton_fusion_name,
                                         absl::string_view filecheck_pattern) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
                       test->ParseAndReturnVerifiedModule(hlo_text));
   auto* comp = verified_module->GetComputationWithName(triton_fusion_name);
   TF_RET_CHECK(comp != nullptr) << absl::StrCat(
@@ -120,7 +120,7 @@ absl::Status CreateTritonIrAndFileCheck(
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
 
   mlir::MLIRContext mlir_context;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> triton_module,
       CreateTritonModule("triton_fn", fusion,
                          TestGpuDeviceInfo::RTXA6000DeviceInfo(),
@@ -129,7 +129,7 @@ absl::Status CreateTritonIrAndFileCheck(
   std::string out;
   llvm::raw_string_ostream os(out);
   triton_module->print(os);
-  TF_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
+  TF_XLA_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
   if (!succeeded) {
     return absl::InternalError("FileCheck failed.");
   }
@@ -142,7 +142,7 @@ CreateXTileIrAndFileCheck(HloTestBaseWithMLIRContext* test,
                           absl::string_view hlo_text,
                           absl::string_view triton_fusion_name,
                           absl::string_view filecheck_pattern) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       test->ParseAndReturnVerifiedModule(hlo_text));
   auto* comp = hlo_module->GetComputationWithName(triton_fusion_name);
   TF_RET_CHECK(comp != nullptr) << absl::StrCat(
@@ -153,7 +153,7 @@ CreateXTileIrAndFileCheck(HloTestBaseWithMLIRContext* test,
   BlockLevelParameters block_level_parameters =
       BlockLevelParameters::FromBlockLevelFusionConfig(
           fusion_backend_config.block_level_fusion_config());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module,
       CreateXTileIrAndFileCheck(test, *comp, block_level_parameters,
                                 filecheck_pattern));
@@ -166,7 +166,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
     absl::string_view filecheck_pattern) {
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module,
       ir_emitter_triton_internal::EmitXTileModule(
           "xtile_dialect_fn",
@@ -177,7 +177,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
   std::string out;
   llvm::raw_string_ostream os(out);
   xtile_dialect_module->print(os);
-  TF_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
+  TF_XLA_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
   if (!succeeded) {
     return absl::InternalError("FileCheck failed.");
   }
@@ -187,14 +187,14 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
 absl::Status LowerXTileIrToTritonAndFileCheck(
     HloTestBaseWithMLIRContext* test, mlir::ModuleOp xtile_dialect_module,
     absl::string_view filecheck_pattern, const HloFusionInstruction& fusion) {
-  TF_RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
+  TF_XLA_RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
       xtile_dialect_module, *test->mlir_context(), fusion,
       TestGpuDeviceInfo::RTXH100SXMDeviceInfo()));
 
   std::string out;
   llvm::raw_string_ostream os(out);
   xtile_dialect_module->print(os);
-  TF_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
+  TF_XLA_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
   if (!succeeded) {
     return absl::InternalError("FileCheck failed.");
   }
@@ -204,7 +204,7 @@ absl::Status LowerXTileIrToTritonAndFileCheck(
 absl::Status CreateTritonIrAndFileCheckForDot(
     HloTestBase* test, absl::string_view hlo_text,
     absl::string_view triton_fusion_name, absl::string_view filecheck_pattern) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
                       test->ParseAndReturnVerifiedModule(hlo_text));
   auto* comp = verified_module->GetComputationWithName(triton_fusion_name);
   TF_RET_CHECK(comp != nullptr);
@@ -313,7 +313,7 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module,
   auto builder = HloComputation::Builder("entry");
   std::vector<HloInstruction*> params;
   for (auto& param : module->entry_computation()->parameter_instructions()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto param_clone,
         builder.AddParameter(HloInstruction::CreateParameter(
             param->parameter_number(), param->shape(),
@@ -334,7 +334,7 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module,
     gpu_config.mutable_fusion_backend_config()->set_kind(
         std::string(kTritonFusionKind));
   }
-  TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+  TF_XLA_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
 
   auto new_entry =
       module->AddComputationAndUnifyNamesAndIds(builder.Build(),
@@ -360,9 +360,9 @@ TritonSupportTestBase::ParseTemplateAndGetInstruction(
   const std::string hlo_text = absl::Substitute(
       hlo_template, primitive_util::LowercasePrimitiveTypeName(data_type),
       HloOpcodeString(opcode));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       ParseAndReturnVerifiedModule(hlo_text));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       ConvertEntryToTritonFusion(module.get(), use_nested_gemm_fusions));
   const HloComputation* computation =
       module->GetComputationWithName("triton_computation");

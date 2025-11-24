@@ -152,7 +152,7 @@ absl::StatusOr<HloInstruction*> Dequantize(HloInstruction* dot,
     return operand;
   }
   std::tie(operand, scale) = UpscaleBoth(operand, scale);
-  TF_RETURN_IF_ERROR(CheckOperandAndScaleShapes(side, operand, scale));
+  TF_XLA_RETURN_IF_ERROR(CheckOperandAndScaleShapes(side, operand, scale));
   HloInstruction* broadcasted_scale =
       BroadcastAndReshape(scale, operand->shape(), computation);
   HloInstruction* dequantized =
@@ -171,14 +171,14 @@ absl::StatusOr<bool> ScaledDotRewriter::RewriteComputation(
     }
     changed = true;
     HloScaledDotInstruction* dot = Cast<HloScaledDotInstruction>(instruction);
-    TF_ASSIGN_OR_RETURN(HloInstruction * lhs, Dequantize(dot, 0, 2, "LHS"));
-    TF_ASSIGN_OR_RETURN(HloInstruction * rhs, Dequantize(dot, 1, 3, "RHS"));
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * lhs, Dequantize(dot, 0, 2, "LHS"));
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * rhs, Dequantize(dot, 1, 3, "RHS"));
 
-    TF_RETURN_IF_ERROR(dot->ReplaceAllUsesWith(
+    TF_XLA_RETURN_IF_ERROR(dot->ReplaceAllUsesWith(
         computation->AddInstruction(HloInstruction::CreateDot(
             dot->shape(), lhs, rhs, dot->dot_dimension_numbers(),
             dot->precision_config()))));
-    TF_RETURN_IF_ERROR(computation->RemoveInstruction(dot));
+    TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(dot));
   }
   return changed;
 }
@@ -187,7 +187,7 @@ absl::StatusOr<bool> ScaledDotRewriter::RunImpl(
     HloModule* module, const absl::flat_hash_set<absl::string_view>&) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    TF_ASSIGN_OR_RETURN(bool result, RewriteComputation(computation));
+    TF_XLA_ASSIGN_OR_RETURN(bool result, RewriteComputation(computation));
     changed |= result;
   }
   return changed;

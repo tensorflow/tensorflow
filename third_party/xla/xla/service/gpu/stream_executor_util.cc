@@ -160,12 +160,12 @@ absl::StatusOr<std::tuple<Layout, Layout, Layout>>
 StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                                       DataLayout input, FilterLayout filter,
                                       DataLayout output) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       Layout input_layout,
       DataLayoutToXlaLayout(input, dnums.input_batch_dimension(),
                             dnums.input_feature_dimension(),
                             dnums.input_spatial_dimensions()));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       Layout output_layout,
       DataLayoutToXlaLayout(input, dnums.output_batch_dimension(),
                             dnums.output_feature_dimension(),
@@ -382,7 +382,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
       se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
           ptx, std::move(kernel_name), num_args);
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                       stream_exec->LoadKernel(loader_spec));
 
   se::KernelMetadata m;
@@ -399,7 +399,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
       se::KernelLoaderSpec::CreateCudaCubinInMemorySpec(
           cubin_data, std::move(kernel_name), num_args);
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                       stream_exec->LoadKernel(loader_spec));
 
   se::KernelMetadata m;
@@ -422,7 +422,7 @@ absl::Status ExecuteKernelOnStream(
           return TraceMeEncode("ExecuteKernelOnStream/PackKernelArgs", {});
         },
         /*level=*/TraceMeLevel::kVerbose);
-    TF_ASSIGN_OR_RETURN(kernel_args,
+    TF_XLA_ASSIGN_OR_RETURN(kernel_args,
                         se::PackKernelArgs(args, kernel.metadata()));
   }
 

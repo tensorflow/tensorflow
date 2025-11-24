@@ -73,7 +73,7 @@ absl::StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
 
 absl::StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
     OpaqueExecutable* executable, absl::Span<const Literal* const> arguments) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<absl::StatusOr<Literal>> results,
       ExecuteWithExecutable(executable, arguments, /*num_repeats=*/1));
   CHECK_EQ(results.size(), 1);

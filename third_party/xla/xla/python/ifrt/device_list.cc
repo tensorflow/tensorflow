@@ -73,7 +73,7 @@ absl::StatusOr<DeviceListRef> DeviceList::FromProto(
   absl::InlinedVector<Device*, 1> devices;
   devices.reserve(proto.device_ids_size());
   for (int device_id : proto.device_ids()) {
-    TF_ASSIGN_OR_RETURN(Device* const device,
+    TF_XLA_ASSIGN_OR_RETURN(Device* const device,
                         client->LookupDevice(DeviceId(device_id)));
     devices.push_back(device);
   }

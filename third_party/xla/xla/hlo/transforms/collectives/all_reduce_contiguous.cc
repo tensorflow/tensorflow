@@ -87,7 +87,7 @@ absl::Status ReplaceWithContiguousAllReduce(
     offset = end;
   }
   // Replace original all-reduce with tuple of slices from new all-reduce.
-  TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
+  TF_XLA_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
       all_reduce, HloInstruction::CreateTuple(outputs)));
   return absl::OkStatus();
 }
@@ -117,7 +117,7 @@ absl::StatusOr<bool> AllReduceContiguous::RunImpl(
   }
 
   for (HloAllReduceInstruction* all_reduce : all_reduces) {
-    TF_RETURN_IF_ERROR(ReplaceWithContiguousAllReduce(all_reduce));
+    TF_XLA_RETURN_IF_ERROR(ReplaceWithContiguousAllReduce(all_reduce));
   }
 
   return !all_reduces.empty();

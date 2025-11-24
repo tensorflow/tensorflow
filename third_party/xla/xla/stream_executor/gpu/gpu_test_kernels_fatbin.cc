@@ -53,7 +53,7 @@ absl::StatusOr<std::vector<uint8_t>> GetFatbinFromArchive(
   tsl::Env* env = tsl::Env::Default();
 
   std::string file_contents;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       tsl::ReadFileToString(env, std::string(archive_path), &file_contents));
 
   const auto buffer = llvm::MemoryBuffer::getMemBuffer(

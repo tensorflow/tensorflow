@@ -1011,7 +1011,7 @@ absl::Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
   const int iteration_start_idx = loop_start_idx + loop_size;
   const int iteration_end_idx = iteration_start_idx + loop_size;
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<MemoryBoundLoopOptimizer> optimizer,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<MemoryBoundLoopOptimizer> optimizer,
                       MemoryBoundLoopOptimizer::Create(
                           iteration_start_idx, iteration_end_idx,
                           hlo_live_range_, alias_analysis_, options_));
@@ -1876,7 +1876,7 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
     const int64_t memory_space = buffer_coloring.memory_space;
     HloValue& value = alias_analysis_.dataflow_analysis().GetUniqueValueAt(
         position.instruction, position.index);
-    TF_ASSIGN_OR_RETURN(const MemorySpace memory_space_enum,
+    TF_XLA_ASSIGN_OR_RETURN(const MemorySpace memory_space_enum,
                         GetMemorySpaceEnum(memory_space, options_));
     // TODO(b/422220095): For async operations, make sure the coloring start and
     // end times do not extend beyond the async start and async done
@@ -1915,7 +1915,7 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
     };
     if (memory_space_enum == MemorySpace::kDefault) {
       if (position_requires_contiguous_allocation) {
-        TF_ASSIGN_OR_RETURN(bool has_been_colored,
+        TF_XLA_ASSIGN_OR_RETURN(bool has_been_colored,
                             contiguous_buffer_has_been_colored(
                                 value.defining_position(), time_of_coloring,
                                 MemorySpace::kDefault));
@@ -1937,7 +1937,7 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
     int64_t start_time = time_of_coloring;
     int64_t end_time = time_of_coloring;
     if (position_requires_contiguous_allocation) {
-      TF_ASSIGN_OR_RETURN(bool has_been_colored,
+      TF_XLA_ASSIGN_OR_RETURN(bool has_been_colored,
                           contiguous_buffer_has_been_colored(
                               value.defining_position(), time_of_coloring,
                               MemorySpace::kAlternate));
@@ -2945,9 +2945,9 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   int64_t max_scoped_memory_size =
       ReserveAlternateMemoryForScopedMemoryAllocations();
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       AllocateAndScheduleExistingBlockPrefetches(max_scoped_memory_size));
-  TF_RETURN_IF_ERROR(CreateNewBlockPrefetches(max_scoped_memory_size));
+  TF_XLA_RETURN_IF_ERROR(CreateNewBlockPrefetches(max_scoped_memory_size));
 
   // Free the alternate memory reserved for scoped memory allocations before
   // allocating the scoped memory allocations.
@@ -3107,7 +3107,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   VLOG(1) << "Assigning buffers to alternate memory. Max heap size = "
           << options_.max_size_in_bytes;
 
-  TF_RETURN_IF_ERROR(ProcessColoredBuffers());
+  TF_XLA_RETURN_IF_ERROR(ProcessColoredBuffers());
   // Process colored buffers before input and output required assignments are
   // added to avoid adding conflicting required assignments.
   AddInputAndOutputRequiredAssignments();
@@ -3159,7 +3159,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
         AddRequiredAssignmentsForColocatedIntervals(colocated_intervals);
       }
       options_.prefetch_interval_picker->SetRetryNumber(retry_number);
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           AllocationResult result,
           AllocateAllocationValues(absl::MakeSpan(proposal.allocation_values)));
       VLOG(2) << "Allocation result = " << ResultToString(result);
@@ -3397,7 +3397,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
 
         VLOG(3) << "Running post allocation transformation on: \n"
                 << instr->ToString();
-        TF_ASSIGN_OR_RETURN(PostAllocationTransformationUpdate changes,
+        TF_XLA_ASSIGN_OR_RETURN(PostAllocationTransformationUpdate changes,
                             options_.post_allocation_transformation_fn(instr));
         if (!changes.to_be_removed.empty()) {
           VLOG(3) << "Post allocation transformation info: \n"
@@ -7211,7 +7211,7 @@ absl::Status MsaAlgorithm::WindowPrefetch() {
   }
 
   // Propagate the memory space to the cloned fusion computations.
-  TF_ASSIGN_OR_RETURN(auto dataflow_analysis,
+  TF_XLA_ASSIGN_OR_RETURN(auto dataflow_analysis,
                       HloDataflowAnalysis::Run(*module_, /*ssa_form=*/false,
                                                /*bitcast_defines_value=*/true));
   MemorySpacePropagation memory_space_propagation(std::move(dataflow_analysis));

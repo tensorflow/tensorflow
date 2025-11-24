@@ -139,7 +139,7 @@ absl::StatusOr<Shape> MakeValidatedShapeWithLayoutInternal(
     return InvalidArgument("Unsupported element type: %s",
                            PrimitiveType_Name(element_type));
   }
-  TF_ASSIGN_OR_RETURN(Shape shape,
+  TF_XLA_ASSIGN_OR_RETURN(Shape shape,
                       ShapeUtil::MakeValidatedShape(element_type, dimensions));
   if (element_size_in_bits ==
       ShapeUtil::ByteSizeOfPrimitiveType(element_type) * 8) {
@@ -150,7 +150,7 @@ absl::StatusOr<Shape> MakeValidatedShapeWithLayoutInternal(
       minor_to_major, tiles, tail_padding_alignment_in_elements,
       index_primitive_type, pointer_primitive_type, element_size_in_bits,
       memory_space, split_configs, std::move(physical_shape));
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
+  TF_XLA_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return shape;
 }
 
@@ -173,7 +173,7 @@ absl::StatusOr<Shape> MakeValidatedTupleShapeImpl(
   for (const auto& shape : shapes) {
     ShapeUtil::AppendShapeToTuple(Deref(shape), &result);
   }
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(result));
+  TF_XLA_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(result));
   return result;
 }
 
@@ -280,7 +280,7 @@ static std::vector<bool> MakeDynamicDimensions(
 
 /* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedBufferShape(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions) {
-  TF_ASSIGN_OR_RETURN(Shape shape,
+  TF_XLA_ASSIGN_OR_RETURN(Shape shape,
                       ShapeUtil::MakeValidatedShape(element_type, dimensions));
   return ShapeUtil::MakeValidatedBufferShape(shape);
 }
@@ -420,10 +420,10 @@ ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
     }
     dims[i] = shape.dimensions(dim);
   }
-  TF_ASSIGN_OR_RETURN(Shape new_shape, MakeValidatedShapeWithDescendingLayout(
+  TF_XLA_ASSIGN_OR_RETURN(Shape new_shape, MakeValidatedShapeWithDescendingLayout(
                                            shape.element_type(), dims));
   if (shape.IsBuffer()) {
-    TF_ASSIGN_OR_RETURN(new_shape, MakeValidatedBufferShape(new_shape));
+    TF_XLA_ASSIGN_OR_RETURN(new_shape, MakeValidatedBufferShape(new_shape));
   }
   // Since the physical layout is kept the same, the tiles and element size are
   // the same also.
@@ -993,10 +993,10 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   // The size computed here must be kept in sync with the serialized format as
   // described in the comments for LiteralBase::SerializeWithShapeProto in
   // literal.h.
-  TF_RETURN_IF_ERROR(ValidateShapeWithOptionalLayout(shape));
+  TF_XLA_RETURN_IF_ERROR(ValidateShapeWithOptionalLayout(shape));
   int64_t size = sizeof(int64_t) + proto.ByteSizeLong();
 
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       shape,
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple()) {
@@ -1087,7 +1087,7 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
       return ShapeError(shape, "This type must have a tuple state.");
     }
     for (auto& element_shape : shape.tuple_shapes()) {
-      TF_RETURN_IF_ERROR(ValidateNonLayoutProperties(element_shape));
+      TF_XLA_RETURN_IF_ERROR(ValidateNonLayoutProperties(element_shape));
     }
     return absl::OkStatus();
   }
@@ -1120,8 +1120,8 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
     if (!shape.if_array_state()) {
       return ShapeError(shape, "This type must have an array state.");
     }
-    TF_RETURN_IF_ERROR(ValidateDimensions(shape));
-    TF_RETURN_IF_ERROR(ValidateShapeSize(shape));
+    TF_XLA_RETURN_IF_ERROR(ValidateDimensions(shape));
+    TF_XLA_RETURN_IF_ERROR(ValidateShapeSize(shape));
     return absl::OkStatus();
   }
 
@@ -1130,14 +1130,14 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
 
 /* static */ absl::Status ShapeUtil::ValidateShapeWithOptionalLayout(
     const Shape& shape) {
-  TF_RETURN_IF_ERROR(ValidateNonLayoutProperties(shape));
+  TF_XLA_RETURN_IF_ERROR(ValidateNonLayoutProperties(shape));
 
   return LayoutUtil::ValidateLayoutInShape(shape,
                                            /*allow_missing_layouts=*/true);
 }
 
 /* static */ absl::Status ShapeUtil::ValidateShape(const Shape& shape) {
-  TF_RETURN_IF_ERROR(ValidateNonLayoutProperties(shape));
+  TF_XLA_RETURN_IF_ERROR(ValidateNonLayoutProperties(shape));
 
   return LayoutUtil::ValidateLayoutInShape(shape);
 }
@@ -1982,7 +1982,7 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
   int64_t n = -1;
   int64_t rank = s.rank;
   while (n < rank) {
-    TF_ASSIGN_OR_RETURN(bool should_continue, visitor_function(s.indexes_span));
+    TF_XLA_ASSIGN_OR_RETURN(bool should_continue, visitor_function(s.indexes_span));
     if (TF_PREDICT_FALSE(!should_continue)) {
       break;
     }

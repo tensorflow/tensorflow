@@ -394,7 +394,7 @@ DotProblemDimensions::DotProblemDimensions(const HloDotInstruction& dot) {
 absl::StatusOr<absl::Duration> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info) {
-  TF_RETURN_IF_ERROR(IsSupported(dot));
+  TF_XLA_RETURN_IF_ERROR(IsSupported(dot));
   if (block_params.output_tile_sizes.size() != 1) {
     return absl::UnimplementedError(
         absl::StrCat("Only single tile size is supported, got ",
@@ -402,13 +402,13 @@ absl::StatusOr<absl::Duration> EstimateRunTimeForDotOpWithBlockParameters(
   }
 
   // Calculate compute roofline with tile and wave quantization.
-  TF_ASSIGN_OR_RETURN(absl::Duration compute_time,
+  TF_XLA_ASSIGN_OR_RETURN(absl::Duration compute_time,
                       detail::CalculateComputeTimeWithTileAndWaveQuantization(
                           dot, block_params.output_tile_sizes[0], device_info));
   // Calculate HBM roofline.
   absl::Duration hbm_time = detail::CalculateHbmTime(dot, device_info);
   // Calculate L2 time.
-  TF_ASSIGN_OR_RETURN(absl::Duration l2_time,
+  TF_XLA_ASSIGN_OR_RETURN(absl::Duration l2_time,
                       detail::CalculateL2Time(
                           dot, block_params.output_tile_sizes[0], device_info));
 
@@ -418,7 +418,7 @@ absl::StatusOr<absl::Duration> EstimateRunTimeForDotOpWithBlockParameters(
 
 absl::StatusOr<absl::Duration> EstimateRunTimeForDotOp(
     const HloDotInstruction* dot, const se::DeviceDescription& device_info) {
-  TF_RETURN_IF_ERROR(IsSupported(dot));
+  TF_XLA_RETURN_IF_ERROR(IsSupported(dot));
 
   // TODO(maniananth): Implement this.
   return absl::UnimplementedError("Not implemented yet");
@@ -426,7 +426,7 @@ absl::StatusOr<absl::Duration> EstimateRunTimeForDotOp(
 
 absl::StatusOr<BlockLevelParameters> FindBestBlockLevelParameters(
     const HloDotInstruction* dot, const se::DeviceDescription& device_info) {
-  TF_RETURN_IF_ERROR(IsSupported(dot));
+  TF_XLA_RETURN_IF_ERROR(IsSupported(dot));
 
   // TODO(maniananth): Implement this.
   return absl::UnimplementedError("Not implemented yet");

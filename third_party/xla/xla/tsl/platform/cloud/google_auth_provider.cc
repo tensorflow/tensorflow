@@ -222,10 +222,10 @@ absl::Status GoogleAuthProvider::GetTokenFromFiles() {
         "Couldn't parse the JSON credentials file.");
   }
   if (json.isMember("refresh_token")) {
-    TF_RETURN_IF_ERROR(oauth_client_->GetTokenFromRefreshTokenJson(
+    TF_XLA_RETURN_IF_ERROR(oauth_client_->GetTokenFromRefreshTokenJson(
         json, kOAuthV3Url, &current_token_, &expiration_timestamp_sec_));
   } else if (json.isMember("private_key")) {
-    TF_RETURN_IF_ERROR(oauth_client_->GetTokenFromServiceAccountJson(
+    TF_XLA_RETURN_IF_ERROR(oauth_client_->GetTokenFromServiceAccountJson(
         json, kOAuthV4Url, kOAuthScope, &current_token_,
         &expiration_timestamp_sec_));
   } else {
@@ -239,12 +239,12 @@ absl::Status GoogleAuthProvider::GetTokenFromGce() {
   std::vector<char> response_buffer;
   const uint64 request_timestamp_sec = env_->NowSeconds();
 
-  TF_RETURN_IF_ERROR(compute_engine_metadata_client_->GetMetadata(
+  TF_XLA_RETURN_IF_ERROR(compute_engine_metadata_client_->GetMetadata(
       kGceTokenPath, &response_buffer));
   absl::string_view response =
       absl::string_view(&response_buffer[0], response_buffer.size());
 
-  TF_RETURN_IF_ERROR(oauth_client_->ParseOAuthResponse(
+  TF_XLA_RETURN_IF_ERROR(oauth_client_->ParseOAuthResponse(
       response, request_timestamp_sec, &current_token_,
       &expiration_timestamp_sec_));
 

@@ -146,14 +146,14 @@ absl::StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
     return new_shape;
   };
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       ScopedShapedBuffer buffer,
       backend().transfer_manager()->AllocateScopedShapedBuffer(
           literal.shape(), backend().memory_allocator(),
           backend().default_device_ordinal(), shape_representation_fn));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto stream, backend().BorrowStream(backend().default_stream_executor()));
-  TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
+  TF_XLA_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
       stream.get(), literal, buffer));
   return std::move(buffer);
 }
@@ -167,7 +167,7 @@ HloRunner::TransferLiteralsToDevice(
   for (auto i = 0; i < literals.size(); i++) {
     const Literal* literal = literals[i];
     CHECK(literal != nullptr);
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         ScopedShapedBuffer buffer,
         TransferLiteralToDevice(*literal, entry_computation_layout, i));
     buffers.push_back(std::move(buffer));
@@ -182,7 +182,7 @@ HloRunner::TransferLiteralsToDevice(absl::Span<const Literal> literals) {
 
 absl::StatusOr<Literal> HloRunner::TransferLiteralFromDevice(
     const ShapedBuffer& buffer) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto stream, backend().BorrowStream(backend().default_stream_executor()));
 
   if (buffer.on_device_shape().is_static()) {
@@ -192,7 +192,7 @@ absl::StatusOr<Literal> HloRunner::TransferLiteralFromDevice(
 
   Shape device_shape = buffer.on_device_shape();
   // Read real literal's shape first.
-  TF_RETURN_IF_ERROR(backend().transfer_manager()->ReadDynamicShapes(
+  TF_XLA_RETURN_IF_ERROR(backend().transfer_manager()->ReadDynamicShapes(
       stream.get(), &buffer, &device_shape));
 
   ShapedBuffer shaped_buffer(device_shape, buffer.device_ordinal());
@@ -209,10 +209,10 @@ absl::StatusOr<Literal> HloRunner::Execute(
     std::unique_ptr<HloModule> module,
     absl::Span<const Literal* const> arguments, bool run_hlo_passes) {
   MaybeUpdateEntryComputationLayout(module.get());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<ScopedShapedBuffer> argument_buffers,
       TransferLiteralsToDevice(arguments, &module->entry_computation_layout()));
-  TF_ASSIGN_OR_RETURN(ExecutionOutput result,
+  TF_XLA_ASSIGN_OR_RETURN(ExecutionOutput result,
                       ExecuteWithMovedDeviceBuffersAndBufferAssignment(
                           /*module=*/std::move(module),
                           /*buffer_assignment_proto=*/nullptr,
@@ -227,10 +227,10 @@ absl::StatusOr<Literal> HloRunner::ExecuteWithBufferAssignment(
     const BufferAssignmentProto* buffer_assignment_proto,
     absl::Span<const Literal* const> arguments, bool run_hlo_passes) {
   MaybeUpdateEntryComputationLayout(module.get());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<ScopedShapedBuffer> argument_buffers,
       TransferLiteralsToDevice(arguments, &module->entry_computation_layout()));
-  TF_ASSIGN_OR_RETURN(ExecutionOutput result,
+  TF_XLA_ASSIGN_OR_RETURN(ExecutionOutput result,
                       ExecuteWithMovedDeviceBuffersAndBufferAssignment(
                           /*module=*/std::move(module), buffer_assignment_proto,
                           /*arguments=*/std::move(argument_buffers),
@@ -243,11 +243,11 @@ absl::StatusOr<std::vector<absl::StatusOr<Literal>>>
 HloRunner::ExecuteWithExecutable(OpaqueExecutable* executable,
                                  absl::Span<const Literal* const> arguments,
                                  int64_t num_repeats) {
-  TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
+  TF_XLA_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, executable));
   const ComputationLayout computation_layout =
       hlo_runner_executable->executable()->compute_computation_layout();
-  TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments, &computation_layout));
 
   std::vector<absl::StatusOr<Literal>> results;
@@ -268,13 +268,13 @@ HloRunner::ExecuteWithExecutable(OpaqueExecutable* executable,
 absl::StatusOr<Literal> HloRunner::ExecuteWithExecutableAndProfile(
     OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
     ExecutionProfile* profile) {
-  TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
+  TF_XLA_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, executable));
   const ComputationLayout computation_layout =
       hlo_runner_executable->executable()->compute_computation_layout();
-  TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments, &computation_layout));
-  TF_ASSIGN_OR_RETURN(ExecutionOutput result,
+  TF_XLA_ASSIGN_OR_RETURN(ExecutionOutput result,
                       ExecuteWithDeviceBuffers(
                           /*executable=*/hlo_runner_executable,
                           /*arguments=*/argument_buffers, /*profile=*/profile));
@@ -367,9 +367,9 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
     std::unique_ptr<HloModule> module,
     absl::Span<ScopedShapedBuffer const> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> executable,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
-  TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
+  TF_XLA_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, executable.get()));
   return ExecuteWithDeviceBuffers(hlo_runner_executable, arguments, profile);
 }
@@ -377,7 +377,7 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
 absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
     OpaqueExecutable* executable,
     absl::Span<ScopedShapedBuffer const> arguments, ExecutionProfile* profile) {
-  TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
+  TF_XLA_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, executable));
   std::vector<ExecutionInput> execution_arguments =
       ExecutionInputsFromScopedShapedBuffers(
@@ -406,11 +406,11 @@ HloRunner::ExecuteWithMovedDeviceBuffersAndBufferAssignment(
     const BufferAssignmentProto* buffer_assignment_proto,
     std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<OpaqueExecutable> executable,
       CreateExecutableWithBufferAssignment(
           std::move(module), buffer_assignment_proto, run_hlo_passes));
-  TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
+  TF_XLA_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, executable.get()));
   return ExecuteWithMovedDeviceBuffers(hlo_runner_executable->executable(),
                                        std::move(arguments), profile);
@@ -429,7 +429,7 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithMovedDeviceBuffers(
       executable->module().input_output_alias_config(),
       backend().default_stream_executor()->device_ordinal(), GetAllocator());
 
-  TF_ASSIGN_OR_RETURN(ExecutionOutput retval,
+  TF_XLA_ASSIGN_OR_RETURN(ExecutionOutput retval,
                       ExecuteWithExecutionInputs(
                           executable, std::move(execution_arguments), profile));
 
@@ -445,7 +445,7 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithExecutionInputs(
   MaybeUpdateEntryComputationLayout(&executable->module());
 
   // Get service run options.
-  TF_ASSIGN_OR_RETURN(auto stream,
+  TF_XLA_ASSIGN_OR_RETURN(auto stream,
                       backend().default_stream_executor()->CreateStream());
   ServiceExecutableRunOptions service_run_options =
       GetServiceRunOptionsForDevice(backend().default_device_ordinal(),
@@ -462,17 +462,17 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithExecutionInputs(
   service_run_options.mutable_run_options()->set_gpu_executable_run_options(
       gpu_run_options.get());
 
-  TF_ASSIGN_OR_RETURN(ExecutionOutput retval,
+  TF_XLA_ASSIGN_OR_RETURN(ExecutionOutput retval,
                       executable->ExecuteOnStreamWrapper(&service_run_options,
                                                          std::move(arguments)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  TF_XLA_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return std::move(retval);
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     std::unique_ptr<HloModule> module, const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<OpaqueExecutable> executable,
       CreateExecutable(std::move(module), options.run_hlo_passes));
   return ExecuteReplicated(executable.get(), options, device_assignment,
@@ -515,9 +515,9 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
   for (int64_t i = 0; i < options.num_replicas; ++i) {
     int64_t device =
         (*device_assignment)(i / num_partitions, i % num_partitions);
-    TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+    TF_XLA_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                         backend().stream_executor(device));
-    TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+    TF_XLA_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
     streams.emplace_back(std::move(stream));
     service_run_options.emplace_back(GetServiceRunOptionsForDevice(
         device, streams.back().get(), device_assignment, run_id,
@@ -528,12 +528,12 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
     for (int64_t arg_index = 0; arg_index < argument_count; arg_index++) {
       const Literal* const argument = argument_provider(i, arg_index);
       TF_RET_CHECK(argument != nullptr);
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           ScopedShapedBuffer argument_buffer,
           backend().transfer_manager()->AllocateScopedShapedBuffer(
               argument->shape(), backend().memory_allocator(), device,
               device_shape_representation_fn_));
-      TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
+      TF_XLA_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
           streams.back().get(), *argument, argument_buffer));
       argument_buffers.push_back(std::move(argument_buffer));
       argument_buffer_ptrs[index++] = &argument_buffers.back();
@@ -601,7 +601,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
   }
 
   VLOG(1) << "Replicated execution started";
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<ScopedShapedBuffer> results,
       execution_helper(service_run_options, argument_buffer_slices));
   VLOG(1) << "Replicated execution terminated";
@@ -609,8 +609,8 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
   std::vector<Literal> exec_results;
   exec_results.reserve(options.num_replicas);
   for (int64_t i = 0; i < options.num_replicas; ++i) {
-    TF_RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
-    TF_ASSIGN_OR_RETURN(Literal literal,
+    TF_XLA_RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
+    TF_XLA_ASSIGN_OR_RETURN(Literal literal,
                         backend().transfer_manager()->TransferLiteralFromDevice(
                             streams[i].get(), results[i]));
     exec_results.push_back(std::move(literal));
@@ -621,7 +621,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
 absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     OpaqueExecutable* executable, const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment, ExecutionProfile* profile) {
-  TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const wrapped_executable,
+  TF_XLA_ASSIGN_OR_RETURN(HloRunnerExecutable* const wrapped_executable,
                       HloRunnerExecutable::TryUnwrap(*this, executable));
   return ExecuteReplicatedImpl(
       [&, executable = wrapped_executable->executable()](
@@ -631,7 +631,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
           -> absl::StatusOr<std::vector<ScopedShapedBuffer>> {
         std::vector<ScopedShapedBuffer> results;
         if (!options.use_threads) {
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               results, executable->ExecuteOnStreams(service_run_options,
                                                     argument_buffer_slices));
         } else {
@@ -677,7 +677,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     DeviceAssignment* device_assignment) {
   DeviceAssignment computation_device_assignment;
   if (device_assignment == nullptr) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         computation_device_assignment,
         backend().computation_placer()->AssignDevices(options.num_replicas, 1));
     device_assignment = &computation_device_assignment;
@@ -702,7 +702,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
             for (const auto& arg : argument_buffer_slices[i]) {
               TF_RET_CHECK(arg != nullptr);
             }
-            TF_ASSIGN_OR_RETURN(
+            TF_XLA_ASSIGN_OR_RETURN(
                 HloRunnerExecutable* const executable,
                 HloRunnerExecutable::TryUnwrap(*this, executable_provider(i)));
             pool.Schedule([&, i, executable] {
@@ -731,7 +731,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
 absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
     const ReplicatedExecuteOptions& options) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       DeviceAssignment device_assignment,
       backend().computation_placer()->AssignDevices(options.num_replicas, 1));
   return ExecuteReplicated(std::move(module), options, &device_assignment);
@@ -759,7 +759,7 @@ HloRunner::CreateExecutableWithBufferAssignment(
       module->mutable_config().set_intra_op_parallelism_threads(
           backend().eigen_intra_op_thread_pool()->NumThreads());
     }
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<Executable>> executables,
         backend().compiler()->Compile(std::move(module),
                                       {backend().default_stream_executor()},
@@ -768,7 +768,7 @@ HloRunner::CreateExecutableWithBufferAssignment(
                                                  std::move(executables[0]));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackendWithBufferAssignment(
           std::move(module), buffer_assignment_proto,
@@ -778,7 +778,7 @@ HloRunner::CreateExecutableWithBufferAssignment(
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
 HloRunner::DeserializeExecutable(const absl::string_view serialized) const {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       backend().compiler()->DeserializeExecutable(serialized));
   return std::make_unique<HloRunnerExecutable>(this, std::move(executable));
 }
@@ -831,14 +831,14 @@ bool HloRunner::HasProperty(const HloRunnerPropertyTag::Type tag) const {
 
 absl::StatusOr<Executable*> HloRunner::ExecutableFromWrapped(
     const OpaqueExecutable* wrapped) const {
-  TF_ASSIGN_OR_RETURN(const HloRunnerExecutable* const hlo_runner_executable,
+  TF_XLA_ASSIGN_OR_RETURN(const HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, wrapped));
   return hlo_runner_executable->executable();
 }
 
 absl::StatusOr<std::unique_ptr<Executable>> HloRunner::ExecutableFromWrapped(
     std::unique_ptr<OpaqueExecutable> wrapped) const {
-  TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
+  TF_XLA_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, wrapped.get()));
   return hlo_runner_executable->MoveExecutable();
 }
@@ -850,7 +850,7 @@ std::unique_ptr<OpaqueExecutable> HloRunner::WrapExecutable(
 
 absl::StatusOr<const HloModule* absl_nonnull> HloRunner::HloModuleFromWrapped(
     const OpaqueExecutable* wrapped) const {
-  TF_ASSIGN_OR_RETURN(const HloRunnerExecutable* const hlo_runner_executable,
+  TF_XLA_ASSIGN_OR_RETURN(const HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, wrapped));
   if (!hlo_runner_executable->executable()->has_module()) {
     return absl::NotFoundError("Executable has no module.");
@@ -860,7 +860,7 @@ absl::StatusOr<const HloModule* absl_nonnull> HloRunner::HloModuleFromWrapped(
 
 absl::StatusOr<const HloProto* absl_nonnull> HloRunner::HloProtoFromWrapped(
     const OpaqueExecutable* wrapped) const {
-  TF_ASSIGN_OR_RETURN(const HloRunnerExecutable* const hlo_runner_executable,
+  TF_XLA_ASSIGN_OR_RETURN(const HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, wrapped));
   return hlo_runner_executable->executable()->hlo_proto();
 }

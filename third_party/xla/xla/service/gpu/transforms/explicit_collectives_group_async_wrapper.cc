@@ -65,7 +65,7 @@ absl::StatusOr<bool> CreateCollectivesGroupAsyncPair(HloInstruction* instr) {
   // Forward frontend attributes to both async instructions.
   async_start->set_frontend_attributes(instr->frontend_attributes());
   async_done->set_frontend_attributes(instr->frontend_attributes());
-  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(instr, async_done));
+  TF_XLA_RETURN_IF_ERROR(computation->ReplaceInstruction(instr, async_done));
   return true;
 }
 }  // namespace
@@ -77,7 +77,7 @@ absl::StatusOr<bool> ExplicitCollectivesGroupAsyncWrapper::RunImpl(
   for (const HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : comp->instructions()) {
-      TF_ASSIGN_OR_RETURN(bool result, CreateCollectivesGroupAsyncPair(instr));
+      TF_XLA_ASSIGN_OR_RETURN(bool result, CreateCollectivesGroupAsyncPair(instr));
       changed |= result;
     }
   }

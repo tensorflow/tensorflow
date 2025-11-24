@@ -241,14 +241,14 @@ absl::StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   }
 
   if (computation->root_instruction()->opcode() != HloOpcode::kOutfeed) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         computation_root_allocation_,
         assignment_.GetUniqueTopLevelSlice(computation->root_instruction()));
   }
 
   bool has_thread_local_param = false;
   for (const HloInstruction* param : computation->parameter_instructions()) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice param_slice,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice param_slice,
                         assignment_.GetUniqueTopLevelSlice(param));
     has_thread_local_param |= param_slice.allocation()->is_thread_local();
     computation_parameter_allocations_[param_slice.allocation()->index()] =
@@ -270,7 +270,7 @@ absl::StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   flags.setAllowReassoc(flags.allowReassoc() || allow_reassociation);
   b()->setFastMathFlags(flags);
 
-  TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, instruction_order));
+  TF_XLA_RETURN_IF_ERROR(computation->AcceptOrdered(this, instruction_order));
   llvm::Function* ir_function = compute_function()->function();
 
   for (llvm::Attribute::AttrKind attr : function_attributes) {
@@ -389,7 +389,7 @@ absl::Status IrEmitter::HandleCopy(HloInstruction* copy) {
                          copy->shape().layout()))) {
     // If the layouts are equal this is just a memcpy. kCopy shallow copies a
     // tuple so just memcpy the top-level buffer for tuples.
-    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(copy));
+    TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(copy));
     return EmitMemcpy(*(copy->operand(0)), *copy);
   } else if (copy->shape().IsArray()) {
     // Use the elemental emitter for array shapes.
@@ -476,7 +476,7 @@ void IrEmitter::AttachInvariantLoadMetadataForLoad(llvm::LoadInst* load) const {
 
 absl::Status IrEmitter::HandleGetTupleElement(
     HloInstruction* get_tuple_element) {
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+  TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
                       assignment_.GetUniqueTopLevelSlice(get_tuple_element));
   llvm::Value* addr = EmitBufferPointer(slice, get_tuple_element->shape());
   emitted_value_[get_tuple_element] = addr;
@@ -498,14 +498,14 @@ absl::Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
   const Shape& data_shape = infeed->infeed_shape();
   DCHECK(ShapeUtil::Equal(data_shape,
                           ShapeUtil::GetTupleElementShape(infeed->shape(), 0)));
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(infeed));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(infeed));
 
   // Write the tuple index table.
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice data_slice,
                       assignment_.GetUniqueSlice(infeed, {0}));
   llvm::Value* data_address = EmitBufferPointer(data_slice, data_shape);
   llvm::Type* data_type = IrShapeType(data_shape);
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice token_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice token_slice,
                       assignment_.GetUniqueSlice(infeed, {1}));
   llvm::Value* token_address = EmitBufferPointer(
       token_slice, ShapeUtil::GetTupleElementShape(infeed->shape(), 1));
@@ -520,7 +520,7 @@ absl::Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
     // elements.
     std::vector<llvm::Value*> tuple_element_addresses;
     for (int i = 0; i < data_shape.tuple_shapes().size(); ++i) {
-      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
+      TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
                           assignment_.GetUniqueSlice(infeed, {0, i}));
 
       const Shape& tuple_element_shape =
@@ -533,7 +533,7 @@ absl::Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
       llvm::Value* tuple_element_address =
           EmitBufferPointer(buffer, tuple_element_shape);
 
-      TF_RETURN_IF_ERROR(EmitXfeedTransfer(
+      TF_XLA_RETURN_IF_ERROR(EmitXfeedTransfer(
           XfeedKind::kInfeed, tuple_element_shape, tuple_element_address));
 
       tuple_element_addresses.push_back(tuple_element_address);
@@ -542,7 +542,7 @@ absl::Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
     llvm_ir::EmitTuple(llvm_ir::IrArray(data_address, data_type, data_shape),
                        tuple_element_addresses, b());
   } else {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         EmitXfeedTransfer(XfeedKind::kInfeed, data_shape, data_address));
   }
 
@@ -561,7 +561,7 @@ absl::Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
   int32_t length_32 = static_cast<int32_t>(length);
 
   int32_t shape_length;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       llvm::Value * shape_ptr,
       llvm_ir::EncodeSelfDescribingShapeConstant(shape, &shape_length, b()));
 
@@ -619,7 +619,7 @@ absl::Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
   // threaded through to other side effecting operations to ensure ordering.  In
   // the IR emitter we treat this token as a normal u8[] and thus need to insert
   // an entry for it in emitted_value_.
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(outfeed));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(outfeed));
 
   HloInstruction* operand = outfeed->operands()[0];
   const Shape& operand_shape = operand->shape();
@@ -637,7 +637,7 @@ absl::Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
     llvm::Value* tuple_element = llvm_ir::EmitGetTupleElement(
         tuple_element_shape, i, MinimumAlignmentForShape(tuple_element_shape),
         value, IrShapeType(operand_shape), b());
-    TF_RETURN_IF_ERROR(EmitXfeedTransfer(XfeedKind::kOutfeed,
+    TF_XLA_RETURN_IF_ERROR(EmitXfeedTransfer(XfeedKind::kOutfeed,
                                          tuple_element_shape, tuple_element));
   }
 
@@ -646,7 +646,7 @@ absl::Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
 
 absl::Status IrEmitter::HandleSort(HloInstruction* hlo) {
   const HloSortInstruction* sort = Cast<HloSortInstruction>(hlo);
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(sort));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(sort));
   Shape keys_shape = sort->keys()->shape();
   PrimitiveType keys_type = keys_shape.element_type();
   if (!primitive_util::IsArrayType(keys_type)) {
@@ -740,7 +740,7 @@ absl::Status IrEmitter::HandleSort(HloInstruction* hlo) {
 }
 
 absl::Status IrEmitter::HandleTuple(HloInstruction* tuple) {
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(tuple));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(tuple));
   llvm::SmallVector<llvm::Value*> base_ptrs;
   for (auto operand : tuple->operands()) {
     base_ptrs.push_back(GetEmittedValueFor(operand));
@@ -773,7 +773,7 @@ absl::Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
 absl::Status IrEmitter::HandleDot(HloInstruction* dot) {
   auto lhs = dot->operand(0);
   auto rhs = dot->operand(1);
-  TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
+  TF_XLA_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*dot, /*operands=*/{lhs, rhs},
       /*supported_types=*/
       {PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128}));
@@ -788,7 +788,7 @@ absl::Status IrEmitter::HandleDot(HloInstruction* dot) {
   llvm_ir::IrArray lhs_array(GetIrArrayFor(lhs));
   llvm_ir::IrArray rhs_array(GetIrArrayFor(rhs));
 
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(dot));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(dot));
   llvm_ir::IrArray target_array = GetIrArrayFor(dot);
 
   VLOG(2) << "HandleDot: ";
@@ -800,7 +800,7 @@ absl::Status IrEmitter::HandleDot(HloInstruction* dot) {
           << llvm_ir::DumpToString(target_array.GetBasePointer());
 
   // Dot operation is complicated so we delegate to a helper class.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       DotOpWorkGroupDim num_workgroups,
       EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
                        /*addend_array=*/nullptr,
@@ -817,7 +817,7 @@ absl::Status IrEmitter::HandleDot(HloInstruction* dot) {
 absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   auto lhs = convolution->operand(0);
   auto rhs = convolution->operand(1);
-  TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
+  TF_XLA_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*convolution, /*operands=*/{lhs, rhs},
       /*supported_types=*/
       {PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128}));
@@ -840,7 +840,7 @@ absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       bool one_dim_convolution = lhs_shape.dimensions().size() == 3;
       llvm::Value* lhs_address = GetEmittedValueFor(lhs);
       llvm::Value* rhs_address = GetEmittedValueFor(rhs);
-      TF_RETURN_IF_ERROR(EmitTargetAddressForOp(convolution));
+      TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(convolution));
 
       const ConvolutionDimensionNumbers& dnums =
           convolution->convolution_dimension_numbers();
@@ -1003,7 +1003,7 @@ absl::Status IrEmitter::HandleAllReduceSingleReplica(HloInstruction* crs) {
   // in algebraic-simplifier, but currently on some platforms
   // HloModuleConfig::num_replicas changes between when the module is compiled
   // and when it's run.
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(crs));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(crs));
 
   // CRS with one operand and one replica is simply the identity function.
   if (crs->operand_count() == 1) {
@@ -1014,7 +1014,7 @@ absl::Status IrEmitter::HandleAllReduceSingleReplica(HloInstruction* crs) {
   std::vector<llvm::Value*> operand_ptrs;
   for (int64_t i = 0; i < crs->operand_count(); ++i) {
     llvm::Value* in_ptr = GetEmittedValueFor(crs->operand(i));
-    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
+    TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
                         assignment_.GetUniqueSlice(crs, {i}));
 
     const Shape& operand_shape = crs->operand(i)->shape();
@@ -1057,7 +1057,7 @@ static bool DataTypeIsSupportedByReduceScatter(PrimitiveType datatype) {
 absl::Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
   CHECK_GE(crs->operand_count(), 1);
   PrimitiveType datatype = crs->operand(0)->shape().element_type();
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(crs));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(crs));
 
   if (!DataTypeIsSupportedByReduceScatter(datatype)) {
     return Unimplemented("AllReduce for datatype '%s' is not supported",
@@ -1081,7 +1081,7 @@ absl::Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
 
     for (int64_t i = 0; i < crs->operand_count(); i++) {
       const HloInstruction* op = crs->operand(i);
-      TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
+      TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
                           assignment_.GetUniqueSlice(crs, {i}));
       const Shape& operand_shape = crs->operand(i)->shape();
       CHECK(operand_shape.IsArray())
@@ -1091,9 +1091,9 @@ absl::Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
     }
   } else {
     Shape shape = crs->operand(0)->shape();
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
                         assignment_.GetUniqueSlice(crs->operand(0), {}));
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
                         assignment_.GetUniqueSlice(crs, {}));
     input_buffer_ptrs.push_back(EmitBufferPointer(input_slice, shape));
     output_buffer_ptrs.push_back(EmitBufferPointer(output_slice, shape));
@@ -1105,7 +1105,7 @@ absl::Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
       EncodeArrayFunctionArguments(output_buffer_ptrs, "output_buffers", b());
 
   int32_t shape_length;
-  TF_ASSIGN_OR_RETURN(llvm::Value * shape_ptr,
+  TF_XLA_ASSIGN_OR_RETURN(llvm::Value * shape_ptr,
                       llvm_ir::EncodeSelfDescribingShapeConstant(
                           crs->shape(), &shape_length, b()));
 
@@ -1149,7 +1149,7 @@ absl::Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
 absl::Status IrEmitter::HandleReduceScatter(HloInstruction* rs) {
   CHECK_EQ(rs->operand_count(), 1);
   PrimitiveType datatype = rs->operand(0)->shape().element_type();
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(rs));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(rs));
 
   if (!DataTypeIsSupportedByReduceScatter(datatype)) {
     return Unimplemented("ReduceScatter for datatype '%s' is not supported",
@@ -1166,9 +1166,9 @@ absl::Status IrEmitter::HandleReduceScatter(HloInstruction* rs) {
   llvm::Value* replica_groups_v = b()->CreateGlobalStringPtr(replica_groups);
 
   Shape shape = rs->operand(0)->shape();
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
                       assignment_.GetUniqueSlice(rs->operand(0), {}));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
                       assignment_.GetUniqueSlice(rs, {}));
   llvm::Value* input_buffer = EmitBufferPointer(input_slice, shape);
   llvm::Value* output_buffer = EmitBufferPointer(output_slice, shape);
@@ -1205,7 +1205,7 @@ absl::Status IrEmitter::HandleReduceScatter(HloInstruction* rs) {
 
 absl::Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
   auto* instr = Cast<HloAllToAllInstruction>(instruction);
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(instruction));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(instruction));
   CHECK(!instr->split_dimension() && instr->shape().IsTuple())
       << "Only tuple AllToAll is supported";
 
@@ -1220,7 +1220,7 @@ absl::Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
 
   for (int64_t i = 0; i < instruction->operand_count(); i++) {
     const HloInstruction* op = instruction->operand(i);
-    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
+    TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
                         assignment_.GetUniqueSlice(instruction, {i}));
     const Shape& operand_shape = instruction->operand(i)->shape();
     CHECK(operand_shape.IsArray())
@@ -1261,7 +1261,7 @@ absl::Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
 }
 
 absl::Status IrEmitter::HandleAllGather(HloInstruction* instruction) {
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(instruction));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(instruction));
 
   std::string replica_groups =
       ReplicaGroupsToString(instruction->replica_groups());
@@ -1272,9 +1272,9 @@ absl::Status IrEmitter::HandleAllGather(HloInstruction* instruction) {
   std::vector<llvm::Value*> output_buffer_ptrs;
 
   const HloInstruction* op = instruction->operand(0);
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice in_slice,
+  TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice in_slice,
                       assignment_.GetUniqueSlice(op, {}));
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
+  TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
                       assignment_.GetUniqueSlice(instruction, {}));
   const Shape& operand_shape = op->shape();
   CHECK(op->shape().IsArray())
@@ -1313,7 +1313,7 @@ absl::Status IrEmitter::HandleAllGather(HloInstruction* instruction) {
 
 absl::Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
   auto* instr = Cast<HloCollectivePermuteInstruction>(crs);
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(instr));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(instr));
   std::string source_target_pairs = absl::StrJoin(
       instr->source_target_pairs(), ",", absl::PairFormatter("="));
   llvm::Value* source_target_pairs_v =
@@ -1321,11 +1321,11 @@ absl::Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
 
   Shape shape = crs->operand(0)->shape();
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
                       assignment_.GetUniqueSlice(crs->operand(0), {}));
   llvm::Value* input_buffer = EmitBufferPointer(input_slice, shape);
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
                       assignment_.GetUniqueSlice(crs, {}));
   llvm::Value* output_buffer = EmitBufferPointer(output_slice, shape);
 
@@ -1349,8 +1349,8 @@ absl::Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
 }
 
 absl::Status IrEmitter::HandlePartitionId(HloInstruction* hlo) {
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
                       assignment_.GetUniqueSlice(hlo, {}));
   llvm::Value* output_buffer = EmitBufferPointer(output_slice, hlo->shape());
   EmitCallToFunc(runtime::kPartitionIdSymbolName,
@@ -1361,8 +1361,8 @@ absl::Status IrEmitter::HandlePartitionId(HloInstruction* hlo) {
 }
 
 absl::Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
                       assignment_.GetUniqueSlice(hlo, {}));
   llvm::Value* output_buffer = EmitBufferPointer(output_slice, hlo->shape());
   EmitCallToFunc(runtime::kReplicaIdSymbolName,
@@ -1740,7 +1740,7 @@ absl::StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   }
 
   CHECK(!reduce->shape().IsTuple());
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(reduce));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(reduce));
 
   // We know we're not reducing over the most minor dimension, which means we
   // can lower the reduction loop as:
@@ -1801,7 +1801,7 @@ absl::StatusOr<bool> IrEmitter::EmitVectorizedReduce(
         reduce->shape().element_type(), vectorization_factor);
     llvm_ir::IrArray::Index array_index(array_multi_index, reduce->shape(),
                                         b()->getInt64Ty());
-    TF_ASSIGN_OR_RETURN(std::vector<llvm::Value*> accumulator,
+    TF_XLA_ASSIGN_OR_RETURN(std::vector<llvm::Value*> accumulator,
                         EmitInnerLoopForVectorizedReduction(
                             reduction_generator, array_index, vector_type,
                             init_value, arg, dimensions, element_alignment));
@@ -1839,7 +1839,7 @@ absl::StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     llvm::FastMathFlags flags = b()->getFastMathFlags();
     flags.setAllowReassoc(true);
     b()->setFastMathFlags(flags);
-    TF_ASSIGN_OR_RETURN(std::vector<llvm::Value*> accumulator,
+    TF_XLA_ASSIGN_OR_RETURN(std::vector<llvm::Value*> accumulator,
                         EmitInnerLoopForVectorizedReduction(
                             reduction_generator, array_index, vector_type,
                             init_value, arg, dimensions, element_alignment));
@@ -1870,7 +1870,7 @@ absl::Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   });
   if (!options::VectorizedReduceDisabled(hlo_module_config_)) {
     std::string vectorization_failure_reason;
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool vectorization_successful,
         EmitVectorizedReduce(reduce, arg, init_value, dimensions, function,
                              &vectorization_failure_reason));
@@ -1915,7 +1915,7 @@ absl::Status IrEmitter::HandleSlice(HloInstruction* slice) {
     return DefaultAction(slice);
   }
 
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(slice));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(slice));
 
   if (ShapeUtil::IsZeroElementArray(slice->shape())) {
     return absl::OkStatus();
@@ -2040,7 +2040,7 @@ absl::Status IrEmitter::HandleSlice(HloInstruction* slice) {
 
 absl::Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice) {
   if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
-    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(dynamic_slice));
+    TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(dynamic_slice));
     return EmitMemcpy(*dynamic_slice->operand(0), *dynamic_slice);
   }
   return DefaultAction(dynamic_slice);
@@ -2050,11 +2050,11 @@ absl::Status IrEmitter::HandleDynamicUpdateSlice(
     HloInstruction* dynamic_update_slice) {
   auto update = dynamic_update_slice->operand(1);
   if (ShapeUtil::IsScalar(dynamic_update_slice->shape())) {
-    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(dynamic_update_slice));
+    TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(dynamic_update_slice));
     return EmitMemcpy(*update, *dynamic_update_slice);
   } else if (llvm_ir::CanUpdateDynamicSliceInPlace(dynamic_update_slice,
                                                    assignment_)) {
-    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(dynamic_update_slice));
+    TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(dynamic_update_slice));
     auto operands = GetIrArraysForOperandsOf(dynamic_update_slice);
     return llvm_ir::EmitDynamicUpdateSliceInPlace(
         operands, GetIrArrayFor(dynamic_update_slice),
@@ -2078,7 +2078,7 @@ absl::Status IrEmitter::HandlePad(HloInstruction* pad) {
   const auto operand = pad->operand(0);
   const auto padding_value = pad->operand(1);
 
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(pad));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(pad));
 
   return HandlePad(pad, GetIrArrayFor(operand), GetIrArrayFor(padding_value),
                    GetIrArrayFor(pad));
@@ -2115,7 +2115,7 @@ absl::Status IrEmitter::HandlePad(HloInstruction* pad,
       };
 
   // First, fill in the padding value to all output elements.
-  TF_RETURN_IF_ERROR(EmitTargetElementLoop(
+  TF_XLA_RETURN_IF_ERROR(EmitTargetElementLoop(
       pad, "initialize", element_generator,
       std::optional<const llvm_ir::IrArray>(output_array)));
 
@@ -2162,7 +2162,7 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     FusedIrEmitter fused_emitter(elemental_emitter);
     BindFusionArguments(fusion, &fused_emitter);
 
-    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
+    TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
     // Delegate to common implementation of fused in-place dynamic-update-slice.
     return llvm_ir::EmitFusedDynamicUpdateSliceInPlace(
         fusion, GetIrArrayFor(fusion), &fused_emitter, b());
@@ -2171,7 +2171,7 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory();
     FusedIrEmitter fused_emitter(elemental_emitter);
     BindFusionArguments(fusion, &fused_emitter);
-    TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
+    TF_XLA_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
                                             *fusion->fused_expression_root()));
     return EmitTargetElementLoop(fusion, "kLoop_fusion", generator,
                                  std::nullopt);
@@ -2190,7 +2190,7 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
         root->operand(1 - dot_op_index)->parameter_number();
 
     Shape target_shape = fusion->shape();
-    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
+    TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
     llvm_ir::IrArray target_array = GetIrArrayFor(fusion);
 
     llvm_ir::IrArray lhs_array(
@@ -2200,7 +2200,7 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     llvm_ir::IrArray addend_array(
         GetIrArrayFor(fusion->operand(addend_param_number)));
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         DotOpWorkGroupDim num_workgroups,
         EmitDotOperation(
             *dot, target_array, lhs_array, rhs_array, &addend_array,
@@ -2221,7 +2221,7 @@ absl::Status IrEmitter::HandleCall(HloInstruction* call) {
   llvm::Function* call_ir_function = FindOrDie(
       emitted_functions_, ComputationToEmit{computation, allow_reassociation_});
 
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(call));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(call));
 
   auto backend_config_or =
       computation->root_instruction()->backend_config<BackendConfig>();
@@ -2246,7 +2246,7 @@ absl::Status IrEmitter::HandleCall(HloInstruction* call) {
     // each partition in parallel, using an appropriate set of loop bounds for
     // each call such that it only generates one partition of the output.
     HloInstruction* root = computation->root_instruction();
-    TF_RETURN_IF_ERROR(EmitCallToParallelForkJoin(
+    TF_XLA_RETURN_IF_ERROR(EmitCallToParallelForkJoin(
         call_args, root->shape(),
         backend_config_or->outer_dimension_partitions(), b(), call_ir_function,
         computation->name()));
@@ -2305,7 +2305,7 @@ absl::Status IrEmitter::EmitSliceToDynamic(
 }
 
 absl::Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
   llvm_ir::IrArray target_array = GetIrArrayFor(hlo);
 
   std::vector<llvm_ir::IrArray> source_arrays;
@@ -2318,9 +2318,9 @@ absl::Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
 }
 
 absl::Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice data_slice,
                       assignment_.GetUniqueSlice(hlo, {0}));
   std::vector<llvm::Value*> dynamic_dims;
   std::vector<llvm::Value*> tuple_operand_ptrs;
@@ -2342,7 +2342,7 @@ absl::Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
     // Read from the metadata section of the dynamic input (operand 0).
     const Shape& dim_shape = ShapeUtil::GetSubshape(hlo->shape(), {i});
     TF_RET_CHECK(Shape::Equal()(dim_shape, ShapeUtil::MakeScalarShape(S32)));
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dim_size_slice,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice dim_size_slice,
                         assignment_.GetUniqueSlice(hlo, {i}));
     llvm::Value* dest_dim_size_address =
         EmitBufferPointer(dim_size_slice, data_shape);
@@ -2373,7 +2373,7 @@ absl::Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
     data_array.EmitWriteArrayElement(array_index, source_element, b());
     return absl::OkStatus();
   };
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       llvm_ir::LoopEmitter(loop_body_emitter, input_shape, dynamic_dims, b())
           .EmitLoop(IrName(hlo)));
 
@@ -2383,7 +2383,7 @@ absl::Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
 }
 
 absl::Status IrEmitter::HandleTopK(HloInstruction* hlo) {
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
   const HloInstruction* input = hlo->operand(0);
   const int64_t k = hlo->shape().tuple_shapes(0).dimensions().back();
   const bool has_batch = hlo->shape().tuple_shapes(0).dimensions().size() == 2;
@@ -2398,11 +2398,11 @@ absl::Status IrEmitter::HandleTopK(HloInstruction* hlo) {
       LayoutUtil::IsMonotonicWithDim0Major(hlo->operand(0)->shape().layout()))
       << hlo->ToString();
 
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice values_slice,
+  TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice values_slice,
                       assignment_.GetUniqueSlice(hlo->operand(0), {}));
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_values_slice,
+  TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_values_slice,
                       assignment_.GetUniqueSlice(hlo, {0}));
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_indices_slice,
+  TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_indices_slice,
                       assignment_.GetUniqueSlice(hlo, {1}));
   llvm::Value* values_ptr =
       EmitBufferPointer(values_slice, hlo->operand(0)->shape());
@@ -2509,7 +2509,7 @@ absl::Status IrEmitter::HandleOneDnnMatMulCalls(
   b()->CreateLifetimeStart(args_ptr);
   b()->CreateStore(args_val, args_ptr);
 
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
 
   StackAlloca result_stack_alloca;
   StackAlloca scratch_stack_alloca;
@@ -2523,14 +2523,14 @@ absl::Status IrEmitter::HandleOneDnnMatMulCalls(
   if (use_scratchpad) {
     llvm::Value* result_slice_ptr;
     llvm::Value* scratch_slice_ptr;
-    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+    TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
                         assignment_.GetUniqueSlice(custom_call, {0}));
     const Shape& result_shape = custom_call->shape().tuple_shapes(0);
     std::tie(result_slice_ptr, result_stack_alloca) =
         GetPtrAndAllocaFromBufferSlice(result_slice, result_shape);
     fn_call_args.push_back(result_stack_alloca.value);
 
-    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice scratch_slice,
+    TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice scratch_slice,
                         assignment_.GetUniqueSlice(custom_call, {1}));
     const Shape& scratch_shape = custom_call->shape().tuple_shapes(1);
     std::tie(scratch_slice_ptr, scratch_stack_alloca) =
@@ -2595,12 +2595,12 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
     HloInstruction* operand = operands[i];
     if (is_typed_ffi) {
       // Emit nested tuples as flat buffer pointers
-      TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
           operand->shape(), [&](const Shape& shape, const ShapeIndex& index) {
             if (!shape.IsArray() && !shape.IsToken()) {
               return absl::OkStatus();
             }
-            TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+            TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                                 assignment_.GetUniqueSlice(operand, index));
             operand_values.push_back(EmitBufferPointer(slice, shape));
             return absl::OkStatus();
@@ -2632,7 +2632,7 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
     Store(operand_values[i], slot_in_operands_alloca);
   }
 
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
   // Write the tuple table if the output is a tuple.
   std::vector<llvm::Value*> tuple_ptrs;
   if (custom_call->shape().IsTuple()) {
@@ -2643,7 +2643,7 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
       if (!is_typed_ffi) {
         TF_RET_CHECK(!elem_shape.IsTuple()) << "Nested tuples not implemented";
       }
-      TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+      TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
                           assignment_.GetUniqueSlice(custom_call, {i}));
       tuple_ptrs.push_back(EmitBufferPointer(slice, elem_shape));
     }
@@ -2687,13 +2687,13 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
       if (custom_call->shape().IsTuple()) {
         buffer_ptrs.reserve(ShapeUtil::TupleElementCount(custom_call->shape()));
       }
-      TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
           custom_call->shape(),
           [&](const Shape& shape, const ShapeIndex& index) {
             if (!shape.IsArray() && !shape.IsToken()) {
               return absl::OkStatus();
             }
-            TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+            TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                                 assignment_.GetUniqueSlice(custom_call, index));
             buffer_ptrs.push_back(EmitBufferPointer(slice, shape));
             return absl::OkStatus();
@@ -2742,7 +2742,7 @@ absl::Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
       << "While condition computation must return bool; got: "
       << ShapeUtil::HumanString(condition->root_instruction()->shape());
   // Check that all while-related buffers share an allocation slice.
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       xla_while->shape(),
       [this, &xla_while](const Shape& /*subshape*/,
                          const ShapeIndex& index) -> absl::Status {
@@ -2761,19 +2761,19 @@ absl::Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
           }
           return absl::OkStatus();
         };
-        TF_RETURN_IF_ERROR(check(xla_while, xla_while->operand(0), index));
-        TF_RETURN_IF_ERROR(check(
+        TF_XLA_RETURN_IF_ERROR(check(xla_while, xla_while->operand(0), index));
+        TF_XLA_RETURN_IF_ERROR(check(
             xla_while, xla_while->while_condition()->parameter_instruction(0),
             index));
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             check(xla_while, xla_while->while_body()->parameter_instruction(0),
                   index));
-        TF_RETURN_IF_ERROR(check(
+        TF_XLA_RETURN_IF_ERROR(check(
             xla_while, xla_while->while_body()->root_instruction(), index));
         return absl::OkStatus();
       }));
 
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(xla_while));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(xla_while));
 
   // Generating:
   //   while (Condition(while_result)) {
@@ -3225,14 +3225,14 @@ absl::Status IrEmitter::CanDoFastConcatenate(
 absl::Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
   absl::Status fast_impl_reason = CanDoFastConcatenate(concatenate);
   if (fast_impl_reason.ok()) {
-    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(concatenate));
+    TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(concatenate));
     llvm_ir::IrArray target_array = GetIrArrayFor(concatenate);
     std::vector<llvm_ir::IrArray> source_arrays;
     source_arrays.reserve(concatenate->operands().size());
     for (HloInstruction* operand : concatenate->operands()) {
       source_arrays.emplace_back(GetIrArrayFor(operand));
     }
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         ::xla::cpu::EmitFastConcatenate(concatenate, source_arrays,
                                         target_array, module_, *b())
             .status());
@@ -3264,7 +3264,7 @@ absl::Status IrEmitter::HandleConditional(HloInstruction* conditional) {
         << ShapeUtil::HumanString(br_computation->root_instruction()->shape());
   }
 
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(conditional));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(conditional));
 
   if (branch_index->shape().element_type() == PRED) {
     // Emit an if-else to LLVM:
@@ -3357,7 +3357,7 @@ absl::Status IrEmitter::HandleConditional(HloInstruction* conditional) {
 absl::Status IrEmitter::HandleAfterAll(HloInstruction* after_all) {
   TF_RET_CHECK(ByteSizeOf(after_all->shape()) == 0);
   // No code to generate, but we need to emit an address for book-keeping.
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(after_all));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(after_all));
   return absl::OkStatus();
 }
 
@@ -3399,7 +3399,7 @@ absl::Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
       Cast<HloRngGetAndUpdateStateInstruction>(rng_state)->delta(), module_,
       b());
 
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(rng_state));
+  TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(rng_state));
   llvm::Value* address = GetEmittedValueFor(rng_state);
 
   // The buffer has an array type while the value has a i128. Cast the
@@ -3779,7 +3779,7 @@ llvm::Value* IrEmitter::EmitBufferPointer(const BufferAllocation::Slice& slice,
 
 absl::Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
   const Shape& target_shape = op->shape();
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+  TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
                       assignment_.GetUniqueTopLevelSlice(op));
   llvm::Value* addr = EmitBufferPointer(slice, target_shape);
   addr->setName(IrName(op));
@@ -3797,7 +3797,7 @@ absl::Status IrEmitter::EmitTargetElementLoop(
   if (result_array_opt.has_value()) {
     target_array = result_array_opt.value();
   } else {
-    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(target_op));
+    TF_XLA_RETURN_IF_ERROR(EmitTargetAddressForOp(target_op));
     target_array = GetIrArrayFor(target_op);
   }
 
@@ -3811,7 +3811,7 @@ absl::Status IrEmitter::EmitTargetElementLoop(
     TF_RET_CHECK(num_dynamic_loop_bounds_ == 0);
     std::vector<llvm_ir::IrArray> output_arrays;
     for (int64_t i = 0; i < ShapeUtil::TupleElementCount(target_shape); ++i) {
-      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+      TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                           assignment_.GetUniqueSlice(target_op, {i}));
       const Shape& element_shape = ShapeUtil::GetSubshape(target_shape, {i});
       llvm::Value* op_target_address = EmitBufferPointer(slice, element_shape);
@@ -3819,7 +3819,7 @@ absl::Status IrEmitter::EmitTargetElementLoop(
       output_arrays.push_back(
           llvm_ir::IrArray(op_target_address, op_target_type, element_shape));
     }
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, output_arrays, b())
             .EmitLoop(IrName(target_op, desc)));
 
@@ -3836,11 +3836,11 @@ absl::Status IrEmitter::EmitTargetElementLoop(
       std::vector<std::pair<llvm::Value*, llvm::Value*>> dynamic_loop_bounds =
           compute_function()->GetDynamicLoopBounds();
       // Emit parallel loop with dynamic loop bounds for most-major dimensions.
-      TF_RETURN_IF_ERROR(ParallelLoopEmitter(element_generator, target_array,
+      TF_XLA_RETURN_IF_ERROR(ParallelLoopEmitter(element_generator, target_array,
                                              &dynamic_loop_bounds, b())
                              .EmitLoop(IrName(target_op, desc)));
     } else {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           llvm_ir::LoopEmitter(element_generator, target_array, b())
               .EmitLoop(IrName(target_op, desc)));
     }
@@ -4058,7 +4058,7 @@ absl::StatusOr<llvm::Function*> IrEmitter::EmitNestedComputation(
                              instr->opcode() == HloOpcode::kReduceWindow;
     for (HloComputation* called_computation : instr->called_computations()) {
       // reassociation is transitive so we "or" the caller and the callee.
-      TF_RETURN_IF_ERROR(EmitNestedComputation(*called_computation,
+      TF_XLA_RETURN_IF_ERROR(EmitNestedComputation(*called_computation,
                                                llvm_ir::IrName(instr),
                                                is_reducer || nested_is_reducer)
                              .status());

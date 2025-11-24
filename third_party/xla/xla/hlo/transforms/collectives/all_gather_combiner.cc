@@ -158,7 +158,7 @@ absl::Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
                                        replacement->shape()),
           replacement));
     }
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         computation.ReplaceInstruction(to_combine[i], replacement));
   }
 
@@ -247,7 +247,7 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
               << computation->ToString();
       continue;
     }
-    TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
+    TF_XLA_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&](const HloInstruction* instruction) {
       return combine_key(instruction, *domain_map, combine_by_dim_,
@@ -258,7 +258,7 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
       return CombineAllGathers(to_combine, combine_by_dim_);
     };
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool computation_changed,
         CombineInstructionsByKey<GroupKey>(computation, key_fn, combine_fn,
                                            combine_threshold_in_bytes_,
@@ -272,7 +272,7 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
 absl::StatusOr<bool> AllGatherCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       bool changed, RunWithKeyCombiner(module, execution_threads, CombineKey));
   return changed;
 }

@@ -145,7 +145,7 @@ Thunk::CollectiveExecuteParams::Create(
                            ? &*gpu_options->incarnations()
                            : nullptr;
 
-  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+  TF_XLA_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       GetGlobalDeviceId(device_id_map, local_device_ordinal));
 
   return CollectiveExecuteParams(

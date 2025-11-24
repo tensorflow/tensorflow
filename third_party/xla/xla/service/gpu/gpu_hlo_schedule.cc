@@ -737,13 +737,13 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   // Run the scheduler which minimizes peak memory usage.
   // We need to run it anyway because LHS relies on it.
   // See `xla::LatencyHidingScheduler::Run`.
-  TF_RETURN_IF_ERROR(RunP2PSchedulePreparation(module));
+  TF_XLA_RETURN_IF_ERROR(RunP2PSchedulePreparation(module));
   int64_t peak_memory_bytes;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloSchedule schedule,
       ScheduleGpuModuleWithMemoryScheduler(module, alias_info, pointer_size,
                                            &peak_memory_bytes));
-  TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  TF_XLA_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
 
   bool enable_latency_hiding_scheduler =
       IsLHSEnabled(*module, fingerprint, gpu_device_info);
@@ -751,7 +751,7 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   // Run Latency Hiding Scheduler (LHS). It maximizes the compute-communication
   // overlap, potentially at the cost of memory usage.
   if (enable_latency_hiding_scheduler) {
-    TF_RETURN_IF_ERROR(RunLatencyHidingSchedulerPasses(
+    TF_XLA_RETURN_IF_ERROR(RunLatencyHidingSchedulerPasses(
         module, pointer_size, fingerprint, memory_limit, gpu_device_info,
         mlir_context, alias_info));
   }

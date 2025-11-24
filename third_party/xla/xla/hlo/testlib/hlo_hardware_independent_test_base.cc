@@ -122,13 +122,13 @@ absl::Status HloHardwareIndependentTestBase::
       for (int64_t i = 0; i < computation->num_parameters(); ++i) {
         const Shape& param_shape =
             computation->parameter_instruction(i)->shape();
-        TF_RETURN_IF_ERROR(computation->parent()
+        TF_XLA_RETURN_IF_ERROR(computation->parent()
                                ->mutable_entry_computation_layout()
                                ->mutable_parameter_layout(i)
                                ->CopyLayoutFromShape(param_shape));
       }
 
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           computation->parent()
               ->mutable_entry_computation_layout()
               ->mutable_result_layout()
@@ -164,7 +164,7 @@ HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
       TestName(), config_with_device_assignment, verifier_layout_sensitive_,
       allow_mixed_precision_in_hlo_verifier_, shape_size_fn,
       instruction_can_change_layout_func_);
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       module->ParseHloStringAndVerifyModule(hlo_text, parser_options));
   return module;
 }
@@ -173,7 +173,7 @@ HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
 absl::StatusOr<bool> HloHardwareIndependentTestBase::RunHloPass(
     HloPassInterface* hlo_pass, HloModule* module) {
   const std::string before_run = module->ToProto().ShortDebugString();
-  TF_ASSIGN_OR_RETURN(bool changed, hlo_pass->Run(module));
+  TF_XLA_ASSIGN_OR_RETURN(bool changed, hlo_pass->Run(module));
   const std::string after_run = module->ToProto().ShortDebugString();
   if (changed) {
     EXPECT_NE(after_run, before_run) << absl::StrFormat(
@@ -256,10 +256,10 @@ HloHardwareIndependentTestBase::RunAndCheckHloRewrite(
   std::string hlo_string = absl::StrReplaceAll(hlo_template, params);
   SCOPED_TRACE("Input HLO: " + hlo_string);
   VLOG(7) << "Input HLO: " << hlo_string;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       ParseAndReturnVerifiedModule(hlo_string));
   VLOG(7) << "Input HLO parsed. Running the pass:  + " << hlo_pass->name();
-  TF_ASSIGN_OR_RETURN(bool changed, RunHloPass(hlo_pass, module.get()));
+  TF_XLA_ASSIGN_OR_RETURN(bool changed, RunHloPass(hlo_pass, module.get()));
   VLOG(7) << "Output HLO: "
           << module->ToString(HloPrintOptions::ShortParsable()
                                   .set_print_control_dependencies(true));

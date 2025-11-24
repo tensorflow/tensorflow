@@ -170,7 +170,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
   pipeline.AddPass<HloConstantFolding>();
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       pipeline
           .Run(hlo_module,
                /*execution_threads=*/{HloInstruction::kMainExecutionThread})
@@ -195,13 +195,13 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   // Padding a gemm operand that's a constant results in pad(constant).  Run
   // constant-folding to simplify this into a new constant.
   pre_pipeline.AddPass<HloConstantFolding>();
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       pre_pipeline
           .Run(hlo_module,
                /*execution_threads=*/{HloInstruction::kMainExecutionThread})
           .status());
 
-  TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
+  TF_XLA_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config, alias_info,
       thread_pool));
 
@@ -211,7 +211,7 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   // memory.
   post_pipeline.AddPass<TriangularSolveRewriter>();
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       post_pipeline
           .Run(hlo_module,
                /*execution_threads=*/{HloInstruction::kMainExecutionThread})
@@ -269,7 +269,7 @@ absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
     return instruction.opcode() == HloOpcode::kCustomCall &&
            IsCublasGemm(instruction);
   };
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<AutotunerPass> autotuner_pass,
       AutotunerPass::Create(std::move(backends), debug_options, stream_exec,
                             thread_pool, should_autotune, target_config,
@@ -300,7 +300,7 @@ AMDGPUCompiler::CompileTargetBinary(
     XLA_SCOPED_LOGGING_TIMER_IF(
         "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco",
         !options.is_autotuning_compilation);
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         hsaco, amdgpu::CompileToHsaco(
                    llvm_module, device_description.gpu_compute_capability(),
                    module_config.debug_options(),

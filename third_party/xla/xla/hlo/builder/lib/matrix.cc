@@ -63,7 +63,7 @@ XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64_t m,
 XlaOp GetDiagonalMask(XlaOp x, int diagonal) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    TF_XLA_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
     auto n_dims = static_cast<int32_t>(shape.dimensions().size());
     TF_RET_CHECK(n_dims >= 2);
     auto m = shape.dimensions(n_dims - 2);
@@ -81,7 +81,7 @@ XlaOp GetDiagonalMask(XlaOp x, int diagonal) {
 XlaOp GetMatrixDiagonal(XlaOp x, int k) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    TF_XLA_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
     auto n_dims = static_cast<int32_t>(shape.dimensions().size());
     TF_RET_CHECK(n_dims >= 2);
     const int64_t m = shape.dimensions(n_dims - 2);
@@ -115,7 +115,7 @@ XlaOp GetMatrixDiagonal(XlaOp x, int k) {
 XlaOp GetMatrixDiagonalViaGather(XlaOp x, int k) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    TF_XLA_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
     auto n_dims = static_cast<int32_t>(shape.dimensions().size());
     TF_RET_CHECK(n_dims >= 2);
     const int64_t m = shape.dimensions(n_dims - 2);
@@ -178,8 +178,8 @@ XlaOp GetMatrixDiagonalViaGather(XlaOp x, int k) {
 XlaOp SetMatrixDiagonal(XlaOp matrix, XlaOp diag, int k) {
   XlaBuilder* builder = matrix.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(matrix));
-    TF_ASSIGN_OR_RETURN(Shape diag_shape, builder->GetShape(diag));
+    TF_XLA_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(matrix));
+    TF_XLA_ASSIGN_OR_RETURN(Shape diag_shape, builder->GetShape(diag));
     auto n_dims = static_cast<int32_t>(shape.dimensions().size());
     TF_RET_CHECK(n_dims >= 2);
     const int64_t m = shape.dimensions(n_dims - 2);
@@ -217,7 +217,7 @@ XlaOp SetMatrixDiagonal(XlaOp matrix, XlaOp diag, int k) {
 XlaOp TriangleMask(XlaOp x, int diagonal) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    TF_XLA_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
     const int64_t n_dims = shape.dimensions().size();
     TF_RET_CHECK(n_dims >= 2);
     const int64_t m = shape.dimensions(n_dims - 2);
@@ -244,7 +244,7 @@ XlaOp LowerTriangle(XlaOp x) { return Triangle(x, true); }
 XlaOp Symmetrize(XlaOp x, bool lower) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    TF_XLA_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
     if (shape.dimensions().size() < 2) {
       return InvalidArgument(
           "Argument to symmetrize must have >= 2 dimensions, got %s",
@@ -299,7 +299,7 @@ std::optional<std::array<std::vector<int64_t>, 3>> EinsumDiagonalLabels(
 xla::XlaOp EinsumDiagonalMask(XlaOp x, absl::Span<const int64_t> config) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+    TF_XLA_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
     Shape iota_shape = ShapeUtil::MakeShape(S32, x_shape.dimensions());
     XlaOp mask = ConstantR0(builder, true);
 
@@ -324,7 +324,7 @@ xla::XlaOp EinsumDiagonal(XlaOp x, absl::Span<const int64_t> config) {
       return x;
     }
     auto zero = ScalarLike(x, 0);
-    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+    TF_XLA_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
     return Reduce(EinsumDiagonalMask(x, config), zero,
                   CreateScalarIdentityWithZeroComputation(
                       x_shape.element_type(), builder),
@@ -339,7 +339,7 @@ xla::XlaOp EinsumInverseDiagonal(XlaOp x, absl::Span<const int64_t> config) {
     if (!labels) {
       return x;
     }
-    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+    TF_XLA_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
     std::vector<int64_t> broadcast_sizes;
     int64_t x_dim = 0;
     for (auto label = config.begin(); label != config.end(); ++label) {
@@ -412,8 +412,8 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64_t> x_config,
           output_config);
     }
 
-    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
-    TF_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
+    TF_XLA_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+    TF_XLA_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
     const int64_t x_rank = x_config.size();
     const int64_t y_rank = y_config.size();
     const int64_t output_rank = output_config.size();
@@ -553,9 +553,9 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64_t> x_config,
     auto dot =
         DotGeneral(x, y, dnums, &precision_proto, preferred_element_type);
 
-    TF_RETURN_IF_ERROR(builder->SetInstructionFrontendAttribute(
+    TF_XLA_RETURN_IF_ERROR(builder->SetInstructionFrontendAttribute(
         dot, "grad_x", (grad_x ? "true" : "false")));
-    TF_RETURN_IF_ERROR(builder->SetInstructionFrontendAttribute(
+    TF_XLA_RETURN_IF_ERROR(builder->SetInstructionFrontendAttribute(
         dot, "grad_y", (grad_y ? "true" : "false")));
     dot = Transpose(dot, transpose_dims);
     if (transpose_rank == output_rank) {
@@ -569,7 +569,7 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64_t> x_config,
     int64_t dot_dim = 0;
     std::vector<int64_t> new_dims;
     new_dims.reserve(output_rank);
-    TF_ASSIGN_OR_RETURN(Shape dot_shape, builder->GetShape(dot));
+    TF_XLA_ASSIGN_OR_RETURN(Shape dot_shape, builder->GetShape(dot));
     for (auto d : output_config) {
       if (is_output_only(d)) {
         new_dims.push_back(1);
@@ -647,7 +647,7 @@ absl::StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
       }
     }
     for (char d : splits[0]) {
-      TF_RETURN_IF_ERROR(maybe_invalid_character(d));
+      TF_XLA_RETURN_IF_ERROR(maybe_invalid_character(d));
       numeric_config->push_back(static_cast<int64_t>(d));
     }
     if (has_ellipsis) {
@@ -657,14 +657,14 @@ absl::StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
         numeric_config->push_back(-i);
       }
       for (char d : splits[1]) {
-        TF_RETURN_IF_ERROR(maybe_invalid_character(d));
+        TF_XLA_RETURN_IF_ERROR(maybe_invalid_character(d));
         numeric_config->push_back(static_cast<int64_t>(d));
       }
     }
     return ellipsis_rank;
   };
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const int64_t x_ellipsis_rank,
       string_config_to_numeric(main_split[0],
                                /*is_input_config=*/true, x_rank,
@@ -676,7 +676,7 @@ absl::StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
     return InvalidArgument("Expected one \"->\" in einsum_config.");
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const int64_t y_ellipsis_rank,
       string_config_to_numeric(y_output_split[0],
                                /*is_input_config=*/true, y_rank,
@@ -685,7 +685,7 @@ absl::StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
   // Replace ellipsis in output_config with numeric labels with the same
   // ellipsis rank as in the inputs.
   // Note: This implementation doesn't support different-rank broadcasting.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::ignore,
       string_config_to_numeric(
           y_output_split[1], /*is_input_config=*/false,
@@ -730,9 +730,9 @@ XlaOp Einsum(XlaOp x, XlaOp y, absl::string_view einsum_config,
       return Einsum(x, y, new_config, precision, preferred_element_type, grad_x,
                     grad_y);
     }
-    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
-    TF_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+    TF_XLA_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
+    TF_XLA_ASSIGN_OR_RETURN(
         auto einsum_config_numeric,
         ParseEinsumString(einsum_config, x_shape.dimensions().size(),
                           y_shape.dimensions().size()));
@@ -751,7 +751,7 @@ XlaOp Einsum(XlaOp x, absl::string_view einsum_config,
 XlaOp TransposeInMinorDims(XlaOp x) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    TF_XLA_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
     const int64_t n_dims = shape.dimensions().size();
     TF_RET_CHECK(n_dims >= 2);
     std::vector<int64_t> permutation(n_dims);

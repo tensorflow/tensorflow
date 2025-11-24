@@ -107,7 +107,7 @@ static absl::Status PopulateProfileFromTimer(
     dnn::ProfileResult* profile_result,
     std::optional<uint64_t> scratch_size = std::nullopt) {
   if (profile_result) {
-    TF_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
+    TF_XLA_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
     profile_result->set_algorithm(algorithm);
     profile_result->set_elapsed_time_in_ms(
         absl::ToDoubleMilliseconds(duration));
@@ -2515,7 +2515,7 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
         LOG(ERROR) << "Fail to allocate RNN reserve space";
         return absl::InternalError("AllocateBytes for RNN failed");
       }
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           stream->MemZero(&reserve_space, reserve_space_size_in_bytes));
     }
   }
@@ -2524,7 +2524,7 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
   std::unique_ptr<EventBasedTimer> timer;
 
   if (is_profiling) {
-    TF_ASSIGN_OR_RETURN(timer,
+    TF_XLA_ASSIGN_OR_RETURN(timer,
                         stream->CreateEventBasedTimer(
                             output_profile_result->warmup_run_executed()));
   }
@@ -2570,7 +2570,7 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
   }
 
   if (is_profiling) {
-    TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+    TF_XLA_RETURN_IF_ERROR(PopulateProfileFromTimer(
         timer.get(), *rnn_desc.algorithm_config().algorithm(),
         output_profile_result));
   }
@@ -2637,26 +2637,26 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
   auto size_data = input_desc.seq_length() * input_desc.batch_size() *
                    input_desc.data_size();
   if ((size_data > 0) && (input_backprop_data->opaque() != nullptr))
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         stream->MemZero(input_backprop_data, size_data * type_size));
 
   size_data = input_h_desc.num_layers() * input_h_desc.batch_size() *
               input_h_desc.data_size();
   if ((size_data > 0) && (input_h_backprop_data->opaque() != nullptr))
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         stream->MemZero(input_h_backprop_data, size_data * type_size));
 
   size_data = input_c_desc.num_layers() * input_c_desc.batch_size() *
               input_c_desc.data_size();
   if ((size_data > 0) && (input_c_backprop_data->opaque() != nullptr))
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         stream->MemZero(input_c_backprop_data, size_data * type_size));
 
   const bool is_profiling = output_profile_result != nullptr;
   std::unique_ptr<EventBasedTimer> timer;
 
   if (is_profiling) {
-    TF_ASSIGN_OR_RETURN(timer,
+    TF_XLA_ASSIGN_OR_RETURN(timer,
                         stream->CreateEventBasedTimer(
                             output_profile_result->warmup_run_executed()));
   }
@@ -2688,7 +2688,7 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
 
   if (params_backprop_data != nullptr) {
     // Clear the dw to zeros.
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         stream->MemZero(params_backprop_data, params_backprop_data->size()));
     // make the backward weight call
     status = wrap::miopenRNNBackwardWeights(
@@ -2709,7 +2709,7 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
   }
 
   if (is_profiling) {
-    TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+    TF_XLA_RETURN_IF_ERROR(PopulateProfileFromTimer(
         timer.get(), *rnn_desc.algorithm_config().algorithm(),
         output_profile_result));
   }
@@ -3355,7 +3355,7 @@ class RocmConvRunner : public dnn::ConvRunner {
     const bool is_profiling = output_profile_result != nullptr;
     std::unique_ptr<EventBasedTimer> timer;
     if (is_profiling) {
-      TF_ASSIGN_OR_RETURN(timer,
+      TF_XLA_ASSIGN_OR_RETURN(timer,
                           stream->CreateEventBasedTimer(
                               output_profile_result->warmup_run_executed()));
     }
@@ -3427,7 +3427,7 @@ class RocmConvRunner : public dnn::ConvRunner {
 
     if (is_profiling) {
       if (status == miopenStatusSuccess) {
-        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
+        TF_XLA_ASSIGN_OR_RETURN(absl::Duration elapsed,
                             timer->GetElapsedDuration());
         output_profile_result->set_elapsed_time_in_ms(
             absl::ToDoubleMilliseconds(elapsed));
@@ -3470,7 +3470,7 @@ absl::Status MIOpenSupport::DoConvolve(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
     dnn::ProfileResult* output_profile_result) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto runner,
       ConvolveRunnerFromDesc(stream, algorithm_desc, kind, element_type,
                              output_type, input_descriptor, filter_descriptor,
@@ -3505,7 +3505,7 @@ absl::Status MIOpenSupport::GetConvolveRunners(
     return absl::InternalError("GetMIOpenConvolveAlgorithms failure");
 
   for (const auto& profile_result : profile_results) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto runner, ConvolveRunnerFromDesc(
                          stream, profile_result.algorithm(), kind, input_type,
                          output_type, input_descriptor, filter_descriptor,
@@ -3525,13 +3525,13 @@ MIOpenSupport::ConvolveRunnerFromDesc(
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor) {
   auto workspace_size = algorithm_desc.workspace_size();
-  TF_ASSIGN_OR_RETURN(auto scoped_input_desc,
+  TF_XLA_ASSIGN_OR_RETURN(auto scoped_input_desc,
                       scope(input_descriptor, ToMIOpenDataType(input_type)));
-  TF_ASSIGN_OR_RETURN(auto scoped_output_desc,
+  TF_XLA_ASSIGN_OR_RETURN(auto scoped_output_desc,
                       scope(output_descriptor, ToMIOpenDataType(output_type)));
-  TF_ASSIGN_OR_RETURN(auto scoped_filter_desc,
+  TF_XLA_ASSIGN_OR_RETURN(auto scoped_filter_desc,
                       scope(filter_descriptor, ToMIOpenDataType(input_type)));
-  TF_ASSIGN_OR_RETURN(auto scoped_conv_desc, scope(convolution_descriptor));
+  TF_XLA_ASSIGN_OR_RETURN(auto scoped_conv_desc, scope(convolution_descriptor));
 
   return {std::make_unique<RocmConvRunner>(
       parent_, miopen_.get(), algorithm_desc.algo_id(), *workspace_size, kind,
@@ -3576,13 +3576,13 @@ absl::Status MIOpenSupport::GetMIOpenConvolveAlgorithmsImmediateMode(
     std::vector<dnn::ProfileResult>* out_algorithms) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
-  TF_ASSIGN_OR_RETURN(auto input_nd,
+  TF_XLA_ASSIGN_OR_RETURN(auto input_nd,
                       scope(input_descriptor, ToMIOpenDataType(input_type)));
-  TF_ASSIGN_OR_RETURN(auto output_nd,
+  TF_XLA_ASSIGN_OR_RETURN(auto output_nd,
                       scope(output_descriptor, ToMIOpenDataType(output_type)));
-  TF_ASSIGN_OR_RETURN(auto filter,
+  TF_XLA_ASSIGN_OR_RETURN(auto filter,
                       scope(filter_descriptor, ToMIOpenDataType(input_type)));
-  TF_ASSIGN_OR_RETURN(auto conv, scope(convolution_descriptor));
+  TF_XLA_ASSIGN_OR_RETURN(auto conv, scope(convolution_descriptor));
 
   bool is_backprop = ((kind == dnn::ConvolutionKind::BACKWARD_DATA) ||
                       (kind == dnn::ConvolutionKind::BACKWARD_FILTER));
@@ -3789,13 +3789,13 @@ absl::Status MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
     std::vector<dnn::ProfileResult>* out_algorithms) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
-  TF_ASSIGN_OR_RETURN(auto input_nd,
+  TF_XLA_ASSIGN_OR_RETURN(auto input_nd,
                       scope(input_descriptor, ToMIOpenDataType(input_type)));
-  TF_ASSIGN_OR_RETURN(auto output_nd,
+  TF_XLA_ASSIGN_OR_RETURN(auto output_nd,
                       scope(output_descriptor, ToMIOpenDataType(output_type)));
-  TF_ASSIGN_OR_RETURN(auto filter,
+  TF_XLA_ASSIGN_OR_RETURN(auto filter,
                       scope(filter_descriptor, ToMIOpenDataType(input_type)));
-  TF_ASSIGN_OR_RETURN(auto conv, scope(convolution_descriptor));
+  TF_XLA_ASSIGN_OR_RETURN(auto conv, scope(convolution_descriptor));
 
   bool is_backprop = ((kind == dnn::ConvolutionKind::BACKWARD_DATA) ||
                       (kind == dnn::ConvolutionKind::BACKWARD_FILTER));
@@ -4045,9 +4045,9 @@ absl::Status MIOpenSupport::DoBatchNormalizationForwardImpl(
     bool is_training) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
-  TF_ASSIGN_OR_RETURN(auto x_descriptor,
+  TF_XLA_ASSIGN_OR_RETURN(auto x_descriptor,
                       scope(x_desc, ToMIOpenDataType(input_data_type)));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto scale_offset_descriptor,
       scope(scale_offset_desc, ToMIOpenDataType(scale_data_type)));
   miopenBatchNormMode_t mode = miopenBNSpatial;
@@ -4147,10 +4147,10 @@ absl::Status MIOpenSupport::DoBatchNormalizationBackwardImpl(
     DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
     DeviceMemory<U>* offset_backprop) {
   auto miopen = miopen_->GetHandle(parent_, stream);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto x_descriptor,
       scope(x_desc, static_cast<miopenDataType_t>(miopen_input_type)));
-  TF_ASSIGN_OR_RETURN(auto scale_offset_descriptor,
+  TF_XLA_ASSIGN_OR_RETURN(auto scale_offset_descriptor,
                       scope(scale_offset_desc,
                             static_cast<miopenDataType_t>(miopen_scale_type)));
   miopenBatchNormMode_t mode = miopenBNSpatial;
@@ -4418,9 +4418,9 @@ absl::Status MIOpenSupport::DoPoolForward(
   auto miopen_dtype =
       element_type == dnn::DataType::kFloat ? miopenFloat : miopenHalf;
 
-  TF_ASSIGN_OR_RETURN(auto src_desc, scope(input_dimensions, miopen_dtype));
-  TF_ASSIGN_OR_RETURN(auto dest_desc, scope(output_dimensions, miopen_dtype));
-  TF_ASSIGN_OR_RETURN(auto pooling_desc, scope(pooling_dimensions));
+  TF_XLA_ASSIGN_OR_RETURN(auto src_desc, scope(input_dimensions, miopen_dtype));
+  TF_XLA_ASSIGN_OR_RETURN(auto dest_desc, scope(output_dimensions, miopen_dtype));
+  TF_XLA_ASSIGN_OR_RETURN(auto pooling_desc, scope(pooling_dimensions));
 
   bool do_backward = false;
   uint8_t* workspace = nullptr;
@@ -4446,7 +4446,7 @@ absl::Status MIOpenSupport::DoPoolForward(
         workspace =
             reinterpret_cast<uint8_t*>(pdesc->workspace.ptr()->opaque());
       } else {
-        TF_ASSIGN_OR_RETURN(auto allocated,
+        TF_XLA_ASSIGN_OR_RETURN(auto allocated,
                             workspace_allocator->AllocateBytes(workspace_size));
         workspace = reinterpret_cast<uint8_t*>(allocated.opaque());
       }
@@ -4573,9 +4573,9 @@ absl::Status MIOpenSupport::DoPoolBackward(
   auto miopen_dtype =
       element_type == dnn::DataType::kFloat ? miopenFloat : miopenHalf;
 
-  TF_ASSIGN_OR_RETURN(auto src_desc, scope(input_dimensions, miopen_dtype));
-  TF_ASSIGN_OR_RETURN(auto dest_desc, scope(output_dimensions, miopen_dtype));
-  TF_ASSIGN_OR_RETURN(auto pooling_desc, scope(pooling_dimensions));
+  TF_XLA_ASSIGN_OR_RETURN(auto src_desc, scope(input_dimensions, miopen_dtype));
+  TF_XLA_ASSIGN_OR_RETURN(auto dest_desc, scope(output_dimensions, miopen_dtype));
+  TF_XLA_ASSIGN_OR_RETURN(auto pooling_desc, scope(pooling_dimensions));
 
   uint8_t* workspace_ptr = nullptr;
   DeviceMemory<uint8_t> workspace;
@@ -4663,11 +4663,11 @@ absl::Status MIOpenSupport::DoPoolBackward(
   return absl::OkStatus();
 }
 
-#define ASSIGN_OR_RETURN_FALSE(lhs, rexpr) \
-  ASSIGN_OR_RETURN_FALSE_IMPL(             \
+#define XLA_ASSIGN_OR_RETURN_FALSE(lhs, rexpr) \
+  XLA_ASSIGN_OR_RETURN_FALSE_IMPL(             \
       TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, rexpr)
 
-#define ASSIGN_OR_RETURN_FALSE_IMPL(statusor, lhs, rexpr) \
+#define XLA_ASSIGN_OR_RETURN_FALSE_IMPL(statusor, lhs, rexpr) \
   auto statusor = (rexpr);                                \
   if (TF_PREDICT_FALSE(!statusor.ok())) {                 \
     return false;                                         \
@@ -4691,8 +4691,8 @@ bool MIOpenSupport::DoNormalizeWithDimensions(
   auto miopen = miopen_->GetHandle(parent_, stream);
 
   // Launch the normalization.
-  ASSIGN_OR_RETURN_FALSE(auto dims, scope(dimensions, miopenFloat));
-  ASSIGN_OR_RETURN_FALSE(auto normalize, scope(normalize_descriptor));
+  XLA_ASSIGN_OR_RETURN_FALSE(auto dims, scope(dimensions, miopenFloat));
+  XLA_ASSIGN_OR_RETURN_FALSE(auto normalize, scope(normalize_descriptor));
 
   // Alpha is the scaling factor for input.
   float alpha = 1.0f;
@@ -4729,8 +4729,8 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
 
   auto miopen = miopen_->GetHandle(parent_, stream);
 
-  ASSIGN_OR_RETURN_FALSE(auto dims, scope(dimensions, miopenFloat));
-  ASSIGN_OR_RETURN_FALSE(auto normalize, scope(normalize_descriptor));
+  XLA_ASSIGN_OR_RETURN_FALSE(auto dims, scope(dimensions, miopenFloat));
+  XLA_ASSIGN_OR_RETURN_FALSE(auto normalize, scope(normalize_descriptor));
 
   float alpha = 1.0f;
   float beta = 0.0f;
@@ -4814,9 +4814,9 @@ bool MIOpenSupport::DeriveOutputBatchDescriptor(
     const FilterDescriptor& filter_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::BatchDescriptor* output_batch_descriptor) {
-  ASSIGN_OR_RETURN_FALSE(auto input_nd, scope(batch_descriptor, miopenFloat));
-  ASSIGN_OR_RETURN_FALSE(auto filter, scope(filter_descriptor, miopenFloat));
-  ASSIGN_OR_RETURN_FALSE(auto conv, scope(convolution_descriptor));
+  XLA_ASSIGN_OR_RETURN_FALSE(auto input_nd, scope(batch_descriptor, miopenFloat));
+  XLA_ASSIGN_OR_RETURN_FALSE(auto filter, scope(filter_descriptor, miopenFloat));
+  XLA_ASSIGN_OR_RETURN_FALSE(auto conv, scope(convolution_descriptor));
 
   int dn = batch_descriptor.ndims() + 2;
   std::vector<int> dims(dn);  // in BDYX
@@ -4883,7 +4883,7 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
 
     std::unique_ptr<EventBasedTimer> timer;
     if (profile_result) {
-      TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+      TF_XLA_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
                                      /* use_delay_kernel=*/false));
     }
 
@@ -4926,23 +4926,23 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
       BatchDescriptor output_nd, FilterDescriptor filter,
       BatchDescriptor bias_nd, ConvolutionDescriptor conv,
       dnn::ActivationMode activation) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto input_nd_,
         scope(input_nd, ToMIOpenDataType(input_type, input_nd.layout())));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto output_nd_,
         scope(output_nd, ToMIOpenDataType(input_type, input_nd.layout())));
-    TF_ASSIGN_OR_RETURN(auto filter_,
+    TF_XLA_ASSIGN_OR_RETURN(auto filter_,
                         scope(filter, ToMIOpenDataType(input_type)));
-    TF_ASSIGN_OR_RETURN(auto bias_nd_,
+    TF_XLA_ASSIGN_OR_RETURN(auto bias_nd_,
                         scope(bias_nd, ToMIOpenDataType(bias_type)));
-    TF_ASSIGN_OR_RETURN(auto conv_, scope(conv));
+    TF_XLA_ASSIGN_OR_RETURN(auto conv_, scope(conv));
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto activation_desc,
         ScopedActivationDescriptor::Create(activation, leakyrelu_alpha));
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto fusion_plan,
         ScopedFusionPlanConvolutionBiasActivation::Create(
             miopen->GetHandle(parent, stream).handle(), input_nd_.handle(),

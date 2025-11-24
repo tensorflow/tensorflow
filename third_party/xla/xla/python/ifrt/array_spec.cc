@@ -42,13 +42,13 @@ absl::StatusOr<ArraySpec> ArraySpec::FromProto(Client* client,
         "Unsupported ", version_number, " for ArraySpec deserialization"));
   }
 
-  TF_ASSIGN_OR_RETURN(auto dtype, DType::FromProto(proto.dtype()));
-  TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
-  TF_ASSIGN_OR_RETURN(auto sharding,
+  TF_XLA_ASSIGN_OR_RETURN(auto dtype, DType::FromProto(proto.dtype()));
+  TF_XLA_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
+  TF_XLA_ASSIGN_OR_RETURN(auto sharding,
                       Sharding::FromProto(client, proto.sharding()));
   std::shared_ptr<const xla::PjRtLayout> layout;
   if (proto.has_layout()) {
-    TF_ASSIGN_OR_RETURN(layout, xla::PjRtLayout::Deserialize(proto.layout()));
+    TF_XLA_ASSIGN_OR_RETURN(layout, xla::PjRtLayout::Deserialize(proto.layout()));
   }
   return ArraySpec{
       /*dtype=*/dtype,
@@ -69,7 +69,7 @@ absl::StatusOr<ArraySpecProto> ArraySpec::ToProto(SerDesVersion version) const {
   proto.set_version_number(SerDesVersionNumber(0).value());
   *proto.mutable_dtype() = dtype.ToProto(version);
   *proto.mutable_shape() = shape.ToProto(version);
-  TF_ASSIGN_OR_RETURN(*proto.mutable_sharding(), sharding->ToProto(version));
+  TF_XLA_ASSIGN_OR_RETURN(*proto.mutable_sharding(), sharding->ToProto(version));
   if (layout != nullptr) {
     proto.set_layout(layout->Serialize());
   }

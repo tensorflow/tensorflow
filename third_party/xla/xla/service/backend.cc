@@ -90,13 +90,13 @@ struct Backend::IntraOpThreadPool {
 /* static */ absl::StatusOr<std::unique_ptr<Backend>> Backend::CreateBackend(
     const BackendOptions& options) {
   se::Platform* platform = options.platform();
-  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
+  TF_XLA_ASSIGN_OR_RETURN(
       auto stream_executors,
       PlatformUtil::GetStreamExecutors(platform, options.allowed_devices()));
-  TF_ASSIGN_OR_RETURN(auto transfer_manager,
+  TF_XLA_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
-  TF_ASSIGN_OR_RETURN(auto computation_placer,
+  TF_XLA_ASSIGN_OR_RETURN(auto computation_placer,
                       ComputationPlacer::GetForPlatform(platform));
   std::unique_ptr<Backend> backend(new Backend(
       platform, std::move(compiler), stream_executors, transfer_manager,
@@ -106,7 +106,7 @@ struct Backend::IntraOpThreadPool {
 
 /* static */ absl::StatusOr<std::unique_ptr<Backend>>
 Backend::CreateDefaultBackend() {
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+  TF_XLA_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetDefaultPlatform());
   BackendOptions backend_options;
   backend_options.set_platform(platform);
@@ -115,7 +115,7 @@ Backend::CreateDefaultBackend() {
 
 absl::StatusOr<StreamPool::Ptr> Backend::BorrowStream(
     int device_ordinal, se::StreamPriority priority) {
-  TF_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
+  TF_XLA_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
   return BorrowStream(executor, priority);
 }
 
@@ -131,7 +131,7 @@ absl::StatusOr<StreamPool::Ptr> Backend::BorrowStream(
 absl::StatusOr<std::vector<StreamPool::Ptr>> Backend::BorrowStreams(
     int device_ordinal, int num_streams, se::StreamPriority priority) {
   absl::MutexLock l(mu_);
-  TF_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
+  TF_XLA_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
   if (!stream_pools_.contains(executor)) {
     stream_pools_.emplace(executor, std::make_unique<StreamPool>(executor));
   }
@@ -212,9 +212,9 @@ absl::StatusOr<bool> Backend::devices_equivalent(int device_ordinal_a,
   // bit crude but works for GPUs which is the important case where we compile
   // an executable for one GPU and want to know if it will run (well) on
   // another.
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor_a,
+  TF_XLA_ASSIGN_OR_RETURN(se::StreamExecutor * executor_a,
                       stream_executor(device_ordinal_a));
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor_b,
+  TF_XLA_ASSIGN_OR_RETURN(se::StreamExecutor * executor_b,
                       stream_executor(device_ordinal_b));
   return (executor_a->GetDeviceDescription().name() ==
           executor_b->GetDeviceDescription().name());

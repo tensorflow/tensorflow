@@ -99,7 +99,7 @@ absl::StatusOr<std::unique_ptr<Communicator>> CreateCommunicator(
 
   CpuCollectives::DeviceRank device_rank(/*device=*/nullptr, rank);
   CpuCollectives::Config config;
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Communicator>> communicators,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Communicator>> communicators,
                       collectives->CreateCommunicators(clique_key, std::nullopt,
                                                        {device_rank}, config));
 
@@ -168,7 +168,7 @@ absl::StatusOr<Communicator*> AcquireCommunicator(
   });
 
   absl::MutexLock lock(thread_safe_clique.mu);
-  TF_RETURN_IF_ERROR(thread_safe_clique.create_comm_status[rank]);
+  TF_XLA_RETURN_IF_ERROR(thread_safe_clique.create_comm_status[rank]);
   return *thread_safe_clique.clique.comm(rank);
 }
 

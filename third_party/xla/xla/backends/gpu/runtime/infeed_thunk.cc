@@ -71,7 +71,7 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
         << ShapeUtil::HumanStringWithLayout(dest_slices_[index].shape);
     se::DeviceMemoryBase dest_address =
         buffer_allocations.GetDeviceAddress(dest_slices_[index++].slice);
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         stream.Memcpy(&dest_address, buffer.memory(), buffer.memory().size()));
   }
 
@@ -95,7 +95,7 @@ absl::StatusOr<std::unique_ptr<InfeedThunk>> InfeedThunk::FromProto(
   std::vector<ShapedSlice> dest_slices(thunk_proto.dest_slices_size());
 
   for (int i = 0; i < dest_slices.size(); i++) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         dest_slices[i],
         ShapedSlice::FromProto(thunk_proto.dest_slices(i), buffer_allocations));
   }
@@ -110,7 +110,7 @@ absl::StatusOr<ThunkProto> InfeedThunk::ToProto() const {
 
   InfeedThunkProto* thunk_proto = proto.mutable_infeed_thunk();
   for (int i = 0; i < dest_slices_.size(); i++) {
-    TF_ASSIGN_OR_RETURN(*thunk_proto->add_dest_slices(),
+    TF_XLA_ASSIGN_OR_RETURN(*thunk_proto->add_dest_slices(),
                         dest_slices_[i].ToProto());
   }
   return proto;

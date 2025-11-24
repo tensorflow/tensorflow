@@ -81,9 +81,9 @@ CreateHostExecuteStartThunk(
   XlaComputation host_computation(
       *host_offloading_executable_proto.mutable_hlo_module());
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::cpu::NanoRtExecutable> executable,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<xla::cpu::NanoRtExecutable> executable,
                       client.Compile(host_computation));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<AotCompilationResult> aot_compilation_result,
       client.Export(executable.get()));
 

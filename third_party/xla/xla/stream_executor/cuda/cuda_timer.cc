@@ -40,11 +40,11 @@ absl::StatusOr<float> GetEventElapsedTime(StreamExecutor *executor,
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   // The stop event must have completed in order for cuEventElapsedTime to
   // work.
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuEventSynchronize(stop)));
+  TF_XLA_RETURN_IF_ERROR(cuda::ToStatus(cuEventSynchronize(stop)));
 
   float elapsed_milliseconds;
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       cuda::ToStatus(cuEventElapsedTime(&elapsed_milliseconds, start, stop)));
 
   return elapsed_milliseconds;
@@ -78,7 +78,7 @@ absl::StatusOr<absl::Duration> CudaTimer::GetElapsedDuration() {
   if (is_stopped_) {
     return absl::FailedPreconditionError("Measuring inactive timer");
   }
-  TF_RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
+  TF_XLA_RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
   // If we launched the delay kernel then check if it already timed out.
   if (semaphore_) {
     if (*semaphore_ == GpuSemaphoreState::kTimedOut) {
@@ -91,7 +91,7 @@ absl::StatusOr<absl::Duration> CudaTimer::GetElapsedDuration() {
       *semaphore_ = GpuSemaphoreState::kRelease;
     }
   }
-  TF_ASSIGN_OR_RETURN(float elapsed_milliseconds,
+  TF_XLA_ASSIGN_OR_RETURN(float elapsed_milliseconds,
                       GetEventElapsedTime(executor_, start_event_.GetHandle(),
                                           stop_event_.GetHandle()));
   is_stopped_ = true;
@@ -104,15 +104,15 @@ absl::StatusOr<CudaTimer> CudaTimer::Create(StreamExecutor *executor,
   GpuSemaphore semaphore{};
 
   if (timer_type == TimerType::kDelayKernel) {
-    TF_ASSIGN_OR_RETURN(semaphore, LaunchDelayKernel(stream));
+    TF_XLA_ASSIGN_OR_RETURN(semaphore, LaunchDelayKernel(stream));
   }
 
-  TF_ASSIGN_OR_RETURN(CudaEvent start_event,
+  TF_XLA_ASSIGN_OR_RETURN(CudaEvent start_event,
                       CudaEvent::Create(executor, /*allow_timing=*/true));
-  TF_ASSIGN_OR_RETURN(CudaEvent stop_event,
+  TF_XLA_ASSIGN_OR_RETURN(CudaEvent stop_event,
                       CudaEvent::Create(executor, /*allow_timing=*/true));
 
-  TF_RETURN_IF_ERROR(stream->RecordEvent(&start_event));
+  TF_XLA_RETURN_IF_ERROR(stream->RecordEvent(&start_event));
 
   return CudaTimer(executor, std::move(start_event), std::move(stop_event),
                    stream, std::move(semaphore));

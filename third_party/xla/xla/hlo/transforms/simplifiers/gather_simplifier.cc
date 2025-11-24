@@ -49,7 +49,7 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
   auto* start_indices = gather->operands()[1];
 
   // Make the start_indices a two-dimensional tensor.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       start_indices,
       TransformStartIndices(start_indices, dims.index_vector_dim()));
 
@@ -78,7 +78,7 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
         dims.collapsed_slice_dims().size());
     absl::c_transform(dims.collapsed_slice_dims(), collapsed_slice_dims.begin(),
                       [](int64_t dim) { return dim + 1; });
-    TF_ASSIGN_OR_RETURN(result,
+    TF_XLA_ASSIGN_OR_RETURN(result,
                         ElideDegenerateDims(result, collapsed_slice_dims));
   }
 
@@ -91,10 +91,10 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
     }
   }
   if (start_indices_dims.size() > 1) {
-    TF_ASSIGN_OR_RETURN(result,
+    TF_XLA_ASSIGN_OR_RETURN(result,
                         ExpandFirstDimIntoNDims(result, start_indices_dims));
   } else if (start_indices_dims.empty()) {
-    TF_ASSIGN_OR_RETURN(result, ElideDegenerateDims(result, {0}));
+    TF_XLA_ASSIGN_OR_RETURN(result, ElideDegenerateDims(result, {0}));
   }
 
   // Move the offset dims to the final locations.

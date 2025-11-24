@@ -73,7 +73,7 @@ TEST_F(MultithreadedCompilation, EightModuleCompilation) {
   absl::Mutex mu;
   std::vector<std::unique_ptr<OpaqueExecutable>> executables;
   auto do_compilation = [&](int iteration) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> executable,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> executable,
                         CreateExecutable(std::move(modules[iteration]), true));
     absl::MutexLock lock(mu);
     executables.push_back(std::move(executable));

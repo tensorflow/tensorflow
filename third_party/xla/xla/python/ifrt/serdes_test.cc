@@ -83,7 +83,7 @@ class TestNumberSerDes : public llvm::RTTIExtends<TestNumberSerDes, SerDes> {
     if (options != nullptr) {
       auto* serialize_options =
           llvm::cast<TestNumberSerializeOptions>(options.get());
-      TF_RETURN_IF_ERROR(serialize_options->injected_failure);
+      TF_XLA_RETURN_IF_ERROR(serialize_options->injected_failure);
     }
     const TestNumber& obj = llvm::cast<TestNumber>(serializable);
     return absl::StrCat(obj.number);
@@ -95,7 +95,7 @@ class TestNumberSerDes : public llvm::RTTIExtends<TestNumberSerDes, SerDes> {
     if (options != nullptr) {
       auto* deserialize_options =
           llvm::cast<TestNumberDeserializeOptions>(options.get());
-      TF_RETURN_IF_ERROR(deserialize_options->injected_failure);
+      TF_XLA_RETURN_IF_ERROR(deserialize_options->injected_failure);
     }
 
     int number;

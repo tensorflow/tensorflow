@@ -39,7 +39,7 @@ namespace pjrt {
 
 PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(
     PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args",
       PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args_STRUCT_SIZE,
       args->struct_size));
@@ -47,7 +47,7 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(
   std::vector<xla::Shape> shapes;
   shapes.reserve(args->num_shapes);
   for (int i = 0; i < args->num_shapes; ++i) {
-    PJRT_ASSIGN_OR_RETURN(
+    PJRT_XLA_ASSIGN_OR_RETURN(
         xla::Shape shape,
         pjrt::BuildXlaShapeFromC(args->element_types[i], args->num_dims[i],
                                  args->shape_num_dims[i], args->layouts[i]));
@@ -65,7 +65,7 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(
     transfer_keys.push_back(args->transfer_keys[i]);
   }
 
-  PJRT_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<xla::PjRtBuffer>> buffers,
+  PJRT_XLA_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<xla::PjRtBuffer>> buffers,
                         args->client->client->CrossHostReceiveBuffers(
                             args->device->device, shapes, src_global_device_ids,
                             std::move(transfer_keys)));
@@ -95,7 +95,7 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostSendBuffers(
     transfer_keys.push_back(args->transfer_keys[i]);
   }
 
-  PJRT_ASSIGN_OR_RETURN(
+  PJRT_XLA_ASSIGN_OR_RETURN(
       std::vector<tsl::Future<>> send_futures,
       args->client->client->CrossHostSendBuffers(buffers, dst_global_device_ids,
                                                  std::move(transfer_keys)));
@@ -201,14 +201,14 @@ CppCrossHostRemoteSendCallbackToC(
 
 PJRT_Error* PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers(
     PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_MakeCrossHostReceiveBuffers_Args",
       PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args_STRUCT_SIZE,
       args->struct_size));
   std::vector<xla::Shape> shapes;
   shapes.reserve(args->num_shapes);
   for (int i = 0; i < args->num_shapes; ++i) {
-    PJRT_ASSIGN_OR_RETURN(
+    PJRT_XLA_ASSIGN_OR_RETURN(
         xla::Shape shape,
         pjrt::BuildXlaShapeFromC(args->element_types[i], args->num_dims[i],
                                  args->shape_num_dims[i], args->layouts[i]));
@@ -216,7 +216,7 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers(
   }
   xla::PjRtCrossHostRecvNotifier notifier =
       CCrossHostRecvNotifierToCpp(args->notifier);
-  PJRT_ASSIGN_OR_RETURN(
+  PJRT_XLA_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<xla::PjRtBuffer>> buffers,
       args->client->client->MakeCrossHostReceiveBuffers(
           absl::MakeSpan(shapes), args->device->device, std::move(notifier)));

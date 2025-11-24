@@ -46,10 +46,10 @@ absl::StatusOr<std::unique_ptr<DotThunk>> DotThunk::Create(
     BufferAllocation::Slice lhs_buffer, Shape lhs_shape,
     BufferAllocation::Slice rhs_buffer, Shape rhs_shape,
     BufferAllocation::Slice out_buffer, Shape out_shape) {
-  TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
+  TF_XLA_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
                                                       rhs_shape, out_shape));
 
-  TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
+  TF_XLA_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
                       GetDotCanonicalDims(dot_dimensions, dot_shape));
 
   DotSlices dot_slices{lhs_buffer, std::move(lhs_shape),
@@ -72,15 +72,15 @@ DotThunk::DotThunk(Info info, DotDimensionNumbers dot_dimensions,
 
 tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
     const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase lhs_data,
       params.buffer_allocations->GetDeviceAddress(dot_slices_.lhs_buffer));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase rhs_data,
       params.buffer_allocations->GetDeviceAddress(dot_slices_.rhs_buffer));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase out_data,
       params.buffer_allocations->GetDeviceAddress(dot_slices_.out_buffer));
 

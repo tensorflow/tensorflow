@@ -64,7 +64,7 @@ class ExecutionContext {
 
   // Looks up opaque execution context data with given `type_id`.
   absl::StatusOr<void*> Lookup(TypeId type_id) const {
-    TF_ASSIGN_OR_RETURN(auto user_data, LookupUserData(type_id));
+    TF_XLA_ASSIGN_OR_RETURN(auto user_data, LookupUserData(type_id));
     return user_data->get();
   }
 
@@ -102,7 +102,7 @@ class ExecutionContext {
 
 template <typename T>
 absl::StatusOr<T*> ExecutionContext::Lookup() const {
-  TF_ASSIGN_OR_RETURN(auto user_data,
+  TF_XLA_ASSIGN_OR_RETURN(auto user_data,
                       LookupUserData(TypeRegistry::GetTypeId<T>()));
   return static_cast<T*>(user_data->get());
 }

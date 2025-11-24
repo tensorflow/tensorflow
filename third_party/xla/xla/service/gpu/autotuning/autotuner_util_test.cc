@@ -154,7 +154,7 @@ ENTRY e {
 
   absl::Status PopulateResultCache() {
     EXPECT_TRUE(AutotunerUtil::ResultCacheIsEmpty());
-    TF_RETURN_IF_ERROR(AutotunerUtil::LoadAutotuneResults(kResultText, true));
+    TF_XLA_RETURN_IF_ERROR(AutotunerUtil::LoadAutotuneResults(kResultText, true));
     EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
     return absl::OkStatus();
   }

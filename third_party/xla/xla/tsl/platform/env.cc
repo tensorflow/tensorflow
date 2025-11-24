@@ -187,10 +187,10 @@ absl::Status Env::SetOption(const std::string& scheme, const std::string& key,
 
 absl::Status Env::FlushFileSystemCaches() {
   std::vector<std::string> schemes;
-  TF_RETURN_IF_ERROR(GetRegisteredFileSystemSchemes(&schemes));
+  TF_XLA_RETURN_IF_ERROR(GetRegisteredFileSystemSchemes(&schemes));
   for (const std::string& scheme : schemes) {
     FileSystem* fs = nullptr;
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         GetFileSystemForFile(io::CreateURI(scheme, "", ""), &fs));
     fs->FlushCaches();
   }
@@ -200,34 +200,34 @@ absl::Status Env::FlushFileSystemCaches() {
 absl::Status Env::NewRandomAccessFile(
     const std::string& fname, std::unique_ptr<RandomAccessFile>* result) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->NewRandomAccessFile(fname, result);
 }
 
 absl::Status Env::NewReadOnlyMemoryRegionFromFile(
     const std::string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->NewReadOnlyMemoryRegionFromFile(fname, result);
 }
 
 absl::Status Env::NewWritableFile(const std::string& fname,
                                   std::unique_ptr<WritableFile>* result) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->NewWritableFile(fname, result);
 }
 
 absl::Status Env::NewAppendableFile(const std::string& fname,
                                     std::unique_ptr<WritableFile>* result) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->NewAppendableFile(fname, result);
 }
 
 absl::Status Env::FileExists(const std::string& fname) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->FileExists(fname);
 }
 
@@ -280,57 +280,57 @@ bool Env::FilesExist(const std::vector<std::string>& files,
 absl::Status Env::GetChildren(const std::string& dir,
                               std::vector<std::string>* result) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(dir, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(dir, &fs));
   return fs->GetChildren(dir, result);
 }
 
 absl::Status Env::GetMatchingPaths(const std::string& pattern,
                                    std::vector<std::string>* results) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(pattern, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(pattern, &fs));
   return fs->GetMatchingPaths(pattern, results);
 }
 
 absl::Status Env::DeleteFile(const std::string& fname) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->DeleteFile(fname);
 }
 
 absl::Status Env::RecursivelyCreateDir(const std::string& dirname) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
   return fs->RecursivelyCreateDir(dirname);
 }
 
 absl::Status Env::CreateDir(const std::string& dirname) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
   return fs->CreateDir(dirname);
 }
 
 absl::Status Env::DeleteDir(const std::string& dirname) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
   return fs->DeleteDir(dirname);
 }
 
 absl::Status Env::Stat(const std::string& fname, FileStatistics* stat) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->Stat(fname, stat);
 }
 
 absl::Status Env::IsDirectory(const std::string& fname) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->IsDirectory(fname);
 }
 
 absl::Status Env::HasAtomicMove(const std::string& path,
                                 bool* has_atomic_move) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(path, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(path, &fs));
   return fs->HasAtomicMove(path, has_atomic_move);
 }
 
@@ -338,13 +338,13 @@ absl::Status Env::DeleteRecursively(const std::string& dirname,
                                     int64_t* undeleted_files,
                                     int64_t* undeleted_dirs) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
   return fs->DeleteRecursively(dirname, undeleted_files, undeleted_dirs);
 }
 
 absl::Status Env::GetFileSize(const std::string& fname, uint64_t* file_size) {
   FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->GetFileSize(fname, file_size);
 }
 
@@ -352,8 +352,8 @@ absl::Status Env::RenameFile(const std::string& src,
                              const std::string& target) {
   FileSystem* src_fs;
   FileSystem* target_fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(src, &src_fs));
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(target, &target_fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(src, &src_fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(target, &target_fs));
   if (src_fs != target_fs) {
     return errors::Unimplemented("Renaming ", src, " to ", target,
                                  " not implemented");
@@ -364,8 +364,8 @@ absl::Status Env::RenameFile(const std::string& src,
 absl::Status Env::CopyFile(const std::string& src, const std::string& target) {
   FileSystem* src_fs;
   FileSystem* target_fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(src, &src_fs));
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(target, &target_fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(src, &src_fs));
+  TF_XLA_RETURN_IF_ERROR(GetFileSystemForFile(target, &target_fs));
   if (src_fs == target_fs) {
     return src_fs->CopyFile(src, target);
   }
@@ -523,7 +523,7 @@ absl::Status FileSystemCopyFile(FileSystem* src_fs, const std::string& src,
                                 FileSystem* target_fs,
                                 const std::string& target) {
   std::unique_ptr<RandomAccessFile> src_file;
-  TF_RETURN_IF_ERROR(src_fs->NewRandomAccessFile(src, &src_file));
+  TF_XLA_RETURN_IF_ERROR(src_fs->NewRandomAccessFile(src, &src_file));
 
   // When `target` points to a directory, we need to create a file within.
   std::string target_name;
@@ -534,7 +534,7 @@ absl::Status FileSystemCopyFile(FileSystem* src_fs, const std::string& src,
   }
 
   std::unique_ptr<WritableFile> target_file;
-  TF_RETURN_IF_ERROR(target_fs->NewWritableFile(target_name, &target_file));
+  TF_XLA_RETURN_IF_ERROR(target_fs->NewWritableFile(target_name, &target_file));
 
   uint64_t offset = 0;
   std::unique_ptr<char[]> scratch(new char[kCopyFileBufferSize]);
@@ -546,7 +546,7 @@ absl::Status FileSystemCopyFile(FileSystem* src_fs, const std::string& src,
     if (!(s.ok() || s.code() == error::OUT_OF_RANGE)) {
       return s;
     }
-    TF_RETURN_IF_ERROR(target_file->Append(result));
+    TF_XLA_RETURN_IF_ERROR(target_file->Append(result));
     offset += result.size();
   }
   return target_file->Close();
@@ -601,13 +601,13 @@ absl::Status WriteBinaryProto(Env* env, const std::string& fname,
 absl::Status ReadBinaryProto(Env* env, const std::string& fname,
                              protobuf::MessageLite* proto) {
   std::unique_ptr<RandomAccessFile> file;
-  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
+  TF_XLA_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
   protobuf::io::CodedInputStream coded_stream(stream.get());
 
   if (!proto->ParseFromCodedStream(&coded_stream) ||
       !coded_stream.ConsumedEntireMessage()) {
-    TF_RETURN_IF_ERROR(stream->status());
+    TF_XLA_RETURN_IF_ERROR(stream->status());
     return errors::DataLoss("Can't parse ", fname, " as binary proto");
   }
   return absl::OkStatus();
@@ -625,11 +625,11 @@ absl::Status WriteTextProto(Env* env, const std::string& fname,
 absl::Status ReadTextProto(Env* env, const std::string& fname,
                            protobuf::Message* proto) {
   std::unique_ptr<RandomAccessFile> file;
-  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
+  TF_XLA_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
 
   if (!protobuf::TextFormat::Parse(stream.get(), proto)) {
-    TF_RETURN_IF_ERROR(stream->status());
+    TF_XLA_RETURN_IF_ERROR(stream->status());
     return errors::DataLoss("Can't parse ", fname, " as text proto");
   }
   return absl::OkStatus();

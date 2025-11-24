@@ -131,7 +131,7 @@ absl::StatusOr<HloInstruction*> ReorderReduceTranspose::ExpandInstruction(
   // Create a new Transpose instruction that uses the same dimension
   // for permutation as before, but on the converted operand (if applicable)
   // or the original reduce-scatter operand.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto* new_transpose,
       MakeTransposeHlo(
           has_convert ? new_convert : reduce_scatter->mutable_operand(0),

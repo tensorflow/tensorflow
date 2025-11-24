@@ -519,14 +519,14 @@ TEST_F(AutoShardingTest, MemoryBudgetTest) {
     auto size_fn = [](const BufferValue& buffer) {
       return spmd::ByteSizeOfShape(buffer.shape());
     };
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         HloSchedule schedule,
         ScheduleModule(&module, DFSMemoryScheduler(&alias_info_, size_fn)));
     const HloComputation* entry_computation = module.entry_computation();
     std::unique_ptr<HloAliasAnalysis> alias_analysis =
         HloAliasAnalysis::Run(&module, &alias_info_).value();
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<HloLiveRange> hlo_live_range,
         HloLiveRange::Run(schedule, *alias_analysis, entry_computation));
     absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>&

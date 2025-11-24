@@ -105,7 +105,7 @@ absl::Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
   absl::MutexLock lock(mutex_);
   VLOG(2) << "Unregister("
           << "handle: " << data.handle() << ")";
-  TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
                       ResolveInternal(data));
   for (const auto& shaped_buffer : replicated_buffers) {
     std::vector<ShapeIndex> shape_indices;
@@ -115,7 +115,7 @@ absl::Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
           shape_indices.push_back(index);
         });
     for (const ShapeIndex& index : shape_indices) {
-      TF_RETURN_IF_ERROR(DecrementRefCount(shaped_buffer->buffer(index),
+      TF_XLA_RETURN_IF_ERROR(DecrementRefCount(shaped_buffer->buffer(index),
                                            shaped_buffer->device_ordinal()));
     }
   }
@@ -137,7 +137,7 @@ absl::StatusOr<std::vector<GlobalDataHandle>>
 AllocationTracker::DeconstructTuple(const GlobalDataHandle& data) {
   absl::MutexLock lock(mutex_);
 
-  TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
                       ResolveInternal(data));
   // We only need to care about replica id 0 here, since the GlobalDataHandle is
   // the same for all buffers across replicas.
@@ -162,7 +162,7 @@ AllocationTracker::DeconstructTuple(const GlobalDataHandle& data) {
                               /*index=*/{});
     std::vector<ShapedBuffer> replicated_buffers;
     replicated_buffers.push_back(std::move(element_buffer));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         GlobalDataHandle element_handle,
         RegisterInternal(std::move(replicated_buffers), "deconstructed tuple"));
 
@@ -180,7 +180,7 @@ absl::StatusOr<std::vector<const ShapedBuffer*>> AllocationTracker::Resolve(
 absl::StatusOr<const ShapedBuffer*> AllocationTracker::ResolveForReplica(
     const GlobalDataHandle& data, int replica_id) const {
   absl::MutexLock lock(mutex_);
-  TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
                       ResolveInternal(data));
   if (replica_id >= replicated_buffers.size()) {
     return InvalidArgument(
@@ -233,7 +233,7 @@ absl::Status AllocationTracker::DecrementRefCount(
   Allocation& allocation = it->second;
   TF_RET_CHECK(allocation.ref_count >= 1);
   if (allocation.ref_count == 1) {
-    TF_RETURN_IF_ERROR(allocation.device_memory.Free());
+    TF_XLA_RETURN_IF_ERROR(allocation.device_memory.Free());
     allocation_map.erase(it);
   } else {
     allocation.ref_count--;

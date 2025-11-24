@@ -81,9 +81,9 @@ absl::StatusOr<SingleBufferCopyPlan> SetupTransferDestList(
     xla::ifrt::PjRtClient* ifrt_client, size_t xfer_size) {
   auto* pjrt_client = ifrt_client->pjrt_client();
   // CHECK_EQ(pjrt_client->platform_id(), xla::TpuId());
-  TF_ASSIGN_OR_RETURN(auto* pjrt_memory_space,
+  TF_XLA_ASSIGN_OR_RETURN(auto* pjrt_memory_space,
                       device->pjrt_device()->default_memory_space());
-  TF_ASSIGN_OR_RETURN(auto atm_owned,
+  TF_XLA_ASSIGN_OR_RETURN(auto atm_owned,
                       pjrt_client->CreateBuffersForAsyncHostToDevice(
                           {shape}, pjrt_memory_space));
   auto atm = std::shared_ptr<xla::PjRtClient::AsyncHostToDeviceTransferManager>(
@@ -93,7 +93,7 @@ absl::StatusOr<SingleBufferCopyPlan> SetupTransferDestList(
 
   results.dests.push_back(MakeDmaDestination(atm, 0, copy_size));
   // `CreateBuffersForAsyncHostToDevice` uses a default layout.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto arr, ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0),
                                              /*has_custom_layout=*/false));
   results.arrays.push_back(std::move(arr));
@@ -150,7 +150,7 @@ absl::StatusOr<std::vector<int32_t>> FetchResult(
     tsl::RCReference<xla::ifrt::Array> arr, size_t result_size) {
   std::vector<int32_t> result;
   result.resize(result_size);
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       arr->CopyToHostBuffer(result.data(), std::nullopt,
                             xla::ifrt::ArrayCopySemantics::kReuseInput)
           .Await());

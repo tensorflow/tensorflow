@@ -1473,7 +1473,7 @@ class DnnSupport {
       ProfileResult* output_profile_result) {
     DeviceMemory<uint8_t> scratch_memory;
     AlgorithmDesc algorithm_desc;
-    TF_RETURN_IF_ERROR(PrepareForConvolution(
+    TF_XLA_RETURN_IF_ERROR(PrepareForConvolution(
         kind, stream, input_descriptor, input_data, filter_descriptor,
         filter_data, output_descriptor, output_data, convolution_descriptor,
         algorithm_config, scratch_allocator, &algorithm_desc, &scratch_memory));

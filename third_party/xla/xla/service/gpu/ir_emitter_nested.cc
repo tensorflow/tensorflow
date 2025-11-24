@@ -121,7 +121,7 @@ absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
       ir_emitter_context_->llvm_module()->getFunction(function_name);
   if (function) return function;
 
-  TF_RETURN_IF_ERROR(EmitConstants(nested_computation_));
+  TF_XLA_RETURN_IF_ERROR(EmitConstants(nested_computation_));
   std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
   std::vector<int64_t> argument_dereferenceable_bytes;
@@ -184,7 +184,7 @@ absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
   }
   bindings_.EmitBasePointersForHlos(io_hlos, non_io_hlos);
 
-  TF_RETURN_IF_ERROR(nested_computation_.root_instruction()->Accept(this));
+  TF_XLA_RETURN_IF_ERROR(nested_computation_.root_instruction()->Accept(this));
   b_.SetInsertPoint(ret_instr);
 
   // Function epilogue: copy the output value back.
@@ -243,7 +243,7 @@ absl::Status IrEmitterNested::EmitTargetElementLoop(
   if (hlo.shape().IsTuple()) {
     std::vector<llvm_ir::IrArray> target_arrays =
         ConstructIrArrayForOutputs(hlo);
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, target_arrays, &b_).EmitLoop());
     llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_);
     return absl::OkStatus();
@@ -308,7 +308,7 @@ absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
                                    llvm::Value* output) {
   TF_RET_CHECK(computation.num_parameters() > 0);
 
-  TF_ASSIGN_OR_RETURN(llvm::Function * emitted_function,
+  TF_XLA_ASSIGN_OR_RETURN(llvm::Function * emitted_function,
                       IrEmitterNested(computation, &ir_emitter_context)
                           .CodegenNestedComputation());
 
@@ -365,7 +365,7 @@ absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
     llvm_ir::EmitTuple(tuple_array, allocas_for_returned_scalars, builder);
   }
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       CallNestedComputation(builder, ir_emitter_context, computation,
                             parameter_elements_addrs, return_buffer));
 

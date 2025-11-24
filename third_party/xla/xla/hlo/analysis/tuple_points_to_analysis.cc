@@ -149,7 +149,7 @@ TuplePointsToAnalysis::Run(const HloModule* module) {
   auto logical_buffer_analysis = LogicalBufferAnalysis::Run(module);
   std::unique_ptr<TuplePointsToAnalysis> analysis(new TuplePointsToAnalysis(
       module, std::move(logical_buffer_analysis).value()));
-  TF_RETURN_IF_ERROR(analysis->Analyze());
+  TF_XLA_RETURN_IF_ERROR(analysis->Analyze());
   return analysis;
 }
 
@@ -163,8 +163,8 @@ absl::Status TuplePointsToAnalysis::Analyze() {
 
   std::vector<HloInstruction*> fusion_instructions;
   for (auto* computation : module_->MakeNonfusionComputations()) {
-    TF_RETURN_IF_ERROR(computation->Accept(this));
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(computation->Accept(this));
+    TF_XLA_RETURN_IF_ERROR(
         PopulateDefinedBuffersAndAliases(computation->instructions()));
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kFusion) {
@@ -174,9 +174,9 @@ absl::Status TuplePointsToAnalysis::Analyze() {
   }
   // Run points-to analysis on fusion instructions in 'computation'.
   for (auto* instruction : fusion_instructions) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         instruction->fused_instructions_computation()->Accept(this));
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         PopulateDefinedBuffersAndAliases(instruction->fused_instructions()));
   }
 
@@ -190,7 +190,7 @@ absl::Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
                        .instructions())& instructions) {
   for (auto* instruction : instructions) {
     PerInstruction* pi = PerInst(instruction);
-    TF_RETURN_IF_ERROR(GatherBuffersDefinedByInstruction(
+    TF_XLA_RETURN_IF_ERROR(GatherBuffersDefinedByInstruction(
         instruction, &pi->instruction_defined_buffers));
 
     const PointsToSet& points_to_set = GetPointsToSet(instruction);

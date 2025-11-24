@@ -116,18 +116,18 @@ absl::Status FissionToCublas(HloModule* hlo_module,
         GemmRewriterOptions::DType::kNonFp8Only}) {
     DotAlgorithmRewriter dot_algorithm_rewriter;
 
-    TF_RETURN_IF_ERROR(dot_algorithm_rewriter.Run(hlo_module).status());
+    TF_XLA_RETURN_IF_ERROR(dot_algorithm_rewriter.Run(hlo_module).status());
 
     GemmRewriter gemm_rewriter(device_description.gpu_compute_capability(),
                                device_description.runtime_version(),
                                GemmRewriterOptions{dtype});
-    TF_ASSIGN_OR_RETURN(bool changed, gemm_rewriter.Run(hlo_module));
+    TF_XLA_ASSIGN_OR_RETURN(bool changed, gemm_rewriter.Run(hlo_module));
     is_rewritten_to_cublas_custom_call |= changed;
 
     PriorityFusion fusion_pass(
         /*thread_pool=*/nullptr, device_description, PriorityFusionOptions(),
         mlir_context);
-    TF_RETURN_IF_ERROR(fusion_pass.Run(hlo_module).status());
+    TF_XLA_RETURN_IF_ERROR(fusion_pass.Run(hlo_module).status());
   }
 
   if (is_rewritten_to_cublas_custom_call) {
@@ -144,9 +144,9 @@ absl::Status FissionToCustomKernel(
   PriorityFusion fusion_pass(
       /*thread_pool=*/nullptr, device_description, PriorityFusionOptions(),
       mlir_context);
-  TF_ASSIGN_OR_RETURN(bool is_rewritten_to_custom_kernel,
+  TF_XLA_ASSIGN_OR_RETURN(bool is_rewritten_to_custom_kernel,
                       custom_kernel_fusion_rewriter.Run(hlo_module));
-  TF_RETURN_IF_ERROR(fusion_pass.Run(hlo_module).status());
+  TF_XLA_RETURN_IF_ERROR(fusion_pass.Run(hlo_module).status());
 
   if (is_rewritten_to_custom_kernel) {
     return absl::OkStatus();
@@ -164,7 +164,7 @@ absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> GetCublasConfigs(
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (IsLegacyCublasMatmul(*instruction)) {
-        TF_ASSIGN_OR_RETURN(configs,
+        TF_XLA_ASSIGN_OR_RETURN(configs,
                             cublas_backend.GetSupportedConfigs(*instruction));
         return configs;
       }
@@ -182,7 +182,7 @@ absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> GetCublasLtConfigs(
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (IsCublasLtMatmul(*instruction) || IsCublasLtMatmulF8(*instruction)) {
-        TF_ASSIGN_OR_RETURN(configs,
+        TF_XLA_ASSIGN_OR_RETURN(configs,
                             cublaslt_backend.GetSupportedConfigs(*instruction));
         return configs;
       }
@@ -219,7 +219,7 @@ GetCustomKernelConfigs(CustomKernelBackend& custom_kernel_backend,
 
   for (HloComputation* computation : hlo_module->computations()) {
     if (IsCustomKernel(computation)) {
-      TF_ASSIGN_OR_RETURN(configs, custom_kernel_backend.GetSupportedConfigs(
+      TF_XLA_ASSIGN_OR_RETURN(configs, custom_kernel_backend.GetSupportedConfigs(
                                        *computation->FusionInstruction()));
     }
   }
@@ -244,7 +244,7 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
                       target_config().device_description,
                       /*rewrite_to_cublaslt=*/false, mlir_context_)
           .ok()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<BackendConfig>> cublas_configs,
         GetCublasConfigs(cublas_backend_, std::move(cublas_hlo_module),
                          stream_executor()));
@@ -259,7 +259,7 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
                       target_config().device_description,
                       /*rewrite_to_cublaslt=*/true, mlir_context_)
           .ok()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<BackendConfig>> cublaslt_configs,
         GetCublasLtConfigs(cublaslt_backend_, std::move(cublaslt_hlo_module),
                            stream_executor()));
@@ -273,7 +273,7 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (FissionToCustomKernel(custom_kernel_hlo_module.get(),
                             target_config().device_description, mlir_context_)
           .ok()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<BackendConfig>> custom_kernel_configs,
         GetCustomKernelConfigs(custom_kernel_backend_,
                                std::move(custom_kernel_hlo_module),
@@ -304,27 +304,27 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
   HloComputation* computation = instr.parent();
   HloInstruction* call = computation->AddInstruction(HloInstruction::CreateCall(
       instr.shape(), instr.operands(), instr.fused_instructions_computation()));
-  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(&instr, call));
+  TF_XLA_RETURN_IF_ERROR(computation->ReplaceInstruction(&instr, call));
   HloModule* hlo_module = call->GetModule();
 
   CallInliner call_inliner(
       /*single_call_site=*/false, /*update_domain=*/false,
       /*composites_to_preserve=*/absl::flat_hash_set<std::string>(),
       /*uniquify_channel_ids=*/true);
-  TF_RETURN_IF_ERROR(call_inliner.Run(hlo_module).status());
+  TF_XLA_RETURN_IF_ERROR(call_inliner.Run(hlo_module).status());
 
   bool use_cublaslt =
       computation->parent()->config().debug_options().xla_gpu_enable_cublaslt();
 
   if (!use_cublaslt && config.Is<CublasOrCublasLtBackendConfig>()) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         FissionToCublas(hlo_module, target_config().device_description,
                         /*rewrite_to_cublaslt=*/false, mlir_context_));
     for (HloComputation* computation :
          hlo_module->MakeNonfusionComputations()) {
       for (HloInstruction* instruction : computation->instructions()) {
         if (IsLegacyCublasMatmul(*instruction)) {
-          TF_RETURN_IF_ERROR(cublas_backend_.ApplyConfig(*instruction, config));
+          TF_XLA_RETURN_IF_ERROR(cublas_backend_.ApplyConfig(*instruction, config));
         }
       }
     }
@@ -333,7 +333,7 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
   }
 
   if (use_cublaslt && config.Is<CublasOrCublasLtBackendConfig>()) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         FissionToCublas(hlo_module, target_config().device_description,
                         /*rewrite_to_cublaslt=*/true, mlir_context_));
     for (HloComputation* computation :
@@ -341,7 +341,7 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
       for (HloInstruction* instruction : computation->instructions()) {
         if (IsCublasLtMatmul(*instruction) ||
             IsCublasLtMatmulF8(*instruction)) {
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(
               cublaslt_backend_.ApplyConfig(*instruction, config));
         }
       }
@@ -351,11 +351,11 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
   }
 
   if (config.Is<CustomKernelBackendConfig>()) {
-    TF_RETURN_IF_ERROR(FissionToCustomKernel(
+    TF_XLA_RETURN_IF_ERROR(FissionToCustomKernel(
         hlo_module, target_config().device_description, mlir_context_));
     for (HloComputation* computation : hlo_module->computations()) {
       if (IsCustomKernel(computation)) {
-        TF_RETURN_IF_ERROR(custom_kernel_backend_.ApplyConfig(
+        TF_XLA_RETURN_IF_ERROR(custom_kernel_backend_.ApplyConfig(
             *computation->FusionInstruction(), config));
       }
     }

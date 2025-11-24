@@ -116,7 +116,7 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
     Client* client, Compiler* compiler, absl::string_view mlir_module_str,
     absl::Span<Device* const> devices, bool replicated, bool serialize) {
   mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+  TF_XLA_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       xla::ParseMlirModuleString(mlir_module_str, context));
 
   xla::CompileOptions compile_options;
@@ -125,7 +125,7 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
   DeviceListRef device_list;
   if (devices.empty()) {
     compile_options.compile_portable_executable = true;
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         device_list,
         client->MakeDeviceList({client->addressable_devices().front()}));
   } else {
@@ -154,18 +154,18 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
       }
       build_options.set_device_assignment(device_assignment);
     }
-    TF_ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(devices));
+    TF_XLA_ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(devices));
   }
   auto xla_compile_options =
       std::make_unique<XlaCompileOptions>(compile_options, device_list);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto loaded_executable,
       compiler->CompileAndLoad(std::make_unique<HloProgram>(*module),
                                std::move(xla_compile_options)));
   if (!serialize) {
     return loaded_executable;
   }
-  TF_ASSIGN_OR_RETURN(auto serialized_executable,
+  TF_XLA_ASSIGN_OR_RETURN(auto serialized_executable,
                       loaded_executable->Serialize());
   auto options = std::make_unique<XlaDeserializeExecutableOptions>();
   options->devices = std::move(device_list);

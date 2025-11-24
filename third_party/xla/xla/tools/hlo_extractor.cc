@@ -324,7 +324,7 @@ absl::Status Inline(HloModule* module) {
                 /*operands=*/instruction->operands(),
                 /*computation=*/
                 instruction->fused_instructions_computation()));
-        TF_RETURN_IF_ERROR(computation
+        TF_XLA_RETURN_IF_ERROR(computation
                                ->ReplaceInstruction(
                                    /*old_instruction=*/instruction,
                                    /*new_instruction=*/new_instruction,
@@ -335,10 +335,10 @@ absl::Status Inline(HloModule* module) {
       }
     }
   }
-  TF_RETURN_IF_ERROR(CallInliner().Run(module).status());
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(CallInliner().Run(module).status());
+  TF_XLA_RETURN_IF_ERROR(
       AlgebraicSimplifier(AlgebraicSimplifierOptions{}).Run(module).status());
-  TF_RETURN_IF_ERROR(HloDCE(true).Run(module).status());
+  TF_XLA_RETURN_IF_ERROR(HloDCE(true).Run(module).status());
   return absl::OkStatus();
 }
 

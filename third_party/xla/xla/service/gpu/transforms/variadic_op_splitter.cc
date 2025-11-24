@@ -79,7 +79,7 @@ absl::StatusOr<bool> SplitConcatenate(HloInstruction* concat,
     }
     operands_to_split = new_operands;
   }
-  TF_RETURN_IF_ERROR(comp->ReplaceInstruction(concat, operands_to_split[0]));
+  TF_XLA_RETURN_IF_ERROR(comp->ReplaceInstruction(concat, operands_to_split[0]));
   return true;
 }
 
@@ -104,7 +104,7 @@ absl::StatusOr<bool> VariadicOpSplitter::RunImpl(
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* op : GetRelevantVariadicOps(comp)) {
       // TODO(b/112613927): Handle also other ops than concatenate.
-      TF_ASSIGN_OR_RETURN(bool result, SplitConcatenate(op, comp));
+      TF_XLA_ASSIGN_OR_RETURN(bool result, SplitConcatenate(op, comp));
       changed |= result;
     }
   }

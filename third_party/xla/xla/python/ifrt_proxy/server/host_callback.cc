@@ -108,13 +108,13 @@ RemoteLoadedHostCallback::CreateFromSerialized(
          arg_protos) {
       xla::HostCallbackArgInfo& arg = args.emplace_back();
       arg.channel_id = static_cast<uint16_t>(arg_proto.channel_id());
-      TF_ASSIGN_OR_RETURN(arg.shape, xla::Shape::FromProto(arg_proto.shape()));
+      TF_XLA_ASSIGN_OR_RETURN(arg.shape, xla::Shape::FromProto(arg_proto.shape()));
     }
     return args;
   };
 
-  TF_ASSIGN_OR_RETURN(auto operands, from_proto(proto.operands()));
-  TF_ASSIGN_OR_RETURN(auto results, from_proto(proto.results()));
+  TF_XLA_ASSIGN_OR_RETURN(auto operands, from_proto(proto.operands()));
+  TF_XLA_ASSIGN_OR_RETURN(auto results, from_proto(proto.results()));
   return tsl::MakeRef<RemoteLoadedHostCallback>(
       client, std::move(operands), std::move(results), std::move(queue));
 }
@@ -169,7 +169,7 @@ absl::Status RemoteLoadedHostCallback::Execute(void** result_ptrs,
 
   // Enqueue the execution request. `IfrtBackend` retrieves this by calling
   // `PopExecutionRequest` and fulfills the `results` promise.
-  TF_RETURN_IF_ERROR(queue_->Push(std::move(request)));
+  TF_XLA_RETURN_IF_ERROR(queue_->Push(std::move(request)));
 
   // Block until the execution finishes and return its status.
   return status.Await();

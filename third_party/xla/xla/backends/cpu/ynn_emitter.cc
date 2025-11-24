@@ -83,7 +83,7 @@ static absl::StatusOr<uint32_t> DefineTensorValue(ynn_subgraph_t subgraph,
   }
 
   auto dims = YnnDimensions(instr->shape());
-  TF_ASSIGN_OR_RETURN(auto type, YnnType(instr->shape().element_type()));
+  TF_XLA_ASSIGN_OR_RETURN(auto type, YnnType(instr->shape().element_type()));
 
   uint32_t tensor_id = YNN_INVALID_VALUE_ID;
   uint32_t tensor_flags = 0;
@@ -96,7 +96,7 @@ static absl::StatusOr<uint32_t> DefineTensorValue(ynn_subgraph_t subgraph,
     tensor_flags = YNN_VALUE_FLAG_EXTERNAL_OUTPUT;
   }
 
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+  YNN_XLA_RETURN_IF_ERROR(ynn_define_tensor_value(
       subgraph, type, dims.size(), dims.data(), /*data=*/nullptr,
       /*zero_point_id=*/YNN_INVALID_VALUE_ID,
       /*scale_id=*/YNN_INVALID_VALUE_ID, tensor_flags, &tensor_id));
@@ -113,14 +113,14 @@ static absl::StatusOr<uint32_t> DefineConstant(
   }
 
   auto dims = YnnDimensions(instr->shape());
-  TF_ASSIGN_OR_RETURN(auto type, YnnType(instr->shape().element_type()));
+  TF_XLA_ASSIGN_OR_RETURN(auto type, YnnType(instr->shape().element_type()));
 
   uint32_t tensor_id = YNN_INVALID_VALUE_ID;
 
   literals.push_back(instr->literal().CloneToUnique());
   const void* value = literals.back()->untyped_data();
 
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+  YNN_XLA_RETURN_IF_ERROR(ynn_define_tensor_value(
       subgraph, type, dims.size(), dims.data(), /*data=*/value,
       /*zero_point_id=*/YNN_INVALID_VALUE_ID,
       /*scale_id=*/YNN_INVALID_VALUE_ID,
@@ -135,10 +135,10 @@ static absl::StatusOr<uint32_t> DefineParameter(ynn_subgraph_t subgraph,
                                 param->ToString());
 
   auto dims = YnnDimensions(param->shape());
-  TF_ASSIGN_OR_RETURN(auto type, YnnType(param->shape().element_type()));
+  TF_XLA_ASSIGN_OR_RETURN(auto type, YnnType(param->shape().element_type()));
 
   uint32_t tensor_id = param->parameter_number();
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+  YNN_XLA_RETURN_IF_ERROR(ynn_define_tensor_value(
       subgraph, type, dims.size(), dims.data(), /*data=*/nullptr,
       /*zero_point_id=*/YNN_INVALID_VALUE_ID,
       /*scale_id=*/YNN_INVALID_VALUE_ID, YNN_VALUE_FLAG_EXTERNAL_INPUT,
@@ -155,11 +155,11 @@ static absl::StatusOr<uint32_t> DefineBitcastOp(ynn_subgraph_t subgraph,
   CHECK_EQ(instr->opcode(), HloOpcode::kBitcast);
   const HloInstruction* input = instr->operand(0);
   CHECK_EQ(input->shape().element_type(), instr->shape().element_type());
-  TF_ASSIGN_OR_RETURN(auto in, FindTensorValue(tensor_ids, input));
-  TF_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
+  TF_XLA_ASSIGN_OR_RETURN(auto in, FindTensorValue(tensor_ids, input));
+  TF_XLA_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
 
   auto dims = YnnDimensions(instr->shape());
-  YNN_RETURN_IF_ERROR(ynn_define_static_reshape(subgraph, dims.size(),
+  YNN_XLA_RETURN_IF_ERROR(ynn_define_static_reshape(subgraph, dims.size(),
                                                 dims.data(), in, &out,
                                                 /*flags=*/0));
   return out;
@@ -170,14 +170,14 @@ static absl::StatusOr<uint32_t> DefineUnaryOp(ynn_subgraph_t subgraph,
                                               const HloInstruction* instr) {
   VLOG(3) << absl::StreamFormat("Define tensor value for unary op: %s",
                                 instr->ToString());
-  TF_ASSIGN_OR_RETURN(auto unary_op, YnnUnaryOperator(instr->opcode()));
+  TF_XLA_ASSIGN_OR_RETURN(auto unary_op, YnnUnaryOperator(instr->opcode()));
 
-  TF_ASSIGN_OR_RETURN(auto in, FindTensorValue(tensor_ids, instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
+  TF_XLA_ASSIGN_OR_RETURN(auto in, FindTensorValue(tensor_ids, instr->operand(0)));
+  TF_XLA_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
 
   VLOG(3) << absl::StreamFormat("  tensors: in=%d, out=%d", in, out);
 
-  YNN_RETURN_IF_ERROR(
+  YNN_XLA_RETURN_IF_ERROR(
       ynn_define_unary(subgraph, unary_op, in, &out, /*flags=*/0));
 
   return out;
@@ -189,16 +189,16 @@ static absl::StatusOr<uint32_t> DefineBinaryOp(ynn_subgraph_t subgraph,
   VLOG(3) << absl::StreamFormat("Define tensor value for binary op: %s",
                                 instr->ToString());
 
-  TF_ASSIGN_OR_RETURN(auto binary_op, YnnBinaryOperator(instr->opcode()));
+  TF_XLA_ASSIGN_OR_RETURN(auto binary_op, YnnBinaryOperator(instr->opcode()));
 
-  TF_ASSIGN_OR_RETURN(auto lhs, FindTensorValue(tensor_ids, instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(auto rhs, FindTensorValue(tensor_ids, instr->operand(1)));
-  TF_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
+  TF_XLA_ASSIGN_OR_RETURN(auto lhs, FindTensorValue(tensor_ids, instr->operand(0)));
+  TF_XLA_ASSIGN_OR_RETURN(auto rhs, FindTensorValue(tensor_ids, instr->operand(1)));
+  TF_XLA_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
 
   VLOG(3) << absl::StreamFormat("  tensors: lhs=%d, rhs=%d, out=%d", lhs, rhs,
                                 out);
 
-  YNN_RETURN_IF_ERROR(
+  YNN_XLA_RETURN_IF_ERROR(
       ynn_define_binary(subgraph, binary_op, lhs, rhs, &out, /*flags=*/0));
 
   return out;
@@ -236,11 +236,11 @@ static absl::StatusOr<uint32_t> DefineReduceOp(ynn_subgraph_t subgraph,
 
   const absl::Span<const int64_t> reduce_dims = reduce_instr->dimensions();
   const std::vector<int32_t> dims(reduce_dims.begin(), reduce_dims.end());
-  TF_ASSIGN_OR_RETURN(auto in, FindTensorValue(tensor_ids, input));
-  TF_ASSIGN_OR_RETURN(auto init_id, FindTensorValue(tensor_ids, init));
-  TF_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
+  TF_XLA_ASSIGN_OR_RETURN(auto in, FindTensorValue(tensor_ids, input));
+  TF_XLA_ASSIGN_OR_RETURN(auto init_id, FindTensorValue(tensor_ids, init));
+  TF_XLA_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
 
-  YNN_RETURN_IF_ERROR(
+  YNN_XLA_RETURN_IF_ERROR(
       ynn_define_reduce(subgraph, ynn_reduce_op, /*num_axes=*/dims.size(),
                         /*axes=*/dims.data(), in, init_id, &out, /*flags=*/0));
   return out;
@@ -255,7 +255,7 @@ static absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
     std::vector<std::unique_ptr<Literal>>& literals) {
   VLOG(3) << "Emit YNNPACK subgraph for computation: " << computation->name();
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       YnnSubgraph subgraph, CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
         return ynn_create_subgraph(
             /*external_value_ids=*/computation->num_parameters() + 1,
@@ -281,7 +281,7 @@ static absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
             "Unsupported constant instruction in YNN fusion: %s",
             instr->ToString());
       }
-      TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+      TF_XLA_ASSIGN_OR_RETURN(tensor_ids[instr],
                           DefineConstant(subgraph.get(), literals, instr));
       continue;
     }
@@ -293,10 +293,10 @@ static absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
             instr->ToString());
       }
       if (instr->operand_count() == 1) {
-        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+        TF_XLA_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineUnaryOp(subgraph.get(), tensor_ids, instr));
       } else if (instr->operand_count() == 2) {
-        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+        TF_XLA_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineBinaryOp(subgraph.get(), tensor_ids, instr));
       } else {
         LOG(FATAL) << "Unexpected operand count " << instr->operand_count();
@@ -306,7 +306,7 @@ static absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
 
     switch (instr->opcode()) {
       case HloOpcode::kParameter: {
-        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+        TF_XLA_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineParameter(subgraph.get(), instr));
       } break;
 
@@ -316,12 +316,12 @@ static absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
               "Unsupported bitcast instruction in YNN fusion: %s",
               instr->ToString());
         }
-        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+        TF_XLA_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineBitcastOp(subgraph.get(), tensor_ids, instr));
       } break;
 
       case HloOpcode::kReduce: {
-        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+        TF_XLA_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineReduceOp(subgraph.get(), tensor_ids, instr));
       } break;
 
@@ -334,7 +334,7 @@ static absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
 
   ynn_status status = ynn_optimize_subgraph(
       subgraph.get(), /*threadpool=*/nullptr, /*flags=*/0);
-  TF_RETURN_IF_ERROR(YnnStatusToStatus(status));
+  TF_XLA_RETURN_IF_ERROR(YnnStatusToStatus(status));
 
   return subgraph;
 }
@@ -374,7 +374,7 @@ static absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
     std::vector<std::unique_ptr<Literal>>& literals,
     absl::Span<const se::DeviceMemoryBase> arguments_buffers,
     bool capture_rhs) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       YnnSubgraph subgraph, CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
         return ynn_create_subgraph(
             /*external_value_ids=*/3,
@@ -400,45 +400,45 @@ static absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
   std::vector<size_t> rhs_dims = dims(rhs_shape.dimensions());
   std::vector<size_t> out_dims = dims(out_shape.dimensions());
 
-  TF_ASSIGN_OR_RETURN(ynn_type ynn_lhs_type, YnnType(lhs_shape.element_type()));
-  TF_ASSIGN_OR_RETURN(ynn_type ynn_rhs_type, YnnType(rhs_shape.element_type()));
-  TF_ASSIGN_OR_RETURN(ynn_type ynn_out_type, YnnType(out_shape.element_type()));
+  TF_XLA_ASSIGN_OR_RETURN(ynn_type ynn_lhs_type, YnnType(lhs_shape.element_type()));
+  TF_XLA_ASSIGN_OR_RETURN(ynn_type ynn_rhs_type, YnnType(rhs_shape.element_type()));
+  TF_XLA_ASSIGN_OR_RETURN(ynn_type ynn_out_type, YnnType(out_shape.element_type()));
 
   const uint32_t input_tensor_flags = YNN_VALUE_FLAG_EXTERNAL_INPUT;
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+  YNN_XLA_RETURN_IF_ERROR(ynn_define_tensor_value(
       subgraph.get(), ynn_lhs_type, lhs_dims.size(), lhs_dims.data(),
       /*data=*/nullptr,
       /*zero_point_id=*/YNN_INVALID_VALUE_ID,
       /*scale_id=*/YNN_INVALID_VALUE_ID, input_tensor_flags, &lhs_id));
 
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+  YNN_XLA_RETURN_IF_ERROR(ynn_define_tensor_value(
       subgraph.get(), ynn_rhs_type, rhs_dims.size(), rhs_dims.data(),
       capture_rhs ? arguments_buffers[1].opaque() : nullptr,
       /*zero_point_id=*/YNN_INVALID_VALUE_ID,
       /*scale_id=*/YNN_INVALID_VALUE_ID, input_tensor_flags, &rhs_id));
 
   const uint32_t output_tensor_flags = YNN_VALUE_FLAG_EXTERNAL_OUTPUT;
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+  YNN_XLA_RETURN_IF_ERROR(ynn_define_tensor_value(
       subgraph.get(), ynn_out_type, out_dims.size(), out_dims.data(),
       /*data=*/nullptr,
       /*zero_point_id=*/YNN_INVALID_VALUE_ID,
       /*scale_id=*/YNN_INVALID_VALUE_ID, output_tensor_flags, &out_id));
 
   DotDimensionNumbers dot_dimensions = dot->dot_dimension_numbers();
-  TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
+  TF_XLA_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
                                                       rhs_shape, out_shape));
 
-  TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
+  TF_XLA_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
                       GetDotCanonicalDims(dot_dimensions, dot_shape));
 
   const size_t b_rank = rhs_shape.dimensions().size();
   const bool transpose_b = !dot_canonical_dims.rhs_canonical;
-  YNN_RETURN_IF_ERROR(DefineBatchMatrixMultiply(subgraph.get(), lhs_id, rhs_id,
+  YNN_XLA_RETURN_IF_ERROR(DefineBatchMatrixMultiply(subgraph.get(), lhs_id, rhs_id,
                                                 out_id, b_rank, transpose_b));
 
   ynn_status status = ynn_optimize_subgraph(
       subgraph.get(), /*threadpool=*/nullptr, /*flags=*/0);
-  TF_RETURN_IF_ERROR(YnnStatusToStatus(status));
+  TF_XLA_RETURN_IF_ERROR(YnnStatusToStatus(status));
 
   return subgraph;
 }

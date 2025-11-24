@@ -54,7 +54,7 @@ absl::StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
   dimension_numbers.set_output_feature_dimension(output_feature);
   dimension_numbers.add_output_spatial_dimensions(output_first_spatial);
   dimension_numbers.add_output_spatial_dimensions(output_second_spatial);
-  TF_RETURN_IF_ERROR(XlaBuilder::Validate(dimension_numbers));
+  TF_XLA_RETURN_IF_ERROR(XlaBuilder::Validate(dimension_numbers));
   return dimension_numbers;
 }
 

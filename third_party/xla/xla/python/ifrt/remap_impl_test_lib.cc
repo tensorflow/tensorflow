@@ -68,9 +68,9 @@ absl::StatusOr<ArraySpec> CreateArraySpec(Client* client,
                                           absl::Span<const int> device_indices,
                                           Shape shard_shape = Shape({2, 3}),
                                           DType dtype = DType(DType::kS32)) {
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
+  TF_XLA_ASSIGN_OR_RETURN(DeviceListRef device_list,
                       test_util::GetAddressableDevices(client, device_indices));
-  TF_ASSIGN_OR_RETURN(Shape shape,
+  TF_XLA_ASSIGN_OR_RETURN(Shape shape,
                       GetShape(device_indices.size(), shard_shape));
   return ArraySpec{/*dtype=*/dtype,
                    /*shape=*/shape,
@@ -107,7 +107,7 @@ absl::StatusOr<ArrayRef> CreateArray(Client* client,
   TF_RET_CHECK(base_values.size() == device_indices.size());
 
   DType dtype(CppTypeToDType<ValueType>::kDType);
-  TF_ASSIGN_OR_RETURN(Shape shape, GetShape(base_values.size(), shard_shape));
+  TF_XLA_ASSIGN_OR_RETURN(Shape shape, GetShape(base_values.size(), shard_shape));
 
   std::vector<ArrayRef> shards;
   shards.reserve(base_values.size());
@@ -122,7 +122,7 @@ absl::StatusOr<ArrayRef> CreateArray(Client* client,
     devices.push_back(device);
     ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         shards.emplace_back(),
         client->MakeArrayFromHostBuffer(
             data.data(), dtype, shard_shape,
@@ -131,7 +131,7 @@ absl::StatusOr<ArrayRef> CreateArray(Client* client,
             /*on_done_with_host_buffer=*/{}));
   }
 
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
+  TF_XLA_ASSIGN_OR_RETURN(DeviceListRef device_list,
                       client->MakeDeviceList(devices));
   ShardingRef assembled_sharding =
       ConcreteEvenSharding::Create(std::move(device_list), MemoryKind(),

@@ -68,7 +68,7 @@ struct DummyThunk : public Thunk {
   }
   static absl::StatusOr<std::unique_ptr<DummyThunk>> FromProto(
       const ThunkProto& thunk_proto, Thunk::Kind kind) {
-    TF_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
+    TF_XLA_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
                         Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
     return std::make_unique<DummyThunk>(kind, std::move(thunk_info));
   }
@@ -138,17 +138,17 @@ class KnownTripCountWhileThunkTest : public HloPjRtTestBase {
           ROOT while = (pred[]) while(p), condition=cond, body=body
         })";
 
-    TF_ASSIGN_OR_RETURN(owned_modules_.emplace_back(),
+    TF_XLA_ASSIGN_OR_RETURN(owned_modules_.emplace_back(),
                         ParseAndReturnVerifiedModule(kDummyModule));
     return owned_modules_.back()->entry_computation()->root_instruction();
   }
 
   absl::Status ExecuteThunk(Thunk& thunk) {
-    TF_ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));
-    TF_ASSIGN_OR_RETURN(auto* platform,
+    TF_XLA_ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));
+    TF_XLA_ASSIGN_OR_RETURN(auto* platform,
                         se::PlatformManager::PlatformWithName(name));
-    TF_ASSIGN_OR_RETURN(auto* executor, platform->ExecutorForDevice(0));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+    TF_XLA_ASSIGN_OR_RETURN(auto* executor, platform->ExecutorForDevice(0));
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
                         executor->CreateStream());
     se::StreamExecutorMemoryAllocator allocator(executor);
     Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(

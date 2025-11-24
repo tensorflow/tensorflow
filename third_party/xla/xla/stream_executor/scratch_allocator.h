@@ -72,7 +72,7 @@ class OwningScratchAllocator : public ScratchAllocator {
 
   absl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
-    TF_ASSIGN_OR_RETURN(OwningDeviceMemory buffer,
+    TF_XLA_ASSIGN_OR_RETURN(OwningDeviceMemory buffer,
                         allocator_->Allocate(device_ordinal_, byte_size,
                                              /*retry_on_failure=*/false));
     buffers_.push_back(std::move(buffer));

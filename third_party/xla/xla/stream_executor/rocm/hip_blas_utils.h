@@ -45,8 +45,8 @@ limitations under the License.
 namespace stream_executor {
 namespace rocm {
 
-#define SE_HIPBLAS_RETURN_IF_ERROR(expr) \
-  TF_RETURN_IF_ERROR(::stream_executor::rocm::ToStatus(expr, #expr))
+#define SE_HIPBLAS_XLA_RETURN_IF_ERROR(expr) \
+  TF_XLA_RETURN_IF_ERROR(::stream_executor::rocm::ToStatus(expr, #expr))
 
 absl::Status ToStatus(hipblasStatus_t status, const char* prefix);
 hipDataType AsHipblasDataType(blas::DataType type);

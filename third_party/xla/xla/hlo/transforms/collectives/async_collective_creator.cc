@@ -127,7 +127,7 @@ absl::StatusOr<ReplacedAsync> CreateAsyncCollectivePermute(
 absl::StatusOr<ReplacedAsync> CreateAsyncStartDone(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes) {
   HloComputation* computation = instruction->parent();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloInstruction * done,
       computation->CreateAsyncInstructions(instruction, context_shapes,
                                            HloInstruction::kMainExecutionThread,
@@ -216,7 +216,7 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
         return Internal("Unexpected opcode %s",
                         HloOpcodeString(instruction->opcode()));
     }
-    TF_RETURN_IF_ERROR(async_pair.status());
+    TF_XLA_RETURN_IF_ERROR(async_pair.status());
     async_pair->start->set_metadata(instruction->metadata());
     async_pair->start->CopyBackendConfigFrom(instruction);
     async_pair->done->set_metadata(instruction->metadata());
@@ -226,9 +226,9 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
     }
 
     // Update control dependencies if present.
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         instruction->CopyAllControlDepsTo(async_pair->start, async_pair->done));
-    TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+    TF_XLA_RETURN_IF_ERROR(instruction->DropAllControlDeps());
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         computation->ReplaceInstruction(instruction, async_pair->done),
@@ -266,7 +266,7 @@ absl::StatusOr<bool> AsyncCollectiveCreator::RunImpl(
     if (supported_collectives.empty()) {
       continue;
     }
-    TF_ASSIGN_OR_RETURN(bool comp_changed,
+    TF_XLA_ASSIGN_OR_RETURN(bool comp_changed,
                         ReplaceCollectives(computation, supported_collectives));
     collectives_replaced += supported_collectives.size();
     changed |= comp_changed;

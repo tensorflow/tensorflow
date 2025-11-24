@@ -135,7 +135,7 @@ static absl::Status CheckComm(Communicator* comm) {
   if (!health.ok()) {
     LOG(ERROR) << "Aborting communicator: " << comm
                << " due to error: " << health;
-    TF_RETURN_IF_ERROR(comm->Abort());
+    TF_XLA_RETURN_IF_ERROR(comm->Abort());
   }
   return health;
 }
@@ -319,7 +319,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
       VLOG(3) << absl::StreamFormat(
           "Get CliqueId for sub clique key %s; nroots=%lld", subkey.ToString(),
           nroots);
-      TF_ASSIGN_OR_RETURN(auto clique_id, clique_id_callback(subkey));
+      TF_XLA_ASSIGN_OR_RETURN(auto clique_id, clique_id_callback(subkey));
       clique_ids.Add(clique_id);
     }
 
@@ -344,7 +344,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     absl::c_sort(ranks, [](auto& a, auto& b) { return a.rank < b.rank; });
 
     // Check if peer access is possible between all devices in the clique.
-    TF_ASSIGN_OR_RETURN(bool peer_access_enabled,
+    TF_XLA_ASSIGN_OR_RETURN(bool peer_access_enabled,
                         EnablePeerAccess(clique_key, ranks));
 
     VLOG(3) << absl::StreamFormat(
@@ -360,7 +360,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
       absl::MutexLock lock(cliques.mu);
       VLOG(5) << "Checking clique key " << clique_key.ToString()
               << " for staleness";
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           CheckCliqueKeyIsntStaleImpl(cliques.task_state_infos, clique_key));
       auto [it, unused_inserted] = cliques.cancel.emplace(clique_key, false);
       cancel = &it->second;
@@ -398,7 +398,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
       LOG(WARNING) << "Clique key " << clique_key.ToString()
                    << " is stale. Aborting recently created communicators.";
       for (auto& [rank, comm] : comms) {
-        TF_RETURN_IF_ERROR(comm->Abort());
+        TF_XLA_RETURN_IF_ERROR(comm->Abort());
       }
       return s;
     }
@@ -546,7 +546,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     } else {
       // The parent clique is not local, but this clique can be local. We need
       // to check if peer access is possible between all devices in this clique.
-      TF_ASSIGN_OR_RETURN(peer_access_enabled,
+      TF_XLA_ASSIGN_OR_RETURN(peer_access_enabled,
                           EnablePeerAccess(clique_key, ranks));
     }
 
@@ -564,7 +564,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
       absl::MutexLock lock(cliques.mu);
       VLOG(5) << "Checking clique key " << clique_key.ToString()
               << " for staleness";
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           CheckCliqueKeyIsntStaleImpl(cliques.task_state_infos, clique_key));
       cancel = &cliques.cancel[clique_key];
       auto [it, unused_inserted] = cliques.cancel.emplace(clique_key, false);
@@ -604,7 +604,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
       LOG(WARNING) << "Clique key " << clique_key.ToString()
                    << " is stale. Aborting recently split communicators.";
       for (auto& [rank, comm] : comms) {
-        TF_RETURN_IF_ERROR(comm->Abort());
+        TF_XLA_RETURN_IF_ERROR(comm->Abort());
       }
       return s;
     }
@@ -668,7 +668,7 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
       absl::StrFormat("acquire clique for rank %d; clique=%s; run_id=%d",
                       rank.value(), clique_key.ToString(), run_id.ToInt());
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::shared_ptr<LockableGpuClique::Lock> clique,
       Rendezvous<LockableGpuClique::Lock>(
           rendezvous_name, rendezvous_key, num_local_participants,

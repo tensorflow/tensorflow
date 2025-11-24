@@ -827,8 +827,8 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       : cuda_compute_capability_(cuda_compute_capability) {}
 
   absl::Status HandleAdd(HloInstruction* instr) override {
-    TF_RETURN_IF_ERROR(MatchLayerNorm(instr));
-    TF_RETURN_IF_ERROR(MatchLayerNormGradient(instr));
+    TF_XLA_RETURN_IF_ERROR(MatchLayerNorm(instr));
+    TF_XLA_RETURN_IF_ERROR(MatchLayerNormGradient(instr));
     return absl::OkStatus();
   }
 
@@ -994,7 +994,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
         for (int k = 0; k < x_transpose_order.size(); ++k) {
           y_transpose_order[x_transpose_order[k]] = k;
         }
-        TF_ASSIGN_OR_RETURN(x_transpose,
+        TF_XLA_ASSIGN_OR_RETURN(x_transpose,
                             MakeTransposeHlo(x.instr(), x_transpose_order));
       }
 
@@ -1014,7 +1014,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
 
       Shape reshaped_shape = ShapeUtil::MakeShape(
           x.instr()->shape().element_type(), reshaped_dims);
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           HloInstruction * x_reshape,
           MakeReshapeHlo(reshaped_shape, x_transpose.value_or(x.instr())));
 
@@ -1025,9 +1025,9 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
 
       Shape scale_bias_shape = ShapeUtil::MakeShape(
           scale->shape().element_type(), reshaped_scale_dims);
-      TF_ASSIGN_OR_RETURN(HloInstruction * scale_reshape,
+      TF_XLA_ASSIGN_OR_RETURN(HloInstruction * scale_reshape,
                           MakeReshapeHlo(scale_bias_shape, scale));
-      TF_ASSIGN_OR_RETURN(HloInstruction * bias_reshape,
+      TF_XLA_ASSIGN_OR_RETURN(HloInstruction * bias_reshape,
                           MakeReshapeHlo(scale_bias_shape, bias));
       GpuBackendConfig gpu_backend_config;
       CudnnNormBackendConfig& backend_config =
@@ -1041,7 +1041,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
 
       // Set the workspace size to its upper bound.
       // TODO(philipphack): Consider autotuning the norm kernels.
-      TF_ASSIGN_OR_RETURN(const int64_t c_constant,
+      TF_XLA_ASSIGN_OR_RETURN(const int64_t c_constant,
                           CConstant(cuda_compute_capability_));
       const int64_t workspace_size =
           (2 * c_constant * (4 + 256)) + (2 * reshaped_dims[0] * 4) + 64;
@@ -1056,20 +1056,20 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           instr->AddInstruction(HloInstruction::CreateCustomCall(
               custom_call_shape, {x_reshape, scale_reshape, bias_reshape},
               kCudnnNormCallTarget));
-      TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
+      TF_XLA_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
 
-      TF_ASSIGN_OR_RETURN(HloInstruction * gte,
+      TF_XLA_ASSIGN_OR_RETURN(HloInstruction * gte,
                           MakeGetTupleElementHlo(custom_call, 0));
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           HloInstruction * y_reshape,
           MakeReshapeHlo(x_transpose.value_or(instr)->shape(), gte));
 
       std::optional<HloInstruction*> y_transpose;
       if (apply_transpose) {
-        TF_ASSIGN_OR_RETURN(y_transpose,
+        TF_XLA_ASSIGN_OR_RETURN(y_transpose,
                             MakeTransposeHlo(y_reshape, y_transpose_order));
       }
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           ReplaceInstruction(instr, y_transpose.value_or(y_reshape)));
 
       // Store metadata for potential use in the backward graph.
@@ -1086,7 +1086,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       for (HloInstruction* user : norm_factor->users()) {
         if (HloPredicateIsOp<HloOpcode::kDivide>(user) &&
             user->operand_index(norm_factor) == 0) {
-          TF_ASSIGN_OR_RETURN(bool changed,
+          TF_XLA_ASSIGN_OR_RETURN(bool changed,
                               MatchNormFactor(user, custom_call, variance,
                                               expectation, epsilon));
           if (changed) {
@@ -1159,7 +1159,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       HloInstruction* new_custom_call = instr->AddInstruction(
           custom_call->CloneWithNewShape(custom_call_shape));
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           GpuBackendConfig gpu_backend_config,
           custom_call->backend_config<xla::gpu::GpuBackendConfig>());
       CudnnNormBackendConfig& backend_config =
@@ -1167,51 +1167,51 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       backend_config.set_kind(CudnnNormBackendConfig::LAYER_FWD_TRAIN);
 
       // Update the workspace size.
-      TF_ASSIGN_OR_RETURN(const int64_t c_constant,
+      TF_XLA_ASSIGN_OR_RETURN(const int64_t c_constant,
                           CConstant(cuda_compute_capability_));
       const int64_t workspace_size = (2 * c_constant * (4 + 256)) + 32;
       backend_config.mutable_algorithm()->mutable_workspace_size()->set_value(
           workspace_size);
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           new_custom_call->set_backend_config(gpu_backend_config));
 
       auto replace_with_new_cc = [new_custom_call, this](
                                      HloInstruction* old_instr,
                                      int tuple_index) -> absl::Status {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             HloInstruction * new_gte,
             MakeGetTupleElementHlo(new_custom_call, tuple_index));
         HloInstruction* new_instr = new_gte;
         if (!ShapeUtil::Equal(new_gte->shape(), old_instr->shape())) {
-          TF_ASSIGN_OR_RETURN(new_instr,
+          TF_XLA_ASSIGN_OR_RETURN(new_instr,
                               MakeReshapeHlo(old_instr->shape(), new_gte));
         }
         if (HloPredicateIsNotOp<HloOpcode::kDivide>(old_instr)) {
           // Replace the result of the layer norm or the expectation.
-          TF_RETURN_IF_ERROR(ReplaceInstruction(old_instr, new_instr));
+          TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(old_instr, new_instr));
         } else {
           // Replace the norm factor, (variance + epsilon)^-1/2.
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(
               ReplaceInstruction(old_instr->mutable_operand(0), new_instr));
           // Also replace the norm factor to the power of 3, (variance +
           // epsilon)^-1/2 / (variance + epsilon) = ((variance +
           // epsilon)^-1/2)^3.
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               HloInstruction * new_multiply0,
               MakeBinaryHlo(HloOpcode::kMultiply, new_instr, new_instr));
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               HloInstruction * new_multiply1,
               MakeBinaryHlo(HloOpcode::kMultiply, new_multiply0, new_instr));
-          TF_RETURN_IF_ERROR(ReplaceInstruction(old_instr, new_multiply1));
+          TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(old_instr, new_multiply1));
         }
         return absl::OkStatus();
       };
 
       // Replace the result of the original Custom Call as well as the
       // expectation and the norm factor with the augmented Custom Call.
-      TF_RETURN_IF_ERROR(replace_with_new_cc(gte, 0));
-      TF_RETURN_IF_ERROR(replace_with_new_cc(expectation.instr(), 1));
-      TF_RETURN_IF_ERROR(replace_with_new_cc(instr, 2));
+      TF_XLA_RETURN_IF_ERROR(replace_with_new_cc(gte, 0));
+      TF_XLA_RETURN_IF_ERROR(replace_with_new_cc(expectation.instr(), 1));
+      TF_XLA_RETURN_IF_ERROR(replace_with_new_cc(instr, 2));
 
       // Update the Custom Call associated with the metadata of the forward
       // norm.
@@ -1411,12 +1411,12 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       // graph.
       HloInstruction* transposed_dy = dy.instr();
       if (norm_metadata->second.x_transpose) {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             transposed_dy,
             MakeTransposeHlo(dy.instr(),
                              norm_metadata->second.x_transpose->dimensions()));
       }
-      TF_ASSIGN_OR_RETURN(HloInstruction * reshaped_dy,
+      TF_XLA_ASSIGN_OR_RETURN(HloInstruction * reshaped_dy,
                           MakeReshapeHlo(x.instr()->shape(), transposed_dy));
 
       Shape dx_shape = ShapeUtil::MakeShape(instr->shape().element_type(),
@@ -1435,7 +1435,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
 
       // Set the workspace size to its upper bound.
       // TODO(philipphack): Consider autotuning the norm kernels.
-      TF_ASSIGN_OR_RETURN(const int64_t c_constant,
+      TF_XLA_ASSIGN_OR_RETURN(const int64_t c_constant,
                           CConstant(cuda_compute_capability_));
       const int64_t workspace_size =
           (2 * c_constant * (4 + 256)) +
@@ -1454,35 +1454,35 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
               {x.instr(), scale.instr(), reshaped_dy, fused_expectation.instr(),
                fused_norm_factor.instr()},
               kCudnnNormCallTarget));
-      TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
+      TF_XLA_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
 
       auto replace_with_cc = [custom_call, norm_metadata, transposed_dy, this](
                                  HloInstruction* old_instr,
                                  int tuple_index) -> absl::Status {
-        TF_ASSIGN_OR_RETURN(HloInstruction * gte,
+        TF_XLA_ASSIGN_OR_RETURN(HloInstruction * gte,
                             MakeGetTupleElementHlo(custom_call, tuple_index));
         HloInstruction* new_instr;
         // Transpose DX applying the stored transpose order of Y from the
         // forward graph.
         if (tuple_index == 0 && norm_metadata->second.y_transpose) {
-          TF_ASSIGN_OR_RETURN(new_instr,
+          TF_XLA_ASSIGN_OR_RETURN(new_instr,
                               MakeReshapeHlo(transposed_dy->shape(), gte));
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               new_instr,
               MakeTransposeHlo(
                   new_instr, norm_metadata->second.y_transpose->dimensions()));
         } else {
-          TF_ASSIGN_OR_RETURN(new_instr,
+          TF_XLA_ASSIGN_OR_RETURN(new_instr,
                               MakeReshapeHlo(old_instr->shape(), gte));
         }
-        TF_RETURN_IF_ERROR(ReplaceInstruction(old_instr, new_instr));
+        TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(old_instr, new_instr));
         return absl::OkStatus();
       };
 
-      TF_RETURN_IF_ERROR(replace_with_cc(instr, 0));
-      TF_RETURN_IF_ERROR(replace_with_cc(dscale, 1));
+      TF_XLA_RETURN_IF_ERROR(replace_with_cc(instr, 0));
+      TF_XLA_RETURN_IF_ERROR(replace_with_cc(dscale, 1));
       if (dbias) {
-        TF_RETURN_IF_ERROR(replace_with_cc(dbias, 2));
+        TF_XLA_RETURN_IF_ERROR(replace_with_cc(dbias, 2));
       }
       VLOG(1) << "Gradients w.r.t. x"
               << (dbias ? ", scale and bias" : " and scale")
@@ -1501,7 +1501,7 @@ absl::StatusOr<bool> RunOnComputation(
     HloComputation* computation,
     se::CudaComputeCapability cuda_compute_capability) {
   CudnnNormRewriterVisitor visitor(cuda_compute_capability);
-  TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+  TF_XLA_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
 
@@ -1517,7 +1517,7 @@ absl::StatusOr<bool> CudnnNormRewriter::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool result, RunOnComputation(computation, cuda_compute_capability_));
     changed |= result;
   }

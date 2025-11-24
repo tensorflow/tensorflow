@@ -114,7 +114,7 @@ absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
            "been migrated to PJRT, double-check that you are using a "
            "PJRT-compatible test class.";
   }
-  TF_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
+  TF_XLA_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
 
   se::Platform* platform = nullptr;
   if (platforms.empty()) {
@@ -146,10 +146,10 @@ absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
 
 /*static*/ absl::StatusOr<se::Platform*> PlatformUtil::GetPlatform(
     absl::string_view platform_name) {
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+  TF_XLA_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::PlatformManager::PlatformWithName(
                           xla::CanonicalPlatformName(platform_name)));
-  TF_RETURN_IF_ERROR(Compiler::GetForPlatform(platform).status());
+  TF_XLA_RETURN_IF_ERROR(Compiler::GetForPlatform(platform).status());
   return platform;
 }
 

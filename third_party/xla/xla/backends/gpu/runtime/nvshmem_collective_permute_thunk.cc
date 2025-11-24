@@ -117,7 +117,7 @@ NvshmemCollectivePermuteStartThunk::GetGroupMode(
 
 absl::Status NvshmemCollectivePermuteStartThunk::Initialize(
     const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(NvshmemCollectiveThunk::Initialize(params));
+  TF_XLA_RETURN_IF_ERROR(NvshmemCollectiveThunk::Initialize(params));
 
   if (p2p_memcpy_enabled_) {
     return absl::InvalidArgumentError(
@@ -128,12 +128,12 @@ absl::Status NvshmemCollectivePermuteStartThunk::Initialize(
 
 absl::Status NvshmemCollectivePermuteStartThunk::RunNvshmemCollective(
     const ExecuteParams& params, se::Stream& stream) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params,
                              std::vector<CollectiveThunk::Buffer>(buffers_),
                              config_.config.operand_element_type));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const int64_t current_id,
       GetCollectiveCurrentId(params.collective_params, config_));
   std::string device_string =
@@ -151,8 +151,8 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
                                   se::Stream& stream,
                                   absl::string_view device_string,
                                   int64_t current_id) {
-  TF_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
+  TF_XLA_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
                       collectives->CreateCommunicator());
 
   int device_ordinal = stream.parent()->device_ordinal();
@@ -187,7 +187,7 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
       auto send_future = nvshmem_comm->Send(
           dest_addr, src_addr, buffer.element_type, buffer.element_count,
           RankId(*target_id), GpuCollectives::On(stream));
-      TF_RETURN_IF_ERROR(send_future.Await());
+      TF_XLA_RETURN_IF_ERROR(send_future.Await());
     }
 
     if (source_id) {
@@ -197,7 +197,7 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
       VLOG(1) << "CollectivePermute: rank " << device_ordinal
               << " receiving data from source " << *source_id;
 
-      TF_RETURN_IF_ERROR(nvshmem_comm->Barrier(GpuCollectives::On(stream)));
+      TF_XLA_RETURN_IF_ERROR(nvshmem_comm->Barrier(GpuCollectives::On(stream)));
     }
   }
 
@@ -206,7 +206,7 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
     VLOG(3) << absl::StreamFormat("%s : collective-Permute: Issuing MemZero",
                                   device_string);
     for (DeviceBufferPair& buffer : buffers) {
-      TF_RETURN_IF_ERROR(stream.MemZero(&buffer.destination_buffer,
+      TF_XLA_RETURN_IF_ERROR(stream.MemZero(&buffer.destination_buffer,
                                         buffer.destination_buffer.size()));
     }
   }
@@ -225,7 +225,7 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
 
   // Check if the operation is implementable with NVSHMEM
   for (const auto& operand : inst->operands()) {
-    TF_RETURN_IF_ERROR(IsValidNvshmemOperand(
+    TF_XLA_RETURN_IF_ERROR(IsValidNvshmemOperand(
         operand->shape(), Thunk::kNvshmemCollectivePermuteStart));
   }
 
@@ -256,11 +256,11 @@ NvshmemCollectivePermuteDoneThunk::NvshmemCollectivePermuteDoneThunk(
 
 absl::Status NvshmemCollectivePermuteDoneThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  TF_RETURN_IF_ERROR(NvshmemCollectiveDoneThunk::ExecuteOnStream(params));
+  TF_XLA_RETURN_IF_ERROR(NvshmemCollectiveDoneThunk::ExecuteOnStream(params));
 
   // Perform a fence operation to ensure all memory operations are completed
-  TF_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
+  TF_XLA_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
                       collectives->CreateCommunicator());
   return nvshmem_comm->Fence();
 }

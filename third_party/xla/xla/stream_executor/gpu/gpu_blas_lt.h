@@ -187,7 +187,7 @@ struct BlasLt {
         ScratchAllocator& scratch_allocator,
         blas::ProfileResult* profile_result = nullptr) const {
       // Temporary hack until Tensorflow side is fixed
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           const_cast<MatmulPlan*>(this)->SetAlgorithm(algorithm));
       return ExecuteOnStream(
           stream,

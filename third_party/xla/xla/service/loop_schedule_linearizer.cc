@@ -152,7 +152,7 @@ static absl::StatusOr<bool> AddControlEdgesForLoopWrites(
           // Add control dependency if it does not already exist.
           if (!absl::c_linear_search(read->control_successors(), write)) {
             // Unless we want a copy, read should happen before write.
-            TF_RETURN_IF_ERROR(read->AddControlDependencyTo(write));
+            TF_XLA_RETURN_IF_ERROR(read->AddControlDependencyTo(write));
             VLOG(2) << "Adding dependency: " << read->ToShortString()
                     << " before " << write->ToShortString();
             changed = true;
@@ -198,10 +198,10 @@ absl::StatusOr<bool> LoopScheduleLinearizer::RunImpl(
       }
 
       if (alias_analysis == nullptr) {
-        TF_ASSIGN_OR_RETURN(alias_analysis,
+        TF_XLA_ASSIGN_OR_RETURN(alias_analysis,
                             HloAliasAnalysis::Run(module, alias_info_));
       }
-      TF_ASSIGN_OR_RETURN(bool updated_loop, AddControlEdgesForLoopWrites(
+      TF_XLA_ASSIGN_OR_RETURN(bool updated_loop, AddControlEdgesForLoopWrites(
                                                  instruction, *alias_analysis));
       changed |= updated_loop;
     }

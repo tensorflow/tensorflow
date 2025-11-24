@@ -51,7 +51,7 @@ StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
 absl::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
     int device_ordinal, uint64_t size, bool retry_on_failure,
     int64_t memory_space) {
-  TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
+  TF_XLA_ASSIGN_OR_RETURN(StreamExecutor * executor,
                       GetStreamExecutor(device_ordinal));
   DeviceMemoryBase result =
       executor->AllocateArray<uint8_t>(size, memory_space);
@@ -69,7 +69,7 @@ absl::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
 absl::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
                                                        DeviceMemoryBase mem) {
   if (!mem.is_null()) {
-    TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
+    TF_XLA_ASSIGN_OR_RETURN(StreamExecutor * executor,
                         GetStreamExecutor(device_ordinal));
     VLOG(3) << absl::StreamFormat("Freeing %p on device ordinal %d",
                                   mem.opaque(), device_ordinal);
@@ -102,11 +102,11 @@ absl::StatusOr<Stream*> StreamExecutorMemoryAllocator::GetStream(
     int device_ordinal) {
   CHECK(!AllowsAsynchronousDeallocation())
       << "The logic below only works for synchronous allocators";
-  TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
+  TF_XLA_ASSIGN_OR_RETURN(StreamExecutor * executor,
                       GetStreamExecutor(device_ordinal));
   absl::MutexLock lock(mutex_);
   if (!streams_.count(device_ordinal)) {
-    TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+    TF_XLA_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
     auto stream_ptr = stream.get();
     stream_ptr->SetName("StreamExecutorMemoryAllocator");
     streams_.emplace(device_ordinal, std::move(stream));

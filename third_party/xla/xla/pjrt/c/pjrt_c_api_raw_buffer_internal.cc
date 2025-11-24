@@ -34,18 +34,18 @@ namespace pjrt {
 
 PJRT_Error* PJRT_RawBuffer_CreateRawAliasOfBuffer(
     PJRT_RawBuffer_CreateRawAliasOfBuffer_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_CreateRawAliasOfBuffer_Args",
       PJRT_RawBuffer_CreateRawAliasOfBuffer_Args_STRUCT_SIZE,
       args->struct_size));
-  PJRT_ASSIGN_OR_RETURN(auto result, xla::PjRtRawBuffer::CreateRawAliasOfBuffer(
+  PJRT_XLA_ASSIGN_OR_RETURN(auto result, xla::PjRtRawBuffer::CreateRawAliasOfBuffer(
                                          args->buffer->buffer.get()));
   args->raw_buffer =
       new PJRT_RawBuffer{std::move(result), args->buffer->client};
   return nullptr;
 }
 PJRT_Error* PJRT_RawBuffer_Destroy(PJRT_RawBuffer_Destroy_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_Destroy_Args", PJRT_RawBuffer_Destroy_Args_STRUCT_SIZE,
       args->struct_size));
   delete args->buffer;
@@ -53,7 +53,7 @@ PJRT_Error* PJRT_RawBuffer_Destroy(PJRT_RawBuffer_Destroy_Args* args) {
 }
 PJRT_Error* PJRT_RawBuffer_GetHostPointer(
     PJRT_RawBuffer_GetHostPointer_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_GetHostPointer_Args",
       PJRT_RawBuffer_GetHostPointer_Args_STRUCT_SIZE, args->struct_size));
   args->host_pointer = args->buffer->buffer->GetHostPointer();
@@ -61,7 +61,7 @@ PJRT_Error* PJRT_RawBuffer_GetHostPointer(
 }
 PJRT_Error* PJRT_RawBuffer_GetOnDeviceSizeInBytes(
     PJRT_RawBuffer_GetOnDeviceSizeInBytes_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_GetOnDeviceSizeInBytes_Args",
       PJRT_RawBuffer_GetOnDeviceSizeInBytes_Args_STRUCT_SIZE,
       args->struct_size));
@@ -71,7 +71,7 @@ PJRT_Error* PJRT_RawBuffer_GetOnDeviceSizeInBytes(
 }
 PJRT_Error* PJRT_RawBuffer_GetMemorySpace(
     PJRT_RawBuffer_GetMemorySpace_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_GetMemorySpace_Args",
       PJRT_RawBuffer_GetMemorySpace_Args_STRUCT_SIZE, args->struct_size));
   args->memory_space = PJRT_Client_FindMemoryWrapper(
@@ -85,7 +85,7 @@ PJRT_Error* PJRT_RawBuffer_GetMemorySpace(
 
 PJRT_Error* PJRT_RawBuffer_CopyRawHostToDevice(
     PJRT_RawBuffer_CopyRawHostToDevice_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_CopyRawHostToDevice_Args",
       PJRT_RawBuffer_CopyRawHostToDevice_Args_STRUCT_SIZE, args->struct_size));
   auto result = args->buffer->buffer->CopyRawHostToDevice(
@@ -95,7 +95,7 @@ PJRT_Error* PJRT_RawBuffer_CopyRawHostToDevice(
 }
 PJRT_Error* PJRT_RawBuffer_CopyRawDeviceToHost(
     PJRT_RawBuffer_CopyRawDeviceToHost_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_CopyRawDeviceToHost_Args",
       PJRT_RawBuffer_CopyRawDeviceToHost_Args_STRUCT_SIZE, args->struct_size));
   auto result = args->buffer->buffer->CopyRawDeviceToHost(

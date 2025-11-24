@@ -71,7 +71,7 @@ absl::Status GetInstructionSlices(
     const BufferAssignment* buffer_assignment,
     absl::flat_hash_set<KernelApiIrBuilder::KernelParameter>& parameters) {
   const Shape& shape = instruction->shape();
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       buffer_assignment->GetUniqueTopLevelSlice(instruction));
   if (slice.allocation()->is_thread_local()) {
     return absl::OkStatus();
@@ -81,7 +81,7 @@ absl::Status GetInstructionSlices(
   if (shape.IsTuple()) {
     for (const auto& [leaf_index, leaf_shape] :
          ShapeUtil::GetLeafShapes(shape)) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           BufferAllocation::Slice leaf_slice,
           buffer_assignment->GetUniqueSlice(instruction, {leaf_index}));
       parameters.insert({leaf_shape, std::move(leaf_slice)});
@@ -97,7 +97,7 @@ absl::Status GetAllSlices(
     absl::flat_hash_set<KernelApiIrBuilder::KernelParameter>& results) {
   for (const HloInstruction* instruction : computation->instructions()) {
     for (const HloInstruction* operand : instruction->operands()) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           GetInstructionSlices(operand, buffer_assignment, arguments));
     }
 
@@ -105,7 +105,7 @@ absl::Status GetAllSlices(
     // TODO(willfroom): Is there a method somewhere to check if an instruction
     // just forwards the buffer? (e.g get-tuple-arg)
     if (instruction->opcode() != HloOpcode::kParameter) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           GetInstructionSlices(instruction, buffer_assignment, results));
     }
 
@@ -115,7 +115,7 @@ absl::Status GetAllSlices(
         continue;
       }
 
-      TF_RETURN_IF_ERROR(GetAllSlices(nested_computation, buffer_assignment,
+      TF_XLA_RETURN_IF_ERROR(GetAllSlices(nested_computation, buffer_assignment,
                                       arguments, results));
     }
   }
@@ -145,7 +145,7 @@ ComputationKernelEmitter::EmitKernelDefinition() {
 
   absl::flat_hash_set<KernelApiIrBuilder::KernelParameter> arguments;
   absl::flat_hash_set<KernelApiIrBuilder::KernelParameter> results;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       GetAllSlices(instr_->to_apply(), buffer_assignment_, arguments, results));
 
   // As the computation is a series of operations, buffers are not disjoint.
@@ -157,10 +157,10 @@ ComputationKernelEmitter::EmitKernelDefinition() {
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
       absl::StrCat(instr_->name(), "_computation_kernel_module"), *ctx);
 
-  TF_ASSIGN_OR_RETURN(std::string kernel_name,
+  TF_XLA_ASSIGN_OR_RETURN(std::string kernel_name,
                       kernel_api_ir_builder.GetKernelName(instr_, "_kernel"));
 
-  TF_ASSIGN_OR_RETURN(KernelApiIrBuilder::KernelPrototype kernel_prototype,
+  TF_XLA_ASSIGN_OR_RETURN(KernelApiIrBuilder::KernelPrototype kernel_prototype,
                       kernel_api_ir_builder.EmitKernelPrototype(
                           *llvm_module, kernel_name,
                           std::vector<KernelApiIrBuilder::KernelParameter>(
@@ -199,7 +199,7 @@ ComputationKernelEmitter::EmitKernelDefinition() {
     ir_builder.CreateStore(array.GetBasePointer(), buffer_table_ptr);
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       llvm::Function * computation_function,
       EmitNestedComputation(
           kernel_prototype.function, kernel_prototype.return_block, ir_builder,
@@ -240,7 +240,7 @@ absl::StatusOr<llvm::Function*> ComputationKernelEmitter::EmitNestedComputation(
       /*allow_runtime_calls=*/false);
   IrEmitter::IRBuilderGuard builder_guard = ir_emitter.WithBuilder(builder);
 
-  TF_RETURN_IF_ERROR(ir_emitter.EmitSmallConstantGlobals());
+  TF_XLA_RETURN_IF_ERROR(ir_emitter.EmitSmallConstantGlobals());
 
   const HloComputation* computation = instr_->to_apply();
   return ir_emitter.EmitNestedComputation(*computation, computation->name(),

@@ -57,7 +57,7 @@ absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
   ConvolutionSlices slices = {input_buffer, input_shape,   kernel_buffer,
                               kernel_shape, output_buffer, output_shape};
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       ConvolutionCanonicalDims canonical_dims,
       GetConvolutionCanonicalDims(slices, dnums, window, feature_group_count));
 
@@ -78,13 +78,13 @@ ConvolutionThunk::ConvolutionThunk(
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
     const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase input_data,
+  TF_XLA_ASSIGN_OR_RETURN(se::DeviceMemoryBase input_data,
                       params.buffer_allocations->GetDeviceAddress(
                           convolution_slices_.input_buffer));
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase kernel_data,
+  TF_XLA_ASSIGN_OR_RETURN(se::DeviceMemoryBase kernel_data,
                       params.buffer_allocations->GetDeviceAddress(
                           convolution_slices_.kernel_buffer));
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_data,
+  TF_XLA_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_data,
                       params.buffer_allocations->GetDeviceAddress(
                           convolution_slices_.output_buffer));
 

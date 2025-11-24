@@ -39,7 +39,7 @@ namespace xla::gpu {
 namespace {
 
 absl::StatusOr<se::DeviceDescription> MakeDeviceDescription() {
-  TF_ASSIGN_OR_RETURN(stream_executor::DeviceDescription device_description,
+  TF_XLA_ASSIGN_OR_RETURN(stream_executor::DeviceDescription device_description,
                       stream_executor::DeviceDescription::FromProto(
                           stream_executor::GpuDeviceInfoProto{}));
   device_description.set_threads_per_warp(32);

@@ -122,7 +122,7 @@ class ScratchAllocator : public se::ScratchAllocator {
 
   template <typename T>
   absl::StatusOr<se::DeviceMemory<T>> Allocate(int64_t num_elements) {
-    TF_ASSIGN_OR_RETURN(se::DeviceMemory<uint8_t> bytes,
+    TF_XLA_ASSIGN_OR_RETURN(se::DeviceMemory<uint8_t> bytes,
                         AllocateBytes(num_elements * sizeof(T)));
     return se::DeviceMemory<T>(bytes);
   }
@@ -143,7 +143,7 @@ absl::StatusOr<se::DeviceMemory<uint8_t>> ScratchAllocator::AllocateBytes(
         GetMemoryLimitInBytes()));
   }
 
-  TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory allocated_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(se::OwningDeviceMemory allocated_buffer,
                       memory_allocator_->Allocate(device_ordinal_, byte_size,
                                                   /*retry_on_failure=*/false));
   total_allocated_bytes_ += byte_size;
@@ -156,10 +156,10 @@ absl::StatusOr<se::DeviceMemory<uint8_t>> ScratchAllocator::AllocateBytes(
 absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
     const GpuConvConfig& config, se::Stream* stream, bool use_fallback,
     const se::EngineOptions& engine_options) {
-  TF_ASSIGN_OR_RETURN(se::dnn::DataType input_type,
+  TF_XLA_ASSIGN_OR_RETURN(se::dnn::DataType input_type,
                       GetDNNDataTypeFromPrimitiveType(config.input_type));
 
-  TF_ASSIGN_OR_RETURN(se::dnn::DataType output_type,
+  TF_XLA_ASSIGN_OR_RETURN(se::dnn::DataType output_type,
                       GetDNNDataTypeFromPrimitiveType(config.output_type));
 
   se::StreamExecutor* stream_exec = stream->parent();
@@ -179,7 +179,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
             "GpuConvConfig had fusion ConvolutionKind but no FusionConfig.");
       }
       std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
-      TF_RETURN_IF_ERROR(dnn->GetFusedConvolveRunners(
+      TF_XLA_RETURN_IF_ERROR(dnn->GetFusedConvolveRunners(
           // This refers to the kind of convolution op inside the fusion, not
           // the whole fused graph.
           se::dnn::ConvolutionKind::FORWARD, input_type,
@@ -191,7 +191,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
           config.bias_descriptor, config.output_descriptor, config.conv_desc,
           use_fallback, config.fusion->mode, engine_options, &runners));
       for (auto& runner : runners) {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             auto runner_cache,
             se::dnn::LazyOpRunner<se::dnn::FusedConvOp>::FromOpRunner(
                 std::move(runner)));
@@ -204,12 +204,12 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
       std::vector<std::unique_ptr<const se::dnn::GraphConvRunner>> runners;
       // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
       // allocator are unused; so, they're all provided as nullptr.
-      TF_RETURN_IF_ERROR(dnn->GetGraphConvolveRunners(
+      TF_XLA_RETURN_IF_ERROR(dnn->GetGraphConvolveRunners(
           kind, input_type, output_type, stream, config.input_descriptor,
           config.filter_descriptor, config.output_descriptor, config.conv_desc,
           use_fallback, engine_options, &runners, config.serialized_graph));
       for (auto& runner : runners) {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             auto runner_cache,
             se::dnn::LazyOpRunner<se::dnn::GraphConvOp>::FromOpRunner(
                 std::move(runner)));
@@ -224,7 +224,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
       std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
       // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
       // allocator are unused; so, they're all provided as nullptr.
-      TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
+      TF_XLA_RETURN_IF_ERROR(dnn->GetConvolveRunners(
           kind, input_type, output_type, stream, config.input_descriptor,
           /* input_data = */ DeviceMemoryBase(nullptr),
           config.filter_descriptor,
@@ -234,7 +234,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
           use_fallback, nullptr, engine_options, &runners));
 
       for (auto& runner : runners) {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             auto runner_cache,
             se::dnn::LazyOpRunner<se::dnn::ConvOp>::FromOpRunner(
                 std::move(runner)));
@@ -254,12 +254,12 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
                     se::StreamExecutor* stream_exec,
                     ScratchAllocator* scratch_allocator, se::Stream* stream,
                     const se::EngineOptions& engine_options) {
-  TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
+  TF_XLA_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
 
-  TF_ASSIGN_OR_RETURN(se::dnn::DataType dtype,
+  TF_XLA_ASSIGN_OR_RETURN(se::dnn::DataType dtype,
                       GetDNNDataTypeFromPrimitiveType(config.output_type));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GpuConvParams params,
       GetGpuConvParams(config, operand_buffers, result_buffers));
 
@@ -268,7 +268,7 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
   if (dnn == nullptr) {
     return absl::InvalidArgumentError("No DNN in stream executor.");
   }
-  TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
+  TF_XLA_RETURN_IF_ERROR(dnn->GetConvolveRunners(
       CudnnConvKindToProto(config.kind), dtype, dtype, stream,
       params.config->input_descriptor, params.input_buf,
       params.config->filter_descriptor, params.filter_buf,
@@ -336,7 +336,7 @@ absl::StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
   using RedzoneCheckStatus = se::RedzoneAllocator::RedzoneCheckStatus;
-  TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
+  TF_XLA_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
                       allocator.CheckRedzones());
   if (redzone_check.ok()) {
     return true;
@@ -433,8 +433,8 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
   bool should_init_buffers = config.should_init_buffers();
   bool should_check_correctness = config.should_check_correctness();
   int redzone_padding_bytes = debug_options.xla_gpu_redzone_padding_bytes();
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, config.GetStream());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(se::Stream * stream, config.GetStream());
+  TF_XLA_ASSIGN_OR_RETURN(
       auto rz_buffers,
       RedzoneBuffers::FromInstruction(
           *instr, config.GetAllocator(), stream,
@@ -445,7 +445,7 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
   std::string canonical_hlo(
       AutotuneCacheKey(config.GetDeviceDescription(), *instr).GetHlo());
 
-  TF_ASSIGN_OR_RETURN(GpuConvConfig gpu_conv_config, GetGpuConvConfig(instr));
+  TF_XLA_ASSIGN_OR_RETURN(GpuConvConfig gpu_conv_config, GetGpuConvConfig(instr));
 
   GpuConvAlgorithmPicker::AutotuneRuntimeArguments runtime_arguments = {
       instr->GetModule()->config(),
@@ -557,7 +557,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   // ALGO_IMPLICIT_PRECOMP_GEMM does the right thing. Other algorithms
   // silently do Relu. See
   // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#cudnnConvolutionBiasActivationForward
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, config_.GetStream());
+  TF_XLA_ASSIGN_OR_RETURN(se::Stream * stream, config_.GetStream());
   se::RedzoneAllocator scratch_allocator(
       stream, config_.GetAllocator(),
       /*memory_limit=*/std::numeric_limits<int64_t>::max(),
@@ -677,12 +677,12 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   }
 
   // Check for writes to redzones.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       bool input_output_allocator_redzone_clear,
       CheckRedzones(runtime_arguments.rz_buffers.RedzoneAllocator(), stream,
                     "input/output", instr_str, &result));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       bool scratch_allocator_redzone_clear,
       CheckRedzones(scratch_allocator, stream, "scratch", instr_str, &result));
 
@@ -765,11 +765,11 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     std::vector<DeviceMemoryBase> reference_result_buffers(
         result_buffers.size());
     for (int i = 0; i < result_buffers.size(); ++i) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           reference_result_buffers[i],
           runtime_arguments.rz_buffers.RedzoneAllocator().AllocateBytes(
               result_buffers[i].size()));
-      TF_RETURN_IF_ERROR(stream->Memcpy(&reference_result_buffers[i],
+      TF_XLA_RETURN_IF_ERROR(stream->Memcpy(&reference_result_buffers[i],
                                         result_buffers[i],
                                         result_buffers[i].size()));
     }
@@ -820,18 +820,18 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   // this algorithm considered correct, though.
   std::optional<ReferenceResult> reference_result;
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       AutotuneRuntimeArguments runtime_arguments,
       AutotuneRuntimeArguments::FromInstruction(instr, config_, debug_options));
-  TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<GenericConvRunner> runners,
       GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
                     /* use_fallback = */ false, engine_options));
 
   std::vector<AutotuneResult> profile_results;
   for (auto& runner_cache : runners) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto result,
         AutotuneOneConvRunner(&runner_cache, &reference_result, disabled_algos,
                               *instr, runtime_arguments));
@@ -847,13 +847,13 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       LOG(WARNING) << "Conv: " << runtime_arguments.canonical_hlo.value();
     }
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::vector<GenericConvRunner> fallback_runners,
         GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
                       /* use_fallback = */ true, engine_options));
 
     for (auto& runner_cache : fallback_runners) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           auto result,
           AutotuneOneConvRunner(&runner_cache, &reference_result,
                                 disabled_algos, *instr, runtime_arguments));
@@ -900,7 +900,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(AutotuneResult selected_algorithm,
+  TF_XLA_ASSIGN_OR_RETURN(AutotuneResult selected_algorithm,
                       PickBestResult(profile_results, instr_str,
                                      runtime_arguments.hlo_module_config));
   return selected_algorithm;
@@ -927,7 +927,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
   // se::StreamExecutorMemoryAllocator for stream_exec.
   se::DeviceMemoryAllocator* allocator = config_.GetAllocator();
   ScratchAllocator input_output_allocator(device_ordinal, allocator);
-  TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
+  TF_XLA_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
   const auto initialize_buffer = [stream](DeviceMemoryBase buffer) {
     // Although we don't have evidence this matters, zero out the buffers
     // before autotuning.  It's conceivable that using uninitialized memory as
@@ -940,10 +940,10 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
   // use a ScratchAllocator for this instead of calling allocator_ directly so
   // that our allocations don't leak.
   for (const auto* operand : instr->operands()) {
-    TF_ASSIGN_OR_RETURN(auto buffer,
+    TF_XLA_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator.AllocateBytes(
                             ShapeUtil::ByteSizeOf(operand->shape())));
-    TF_RETURN_IF_ERROR(initialize_buffer(buffer));
+    TF_XLA_RETURN_IF_ERROR(initialize_buffer(buffer));
     operand_buffers.push_back(buffer);
   }
 
@@ -951,23 +951,23 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       instr->shape().tuple_shapes().size());
   if (instr->shape().IsTuple()) {
     for (int i = 0; i < instr->shape().tuple_shapes().size(); ++i) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           result_buffers[i],
           input_output_allocator.AllocateBytes(
               ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(i))));
-      TF_RETURN_IF_ERROR(initialize_buffer(result_buffers[i]));
+      TF_XLA_RETURN_IF_ERROR(initialize_buffer(result_buffers[i]));
     }
   } else {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         result_buffers[0],
         input_output_allocator.AllocateBytes(
             ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(0))));
-    TF_RETURN_IF_ERROR(initialize_buffer(result_buffers[0]));
+    TF_XLA_RETURN_IF_ERROR(initialize_buffer(result_buffers[0]));
   }
 
   ScratchAllocator scratch_allocator(device_ordinal, allocator);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners,
       GetMIOpenAlgorithms(instr, absl::MakeSpan(operand_buffers),
                           absl::MakeSpan(result_buffers), stream_exec,
@@ -976,7 +976,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
   std::vector<AutotuneResult> profile_results;
 
   if (runners.size() == 1) {
-    TF_ASSIGN_OR_RETURN(auto alg, runners[0]->ToAlgorithmDesc());
+    TF_XLA_ASSIGN_OR_RETURN(auto alg, runners[0]->ToAlgorithmDesc());
     auto algorithm_proto = alg.ToProto();
     profile_results.emplace_back();
     auto& result = profile_results.back();
@@ -990,9 +990,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     *result.mutable_run_time() =
         tsl::proto_utils::ToDurationProto(absl::Milliseconds(-1));
   } else {
-    TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
+    TF_XLA_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
     for (auto& runner : runners) {
-      TF_ASSIGN_OR_RETURN(auto alg, runner->ToAlgorithmDesc());
+      TF_XLA_ASSIGN_OR_RETURN(auto alg, runner->ToAlgorithmDesc());
       XLA_SCOPED_LOGGING_TIMER_LEVEL(
           absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
                        alg.ToString()),
@@ -1002,11 +1002,11 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       VLOG(4) << "Trying algorithm " << alg.ToString() << " for "
               << instr->ToString();
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           DeviceMemoryBase scratch_memory,
           scratch_allocator.AllocateBytes(runner->GetWorkspaceSize()));
 
-      TF_ASSIGN_OR_RETURN(auto lazy_runner,
+      TF_XLA_ASSIGN_OR_RETURN(auto lazy_runner,
                           se::dnn::LazyOpRunner<se::dnn::ConvOp>::FromOpRunner(
                               std::move(runner)));
 
@@ -1039,7 +1039,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(AutotuneResult selected_algorithm,
+  TF_XLA_ASSIGN_OR_RETURN(AutotuneResult selected_algorithm,
                       PickBestResult(profile_results, instr->ToString(),
                                      instr->GetModule()->config()));
   return selected_algorithm;
@@ -1097,7 +1097,7 @@ absl::StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(
       ShapeUtil::MakeShape(U8, {best_algo.scratch_bytes()}));
   Shape new_call_shape = ShapeUtil::MakeTupleShape(new_call_element_shapes);
 
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+  TF_XLA_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                       instr->backend_config<GpuBackendConfig>());
   CudnnConvBackendConfig& backend_config =
       *gpu_backend_config.mutable_cudnn_conv_backend_config();
@@ -1116,7 +1116,7 @@ absl::StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(
   VLOG(3) << "Replacing convolution " << instr->ToString() << " with "
           << new_call->ToString();
 
-  TF_RETURN_IF_ERROR(new_call->set_backend_config(gpu_backend_config));
+  TF_XLA_RETURN_IF_ERROR(new_call->set_backend_config(gpu_backend_config));
 
   std::vector<HloInstruction*> new_tuple_elements;
   new_tuple_elements.reserve(new_call->shape().tuple_shapes().size() - 1);
@@ -1133,7 +1133,7 @@ absl::StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(
   HloInstruction* new_tuple = computation->AddInstruction(
       HloInstruction::CreateTuple(new_tuple_elements));
 
-  TF_RETURN_IF_ERROR(instr->parent()->ReplaceInstruction(instr, new_tuple));
+  TF_XLA_RETURN_IF_ERROR(instr->parent()->ReplaceInstruction(instr, new_tuple));
   return true;
 }
 
@@ -1148,7 +1148,7 @@ absl::StatusOr<bool> GpuConvAlgorithmPicker::RunOnComputation(
 
   bool changed = false;
   for (HloInstruction* instr : convs) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr));
+    TF_XLA_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr));
     changed |= result;
   }
   return changed;
@@ -1169,7 +1169,7 @@ absl::StatusOr<bool> GpuConvAlgorithmPicker::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    TF_XLA_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
   return changed;

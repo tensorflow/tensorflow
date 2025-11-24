@@ -181,7 +181,7 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
     HloInstruction* replacement_instruction = producing_instruction;
     Shape operand_shape = use.instruction->operand(use.operand_number)->shape();
     if (operand_shape.IsTuple()) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           replacement_instruction,
           TupleUtil::ReplaceTupleWith(
               producing_instruction,
@@ -199,7 +199,7 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
           HloInstruction::CreateBitcast(operand_shape, producing_instruction));
       if (mutable_split_shape().has_value() &&
           producing_instruction->shape().layout().split_configs().size() != 0) {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             int64_t split_dim,
             bitcast_split_fn(
                 replacement_instruction,
@@ -213,7 +213,7 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
             ->add_split_configs(split_config);
       }
     }
-    TF_RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
+    TF_XLA_RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
         use.operand_number, replacement_instruction));
   }
   return absl::OkStatus();
@@ -413,7 +413,7 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
   if (sync_mem_op_ != nullptr && sync_mem_op_->opcode() != HloOpcode::kCopy) {
     if (sync_mem_op_->opcode() == HloOpcode::kSlice ||
         sync_mem_op_->opcode() == HloOpcode::kDynamicSlice) {
-      TF_ASSIGN_OR_RETURN(copy_done_,
+      TF_XLA_ASSIGN_OR_RETURN(copy_done_,
                           computation->CreateAsyncInstructions(
                               sync_mem_op_, {ShapeUtil::MakeShape(S32, {})},
                               HloInstruction::kMainExecutionThread, false));
@@ -430,7 +430,7 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
           computation->AddInstruction(HloInstruction::CreateBitcast(
               copy_start_->operand(0)->shape(), producing_instruction));
     }
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         copy_start_->ReplaceOperandWith(0, producing_instruction));
   } else {
     Shape dest_shape = shape;
@@ -604,14 +604,14 @@ absl::Status SlicedCopyAllocation::Process(
   // Sliced copy allocations need to insert asynchronous copy nodes.
   for (SliceDetail& slice_detail :
        slice_details_sorted_by_exclusive_start_time_) {
-    TF_RETURN_IF_ERROR(slice_detail.CreateAsyncSlice(
+    TF_XLA_RETURN_IF_ERROR(slice_detail.CreateAsyncSlice(
         slice_shape, *producing_instruction, *computation));
     VLOG(4) << "Created " << slice_detail.copy_start->name()
             << " for sliced copy allocation: " << ToString();
     slice_dones.push_back(slice_detail.copy_done);
   }
 
-  TF_RETURN_IF_ERROR(CreateBitcastConcat(shape, slice_dones));
+  TF_XLA_RETURN_IF_ERROR(CreateBitcastConcat(shape, slice_dones));
 
   // If we bitcast to an array of bytes above, the result of the concatenated
   // slices will also be an array of bytes. Thus, we need to cast the
@@ -822,7 +822,7 @@ absl::Status SlicedCopyAllocation::SliceDetail::CreateAsyncSlice(
   HloInstruction* slice = parent.AddInstruction(
       HloInstruction::CreateSlice(slice_decision.sizing.slice_shape, &producer,
                                   start_indices, limit_indices, strides));
-  TF_ASSIGN_OR_RETURN(copy_done, parent.CreateAsyncInstructions(
+  TF_XLA_ASSIGN_OR_RETURN(copy_done, parent.CreateAsyncInstructions(
                                      slice, {ShapeUtil::MakeShape(S32, {})}));
   copy_start = copy_done->mutable_operand(0);
 
@@ -889,12 +889,12 @@ absl::Status ParentAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
       original_allocation_.AddGetTupleElements();
   int new_tuple_index = calling_instruction_->shape().tuple_shapes().size();
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloInstruction * new_while_operand,
       TupleUtil::ReplaceTupleWith(producing_instruction,
                                   calling_instruction_->mutable_operand(0),
                                   {new_tuple_index}));
-  TF_RETURN_IF_ERROR(calling_instruction_->ReplaceOperandWithDifferentShape(
+  TF_XLA_RETURN_IF_ERROR(calling_instruction_->ReplaceOperandWithDifferentShape(
       0, new_while_operand));
   *calling_instruction_->mutable_shape() = new_while_operand->shape();
   *calling_instruction_->while_condition()
@@ -912,7 +912,7 @@ absl::Status ParentAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
   std::vector<HloInstruction*> while_users = calling_instruction_->users();
   HloInstruction* tuple_with_old_shape =
       TupleUtil::ExtractPrefix(calling_instruction_, new_tuple_index);
-  TF_RETURN_IF_ERROR(calling_instruction_->ReplaceAllUsesWithDifferentShape(
+  TF_XLA_RETURN_IF_ERROR(calling_instruction_->ReplaceAllUsesWithDifferentShape(
       while_users, tuple_with_old_shape));
 
   HloInstruction* final_instruction = AddGetTupleElements();
@@ -927,7 +927,7 @@ absl::Status ParentAllocation::PostProcess() {
   // new root. Doing the post-process step later ensures the root has been
   // updated with other changes, and we can safely add the additional parameter.
   HloComputation* while_body = calling_instruction_->while_body();
-  TF_ASSIGN_OR_RETURN(HloInstruction * new_while_body_root,
+  TF_XLA_ASSIGN_OR_RETURN(HloInstruction * new_while_body_root,
                       TupleUtil::ReplaceTupleWith(
                           AddGetTupleElements(), while_body->root_instruction(),
                           original_defining_position().index));
@@ -1040,7 +1040,7 @@ absl::Status WindowPrefetchedAllocation::Process(
   HloComputation* computation = producing_instruction->parent();
   CHECK_EQ(use_instruction->opcode(), HloOpcode::kFusion);
 
-  TF_RETURN_IF_ERROR(InsertWindowPrefetchInstruction(
+  TF_XLA_RETURN_IF_ERROR(InsertWindowPrefetchInstruction(
       producing_instruction, use_instruction, computation));
 
   // Notify the backend that an operand has been appended as a window prefetch

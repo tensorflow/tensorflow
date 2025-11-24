@@ -97,7 +97,7 @@ absl::StatusOr<Stream *> StreamCommon::GetOrCreateSubStream() {
   }
 
   // No streams are reusable; create a new stream.
-  TF_ASSIGN_OR_RETURN(auto stream, parent_->CreateStream());
+  TF_XLA_ASSIGN_OR_RETURN(auto stream, parent_->CreateStream());
   Stream *sub_stream = stream.get();
   sub_stream->SetName(absl::StrFormat("Sub-stream of %s", GetName()));
   sub_streams_.emplace_back(std::move(stream), false);

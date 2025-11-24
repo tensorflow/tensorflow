@@ -146,9 +146,9 @@ absl::StatusOr<Shape> TfrtGpuBuffer::logical_on_device_shape() {
         client_->xla_client()->backend().transfer_manager();
 
     auto stream = device_->stream();
-    TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
+    TF_XLA_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
         stream, &shaped_buffer, &ret_shape));
-    TF_RETURN_IF_ERROR(BlockHostUntilDoneWithHostCallback(stream));
+    TF_XLA_RETURN_IF_ERROR(BlockHostUntilDoneWithHostCallback(stream));
     return ret_shape;
   };
 
@@ -194,7 +194,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 TfrtGpuBuffer::DonateWithControlDependency(Future<> dependency) {
   VLOG(4) << "TfrtGpuBuffer::DonateWithControlDependency";
 
-  TF_ASSIGN_OR_RETURN(DonationTransaction donation_transaction,
+  TF_XLA_ASSIGN_OR_RETURN(DonationTransaction donation_transaction,
                       AcquireDonation());
 
   TrackedGpuDeviceBuffer* tracked_buffer = donation_transaction.device_buffer();
@@ -310,7 +310,7 @@ TfrtGpuBuffer::ReleaseDeviceMemoryOwnership(
     return InvalidArgument(
         "ReleaseDeviceMemoryOwnership allowed only for non-tuple");
   }
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<TrackedGpuDeviceBuffer> tracked_device_buffer,
       Release(wait_for_operations_to_complete));
 
@@ -747,12 +747,12 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
 
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
+    TF_XLA_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
     // Avoid use-after-free on `literal` due to unsequenced move and use.
     Literal* literal_pointer = literal.get();
     absl::InlinedVector<int64_t, 4> byte_strides(
         literal->shape().dimensions().size());
-    TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+    TF_XLA_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
         literal->shape(), absl::MakeSpan(byte_strides)));
     return dst_device->client()->BufferFromHostBuffer(
         literal_pointer->untyped_data(),
@@ -777,7 +777,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
   tsl::AsyncValueRef<GpuDeviceMemory> src_buffer = src_device_buffer->buffer();
 
   auto dst_definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-  TF_ASSIGN_OR_RETURN(auto output_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(auto output_buffer,
                       AllocateTfrtGpuDestinationBuffer(
                           on_device_shape_, dst_definition_event.CopyRef(),
                           gpu_dst_device, client_, dst_memory_space));

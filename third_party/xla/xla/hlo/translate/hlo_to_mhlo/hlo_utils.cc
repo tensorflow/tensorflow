@@ -156,7 +156,7 @@ absl::StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
 
 absl::StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const LiteralBase& literal, Builder builder) {
-  TF_ASSIGN_OR_RETURN(auto type,
+  TF_XLA_ASSIGN_OR_RETURN(auto type,
                       ConvertTensorShapeToType<mlir::RankedTensorType>(
                           literal.shape(), builder));
 

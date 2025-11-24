@@ -46,7 +46,7 @@ absl::StatusOr<bool> AllGatherSimplifier::RunImpl(
       }
       if (ShapeUtil::Compatible(inst->shape(), inst->operand(0)->shape())) {
         changed = true;
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             computation->ReplaceInstruction(inst, inst->mutable_operand(0)));
       } else {
         HloAllGatherInstruction* all_gather =
@@ -64,9 +64,9 @@ absl::StatusOr<bool> AllGatherSimplifier::RunImpl(
           changed = true;
           CHECK_EQ(all_gather->users().size(), 1);
           HloInstruction* ds = all_gather->users().front();
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(
               ds->ReplaceAllUsesWith(all_gather->mutable_operand(0)));
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(
               computation->RemoveInstructionAndUnusedOperands(ds));
         }
       }

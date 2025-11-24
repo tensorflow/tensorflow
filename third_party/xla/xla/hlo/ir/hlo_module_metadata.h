@@ -74,7 +74,7 @@ class HloModuleMetadata {
   absl::Status set_key_value_metric(const std::string& key, int64_t value);
 
   absl::StatusOr<int64_t> current_pass_id() {
-    TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+    TF_XLA_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                         GetCurrentHloPassMetadata());
     return pass_metadata->pass_id();
   }

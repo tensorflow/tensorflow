@@ -62,7 +62,7 @@ absl::Status CustomKernelThunk::Initialize(const InitializeParams& params) {
   absl::MutexLock lock(mutex_);
 
   if (!kernel_cache_.contains(params.executor)) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<se::Kernel> kernel,
         params.executor->LoadKernel(custom_kernel_.kernel_spec()));
     kernel_cache_.emplace(params.executor, std::move(kernel));
@@ -140,12 +140,12 @@ absl::StatusOr<ThunkProto> CustomKernelThunk::ToProto() const {
   CustomKernelThunkProto* custom_kernel_thunk_proto =
       thunk_proto.mutable_custom_kernel_thunk();
   for (const BufferAllocation::Slice& arg : args_) {
-    TF_ASSIGN_OR_RETURN(*custom_kernel_thunk_proto->add_args(), arg.ToProto());
+    TF_XLA_ASSIGN_OR_RETURN(*custom_kernel_thunk_proto->add_args(), arg.ToProto());
   }
   for (bool written : written_) {
     custom_kernel_thunk_proto->add_written(written);
   }
-  TF_ASSIGN_OR_RETURN(*custom_kernel_thunk_proto->mutable_custom_kernel(),
+  TF_XLA_ASSIGN_OR_RETURN(*custom_kernel_thunk_proto->mutable_custom_kernel(),
                       custom_kernel_.ToProto());
   return thunk_proto;
 }
@@ -155,14 +155,14 @@ absl::StatusOr<std::unique_ptr<CustomKernelThunk>> CustomKernelThunk::FromProto(
     absl::Span<const BufferAllocation> buffer_allocations,
     const std::optional<se::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CustomKernel custom_kernel,
       CustomKernel::FromProto(proto.custom_kernel(), symbol_resolver));
   std::vector<BufferAllocation::Slice> args;
   args.reserve(proto.args_size());
   for (const buffer_assignment::BufferAllocationSliceProto& arg_proto :
        proto.args()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         args.emplace_back(),
         BufferAllocation::Slice::FromProto(arg_proto, buffer_allocations));
   }

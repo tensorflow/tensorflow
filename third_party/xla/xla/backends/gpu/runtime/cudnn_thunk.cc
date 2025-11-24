@@ -76,7 +76,7 @@ absl::Status CuDnnThunk::Initialize(const InitializeParams& params) {
 absl::Status CuDnnThunk::ExecuteOnStream(const ExecuteParams& params) {
   InitializeParams initialize_params;
   initialize_params.stream = params.stream;
-  TF_RETURN_IF_ERROR(Initialize(initialize_params));
+  TF_XLA_RETURN_IF_ERROR(Initialize(initialize_params));
   std::vector<se::DeviceMemoryBase> buffer_args;
   buffer_args.reserve(args_.size());
   for (const BufferAllocation::Slice& arg : args_) {
@@ -100,7 +100,7 @@ absl::StatusOr<ThunkProto> CuDnnThunk::ToProto() const {
   proto.mutable_cudnn_thunk()->set_fingerprint(fingerprint_);
 
   for (const BufferAllocation::Slice& arg : args_) {
-    TF_ASSIGN_OR_RETURN(*proto.mutable_cudnn_thunk()->add_args(),
+    TF_XLA_ASSIGN_OR_RETURN(*proto.mutable_cudnn_thunk()->add_args(),
                         arg.ToProto());
   }
   for (const bool is_output : output_args_) {
@@ -120,7 +120,7 @@ absl::StatusOr<std::unique_ptr<CuDnnThunk>> CuDnnThunk::FromProto(
   args.reserve(proto.args_size());
   for (const buffer_assignment::BufferAllocationSliceProto& arg :
        proto.args()) {
-    TF_ASSIGN_OR_RETURN(args.emplace_back(), BufferAllocation::Slice::FromProto(
+    TF_XLA_ASSIGN_OR_RETURN(args.emplace_back(), BufferAllocation::Slice::FromProto(
                                                  arg, buffer_allocations));
   }
   std::vector<bool> output_args;

@@ -88,7 +88,7 @@ static absl::string_view ToString(nvPTXCompileResult status) {
 absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingLibNvPtxCompiler(
     const CudaComputeCapability& cc, const std::string& ptx_contents,
     GpuAsmOpts options, bool cancel_if_reg_spill, bool dump_compilation_log) {
-  TF_ASSIGN_OR_RETURN(auto version, GetLibNvPtxCompilerVersion());
+  TF_XLA_ASSIGN_OR_RETURN(auto version, GetLibNvPtxCompilerVersion());
   WarnIfBadPtxasVersion("nvPTXCompiler", cc, version);
 
   nvPTXCompilerHandle compiler_handle{};
@@ -211,7 +211,7 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForNvptxCompiler() {
   };
 
   std::optional<absl::LeakCheckDisabler> disabler;
-  TF_ASSIGN_OR_RETURN(SemanticVersion version, GetLibNvPtxCompilerVersion());
+  TF_XLA_ASSIGN_OR_RETURN(SemanticVersion version, GetLibNvPtxCompilerVersion());
   if (version < SemanticVersion(13, 0, 0)) {
     // libNvptxCompiler prior to CUDA 13 has a memory leak when calling
     // nvPTXCompilerCompile when the input PTX is invalid.

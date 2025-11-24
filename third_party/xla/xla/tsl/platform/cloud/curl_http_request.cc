@@ -445,7 +445,7 @@ absl::Status CurlHttpRequest::Send() {
   }
 
   const CURLcode curl_result = libcurl_->curl_easy_perform(curl_);
-  TF_RETURN_IF_ERROR(CURLcodeToStatus(curl_result, error_buffer));
+  TF_XLA_RETURN_IF_ERROR(CURLcodeToStatus(curl_result, error_buffer));
 
   double written_size = 0;
   CHECK_CURL_OK(libcurl_->curl_easy_getinfo(curl_, CURLINFO_SIZE_DOWNLOAD,

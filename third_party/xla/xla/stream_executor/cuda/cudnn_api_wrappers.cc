@@ -106,17 +106,17 @@ absl::StatusOr<int> GetCudnnProperty(CudnnProperty type) {
     return absl::NotFoundError("cuDNN is not linked into the application.");
   }
   int value{};
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       ToStatus(cudnnGetProperty(ToLibraryPropertyType(type), &value)));
   return value;
 }
 
 absl::StatusOr<SemanticVersion> GetLoadedCudnnVersion() {
-  TF_ASSIGN_OR_RETURN(int major,
+  TF_XLA_ASSIGN_OR_RETURN(int major,
                       GetCudnnProperty(CudnnProperty::kMajorVersion));
-  TF_ASSIGN_OR_RETURN(int minor,
+  TF_XLA_ASSIGN_OR_RETURN(int minor,
                       GetCudnnProperty(CudnnProperty::kMinorVersion));
-  TF_ASSIGN_OR_RETURN(int patch,
+  TF_XLA_ASSIGN_OR_RETURN(int patch,
                       GetCudnnProperty(CudnnProperty::kPatchLevelVersion));
   return SemanticVersion(major, minor, patch);
 }

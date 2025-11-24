@@ -81,11 +81,11 @@ absl::Status NativeEmitterBackend::ApplyConfig(HloInstruction& instr,
   }
   auto fusion_instr = Cast<HloFusionInstruction>(&instr);
   fusion_instr->set_fusion_kind(HloInstruction::FusionKind::kInput);
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+  TF_XLA_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                       instr.backend_config<GpuBackendConfig>());
   *gpu_backend_config.mutable_native_emitter_backend_config() =
       native_emitter_fusion_config;
-  TF_RETURN_IF_ERROR(fusion_instr->set_backend_config(gpu_backend_config));
+  TF_XLA_RETURN_IF_ERROR(fusion_instr->set_backend_config(gpu_backend_config));
   return absl::OkStatus();
 }
 

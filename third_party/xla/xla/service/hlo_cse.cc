@@ -83,7 +83,7 @@ absl::StatusOr<bool> CombineConstants(
                      [&](const HloInstruction* instr) {
                        return instr->opcode() == HloOpcode::kDomain;
                      })) {
-    TF_ASSIGN_OR_RETURN(domain_map, HloDomainMap::Create(computation, ""));
+    TF_XLA_ASSIGN_OR_RETURN(domain_map, HloDomainMap::Create(computation, ""));
   }
 
   // Map from the literal hash of a constant or the shape hash of an iota all
@@ -270,7 +270,7 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       bool changed,
       is_layout_sensitive_
           ? CombineConstants<true>(computation,
@@ -325,9 +325,9 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     auto pair = representatives.insert(CseKey{instruction});
     if (!pair.second) {
       HloInstruction* equivalent_instruction = pair.first->hlo;
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           instruction->ReplaceAllUsesWith(equivalent_instruction));
-      TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
+      TF_XLA_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
           instruction, /*cleanup=*/std::nullopt, ignore_control_dependencies_));
       VLOG(4) << "Replaced " << instruction->name() << " with "
               << equivalent_instruction->name();
@@ -344,10 +344,10 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
         if (a == b || !eq_instructions(a, b)) {
           continue;
         }
-        TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(j, a));
+        TF_XLA_RETURN_IF_ERROR(instruction->ReplaceOperandWith(j, a));
         changed = true;
         if (b->IsDead()) {
-          TF_RETURN_IF_ERROR(computation->RemoveInstruction(b));
+          TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(b));
         }
       }
     }
@@ -386,7 +386,7 @@ absl::StatusOr<bool> HloCSE::RunImpl(
   bool changed = false;
 
   for (auto* computation : module->computations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool computation_changed,
+    TF_XLA_ASSIGN_OR_RETURN(bool computation_changed,
                         RunOnComputation(computation));
     changed |= computation_changed;
   }

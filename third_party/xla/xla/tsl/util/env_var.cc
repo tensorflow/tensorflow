@@ -92,7 +92,7 @@ absl::Status ReadStringsFromEnvVar(absl::string_view env_var_name,
                                    absl::string_view default_val,
                                    std::vector<string>* value) {
   string str_val;
-  TF_RETURN_IF_ERROR(ReadStringFromEnvVar(env_var_name, default_val, &str_val));
+  TF_XLA_RETURN_IF_ERROR(ReadStringFromEnvVar(env_var_name, default_val, &str_val));
   *value = str_util::Split(str_val, ',');
   return absl::OkStatus();
 }

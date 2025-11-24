@@ -75,8 +75,8 @@ class ComputeConstantTest : public ::testing::Test {
   absl::StatusOr<Literal> ComputeConstantLiteral(
       Client* client, const XlaOp operand, XlaBuilder* builder,
       Layout* output_layout = nullptr) {
-    TF_ASSIGN_OR_RETURN(auto subgraph, builder->BuildConstantSubGraph(operand));
-    TF_ASSIGN_OR_RETURN(auto computed,
+    TF_XLA_ASSIGN_OR_RETURN(auto subgraph, builder->BuildConstantSubGraph(operand));
+    TF_XLA_ASSIGN_OR_RETURN(auto computed,
                         client->ComputeConstant(subgraph, output_layout));
     return std::move(computed);
   }
@@ -85,7 +85,7 @@ class ComputeConstantTest : public ::testing::Test {
   absl::StatusOr<Scalar> ComputeConstantScalar(Client* client,
                                                const XlaOp operand,
                                                XlaBuilder* builder) {
-    TF_ASSIGN_OR_RETURN(auto literal, ComputeConstantLiteral(client, operand,
+    TF_XLA_ASSIGN_OR_RETURN(auto literal, ComputeConstantLiteral(client, operand,
                                                              builder, nullptr));
     return literal.Get<Scalar>({});
   }

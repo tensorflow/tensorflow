@@ -76,7 +76,7 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "tsl/platform/platform.h"
 
-// Include appropriate platform-dependent `TF_ASSIGN_OR_RETURN`.
+// Include appropriate platform-dependent `TF_XLA_ASSIGN_OR_RETURN`.
 #if defined(PLATFORM_GOOGLE)
 #include "xla/tsl/platform/google/statusor.h"  // IWYU pragma: export
 #else

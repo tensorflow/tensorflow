@@ -50,10 +50,10 @@ absl::StatusOr<bool> RunOnComputation(HloComputation& computation) {
     }
 
     if (instruction->shape().element_type() == input->shape().element_type()) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           instruction->parent()->ReplaceInstruction(instruction, input));
     } else {
-      TF_RETURN_IF_ERROR(instruction->parent()->ReplaceWithNewInstruction(
+      TF_XLA_RETURN_IF_ERROR(instruction->parent()->ReplaceWithNewInstruction(
           instruction,
           HloInstruction::CreateConvert(instruction->shape(), input)));
     }
@@ -73,7 +73,7 @@ absl::StatusOr<bool> SimplifyFPConversions::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeComputationPostOrder(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(*computation));
+    TF_XLA_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(*computation));
     changed |= comp_changed;
   }
   XLA_VLOG_LINES(

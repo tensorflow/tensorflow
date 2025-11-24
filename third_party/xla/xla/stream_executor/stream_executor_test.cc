@@ -34,8 +34,8 @@ struct TestResource : public StreamExecutor::Resource {
 };
 
 static absl::StatusOr<StreamExecutor*> NewStreamExecutor() {
-  TF_ASSIGN_OR_RETURN(auto platform, PlatformManager::PlatformWithName("Host"));
-  TF_ASSIGN_OR_RETURN(auto stream_exec, platform->ExecutorForDevice(0));
+  TF_XLA_ASSIGN_OR_RETURN(auto platform, PlatformManager::PlatformWithName("Host"));
+  TF_XLA_ASSIGN_OR_RETURN(auto stream_exec, platform->ExecutorForDevice(0));
   return stream_exec;
 }
 

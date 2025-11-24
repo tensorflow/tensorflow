@@ -99,7 +99,7 @@ absl::Status UpdateDiskKernelCache(
   CompilationCacheProto disk_cache;
   if (do_append) {
     std::string serialized;
-    TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
+    TF_XLA_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
                                              std::string(path), &serialized));
     if (!disk_cache.ParseFromString(std::string(serialized))) {
       return Internal("Failed to parse serialized CompilationCacheProto.");
@@ -119,7 +119,7 @@ absl::Status UpdateDiskKernelCache(
     ++stored_kernel_count;
   }
   if (stored_kernel_count > 0) {
-    TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(),
+    TF_XLA_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(),
                                               std::string(path),
                                               disk_cache.SerializeAsString()));
     VLOG(2) << "Stored " << stored_kernel_count << " / "

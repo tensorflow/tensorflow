@@ -187,17 +187,17 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(
     }
 
     if (HloPredicateIsOp<HloOpcode::kTuple>(root)) {
-      TF_RETURN_IF_ERROR(fused_computation->RemoveInstruction(root));
+      TF_XLA_RETURN_IF_ERROR(fused_computation->RemoveInstruction(root));
     } else {
       auto get_tuple_element_root = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(hlo, 0));
-      TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWithDifferentShape(
+      TF_XLA_RETURN_IF_ERROR(hlo->ReplaceAllUsesWithDifferentShape(
           other_users, get_tuple_element_root));
     }
     for (int64_t i = 0; i < copies.size(); ++i) {
       auto get_tuple_element = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(hlo, num_outputs + i));
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           computation->ReplaceInstruction(copies[i], get_tuple_element));
     }
   }

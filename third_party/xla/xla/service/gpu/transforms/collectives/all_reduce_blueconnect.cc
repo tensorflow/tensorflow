@@ -174,7 +174,7 @@ TryDecomposeReplicaGroups(const HloAllReduceInstruction& all_reduce,
     replica_groups = absl::MakeSpan(&all_replicas, 1);
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode collective_op_group_mode,
       GetCollectiveOpGroupMode(all_reduce.channel_id().has_value(),
                                all_reduce.use_global_device_ids()));
@@ -184,7 +184,7 @@ TryDecomposeReplicaGroups(const HloAllReduceInstruction& all_reduce,
 
   // Try to find a valid decomposition for each replica group.
   for (const ReplicaGroup& replica_group : replica_groups) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::optional<DecomposedReplicaGroups> decomposed_groups,
         TryDecomposeReplicaGroup(replica_group, device_assignment,
                                  num_devices_per_host,
@@ -249,7 +249,7 @@ static absl::StatusOr<bool> TryDecomposeAllReduce(
   HloComputation& computation = *all_reduce->parent();  // never null
   PrimitiveType element_type = all_reduce->operand(0)->shape().element_type();
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::optional<DecomposedReplicaGroups> decomposed_groups,
       TryDecomposeReplicaGroups(*all_reduce, num_devices_per_host));
 
@@ -278,7 +278,7 @@ static absl::StatusOr<bool> TryDecomposeAllReduce(
         element_type, {num_elements / scatter_group_size}));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto reduce_scatter_shape,
       ShapeUtil::MakeValidatedMaybeTupleShape(scattered_shapes));
 
@@ -306,7 +306,7 @@ static absl::StatusOr<bool> TryDecomposeAllReduce(
           /*constrain_layout=*/false, all_reduce->channel_id(),
           all_reduce->use_global_device_ids()));
 
-  TF_ASSIGN_OR_RETURN(auto all_gather_shape,
+  TF_XLA_ASSIGN_OR_RETURN(auto all_gather_shape,
                       ShapeUtil::MakeValidatedMaybeTupleShape(flat_shapes));
   HloInstruction* all_gather =
       computation.AddInstruction(HloInstruction::CreateAllGather(
@@ -325,14 +325,14 @@ static absl::StatusOr<bool> TryDecomposeAllReduce(
   }
   HloInstruction* replacement = MaybeMakeTuple(outputs);
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       all_reduce->CopyAllControlDepsTo(reduce_scatter, replacement));
 
-  TF_RETURN_IF_ERROR(all_reduce->DropAllControlDeps());
-  TF_RETURN_IF_ERROR(computation.ReplaceInstruction(all_reduce, replacement));
+  TF_XLA_RETURN_IF_ERROR(all_reduce->DropAllControlDeps());
+  TF_XLA_RETURN_IF_ERROR(computation.ReplaceInstruction(all_reduce, replacement));
 
   // Try to apply decomposition recursively.
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       TryDecomposeAllReduce(Cast<HloAllReduceInstruction>(new_all_reduce),
                             num_devices_per_host)
           .status());
@@ -369,7 +369,7 @@ absl::StatusOr<bool> AllReduceBlueConnect::RunImpl(
 
   bool changed = false;
   for (HloAllReduceInstruction* all_reduce : all_reduces) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool all_reduce_changed,
         TryDecomposeAllReduce(all_reduce, num_devices_per_host_));
     changed |= all_reduce_changed;

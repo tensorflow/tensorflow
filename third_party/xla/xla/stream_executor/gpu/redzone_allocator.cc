@@ -84,7 +84,7 @@ absl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
   }
 
   int64_t rhs_slop = RoundUpToNearest(byte_size, kRhsRedzoneAlign) - byte_size;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       OwningDeviceMemory allocated_buffer,
       memory_allocator_->Allocate(device_ordinal_,
                                   byte_size + 2 * redzone_size_ + rhs_slop,
@@ -115,12 +115,12 @@ absl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
                            redzone_pattern_};
   uint32_t pattern32;
   std::memcpy(&pattern32, pattern_arr, sizeof(pattern32));
-  TF_RETURN_IF_ERROR(stream_->Memset32(&lhs_redzone, pattern32, redzone_size_));
+  TF_XLA_RETURN_IF_ERROR(stream_->Memset32(&lhs_redzone, pattern32, redzone_size_));
   if (rhs_slop != 0) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         stream_->Memcpy(&rhs_redzone_slop, &pattern32, rhs_slop));
   }
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       stream_->Memset32(&rhs_redzone_nonslop, pattern32, redzone_size_));
 
   allocated_buffers_.emplace_back(std::move(allocated_buffer), byte_size);
@@ -135,8 +135,8 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
     absl::string_view name, Stream* stream, uint8_t redzone_pattern) {
   uint64_t size = redzone.size();
   auto redzone_data = std::make_unique<uint8_t[]>(size);
-  TF_RETURN_IF_ERROR(stream->Memcpy(redzone_data.get(), redzone, size));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  TF_XLA_RETURN_IF_ERROR(stream->Memcpy(redzone_data.get(), redzone, size));
+  TF_XLA_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   std::array<uint8_t, sizeof(uint64_t)> pattern_arr;
   pattern_arr.fill(redzone_pattern);
@@ -180,7 +180,7 @@ static absl::Status RunRedzoneChecker(
   int64_t block_count =
       tsl::MathUtil::CeilOfRatio(num_elements, threads_per_block);
 
-  TF_RETURN_IF_ERROR(comparison_kernel.Launch(
+  TF_XLA_RETURN_IF_ERROR(comparison_kernel.Launch(
       ThreadDim(threads_per_block), BlockDim(block_count), stream, redzone,
       redzone_pattern, redzone.size(), out_param));
   return absl::OkStatus();
@@ -195,9 +195,9 @@ static absl::Status ReinitializeRedzone(Stream* stream,
                                         uint8_t redzone_pattern) {
   absl::FixedArray<uint8_t> redzone_array(redzone.size());
   redzone_array.fill(redzone_pattern);
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       stream->Memcpy(&redzone, redzone_array.data(), redzone.size()));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  TF_XLA_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return absl::OkStatus();
 }
 
@@ -226,29 +226,29 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
       buffer_uint8.GetSlice(redzone_size + user_allocation_size,
                             /*element_count=*/redzone_size + rhs_slop);
 
-  TF_RETURN_IF_ERROR(RunRedzoneChecker(stream, lhs_redzone, redzone_pattern,
+  TF_XLA_RETURN_IF_ERROR(RunRedzoneChecker(stream, lhs_redzone, redzone_pattern,
                                        out_param, comparison_kernel));
-  TF_RETURN_IF_ERROR(RunRedzoneChecker(stream, rhs_redzone, redzone_pattern,
+  TF_XLA_RETURN_IF_ERROR(RunRedzoneChecker(stream, rhs_redzone, redzone_pattern,
                                        out_param, comparison_kernel));
   int64_t result;
   CHECK_EQ(out_param.size(), sizeof(result));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&result, out_param, sizeof(result)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  TF_XLA_RETURN_IF_ERROR(stream->Memcpy(&result, out_param, sizeof(result)));
+  TF_XLA_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   if (result != 0) {
-    TF_ASSIGN_OR_RETURN(RedzoneCheckStatus lhs_check,
+    TF_XLA_ASSIGN_OR_RETURN(RedzoneCheckStatus lhs_check,
                         CheckRedzoneHost(lhs_redzone, user_allocation, "LHS",
                                          stream, redzone_pattern));
-    TF_ASSIGN_OR_RETURN(RedzoneCheckStatus rhs_check,
+    TF_XLA_ASSIGN_OR_RETURN(RedzoneCheckStatus rhs_check,
                         CheckRedzoneHost(rhs_redzone, user_allocation, "RHS",
                                          stream, redzone_pattern));
 
     CHECK(!lhs_check.ok() || !rhs_check.ok())
         << "Mismatched results with host and device comparison";
 
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         ReinitializeRedzone(stream, lhs_redzone, redzone_pattern));
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         ReinitializeRedzone(stream, rhs_redzone, redzone_pattern));
     return !lhs_check.ok() ? lhs_check : rhs_check;
   }
@@ -258,7 +258,7 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
 
 absl::StatusOr<DeviceMemoryBase> RedzoneAllocator::CreateBuffer(
     const xla::Shape& shape, bool initialize_buffers, int64_t& rng_state) {
-  TF_ASSIGN_OR_RETURN(stream_executor::DeviceMemoryBase buffer,
+  TF_XLA_ASSIGN_OR_RETURN(stream_executor::DeviceMemoryBase buffer,
                       AllocateBytes(xla::ShapeUtil::ByteSizeOf(shape)));
   if (initialize_buffers) {
     xla::gpu::InitializeBuffer(stream(), shape.element_type(), &rng_state,
@@ -270,16 +270,16 @@ absl::StatusOr<DeviceMemoryBase> RedzoneAllocator::CreateBuffer(
 absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   StreamExecutor* executor = stream_->parent();
 
-  TF_ASSIGN_OR_RETURN(auto kernel,
+  TF_XLA_ASSIGN_OR_RETURN(auto kernel,
                       gpu::GpuKernelRegistry::GetGlobalRegistry()
                           .LoadKernel<gpu::RedzoneAllocatorKernel>(executor));
 
   DeviceMemoryHandle out_param(executor, executor->AllocateScalar<uint64_t>());
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       stream_->MemZero(out_param.memory_ptr(), sizeof(uint64_t)));
 
   for (const auto& buf_and_size : allocated_buffers_) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         RedzoneCheckStatus redzone_status,
         CheckRedzonesForBuffer(stream_, *buf_and_size.first,
                                DeviceMemory<uint64_t>(out_param.memory()),

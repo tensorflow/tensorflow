@@ -110,15 +110,15 @@ class GpuBlasLtThunkBuilder {
 
   absl::StatusOr<std::unique_ptr<CublasLtMatmulThunk>> CreateThunk(
       HloInstruction* gemm) {
-    TF_ASSIGN_OR_RETURN(const auto gpu_config,
+    TF_XLA_ASSIGN_OR_RETURN(const auto gpu_config,
                         gemm->backend_config<GpuBackendConfig>());
     const auto& backend_config = gpu_config.gemm_backend_config();
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool has_vector_bias,
         gpublas_lt::EpilogueAddsVectorBias(backend_config.epilogue()));
     bool has_matrix_bias = backend_config.beta() != 0;
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto epilogue, gpublas_lt::AsBlasLtEpilogue(backend_config.epilogue()));
 
     std::vector<BufferAllocation::Slice> slices;
@@ -135,7 +135,7 @@ class GpuBlasLtThunkBuilder {
     slices.reserve(buf_sizes.size());
     for (auto size : buf_sizes) {
       mem_buffers_.emplace_back();
-      TF_ASSIGN_OR_RETURN(mem_buffers_.back(),
+      TF_XLA_ASSIGN_OR_RETURN(mem_buffers_.back(),
                           allocator_.Allocate(exec_->device_ordinal(), size));
       allocs_.emplace_back(/*index=*/idx++, size, /*color=*/0);
       slices.emplace_back(&allocs_.back(), /*offset*/ 0, size);
@@ -143,7 +143,7 @@ class GpuBlasLtThunkBuilder {
     // we need at least 3 buffers: lhs, rhs and output
     EXPECT_EQ(slices.size(),
               3 + size_t{has_matrix_bias} + size_t{has_vector_bias});
-    TF_ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm, gpu_comp_));
+    TF_XLA_ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm, gpu_comp_));
 
     BufferAllocation::Slice bias;
     if (has_vector_bias) {
@@ -216,11 +216,11 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
 
     Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
     for (auto& thunk : gemm_thunks) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           thunk->Initialize({executor, source, allocs.get(), stream, stream}));
-      TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
+      TF_XLA_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
     }
-    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    TF_XLA_RETURN_IF_ERROR(stream->BlockHostUntilDone());
     return absl::OkStatus();
   };
 

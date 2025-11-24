@@ -122,7 +122,7 @@ class GpuCompilerTest : public HloTestBase {
     GpuCompiler* gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
     std::unique_ptr<GpuAliasInfo> alias_info =
         gpu_compiler->GetAliasInfo(gpu_device_info);
-    TF_RETURN_IF_ERROR(ScheduleGpuModule(module, 4, gpu_device_info,
+    TF_XLA_RETURN_IF_ERROR(ScheduleGpuModule(module, 4, gpu_device_info,
                                          gpu_compiler->mlir_context(),
                                          alias_info.get())
                            .status());
@@ -138,12 +138,12 @@ class GpuCompilerTest : public HloTestBase {
   absl::StatusOr<std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>>
   GetOptimizedModuleForExecutable(absl::string_view hlo,
                                   const HloModuleConfig& config) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                         ParseAndReturnVerifiedModule(hlo, config));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<OpaqueExecutable> executable,
         CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-    TF_ASSIGN_OR_RETURN(const HloModule* optimized_module,
+    TF_XLA_ASSIGN_OR_RETURN(const HloModule* optimized_module,
                         test_runner().HloModuleFromWrapped(executable.get()));
     return {{optimized_module, std::move(executable)}};
   }
@@ -157,7 +157,7 @@ class GpuCompilerTest : public HloTestBase {
 absl::StatusOr<std::string> ReadNonEmptyFile(absl::string_view file_path) {
   std::string str;
   tsl::Env* env = tsl::Env::Default();
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path), &str));
+  TF_XLA_RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path), &str));
   if (str.empty()) {
     return absl::InvalidArgumentError(
         absl::StrCat("File is empty: ", file_path));
@@ -868,7 +868,7 @@ ENTRY main {
     config.set_debug_options(debug_options);
     config.set_num_partitions(1);
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         ParseAndReturnVerifiedModule(module_str, config));
     return GetOptimizedModule(std::move(module));
   };

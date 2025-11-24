@@ -186,7 +186,7 @@ ElementalKernelEmitter::EmitKernelDefinition() {
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
       absl::StrCat(instr_->name(), "_elemental_kernel_module"), *ctx);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       KernelApiIrBuilder::KernelPrototype kernel_prototype,
       kernel_api_ir_builder.EmitKernelPrototype(
           *llvm_module, instr_, buffer_assignment_, name(), "_kernel"));
@@ -199,7 +199,7 @@ ElementalKernelEmitter::EmitKernelDefinition() {
   ir_builder.setFastMathFlags(
       llvm_ir::GetCpuFastMathFlags(hlo_module->config()));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CpuElementalIrEmitter::ThreadLocalCallCallback thread_local_call_fn,
       ThreadLocalCallbackFactory(ir_builder, *llvm_module));
 
@@ -223,7 +223,7 @@ ElementalKernelEmitter::EmitKernelDefinition() {
   llvm_ir::ElementGenerator element_generator =
       elemental_ir_emitter.MakeElementGenerator(instr_, operand_to_generator);
 
-  TF_ASSIGN_OR_RETURN(NumWorkGroups num_workgroups,
+  TF_XLA_ASSIGN_OR_RETURN(NumWorkGroups num_workgroups,
                       EmitElementalLoops(ir_builder, instr_, kernel_prototype,
                                          element_generator));
 
@@ -259,7 +259,7 @@ absl::StatusOr<NumWorkGroups> ElementalKernelEmitter::EmitElementalLoops(
 
   // TODO(ezhulenev): Support multiple results for parallel loops.
   if (multiple_results) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, kernel_prototype.results, &b)
             .EmitLoop(llvm_ir::IrName(instr)));
     return NumWorkGroups();
@@ -272,7 +272,7 @@ absl::StatusOr<NumWorkGroups> ElementalKernelEmitter::EmitElementalLoops(
   if (has_parallel_config) {
     ParallelPartitionBounds parallel_bounds = EmitParallelPartitionBounds(
         b, kernel_prototype, *parallel_config, instr->shape(), instr->name());
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         ParallelLoopEmitter(element_generator, result, &parallel_bounds, &b)
             .EmitLoop(llvm_ir::IrName(instr)));
     return NumWorkGroups{
@@ -281,7 +281,7 @@ absl::StatusOr<NumWorkGroups> ElementalKernelEmitter::EmitElementalLoops(
   }
 
   // Emit a whole loop for the instruction.
-  TF_RETURN_IF_ERROR(llvm_ir::LoopEmitter(element_generator, result, &b)
+  TF_XLA_RETURN_IF_ERROR(llvm_ir::LoopEmitter(element_generator, result, &b)
                          .EmitLoop(llvm_ir::IrName(instr)));
   return NumWorkGroups();
 }
@@ -304,13 +304,13 @@ ElementalKernelEmitter::ThreadLocalCallbackFactory(llvm::IRBuilderBase& builder,
       /*emit_code_for_msan=*/false);
   IrEmitter::IRBuilderGuard builder_guard = ir_emitter->WithBuilder(builder);
 
-  TF_RETURN_IF_ERROR(ir_emitter->EmitSmallConstantGlobals());
+  TF_XLA_RETURN_IF_ERROR(ir_emitter->EmitSmallConstantGlobals());
 
   if (instr_->has_to_apply()) {
     HloComputation* nested_computation = instr_->to_apply();
     bool is_reducer = instr_->opcode() == HloOpcode::kReduce ||
                       instr_->opcode() == HloOpcode::kReduceWindow;
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         ir_emitter
             ->EmitNestedComputation(*nested_computation,
                                     llvm_ir::IrName(nested_computation->name()),

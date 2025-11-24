@@ -1124,7 +1124,7 @@ absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
         "sharded dims.");
   }
 
-  TF_ASSIGN_OR_RETURN(std::vector<int64_t> axes,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<int64_t> axes,
                       device_mesh.GetMeshDimPermutationOrderInShardingSpec(
                           spec, consider_reverse_device_meshes));
   // Transform tile_assignment_dimensions using found transformation (axes).
@@ -1160,7 +1160,7 @@ GetTensorDimToMeshDimMixedMeshSharding(int64_t tensor_shape_rank,
         "sharded dims.");
   }
 
-  TF_ASSIGN_OR_RETURN(std::vector<int64_t> axes,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<int64_t> axes,
                       device_mesh.GetMeshDimPermutationOrderInShardingSpec(
                           sharding, consider_reverse_device_meshes));
 
@@ -1332,7 +1332,7 @@ absl::Status FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
       HloSharding::Tuple(inst->shape(), reassembled_tuple_shardings));
 
   for (HloInstruction* user : inst_users) {
-    TF_RETURN_IF_ERROR(inst->ReplaceUseWith(user, reassembled_tuple));
+    TF_XLA_RETURN_IF_ERROR(inst->ReplaceUseWith(user, reassembled_tuple));
   }
   return absl::OkStatus();
 }
@@ -1367,7 +1367,7 @@ absl::Status FixMixedMeshShapeReshardingGetTupleElement(
   }
 
   for (HloInstruction* user : inst_users) {
-    TF_RETURN_IF_ERROR(inst->ReplaceUseWith(user, replace_with));
+    TF_XLA_RETURN_IF_ERROR(inst->ReplaceUseWith(user, replace_with));
   }
 
   auto iter = preserve_shardings.find(inst->name());
@@ -1428,7 +1428,7 @@ absl::Status FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
       << "Large reshape instruction inserted (operand of " << inst->name()
       << ") with size " << size << "GB: " << replace_with->ToString();
 
-  TF_RETURN_IF_ERROR(inst->ReplaceOperandWith(operand_num, replace_with));
+  TF_XLA_RETURN_IF_ERROR(inst->ReplaceOperandWith(operand_num, replace_with));
   return absl::OkStatus();
 }
 
@@ -2000,7 +2000,7 @@ absl::Status RemoveFollowersIfMismatchedStrategies(
     const StrategyGroup* src_strategy_group = strategy_groups[pair.first];
     const StrategyGroup* dst_strategy_group = strategy_groups[pair.second];
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         AliasCompatibility alias_compatibility,
         ComputeAliasCompatibility(src_strategy_group, dst_strategy_group,
                                   instructions));
@@ -2182,7 +2182,7 @@ AdjustShardingWithPartialMeshShapePerElement(
 
   std::vector<int64_t> new_tile_assignment_dimensions;
   bool replicate_on_last_dim = false;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<int64_t> axes,
       original_device_mesh.GetMeshDimPermutationOrderInShardingSpec(
           sharding,
@@ -2264,7 +2264,7 @@ absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
           output_flattened_shardings.push_back(sharding);
           continue;
         }
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             std::optional<HloSharding> new_sharding,
             adjust_sharding(shape.dimensions().size(), sharding));
         output_flattened_shardings.push_back(
@@ -2279,7 +2279,7 @@ absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
       inst->set_sharding(HloSharding::Tuple(output_tuple_sharding));
       continue;
     }
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::optional<HloSharding> new_sharding,
         adjust_sharding(inst->shape().dimensions().size(), inst->sharding()));
     if (new_sharding.has_value()) {
@@ -2648,11 +2648,11 @@ absl::Status EnsureEntryComputationLayoutHasShapeLayouts(HloModule* module) {
   ComputationLayout* computation_layout =
       module->mutable_entry_computation_layout();
   for (int i = 0; i < computation_layout->parameter_count(); ++i) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
             computation_layout_with_layouts.parameter_layout(i).shape()));
   }
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       computation_layout->mutable_result_layout()->CopyLayoutFromShape(
           computation_layout_with_layouts.result_layout().shape()));
   return absl::OkStatus();

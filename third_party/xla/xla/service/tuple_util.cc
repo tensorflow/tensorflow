@@ -133,7 +133,7 @@ namespace xla {
       // If the subshape is still a tuple, recurse and pass a new shape index
       // for the one level deeper.
       if (subshape.IsTuple()) {
-        TF_ASSIGN_OR_RETURN(tuple_args[i],
+        TF_XLA_ASSIGN_OR_RETURN(tuple_args[i],
                             ReplaceTupleWith(new_instruction, get_operand(),
                                              ShapeIndex(shape_index.begin() + 1,
                                                         shape_index.end())));

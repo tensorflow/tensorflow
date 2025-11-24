@@ -129,10 +129,10 @@ TEST_P(ObjectLoaderTest, Load) {
 
   auto add_module = [&](absl::string_view ir, absl::string_view name,
                         size_t dylib_index) -> absl::Status {
-    TF_ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
+    TF_XLA_ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
                         ParseModule(tsc, ir, name));
     SetModuleMemoryRegionName(*tsm.getModuleUnlocked(), "object_loader_test");
-    TF_RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
+    TF_XLA_RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
     return absl::OkStatus();
   };
 

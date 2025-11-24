@@ -535,7 +535,7 @@ absl::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
   std::vector<PJRT_NamedValue> c_value_list;
   c_value_list.reserve(cpp_value_map.size());
   for (const auto& [name, value] : cpp_value_map) {
-    TF_ASSIGN_OR_RETURN(PJRT_NamedValue c_value,
+    TF_XLA_ASSIGN_OR_RETURN(PJRT_NamedValue c_value,
                         ConvertToPjRtNamedValue(name, value));
     c_value_list.push_back(c_value);
   }
@@ -615,7 +615,7 @@ absl::Status ValidateCreateOptions(
       return tsl::errors::InvalidArgument(
           "Unexpected option name passed to PJRT_Client_Create: ", name);
     }
-    TF_ASSIGN_OR_RETURN(PJRT_NamedValue_Type type,
+    TF_XLA_ASSIGN_OR_RETURN(PJRT_NamedValue_Type type,
                         GetPjrtNamedValueType(value));
     if (type != it->second) {
       return tsl::errors::InvalidArgument(
@@ -1047,18 +1047,18 @@ absl::StatusOr<xla::Shape> BuildXlaShapeFromC(
   if (layout != nullptr) {
     switch (layout->type) {
       case PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled: {
-        TF_ASSIGN_OR_RETURN(cpp_layout, ConvertToLayout(layout->tiled));
+        TF_XLA_ASSIGN_OR_RETURN(cpp_layout, ConvertToLayout(layout->tiled));
         break;
       }
       case PJRT_Buffer_MemoryLayout_Type::
           PJRT_Buffer_MemoryLayout_Type_Strides: {
-        TF_RETURN_IF_ERROR(absl::InvalidArgumentError(
+        TF_XLA_RETURN_IF_ERROR(absl::InvalidArgumentError(
             "PJRT_Buffer_MemoryLayout_Type_Strides is not supported to be "
             "converted to a xla::Shape"));
         break;
       }
       default: {
-        TF_RETURN_IF_ERROR(absl::InvalidArgumentError(absl::StrCat(
+        TF_XLA_RETURN_IF_ERROR(absl::InvalidArgumentError(absl::StrCat(
             "Unexpected PJRT_Buffer_MemoryLayout_Type type: ", layout->type)));
       }
     }

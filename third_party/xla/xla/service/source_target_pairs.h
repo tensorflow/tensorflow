@@ -70,7 +70,7 @@ class SourceTargetPairs {
 
   static absl::StatusOr<SourceTargetPairs> FromString(absl::string_view str) {
     // reusing replica groups parsing.
-    TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> groups,
+    TF_XLA_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> groups,
                         ParseReplicaGroupsOnly(str));
     SourceTargetPairs res;
     for (const ReplicaGroup& group : groups) {
@@ -87,7 +87,7 @@ class SourceTargetPairs {
     auto source_target_pairs = instruction->frontend_attributes().map().find(
         kSendRecvSourceTargetPairsAttr);
     if (source_target_pairs != instruction->frontend_attributes().map().end()) {
-      TF_ASSIGN_OR_RETURN(SourceTargetPairs res,
+      TF_XLA_ASSIGN_OR_RETURN(SourceTargetPairs res,
                           FromString(source_target_pairs->second));
       return res;
     }

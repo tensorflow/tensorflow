@@ -703,7 +703,7 @@ class ShapeUtil {
     return ForEachSubshapeWithStatus(
         shape, [&](const Shape& subshape, const ShapeIndex& index) {
           if (IsLeafIndex(shape, index)) {
-            TF_RETURN_IF_ERROR(fn(subshape, index));
+            TF_XLA_RETURN_IF_ERROR(fn(subshape, index));
           }
           return absl::OkStatus();
         });
@@ -713,7 +713,7 @@ class ShapeUtil {
     return ForEachMutableSubshapeWithStatus(
         shape, [&](Shape* subshape, const ShapeIndex& index) {
           if (IsLeafIndex(*shape, index)) {
-            TF_RETURN_IF_ERROR(fn(subshape, index));
+            TF_XLA_RETURN_IF_ERROR(fn(subshape, index));
           }
           return absl::OkStatus();
         });
@@ -1202,14 +1202,14 @@ class ShapeUtil {
   template <typename Fn>
   static absl::Status ForEachMutableSubshapeWithStatusHelper(
       Shape* shape, Fn&& fn, ShapeIndex* index) {
-    TF_RETURN_IF_ERROR(fn(shape, *index));
+    TF_XLA_RETURN_IF_ERROR(fn(shape, *index));
     if (Shape::TupleState* tuple = shape->if_tuple_state()) {
       Shape* tuple_shape = tuple->tuple_shapes.data();
       int64_t tuple_count = tuple->tuple_shapes.size();
       index->push_back(0);
       for (int64_t i = 0; i < tuple_count;
            ++i, ++tuple_shape, ++index->back()) {
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             ForEachMutableSubshapeWithStatusHelper(tuple_shape, fn, index));
       }
       index->pop_back();
@@ -1246,12 +1246,12 @@ class ShapeUtil {
       index->push_back(0);
       for (int64_t i = 0; i < tuple_count;
            ++i, ++tuple_shape, ++index->back()) {
-        TF_RETURN_IF_ERROR(ForEachMutableSubshapePostOrderWithStatusHelper(
+        TF_XLA_RETURN_IF_ERROR(ForEachMutableSubshapePostOrderWithStatusHelper(
             tuple_shape, fn, index));
       }
       index->pop_back();
     }
-    TF_RETURN_IF_ERROR(fn(shape, *index));
+    TF_XLA_RETURN_IF_ERROR(fn(shape, *index));
     return absl::OkStatus();
   }
 

@@ -483,7 +483,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
         scans.push_back(scan);
         return absl::OkStatus();
       });
-  TF_RETURN_IF_ERROR(status);
+  TF_XLA_RETURN_IF_ERROR(status);
 
   HloInstruction* scan;
   if (reduce_window->shape().IsTuple()) {
@@ -492,8 +492,8 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
     CHECK_EQ(scans.size(), 1);
     scan = scans[0];
   }
-  TF_RETURN_IF_ERROR(reduce_window->ReplaceAllUsesWith(scan));
-  TF_RETURN_IF_ERROR(parent->RemoveInstruction(reduce_window));
+  TF_XLA_RETURN_IF_ERROR(reduce_window->ReplaceAllUsesWith(scan));
+  TF_XLA_RETURN_IF_ERROR(parent->RemoveInstruction(reduce_window));
 
   return true;
 }
@@ -510,7 +510,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::RunImpl(
       if (!reduce_window) {
         continue;
       }
-      TF_ASSIGN_OR_RETURN(bool made_change,
+      TF_XLA_ASSIGN_OR_RETURN(bool made_change,
                           TryOptimizeCumSumOrProd(reduce_window));
       if (made_change) {
         changed = true;
@@ -519,7 +519,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::RunImpl(
       if (reduce_window->inputs().front()->shape().dimensions().size() != 1) {
         continue;
       }
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           reduce_window_util::Replace1DReduceWindowWithReshape(reduce_window));
       changed = true;
     }

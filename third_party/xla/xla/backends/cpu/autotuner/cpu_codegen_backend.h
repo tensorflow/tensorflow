@@ -46,7 +46,7 @@ class CpuCodegenBackend : public CodegenBackend {
  public:
   // Helper method creating a compiler for the host platform.
   static absl::StatusOr<std::unique_ptr<Compiler>> CreateBackendCompiler() {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto platform,
         stream_executor::PlatformManager::PlatformWithName("host", true));
     return Compiler::GetForPlatform(platform);
@@ -63,7 +63,7 @@ class CpuCodegenBackend : public CodegenBackend {
     std::unique_ptr<HloModule> hlo_module =
         ExtractInstructionIntoNewModule(hlo_instruction);
 
-    TF_RETURN_IF_ERROR(ApplyConfig(
+    TF_XLA_RETURN_IF_ERROR(ApplyConfig(
         *hlo_module->entry_computation()->root_instruction(), config));
 
     Compiler::CompileOptions options;

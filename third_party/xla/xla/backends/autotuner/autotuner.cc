@@ -158,13 +158,13 @@ absl::Status Autotuner::Autotune(HloModule* module,
           << " unique instructions.";
   for (auto& [_, instructions] : instructions_by_fingerprint) {
     CHECK(!instructions.empty());
-    TF_ASSIGN_OR_RETURN(Config config, GetConfig(instructions[0]));
+    TF_XLA_ASSIGN_OR_RETURN(Config config, GetConfig(instructions[0]));
     CodegenBackend* codegen_backend = config.codegen_backend;
     if (autotune_config_.dump_hlos) {
-      TF_RETURN_IF_ERROR(DumpHlo(instructions[0], config));
+      TF_XLA_RETURN_IF_ERROR(DumpHlo(instructions[0], config));
     }
     for (auto* instr : instructions) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           codegen_backend->ApplyConfig(*instr, *config.backend_config));
     }
   }
@@ -206,23 +206,23 @@ absl::Status Autotuner::Autotune(HloModule* module,
   std::vector<const HloInstruction*> autotuned_instructions;
   for (auto& [_, instructions] : instructions_by_fingerprint) {
     CHECK(!instructions.empty());
-    TF_ASSIGN_OR_RETURN(Config config, GetConfig(instructions[0]));
+    TF_XLA_ASSIGN_OR_RETURN(Config config, GetConfig(instructions[0]));
     autotuned_instructions.push_back(instructions[0]);
   }
-  TF_RETURN_IF_ERROR(DumpLogsToFile());
+  TF_XLA_RETURN_IF_ERROR(DumpLogsToFile());
 
   // 4. Store the results for this shard as a serialized string to the KV store.
   KeyValueStoreInterface& kv_store = *sharding_kv_store.key_value_store;
   const std::string local_key = GetKvStoreKey(module, my_shard_index);
   std::string local_results;
   if (!autotuned_instructions.empty()) {
-    TF_ASSIGN_OR_RETURN(local_results,
+    TF_XLA_ASSIGN_OR_RETURN(local_results,
                         cache_->Serialize(autotuned_instructions));
   }
   absl::StatusOr<std::string> stored_result = kv_store.TryGet(local_key);
   if (stored_result.status().code() == absl::StatusCode::kNotFound) {
     VLOG(2) << "Storing results for " << local_key;
-    TF_RETURN_IF_ERROR(kv_store.Set(local_key, local_results));
+    TF_XLA_RETURN_IF_ERROR(kv_store.Set(local_key, local_results));
     VLOG(2) << "Shard " << my_shard_index << " stored results at " << local_key;
   } else if (!stored_result.ok()) {
     return stored_result.status();
@@ -241,10 +241,10 @@ absl::Status Autotuner::Autotune(HloModule* module,
             << i << " / " << total_shards << " at " << remote_key;
     // TODO(b/361009609): reset to infinite duration once issue with MPI is
     // fixed. https://github.com/google/jax/issues/22995.
-    TF_ASSIGN_OR_RETURN(std::string remote_results,
+    TF_XLA_ASSIGN_OR_RETURN(std::string remote_results,
                         kv_store.Get(remote_key, absl::Hours(24)));
     if (!remote_results.empty()) {
-      TF_RETURN_IF_ERROR(cache_->Deserialize(remote_results));
+      TF_XLA_RETURN_IF_ERROR(cache_->Deserialize(remote_results));
     }
   }
 
@@ -257,11 +257,11 @@ absl::Status Autotuner::Autotune(HloModule* module,
         << "Sharding autotuning failed: no config found for HLO: " +
                instructions[0]->ToString();
     if (autotune_config_.dump_hlos) {
-      TF_RETURN_IF_ERROR(DumpHlo(instructions[0], *cached_config));
+      TF_XLA_RETURN_IF_ERROR(DumpHlo(instructions[0], *cached_config));
     }
     CodegenBackend* codegen_backend = cached_config->codegen_backend;
     for (auto* instr : instructions) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           codegen_backend->ApplyConfig(*instr, *cached_config->backend_config));
     }
   }
@@ -270,12 +270,12 @@ absl::Status Autotuner::Autotune(HloModule* module,
 }
 
 absl::Status Autotuner::Autotune(HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(Config config, GetConfig(instr));
+  TF_XLA_ASSIGN_OR_RETURN(Config config, GetConfig(instr));
   CodegenBackend* codegen_backend = config.codegen_backend;
   if (autotune_config_.dump_hlos) {
-    TF_RETURN_IF_ERROR(DumpHlo(instr, config));
+    TF_XLA_RETURN_IF_ERROR(DumpHlo(instr, config));
   }
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       codegen_backend->ApplyConfig(*instr, *config.backend_config));
   return DumpLogsToFile();
 }
@@ -294,20 +294,20 @@ absl::StatusOr<Autotuner::Config> Autotuner::GetConfig(HloInstruction* instr) {
   }
 
   if (autotune_config_.use_default_config) {
-    TF_ASSIGN_OR_RETURN(Config default_config, GetDefaultConfig(*instr));
+    TF_XLA_ASSIGN_OR_RETURN(Config default_config, GetDefaultConfig(*instr));
     VLOG(1) << "Using default config: " << default_config.ToString();
     return default_config;
   }
 
   VLOG(1) << "Autotuning the HLO instruction to find best config.";
-  TF_ASSIGN_OR_RETURN(Config best_config, TuneBestConfig(instr));
+  TF_XLA_ASSIGN_OR_RETURN(Config best_config, TuneBestConfig(instr));
   Insert(instr, best_config);
   return best_config;
 }
 
 absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
     HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(std::vector<Config> supported_configs,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<Config> supported_configs,
                       GetSupportedConfigs(instr));
   if (supported_configs.empty()) {
     return absl::InternalError(
@@ -348,7 +348,7 @@ absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
     return std::move(executable_candidates[0].config);
   }
 
-  TF_ASSIGN_OR_RETURN(std::vector<ConfigResult> results,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<ConfigResult> results,
                       ProfileAll(executable_candidates));
   LogConfigResults(*instr, results);
   absl::StatusOr<ConfigResult> best_result = PickBestConfig(results);
@@ -452,7 +452,7 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
   std::vector<ConfigResult> results_vec;
   results_vec.reserve(candidates.size());
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<InputBuffers> input_buffers,
       profiler_->CreateInputBuffers(candidates[0].executable.get()));
 
@@ -553,7 +553,7 @@ absl::Status Autotuner::DumpHlo(HloInstruction* instr, const Config& config) {
   DumpToFileInDirOrStdout(*parent_module, "", absl::StrCat(id, ".before.txt"),
                           module->ToString());
   HloInstruction* root = module->entry_computation()->root_instruction();
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       config.codegen_backend->ApplyConfig(*root, *config.backend_config));
   DumpToFileInDirOrStdout(*parent_module, "", absl::StrCat(id, ".after.txt"),
                           module->ToString());
@@ -617,7 +617,7 @@ absl::Status Autotuner::DumpLogsToFile() {
   std::string textproto;
   tsl::protobuf::TextFormat::PrintToString(logs_, &textproto);
 
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
+  TF_XLA_RETURN_IF_ERROR(tsl::WriteStringToFile(
       tsl::Env::Default(), autotune_config_.dump_logs_to, textproto));
   VLOG(1) << "Autotune logs serialized to file: "
           << autotune_config_.dump_logs_to;

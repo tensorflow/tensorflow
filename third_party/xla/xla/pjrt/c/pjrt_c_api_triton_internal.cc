@@ -27,11 +27,11 @@ limitations under the License.
 namespace pjrt {
 
 PJRT_Error* PJRT_Triton_Compile(PJRT_Triton_Compile_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Triton_Compile_Args", PJRT_Triton_Compile_Args_STRUCT_SIZE,
       args->struct_size));
 
-  PJRT_ASSIGN_OR_RETURN(
+  PJRT_XLA_ASSIGN_OR_RETURN(
       auto result, xla::triton::Compile(
                        absl::string_view(args->module, args->module_size),
                        absl::string_view(args->arch_name, args->arch_name_size),

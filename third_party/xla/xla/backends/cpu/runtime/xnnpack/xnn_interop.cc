@@ -36,21 +36,21 @@ absl::Status InitializeXnnPack() {
 absl::StatusOr<XnnSubgraph> CreateXnnSubgraph(
     absl::FunctionRef<xnn_status(xnn_subgraph_t*)> builder) {
   xnn_subgraph_t subgraph = nullptr;
-  XNN_RETURN_IF_ERROR(builder(&subgraph));
+  XNN_XLA_RETURN_IF_ERROR(builder(&subgraph));
   return XnnSubgraph(subgraph);
 }
 
 absl::StatusOr<XnnRuntime> CreateXnnRuntime(
     absl::FunctionRef<xnn_status(xnn_runtime_t*)> builder) {
   xnn_runtime_t runtime = nullptr;
-  XNN_RETURN_IF_ERROR(builder(&runtime));
+  XNN_XLA_RETURN_IF_ERROR(builder(&runtime));
   return XnnRuntime(runtime);
 }
 
 absl::StatusOr<XnnThreadpool> CreateXnnThreadpool(
     absl::FunctionRef<xnn_status(xnn_threadpool_t*)> builder) {
   xnn_threadpool_t threadpool = nullptr;
-  XNN_RETURN_IF_ERROR(builder(&threadpool));
+  XNN_XLA_RETURN_IF_ERROR(builder(&threadpool));
   return XnnThreadpool(threadpool);
 }
 

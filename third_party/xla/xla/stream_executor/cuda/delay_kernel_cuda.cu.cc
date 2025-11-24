@@ -54,11 +54,11 @@ absl::StatusOr<GpuSemaphore> LaunchDelayKernel(Stream* stream) {
 
   // Allocate a semaphore value that will be used to signal to the delay
   // kernel that it may exit.
-  TF_ASSIGN_OR_RETURN(auto semaphore, GpuSemaphore::Create(executor));
+  TF_XLA_ASSIGN_OR_RETURN(auto semaphore, GpuSemaphore::Create(executor));
   *semaphore = GpuSemaphoreState::kHold;
   // In principle the kernel could be loaded lazily and shared across
   // multiple GpuTimer objects.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto kernel,
       (TypedKernelFactory<DeviceMemory<GpuSemaphoreState>,
                           GpuSemaphoreState>::Create(executor, "DelayKernel",
@@ -67,7 +67,7 @@ absl::StatusOr<GpuSemaphore> LaunchDelayKernel(Stream* stream) {
   // Launch a delay kernel into this stream, which will spin until
   // GetElapsedDuration() is called, the timer is destroyed, or the timeout
   // in the kernel is reached.
-  TF_RETURN_IF_ERROR(kernel.Launch(ThreadDim(1, 1, 1), BlockDim(1, 1, 1),
+  TF_XLA_RETURN_IF_ERROR(kernel.Launch(ThreadDim(1, 1, 1), BlockDim(1, 1, 1),
                                    stream, semaphore.device(),
                                    GpuSemaphoreState::kRelease));
 

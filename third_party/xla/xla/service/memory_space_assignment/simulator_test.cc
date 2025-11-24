@@ -59,7 +59,7 @@ class MemorySpaceAssignmentSimulatorTest
     : public HloHardwareIndependentTestBase {
  protected:
   absl::Status Initialize(absl::string_view hlo_string) {
-    TF_ASSIGN_OR_RETURN(module_, ParseAndReturnVerifiedModule(hlo_string));
+    TF_XLA_ASSIGN_OR_RETURN(module_, ParseAndReturnVerifiedModule(hlo_string));
     for (HloInstruction* inst : module_->entry_computation()->instructions()) {
       instruction_map_[inst->name()] = inst;
       // Construct an allocation for the instruction if it is in the alternate
@@ -102,14 +102,14 @@ class MemorySpaceAssignmentSimulatorTest
     cost_analysis_options.alternate_mem_write_bandwidth_bytes_per_second = 2;
     cost_analysis_options.default_mem_bandwidth_bytes_per_second = 1.0;
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         cost_analysis_,
         CostAnalysis::Create(*op_cost_manager_, cost_analysis_options,
                              &alias_info_, *module_));
 
-    TF_ASSIGN_OR_RETURN(alias_analysis_,
+    TF_XLA_ASSIGN_OR_RETURN(alias_analysis_,
                         HloAliasAnalysis::Run(module_.get(), &alias_info_));
-    TF_ASSIGN_OR_RETURN(hlo_live_range_,
+    TF_XLA_ASSIGN_OR_RETURN(hlo_live_range_,
                         HloLiveRange::Run(module_->schedule(), *alias_analysis_,
                                           module_->entry_computation()));
     runtime_simulator_ = std::make_unique<RuntimeSimulator>(
@@ -334,7 +334,7 @@ class SimulateAsyncCopyLikeDoneTest
     : public MemorySpaceAssignmentSimulatorTest {
  protected:
   absl::Status Initialize(absl::string_view hlo_string) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         MemorySpaceAssignmentSimulatorTest::Initialize(hlo_string));
     if (instruction_map_.contains("copy-start.1")) {
       outstanding_read_default_queue_.push_back(

@@ -106,7 +106,7 @@ absl::Status CubSortKeysImpl::Run(se::DeviceMemoryBase input_keys,
   CHECK(input_values.is_null());
   CHECK(output_values.is_null());
   if (batch_size > 1) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         CopyOffsets(stream, scratch, batch_size, num_items / batch_size));
     temp_bytes -= GetOffsetsSize(batch_size);
   }
@@ -153,7 +153,7 @@ absl::StatusOr<int64_t> CubSortKeysImpl::GetScratchSize(int64_t num_items,
   builder.AddAttributes(attrs.Build());
   ffi::CallFrame call_frame = builder.Build();
 
-  TF_RETURN_IF_ERROR(ffi::Call(sort_keys_fn_.bundle.initialize, call_frame,
+  TF_XLA_RETURN_IF_ERROR(ffi::Call(sort_keys_fn_.bundle.initialize, call_frame,
                                ffi::CallOptions{},
                                XLA_FFI_ExecutionStage_INITIALIZE));
   return temp_bytes;
@@ -192,7 +192,7 @@ absl::Status CubSortPairsImpl::Run(se::DeviceMemoryBase input_keys,
   size_t temp_bytes = scratch.size();
   size_t num_items = input_keys.size() * 8 / primitive_util::BitWidth(type_);
   if (batch_size > 1) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         CopyOffsets(stream, scratch, batch_size, num_items / batch_size));
     temp_bytes -= GetOffsetsSize(batch_size);
   }
@@ -246,7 +246,7 @@ absl::StatusOr<int64_t> CubSortPairsImpl::GetScratchSize(int64_t num_items,
   builder.AddAttributes(attrs.Build());
   ffi::CallFrame call_frame = builder.Build();
 
-  TF_RETURN_IF_ERROR(ffi::Call(sort_pairs_fn_.bundle.initialize, call_frame,
+  TF_XLA_RETURN_IF_ERROR(ffi::Call(sort_pairs_fn_.bundle.initialize, call_frame,
                                ffi::CallOptions{},
                                XLA_FFI_ExecutionStage_INITIALIZE));
   return temp_bytes;
@@ -254,7 +254,7 @@ absl::StatusOr<int64_t> CubSortPairsImpl::GetScratchSize(int64_t num_items,
 
 absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateCubSortRunner(
     PrimitiveType type, absl::string_view platform_name) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       ffi::HandlerRegistration handler,
       ffi::FindHandler("xla.gpu.ext.cub_sort_keys_" +
                            primitive_util::LowercasePrimitiveTypeName(type),
@@ -268,7 +268,7 @@ absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateCubSortRunner(
 absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateCubSortRunner(
     PrimitiveType key_type, PrimitiveType value_type,
     absl::string_view platform_name) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       ffi::HandlerRegistration handler,
       ffi::FindHandler(
           absl::StrFormat("xla.gpu.ext.cub_sort_pairs_%s_b%d",
@@ -296,7 +296,7 @@ absl::StatusOr<std::unique_ptr<CubSortThunk>> CubSortThunk::Create(
     absl::InlinedVector<BufferAllocation::Slice, 2> results,
     BufferAllocation::Slice scratch, bool descending, int64_t batch_size,
     absl::string_view platform_name) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<CubSortRunnerInterface> runner,
       CubSortRunnerInterface::Create(type, value_type, platform_name));
 
@@ -327,19 +327,19 @@ absl::StatusOr<std::unique_ptr<CubSortThunk>> CubSortThunk::FromProto(
     absl::string_view platform_name) {
   absl::InlinedVector<BufferAllocation::Slice, 2> operands;
   for (const BufferAllocationSliceProto& slice_proto : proto.operands()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         operands.emplace_back(),
         BufferAllocation::Slice::FromProto(slice_proto, buffer_allocations));
   }
 
   absl::InlinedVector<BufferAllocation::Slice, 2> results;
   for (const BufferAllocationSliceProto& slice_proto : proto.results()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         results.emplace_back(),
         BufferAllocation::Slice::FromProto(slice_proto, buffer_allocations));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice scratch,
       BufferAllocation::Slice::FromProto(proto.scratch(), buffer_allocations));
 
@@ -362,12 +362,12 @@ absl::StatusOr<ThunkProto> CubSortThunk::ToProto() const {
     cub_sort_proto->set_value_type(*value_type_);
   }
   for (const BufferAllocation::Slice& slice : operands_) {
-    TF_ASSIGN_OR_RETURN(*cub_sort_proto->add_operands(), slice.ToProto());
+    TF_XLA_ASSIGN_OR_RETURN(*cub_sort_proto->add_operands(), slice.ToProto());
   }
   for (const BufferAllocation::Slice& slice : results_) {
-    TF_ASSIGN_OR_RETURN(*cub_sort_proto->add_results(), slice.ToProto());
+    TF_XLA_ASSIGN_OR_RETURN(*cub_sort_proto->add_results(), slice.ToProto());
   }
-  TF_ASSIGN_OR_RETURN(*cub_sort_proto->mutable_scratch(), scratch_.ToProto());
+  TF_XLA_ASSIGN_OR_RETURN(*cub_sort_proto->mutable_scratch(), scratch_.ToProto());
   cub_sort_proto->set_descending(descending_);
   cub_sort_proto->set_batch_size(batch_size_);
 

@@ -87,7 +87,7 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
   absl::StatusOr<ModuleWithFusion> BuildModuleWithFusion(
       const Shape& shape) const {
     const std::string module_str = GetModuleStr(shape);
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         ParseAndReturnVerifiedModule(module_str));
     const HloInstruction* instr = hlo_query::GetFirstInstructionWithOpcode(
         *module->entry_computation(), HloOpcode::kAllReduceStart);
@@ -125,9 +125,9 @@ class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
  public:
   absl::StatusOr<std::unique_ptr<ModuleWithEmitter>> BuildModuleWithEmitter(
       const Shape& shape, const se::DeviceDescription& device_info) const {
-    TF_ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
+    TF_XLA_ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
                         BuildModuleWithFusion(shape));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool collective_fusion_config_set,
         TrySetGpuBackendConfigForCollective(
             device_info_, module_with_fusion.MutableFusionInstr()));

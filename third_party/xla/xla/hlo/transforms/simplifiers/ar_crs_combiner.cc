@@ -59,7 +59,7 @@ namespace {
 // performance.
 absl::StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
                                                 int64_t partition_count) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto replication_analysis,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/true));
 
@@ -93,7 +93,7 @@ absl::StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
               HloInstruction::CreateBroadcast(shape, divisor, {}));
           auto div = computation->AddInstruction(HloInstruction::CreateBinary(
               ar->shape(), HloOpcode::kDivide, ar, bcast));
-          TF_RETURN_IF_ERROR(ar->ReplaceAllUsesWith(div));
+          TF_XLA_RETURN_IF_ERROR(ar->ReplaceAllUsesWith(div));
           changed = true;
         }
       }
@@ -532,7 +532,7 @@ absl::Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
     HloModule* module) {
   // For SPMD mode, use HloReplicationAnalysis to figure out HLO value
   // equivalence across partitions.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto replication_analysis,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/true));
 
@@ -640,15 +640,15 @@ absl::StatusOr<bool> ArCrsCombiner::RunImpl(
   GroupAllReducesById(module);
 
   if (spmd_partition_) {
-    TF_RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsSPMD(module));
+    TF_XLA_RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsSPMD(module));
   } else {
-    TF_RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsMPMD());
+    TF_XLA_RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsMPMD());
   }
 
-  TF_ASSIGN_OR_RETURN(auto changed, RewriteGraph());
+  TF_XLA_ASSIGN_OR_RETURN(auto changed, RewriteGraph());
 
   if (module->config().replica_count() > 1 && spmd_partition_) {
-    TF_ASSIGN_OR_RETURN(auto replaced, ReplaceReplicatedAllReduce(
+    TF_XLA_ASSIGN_OR_RETURN(auto replaced, ReplaceReplicatedAllReduce(
                                            module, num_spatial_partitions_));
     changed |= replaced;
   }

@@ -232,12 +232,12 @@ absl::StatusOr<bool> UnifyAccumulatorWithInput(
       VLOG(3) << while_instr->name() << " -> " << "<accumulator_@"
               << acc->tuple_index() << ": " << acc->name() << ", " << "input_@"
               << input->tuple_index() << ": " << input->name() << ">";
-      TF_RETURN_IF_ERROR(input->ReplaceAllUsesWith(acc));
-      TF_RETURN_IF_ERROR(while_instr->while_init()->ReplaceOperandWith(
+      TF_XLA_RETURN_IF_ERROR(input->ReplaceAllUsesWith(acc));
+      TF_XLA_RETURN_IF_ERROR(while_instr->while_init()->ReplaceOperandWith(
           acc->tuple_index(),
           while_instr->while_init()->mutable_operand(input->tuple_index())));
       if (input->user_count() == 0) {
-        TF_RETURN_IF_ERROR(while_instr->while_body()->RemoveInstruction(input));
+        TF_XLA_RETURN_IF_ERROR(while_instr->while_body()->RemoveInstruction(input));
       }
       unified = true;
     }
@@ -253,7 +253,7 @@ absl::StatusOr<bool> ScanLoopAccumulatorInputUnification::RunImpl(
   VLOG(2) << "HLO module before ScanLoopAccumulatorInputUnification:";
   XLA_VLOG_LINES(2, module->ToString());
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
 
   // This pass can only be applied to unrollable loops since we need to find the
@@ -265,15 +265,15 @@ absl::StatusOr<bool> ScanLoopAccumulatorInputUnification::RunImpl(
 
   // TODO(b/337883537): We might want to simplify compare instructions before
   // this. It helps us identify more inputs and accumulators.
-  TF_ASSIGN_OR_RETURN(bool changed, UnifyAccumulatorWithInput(
+  TF_XLA_ASSIGN_OR_RETURN(bool changed, UnifyAccumulatorWithInput(
                                         *dataflow_analysis, unrollable_loops));
 
   if (changed) {
     for (auto& [while_instr, loop_config] : unrollable_loops) {
-      TF_RETURN_IF_ERROR(TryRemoveDeadWhileParams(while_instr).status());
+      TF_XLA_RETURN_IF_ERROR(TryRemoveDeadWhileParams(while_instr).status());
     }
-    TF_RETURN_IF_ERROR(TupleSimplifier{}.Run(module).status());
-    TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
+    TF_XLA_RETURN_IF_ERROR(TupleSimplifier{}.Run(module).status());
+    TF_XLA_RETURN_IF_ERROR(module->RemoveUnusedComputations());
 
     VLOG(2) << "HLO module after ScanLoopAccumulatorInputUnification:";
     XLA_VLOG_LINES(2, module->ToString());

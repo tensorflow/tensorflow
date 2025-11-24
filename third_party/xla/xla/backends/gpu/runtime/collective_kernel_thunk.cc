@@ -108,7 +108,7 @@ absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(bool peer_access_enabled,
+  TF_XLA_ASSIGN_OR_RETURN(bool peer_access_enabled,
                       collective_cliques->peer_access_enabled(clique_key));
 
   // Check that peer access is enabled.
@@ -123,7 +123,7 @@ absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
 
 absl::Status CollectiveKernelThunk::Prepare(
     const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_,
                                 /*use_nccl=*/false));
@@ -159,7 +159,7 @@ absl::Status CollectiveKernelThunk::ExchangeStateMetadata(
 }
 
 absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_,
                                 /*use_nccl=*/false));
@@ -186,12 +186,12 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       const int64_t kLocalBufferSize = xla::RoundUpTo<uint64_t>(
           buffers_[0].source_buffer.size(), kXlaAllocatedBufferAlignBytes);
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           se::DeviceMemoryHandle local_buffers_handle,
           AllocateMemory(params.executor, kLocalBufferSize * kNumBuffers,
                          "Local buffers"));
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           se::DeviceMemoryHandle signal_buffers_handle,
           AllocateMemory(params.executor, kLocalBufferSize * kNumBuffers,
                          "Signal buffers"));
@@ -202,7 +202,7 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       // the buffer. The kernel will take care of leaving the buffer in
       // correct state after use, so we don't need to zero out after
       // initialization.
-      TF_RETURN_IF_ERROR(params.executor->SynchronousMemZero(
+      TF_XLA_RETURN_IF_ERROR(params.executor->SynchronousMemZero(
           signal_buffers_handle.memory_ptr(),
           signal_buffers_handle.memory().size()));
       // Create a kernel for execution.
@@ -210,7 +210,7 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       // If PTX is provided, we create a kernel from it.
       if (!kernel_name_.empty()) {
         VLOG(3) << "Creating kernel from PTX." << params.src.text;
-        TF_ASSIGN_OR_RETURN(kernel,
+        TF_XLA_ASSIGN_OR_RETURN(kernel,
                             CreateKernel(kernel_name_, kAllReduceArgsCount,
                                          params.src.text, params.executor, 0));
       }
@@ -242,12 +242,12 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
 
   if (state != nullptr) {
     if (strategy == AllReduceStrategy::kMultimem) {
-      TF_ASSIGN_OR_RETURN(state->multicast_device_ptr,
+      TF_XLA_ASSIGN_OR_RETURN(state->multicast_device_ptr,
                           address_space_provider_.SetupMultimemAddressSpace(
                               clique_key, params.executor,
                               state->local_buffers_handle.memory()));
     }
-    TF_RETURN_IF_ERROR(ExchangeStateMetadata(clique_key, params, *state));
+    TF_XLA_RETURN_IF_ERROR(ExchangeStateMetadata(clique_key, params, *state));
   }
 
   return absl::OkStatus();
@@ -262,7 +262,7 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   }
   const int device_ordinal = stream->parent()->device_ordinal();
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_,
                                 /*use_nccl=*/false));

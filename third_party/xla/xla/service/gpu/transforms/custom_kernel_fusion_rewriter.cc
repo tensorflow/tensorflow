@@ -177,7 +177,7 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
   backend_config.set_kind("__custom_fusion");
   *backend_config.mutable_custom_fusion_config() = match.config();
   backend_config.mutable_custom_fusion_config()->set_kernel_index(kernel_index);
-  TF_RETURN_IF_ERROR(fusion->set_backend_config(std::move(gpu_config)));
+  TF_XLA_RETURN_IF_ERROR(fusion->set_backend_config(std::move(gpu_config)));
 
   // If we don't have workspace we can return constructed fusion instruction.
   if (match.workspace_size_bytes() == 0) {
@@ -218,9 +218,9 @@ absl::StatusOr<bool> CustomKernelFusionRewriter::RunImpl(
 
     auto captures = GetPatternCaptures(match);
 
-    TF_ASSIGN_OR_RETURN(HloComputation * fusion_body,
+    TF_XLA_ASSIGN_OR_RETURN(HloComputation * fusion_body,
                         CreateFusionBody(module, match, captures));
-    TF_ASSIGN_OR_RETURN(HloInstruction * fusion,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * fusion,
                         CreateFusionInstruction(module, match, captures,
                                                 fusion_body, kernel_index_));
 
@@ -232,11 +232,11 @@ absl::StatusOr<bool> CustomKernelFusionRewriter::RunImpl(
       VLOG(2) << "Replace matched instruction: " << instr->name()
               << " with a pattern replacement";
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           HloInstruction * replacement,
           match.BuildReplacement(instr, Cast<HloFusionInstruction>(fusion)));
 
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           instr->ReplaceAllUsesWith(replacement, match.config().name()));
 
       VLOG(2) << "Replaced instruction: " << instr->name()
@@ -246,7 +246,7 @@ absl::StatusOr<bool> CustomKernelFusionRewriter::RunImpl(
     VLOG(2) << "Replace custom kernel fusion root instruction "
             << match.root()->name() << "with " << fusion->name();
     HloComputation* parent = match.root()->parent();
-    TF_RETURN_IF_ERROR(parent->ReplaceInstruction(match.root(), fusion));
+    TF_XLA_RETURN_IF_ERROR(parent->ReplaceInstruction(match.root(), fusion));
   }
 
   return true;

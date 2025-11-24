@@ -46,15 +46,15 @@ absl::StatusOr<bool> ThunkBufferDebugPass::Run(
 
   switch (mode_) {
     case Mode::kChecksum:
-      TF_RETURN_IF_ERROR(RunChecksumPassInternal(root_thunk, debug_options,
+      TF_XLA_RETURN_IF_ERROR(RunChecksumPassInternal(root_thunk, debug_options,
                                                  hlo_module, allocator));
       break;
     case Mode::kFloatChecker:
-      TF_RETURN_IF_ERROR(RunFloatCheckPassInternal(root_thunk, debug_options,
+      TF_XLA_RETURN_IF_ERROR(RunFloatCheckPassInternal(root_thunk, debug_options,
                                                    hlo_module, allocator));
       break;
     case Mode::kBufferSaver:
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           RunDebugSaverInserter(*root_thunk, debug_options, *hlo_module));
       break;
   }

@@ -71,7 +71,7 @@ absl::StatusOr<bool> MultiOutputFusion::RunImpl(
   reachability_.reset();
   if (changed) {
     HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
+    TF_XLA_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
   }
   return changed;
 }

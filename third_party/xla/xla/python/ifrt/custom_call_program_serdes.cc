@@ -71,10 +71,10 @@ class CustomCallProgramSerDes
                            proto.mutable_serialized_program_text());
     *proto.mutable_devices() = program.devices->ToProto(version);
     for (const ArraySpec& spec : program.input_specs) {
-      TF_ASSIGN_OR_RETURN(*proto.add_input_specs(), spec.ToProto(version));
+      TF_XLA_ASSIGN_OR_RETURN(*proto.add_input_specs(), spec.ToProto(version));
     }
     for (const ArraySpec& spec : program.output_specs) {
-      TF_ASSIGN_OR_RETURN(*proto.add_output_specs(), spec.ToProto(version));
+      TF_XLA_ASSIGN_OR_RETURN(*proto.add_output_specs(), spec.ToProto(version));
     }
     return proto.SerializeAsString();
   }
@@ -97,14 +97,14 @@ class CustomCallProgramSerDes
                        " for CustomCallProgram deserialization"));
     }
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         DeviceListRef devices,
         DeviceList::FromProto(deserialize_program_options->client,
                               proto.devices()));
     std::vector<ArraySpec> input_specs;
     input_specs.reserve(proto.input_specs_size());
     for (const ArraySpecProto& spec_proto : proto.input_specs()) {
-      TF_ASSIGN_OR_RETURN(ArraySpec spec,
+      TF_XLA_ASSIGN_OR_RETURN(ArraySpec spec,
                           ArraySpec::FromProto(
                               deserialize_program_options->client, spec_proto));
       input_specs.push_back(std::move(spec));
@@ -112,7 +112,7 @@ class CustomCallProgramSerDes
     std::vector<ArraySpec> output_specs;
     output_specs.reserve(proto.output_specs_size());
     for (const ArraySpecProto& spec_proto : proto.output_specs()) {
-      TF_ASSIGN_OR_RETURN(ArraySpec spec,
+      TF_XLA_ASSIGN_OR_RETURN(ArraySpec spec,
                           ArraySpec::FromProto(
                               deserialize_program_options->client, spec_proto));
       output_specs.push_back(std::move(spec));

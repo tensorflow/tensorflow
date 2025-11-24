@@ -100,11 +100,11 @@ class SpmdPartitioningTest
     if (enable_enzyme_opt) {
       config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(true);
     }
-    TF_ASSIGN_OR_RETURN(auto module,
+    TF_XLA_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
 
     ShardingFormatPicker format_picker(GetParam());
-    TF_ASSIGN_OR_RETURN(bool changed, format_picker.Run(module.get()));
+    TF_XLA_ASSIGN_OR_RETURN(bool changed, format_picker.Run(module.get()));
     if (changed) {
       VLOG(1) << "Sharding format changed: "
               << module->ToString(HloPrintOptions()
@@ -120,7 +120,7 @@ class SpmdPartitioningTest
                                   collective_ops_creator);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
-    TF_RETURN_IF_ERROR(pass.Run(module.get()).status());
+    TF_XLA_RETURN_IF_ERROR(pass.Run(module.get()).status());
 
     VerifyNoShardingOnCollectives(module.get());
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));

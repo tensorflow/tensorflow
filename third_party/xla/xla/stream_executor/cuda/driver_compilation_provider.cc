@@ -67,9 +67,9 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
     const CudaComputeCapability& cc,
     absl::Span<const RelocatableModuleOrPtx> inputs,
     const CompilationOptions& options) const {
-  TF_ASSIGN_OR_RETURN(Platform * platform,
+  TF_XLA_ASSIGN_OR_RETURN(Platform * platform,
                       PlatformManager::PlatformWithId(kCudaPlatformId));
-  TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
+  TF_XLA_ASSIGN_OR_RETURN(StreamExecutor * executor,
                       platform->ExecutorForDevice(0));
   std::unique_ptr<ActivateContext> context = executor->Activate();
 
@@ -140,7 +140,7 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
   static_assert(sizeof(jit_options) / sizeof(jit_options[0]) ==
                 sizeof(jit_option_values) / sizeof(jit_option_values[0]));
 
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
+  TF_XLA_RETURN_IF_ERROR(cuda::ToStatus(
       cuLinkCreate(sizeof(jit_options) / sizeof(jit_options[0]), jit_options,
                    jit_option_values, &link_state)));
 
@@ -148,13 +148,13 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
   for (const auto& input : inputs) {
     if (std::holds_alternative<RelocatableModule>(input)) {
       const RelocatableModule& module = std::get<RelocatableModule>(input);
-      TF_RETURN_IF_ERROR(cuda::ToStatus(cuLinkAddData(
+      TF_XLA_RETURN_IF_ERROR(cuda::ToStatus(cuLinkAddData(
           link_state, CU_JIT_INPUT_CUBIN,
           absl::bit_cast<void*>(module.cubin.data()), module.cubin.size(),
           /*name=*/"", 0, nullptr, nullptr)));
     } else {
       const std::string& ptx = std::get<Ptx>(input).ptx;
-      TF_RETURN_IF_ERROR(cuda::ToStatus(cuLinkAddData(
+      TF_XLA_RETURN_IF_ERROR(cuda::ToStatus(cuLinkAddData(
           link_state, CU_JIT_INPUT_PTX, absl::bit_cast<void*>(ptx.data()),
           ptx.size() + 1, /*name=*/"", 0, nullptr, nullptr)));
     }
@@ -179,14 +179,14 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
 
   if (result != CUDA_SUCCESS) {
     VLOG(3) << "Driver compilation error log output: " << error_log_buffer;
-    TF_RETURN_IF_ERROR(CreateErrorFromPTXASLog(error_log_buffer, architecture,
+    TF_XLA_RETURN_IF_ERROR(CreateErrorFromPTXASLog(error_log_buffer, architecture,
                                                options.cancel_if_reg_spill));
 
     return cuda::ToStatus(result, error_log_buffer);
   }
 
   VLOG(3) << "Driver compilation info log output: " << info_log_buffer;
-  TF_RETURN_IF_ERROR(CreateErrorFromPTXASLog(info_log_buffer, architecture,
+  TF_XLA_RETURN_IF_ERROR(CreateErrorFromPTXASLog(info_log_buffer, architecture,
                                              options.cancel_if_reg_spill));
 
   std::vector<uint8_t> cubin(static_cast<uint8_t*>(cubin_out),

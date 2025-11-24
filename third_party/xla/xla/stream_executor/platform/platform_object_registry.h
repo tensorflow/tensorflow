@@ -79,7 +79,7 @@ class PlatformObjectRegistry {
   template <typename Trait>
   absl::StatusOr<std::reference_wrapper<const typename Trait::Type>> FindObject(
       Platform::Id platform_id) {
-    TF_ASSIGN_OR_RETURN(const Container& obj,
+    TF_XLA_ASSIGN_OR_RETURN(const Container& obj,
                         FindObject(typeid(Trait), platform_id));
     return std::any_cast<const typename Trait::Type&>(obj.element);
   }

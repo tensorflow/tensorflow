@@ -34,7 +34,7 @@ namespace {
 using ::testing::ElementsAreArray;
 
 static absl::StatusOr<stream_executor::StreamExecutor*> GpuExecutor() {
-  TF_ASSIGN_OR_RETURN(stream_executor::Platform * platform,
+  TF_XLA_ASSIGN_OR_RETURN(stream_executor::Platform * platform,
                       PlatformUtil::GetDefaultPlatform());
   return platform->ExecutorForDevice(0);
 }

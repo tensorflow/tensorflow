@@ -96,14 +96,14 @@ absl::StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
   FrontendAttributes fas = async_done->frontend_attributes();
   sync_instruction->set_frontend_attributes(fas);
 
-  TF_RETURN_IF_ERROR(async_done->ReplaceAllUsesWith(sync_instruction));
+  TF_XLA_RETURN_IF_ERROR(async_done->ReplaceAllUsesWith(sync_instruction));
 
   // Collectives may have control dependencies due to passes like collective
   // schedule linearizer. Since we are running post scheduling, we can safely
   // ignore these control dependencies. Drop them to prepare for removal of the
   // async-start/done.
-  TF_RETURN_IF_ERROR(async_start->DropAllControlDeps());
-  TF_RETURN_IF_ERROR(async_done->DropAllControlDeps());
+  TF_XLA_RETURN_IF_ERROR(async_start->DropAllControlDeps());
+  TF_XLA_RETURN_IF_ERROR(async_done->DropAllControlDeps());
 
   // When we remove the async-done (and its unused operands), in most cases,
   // the async-start may not be deleted if its considered as having side effects
@@ -113,10 +113,10 @@ absl::StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
   auto track_async_start_removed = [&](const HloInstruction* instr) {
     is_async_start_removed |= instr == async_start;
   };
-  TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
+  TF_XLA_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
       async_done, track_async_start_removed));
   if (!is_async_start_removed) {
-    TF_RETURN_IF_ERROR(computation->RemoveInstruction(async_start));
+    TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(async_start));
   }
   return sync_instruction;
 }
@@ -127,9 +127,9 @@ ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
     absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs) {
   absl::flat_hash_map<HloInstruction*, HloInstruction*> replaced_ops;
   for (auto& [async_start, async_done] : async_pairs) {
-    TF_ASSIGN_OR_RETURN(HloInstruction * sync,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * sync,
                         CreateSyncVariant(async_start, async_done));
-    TF_ASSIGN_OR_RETURN(std::optional<int64_t> group_id,
+    TF_XLA_ASSIGN_OR_RETURN(std::optional<int64_t> group_id,
                         GetSchedulingAnnotationGroupId(async_done));
     if (group_id) {
       LOG(WARNING) << "Async collective pair (" << async_start->name() << ", "
@@ -214,7 +214,7 @@ absl::StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(
     return false;
   }
 
-  TF_RETURN_IF_ERROR(ConvertAsyncInstructionsToSync(computation, async_pairs));
+  TF_XLA_RETURN_IF_ERROR(ConvertAsyncInstructionsToSync(computation, async_pairs));
   return true;
 }
 
@@ -233,7 +233,7 @@ absl::StatusOr<bool> ConvertAsyncCollectivesToSync::RunImpl(
               << " as it is not scheduled";
       continue;
     }
-    TF_ASSIGN_OR_RETURN(bool computation_changed,
+    TF_XLA_ASSIGN_OR_RETURN(bool computation_changed,
                         RunOnComputation(computation));
     changed |= computation_changed;
   }

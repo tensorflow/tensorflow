@@ -223,7 +223,7 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
   }
 
   for (absl::string_view host_port : options.service_addresses()) {
-    TF_RETURN_IF_ERROR(ValidateHostPortPair(host_port));
+    TF_XLA_RETURN_IF_ERROR(ValidateHostPortPair(host_port));
   }
 
   if (options.max_session_duration_ms() <

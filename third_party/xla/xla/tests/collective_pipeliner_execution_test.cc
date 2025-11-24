@@ -69,7 +69,7 @@ absl::StatusOr<bool> RunOptimizer(
   pass.AddPass<CollectivePipeliner>(config);
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                             /*allow_mixed_precision=*/false);
-  TF_ASSIGN_OR_RETURN(const bool modified, pass.Run(module));
+  TF_XLA_ASSIGN_OR_RETURN(const bool modified, pass.Run(module));
   HloPassPipeline pass_dce("dce");
   pass_dce.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
   return modified;

@@ -169,7 +169,7 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
   absl::Status WaitUntilBufferReadyOnStream(std::intptr_t stream) override {
     for (const BufferSequencingEventRef& event : definition_events()) {
-      TF_RETURN_IF_ERROR(event->WaitForEventOnExternalStream(stream));
+      TF_XLA_RETURN_IF_ERROR(event->WaitForEventOnExternalStream(stream));
     }
     return absl::OkStatus();
   }

@@ -73,7 +73,7 @@ ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
   }
   const absl::StatusOr<absl::string_view> custom_call_target =
       GetCustomCallTarget(it->second);
-  TF_RETURN_IF_ERROR(custom_call_target.status());
+  TF_XLA_RETURN_IF_ERROR(custom_call_target.status());
   if (is_to_host_case) {
     VLOG(1) << "Process forward case: " << instruction->ToString();
     if (instruction->operand_count() != 1) {
@@ -90,9 +90,9 @@ ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
     if (instruction->has_sharding()) {
       move_to_host_custom_call->set_sharding(instruction->sharding());
     }
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         instruction->ReplaceAllUsesWith(move_to_host_custom_call));
-    TF_RETURN_IF_ERROR(c->RemoveInstructionAndUnusedOperands(instruction));
+    TF_XLA_RETURN_IF_ERROR(c->RemoveInstructionAndUnusedOperands(instruction));
     return true;
   } else if (is_to_device_case) {
     VLOG(1) << "Process backward case: " << instruction->ToString();
@@ -101,8 +101,8 @@ ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
         c->AddInstruction(HloInstruction::CreateCustomCall(
             custom_call_operand->shape(), {custom_call_operand},
             *custom_call_target));
-    TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_result));
-    TF_RETURN_IF_ERROR(c->RemoveInstructionAndUnusedOperands(instruction));
+    TF_XLA_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_result));
+    TF_XLA_RETURN_IF_ERROR(c->RemoveInstructionAndUnusedOperands(instruction));
     return true;
   }
   return false;
@@ -117,7 +117,7 @@ absl::StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::RunImpl(
   for (HloComputation* c : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : c->MakeInstructionPostOrder()) {
       if (instruction->IsCustomCall(memory_annotations::kDevicePlacement)) {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             auto result,
             ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
                 c, instruction));

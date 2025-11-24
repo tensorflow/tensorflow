@@ -217,7 +217,7 @@ static absl::StatusOr<const se::CommandBuffer::Command*> Handle(
   }
 
   if (auto* update = std::get_if<CommandBufferCmd::RecordUpdate>(&action)) {
-    TF_RETURN_IF_ERROR(update_command(update->command));
+    TF_XLA_RETURN_IF_ERROR(update_command(update->command));
     return update->command;
   }
 
@@ -419,7 +419,7 @@ absl::StatusOr<CommandBufferCmdExecutor> CommandBufferCmdExecutor::Create(
   // from the buffer use conflicts.
   if (synchronization_mode != SynchronizationMode::kSerialize) {
     auto operations = CreateCommandOperations(commands, synchronization_mode);
-    TF_ASSIGN_OR_RETURN(execution_graph,
+    TF_XLA_ASSIGN_OR_RETURN(execution_graph,
                         ExecutionGraph::Create<CommandOperation>(operations));
     VLOG(3) << "Execution graph: " << execution_graph->ToString();
   }
@@ -460,7 +460,7 @@ absl::Status CommandBufferCmdExecutor::Prepare(
     const Thunk::PrepareParams& params,
     Thunk::ResourceRequestsInterface& resource_requests) {
   for (auto& command : commands_) {
-    TF_RETURN_IF_ERROR(command->Prepare(params, resource_requests));
+    TF_XLA_RETURN_IF_ERROR(command->Prepare(params, resource_requests));
   }
   return absl::OkStatus();
 }
@@ -469,7 +469,7 @@ absl::Status CommandBufferCmdExecutor::Initialize(
     const Thunk::InitializeParams& params,
     CommandBufferCmd::StateManager& state) {
   for (auto& command : commands_) {
-    TF_RETURN_IF_ERROR(command->Initialize(params, state));
+    TF_XLA_RETURN_IF_ERROR(command->Initialize(params, state));
   }
   return absl::OkStatus();
 }
@@ -482,16 +482,16 @@ absl::Status CommandBufferCmdExecutor::Record(
   VLOG(3) << "Record " << commands_.size() << " commands into command buffer";
 
   if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
-    TF_RETURN_IF_ERROR(command_buffer->Update());
+    TF_XLA_RETURN_IF_ERROR(command_buffer->Update());
   }
 
   if (command_buffer->state() == se::CommandBuffer::State::kUpdate) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         RecordUpdate(execute_params, record_params, command_buffer));
   } else {
     auto* create = std::get_if<CommandBufferCmd::RecordCreate>(&record_action);
     CHECK(create);
-    TF_RETURN_IF_ERROR(RecordCreate(execute_params, record_params,
+    TF_XLA_RETURN_IF_ERROR(RecordCreate(execute_params, record_params,
                                     command_buffer, create->dependencies)
                            .status());
   }
@@ -508,7 +508,7 @@ CommandBufferCmdExecutor::RecordCreate(
     const RecordParams& record_params, se::CommandBuffer* command_buffer,
     absl::Span<const se::CommandBuffer::Command* const> dependencies) const {
   // Command buffer must be in create state.
-  TF_RETURN_IF_ERROR(CheckCommandBufferState(
+  TF_XLA_RETURN_IF_ERROR(CheckCommandBufferState(
       command_buffer, se::CommandBuffer::State::kCreate));
 
   VLOG(1) << "Create " << commands_.size() << " commands";
@@ -555,7 +555,7 @@ CommandBufferCmdExecutor::RecordCreate(
         IsSource(id) ? CommandBufferCmd::RecordCreate{dependencies}
                      : CommandBufferCmd::RecordCreate{command_dependencies};
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         record_state->command,
         command->Record(execute_params, record_params, std::move(record_action),
                         command_buffer));
@@ -580,7 +580,7 @@ absl::Status CommandBufferCmdExecutor::RecordUpdate(
     const RecordParams& record_params,
     se::CommandBuffer* command_buffer) const {
   // Command buffer must be already prepared for recording updates.
-  TF_RETURN_IF_ERROR(CheckCommandBufferState(
+  TF_XLA_RETURN_IF_ERROR(CheckCommandBufferState(
       command_buffer, se::CommandBuffer::State::kUpdate));
 
   VLOG(1) << "Update " << commands_.size() << " commands";
@@ -660,7 +660,7 @@ absl::Status CommandBufferCmdExecutor::RecordUpdate(
                          << command->ToString();
 
     auto record_action = CommandBufferCmd::RecordUpdate{record_state->command};
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         record_state->command,
         command->Record(execute_params, record_params, std::move(record_action),
                         command_buffer));
@@ -872,12 +872,12 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
     // Create a new entry by calling a user-provided tracing function, move it
     // to front and return a pointer to cached command buffer.
     if (entries_[i].command_buffer == nullptr) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           entries_[i].command_buffer,
           se::TraceCommandBufferFactory::Create(executor, stream, trace));
       entries_[i].recorded_allocs.assign(allocs.begin(), allocs.end());
       if (priority != se::StreamPriority::Default) {
-        TF_RETURN_IF_ERROR(entries_[i].command_buffer->SetPriority(priority));
+        TF_XLA_RETURN_IF_ERROR(entries_[i].command_buffer->SetPriority(priority));
       }
       VLOG(6) << "Command buffer trace cache create new item for command "
               << trace_cmd_->ToString();
@@ -888,7 +888,7 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
   // Create a new entry by calling a user-provided tracing function, replace
   // the last entry with it, move it to front and return a pointer to cached
   // command buffer.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       entries_[capacity_ - 1].command_buffer,
       se::TraceCommandBufferFactory::Create(executor, stream, trace));
   entries_[capacity_ - 1].recorded_allocs.assign(allocs.begin(), allocs.end());
@@ -919,7 +919,7 @@ TracedCommandBufferCmd::RecordTracedCommand(
       },
       record_params.unroll_iteration);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto nested_cmd,
       traced_cmd->GetOrTraceCommandBuffer(
           execute_params.buffer_allocations, execute_params.stream->parent(),
@@ -1005,7 +1005,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> ComputationIdCmd::Record(
 
   GlobalDeviceId global_device_id =
       execute_params.collective_params->global_device_id;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const DeviceAssignment::LogicalID logical_id,
       execute_params.collective_params->device_assn->LogicalIdForDevice(
           global_device_id));
@@ -1058,12 +1058,12 @@ absl::Status LaunchCmd::Initialize(const Thunk::InitializeParams& params,
 
   std::unique_ptr<se::Kernel> kernel;
   if (!params.src.binary.empty()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         kernel, CreateKernel(kernel_name_, args_.size(), params.src.binary,
                              params.executor, shmem_bytes_));
 
   } else {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         kernel, CreateKernel(kernel_name_, args_.size(), params.src.text,
                              params.executor, shmem_bytes_));
   }
@@ -1104,7 +1104,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> LaunchCmd::Record(
         it != tma_metadata.arg_index_to_tma_info.end()) {
       // TMA descriptor argument.
       stream_executor::gpu::TmaDescriptor tma_desc = it->second;
-      TF_ASSIGN_OR_RETURN(se::TensorMap tensor_map,
+      TF_XLA_ASSIGN_OR_RETURN(se::TensorMap tensor_map,
                           executor->CreateTensorMap(tma_desc, buf.opaque()));
       VLOG(5) << "  Using TensorMap for arg #" << idx << ": "
               << tma_desc.ToString();
@@ -1115,7 +1115,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> LaunchCmd::Record(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto kernel_args,
       se::PackKernelArgs(absl::MakeConstSpan(kernel_args_variant),
                          shmem_bytes_));
@@ -1163,7 +1163,7 @@ absl::Status CustomKernelLaunchCmd::Initialize(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<se::Kernel> kernel,
       params.executor->LoadKernel(custom_kernel_.kernel_spec()));
 
@@ -1369,7 +1369,7 @@ CommandBufferCmd::BufferUseVector ChildCmd::buffers() const {
 
 absl::Status ChildCmd::Initialize(const Thunk::InitializeParams& params,
                                   StateManager& state) {
-  TF_RETURN_IF_ERROR(child_commands_.Initialize(params, state));
+  TF_XLA_RETURN_IF_ERROR(child_commands_.Initialize(params, state));
   return absl::OkStatus();
 }
 
@@ -1410,7 +1410,7 @@ CaseCmd::CaseCmd(BufferAllocation::Slice index, bool index_is_bool,
 absl::Status CaseCmd::Initialize(const Thunk::InitializeParams& params,
                                  StateManager& state) {
   for (auto& branch : branches_) {
-    TF_RETURN_IF_ERROR(branch.Initialize(params, state));
+    TF_XLA_RETURN_IF_ERROR(branch.Initialize(params, state));
   }
   return absl::OkStatus();
 }
@@ -1487,8 +1487,8 @@ WhileCmd::WhileCmd(BufferAllocation::Slice pred,
 
 absl::Status WhileCmd::Initialize(const Thunk::InitializeParams& params,
                                   StateManager& state) {
-  TF_RETURN_IF_ERROR(cond_commands_.Initialize(params, state));
-  TF_RETURN_IF_ERROR(body_commands_.Initialize(params, state));
+  TF_XLA_RETURN_IF_ERROR(cond_commands_.Initialize(params, state));
+  TF_XLA_RETURN_IF_ERROR(body_commands_.Initialize(params, state));
   enable_loop_unroll_ = true;
   if (enable_loop_unroll_ && body_commands_.support_loop_unroll() &&
       cond_commands_.support_loop_unroll() && trip_count_ != std::nullopt) {
@@ -1501,8 +1501,8 @@ absl::Status WhileCmd::Initialize(const Thunk::InitializeParams& params,
 absl::Status WhileCmd::Prepare(
     const Thunk::PrepareParams& params,
     Thunk::ResourceRequestsInterface& resource_requests) {
-  TF_RETURN_IF_ERROR(cond_commands_.Prepare(params, resource_requests));
-  TF_RETURN_IF_ERROR(body_commands_.Prepare(params, resource_requests));
+  TF_XLA_RETURN_IF_ERROR(cond_commands_.Prepare(params, resource_requests));
+  TF_XLA_RETURN_IF_ERROR(body_commands_.Prepare(params, resource_requests));
   return absl::OkStatus();
 }
 
@@ -1535,7 +1535,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
         new_record_params.unroll_iteration = i;
         if (i == 0) {
           // First iteration, cond_commands_ will not have dependencies.
-          TF_RETURN_IF_ERROR(cond_commands_.Record(
+          TF_XLA_RETURN_IF_ERROR(cond_commands_.Record(
               execute_params, new_record_params,
               CommandBufferCmd::RecordCreate{}, child_command_buffer, false));
         } else {
@@ -1543,7 +1543,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
           // commands from previous iteration's body.
           auto body_sink_commands = body_commands_.SinkCommands(
               new_record_params, child_command_buffer, i - 1);
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(
               cond_commands_.Record(execute_params, new_record_params,
                                     CommandBufferCmd::RecordCreate{
                                         absl::MakeSpan(body_sink_commands)},
@@ -1551,7 +1551,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
         }
         auto cond_sink_commands = cond_commands_.SinkCommands(
             new_record_params, child_command_buffer, i);
-        TF_RETURN_IF_ERROR(body_commands_.Record(
+        TF_XLA_RETURN_IF_ERROR(body_commands_.Record(
             execute_params, new_record_params,
             CommandBufferCmd::RecordCreate{absl::MakeSpan(cond_sink_commands)},
             child_command_buffer, i == trip_count_.value() - 1 ? true : false));
@@ -1683,7 +1683,7 @@ CublasLtCmd::CublasLtCmd(const CublasLtMatmulThunk& matmul_thunk)
 
 absl::Status CublasLtCmd::Initialize(const Thunk::InitializeParams& params,
                                      StateManager& state) {
-  TF_RETURN_IF_ERROR(CublasLtMatmulThunk::Initialize(params));
+  TF_XLA_RETURN_IF_ERROR(CublasLtMatmulThunk::Initialize(params));
   return absl::OkStatus();
 }
 
@@ -1693,7 +1693,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CublasLtCmd::Record(
     se::CommandBuffer* command_buffer) {
   // This call is required to make sure matmul plan is already created and
   // cached before recording the command buffer.
-  TF_RETURN_IF_ERROR(GetCachedMatmulPlan(execute_params).status());
+  TF_XLA_RETURN_IF_ERROR(GetCachedMatmulPlan(execute_params).status());
 
   VLOG(5) << "CublasLtCmd:";
   VLOG(5) << "  a_buffer: " << a_.ToString();
@@ -1828,7 +1828,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnCmd::Record(
     VLOG(5) << "  Arg: " << arg << ": " << buf.opaque();
     operands.push_back(buf);
   }
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const bool supports_explicit,
       graph_->get()->SupportsExplicitCommandBufferConstruction());
   if (supports_explicit) {
@@ -1916,12 +1916,12 @@ CustomCallCmd::RecordLegacyCustomCall(
   buffers.reserve(operands_.size() + results_.size());
 
   VLOG(5) << "CustomCallCmd: target_name=" << target_name_;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       GetBuffers(execute_params, operands_, buffers, "  Operand "));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       GetBuffers(execute_params, results_, buffers, "  Result "));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto nested_cmd,
       se::TraceCommandBufferFactory::Create(
           execute_params.stream->parent(),
@@ -1999,12 +1999,12 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
 
   // Borrow the FFI call frame from the object pool and update with the actual
   // device memory addresses.
-  TF_ASSIGN_OR_RETURN(auto call_frame, call_frames_->GetOrCreate());
-  TF_RETURN_IF_ERROR(call_frame->UpdateWithBuffers(arguments, results));
+  TF_XLA_ASSIGN_OR_RETURN(auto call_frame, call_frames_->GetOrCreate());
+  TF_XLA_RETURN_IF_ERROR(call_frame->UpdateWithBuffers(arguments, results));
 
   RunId run_id = execute_params.collective_params->run_id;
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto nested_cmd,
       se::TraceCommandBufferFactory::Create(
           execute_params.stream->parent(),
@@ -2058,9 +2058,9 @@ CollectiveCmd::CollectiveCmd(
 absl::Status CollectiveCmd::Prepare(
     const Thunk::PrepareParams& params,
     Thunk::ResourceRequestsInterface& resource_requests) {
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
+  TF_XLA_ASSIGN_OR_RETURN(GpuCollectives * collectives,
                       Thunk::GetGpuCollectives(params));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(collectives, *params.collective_params,
                       config().replica_groups, config().group_mode,
@@ -2074,13 +2074,13 @@ CollectiveCmd::RecordTracedCommand(
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer,
     absl::FunctionRef<absl::Status(se::Stream*)> trace) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::CommandBuffer> nested_cmd,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<se::CommandBuffer> nested_cmd,
                       se::TraceCommandBufferFactory::Create(
                           execute_params.stream->parent(),
                           execute_params.command_buffer_trace_stream, trace));
 
   if (priority() != se::StreamPriority::Default) {
-    TF_RETURN_IF_ERROR(nested_cmd->SetPriority(priority()));
+    TF_XLA_RETURN_IF_ERROR(nested_cmd->SetPriority(priority()));
   }
 
   return Handle(
@@ -2113,7 +2113,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllReduceCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
                              config().operand_element_type));
@@ -2135,10 +2135,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllReduceCmd::Record(
         "AllReduceCmd requires collective parameters and cliques");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
+  TF_XLA_ASSIGN_OR_RETURN(GpuCollectives * collectives,
                       Thunk::GetGpuCollectives(execute_params));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
       GetComm(collectives, *execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
@@ -2179,7 +2179,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> ReduceScatterCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
                              config().operand_element_type));
@@ -2201,10 +2201,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> ReduceScatterCmd::Record(
         "ReduceScatterCmd requires collective parameters and cliques");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
+  TF_XLA_ASSIGN_OR_RETURN(GpuCollectives * collectives,
                       Thunk::GetGpuCollectives(execute_params));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
       GetComm(collectives, *execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
@@ -2246,7 +2246,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllToAllCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
                              config().operand_element_type));
@@ -2268,9 +2268,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllToAllCmd::Record(
         "AllToAllCmd requires collective parameters and cliques");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
+  TF_XLA_ASSIGN_OR_RETURN(GpuCollectives * collectives,
                       Thunk::GetGpuCollectives(execute_params));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
       GetComm(collectives, *execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
@@ -2310,7 +2310,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllGatherCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
                              config().operand_element_type));
@@ -2331,10 +2331,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllGatherCmd::Record(
         "AllGatherCmd requires collective parameters and cliques");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
+  TF_XLA_ASSIGN_OR_RETURN(GpuCollectives * collectives,
                       Thunk::GetGpuCollectives(execute_params));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
       GetComm(collectives, *execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
@@ -2374,7 +2374,7 @@ CollectiveBroadcastCmd::Record(const Thunk::ExecuteParams& execute_params,
                                const RecordParams& record_params,
                                RecordAction record_action,
                                se::CommandBuffer* command_buffer) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
                              config().operand_element_type));
@@ -2395,10 +2395,10 @@ CollectiveBroadcastCmd::Record(const Thunk::ExecuteParams& execute_params,
         "CollectiveBroadcastCmd requires collective parameters and cliques");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
+  TF_XLA_ASSIGN_OR_RETURN(GpuCollectives * collectives,
                       Thunk::GetGpuCollectives(execute_params));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
       GetComm(collectives, *execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
@@ -2439,7 +2439,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectivePermuteCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
                              config().operand_element_type));
@@ -2460,10 +2460,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectivePermuteCmd::Record(
         "CollectivePermuteCmd requires collective parameters and cliques");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
+  TF_XLA_ASSIGN_OR_RETURN(GpuCollectives * collectives,
                       Thunk::GetGpuCollectives(execute_params));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
       GetComm(collectives, *execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
@@ -2474,7 +2474,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectivePermuteCmd::Record(
       CollectiveThunk::GetDeviceString(*execute_params.collective_params);
   bool use_symmetric_buffer = config().use_symmetric_buffer;
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const int64_t current_id,
       GetCollectiveCurrentId(execute_params.collective_params, p2p_config_));
 
@@ -2568,7 +2568,7 @@ bool DynamicSliceFusionCmd::requires_initialization() {
 
 absl::Status DynamicSliceFusionCmd::Initialize(
     const Thunk::InitializeParams& params, StateManager& state) {
-  TF_RETURN_IF_ERROR(embedded_commands_.Initialize(params, state));
+  TF_XLA_RETURN_IF_ERROR(embedded_commands_.Initialize(params, state));
   absl::MutexLock lock(mutex_);
   if (offsets_allocs_.contains(params.executor)) {
     return absl::OkStatus();
@@ -2577,7 +2577,7 @@ absl::Status DynamicSliceFusionCmd::Initialize(
   VLOG(2) << "[" << params.executor->device_ordinal() << "] Allocate "
           << offsets_allocs_size_
           << " bytes for transferring offsets on executor: " << params.executor;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<se::MemoryAllocation> allocation,
       params.executor->HostMemoryAllocate(offsets_allocs_size_));
   offsets_allocs_.emplace(params.executor, std::move(allocation));
@@ -2602,7 +2602,7 @@ absl::Status DynamicSliceFusionCmd::Prepare(
                    slice.orig_shape->dimensions().size());
     }
   }
-  TF_RETURN_IF_ERROR(embedded_commands_.Prepare(params, resource_requests));
+  TF_XLA_RETURN_IF_ERROR(embedded_commands_.Prepare(params, resource_requests));
   if (offset_as_function_of_indvar_metadata_ != std::nullopt) {
     Indvar(this) =
         HloEvaluator()
@@ -2683,7 +2683,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> DynamicSliceFusionCmd::Record(
         offset_value(argument_idx, offset_idx) = *const_offset;
 
       } else if (HloModule** offset_module = std::get_if<HloModule*>(&offset)) {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             Literal offset,
             HloEvaluator().Evaluate(**offset_module, {&Indvar(this)}));
         auto offset_int = LiteralUtil::LiteralAsScalarInt64(offset);
@@ -2707,7 +2707,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> DynamicSliceFusionCmd::Record(
 
         // Copy the `offset_idx`-th component of the offset for the
         // `argument_idx`-th argument from device to host.
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             stream.Memcpy(offset_dst, offset_src, *slice.offset_byte_size));
         ++num_transfers;
       }
@@ -2716,7 +2716,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> DynamicSliceFusionCmd::Record(
     // Wait for the completion of all transfers.
     if (num_transfers > 0) {
       VLOG(2) << "Wait for completion of " << num_transfers << " transfer";
-      TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+      TF_XLA_RETURN_IF_ERROR(stream.BlockHostUntilDone());
     }
 
     // Clamp start indices:
@@ -2771,13 +2771,13 @@ absl::StatusOr<const se::CommandBuffer::Command*> DynamicSliceFusionCmd::Record(
   // manager relies on command buffer pointer as an identity for command
   // buffers, and it means that command buffer commands sequence should not
   // create ephemeral command buffers at run time.
-  TF_ASSIGN_OR_RETURN(auto nested_command_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(auto nested_command_buffer,
                       execute_params.stream->parent()->CreateCommandBuffer(
                           se::CommandBuffer::Mode::kNested));
 
   StateManager state;
   RecordParams nested_record_params = {state, std::nullopt, false};
-  TF_RETURN_IF_ERROR(embedded_commands_.Record(new_params, nested_record_params,
+  TF_XLA_RETURN_IF_ERROR(embedded_commands_.Record(new_params, nested_record_params,
                                                CommandBufferCmd::RecordCreate{},
                                                nested_command_buffer.get(),
                                                /*finalize=*/true));
@@ -2864,7 +2864,7 @@ DynamicSliceCopyFusionCmd::Record(const Thunk::ExecuteParams& execute_params,
         int64_t iteration_index = 0;
         if (offsets_.depends_on_loop) {
           if (WhileThunk::RunningWhileThunkLoop()) {
-            TF_ASSIGN_OR_RETURN(iteration_index,
+            TF_XLA_ASSIGN_OR_RETURN(iteration_index,
                                 WhileThunk::CurrentLoopIteration());
           } else {
             iteration_index = record_params.unroll_iteration;

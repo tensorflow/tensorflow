@@ -123,7 +123,7 @@ using ::testing::status::StatusIs;
 absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
     absl::string_view program, xla::PjRtClient& client,
     xla::CompileOptions compile_options = xla::CompileOptions()) {
-  TF_ASSIGN_OR_RETURN(auto hlo_module,
+  TF_XLA_ASSIGN_OR_RETURN(auto hlo_module,
                       ParseAndReturnUnverifiedModule(program, {}));
 
   xla::XlaComputation xla_computation(hlo_module->ToProto());
@@ -135,11 +135,11 @@ absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
 absl::StatusOr<std::shared_ptr<xla::Literal>> ExtractSingleResult(
     absl::StatusOr<std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>>&
         result) {
-  TF_RETURN_IF_ERROR(result.status());
+  TF_XLA_RETURN_IF_ERROR(result.status());
   TF_RET_CHECK(result->size() == 1);
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = (*result)[0];
   TF_RET_CHECK(result_buffers.size() == 1);
-  TF_ASSIGN_OR_RETURN(auto literal, result_buffers[0]->ToLiteralSync());
+  TF_XLA_ASSIGN_OR_RETURN(auto literal, result_buffers[0]->ToLiteralSync());
   return literal;
 }
 
@@ -1318,7 +1318,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateDeviceBufferForTest(
   TF_EXPECT_OK(device->default_memory_space());
 
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {4}, {0});
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto input,
       client->BufferFromHostBuffer(
           kData, shape.element_type(), shape.dimensions(),

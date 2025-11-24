@@ -54,7 +54,7 @@ namespace xla {
 absl::StatusOr<LocalClient*> GetGpuXlaClient(
     const std::optional<std::string>& platform_name,
     const std::optional<std::set<int>>& allowed_devices) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::Platform * platform,
       PlatformUtil::GetPlatform(platform_name ? *platform_name : "gpu"));
   if (platform->VisibleDeviceCount() <= 0) {
@@ -106,7 +106,7 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   std::unique_ptr<tsl::SubAllocator> sub_allocator;
 
   if (enable_unified_memory) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto unified_memory_allocator,
         executor->CreateMemoryAllocator(stream_executor::MemoryType::kUnified));
     sub_allocator = std::make_unique<se::StreamExecutorAllocator>(
@@ -157,7 +157,7 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction,
     size_t collective_memory_size) {
   int device_ordinal = executor->device_ordinal();
-  TF_ASSIGN_OR_RETURN(auto collective_memory_allocator,
+  TF_XLA_ASSIGN_OR_RETURN(auto collective_memory_allocator,
                       executor->CreateMemoryAllocator(
                           stream_executor::MemoryType::kCollective));
   auto sub_allocator = std::make_unique<se::StreamExecutorAllocator>(
@@ -203,7 +203,7 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
 // 16GB in this case.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
     se::StreamExecutor* executor) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto host_memory_allocator,
       executor->CreateMemoryAllocator(stream_executor::MemoryType::kHost));
   std::unique_ptr<tsl::SubAllocator> sub_allocator(
@@ -213,7 +213,7 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
                                       /*alloc_visitors=*/{},
                                       /*free_visitors=*/{}));
   bool xla_pjrt_gpu_host_memory_preallocate;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       tsl::ReadBoolFromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE", false,
                               &xla_pjrt_gpu_host_memory_preallocate));
 
@@ -221,7 +221,7 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
       xla_pjrt_gpu_host_memory_preallocate ? 16 : 64;
 
   int64_t xla_pjrt_gpu_host_memory_limit_gb;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       tsl::ReadInt64FromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB",
                                default_xla_pjrt_gpu_host_memory_limit_gb,
                                &xla_pjrt_gpu_host_memory_limit_gb));

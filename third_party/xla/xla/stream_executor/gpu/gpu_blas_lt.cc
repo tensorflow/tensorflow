@@ -173,7 +173,7 @@ absl::StatusOr<MatrixLayout> MatrixLayout::FromProto(
       return absl::InvalidArgumentError("Invalid matrix layout order");
   }
 
-  TF_ASSIGN_OR_RETURN(blas::Transpose transpose,
+  TF_XLA_ASSIGN_OR_RETURN(blas::Transpose transpose,
                       blas::FromProto(proto.transpose()));
   return MatrixLayout(proto.dtype(), proto.num_rows(), proto.num_cols(), order,
                       proto.batch_size(), proto.leading_dim_stride(),
@@ -294,7 +294,7 @@ absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateMatmulPlan(
   // this is used by command_buffer_thunk test.
   if (res.second || key.empty()) {
     VLOG(2) << "Creating a plan for: " << key;
-    TF_ASSIGN_OR_RETURN(res.first->second, create());
+    TF_XLA_ASSIGN_OR_RETURN(res.first->second, create());
     VLOG(2) << "Plan created: cache size: " << plan_cache_.size();
   }
   return res.first->second.get();
@@ -312,13 +312,13 @@ size_t BlasLt::GetMatmulPlanCacheSize() const {
 
 absl::StatusOr<GemmConfig> GemmConfig::FromProto(
     const xla::GemmConfigProto& proto) {
-  TF_ASSIGN_OR_RETURN(MatrixLayout lhs_layout,
+  TF_XLA_ASSIGN_OR_RETURN(MatrixLayout lhs_layout,
                       MatrixLayout::FromProto(proto.lhs_layout()));
-  TF_ASSIGN_OR_RETURN(MatrixLayout rhs_layout,
+  TF_XLA_ASSIGN_OR_RETURN(MatrixLayout rhs_layout,
                       MatrixLayout::FromProto(proto.rhs_layout()));
-  TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,
+  TF_XLA_ASSIGN_OR_RETURN(MatrixLayout c_layout,
                       MatrixLayout::FromProto(proto.c_layout()));
-  TF_ASSIGN_OR_RETURN(MatrixLayout output_layout,
+  TF_XLA_ASSIGN_OR_RETURN(MatrixLayout output_layout,
                       MatrixLayout::FromProto(proto.output_layout()));
   std::optional<blas::ComputationType> compute_type =
       blas::FromProto(proto.compute_type());

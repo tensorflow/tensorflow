@@ -77,7 +77,7 @@ namespace {
 absl::StatusOr<xla::ifrt::ArraySpec> ToArraySpec(
     xla::ifrt::IfrtArrayType array, xla::ifrt::Client* client,
     const std::vector<xla::ifrt::Device*>& devices) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       xla::ifrt::DType dtype,
       xla::ifrt::ToIfrtDType(array.getShape().getElementType()));
   absl::InlinedVector<xla::ifrt::Device*, 1> client_devices;
@@ -89,9 +89,9 @@ absl::StatusOr<xla::ifrt::ArraySpec> ToArraySpec(
   auto sharding_attr =
       mlir::dyn_cast<xla::ifrt::IfrtShardingParamAttr>(array.getShardingAttr());
   TF_RET_CHECK(sharding_attr != nullptr);
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
+  TF_XLA_ASSIGN_OR_RETURN(DeviceListRef device_list,
                       client->MakeDeviceList(client_devices));
-  TF_ASSIGN_OR_RETURN(xla::ifrt::ShardingRef sharding,
+  TF_XLA_ASSIGN_OR_RETURN(xla::ifrt::ShardingRef sharding,
                       xla::ifrt::ShardingParamSharding::Create(
                           sharding_attr.getSharding(), std::move(device_list),
                           array.MemoryKind()));
@@ -112,7 +112,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArraySpec>> ExtractInSpecs(
     auto array_type = mlir::dyn_cast<xla::ifrt::IfrtArrayType>(arg_type);
     TF_RET_CHECK(array_type != nullptr)
         << "Unsupported argument type `" << mlir::debugString(arg_type) << "`";
-    TF_ASSIGN_OR_RETURN(xla::ifrt::ArraySpec spec,
+    TF_XLA_ASSIGN_OR_RETURN(xla::ifrt::ArraySpec spec,
                         ToArraySpec(array_type, client, devices));
     in_specs.push_back(spec);
   }
@@ -130,7 +130,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArraySpec>> ExtractOutSpecs(
     auto array_type = mlir::dyn_cast<xla::ifrt::IfrtArrayType>(result_type);
     TF_RET_CHECK(array_type != nullptr)
         << "Unsupported return type `" << mlir::debugString(result_type) << "`";
-    TF_ASSIGN_OR_RETURN(xla::ifrt::ArraySpec spec,
+    TF_XLA_ASSIGN_OR_RETURN(xla::ifrt::ArraySpec spec,
                         ToArraySpec(array_type, client, devices));
     out_specs.push_back(spec);
   }
@@ -139,7 +139,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArraySpec>> ExtractOutSpecs(
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> BuildDefaultLayout(
     const xla::ifrt::ArraySpec& arg_spec, xla::ifrt::Client* client) {
-  TF_ASSIGN_OR_RETURN(auto shard_shape,
+  TF_XLA_ASSIGN_OR_RETURN(auto shard_shape,
                       arg_spec.sharding->GetShardShape(arg_spec.shape));
   return client->GetDefaultPjRtLayout(
       arg_spec.dtype, shard_shape.dims(),
@@ -162,7 +162,7 @@ GetParameterLayoutFromLoadedExecutable(
   auto atom_program_name = loaded_exec_op.getSymName().str();
   auto exec_it = atom_program_executables.find(atom_program_name);
   if (exec_it != atom_program_executables.end()) {
-    TF_ASSIGN_OR_RETURN(auto exec_layouts,
+    TF_XLA_ASSIGN_OR_RETURN(auto exec_layouts,
                         exec_it->second->GetParameterLayouts());
     return std::move(exec_layouts[param_operand_number]);
   } else {
@@ -183,7 +183,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
     std::shared_ptr<const xla::PjRtLayout> parameter_layout;
     if (arg.use_empty()) {
       // The argument is not used. Return device default layout.
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           parameter_layout,
           BuildDefaultLayout(in_specs[arg.getArgNumber()], client));
     } else {
@@ -210,7 +210,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
                                            mlir::OpPrintingFlags())));
         }
         auto call_op = llvm::cast<ifrt::CallLoadedExecutableOp>(use.getOwner());
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             std::shared_ptr<const xla::PjRtLayout> consumer_layout,
             GetParameterLayoutFromLoadedExecutable(
                 client, atom_program_executables, in_specs, out_specs,
@@ -231,7 +231,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
       }
       if (parameter_layout && found_copy_arrays_user) {
         // Need to check if the layout is compatible with the CopyArraysOp.
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             std::shared_ptr<const xla::PjRtLayout> default_layout,
             BuildDefaultLayout(in_specs[arg.getArgNumber()], client));
         if (*parameter_layout != *default_layout) {
@@ -246,7 +246,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
       }
       if (!parameter_layout) {
         // The argument was skipped above, meaning only used by ReturnOp.
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             parameter_layout,
             BuildDefaultLayout(in_specs[arg.getArgNumber()], client));
       }
@@ -273,7 +273,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
       auto atom_program_name = loaded_exec_op.getSymName().str();
       auto exec_it = atom_program_executables.find(atom_program_name);
       if (exec_it != atom_program_executables.end()) {
-        TF_ASSIGN_OR_RETURN(auto exec_layouts,
+        TF_XLA_ASSIGN_OR_RETURN(auto exec_layouts,
                             exec_it->second->GetOutputLayouts());
         // Since this method is a temporary solution, we are ok with calling
         // GetOutputLayouts for an executable multiple times. In this way, we
@@ -287,7 +287,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
     } else if (llvm::isa<ifrt::CopyArraysOp>(op_result.getOwner())) {
       // The output is produced by a CopyArraysOp. Must be device
       // default layout.
-      TF_ASSIGN_OR_RETURN(out_spec.layout,
+      TF_XLA_ASSIGN_OR_RETURN(out_spec.layout,
                           BuildDefaultLayout(out_spec, client));
     } else {
       return absl::FailedPreconditionError(absl::StrFormat(
@@ -318,7 +318,7 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
   std::vector<xla::ifrt::Device*> devices;
   devices.reserve(compile_options->device_assignments.size());
   for (const auto& device_id : compile_options->device_assignments) {
-    TF_ASSIGN_OR_RETURN(devices.emplace_back(),
+    TF_XLA_ASSIGN_OR_RETURN(devices.emplace_back(),
                         client->LookupDevice(device_id));
   }
 
@@ -397,7 +397,7 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
             std::string(client->platform_name()));
       }
     }
-    TF_RETURN_IF_ERROR(xla::ifrt::createOutlinedAtomProgramsToCompiledPipeline(
+    TF_XLA_RETURN_IF_ERROR(xla::ifrt::createOutlinedAtomProgramsToCompiledPipeline(
         pm, std::move(atom_program_compiler), compile_pipeline_options,
         compile_options, atom_executable_map, std::move(bound_executable_map)));
 
@@ -413,9 +413,9 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
 
   // Extract input and output specs from the modified `mlir_module`, which has
   // all array shardings specified.
-  TF_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArraySpec> in_specs,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArraySpec> in_specs,
                       ExtractInSpecs(mlir_module, client, devices));
-  TF_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArraySpec> out_specs,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArraySpec> out_specs,
                       ExtractOutSpecs(mlir_module, client, devices));
 
   absl::Status layout_status =

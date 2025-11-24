@@ -819,7 +819,7 @@ BuildStrategyAndCost(
         break;
       }
       case HloOpcode::kReduce: {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             std::unique_ptr<StrategyGroup> new_strategy_group,
             FollowReduceStrategy(
                 ins, ins->shape(), ins->operand(0), ins->operand(1),
@@ -829,7 +829,7 @@ BuildStrategyAndCost(
         break;
       }
       case HloOpcode::kDot: {
-        TF_RETURN_IF_ERROR(HandleDot(
+        TF_XLA_RETURN_IF_ERROR(HandleDot(
             strategy_group, strategy_groups, strategy_map, ins, instruction_id,
             sequence, hlo_cost_analysis, cluster_env, option, call_graph));
 
@@ -843,7 +843,7 @@ BuildStrategyAndCost(
         break;
       }
       case HloOpcode::kConvolution: {
-        TF_RETURN_IF_ERROR(HandleConv(
+        TF_XLA_RETURN_IF_ERROR(HandleConv(
             strategy_group, strategy_groups, strategy_map, ins, instruction_id,
             sequence, hlo_cost_analysis, cluster_env, option, call_graph));
         if (option.allow_recompute_heavy_op) {

@@ -120,7 +120,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::Create(
     if (device_layouts.has_value() && (*device_layouts)[i].has_value()) {
       *device_shape.mutable_layout() = *(*device_layouts)[i];
     } else {
-      TF_ASSIGN_OR_RETURN(device_shape,
+      TF_XLA_ASSIGN_OR_RETURN(device_shape,
                           client->xla_client()
                               ->backend()
                               .transfer_manager()

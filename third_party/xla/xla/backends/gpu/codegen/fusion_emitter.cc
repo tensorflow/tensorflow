@@ -144,7 +144,7 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
                              unique_kernel_name, llvm_module);
 
   AnnotateFunctionAsGpuKernel(llvm_module, kernel, builder);
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       AnnotateKernelLaunchDimensions(ir_emitter_context.gpu_device_info(),
                                      launch_dimensions, kernel, llvm_module));
 

@@ -462,7 +462,7 @@ PJRT_Error* PJRT_Layouts_PJRT_Buffer_MemoryLayout(
 
 // Helper macros and functions
 
-#define PJRT_RETURN_IF_ERROR(expr)                                \
+#define PJRT_XLA_RETURN_IF_ERROR(expr)                                \
   do {                                                            \
     absl::Status _status = (expr);                                \
     if (!_status.ok()) {                                          \
@@ -471,12 +471,12 @@ PJRT_Error* PJRT_Layouts_PJRT_Buffer_MemoryLayout(
     }                                                             \
   } while (false)
 
-#define PJRT_ASSIGN_OR_RETURN(lhs, rexpr)                                  \
-  _PJRT_ASSIGN_OR_RETURN_IMPL(_PJRT_CONCAT(_status_or_value, __COUNTER__), \
+#define PJRT_XLA_ASSIGN_OR_RETURN(lhs, rexpr)                                  \
+  _PJRT_XLA_ASSIGN_OR_RETURN_IMPL(_PJRT_CONCAT(_status_or_value, __COUNTER__), \
                               lhs, rexpr,                                  \
                               _PJRT_CONCAT(_c_status, __COUNTER__));
 
-#define _PJRT_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr, c_status) \
+#define _PJRT_XLA_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr, c_status) \
   auto statusor = (rexpr);                                          \
   if (!statusor.ok()) {                                             \
     PJRT_Error* c_status = new PJRT_Error();                        \

@@ -129,7 +129,7 @@ absl::StatusOr<PjRtClient*> GetHostOffloadingPjRtClient() {
   options.customize_hlo_module_config = SetHostOffloadingHloModuleConfig;
 
   VLOG(1) << "Create host offloading PjRt client for a current process";
-  TF_ASSIGN_OR_RETURN(auto owned_client,
+  TF_XLA_ASSIGN_OR_RETURN(auto owned_client,
                       xla::GetXlaPjrtCpuClient(std::move(options)));
   return client = owned_client.release();
 }
@@ -152,29 +152,29 @@ HostOffloadingPjRtExecutable::LoadFromProto(
 
   // We keep program shape and alias config of the original HLO module and not
   // the destination-passing-style module with extra output parameters.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       ProgramShape program_shape,
       ProgramShape::FromProto(proto.hlo_module().host_program_shape()));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto alias_config,
       HloInputOutputAliasConfig::CreateFromProto(
           program_shape.result(), proto.hlo_module().input_output_alias()));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       HloModule::CreateFromProto(
                           proto.hlo_module(), HloModuleConfig(program_shape)));
 
-  TF_RETURN_IF_ERROR(RewriteToDestinationPassingStyle(
+  TF_XLA_RETURN_IF_ERROR(RewriteToDestinationPassingStyle(
       hlo_module.get(), program_shape, alias_config));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       bool needs_layout_conversion,
       HostOffloadingLayoutAnalysis::NeedsLayoutConversion(hlo_module.get()));
 
-  TF_ASSIGN_OR_RETURN(PjRtClient * client, GetHostOffloadingPjRtClient());
+  TF_XLA_ASSIGN_OR_RETURN(PjRtClient * client, GetHostOffloadingPjRtClient());
 
   CompileOptions compile_options;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtLoadedExecutable> executable,
       client->CompileAndLoad(XlaComputation(hlo_module.get()->ToProto()),
                              compile_options));
@@ -200,11 +200,11 @@ HostOffloadingPjRtExecutable::Execute(
   });
 
   // Check that buffer aliasing is compatible with executable alias config.
-  TF_RETURN_IF_ERROR(VerifyBufferAliasing(parameters, result, alias_config_));
+  TF_XLA_RETURN_IF_ERROR(VerifyBufferAliasing(parameters, result, alias_config_));
 
   // We assume that for host offloading computation we have a single device.
   PjRtDevice* const device = executable_->client()->devices().front();
-  TF_ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
+  TF_XLA_ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
 
   // Convert parameters and result to zero-copy PjRt buffers.
   absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> arguments;
@@ -213,7 +213,7 @@ HostOffloadingPjRtExecutable::Execute(
                           const HostOffloadingBuffer& buffer,
                           PjRtClient::HostBufferSemantics semantics) {
     DCHECK(shape.IsArray()) << "Buffer shape must be an array";
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         arguments.emplace_back(),
         executable_->client()->BufferFromHostBuffer(
             buffer.opaque_base(), shape.element_type(), shape.dimensions(),
@@ -233,7 +233,7 @@ HostOffloadingPjRtExecutable::Execute(
       auto shape = ShapeUtil::GetSubshape(parameter.shape(), index);
       // If parameter is aliased with output we create a mutable zero-copy
       // buffer so that PjRtClient can write result into it.
-      TF_RETURN_IF_ERROR(add_argument(shape, buffer,
+      TF_XLA_RETURN_IF_ERROR(add_argument(shape, buffer,
                                       alias_config_.GetAliasedOutput(i, index)
                                           ? kMutableZeroCopy
                                           : kImmutableZeroCopy));
@@ -247,7 +247,7 @@ HostOffloadingPjRtExecutable::Execute(
       continue;
     }
     auto shape = ShapeUtil::GetSubshape(result.shape(), index);
-    TF_RETURN_IF_ERROR(add_argument(shape, buffer, kMutableZeroCopy));
+    TF_XLA_RETURN_IF_ERROR(add_argument(shape, buffer, kMutableZeroCopy));
   }
 
   // Convert buffer arguments to non-owning arguments handles.
@@ -270,7 +270,7 @@ HostOffloadingPjRtExecutable::Execute(
 
   // We immediately throw away result buffers because all of them must be
   // aliased with parameters or result buffers passed in arguments.
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> results,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> results,
                       executable_->ExecuteSharded(arguments_handles, device,
                                                   pjrt_execute_options));
 

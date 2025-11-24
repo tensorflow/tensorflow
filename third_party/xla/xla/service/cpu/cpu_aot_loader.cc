@@ -98,7 +98,7 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> LoadFunctionLibrary(
       config.debug_options().xla_backend_extra_options());
   llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::TargetMachine> target_machine,
       IrCompiler::InferTargetMachine(
           std::move(CompilerTargetOptions(hlo_module->config())),
@@ -123,7 +123,7 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> LoadFunctionLibrary(
   for (auto& obj_file : obj_files) {
     llvm::StringRef data(obj_file.contents().data(),
                          obj_file.contents().size());
-    TF_RETURN_IF_ERROR(object_loader.AddObjFile(
+    TF_XLA_RETURN_IF_ERROR(object_loader.AddObjFile(
         llvm::MemoryBuffer::getMemBuffer(data, obj_file.name())));
   }
 
@@ -141,7 +141,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuAotLoader::LoadExecutable(
 
 absl::StatusOr<std::unique_ptr<Executable>> CpuAotLoader::LoadExecutable(
     const xla::cpu::CompilationResultProto& aot_result_proto) {
-  TF_ASSIGN_OR_RETURN(auto aot_result,
+  TF_XLA_ASSIGN_OR_RETURN(auto aot_result,
                       LoadAotCompilationResult(aot_result_proto));
   return LoadExecutable(std::move(*aot_result));
 }
@@ -164,7 +164,7 @@ CpuAotLoader::LoadAotCompilationResult(
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>
 CpuAotLoader::LoadAotCompilationResult(
     const xla::cpu::CompilationResultProto& aot_result_proto) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProtoWithConfig(aot_result_proto.hlo_module()));
 
@@ -172,11 +172,11 @@ CpuAotLoader::LoadAotCompilationResult(
       hlo_module->config().debug_options().xla_backend_extra_options());
   llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
-  TF_ASSIGN_OR_RETURN(TargetMachineOptions target_machine_options,
+  TF_XLA_ASSIGN_OR_RETURN(TargetMachineOptions target_machine_options,
                       TargetMachineOptions::FromProto(
                           aot_result_proto.target_machine_options()));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::TargetMachine> target_machine,
       IrCompiler::InferTargetMachine(
           std::move(CompilerTargetOptions(hlo_module->config())),
@@ -224,7 +224,7 @@ CpuAotLoader::LoadAotCompilationResult(
     compiled_symbols_proto.push_back(symbol_proto);
   }
 
-  TF_ASSIGN_OR_RETURN(auto compiled_symbols,
+  TF_XLA_ASSIGN_OR_RETURN(auto compiled_symbols,
                       GetCompiledSymbolsFromProto(compiled_symbols_proto));
 
   std::vector<ObjFileProto> obj_files;
@@ -232,7 +232,7 @@ CpuAotLoader::LoadAotCompilationResult(
     obj_files.push_back(obj_file);
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto function_library,
       LoadFunctionLibrary(compiled_symbols, obj_files, hlo_module.get(),
                           target_machine_options));

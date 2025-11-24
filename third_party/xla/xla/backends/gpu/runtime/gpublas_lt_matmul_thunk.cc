@@ -87,7 +87,7 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
 
 absl::Status CublasLtMatmulThunk::ExecuteOnStreamInternal(
     se::Stream* stream, const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(auto* plan, GetCachedMatmulPlan(params));
+  TF_XLA_ASSIGN_OR_RETURN(auto* plan, GetCachedMatmulPlan(params));
 
   VLOG(3) << "Running cublas_lt matmul thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
@@ -132,7 +132,7 @@ CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
     VLOG(2) << this << ": Adding new MatmulPlan for stream: " << params.stream
             << " instr: " << canonical_hlo_;
 
-    TF_ASSIGN_OR_RETURN(auto plan,
+    TF_XLA_ASSIGN_OR_RETURN(auto plan,
                         blas_lt->GetMatmulPlan(gemm_config_, epilogue_));
     // if workspace buffer is not provided, consider only the algorithms which
     // do not require a scratch space
@@ -143,11 +143,11 @@ CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
     // algorithms, it's enough to get the default one only.
     int64_t num_algorithms =
         algorithm_idx_ == 0 ? 1 : GemmConfig::kNumAlgorithms;
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto algorithms,
         plan->GetAlgorithms(params.stream, num_algorithms, max_workspace));
 
-    TF_RETURN_IF_ERROR(plan->SetAlgorithm(algorithms[algorithm_idx_]));
+    TF_XLA_RETURN_IF_ERROR(plan->SetAlgorithm(algorithms[algorithm_idx_]));
     return std::move(plan);
   };
   return blas_lt->GetOrCreateMatmulPlan(canonical_hlo_, create);
@@ -171,39 +171,39 @@ absl::StatusOr<ThunkProto> CublasLtMatmulThunk::ToProto() const {
       stream_executor::gpu::BlasLt::EpilogueToProto(epilogue_));
   cublas_lt_matmul_thunk->set_algorithm_idx(algorithm_idx_);
   cublas_lt_matmul_thunk->set_canonical_hlo(canonical_hlo_);
-  TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_a(), a_.ToProto());
-  TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_b(), b_.ToProto());
-  TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_c(), c_.ToProto());
-  TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_d(), d_.ToProto());
+  TF_XLA_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_a(), a_.ToProto());
+  TF_XLA_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_b(), b_.ToProto());
+  TF_XLA_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_c(), c_.ToProto());
+  TF_XLA_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_d(), d_.ToProto());
   if (bias_.allocation() != nullptr) {
-    TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_bias(),
+    TF_XLA_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_bias(),
                         bias_.ToProto());
   }
   if (aux_.allocation() != nullptr) {
-    TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_aux(), aux_.ToProto());
+    TF_XLA_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_aux(), aux_.ToProto());
   }
   if (a_scale_.allocation() != nullptr) {
-    TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_a_scale(),
+    TF_XLA_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_a_scale(),
                         a_scale_.ToProto());
   }
   if (b_scale_.allocation() != nullptr) {
-    TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_b_scale(),
+    TF_XLA_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_b_scale(),
                         b_scale_.ToProto());
   }
   if (c_scale_.allocation() != nullptr) {
-    TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_c_scale(),
+    TF_XLA_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_c_scale(),
                         c_scale_.ToProto());
   }
   if (d_scale_.allocation() != nullptr) {
-    TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_d_scale(),
+    TF_XLA_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_d_scale(),
                         d_scale_.ToProto());
   }
   if (d_amax_.allocation() != nullptr) {
-    TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_d_amax(),
+    TF_XLA_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_d_amax(),
                         d_amax_.ToProto());
   }
   if (workspace_.has_value()) {
-    TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_workspace(),
+    TF_XLA_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_workspace(),
                         workspace_->ToProto());
   }
   return proto;
@@ -212,63 +212,63 @@ absl::StatusOr<ThunkProto> CublasLtMatmulThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<Thunk>> CublasLtMatmulThunk::FromProto(
     Thunk::ThunkInfo thunk_info, const CublasLtMatmulThunkProto& proto,
     absl::Span<const BufferAllocation> allocations) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       stream_executor::gpu::GemmConfig gemm_config,
       stream_executor::gpu::GemmConfig::FromProto(proto.gemm_config()));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       stream_executor::gpu::BlasLt::Epilogue epilogue,
       stream_executor::gpu::BlasLt::EpilogueFromProto(proto.epilogue()));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice a,
       BufferAllocation::Slice::FromProto(proto.a(), allocations));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice b,
       BufferAllocation::Slice::FromProto(proto.b(), allocations));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice c,
       BufferAllocation::Slice::FromProto(proto.c(), allocations));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice d,
       BufferAllocation::Slice::FromProto(proto.d(), allocations));
 
   BufferAllocation::Slice bias;
   if (proto.has_bias()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bias, BufferAllocation::Slice::FromProto(proto.bias(), allocations));
   }
   BufferAllocation::Slice aux;
   if (proto.has_aux()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         aux, BufferAllocation::Slice::FromProto(proto.aux(), allocations));
   }
   BufferAllocation::Slice a_scale;
   if (proto.has_a_scale()) {
-    TF_ASSIGN_OR_RETURN(a_scale, BufferAllocation::Slice::FromProto(
+    TF_XLA_ASSIGN_OR_RETURN(a_scale, BufferAllocation::Slice::FromProto(
                                      proto.a_scale(), allocations));
   }
   BufferAllocation::Slice b_scale;
   if (proto.has_b_scale()) {
-    TF_ASSIGN_OR_RETURN(b_scale, BufferAllocation::Slice::FromProto(
+    TF_XLA_ASSIGN_OR_RETURN(b_scale, BufferAllocation::Slice::FromProto(
                                      proto.b_scale(), allocations));
   }
   BufferAllocation::Slice c_scale;
   if (proto.has_c_scale()) {
-    TF_ASSIGN_OR_RETURN(c_scale, BufferAllocation::Slice::FromProto(
+    TF_XLA_ASSIGN_OR_RETURN(c_scale, BufferAllocation::Slice::FromProto(
                                      proto.c_scale(), allocations));
   }
   BufferAllocation::Slice d_scale;
   if (proto.has_d_scale()) {
-    TF_ASSIGN_OR_RETURN(d_scale, BufferAllocation::Slice::FromProto(
+    TF_XLA_ASSIGN_OR_RETURN(d_scale, BufferAllocation::Slice::FromProto(
                                      proto.d_scale(), allocations));
   }
   BufferAllocation::Slice d_amax;
   if (proto.has_d_amax()) {
-    TF_ASSIGN_OR_RETURN(d_amax, BufferAllocation::Slice::FromProto(
+    TF_XLA_ASSIGN_OR_RETURN(d_amax, BufferAllocation::Slice::FromProto(
                                     proto.d_amax(), allocations));
   }
   std::optional<BufferAllocation::Slice> workspace;
   if (proto.has_workspace()) {
-    TF_ASSIGN_OR_RETURN(workspace, BufferAllocation::Slice::FromProto(
+    TF_XLA_ASSIGN_OR_RETURN(workspace, BufferAllocation::Slice::FromProto(
                                        proto.workspace(), allocations));
   }
   return std::make_unique<CublasLtMatmulThunk>(

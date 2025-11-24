@@ -70,7 +70,7 @@ absl::StatusOr<mlir::Type> ConvertPrimitiveTypeToMlirType(
                 : mlir::IntegerType::Signless);
       }
       if (xla::primitive_util::IsComplexType(type)) {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             mlir::Type component_type,
             xla::ConvertPrimitiveTypeToMlirType(
                 xla::primitive_util::ComplexComponentType(type), b));

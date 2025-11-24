@@ -139,7 +139,7 @@ absl::Status UnflattenCallGraph::ValidateComputationHashes(
   };
 
   // Validate all computations against their canonical versions in parallel.
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       (xla::concurrency::ForEach(hash_results.begin(), hash_results.end(),
                                  validate_against_canonical, *task_executor_)));
 
@@ -159,7 +159,7 @@ absl::StatusOr<bool> UnflattenCallGraph::RunImpl(
   if (calls.targets.empty()) {
     return false;
   }
-  TF_ASSIGN_OR_RETURN(const std::vector<ComputationHashResult> hash_results,
+  TF_XLA_ASSIGN_OR_RETURN(const std::vector<ComputationHashResult> hash_results,
                       HashComputations(calls.targets));
 
   // Map computations to their hashes.
@@ -203,7 +203,7 @@ absl::StatusOr<bool> UnflattenCallGraph::RunImpl(
   }
 
   if (changed) {
-    TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
+    TF_XLA_RETURN_IF_ERROR(module->RemoveUnusedComputations());
     module->CleanupComputations();
   }
 

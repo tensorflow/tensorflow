@@ -110,7 +110,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     params.module_name = "test_module";
     params.enable_debug_info_manager = false;
     params.mlir_allocations = {BufferAllocation(0, 1024, 0)};
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
                         GpuExecutable::Create(std::move(params)));
     return executable->ToProto();
   }

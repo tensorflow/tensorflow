@@ -112,7 +112,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> InterpreterCompiler::RunHloPasses(
     std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* /*stream_exec*/,
     const CompileOptions& /*options*/) {
   VLOG(1) << "Run hlo passes on graph " << hlo_module->name();
-  TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
+  TF_XLA_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
   return std::move(hlo_module);
 }
 
@@ -123,7 +123,7 @@ absl::StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
 
   VLOG(1) << "Run backend " << hlo_module->name();
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       DynamicDimensionInference dynamic_dimension_inference,
       DynamicDimensionInference::Run(
           hlo_module.get(),
@@ -149,9 +149,9 @@ absl::StatusOr<std::vector<std::unique_ptr<Executable>>>
 InterpreterCompiler::Compile(std::unique_ptr<HloModule> hlo_module,
                              std::vector<se::StreamExecutor*> stream_exec,
                              const CompileOptions& options) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       hlo_module, RunHloPasses(std::move(hlo_module), stream_exec[0], options));
-  TF_ASSIGN_OR_RETURN(auto executable, RunBackend(std::move(hlo_module),
+  TF_XLA_ASSIGN_OR_RETURN(auto executable, RunBackend(std::move(hlo_module),
                                                   stream_exec[0], options));
   std::vector<std::unique_ptr<Executable>> ret;
   ret.push_back(std::move(executable));

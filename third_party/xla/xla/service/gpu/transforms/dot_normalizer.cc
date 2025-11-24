@@ -44,13 +44,13 @@ absl::StatusOr<HloInstruction*> DotNormalizer::ExpandInstruction(
   ShapeUtil::AppendMinorDimension(1, &new_lhs_shape);
   HloInstruction* normalized_lhs =
       dot->AddInstruction(HloInstruction::CreateBitcast(new_lhs_shape, lhs));
-  TF_RETURN_IF_ERROR(dot->ReplaceOperandWithDifferentShape(0, normalized_lhs));
+  TF_XLA_RETURN_IF_ERROR(dot->ReplaceOperandWithDifferentShape(0, normalized_lhs));
   HloInstruction* rhs = dot->mutable_operand(1);
   Shape new_rhs_shape = rhs->shape();
   ShapeUtil::AppendMinorDimension(1, &new_rhs_shape);
   HloInstruction* normalized_rhs =
       dot->AddInstruction(HloInstruction::CreateBitcast(new_rhs_shape, rhs));
-  TF_RETURN_IF_ERROR(dot->ReplaceOperandWithDifferentShape(1, normalized_rhs));
+  TF_XLA_RETURN_IF_ERROR(dot->ReplaceOperandWithDifferentShape(1, normalized_rhs));
   DotDimensionNumbers* dnums = dot->mutable_dot_dimension_numbers();
   dnums->add_lhs_contracting_dimensions(new_lhs_shape.dimensions().size() - 1);
   dnums->add_rhs_contracting_dimensions(new_rhs_shape.dimensions().size() - 1);

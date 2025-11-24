@@ -52,9 +52,9 @@ absl::StatusOr<SemanticVersion> SemanticVersion::ParseFromString(
   }
 
   SemanticVersion result{0, 0, 0};
-  TF_ASSIGN_OR_RETURN(result.major(), ParseUnsignedNumber(components[0]));
-  TF_ASSIGN_OR_RETURN(result.minor(), ParseUnsignedNumber(components[1]));
-  TF_ASSIGN_OR_RETURN(result.patch(), ParseUnsignedNumber(components[2]));
+  TF_XLA_ASSIGN_OR_RETURN(result.major(), ParseUnsignedNumber(components[0]));
+  TF_XLA_ASSIGN_OR_RETURN(result.minor(), ParseUnsignedNumber(components[1]));
+  TF_XLA_ASSIGN_OR_RETURN(result.patch(), ParseUnsignedNumber(components[2]));
   return result;
 }
 

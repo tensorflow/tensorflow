@@ -88,7 +88,7 @@ class MockArrayTest : public testing::Test {
     xla::ifrt::Device* device = client_->addressable_devices().at(0);
     ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto client_arr,
         client_->MakeArrayFromHostBuffer(
             data->data(), dtype, shape,
@@ -108,7 +108,7 @@ class MockArrayTest : public testing::Test {
     xla::CpuClientOptions options;
     options.asynchronous = true;
     options.cpu_device_count = 2;
-    TF_ASSIGN_OR_RETURN(auto pjrt_cpu_client,
+    TF_XLA_ASSIGN_OR_RETURN(auto pjrt_cpu_client,
                         xla::GetXlaPjrtCpuClient(std::move(options)));
     auto mock_backend = std::make_unique<MockClient>(
         /*delegate=*/xla::ifrt::PjRtClient::Create(std::move(pjrt_cpu_client)));
@@ -121,7 +121,7 @@ class MockArrayTest : public testing::Test {
                 ShardingRef sharding, Client::HostBufferSemantics semantics,
                 std::function<void()> on_done_with_host_buffer)
                 -> absl::StatusOr<xla::ifrt::ArrayRef> {
-              TF_ASSIGN_OR_RETURN(
+              TF_XLA_ASSIGN_OR_RETURN(
                   auto delegated,
                   mock_backend->delegated()->MakeArrayFromHostBuffer(
                       data, dtype, shape, byte_strides, sharding, semantics,

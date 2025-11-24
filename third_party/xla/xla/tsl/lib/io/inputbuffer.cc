@@ -155,7 +155,7 @@ absl::Status InputBuffer::ReadVarintFallback(T* result, int max_bytes) {
   *result = 0;
   for (int index = 0; index < max_bytes; index++) {
     int shift = 7 * index;
-    TF_RETURN_IF_ERROR(ReadNBytes(1, p, &unused_bytes_read));
+    TF_XLA_RETURN_IF_ERROR(ReadNBytes(1, p, &unused_bytes_read));
     *result |= (static_cast<T>(scratch) & 127) << shift;
     if (!(scratch & 128)) return absl::OkStatus();
   }

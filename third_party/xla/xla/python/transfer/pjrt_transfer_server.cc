@@ -117,11 +117,11 @@ PjRtTransferServer::MakePjRtTransferServerFactory(
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store,
     const std::string& socket_address,
     const std::vector<std::string>& transport_addresses) {
-  TF_ASSIGN_OR_RETURN(aux::SocketAddress address,
+  TF_XLA_ASSIGN_OR_RETURN(aux::SocketAddress address,
                       aux::SocketAddress::Parse(socket_address));
   std::vector<aux::SocketAddress> transport_socket_addresses;
   if (transport_addresses.empty()) {
-    TF_ASSIGN_OR_RETURN(aux::SocketAddress transport_address,
+    TF_XLA_ASSIGN_OR_RETURN(aux::SocketAddress transport_address,
                         aux::SocketAddress::Parse("0.0.0.0:0"));
     // TODO(emilyaf, parkers): Remove this once defaults are set per device
     // platform.
@@ -132,7 +132,7 @@ PjRtTransferServer::MakePjRtTransferServerFactory(
   } else {
     transport_socket_addresses.reserve(transport_addresses.size());
     for (const std::string& transport_address : transport_addresses) {
-      TF_ASSIGN_OR_RETURN(aux::SocketAddress socket_address,
+      TF_XLA_ASSIGN_OR_RETURN(aux::SocketAddress socket_address,
                           aux::SocketAddress::Parse(transport_address));
       transport_socket_addresses.push_back(socket_address);
     }
@@ -145,7 +145,7 @@ PjRtTransferServer::MakePjRtTransferServerFactory(
         client, client->addressable_device_count() * 2, transfer_size,
         cross_host_transfer_timeout, kv_store, address,
         transport_socket_addresses);
-    TF_RETURN_IF_ERROR(transfer_server->StartTransferServer());
+    TF_XLA_RETURN_IF_ERROR(transfer_server->StartTransferServer());
     return transfer_server;
   };
   return factory;
@@ -153,21 +153,21 @@ PjRtTransferServer::MakePjRtTransferServerFactory(
 
 absl::Status PjRtTransferServer::StartTransferServer() {
   // Populate the KV store with this process's socket address.
-  TF_RETURN_IF_ERROR(kv_store_->Set(
+  TF_XLA_RETURN_IF_ERROR(kv_store_->Set(
       absl::StrCat(kKeyPrefixSocketAddress, pjrt_client_->process_index()),
       socket_address_.ToString()));
 
   size_t total_size = transfer_size_ * max_num_parallel_copies_;
-  TF_ASSIGN_OR_RETURN(auto tmp, aux::AllocateAlignedMemory(total_size));
-  TF_ASSIGN_OR_RETURN(auto map, aux::MapPjrtMemory(pjrt_client_, tmp->data(),
+  TF_XLA_ASSIGN_OR_RETURN(auto tmp, aux::AllocateAlignedMemory(total_size));
+  TF_XLA_ASSIGN_OR_RETURN(auto map, aux::MapPjrtMemory(pjrt_client_, tmp->data(),
                                                    tmp->size(), tmp));
   aux::SlabAllocator uallocator(map, transfer_size_);
-  TF_ASSIGN_OR_RETURN(auto factory, aux::CreateSocketBulkTransportFactory(
+  TF_XLA_ASSIGN_OR_RETURN(auto factory, aux::CreateSocketBulkTransportFactory(
                                         transport_addresses_, std::nullopt,
                                         std::move(uallocator)));
 
   socket_server_ = std::make_shared<aux::SocketServer>();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto mem, aux::AllocateAndMapPjrtMemory(pjrt_client_, total_size * 2));
   premapped_copier_ = std::make_shared<aux::PremappedCopierState>(
       mem, max_num_parallel_copies_, transfer_size_);
@@ -195,7 +195,7 @@ absl::Status PjRtTransferServer::CrossHostAwaitPull(
     if (pjrt_arr->pjrt_buffers().empty()) {
       return absl::InvalidArgumentError("PjRtArray has no buffers.");
     }
-    TF_ASSIGN_OR_RETURN(size_t buf_size,
+    TF_XLA_ASSIGN_OR_RETURN(size_t buf_size,
                         pjrt_arr->pjrt_buffers()[0]->GetOnDeviceSizeInBytes());
     for (int j : buffer_idxs) {
       auto& pjrt_buf = pjrt_arr->pjrt_buffers()[j];
@@ -211,11 +211,11 @@ absl::Status PjRtTransferServer::CrossHostAwaitPull(
 absl::StatusOr<tsl::RCReference<aux::SocketServer::Connection>>
 PjRtTransferServer::GetConnection(int remote_pid) {
   if (!connections_.contains(remote_pid)) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::string address,
         kv_store_->Get(absl::StrCat(kKeyPrefixSocketAddress, remote_pid),
                        cross_host_transfer_timeout_));
-    TF_ASSIGN_OR_RETURN(auto addr, aux::SocketAddress::Parse(address));
+    TF_XLA_ASSIGN_OR_RETURN(auto addr, aux::SocketAddress::Parse(address));
     connections_[remote_pid] = (*socket_server_)->Connect(addr);
   }
   return connections_[remote_pid];
@@ -232,7 +232,7 @@ absl::Status PjRtTransferServer::CrossHostPull(
   tsl::RCReference<aux::SocketServer::Connection> connection;
   {
     absl::MutexLock lock(connections_mu_);
-    TF_ASSIGN_OR_RETURN(connection, GetConnection(remote_pid));
+    TF_XLA_ASSIGN_OR_RETURN(connection, GetConnection(remote_pid));
   }
 
   std::vector<xla::PjRtClient::ShapeSpec> shape_specs;
@@ -240,9 +240,9 @@ absl::Status PjRtTransferServer::CrossHostPull(
   shape_specs.reserve(arrays.size());
   layouts.reserve(arrays.size());
   for (int i = 0; i < arrays.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(xla::PrimitiveType prim_type,
+    TF_XLA_ASSIGN_OR_RETURN(xla::PrimitiveType prim_type,
                         xla::ifrt::ToPrimitiveType(arrays[i]->dtype()));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         Shape shape, arrays[i]->sharding().GetShardShape(arrays[i]->shape()));
     xla::PjRtClient::ShapeSpec shape_spec = {
         prim_type,
@@ -253,10 +253,10 @@ absl::Status PjRtTransferServer::CrossHostPull(
         arrays[i]->pjrt_layout();
     std::optional<xla::Layout> layout;
     if (pjrt_layout.ok() && *pjrt_layout == nullptr) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           xla::ifrt::Shape shard_shape,
           arrays[i]->sharding().GetShardShape(arrays[i]->shape()));
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           pjrt_layout, arrays[i]->client()->GetDefaultPjRtLayout(
                            arrays[i]->dtype(), shard_shape.dims(),
                            arrays[i]->sharding().devices()->devices().front(),
@@ -270,12 +270,12 @@ absl::Status PjRtTransferServer::CrossHostPull(
 
   for (int j = 0; j < dst_device_idxs.size(); ++j) {
     int device_index = dst_device_idxs[j];
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         xla::PjRtMemorySpace * mem_space,
         GetMemorySpace(memory_kind, dst_devices->devices()[device_index]));
     // TODO(emilyaf, parkers): Pass `layouts` instead of `std::nullopt` once
     // ASAN failure is debugged.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::shared_ptr<xla::PjRtClient::AsyncHostToDeviceTransferManager> atm,
         pjrt_client_->CreateBuffersForAsyncHostToDevice(
             shape_specs, std::nullopt, mem_space));
@@ -340,10 +340,10 @@ PjRtTransferServer::CopyArraysForCrossHost(
         continue;
       }
       if (src_process_index == pjrt_client_->process_index()) {
-        TF_RETURN_IF_ERROR(CrossHostAwaitPull(
+        TF_XLA_RETURN_IF_ERROR(CrossHostAwaitPull(
             uuid, arrays, await_pull_buffer_idxs[dst_process_index]));
       } else {
-        TF_RETURN_IF_ERROR(CrossHostPull(
+        TF_XLA_RETURN_IF_ERROR(CrossHostPull(
             uuid, arrays, pull_to_device_idxs[src_process_index], dst_devices,
             memory_kind, src_process_index, buffers_by_device));
       }
@@ -353,15 +353,15 @@ PjRtTransferServer::CopyArraysForCrossHost(
   std::vector<xla::ifrt::ArrayRef> new_arrays;
   new_arrays.reserve(arrays.size());
   for (size_t i = 0; i < arrays.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(auto new_sharding,
+    TF_XLA_ASSIGN_OR_RETURN(auto new_sharding,
                         arrays[i]->shared_ptr_sharding()->WithDeviceAssignment(
                             dst_devices, memory_kind));
-    TF_ASSIGN_OR_RETURN(auto new_layout, arrays[i]->pjrt_layout());
+    TF_XLA_ASSIGN_OR_RETURN(auto new_layout, arrays[i]->pjrt_layout());
     if (new_layout == nullptr) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           xla::ifrt::Shape shard_shape,
           arrays[i]->sharding().GetShardShape(arrays[i]->shape()));
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           new_layout, arrays[i]->client()->GetDefaultPjRtLayout(
                           arrays[i]->dtype(), shard_shape.dims(),
                           arrays[i]->sharding().devices()->devices().front(),
@@ -372,7 +372,7 @@ PjRtTransferServer::CopyArraysForCrossHost(
     for (auto& [_, bufs] : buffers_by_device) {
       array_buffers.push_back(std::move(bufs[i]));
     }
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto arr,
         PjRtArray::Create(client, arrays[i]->dtype(), arrays[i]->shape(),
                           std::move(new_sharding), std::move(array_buffers),

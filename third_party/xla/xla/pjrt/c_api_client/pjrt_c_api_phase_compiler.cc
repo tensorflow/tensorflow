@@ -138,14 +138,14 @@ PjRtCApiPhaseCompiler::RunPhases(
     const xla::PjRtTopologyDescription& topology,
     const std::vector<std::string>& phases_to_run) {
   // Plugin-agnostic validation of the input programs and phases.
-  TF_RETURN_IF_ERROR(ValidatePhases(partial_programs_in, phases_to_run));
+  TF_XLA_RETURN_IF_ERROR(ValidatePhases(partial_programs_in, phases_to_run));
 
   PJRT_TopologyDescription* topology_description =
       tensorflow::down_cast<const xla::PjRtCApiTopologyDescription*>(&topology)
           ->c_topology();
 
   const size_t* programs_in_buffer_sizes;
-  TF_ASSIGN_OR_RETURN(const char** programs_in_buffers,
+  TF_XLA_ASSIGN_OR_RETURN(const char** programs_in_buffers,
                       xla::ConvertPjRtPartialProgramProtosToCharBuffers(
                           partial_programs_in, programs_in_buffer_sizes));
   size_t num_programs_in = partial_programs_in.size();
@@ -157,7 +157,7 @@ PjRtCApiPhaseCompiler::RunPhases(
         delete[] programs_in_buffers;
       };
 
-  TF_ASSIGN_OR_RETURN(const xla::CompileOptionsProto options_proto,
+  TF_XLA_ASSIGN_OR_RETURN(const xla::CompileOptionsProto options_proto,
                       options.ToProto());
   std::string options_str = options_proto.SerializeAsString();
 
@@ -190,7 +190,7 @@ PjRtCApiPhaseCompiler::RunPhases(
   RETURN_STATUS_IF_PJRT_ERROR(
       phase_compile_extension_->phase_compile_run_phases(&run_args), api_);
 
-  TF_ASSIGN_OR_RETURN(std::vector<xla::PjRtPartialProgramProto> output_programs,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<xla::PjRtPartialProgramProto> output_programs,
                       xla::ConvertCharBuffersToPjRtPartialProgramProtos(
                           absl::MakeSpan(run_args.output_programs,
                                          run_args.num_output_programs),

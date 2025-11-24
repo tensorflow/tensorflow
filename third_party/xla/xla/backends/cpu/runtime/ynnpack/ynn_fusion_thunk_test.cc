@@ -50,7 +50,7 @@ namespace {
 static absl::StatusOr<YnnSubgraph> BuildBinaryAddSubgraph(
     absl::Span<const YnnFusionThunk::Argument> arguments,
     absl::Span<const YnnFusionThunk::Result> results) {
-  TF_ASSIGN_OR_RETURN(YnnSubgraph subgraph,
+  TF_XLA_ASSIGN_OR_RETURN(YnnSubgraph subgraph,
                       CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
                         return ynn_create_subgraph(
                             /*external_value_ids=*/3,
@@ -69,28 +69,28 @@ static absl::StatusOr<YnnSubgraph> BuildBinaryAddSubgraph(
   std::vector<size_t> rhs_dims = dims(arguments[1].shape.dimensions());
   std::vector<size_t> out_dims = dims(results[0].shape.dimensions());
 
-  YNN_RETURN_IF_ERROR(
+  YNN_XLA_RETURN_IF_ERROR(
       ynn_define_tensor_value(subgraph.get(), ynn_type_fp32, lhs_dims.size(),
                               lhs_dims.data(), /*data=*/nullptr,
                               /*zero_point_id=*/YNN_INVALID_VALUE_ID,
                               /*scale_id=*/YNN_INVALID_VALUE_ID,
                               YNN_VALUE_FLAG_EXTERNAL_INPUT, &lhs_id));
 
-  YNN_RETURN_IF_ERROR(
+  YNN_XLA_RETURN_IF_ERROR(
       ynn_define_tensor_value(subgraph.get(), ynn_type_fp32, rhs_dims.size(),
                               rhs_dims.data(), /*data=*/nullptr,
                               /*zero_point_id=*/YNN_INVALID_VALUE_ID,
                               /*scale_id=*/YNN_INVALID_VALUE_ID,
                               YNN_VALUE_FLAG_EXTERNAL_INPUT, &rhs_id));
 
-  YNN_RETURN_IF_ERROR(
+  YNN_XLA_RETURN_IF_ERROR(
       ynn_define_tensor_value(subgraph.get(), ynn_type_fp32, rhs_dims.size(),
                               rhs_dims.data(), /*data=*/nullptr,
                               /*zero_point_id=*/YNN_INVALID_VALUE_ID,
                               /*scale_id=*/YNN_INVALID_VALUE_ID,
                               YNN_VALUE_FLAG_EXTERNAL_OUTPUT, &out_id));
 
-  YNN_RETURN_IF_ERROR(ynn_define_binary(subgraph.get(), ynn_binary_add, lhs_id,
+  YNN_XLA_RETURN_IF_ERROR(ynn_define_binary(subgraph.get(), ynn_binary_add, lhs_id,
                                         rhs_id, &out_id, /*flags=*/0));
 
   return subgraph;

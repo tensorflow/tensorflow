@@ -57,7 +57,7 @@ absl::StatusOr<float> GetEventElapsedTime(StreamExecutor* executor,
   // milliseconds.
   // We assume that all SYCL devices have the same frequency and mask, so
   // we use kDefaultDeviceOrdinal.
-  TF_ASSIGN_OR_RETURN(SyclTimerProperties timer_props,
+  TF_XLA_ASSIGN_OR_RETURN(SyclTimerProperties timer_props,
                       SyclGetTimerProperties(kDefaultDeviceOrdinal));
 
   const uint64_t kernel_start_time = start_timestamp.global.kernelStart;
@@ -92,8 +92,8 @@ absl::StatusOr<absl::Duration> SyclTimer::GetElapsedDuration() {
   if (is_timer_stopped_) {
     return absl::FailedPreconditionError("Measuring inactive timer");
   }
-  TF_RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
-  TF_ASSIGN_OR_RETURN(float elapsed_milliseconds,
+  TF_XLA_RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
+  TF_XLA_ASSIGN_OR_RETURN(float elapsed_milliseconds,
                       GetEventElapsedTime(executor_, start_event_.GetEvent(),
                                           stop_event_.GetEvent()));
   is_timer_stopped_ = true;
@@ -102,9 +102,9 @@ absl::StatusOr<absl::Duration> SyclTimer::GetElapsedDuration() {
 
 absl::StatusOr<SyclTimer> SyclTimer::Create(StreamExecutor* executor,
                                             Stream* stream) {
-  TF_ASSIGN_OR_RETURN(SyclEvent start_event, SyclEvent::Create(executor));
-  TF_ASSIGN_OR_RETURN(SyclEvent stop_event, SyclEvent::Create(executor));
-  TF_RETURN_IF_ERROR(stream->RecordEvent(&start_event));
+  TF_XLA_ASSIGN_OR_RETURN(SyclEvent start_event, SyclEvent::Create(executor));
+  TF_XLA_ASSIGN_OR_RETURN(SyclEvent stop_event, SyclEvent::Create(executor));
+  TF_XLA_RETURN_IF_ERROR(stream->RecordEvent(&start_event));
   return SyclTimer(executor, std::move(start_event), std::move(stop_event),
                    stream);
 }

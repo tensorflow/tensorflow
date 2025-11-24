@@ -122,9 +122,9 @@ absl::StatusOr<Platform*> PlatformManagerImpl::PlatformWithName(
     absl::string_view target, bool initialize_platform) {
   absl::MutexLock lock(mu_);
 
-  TF_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
+  TF_XLA_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
   if (initialize_platform && !platform->Initialized()) {
-    TF_RETURN_IF_ERROR(platform->Initialize());
+    TF_XLA_RETURN_IF_ERROR(platform->Initialize());
   }
 
   return platform;
@@ -134,9 +134,9 @@ absl::StatusOr<Platform*> PlatformManagerImpl::PlatformWithId(
     const Platform::Id& id, bool initialize_platform) {
   absl::MutexLock lock(mu_);
 
-  TF_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
+  TF_XLA_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
   if (initialize_platform && !platform->Initialized()) {
-    TF_RETURN_IF_ERROR(platform->Initialize());
+    TF_XLA_RETURN_IF_ERROR(platform->Initialize());
   }
 
   return platform;
@@ -146,13 +146,13 @@ absl::StatusOr<Platform*> PlatformManagerImpl::InitializePlatformWithId(
     const Platform::Id& id) {
   absl::MutexLock lock(mu_);
 
-  TF_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
+  TF_XLA_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
   if (platform->Initialized()) {
     return absl::FailedPreconditionError(
         absl::StrFormat("platform with id %p is already initialized", id));
   }
 
-  TF_RETURN_IF_ERROR(platform->Initialize());
+  TF_XLA_RETURN_IF_ERROR(platform->Initialize());
 
   return platform;
 }
@@ -168,7 +168,7 @@ absl::StatusOr<std::vector<Platform*>> PlatformManagerImpl::PlatformsWithFilter(
     Platform* platform = entry.second;
     if (filter(platform)) {
       if (initialize_platform && !platform->Initialized()) {
-        TF_RETURN_IF_ERROR(platform->Initialize());
+        TF_XLA_RETURN_IF_ERROR(platform->Initialize());
       }
       platforms.push_back(platform);
     }

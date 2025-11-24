@@ -176,7 +176,7 @@ class IfrtIRProgramSerDes
     if (!program_proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError("Failed to parse IfrtIrProgramProto");
     }
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto module,
         support::ParseMlirModuleString(program_proto.ifrt_program(), *context));
 
@@ -227,7 +227,7 @@ class IfrtIRCompileOptionsSerDes
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
     const auto& compile_options =
         llvm::cast<IfrtIRCompileOptions>(serializable);
-    TF_ASSIGN_OR_RETURN(IfrtIrCompileOptionsProto compile_options_proto,
+    TF_XLA_ASSIGN_OR_RETURN(IfrtIrCompileOptionsProto compile_options_proto,
                         compile_options.ToProto(version));
     return compile_options_proto.SerializeAsString();
   }

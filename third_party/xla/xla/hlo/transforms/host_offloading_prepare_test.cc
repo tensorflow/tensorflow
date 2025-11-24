@@ -41,7 +41,7 @@ class HostOffloadingPrepareTest : public HloHardwareIndependentTestBase {
       return absl::InternalError("Expected a non-scheduled module");
     }
     HostOffloadingPrepare pass(rewrite);
-    TF_ASSIGN_OR_RETURN(bool changed, pass.Run(module));
+    TF_XLA_ASSIGN_OR_RETURN(bool changed, pass.Run(module));
     return changed;
   }
 

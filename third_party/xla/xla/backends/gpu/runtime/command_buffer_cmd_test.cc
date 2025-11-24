@@ -537,7 +537,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     // buffer empty.
     int64_t num_calls = 0;
     auto trace = [&](se::Stream* stream) -> absl::Status {
-      TF_RETURN_IF_ERROR(stream->Memset32(&mem, 42, 16));
+      TF_XLA_RETURN_IF_ERROR(stream->Memset32(&mem, 42, 16));
       num_calls++;
       return absl::OkStatus();
     };

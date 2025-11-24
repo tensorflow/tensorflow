@@ -69,7 +69,7 @@ class GpuCodegenBackend : public CodegenBackend {
 
     HloComputation* entry_computation = hlo_module->entry_computation();
     HloInstruction* root_instruction = entry_computation->root_instruction();
-    TF_RETURN_IF_ERROR(ApplyConfig(*root_instruction, config));
+    TF_XLA_RETURN_IF_ERROR(ApplyConfig(*root_instruction, config));
 
     hlo_module->mutable_config().set_debug_options(debug_options_);
     AdjustDebugOptionsForAutotuning(
@@ -79,7 +79,7 @@ class GpuCodegenBackend : public CodegenBackend {
     Compiler::CompileOptions options;
     options.gpu_target_config = target_config_;
     options.is_autotuning_compilation = true;
-    TF_ASSIGN_OR_RETURN(auto optimized_module,
+    TF_XLA_ASSIGN_OR_RETURN(auto optimized_module,
                         RunHloPasses(std::move(hlo_module), options));
     return compiler_->RunBackend(std::move(optimized_module), stream_executor_,
                                  options);

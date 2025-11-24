@@ -53,7 +53,7 @@ absl::StatusOr<bool> AllGatherCSE::RunImpl(
           if (it != all_gather_map.end()) {
             VLOG(2) << "Replacing all-gather with previous result: "
                     << it->second->ToString();
-            TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(it->second));
+            TF_XLA_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(it->second));
             changed = true;
           } else {
             VLOG(2) << "Storing all-gather result for future use";

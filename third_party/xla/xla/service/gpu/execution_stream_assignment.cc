@@ -241,7 +241,7 @@ ExecutionStreamAssignment::GetSyncExecutionStreamId(
 absl::StatusOr<ExecutionStreamAssignment::AsyncExecutionStreamIds>
 ExecutionStreamAssignment::GetAsyncExecutionStreamIds(
     const HloInstruction* instruction) const {
-  TF_ASSIGN_OR_RETURN(bool is_async_collective, IsAsyncCollective(instruction));
+  TF_XLA_ASSIGN_OR_RETURN(bool is_async_collective, IsAsyncCollective(instruction));
   CHECK(instruction->IsAsynchronous() ||
         instruction->opcode() == HloOpcode::kCopyStart || is_async_collective);
   auto streams = async_instructions_.find(instruction);

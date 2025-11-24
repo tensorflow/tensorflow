@@ -112,7 +112,7 @@ TiledHloInstruction::Create(
     llvm::SmallVector<int64_t> tile_sizes,
     llvm::SmallVector<int64_t> tile_strides,
     std::optional<IndexingMap> tile_offsets_indexing) {
-  TF_RETURN_IF_ERROR(VerifyTiledHloInstructionConstructorPreconditions(
+  TF_XLA_RETURN_IF_ERROR(VerifyTiledHloInstructionConstructorPreconditions(
       hlo, tile_sizes, tile_strides, tile_offsets_indexing, runtime_variables));
 
   return absl::WrapUnique(new TiledHloInstruction(

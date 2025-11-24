@@ -413,7 +413,7 @@ class BlasSupport {
       int batch_count, blas::ComputationType computation_type,
       blas::AlgorithmType algorithm, const EngineOptions& engine_options,
       blas::ProfileResult* output_profile_result, blas::CallContext context) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
             computation_type));
 
@@ -495,7 +495,7 @@ class BlasSupport {
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,
       const EngineOptions& engine_options,
       blas::ProfileResult* output_profile_result, blas::CallContext context) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
             computation_type));
 

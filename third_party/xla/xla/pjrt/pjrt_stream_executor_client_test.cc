@@ -57,9 +57,9 @@ using ::testing::HasSubstr;
 
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+  TF_XLA_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("Host"));
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+  TF_XLA_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       platform->ExecutorForDevice(0));
   auto device_state = std::make_unique<LocalDeviceState>(
       executor, local_client, LocalDeviceState::kSynchronous,
@@ -94,9 +94,9 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
   auto d = Add(c, c);
   Tuple(&builder, {c, d});
   set_up_aliases(builder);
-  TF_ASSIGN_OR_RETURN(auto computation,
+  TF_XLA_ASSIGN_OR_RETURN(auto computation,
                       builder.Build(/*remove_dynamic_dimensions=*/true));
-  TF_ASSIGN_OR_RETURN(auto executable,
+  TF_XLA_ASSIGN_OR_RETURN(auto executable,
                       client.CompileAndLoad(computation, compile_options));
   return executable;
 }
@@ -104,13 +104,13 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
 absl::Status ExecuteWithSameInputBuffer(
     absl::AnyInvocable<void(XlaBuilder&)> set_up_aliases) {
   auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
-  TF_ASSIGN_OR_RETURN(auto client, GetClient());
+  TF_XLA_ASSIGN_OR_RETURN(auto client, GetClient());
   TF_RET_CHECK(!client->addressable_devices().empty());
   auto* device0 = client->addressable_devices().front();
-  TF_ASSIGN_OR_RETURN(auto buffer,
+  TF_XLA_ASSIGN_OR_RETURN(auto buffer,
                       client->CreateUninitializedBuffer(
                           shape, *device0->default_memory_space()));
-  TF_ASSIGN_OR_RETURN(auto executable,
+  TF_XLA_ASSIGN_OR_RETURN(auto executable,
                       ToyExecutable(*client, shape, std::move(set_up_aliases)));
   xla::ExecuteOptions options;
   return executable->Execute({{buffer.get(), buffer.get()}}, options).status();

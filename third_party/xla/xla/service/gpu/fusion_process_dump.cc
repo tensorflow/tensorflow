@@ -104,7 +104,7 @@ absl::StatusOr<FusionProcessDump> FusionProcessDump::LoadFromFile(
     const std::string& path) {
   std::string format = std::string(tsl::io::Extension(path));
   std::string data;
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
+  TF_XLA_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return FusionProcessDump::LoadFromData(data, format);
 }
 
@@ -131,12 +131,12 @@ absl::StatusOr<FusionProcessDump> FusionProcessDump::LoadFromData(
 
 absl::StatusOr<FusionProcessDump> FusionProcessDump::LoadFromProto(
     const FusionProcessDumpProto& fusion_process_dump_proto) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto module,
       LoadModuleFromData(fusion_process_dump_proto.hlo_module_before_fusion(),
                          /*format=*/"txt"));
 
-  TF_ASSIGN_OR_RETURN(se::DeviceDescription gpu_device_info,
+  TF_XLA_ASSIGN_OR_RETURN(se::DeviceDescription gpu_device_info,
                       se::DeviceDescription::FromProto(
                           fusion_process_dump_proto.gpu_device_info()));
 

@@ -99,7 +99,7 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
                                               lhs_dimensions.end());
       new_lhs_dimensions.push_back(1);
       Shape new_lhs_shape(lhs_shape.element_type(), new_lhs_dimensions);
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           *new_lhs_shape.mutable_layout(),
           GetLayoutWithNewMinorMostDimension(lhs_shape.layout()));
       new_lhs = computation->AddInstruction(
@@ -114,7 +114,7 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
                                               rhs_dimensions.end());
       new_rhs_dimensions.push_back(1);
       Shape new_rhs_shape(rhs_shape.element_type(), new_rhs_dimensions);
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           *new_rhs_shape.mutable_layout(),
           GetLayoutWithNewMinorMostDimension(rhs_shape.layout()));
       new_rhs = computation->AddInstruction(
@@ -137,7 +137,7 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     Shape new_out_shape(dot->shape().element_type(), new_out_dimensions);
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         *new_out_shape.mutable_layout(),
         GetLayoutWithNewMinorMostDimension(dot->shape().layout()));
 
@@ -164,7 +164,7 @@ absl::StatusOr<bool> GemvRewriter::RunImpl(
   GemvRewriterVisitor gemv_rewriter;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_RETURN_IF_ERROR(computation->Accept(&gemv_rewriter));
+    TF_XLA_RETURN_IF_ERROR(computation->Accept(&gemv_rewriter));
   }
   return gemv_rewriter.changed();
 }

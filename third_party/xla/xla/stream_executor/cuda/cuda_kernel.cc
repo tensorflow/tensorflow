@@ -65,7 +65,7 @@ absl::StatusOr<int32_t> CudaKernel::GetMaxOccupiedBlocksPerCore(
   std::unique_ptr<ActivateContext> activation = executor_->Activate();
 
   int max_blocks;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
+  TF_XLA_RETURN_IF_ERROR(cuda::ToStatus(
       cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
           &max_blocks, gpu_function_, threads_per_block,
           dynamic_shared_memory_bytes, CU_OCCUPANCY_DISABLE_CACHING_OVERRIDE),
@@ -77,11 +77,11 @@ absl::StatusOr<int32_t> CudaKernel::GetMaxOccupiedBlocksPerCore(
 absl::StatusOr<KernelMetadata> CudaKernel::GetKernelMetadata() {
   KernelMetadata kernel_metadata;
   int value;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       GetCudaAttribute(CU_FUNC_ATTRIBUTE_NUM_REGS, gpu_function_, &value));
   kernel_metadata.set_registers_per_thread(value);
 
-  TF_RETURN_IF_ERROR(GetCudaAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
+  TF_XLA_RETURN_IF_ERROR(GetCudaAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
                                       gpu_function_, &value));
   kernel_metadata.set_shared_memory_bytes(value);
   return kernel_metadata;
@@ -132,7 +132,7 @@ absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
           "memory arguments array");
     }
 
-    TF_ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
+    TF_XLA_ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
     return launch(*packed);
   }
 

@@ -78,7 +78,7 @@ namespace {
 absl::StatusOr<std::unique_ptr<HloModule>> GetModule(
     const std::string& hlo_file) {
   std::string hlo_text;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), hlo_file, &hlo_text));
   return ParseAndReturnUnverifiedModule(hlo_text);
 }
@@ -86,24 +86,24 @@ absl::StatusOr<std::unique_ptr<HloModule>> GetModule(
 absl::Status Autotune(HloModule& module, const std::string& cache_dir,
                       const std::string& autotune_cache_mode_str,
                       mlir::MLIRContext* mlir_context) {
-  TF_ASSIGN_OR_RETURN(std::string platform_name,
+  TF_XLA_ASSIGN_OR_RETURN(std::string platform_name,
                       PlatformUtil::CanonicalPlatformName("gpu"));
 
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+  TF_XLA_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::PlatformManager::PlatformWithName(
                           absl::AsciiStrToUpper(platform_name)));
   if (platform->VisibleDeviceCount() == 0) {
     return absl::InternalError("No devices found");
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                       xla::Compiler::GetForPlatform(platform));
   se::StreamExecutor* stream_executor = platform->ExecutorForDevice(0).value();
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   Compiler::GpuTargetConfig target_config(stream_executor);
 
   auto& registry = stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
-  TF_ASSIGN_OR_RETURN(const GetCodegenBackends::Type& get_codegen_backends,
+  TF_XLA_ASSIGN_OR_RETURN(const GetCodegenBackends::Type& get_codegen_backends,
                       registry.FindObject<GetCodegenBackends>(platform->id()));
   std::vector<std::unique_ptr<CodegenBackend>> backends =
       get_codegen_backends(stream_executor, &debug_options, compiler.get(),
@@ -139,7 +139,7 @@ absl::Status Autotune(HloModule& module, const std::string& cache_dir,
   }
 
   AutotuneConfig autotune_config;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,
       Autotuner::Create(std::move(backends), std::move(profiler),
                         autotune_config, std::move(cache), &thread_pool));

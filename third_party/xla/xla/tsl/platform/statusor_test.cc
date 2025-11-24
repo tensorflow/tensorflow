@@ -716,12 +716,12 @@ absl::StatusOr<int> GetError() {
 }
 
 absl::StatusOr<int> PropagateError() {
-  TF_ASSIGN_OR_RETURN(int a, GetError());
+  TF_XLA_ASSIGN_OR_RETURN(int a, GetError());
   return a;
 }
 
 absl::StatusOr<int> PropagateError2() {
-  TF_ASSIGN_OR_RETURN(int a, PropagateError());
+  TF_XLA_ASSIGN_OR_RETURN(int a, PropagateError());
   return a;
 }
 

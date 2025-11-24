@@ -57,13 +57,13 @@ absl::StatusOr<HloInstruction*> FlattenAndTransposeUpdates(
   }
   // Followed by the update_window_dims.
   absl::c_copy(update_window_dims, std::back_inserter(permutation));
-  TF_ASSIGN_OR_RETURN(updates, MaybeTranspose(updates, permutation));
+  TF_XLA_ASSIGN_OR_RETURN(updates, MaybeTranspose(updates, permutation));
 
   // Collapse scatter dimensions to one.
   if (num_scatter_dims > 1) {
-    TF_ASSIGN_OR_RETURN(updates, CollapseFirstNDims(updates, num_scatter_dims));
+    TF_XLA_ASSIGN_OR_RETURN(updates, CollapseFirstNDims(updates, num_scatter_dims));
   } else if (num_scatter_dims == 0) {
-    TF_ASSIGN_OR_RETURN(updates, InsertDegenerateDims(updates, {0}));
+    TF_XLA_ASSIGN_OR_RETURN(updates, InsertDegenerateDims(updates, {0}));
   }
 
   // Insert size 1 dimensions.
@@ -73,7 +73,7 @@ absl::StatusOr<HloInstruction*> FlattenAndTransposeUpdates(
     for (int64_t i : inserted_window_dims) {
       new_dims.push_back(i + 1);
     }
-    TF_ASSIGN_OR_RETURN(updates, InsertDegenerateDims(updates, new_dims));
+    TF_XLA_ASSIGN_OR_RETURN(updates, InsertDegenerateDims(updates, new_dims));
   }
 
   return updates;
@@ -103,7 +103,7 @@ absl::StatusOr<std::vector<HloInstruction*>> TransformScatterUpdates(
   const auto& attrs = scatter->scatter_dimension_numbers();
   scatter_updates.reserve(scatter->scatter_updates().size());
   for (auto* update : scatter->scatter_updates()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         scatter_updates.emplace_back(),
         FlattenAndTransposeUpdates(update, attrs.update_window_dims(),
                                    attrs.inserted_window_dims(),
@@ -158,8 +158,8 @@ absl::StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
     auto* call_op = scatter->AddInstruction(HloInstruction::CreateCall(
         scatter->shape(), scatter_operands_and_updates, called_computation));
     call_op->set_original_value(scatter->original_value());
-    TF_RETURN_IF_ERROR(scatter->ReplaceAllUsesWith(call_op));
-    TF_ASSIGN_OR_RETURN(auto map, CallInliner::Inline(call_op));
+    TF_XLA_RETURN_IF_ERROR(scatter->ReplaceAllUsesWith(call_op));
+    TF_XLA_ASSIGN_OR_RETURN(auto map, CallInliner::Inline(call_op));
     return map[call_op];
   }
 
@@ -169,14 +169,14 @@ absl::StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
                                         operand_rank);
   auto update_permutation = MakeUpdatePermutation(operand_permutation);
 
-  TF_ASSIGN_OR_RETURN(auto* scatter_indices,
+  TF_XLA_ASSIGN_OR_RETURN(auto* scatter_indices,
                       TransformStartIndices(scatter->scatter_indices(),
                                             attrs.index_vector_dim()));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto scatter_updates,
       TransformScatterUpdates(scatter, update_permutation,
                               scatter_indices->shape().dimensions(0)));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto scatter_operands,
       MaybeTranspose(scatter->scatter_operands(), operand_permutation));
 
@@ -212,9 +212,9 @@ absl::StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
   std::vector<HloInstruction*> result_items;
   result_items.reserve(scatter->scatter_operands().size());
   for (int i = 0; i < scatter->scatter_operands().size(); ++i) {
-    TF_ASSIGN_OR_RETURN(result_items.emplace_back(),
+    TF_XLA_ASSIGN_OR_RETURN(result_items.emplace_back(),
                         MakeGetTupleElementHlo(result, i));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         result_items.back(),
         MaybeTranspose(result_items.back(), operand_permutation_inverse));
   }

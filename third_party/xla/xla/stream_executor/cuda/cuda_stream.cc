@@ -79,10 +79,10 @@ absl::StatusOr<CUstream> CreateStream(StreamExecutor* executor, int priority) {
   // the default priority for backward compatibility. Probably there is no
   // difference in using the new api call but leaving it as is for now.
   if (priority == 0) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         cuda::ToStatus(cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING)));
   } else {
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
+    TF_XLA_RETURN_IF_ERROR(cuda::ToStatus(
         cuStreamCreateWithPriority(&stream, CU_STREAM_NON_BLOCKING, priority)));
   }
 
@@ -95,7 +95,7 @@ absl::StatusOr<bool> StreamIsCapturing(CUstream stream) {
   VLOG(2) << "Checking if stream " << stream << " is capturing";
 
   CUstreamCaptureStatus status;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuStreamIsCapturing(stream, &status),
+  TF_XLA_RETURN_IF_ERROR(cuda::ToStatus(cuStreamIsCapturing(stream, &status),
                                     "Failed to check stream capturing status"));
 
   return status == CU_STREAM_CAPTURE_STATUS_ACTIVE;
@@ -106,7 +106,7 @@ absl::Status AsynchronousMemcpyD2H(StreamExecutor* executor, void* host_dst,
                                    CUstream stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       cuda::ToStatus(cuMemcpyDtoHAsync(host_dst, gpu_src, size, stream)));
 
   VLOG(2) << "successfully enqueued async memcpy d2h of " << size
@@ -119,7 +119,7 @@ absl::Status AsynchronousMemcpyH2D(StreamExecutor* executor,
                                    CUdeviceptr gpu_dst, const void* host_src,
                                    uint64_t size, CUstream stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       cuda::ToStatus(cuMemcpyHtoDAsync(gpu_dst, host_src, size, stream)));
 
   VLOG(2) << "successfully enqueued async memcpy h2d of " << size << " bytes"
@@ -135,12 +135,12 @@ absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
 
   // In graph capture mode we never have operations that access peer memory, so
   // we can always make a call to cuMemcpyDtoDAsync.
-  TF_ASSIGN_OR_RETURN(bool is_capturing, StreamIsCapturing(stream));
+  TF_XLA_ASSIGN_OR_RETURN(bool is_capturing, StreamIsCapturing(stream));
 
   if ((gpu_dst == 0 || gpu_src == 0) || is_capturing) {
     // GetContextMap()->GetAnyContext() doesn't work when ptr == 0.
     // This happens when the size is 0.
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         cuda::ToStatus(cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream)));
   } else {
     // Any context work here.
@@ -152,10 +152,10 @@ absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
     if (dst_context == src_context) {
       // Since the CUDA context is the same, the src and dst are within the same
       // GPU. So we can use cuMemcpyDtoD.
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           cuda::ToStatus(cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream)));
     } else {
-      TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemcpyPeerAsync(
+      TF_XLA_RETURN_IF_ERROR(cuda::ToStatus(cuMemcpyPeerAsync(
           gpu_dst, dst_context, gpu_src, src_context, size, stream)));
     }
   }
@@ -179,10 +179,10 @@ absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
     return executor->GetGpuStreamPriority(
         std::get<StreamPriority>(priority.value_or(StreamPriority::Default)));
   }();
-  TF_ASSIGN_OR_RETURN(auto stream_handle,
+  TF_XLA_ASSIGN_OR_RETURN(auto stream_handle,
                       CreateStream(executor, stream_priority));
 
-  TF_ASSIGN_OR_RETURN(auto completed_event,
+  TF_XLA_ASSIGN_OR_RETURN(auto completed_event,
                       CudaEvent::Create(executor,
                                         /*allow_timing=*/false));
 
@@ -193,7 +193,7 @@ absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
 absl::Status CudaStream::WaitFor(Stream* other) {
   CudaStream* other_stream = static_cast<CudaStream*>(other);
 
-  TF_RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
+  TF_XLA_RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
   return WaitStreamOnEvent(executor_, stream_handle_,
                            other_stream->completed_event_.GetHandle());
 }
@@ -256,7 +256,7 @@ absl::Status CudaStream::BlockHostUntilDone() {
   TraceMe trace(
       [] { return TraceMeEncode("CudaStream::BlockHostUntilDone", {}); },
       /*level=*/TraceMeLevel::kVerbose);
-  TF_RETURN_IF_ERROR(SynchronizeStream(executor_, stream_handle_));
+  TF_XLA_RETURN_IF_ERROR(SynchronizeStream(executor_, stream_handle_));
   absl::MutexLock lock(mutex_);
   mutex_.Await(absl::Condition(&no_pending_host_callbacks_));
   return absl::OkStatus();
@@ -340,7 +340,7 @@ absl::Status CudaStream::DoHostCallbackWithStatus(
           no_pending_host_callbacks_ = num_pending_host_callbacks_ <= 0;
         }
       });
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
+  TF_XLA_RETURN_IF_ERROR(cuda::ToStatus(
       cuLaunchHostFunc(stream_handle_, InternalHostCallback, callback_ptr)));
   int num_pending_host_callbacks =
       num_pending_host_callbacks_.fetch_add(1, std::memory_order_acq_rel) + 1;
@@ -374,12 +374,12 @@ absl::Status LaunchCudaKernel(
   // should be moved one level up to se::Kernel level, and done just once (or
   // updated once we get a new larger shared memory request).
   if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
+    TF_XLA_RETURN_IF_ERROR(cuda::ToStatus(
         cuFuncSetAttribute(function,
                            CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                            shared_mem_bytes),
         "Failed to set shared memory size"));
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
+    TF_XLA_RETURN_IF_ERROR(cuda::ToStatus(
         cuFuncSetCacheConfig(function, CU_FUNC_CACHE_PREFER_SHARED)));
   }
 
@@ -421,12 +421,12 @@ absl::Status LaunchCudaKernel(
   // should be moved one level up to se::Kernel level, and done just once (or
   // updated once we get a new larger shared memory request).
   if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
+    TF_XLA_RETURN_IF_ERROR(cuda::ToStatus(
         cuFuncSetAttribute(function,
                            CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                            shared_mem_bytes),
         "Failed to set shared memory size"));
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
+    TF_XLA_RETURN_IF_ERROR(cuda::ToStatus(
         cuFuncSetCacheConfig(function, CU_FUNC_CACHE_PREFER_SHARED)));
   }
 

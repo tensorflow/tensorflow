@@ -53,7 +53,7 @@ absl::Status CheckImplementableInst(const HloAllGatherInstruction* inst) {
   for (HloInstruction* operand : inst->operands()) {
     const Shape& shape = operand->shape();
 
-    TF_RETURN_IF_ERROR(IsValidOperand(shape, Thunk::kAllGather));
+    TF_XLA_RETURN_IF_ERROR(IsValidOperand(shape, Thunk::kAllGather));
 
     if (!ShapeUtil::IsEffectivelyMostMajorDimension(
             shape, inst->all_gather_dimension())) {
@@ -94,11 +94,11 @@ AllGatherStartThunk::AllGatherStartThunk(ThunkInfo thunk_info,
 absl::StatusOr<bool> AllGatherStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       xla::gpu::RunAllGather(device_buffers, stream, comm_handle.comm,
                              config_.config.use_symmetric_buffer));
   return true;
@@ -109,13 +109,13 @@ absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
                           bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "[" << device_ordinal << "] Performing all-gather";
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
+  TF_XLA_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
                                           use_symmetric_buffer));
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
   Future<> future = gpu_comm->GroupExecute(
       [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
         for (DeviceBufferPair& buffer : buffers) {
-          TF_RETURN_IF_ERROR(comm->LaunchAllGather(
+          TF_XLA_RETURN_IF_ERROR(comm->LaunchAllGather(
               buffer.source_buffer, buffer.destination_buffer,
               buffer.element_type, buffer.element_count,
               GpuCollectives::On(stream)));
@@ -123,7 +123,7 @@ absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
         return absl::OkStatus();
       });
 
-  TF_RETURN_IF_ERROR(future.Await());
+  TF_XLA_RETURN_IF_ERROR(future.Await());
   VLOG(3) << "[" << device_ordinal
           << "] Done performing all-gather for ordinal: " << device_ordinal;
   return absl::OkStatus();

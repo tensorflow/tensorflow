@@ -70,7 +70,7 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
   options.fill_status = proto.fill_status();
   options.execution_stream_id = proto.execution_stream_id();
   if (proto.has_custom_options()) {
-    TF_ASSIGN_OR_RETURN(options.custom_options,
+    TF_XLA_ASSIGN_OR_RETURN(options.custom_options,
                         AttributeMap::FromProto(proto.custom_options()));
   }
   return options;

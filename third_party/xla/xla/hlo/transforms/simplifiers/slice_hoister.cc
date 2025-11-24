@@ -70,7 +70,7 @@ absl::StatusOr<bool> TryHoistSliceThroughTranspose(
   HloInstruction* new_transpose =
       computation->AddInstruction(HloInstruction::CreateTranspose(
           slice_instruction->shape(), new_slice, dimensions_permutation));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       computation->ReplaceInstruction(slice_instruction, new_transpose));
   return true;
 }
@@ -111,7 +111,7 @@ absl::StatusOr<bool> TryHoistSliceThroughElementwiseBinaryOperation(
           slice_instruction->shape(), rhs, slice_instruction->slice_starts(),
           slice_instruction->slice_limits(),
           slice_instruction->slice_strides()));
-  TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+  TF_XLA_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
       slice_instruction, HloInstruction::CreateBinary(
                              slice_instruction->shape(),
                              slice_operand->opcode(), lhs_slice, rhs_slice)));
@@ -130,7 +130,7 @@ absl::StatusOr<bool> TryHoistingSlice(HloInstruction* instruction,
   auto hoisting_functions = {TryHoistSliceThroughElementwiseBinaryOperation,
                              TryHoistSliceThroughTranspose};
   for (auto hoisting_function : hoisting_functions) {
-    TF_ASSIGN_OR_RETURN(bool changed,
+    TF_XLA_ASSIGN_OR_RETURN(bool changed,
                         hoisting_function(slice_instruction, computation));
     if (changed) {
       return true;
@@ -161,7 +161,7 @@ absl::StatusOr<bool> HoistSliceOperations(HloComputation* computation) {
     std::vector<HloInstruction*> instructions =
         computation->MakeInstructionPostOrder();
     for (HloInstruction* instruction : instructions) {
-      TF_ASSIGN_OR_RETURN(bool instruction_changed,
+      TF_XLA_ASSIGN_OR_RETURN(bool instruction_changed,
                           TryHoistingSlice(instruction, computation));
       if (instruction_changed) {
         changed_on_last_iteration = true;
@@ -180,7 +180,7 @@ absl::StatusOr<bool> SliceHoister::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool changed_computation,
+    TF_XLA_ASSIGN_OR_RETURN(bool changed_computation,
                         HoistSliceOperations(computation));
     changed |= changed_computation;
   }

@@ -1988,12 +1988,12 @@ static absl::StatusOr<std::string> CompressAndEncode(absl::string_view input) {
   auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
   tsl::io::ZlibOutputBuffer gz_file(&f, gz_opts.input_buffer_size,
                                     gz_opts.output_buffer_size, gz_opts);
-  TF_RETURN_IF_ERROR(gz_file.Init());
-  TF_RETURN_IF_ERROR(gz_file.Append(input));
-  TF_RETURN_IF_ERROR(gz_file.Close());
+  TF_XLA_RETURN_IF_ERROR(gz_file.Init());
+  TF_XLA_RETURN_IF_ERROR(gz_file.Append(input));
+  TF_XLA_RETURN_IF_ERROR(gz_file.Close());
 
   std::string encoded;
-  TF_RETURN_IF_ERROR(tsl::Base64Encode(compressed, &encoded));
+  TF_XLA_RETURN_IF_ERROR(tsl::Base64Encode(compressed, &encoded));
   return absl::StrReplaceAll(encoded, {{"_", "/"}, {"-", "+"}});
 }
 
@@ -2024,7 +2024,7 @@ absl::StatusOr<std::string> WrapFusionExplorer(
                                  EscapeJSONString(p.to_highlight)));
       });
 
-  TF_ASSIGN_OR_RETURN(std::string dot_graphs_compressed,
+  TF_XLA_ASSIGN_OR_RETURN(std::string dot_graphs_compressed,
                       CompressAndEncode(dot_graphs));
 
   return absl::StrReplaceAll(

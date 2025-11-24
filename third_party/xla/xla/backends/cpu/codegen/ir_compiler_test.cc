@@ -119,7 +119,7 @@ TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
   auto add_module_with_options =
       [&](absl::string_view ir, absl::string_view name,
           const LlvmKernelOptions& options) -> absl::Status {
-    TF_ASSIGN_OR_RETURN(modules.emplace_back(),
+    TF_XLA_ASSIGN_OR_RETURN(modules.emplace_back(),
                         ParseModule(*context, ir, name));
 
     auto llvm_module = modules.back().get();

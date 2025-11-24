@@ -69,16 +69,16 @@ absl::Status HloDomainVerifier::RunContext::PopulateDomainKinds(
 absl::Status HloDomainVerifier::RunContext::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(4) << "Running HLO Domain Verifier";
-  TF_RETURN_IF_ERROR(PopulateDomainKinds(execution_threads));
+  TF_XLA_RETURN_IF_ERROR(PopulateDomainKinds(execution_threads));
   for (HloComputation* computation : module_->computations(execution_threads)) {
     for (auto& kind : verifier_->kinds_) {
       // First create the domain instruction sets. A domain instruction set is
       // the set of instructions whose edges never cross a kDomain instruction.
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDomainMap> domain_map,
+      TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloDomainMap> domain_map,
                           HloDomainMap::Create(computation, kind));
       // Verify every domain populated within the map.
       for (auto& domain : domain_map->GetDomains()) {
-        TF_RETURN_IF_ERROR(VerifyDomain(*domain).status());
+        TF_XLA_RETURN_IF_ERROR(VerifyDomain(*domain).status());
       }
     }
   }
@@ -89,7 +89,7 @@ absl::StatusOr<bool> HloDomainVerifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   RunContext run_context(module, this);
-  TF_RETURN_IF_ERROR(run_context.Run(execution_threads));
+  TF_XLA_RETURN_IF_ERROR(run_context.Run(execution_threads));
   return false;
 }
 

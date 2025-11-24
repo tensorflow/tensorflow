@@ -123,7 +123,7 @@ absl::StatusOr<std::unique_ptr<SortThunk>> SortThunk::Create(
     Info info, absl::Span<const Input> inputs, int64_t dimension,
     bool is_stable, LessThan less_than,
     std::optional<SortDirection> direction) {
-  TF_ASSIGN_OR_RETURN(auto sort_dims, VerifySortInputs(inputs, dimension));
+  TF_XLA_ASSIGN_OR_RETURN(auto sort_dims, VerifySortInputs(inputs, dimension));
   return absl::WrapUnique(new SortThunk(std::move(info), inputs, dimension,
                                         is_stable, std::move(less_than),
                                         sort_dims, direction));
@@ -133,7 +133,7 @@ absl::StatusOr<std::unique_ptr<SortThunk>> SortThunk::Create(
     Info info, absl::Span<const Input> inputs, int64_t dimension,
     bool is_stable, std::string comparator_name,
     std::optional<SortDirection> direction) {
-  TF_ASSIGN_OR_RETURN(auto sort_dims, VerifySortInputs(inputs, dimension));
+  TF_XLA_ASSIGN_OR_RETURN(auto sort_dims, VerifySortInputs(inputs, dimension));
   return absl::WrapUnique(new SortThunk(std::move(info), inputs, dimension,
                                         is_stable, std::move(comparator_name),
                                         sort_dims, direction));
@@ -218,7 +218,7 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
 
   for (const Input& input : inputs_) {
     size_t idx = data.size();
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         data.emplace_back(),
         params.buffer_allocations->GetDeviceAddress(input.slice));
     shapes.push_back(input.shape);
@@ -252,7 +252,7 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
     }
   });
 
-  TF_RETURN_IF_ERROR(less_than_.status());
+  TF_XLA_RETURN_IF_ERROR(less_than_.status());
   LessThan* less_than = &less_than_.value();
 
   SortInplace(sort_dims_, absl::MakeSpan(data), shapes, is_stable_, less_than,

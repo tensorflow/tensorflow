@@ -418,7 +418,7 @@ GetPossibleMatmulAutotuneTritonConfigs(
     const D& dot, const se::CudaComputeCapability& compute_capability,
     const se::SemanticVersion& toolkit_version,
     const DebugOptions& debug_options, MLIRContext* mlir_context) {
-  TF_ASSIGN_OR_RETURN(se::DeviceDescription device_description,
+  TF_XLA_ASSIGN_OR_RETURN(se::DeviceDescription device_description,
                       se::DeviceDescription::FromProto(
                           se::GpuDeviceInfoProto::default_instance()));
   device_description.set_gpu_compute_capability(
@@ -1417,7 +1417,7 @@ class KeyValueStoreForTest : public KeyValueStoreInterface {
       return v->second;
     }
 
-    TF_RETURN_IF_ERROR(Set(key, dummy_value_));
+    TF_XLA_RETURN_IF_ERROR(Set(key, dummy_value_));
     return dummy_value_;
   }
 
@@ -1451,7 +1451,7 @@ class KeyValueStoreForTest : public KeyValueStoreInterface {
 // Produces dummy autotuning results for the provided cache key.
 absl::StatusOr<AutotuneResults> GetDummyAutotuneResultsForCacheKey(
     const AutotuneCacheKey& cache_key) {
-  TF_ASSIGN_OR_RETURN(AutotuneResults autotune_results,
+  TF_XLA_ASSIGN_OR_RETURN(AutotuneResults autotune_results,
                       ParseTextProto<AutotuneResults>(R"pb(
                         version: 3
                         results {
@@ -1474,7 +1474,7 @@ absl::StatusOr<AutotuneResults> GetDummyAutotuneResultsForCacheKey(
 // and for the provided number of processes.
 absl::StatusOr<MultiProcessKeyValueStore> KeyValueStoreFromAutotuneResults(
     const AutotuneResults& autotune_results, int process_count) {
-  TF_ASSIGN_OR_RETURN(std::string autotune_results_str,
+  TF_XLA_ASSIGN_OR_RETURN(std::string autotune_results_str,
                       AutotuneResultsToString(autotune_results,
                                               /*as_textproto=*/true));
 

@@ -168,7 +168,7 @@ absl::Status CombineReduceScatters(
                                        replacement->shape()),
           replacement));
     }
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         computation.ReplaceInstruction(to_combine[i], replacement));
   }
   return absl::OkStatus();
@@ -230,13 +230,13 @@ absl::StatusOr<bool> ReduceScatterCombiner::RunWithKeyCombiner(
               << computation->ToString();
       continue;
     }
-    TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
+    TF_XLA_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&](const HloInstruction* instruction) {
       return combine_key(instruction, *domain_map, combine_by_dim_);
     };
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool computation_changed,
         CombineInstructionsByKey<ReduceScatterCombiner::GroupKey>(
             computation, key_fn, &CombineReduceScatters,
@@ -259,7 +259,7 @@ ReduceScatterCombiner::ReduceScatterCombiner(int64_t combine_threshold_in_bytes,
 absl::StatusOr<bool> ReduceScatterCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       bool changed, RunWithKeyCombiner(module, execution_threads, CombineKey));
   return changed;
 }

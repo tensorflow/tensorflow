@@ -45,7 +45,7 @@ static absl::StatusOr<dnnl::graph::graph> CreateExpGraph(
                          {dst_tensor});
 
   dnnl::graph::graph g(dnnl::engine::kind::cpu);
-  ONEDNN_RETURN_IF_ERROR(g.add_op(exp_op));
+  ONEDNN_XLA_RETURN_IF_ERROR(g.add_op(exp_op));
   g.finalize();
 
   return g;

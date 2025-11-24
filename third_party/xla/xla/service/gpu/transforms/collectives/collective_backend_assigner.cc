@@ -88,7 +88,7 @@ absl::StatusOr<bool> CollectiveBackendAssigner::RunImpl(
         continue;
       }
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           GPUCommunicationType comm_type,
           GetCommunicationType(instr, num_visible_devices_per_process_,
                                gpu_version_));
@@ -107,7 +107,7 @@ absl::StatusOr<bool> CollectiveBackendAssigner::RunImpl(
         continue;
       }
 
-      TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+      TF_XLA_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                           instr->backend_config<GpuBackendConfig>());
       gpu_config.mutable_collective_backend_config()->set_backend(
           CollectiveBackendConfig::NVSHMEM);
@@ -115,7 +115,7 @@ absl::StatusOr<bool> CollectiveBackendAssigner::RunImpl(
       VLOG(1) << "CollectiveBackendAssigner: setting backend to NVSHMEM for "
               << instr->name();
 
-      TF_RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
+      TF_XLA_RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
       changed = true;
     }
   }

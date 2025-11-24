@@ -81,9 +81,9 @@ absl::Status FileSystem::IsDirectory(const std::string& name,
                                      TransactionToken* token) {
   // Check if path exists.
   // TODO(sami):Forward token to other methods once migration is complete.
-  TF_RETURN_IF_ERROR(FileExists(name));
+  TF_XLA_RETURN_IF_ERROR(FileExists(name));
   FileStatistics stat;
-  TF_RETURN_IF_ERROR(Stat(name, &stat));
+  TF_XLA_RETURN_IF_ERROR(Stat(name, &stat));
   if (stat.is_directory) {
     return absl::OkStatus();
   }

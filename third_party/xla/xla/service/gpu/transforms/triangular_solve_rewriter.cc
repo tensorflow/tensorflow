@@ -68,7 +68,7 @@ absl::StatusOr<bool> TriangularSolveRewriter::RunImpl(
           comp->AddInstruction(HloInstruction::CreateCustomCall(
               new_shape, instr->operands(), kTriangularSolveCallTarget));
       module->SetAndUniquifyInstrName(custom_call, "triangular-solve");
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           custom_call->set_backend_config(instr->triangular_solve_options()));
 
       // Preserve metadata from `instr`.
@@ -76,9 +76,9 @@ absl::StatusOr<bool> TriangularSolveRewriter::RunImpl(
       custom_call->set_frontend_attributes(instr->frontend_attributes());
 
       // Get the actual result out of the custom call's tuple.
-      TF_ASSIGN_OR_RETURN(HloInstruction * gte,
+      TF_XLA_ASSIGN_OR_RETURN(HloInstruction * gte,
                           MakeGetTupleElementHlo(custom_call, 0));
-      TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
+      TF_XLA_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
       changed = true;
     }
   }

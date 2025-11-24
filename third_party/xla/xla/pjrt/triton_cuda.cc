@@ -118,7 +118,7 @@ absl::StatusOr<std::string> GetLibdeviceDir() {
 }
 
 absl::Status LinkLibdevice(llvm::Module* module) {
-  TF_ASSIGN_OR_RETURN(auto libdevice_dir, GetLibdeviceDir());
+  TF_XLA_ASSIGN_OR_RETURN(auto libdevice_dir, GetLibdeviceDir());
   auto libdevice_path = tsl::io::JoinPath(libdevice_dir, "libdevice.10.bc");
 
   llvm::LLVMContext& ctx = module->getContext();
@@ -169,7 +169,7 @@ absl::StatusOr<std::string> LLVMToPTX(mlir::ModuleOp module,
     LLVMInitializeNVPTXTargetMC();
     LLVMInitializeNVPTXAsmPrinter();
   });
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto machine, CreateTargetMachine(llvmModule.get(), proc,
                                         /*enable_fp_fusion=*/false, features));
 
@@ -181,7 +181,7 @@ absl::StatusOr<std::string> LLVMToPTX(mlir::ModuleOp module,
                f.getName().starts_with("__nv_");
       });
   if (needsLibdevice) {
-    TF_RETURN_IF_ERROR(LinkLibdevice(llvmModule.get()));
+    TF_XLA_RETURN_IF_ERROR(LinkLibdevice(llvmModule.get()));
   }
 
   auto transformer = mlir::makeOptimizingTransformer(
@@ -229,7 +229,7 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
   mlir::PassManager pm(&context);
   pm.enableVerifier();
   mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto cuda_cc,
       stream_executor::CudaComputeCapability::FromString(arch_name));
   xla::gpu::CreateTritonPipeline(&pm,
@@ -242,7 +242,7 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
   auto shared_mem_bytes =
       (*module_op)->getAttrOfType<mlir::IntegerAttr>("ttg.shared").getInt();
 
-  TF_ASSIGN_OR_RETURN(auto ptx, LLVMToPTX(*module_op, arch_name));
+  TF_XLA_ASSIGN_OR_RETURN(auto ptx, LLVMToPTX(*module_op, arch_name));
 
   return CompilationResult{
       ptx,

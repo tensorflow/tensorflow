@@ -54,7 +54,7 @@ class AlgorithmCheckerVisitor : public ConstDfsHloVisitorWithDefault {
       const absl::flat_hash_set<absl::string_view>& execution_threads = {}) {
     for (HloComputation* computation :
          module->MakeNonfusionComputations(execution_threads)) {
-      TF_RETURN_IF_ERROR(computation->Accept(this));
+      TF_XLA_RETURN_IF_ERROR(computation->Accept(this));
     }
     return absl::OkStatus();
   }
@@ -100,7 +100,7 @@ class AlgorithmCheckerVisitor : public ConstDfsHloVisitorWithDefault {
 absl::StatusOr<bool> AlgorithmChecker::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_RETURN_IF_ERROR(AlgorithmCheckerVisitor(gpu_compute_capability_)
+  TF_XLA_RETURN_IF_ERROR(AlgorithmCheckerVisitor(gpu_compute_capability_)
                          .RunOnModule(module, execution_threads));
   // No change was made.
   return false;

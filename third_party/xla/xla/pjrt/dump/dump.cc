@@ -56,7 +56,7 @@ absl::StatusOr<std::string> GetDumpSubdirPath(absl::string_view dump_to_path,
   std::string timestamp = std::to_string(absl::ToUnixMillis(now));
   std::string dump_subdir = tsl::io::JoinPath(
       dump_to_path, absl::StrCat(module_name, "_", timestamp));
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(dump_subdir));
+  TF_XLA_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(dump_subdir));
   return dump_subdir;
 }
 
@@ -64,11 +64,11 @@ absl::Status DumpCompileInputs(absl::string_view dump_to_path,
                                xla::CompileOptions compile_options,
                                mlir::ModuleOp module,
                                const xla::PjRtTopologyDescription& topology) {
-  TF_ASSIGN_OR_RETURN(std::string path, ResolveTestingDumpPath(dump_to_path));
+  TF_XLA_ASSIGN_OR_RETURN(std::string path, ResolveTestingDumpPath(dump_to_path));
   std::string module_name = module.getName().has_value()
                                 ? std::string(module.getName().value())
                                 : "unknown_module";
-  TF_ASSIGN_OR_RETURN(std::string dump_sub_dir,
+  TF_XLA_ASSIGN_OR_RETURN(std::string dump_sub_dir,
                       GetDumpSubdirPath(path, module_name));
 
   if (dump_sub_dir.empty()) {
@@ -78,7 +78,7 @@ absl::Status DumpCompileInputs(absl::string_view dump_to_path,
   // Dump module to file.
   std::string module_file_name = tsl::io::JoinPath(dump_sub_dir, "module.mlir");
   VLOG(3) << "Dumping module to " << module_file_name;
-  TF_RETURN_IF_ERROR(pjrt::MlirModuleToFile(module, module_file_name));
+  TF_XLA_RETURN_IF_ERROR(pjrt::MlirModuleToFile(module, module_file_name));
 
   // Dump compile options to file.
   std::string options_file_name =
@@ -87,7 +87,7 @@ absl::Status DumpCompileInputs(absl::string_view dump_to_path,
   // Unset xla_dump_to when dumping so that reproducers don't dump by default
   compile_options.executable_build_options.mutable_debug_options()
       ->clear_xla_dump_to();
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
+  TF_XLA_RETURN_IF_ERROR(tsl::WriteStringToFile(
       tsl::Env::Default(), options_file_name,
       compile_options.ToProto().value().SerializeAsString()));
 
@@ -95,8 +95,8 @@ absl::Status DumpCompileInputs(absl::string_view dump_to_path,
       tsl::io::JoinPath(dump_sub_dir, "topology.pb");
 
   VLOG(3) << "Dumping topology to " << topology_file_name;
-  TF_ASSIGN_OR_RETURN(auto topology_proto, topology.ToProto());
-  TF_RETURN_IF_ERROR(
+  TF_XLA_ASSIGN_OR_RETURN(auto topology_proto, topology.ToProto());
+  TF_XLA_RETURN_IF_ERROR(
       tsl::WriteStringToFile(tsl::Env::Default(), topology_file_name,
                              topology_proto.SerializeAsString()));
   return absl::OkStatus();

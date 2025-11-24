@@ -1116,7 +1116,7 @@ class ConvertToHloModule {
     // This is an invariant check as Run returns failure if there is no main
     // function and so the main proto shouldn't be consumed in that case.
     TF_RET_CHECK(main) << "requires module to have main function";
-    TF_ASSIGN_OR_RETURN(xla::XlaComputation computation,
+    TF_XLA_ASSIGN_OR_RETURN(xla::XlaComputation computation,
                         module_builder_.Build(lowered_computation_[main]));
     return std::move(*computation.mutable_proto());
   }
@@ -6451,13 +6451,13 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
     return absl::InternalError("Unable to convert StableHLO to MHLO");
   }
 
-  TF_RETURN_IF_ERROR(PrepareForExport(module));
+  TF_XLA_RETURN_IF_ERROR(PrepareForExport(module));
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder(kMain);
   ConvertToHloModule converter(module, module_builder, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
 
-  TF_ASSIGN_OR_RETURN(xla::HloModuleProto hlo_module,
+  TF_XLA_ASSIGN_OR_RETURN(xla::HloModuleProto hlo_module,
                       converter.ConsumeMainProto());
   StringRef module_name = module.getName() ? *module.getName() : kMain;
   hlo_module.set_name(module_name.str());
@@ -6540,11 +6540,11 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertMlirHloToHloModule(
     mlir::ModuleOp module, MlirToHloConversionOptions options) {
   xla::HloProto hlo_proto;
-  TF_RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hlo_proto, options));
+  TF_XLA_RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hlo_proto, options));
 
   // Create default config.
   const xla::HloModuleProto& module_proto = hlo_proto.hlo_module();
-  TF_ASSIGN_OR_RETURN(xla::HloModuleConfig config,
+  TF_XLA_ASSIGN_OR_RETURN(xla::HloModuleConfig config,
                       xla::HloModule::CreateModuleConfigFromProto(
                           module_proto, xla::GetDebugOptionsFromFlags()));
 
@@ -6559,7 +6559,7 @@ absl::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
                                  std::vector<xla::XlaOp>& returns,
                                  MlirToHloConversionOptions options) {
   auto module = block.getParentOp()->getParentOfType<mlir::ModuleOp>();
-  TF_RETURN_IF_ERROR(PrepareForExport(module));
+  TF_XLA_RETURN_IF_ERROR(PrepareForExport(module));
   // No tuple support in Builder converter API.
   options.return_tuple = false;
   options.use_tuple_args = false;

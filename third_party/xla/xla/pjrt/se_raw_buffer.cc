@@ -161,11 +161,11 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
                                          staging_buffer]() mutable {
             std::memcpy(staging_buffer.get(), src, transfer_size);
           };
-          TF_RETURN_IF_ERROR(stream->DoHostCallback(copy_to_staging_buffer));
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(stream->DoHostCallback(copy_to_staging_buffer));
+          TF_XLA_RETURN_IF_ERROR(
               stream->Memcpy(&sub_buffer, staging_buffer.get(), transfer_size));
         } else {
-          TF_RETURN_IF_ERROR(stream->Memcpy(&sub_buffer, src, transfer_size));
+          TF_XLA_RETURN_IF_ERROR(stream->Memcpy(&sub_buffer, src, transfer_size));
         }
       }
       return absl::OkStatus();
@@ -216,16 +216,16 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
               ptr,
               [host_memory_allocator = client->host_memory_allocator()](
                   void* ptr) { host_memory_allocator->DeallocateRaw(ptr); });
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(
               stream->Memcpy(staging_buffer.get(), sub_buffer, transfer_size));
           auto copy_from_staging_buffer = [dst, transfer_size,
                                            staging_buffer]() mutable {
             std::memcpy(dst, staging_buffer.get(), transfer_size);
           };
           // TODO(parkers): This failing maybe consitutes a race.
-          TF_RETURN_IF_ERROR(stream->DoHostCallback(copy_from_staging_buffer));
+          TF_XLA_RETURN_IF_ERROR(stream->DoHostCallback(copy_from_staging_buffer));
         } else {
-          TF_RETURN_IF_ERROR(stream->Memcpy(dst, sub_buffer, transfer_size));
+          TF_XLA_RETURN_IF_ERROR(stream->Memcpy(dst, sub_buffer, transfer_size));
         }
       }
       return absl::OkStatus();
@@ -398,7 +398,7 @@ absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
 PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
   auto* client =
       tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space_->client());
-  TF_ASSIGN_OR_RETURN(auto result,
+  TF_XLA_ASSIGN_OR_RETURN(auto result,
                       device_buffer_->GetDefinitionEvent(
                           client->thread_pool(), /*nullptr_if_past=*/false));
   if (!result) {
@@ -407,7 +407,7 @@ PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
     auto status =
         client->AllocateAndRecordEvent(result, local_device_, stream.get());
     local_device_->ReturnStreamToPool(std::move(stream));
-    TF_RETURN_IF_ERROR(status);
+    TF_XLA_RETURN_IF_ERROR(status);
   }
   return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(std::move(result));
 }

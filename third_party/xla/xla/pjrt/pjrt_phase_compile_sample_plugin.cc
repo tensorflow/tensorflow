@@ -192,7 +192,7 @@ SamplePhaseCompiler::Compile(xla::CompileOptions options, mlir::ModuleOp module,
 
 PJRT_Error* PJRT_PhaseCompile_Get_Compiler(
     PJRT_PhaseCompile_Get_Compiler_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_PhaseCompile_Get_Compiler_Args",
       PJRT_PhaseCompile_Get_Compiler_Args_STRUCT_SIZE, args->struct_size));
 
@@ -218,14 +218,14 @@ PJRT_PhaseCompile_Extension CreateSamplePhaseCompileExtension() {
 }
 
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_Create_Args", PJRT_Client_Create_Args_STRUCT_SIZE,
       args->struct_size));
 
   xla::CpuClientOptions options;
   options.cpu_device_count = 4;
 
-  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
+  PJRT_XLA_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetXlaPjrtCpuClient(std::move(options)));
   args->client = pjrt::CreateWrapperClient(std::move(client));
   return nullptr;

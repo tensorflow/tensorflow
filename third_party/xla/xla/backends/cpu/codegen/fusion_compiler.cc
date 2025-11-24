@@ -440,7 +440,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
   if (hooks_.pre_optimization) {
     hooks_.pre_optimization(mlir_module);
   }
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       RunPassPipeline(mlir_module, pm, nullptr, options_.verification_level));
 
   if (hooks_.post_lowering) {
@@ -495,7 +495,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
 absl::StatusOr<LlvmKernelSource> FusionCompiler::Compile(
     MlirKernelSource mlir_kernel_source) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
                       Compile(*llvm_context, mlir_kernel_source.module()));
   return LlvmKernelSource(std::move(llvm_context), std::move(llvm_module));
 }

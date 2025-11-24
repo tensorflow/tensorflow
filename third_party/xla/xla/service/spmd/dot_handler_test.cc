@@ -60,7 +60,7 @@ class DotHandlerTest : public HloHardwareIndependentTestBase {
     debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
     config.set_debug_options(debug_options);
 
-    TF_ASSIGN_OR_RETURN(auto module,
+    TF_XLA_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
 
     HloPassPipeline pass("partitioning");
@@ -80,7 +80,7 @@ class DotHandlerTest : public HloHardwareIndependentTestBase {
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
 
-    TF_RETURN_IF_ERROR(pass.Run(module.get()).status());
+    TF_XLA_RETURN_IF_ERROR(pass.Run(module.get()).status());
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 

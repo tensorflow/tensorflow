@@ -165,7 +165,7 @@ class TpuCompiler : public Compiler {
         ExecutorApiFn()->TpuExecutable_HloModuleFn(se_executables[0]);
     auto cleanup_c_module =
         absl::MakeCleanup([&c_module]() { ApiConverter::Destroy(&c_module); });
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         ApiConverter::FromC(c_module));
     std::shared_ptr<HloModule> module_shared(module.release());
     executables.emplace_back(std::make_unique<legacy::TpuExecutable>(

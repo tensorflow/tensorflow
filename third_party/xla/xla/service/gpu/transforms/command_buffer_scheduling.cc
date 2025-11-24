@@ -705,10 +705,10 @@ absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
 
   // Replace all users or original results with a command buffer results.
   if (has_single_result) {
-    TF_RETURN_IF_ERROR(command_buffer.results[0]->ReplaceAllUsesWith(call));
+    TF_XLA_RETURN_IF_ERROR(command_buffer.results[0]->ReplaceAllUsesWith(call));
   } else {
     for (int i = 0; i < command_buffer.results.size(); i++) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           command_buffer.results[i]->ReplaceAllUsesWith(parent->AddInstruction(
               HloInstruction::CreateGetTupleElement(call, i))));
     }
@@ -754,31 +754,31 @@ absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
         // we add control dependency between commands in the command buffer.
         HloInstruction* cmd_predecessor = it->second;
         if (IsParameter(cmd_predecessor)) {
-          TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(call));
+          TF_XLA_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(call));
         } else {
-          TF_RETURN_IF_ERROR(cmd_predecessor->AddControlDependencyTo(cmd_inst));
+          TF_XLA_RETURN_IF_ERROR(cmd_predecessor->AddControlDependencyTo(cmd_inst));
         }
       } else {
-        TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(call));
+        TF_XLA_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(call));
       }
     }
 
     for (HloInstruction* successor : inst->control_successors()) {
       if (auto it = inst_mapping.find(successor); it != inst_mapping.end()) {
         HloInstruction* cmd_successor = it->second;
-        TF_RETURN_IF_ERROR(cmd_inst->AddControlDependencyTo(cmd_successor));
+        TF_XLA_RETURN_IF_ERROR(cmd_inst->AddControlDependencyTo(cmd_successor));
       } else {
-        TF_RETURN_IF_ERROR(call->AddControlDependencyTo(successor));
+        TF_XLA_RETURN_IF_ERROR(call->AddControlDependencyTo(successor));
       }
     }
 
-    TF_RETURN_IF_ERROR(inst->DropAllControlDeps());
+    TF_XLA_RETURN_IF_ERROR(inst->DropAllControlDeps());
   }
 
   // Traverse in reverse order as original sequence was topologically sorted and
   // we can't remove instructions with users.
   for (int32_t i = seq.instructions().size() - 1; i >= 0; i--) {
-    TF_RETURN_IF_ERROR(parent->RemoveInstruction(seq.instructions()[i]));
+    TF_XLA_RETURN_IF_ERROR(parent->RemoveInstruction(seq.instructions()[i]));
   }
 
   absl::string_view call_prefix =
@@ -879,7 +879,7 @@ absl::StatusOr<bool> CommandBufferScheduling::RunImpl(
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(bool changed_,
+    TF_XLA_ASSIGN_OR_RETURN(bool changed_,
                         MoveParametersAndConstantsToFront(*comp));
     changed |= changed_;
     // The motivation for MoveGTEsRightAfterTupleDefinition is to ensure the
@@ -917,7 +917,7 @@ absl::StatusOr<bool> CommandBufferScheduling::RunImpl(
     // Moving the GTE right after `t` solves this, as command-buffers never
     // start with a GTE, so it's impossible for a command buffer to contain the
     // GTE but not the custom-call itself.
-    TF_ASSIGN_OR_RETURN(changed_, MoveGTEsRightAfterTupleDefinition(*comp));
+    TF_XLA_ASSIGN_OR_RETURN(changed_, MoveGTEsRightAfterTupleDefinition(*comp));
     changed |= changed_;
 
     std::vector<HloInstructionSequence> sequences =
@@ -926,9 +926,9 @@ absl::StatusOr<bool> CommandBufferScheduling::RunImpl(
             debug_options.xla_gpu_graph_min_graph_size());
 
     for (const HloInstructionSequence& seq : sequences) {
-      TF_ASSIGN_OR_RETURN(CommandBuffer command_buffer,
+      TF_XLA_ASSIGN_OR_RETURN(CommandBuffer command_buffer,
                           PrepareCommandBuffer(seq, comp->parent()));
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           HloComputation * command_buffer_computation,
           RewriteCommandBuffer(comp, seq, std::move(command_buffer)));
       changed = true;
@@ -944,7 +944,7 @@ absl::StatusOr<bool> CommandBufferScheduling::RunImpl(
       }
     }
   }
-  TF_RETURN_IF_ERROR(module->schedule().Update());
+  TF_XLA_RETURN_IF_ERROR(module->schedule().Update());
 
   if (VLOG_IS_ON(3)) {
     // Collect all instructions that are part of any created command buffer

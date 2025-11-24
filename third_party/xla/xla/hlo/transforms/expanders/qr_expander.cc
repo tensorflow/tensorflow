@@ -120,7 +120,7 @@ XlaOp Norm(std::vector<XlaOp> xs) {
 absl::Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
                    const int64_t m, XlaOp* v, XlaOp* tau, XlaOp* beta) {
   XlaBuilder* const builder = x.builder();
-  TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+  TF_XLA_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
   const PrimitiveType type = x_shape.element_type();
 
   std::vector<int64_t> batch_dim_ids(batch_dims.size());
@@ -210,7 +210,7 @@ absl::Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
 absl::StatusOr<QrDecomposition> QrExpander::QrBlock(
     XlaOp a, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  TF_XLA_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
   const int num_dims = a_shape.dimensions().size();
   if (num_dims < 2) {
     return InvalidArgument("Argument to QR must have rank >= 2; got shape %s",
@@ -239,7 +239,7 @@ absl::StatusOr<QrDecomposition> QrExpander::QrBlock(
     // v, tau, beta = house(a[:, j], j)
     auto x = DynamicSliceInMinorDims(a, {j}, {1});
     XlaOp v, tau, beta;
-    TF_RETURN_IF_ERROR(House(Collapse(x, {num_dims - 2, num_dims - 1}), j,
+    TF_XLA_RETURN_IF_ERROR(House(Collapse(x, {num_dims - 2, num_dims - 1}), j,
                              batch_dims, m, &v, &tau, &beta));
 
     const int64_t minor_dim = batch_dims.size();
@@ -302,7 +302,7 @@ absl::StatusOr<QrDecomposition> QrExpander::QrBlock(
       builder,
       ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {std::min(m, n)})));
 
-  TF_ASSIGN_OR_RETURN(auto values, ForEachIndex(std::min(m, n), S32, qr_body_fn,
+  TF_XLA_ASSIGN_OR_RETURN(auto values, ForEachIndex(std::min(m, n), S32, qr_body_fn,
                                                 {a, taus}, "qr", builder));
 
   QrDecomposition result;
@@ -365,7 +365,7 @@ absl::StatusOr<XlaOp> QrExpander::CompactWYRepresentation(
   vtv = Select(TriangleMask(vtv, 0), ZerosLike(vtv), vtv);
   vtv = (vtv + eye) * tau_scale;
 
-  TF_ASSIGN_OR_RETURN(auto values,
+  TF_XLA_ASSIGN_OR_RETURN(auto values,
                       ForEachIndex(n, S32, body_fn, {t, vtv}, "wy", builder));
   return values[0];
 }
@@ -386,7 +386,7 @@ absl::StatusOr<XlaOp> QrExpander::CompactWYRepresentation(
 absl::StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
     XlaOp a, int64_t block_size, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  TF_XLA_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
   const int num_dims = a_shape.dimensions().size();
   if (num_dims < 2) {
     return InvalidArgument("Arguments to QR must have rank >= 2: got shape %s",
@@ -416,7 +416,7 @@ absl::StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
     int64_t k = std::min(block_size, p - i);
 
     auto a_block = SliceInMinorDims(a, {i, i}, {m, i + k});
-    TF_ASSIGN_OR_RETURN(auto qr_block, QrBlock(a_block, precision));
+    TF_XLA_ASSIGN_OR_RETURN(auto qr_block, QrBlock(a_block, precision));
     auto y = Add(IdentityMatrix(builder, type, m - i, k),
                  Select(TriangleMask(qr_block.q_and_r, -1), qr_block.q_and_r,
                         ZerosLike(qr_block.q_and_r)),
@@ -427,7 +427,7 @@ absl::StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
 
     // Compute the I + Y @ T @ Y^t block representation of a product of
     // Householder matrices.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto t, CompactWYRepresentation(type, batch_dims, y, qr_block.taus,
                                         m - i, k, precision));
 
@@ -450,8 +450,8 @@ absl::StatusOr<XlaOp> QrExpander::ProductOfElementaryHouseholderReflectors(
     XlaOp a, XlaOp taus, int64_t block_size,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-  TF_ASSIGN_OR_RETURN(Shape taus_shape, builder->GetShape(taus));
+  TF_XLA_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  TF_XLA_ASSIGN_OR_RETURN(Shape taus_shape, builder->GetShape(taus));
   const int num_dims = a_shape.dimensions().size();
   if (num_dims < 2) {
     return InvalidArgument("Arguments to QR must have rank >= 2: got shape %s",
@@ -493,7 +493,7 @@ absl::StatusOr<XlaOp> QrExpander::ProductOfElementaryHouseholderReflectors(
     // Householder matrices.
     auto taus_block = SliceInMinorDims(taus, {i}, {i + k});
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto t, CompactWYRepresentation(type, batch_dims, y, taus_block, m - i,
                                         k, precision));
     // q[i:, i:] += y @ t @ (np.conj(y.T) @ q[i:, i:])
@@ -548,7 +548,7 @@ absl::StatusOr<HloInstruction*> QrExpander::ExpandInstruction(
     XlaOp result;
     if (instruction->custom_call_target() == kQrCustomCallName) {
       TF_RET_CHECK(instruction->operand_count() == 1);
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           result, BuildQrDecomposition(a,
                                        /*block_size=*/128,
                                        /*precision=*/PrecisionConfig::HIGHEST));
@@ -556,13 +556,13 @@ absl::StatusOr<HloInstruction*> QrExpander::ExpandInstruction(
       TF_RET_CHECK(instruction->operand_count() == 2);
       XlaOp taus =
           Parameter(&builder, 1, instruction->operand(1)->shape(), "taus");
-      TF_ASSIGN_OR_RETURN(result, ProductOfElementaryHouseholderReflectors(
+      TF_XLA_ASSIGN_OR_RETURN(result, ProductOfElementaryHouseholderReflectors(
                                       a, taus, /*block_size=*/128,
                                       /*precision=*/PrecisionConfig::HIGHEST));
     }
 
-    TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build(result));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build(result));
+    TF_XLA_ASSIGN_OR_RETURN(
         computation, XlaComputationToHloComputation(xla_computation, module));
   }
 

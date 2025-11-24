@@ -436,7 +436,7 @@ absl::StatusOr<bool> ConvPaddingLegalization::RunOnComputation(
     }
   }
   for (HloCustomCallInstruction* instruction : convs) {
-    TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(instruction));
+    TF_XLA_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(instruction));
     changed |= [&] {
       switch (kind) {
         case CudnnConvKind::kForward:
@@ -459,7 +459,7 @@ absl::StatusOr<bool> ConvPaddingLegalization::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    TF_XLA_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
   return changed;

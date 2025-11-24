@@ -460,7 +460,7 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
   if (output_shape.IsTuple()) {
     strategy_group = CreateTupleStrategyGroup(instruction_id);
     for (size_t i = 0; i < ins->shape().tuple_shapes().size(); ++i) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           std::unique_ptr<StrategyGroup> child_strategy,
           FollowReduceStrategy(
               ins, ins->shape().tuple_shapes().at(i), ins->operand(i),
@@ -2242,12 +2242,12 @@ absl::Status InsertReshardReshapes(
             << inst->ToString()
             << ", input shardings : " << input_shardings.ToString();
         if (input_shardings.shardings[0].has_value()) {
-          TF_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
+          TF_XLA_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
               inst, 0, *input_shardings.shardings[0], device_mesh,
               resharding_cache));
         }
         if (input_shardings.shardings[1].has_value()) {
-          TF_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
+          TF_XLA_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
               inst, 1, *input_shardings.shardings[1], device_mesh,
               resharding_cache));
         }
@@ -2285,7 +2285,7 @@ absl::Status InsertReshardReshapes(
                                             strategy_map, cost_graph, s_val);
               if (input_shardings.shardings.size() > i &&
                   input_shardings.shardings[i].has_value()) {
-                TF_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
+                TF_XLA_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
                     inst, i, *input_shardings.shardings[i], device_mesh,
                     resharding_cache));
               }
@@ -2299,7 +2299,7 @@ absl::Status InsertReshardReshapes(
                                             strategy_map, cost_graph, s_val);
               CHECK_EQ(input_shardings.shardings.size(), 1);
               CHECK(input_shardings.shardings[0].has_value());
-              TF_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
+              TF_XLA_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
                   inst, i, *input_shardings.shardings[0], device_mesh,
                   resharding_cache));
             }
@@ -2320,7 +2320,7 @@ absl::Status InsertReshardReshapes(
                 dst_shardings[i] = *input_shardings.shardings[0];
               }
             }
-            TF_RETURN_IF_ERROR(
+            TF_XLA_RETURN_IF_ERROR(
                 FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
                     inst, dst_shardings, device_mesh));
             break;
@@ -2343,7 +2343,7 @@ absl::Status InsertReshardReshapes(
           continue;
         }
         if (inst->opcode() == HloOpcode::kGetTupleElement) {
-          TF_RETURN_IF_ERROR(FixMixedMeshShapeReshardingGetTupleElement(
+          TF_XLA_RETURN_IF_ERROR(FixMixedMeshShapeReshardingGetTupleElement(
               inst, inst->sharding(), device_mesh, preserve_shardings));
           continue;
         }
@@ -2351,7 +2351,7 @@ absl::Status InsertReshardReshapes(
         for (size_t i = 0; i < inst->operand_count(); ++i) {
           if (input_shardings.shardings.size() > i &&
               input_shardings.shardings[i].has_value()) {
-            TF_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
+            TF_XLA_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
                 inst, i, *input_shardings.shardings[i], device_mesh,
                 resharding_cache));
           }
@@ -2622,13 +2622,13 @@ absl::Status SaveShardingForInstruction(
     return absl::OkStatus();
   };
 
-  TF_RETURN_IF_ERROR(save_sharding(inst));
+  TF_XLA_RETURN_IF_ERROR(save_sharding(inst));
 
   // Also preserve the shardings of copy  users of theinstruction.
   if (save_for_copy_users) {
     for (const auto user : inst->users()) {
       if (user->opcode() == HloOpcode::kCopy) {
-        TF_RETURN_IF_ERROR(save_sharding(user));
+        TF_XLA_RETURN_IF_ERROR(save_sharding(user));
       }
     }
   }
@@ -3134,7 +3134,7 @@ absl::Status GenerateReduceScatter(
     replace_with->set_sharding(
         GetShardingStrategy(inst, strategy_map, cost_graph, s_val)
             .output_sharding);
-    TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(replace_with));
+    TF_XLA_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(replace_with));
   }
   return absl::OkStatus();
 }
@@ -3328,14 +3328,14 @@ AutoShardingImplementation::SaveAndRemoveShardingAnnotation(
           inst->opcode() == HloOpcode::kRecvDone ||
           inst->opcode() == HloOpcode::kSend ||
           inst->opcode() == HloOpcode::kSendDone) {
-        TF_RETURN_IF_ERROR(spmd::SaveShardingForInstruction(
+        TF_XLA_RETURN_IF_ERROR(spmd::SaveShardingForInstruction(
             inst,
             /*save_for_copy_users=*/false, preserved_shardings));
         continue;
       }
       if (spmd::IsInstructionBeforeSPMDFullToShardShapeCustomCall(inst) ||
           spmd::IsSPMDShardToFullShapeCustomCall(inst)) {
-        TF_RETURN_IF_ERROR(spmd::SaveShardingForInstruction(
+        TF_XLA_RETURN_IF_ERROR(spmd::SaveShardingForInstruction(
             inst,
             /*save_for_copy_users=*/false, preserved_shardings));
       }
@@ -3357,7 +3357,7 @@ AutoShardingImplementation::SaveAndRemoveShardingAnnotation(
     for (const HloComputation* computation :
          module->computations(execution_threads)) {
       for (const auto inst : computation->instructions()) {
-        TF_RETURN_IF_ERROR(spmd::SaveShardingForInstruction(
+        TF_XLA_RETURN_IF_ERROR(spmd::SaveShardingForInstruction(
             inst,
             /*save_for_copy_users=*/true, preserved_shardings));
       }
@@ -3374,7 +3374,7 @@ AutoShardingImplementation::SaveAndRemoveShardingAnnotation(
       // they are small tensors
       if (replicated_small_tensors.count(ins->name())) {
         keep_inst.insert(ins);
-        TF_RETURN_IF_ERROR(spmd::SaveShardingForInstruction(
+        TF_XLA_RETURN_IF_ERROR(spmd::SaveShardingForInstruction(
             ins,
             /*save_for_copy_users=*/false, preserved_shardings));
         continue;
@@ -3387,7 +3387,7 @@ AutoShardingImplementation::SaveAndRemoveShardingAnnotation(
           is_entry_computation &&
           (ins->opcode() == HloOpcode::kParameter || ins->IsRoot())) {
         keep_inst.insert(ins);
-        TF_RETURN_IF_ERROR(spmd::SaveShardingForInstruction(
+        TF_XLA_RETURN_IF_ERROR(spmd::SaveShardingForInstruction(
             ins,
             /*save_for_copy_users=*/ins->opcode() == HloOpcode::kParameter,
             preserved_shardings));
@@ -3423,19 +3423,19 @@ absl::Status AutoShardingImplementation::CanonicalizeLayouts(
     LOG(INFO) << "There is no registered layout_canonicalization_callback.";
     return absl::OkStatus();
   }
-  TF_ASSIGN_OR_RETURN(auto layouts,
+  TF_XLA_ASSIGN_OR_RETURN(auto layouts,
                       module->layout_canonicalization_callback()(*module));
   std::vector<Shape>& argument_shapes = layouts.first;
   Shape& result_shape = layouts.second;
   ComputationLayout entry_computation_layout =
       module->config().entry_computation_layout();
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       entry_computation_layout.mutable_result_layout()->CopyLayoutFromShape(
           result_shape));
   CHECK_NE(entry_computation_layout.parameter_count(), 0);
   CHECK_EQ(argument_shapes.size(), entry_computation_layout.parameter_count());
   for (int32_t i = 0; i < entry_computation_layout.parameter_count(); i++) {
-    TF_RETURN_IF_ERROR(entry_computation_layout.mutable_parameter_layout(i)
+    TF_XLA_RETURN_IF_ERROR(entry_computation_layout.mutable_parameter_layout(i)
                            ->CopyLayoutFromShape(argument_shapes.at(i)));
   }
   *module->mutable_config().mutable_entry_computation_layout() =
@@ -3556,7 +3556,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
   // shardings to their input ops.
   absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>
       unspecified_dims;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       bool changed,
       ProcessShardingInstruction(
           module, execution_threads,
@@ -3583,7 +3583,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
   auto size_fn = [](const BufferValue& buffer) {
     return spmd::ByteSizeOfShape(buffer.shape());
   };
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloSchedule schedule,
       ScheduleModule(module, DFSMemoryScheduler(alias_info_, size_fn),
                      execution_threads));
@@ -3595,7 +3595,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
   // want to perform this resolution, we do not want to modify the module, which
   // is why we run the OptimizeInputOutputBufferAlias pass on a clone.
   std::unique_ptr<HloModule> module_clone = module->Clone("");
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       spmd::EnsureEntryComputationLayoutHasShapeLayouts(module_clone.get()));
   OptimizeInputOutputBufferAlias input_output_buffer_alias_optimizer(
       /* registered_buffer_donor_only */ true);
@@ -3606,7 +3606,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
   spmd::AliasMap alias_map =
       spmd::BuildAliasMap(module, input_output_alias_config);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<HloLiveRange> hlo_live_range,
       HloLiveRange::Run(schedule, *alias_analysis, entry_computation));
   absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>&
@@ -3625,7 +3625,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
   const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard =
       ComputeInstructionsToShard(*module, sequence);
 
-  TF_ASSIGN_OR_RETURN(SaveShardingAnnotationsResult saved_sharding_result,
+  TF_XLA_ASSIGN_OR_RETURN(SaveShardingAnnotationsResult saved_sharding_result,
                       SaveAndRemoveShardingAnnotation(
                           module, instructions_to_shard,
                           replicated_small_tensors, execution_threads));
@@ -3673,7 +3673,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
     spmd::DeviceMesh device_mesh(mesh_shape);
     if (mesh_idx != partial_mesh_shapes.size() - 1) {
       device_mesh.FillIota(0);
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           bool changed,
           spmd::AdjustShardingsWithPartialMeshShape(
               sequence.instructions(), instructions_to_shard, mesh_shape,
@@ -3733,7 +3733,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
     spmd::StrategyMap strategy_map;
     spmd::StrategyGroups strategy_groups;
     spmd::AssociativeDotPairs associative_dot_pairs;
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::tie(strategy_map, strategy_groups, associative_dot_pairs),
         BuildStrategyAndCost(sequence, module, instructions_to_shard,
                              instruction_execution_counts, ins_depth_map,
@@ -3742,7 +3742,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
                              option_.try_multiple_mesh_shapes));
     spmd::AliasSet alias_set =
         spmd::BuildAliasSet(module, input_output_alias_config, strategy_map);
-    TF_RETURN_IF_ERROR(RemoveFollowersIfMismatchedStrategies(
+    TF_XLA_RETURN_IF_ERROR(RemoveFollowersIfMismatchedStrategies(
         alias_set, strategy_groups, sequence,
         /* crash_at_error */ !option_.try_multiple_mesh_shapes));
     XLA_VLOG_LINES(8, PrintStrategyMap(strategy_map, sequence));
@@ -3753,7 +3753,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
 
     // ----- Call the ILP Solver -----
     std::string request_name = absl::StrCat("mesh_idx_", mesh_idx);
-    TF_ASSIGN_OR_RETURN(spmd::AutoShardingSolverOutput output,
+    TF_XLA_ASSIGN_OR_RETURN(spmd::AutoShardingSolverOutput output,
                         Solve(*module, *hlo_live_range, strategy_map,
                               strategy_groups, cost_graph, alias_set, option_,
                               request_name, sharding_propagation_solution));
@@ -3778,7 +3778,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
 
     // ----- Substitute all-reduce with reduce-scatter -----
     if (option_.prefer_reduce_scatter) {
-      TF_RETURN_IF_ERROR(GenerateReduceScatter(
+      TF_XLA_RETURN_IF_ERROR(GenerateReduceScatter(
           sequence, alias_map, ins_depth_map, strategy_map, cost_graph,
           output.s_val, cluster_env, option_));
     }
@@ -3787,9 +3787,9 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
                    output.s_val, (mesh_idx == partial_mesh_shapes.size() - 1));
 
     if (mesh_idx == partial_mesh_shapes.size() - 1) {
-      TF_RETURN_IF_ERROR(spmd::SetHloShardingPostProcessing(
+      TF_XLA_RETURN_IF_ERROR(spmd::SetHloShardingPostProcessing(
           sequence, instructions_to_shard, preserve_shardings));
-      TF_RETURN_IF_ERROR(InsertReshardReshapes(
+      TF_XLA_RETURN_IF_ERROR(InsertReshardReshapes(
           sequence, instructions_to_shard, strategy_map, cost_graph,
           output.s_val, cluster_env,
           /* crash_at_error */ !option_.try_multiple_mesh_shapes,
@@ -3811,7 +3811,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
   }
 
   // ----- Canonicalize layouts based on LayoutCanonicalizationCallback. -----
-  TF_RETURN_IF_ERROR(CanonicalizeLayouts(module));
+  TF_XLA_RETURN_IF_ERROR(CanonicalizeLayouts(module));
 
   for (HloInstruction* instruction : sequence.instructions()) {
     if (!instructions_to_shard.contains(instruction)) {
@@ -3880,7 +3880,7 @@ std::unique_ptr<HloModule> CloneModule(const HloModule* module) {
 
 absl::Status MoveComputationsFromModuleToModule(HloModule* from_module,
                                                 HloModule* to_module) {
-  TF_RETURN_IF_ERROR(from_module->RemoveUnusedComputations());
+  TF_XLA_RETURN_IF_ERROR(from_module->RemoveUnusedComputations());
   const std::vector<HloComputation*>& original_module_computations =
       to_module->MakeComputationSorted();
   const std::vector<HloComputation*>& clone_module_computations =
@@ -3975,8 +3975,8 @@ absl::StatusOr<bool> AutoSharding::RunImpl(
 
   absl::Time start_time = DumpModuleAndRecordPassStart(module);
 
-  TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
-  TF_RETURN_IF_ERROR(option_.CheckAndSetup());
+  TF_XLA_RETURN_IF_ERROR(module->RemoveUnusedComputations());
+  TF_XLA_RETURN_IF_ERROR(option_.CheckAndSetup());
   LOG(INFO) << "AutoShardingOptions:\n" << option_.ToString();
 
   absl::flat_hash_set<std::string> replicated_small_tensors;
@@ -4099,7 +4099,7 @@ absl::StatusOr<bool> AutoSharding::RunImpl(
         this_option.device_mesh_alpha.size()) {
       this_option.device_mesh_alpha.clear();
       this_option.device_mesh_beta.clear();
-      TF_RETURN_IF_ERROR(this_option.CheckAndSetup());
+      TF_XLA_RETURN_IF_ERROR(this_option.CheckAndSetup());
     }
     // Allocate an equal portion of solver timeout to each attempted mesh shape.
     this_option.solver_timeout_in_seconds /= mesh_shapes.size();
@@ -4173,7 +4173,7 @@ absl::StatusOr<bool> AutoSharding::RunImpl(
             << " which had the minimal solver objective value of "
             << min_objective_value;
     chosen_mesh_shape_ = mesh_shapes[min_mesh_shape_index];
-    TF_RETURN_IF_ERROR(MoveComputationsFromModuleToModule(
+    TF_XLA_RETURN_IF_ERROR(MoveComputationsFromModuleToModule(
         min_mesh_shape_module.get(), module));
   }
   RecordPassEndAndDumpModule(start_time, module);

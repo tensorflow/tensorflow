@@ -159,7 +159,7 @@ absl::StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
     new_shape.set_element_type(src_ty);
     HloInstruction* new_instr = comp->AddInstruction(
         instr->CloneWithNewOperands(new_shape, new_operands));
-    TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
+    TF_XLA_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
         instr, HloInstruction::CreateConvert(instr->shape(), new_instr)));
     changed = true;
   }
@@ -201,7 +201,7 @@ absl::StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
     }
     Shape new_shape = to_convert->shape();
     new_shape.set_element_type(dst_ty);
-    TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
+    TF_XLA_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
         instr, to_convert->CloneWithNewOperands(new_shape, new_operands)));
     changed = true;
   }
@@ -217,7 +217,7 @@ absl::StatusOr<bool> ConvertMover::RunImpl(
   bool changed = false;
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool changed_computation,
+    TF_XLA_ASSIGN_OR_RETURN(bool changed_computation,
                         MoveConvertPrecisionOps(comp));
     changed |= changed_computation;
   }

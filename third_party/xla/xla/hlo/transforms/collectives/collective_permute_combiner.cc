@@ -82,7 +82,7 @@ absl::Status CombineCollectivePermutes(
   for (int64_t i = 0; i < to_combine.size(); ++i) {
     auto replace_with = HloInstruction::CreateGetTupleElement(
         to_combine[i]->shape(), combined, i);
-    TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
+    TF_XLA_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
         to_combine[i], std::move(replace_with)));
   }
   return absl::OkStatus();
@@ -116,7 +116,7 @@ absl::StatusOr<bool> CollectivePermuteCombiner::RunImpl(
       return GetCollectivePermuteKey(instruction);
     };
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool computation_changed,
         CombineInstructionsByKey<CollectivePermuteKey>(
             computation, key_fn, &CombineCollectivePermutes,

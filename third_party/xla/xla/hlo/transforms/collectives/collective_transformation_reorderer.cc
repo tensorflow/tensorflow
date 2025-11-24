@@ -229,7 +229,7 @@ CollectiveTransformationReorder::ReorderAllGatherTransformations(
             new_all_gather_shape, {all_gather_operand}, all_gather_dimension,
             all_gather->device_list(), all_gather->constrain_layout(),
             all_gather->channel_id(), all_gather->use_global_device_ids()));
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         transformations.back().hlo->ReplaceAllUsesWith(new_all_gather));
     if (computation->root_instruction() == transformations.back().hlo) {
       computation->set_root_instruction(new_all_gather);
@@ -285,7 +285,7 @@ CollectiveTransformationReorder::ReorderAllReduceTransformations(
       cur_operand = computation->AddInstruction(
           HloInstruction::CreateReshape(reshapes[i]->shape(), cur_operand));
     }
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         computation->ReplaceInstruction(all_reduce, cur_operand));
   }
   return true;
@@ -294,14 +294,14 @@ CollectiveTransformationReorder::ReorderAllReduceTransformations(
 absl::StatusOr<bool> CollectiveTransformationReorder::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(bool ag_changed, ReorderAllGatherTransformations(
+  TF_XLA_ASSIGN_OR_RETURN(bool ag_changed, ReorderAllGatherTransformations(
                                            module, execution_threads));
-  TF_ASSIGN_OR_RETURN(bool ar_changed, ReorderAllReduceTransformations(
+  TF_XLA_ASSIGN_OR_RETURN(bool ar_changed, ReorderAllReduceTransformations(
                                            module, execution_threads));
   if (ag_changed || ar_changed) {
     // Remove the original all-gathers/all-reduces and reshapes.
     HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
+    TF_XLA_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
   }
   return ag_changed || ar_changed;
 }

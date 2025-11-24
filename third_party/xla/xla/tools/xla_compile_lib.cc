@@ -77,10 +77,10 @@ namespace xla {
 static absl::StatusOr<std::string> AotCompileCpuExecutable(
     std::unique_ptr<HloModule> hlo_module) {
   cpu::CpuCompiler cpu_compiler;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
       cpu_compiler.Compile(std::move(hlo_module), {nullptr}, {nullptr}));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
                       cpu_compiler.Export(executables[0].get()));
   return aot_result->SerializeAsString();
 }
@@ -89,15 +89,15 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::optional<Compiler::GpuTargetConfig> target_config,
     CompilationResult& result) {
-  TF_ASSIGN_OR_RETURN(std::string platform_name,
+  TF_XLA_ASSIGN_OR_RETURN(std::string platform_name,
                       xla::PlatformUtil::CanonicalPlatformName("gpu"));
   platform_name = absl::AsciiStrToUpper(platform_name);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto platform,
       stream_executor::PlatformManager::PlatformWithName(platform_name));
   const bool aot = target_config.has_value();
 
-  TF_ASSIGN_OR_RETURN(auto gpu_compiler, Compiler::GetForPlatform(platform));
+  TF_XLA_ASSIGN_OR_RETURN(auto gpu_compiler, Compiler::GetForPlatform(platform));
 
   if (aot) {
     AotCompilationOptions aot_options(platform->id());
@@ -105,10 +105,10 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
     // We need the optimized module, so we call RunHloPasses ourselves above.
     aot_options.set_run_backend_only(true);
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
         gpu_compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
-    TF_ASSIGN_OR_RETURN(std::string compile_result,
+    TF_XLA_ASSIGN_OR_RETURN(std::string compile_result,
                         aot_results[0]->SerializeAsString());
     *result.mutable_hlo_module() =
         aot_results[0]->optimized_module()->ToProto();
@@ -116,14 +116,14 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
   }
 
   Compiler::CompileOptions compile_options;
-  TF_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
+  TF_XLA_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                       platform->ExecutorForDevice(0));
   auto allocator =
       std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
           stream_executor);
   compile_options.device_allocator = allocator.get();
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
       gpu_compiler->Compile(std::move(hlo_module), {stream_executor},
                             compile_options));
@@ -173,7 +173,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
         [&](HloModuleConfig* c) {}, nullptr);
   }
   std::string module_string;
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(
+  TF_XLA_RETURN_IF_ERROR(tsl::ReadFileToString(
       tsl::Env::Default(), std::string(module_path), &module_string));
 
   mlir::DialectRegistry dialects;
@@ -191,13 +191,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
 
   // Convert Mhlo to Hlo Module.
   XlaComputation xla_computation;
-  TF_RETURN_IF_ERROR(MlirToXlaComputation(*module, xla_computation,
+  TF_XLA_RETURN_IF_ERROR(MlirToXlaComputation(*module, xla_computation,
                                           /*use_tuple_args=*/false,
                                           /*return_tuple=*/false,
                                           /*exec_build_options=*/nullptr));
   HloModuleProto hlo_module_proto = xla_computation.proto();
 
-  TF_ASSIGN_OR_RETURN(ProgramShape shape, xla_computation.GetProgramShape());
+  TF_XLA_ASSIGN_OR_RETURN(ProgramShape shape, xla_computation.GetProgramShape());
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   HloModuleConfig config(shape);
   config.set_debug_options(debug_options);
@@ -209,7 +209,7 @@ ReadModuleFromSymbolRepo(absl::string_view symbol_repo,
                          absl::string_view symbol_reference,
                          BackendType backend) {
   std::unique_ptr<HloModuleAndMetadata> mod;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       mod, LookupSymbolInRepository(symbol_repo, symbol_reference, backend));
   if (mod == nullptr) {
     return absl::NotFoundError(
@@ -241,7 +241,7 @@ absl::StatusOr<bool> LoadAutotuneDataFromModule(HloModuleAndMetadata* mod,
         data != nullptr && data->autotune_results.has_value() &&
         mod->hlo_module->config().debug_options().xla_gpu_autotune_level() >
             0) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           gpu::AutotunerUtil::LoadAutotuneResults(*data->autotune_results));
       return true;
     }
@@ -270,14 +270,14 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   absl::string_view symbol_repo = options.repo_options.symbol_repo;
   if (absl::string_view symbol_id = options.repo_options.symbol_id;
       !symbol_id.empty()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleAndMetadata> mod,
         ReadModuleFromSymbolRepo(symbol_repo, symbol_id, backend));
 
     hlo_module = std::move(mod->hlo_module);
     target_config = ReadTargetConfigFromModule(mod.get(), backend);
   } else {
-    TF_ASSIGN_OR_RETURN(hlo_module, LoadModule(options.module_path));
+    TF_XLA_ASSIGN_OR_RETURN(hlo_module, LoadModule(options.module_path));
   }
 
   bool found_autotune = false;
@@ -285,11 +285,11 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   if (absl::string_view optimized_symbol_id =
           options.repo_options.optimized_symbol_id;
       !optimized_symbol_id.empty()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleAndMetadata> optimized_mod,
         ReadModuleFromSymbolRepo(symbol_repo, optimized_symbol_id, backend));
 
-    TF_ASSIGN_OR_RETURN(found_autotune, internal::LoadAutotuneDataFromModule(
+    TF_XLA_ASSIGN_OR_RETURN(found_autotune, internal::LoadAutotuneDataFromModule(
                                             optimized_mod.get(), backend));
   }
 
@@ -313,7 +313,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
         !gpu_target_config_path.empty()) {
       // Parse GpuTargetConfig.
       std::string gpu_target_config_string;
-      TF_RETURN_IF_ERROR(tsl::ReadFileToString(
+      TF_XLA_RETURN_IF_ERROR(tsl::ReadFileToString(
           tsl::Env::Default(), std::string(gpu_target_config_path),
           &gpu_target_config_string));
       stream_executor::GpuTargetConfigProto gpu_target_config_proto;
@@ -323,7 +323,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
         return FailedPrecondition("Failed to parse GpuTargetConfigProto");
       }
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           Compiler::GpuTargetConfig parsed_target_config,
           Compiler::GpuTargetConfig::FromProto(gpu_target_config_proto));
       target_config = std::make_unique<Compiler::GpuTargetConfig>(
@@ -333,7 +333,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
               options.gpu_options.autotune_results_path;
           !found_autotune && !autotune_results_path.empty() &&
           hlo_module->config().debug_options().xla_gpu_autotune_level() > 0) {
-        TF_RETURN_IF_ERROR(gpu::AutotunerUtil::LoadAutotuneResultsFromFile(
+        TF_XLA_RETURN_IF_ERROR(gpu::AutotunerUtil::LoadAutotuneResultsFromFile(
             autotune_results_path));
       }
     }
@@ -350,7 +350,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   }
 
   if (!options.output_file.empty()) {
-    TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(),
+    TF_XLA_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(),
                                               options.output_file, *result));
   }
 

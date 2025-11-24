@@ -47,7 +47,7 @@ absl::StatusOr<int64_t> AddExitDomains(
       // Call ReplaceUseWithDifferentShape even though the shapes are
       // expected to match to avoid an expensive shape check between the
       // original and the new instruction.
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           instruction->ReplaceUseWithDifferentShape(user, domain));
       ++added_domains;
     }
@@ -82,7 +82,7 @@ absl::StatusOr<bool> RunInternal(
           // Call ReplaceUseWithDifferentShape even though the shapes are
           // expected to match to avoid an expensive shape check between the
           // original and the new instruction.
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(
               operand->ReplaceUseWithDifferentShape(instruction, domain));
           ++added_domains;
         }
@@ -103,19 +103,19 @@ absl::StatusOr<bool> HloDomainIsolator::UpdateDomains(
   DomainCreator creator = creator_factory_();
   bool changed = false;
   // Update exit domains.
-  TF_ASSIGN_OR_RETURN(const int64_t removed_domains,
+  TF_XLA_ASSIGN_OR_RETURN(const int64_t removed_domains,
                       HloDomainRemover::RemoveExitDomains(
                           instruction, ShardingMetadata::KindName()));
-  TF_ASSIGN_OR_RETURN(const int64_t added_domains,
+  TF_XLA_ASSIGN_OR_RETURN(const int64_t added_domains,
                       AddExitDomains(instruction, &creator));
   changed |= (removed_domains > 0 || added_domains > 0);
   // Update the instruction itself if it's a domain.
   if (instruction->opcode() == HloOpcode::kDomain) {
     for (HloInstruction* operand : instruction->operands()) {
-      TF_ASSIGN_OR_RETURN(const int64_t removed_domains,
+      TF_XLA_ASSIGN_OR_RETURN(const int64_t removed_domains,
                           HloDomainRemover::RemoveExitDomains(
                               operand, ShardingMetadata::KindName()));
-      TF_ASSIGN_OR_RETURN(const int64_t added_domains,
+      TF_XLA_ASSIGN_OR_RETURN(const int64_t added_domains,
                           AddExitDomains(operand, &creator));
       changed |= (removed_domains > 0 || added_domains > 0);
     }

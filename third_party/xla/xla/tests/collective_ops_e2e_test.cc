@@ -213,7 +213,7 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
     CHECK(num_replicas == arguments.size() &&
           "expect arguments for each replica");
     int64_t argument_count = arguments.front().size();
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         const std::unique_ptr<OpaqueExecutable> executable,
         hlo_runner_->CreateExecutable(std::move(module), run_hlo_passes));
     return ExecuteReplicated(
@@ -353,7 +353,7 @@ class CollectiveOpsWithFlagsBase : public CollectiveOpsE2ETestBase {
     HloModuleConfig config =
         GetModuleConfigForTest(/*replica_count=*/num_replicas);
 
-    TF_ASSIGN_OR_RETURN(auto module,
+    TF_XLA_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_string, config));
     return hlo_runner_->CreateExecutable(std::move(module),
                                          /*run_hlo_passes=*/true);
@@ -1567,7 +1567,7 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsTestE2E {
     ref_opts.set_xla_gpu_enable_triton_gemm(false);
     ref_config.set_debug_options(ref_opts);
     ref_config.set_num_partitions(1);
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> ref_module,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> ref_module,
                         ParseAndReturnVerifiedModule(hlo_text_ref, ref_config));
     const int64_t num_params =
         ref_module->entry_computation()->num_parameters();
@@ -1599,7 +1599,7 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsTestE2E {
     if (enable_enzyme_comms_opt) {
       config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(true);
     }
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                         ParseAndReturnVerifiedModule(hlo_text, config));
     const int64_t num_params = module->entry_computation()->num_parameters();
 
@@ -2909,12 +2909,12 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
             {i, 0, 0});
       }
 
-      TF_RETURN_IF_ERROR(CreateRandomTestDataForReplicaGroup(
+      TF_XLA_RETURN_IF_ERROR(CreateRandomTestDataForReplicaGroup(
           module, input_sizes_per_replica_group, output_init_data,
           replica_group));
     }
 
-    TF_ASSIGN_OR_RETURN(output_init_,
+    TF_XLA_ASSIGN_OR_RETURN(output_init_,
                         LiteralUtil::CreateFromArrayWithLayout(
                             output_init_data, output_param->shape().layout())
                             .Convert(output_param->shape().element_type()));
@@ -2947,28 +2947,28 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     // Create literals from array data.
     for (int64_t i = 0; i < num_replicas; ++i) {
       int64_t replica_id = replica_group.replica_ids(i);
-      TF_ASSIGN_OR_RETURN(inputs_[replica_id],
+      TF_XLA_ASSIGN_OR_RETURN(inputs_[replica_id],
                           LiteralUtil::CreateFromArrayWithLayout(
                               input_data[i], input_param->shape().layout())
                               .Convert(input_param->shape().element_type()));
 
-      TF_ASSIGN_OR_RETURN(expected_outputs_[replica_id],
+      TF_XLA_ASSIGN_OR_RETURN(expected_outputs_[replica_id],
                           LiteralUtil::CreateFromArrayWithLayout(
                               output_data[i], output_param->shape().layout())
                               .Convert(output_param->shape().element_type()));
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           input_offsets_[replica_id],
           GetParameterLiteral(module, /*parameter_index=*/2, i, input_offsets));
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           input_sizes_[replica_id],
           GetParameterLiteral(module, /*parameter_index=*/3, i, input_sizes));
 
-      TF_ASSIGN_OR_RETURN(output_offsets_[replica_id],
+      TF_XLA_ASSIGN_OR_RETURN(output_offsets_[replica_id],
                           GetParameterLiteral(module, /*parameter_index=*/4, i,
                                               output_offsets));
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           output_sizes_[replica_id],
           GetParameterLiteral(module, /*parameter_index=*/5, i, output_sizes));
     }

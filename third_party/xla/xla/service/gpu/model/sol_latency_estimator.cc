@@ -90,8 +90,8 @@ absl::StatusOr<HloInstructionProfileList> ReadProfiles(
     const se::DeviceDescription& device_info) {
   DeviceHloInstructionProfiles profile;
 
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->FileExists(perf_table_path));
-  TF_RETURN_IF_ERROR(tsl::ReadTextOrBinaryProto(tsl::Env::Default(),
+  TF_XLA_RETURN_IF_ERROR(tsl::Env::Default()->FileExists(perf_table_path));
+  TF_XLA_RETURN_IF_ERROR(tsl::ReadTextOrBinaryProto(tsl::Env::Default(),
                                                 perf_table_path, &profile));
   std::string key = HloOpProfiles::GetProfileName(device_info);
 
@@ -119,7 +119,7 @@ absl::StatusOr<absl::Duration> DCNCollectiveDuration(
   switch (instr.opcode()) {
     case HloOpcode::kAllGather:
     case HloOpcode::kAllGatherStart: {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           absl::Duration runtime,
           sol_model.RingLatency(msg_size, num_participating_hosts,
                                 SolGPUCostModel::CollectiveType::kAllGather,
@@ -132,7 +132,7 @@ absl::StatusOr<absl::Duration> DCNCollectiveDuration(
       result += gpu_performance_model.Get()
                     .EstimateRunTimeForInstruction(&instr, &analysis)
                     .compute_time;
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           absl::Duration runtime,
           sol_model.RingLatency(msg_size, num_participating_hosts,
                                 SolGPUCostModel::CollectiveType::kAllReduce,
@@ -144,7 +144,7 @@ absl::StatusOr<absl::Duration> DCNCollectiveDuration(
       result += gpu_performance_model.Get()
                     .EstimateRunTimeForInstruction(&instr, &analysis)
                     .compute_time;
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           absl::Duration runtime,
           sol_model.RingLatency(msg_size, num_participating_hosts,
                                 SolGPUCostModel::CollectiveType::kReduceScatter,
@@ -158,7 +158,7 @@ absl::StatusOr<absl::Duration> DCNCollectiveDuration(
                       .EstimateRunTimeForInstruction(
                           instr.async_wrapped_instruction(), &analysis)
                       .compute_time;
-        TF_ASSIGN_OR_RETURN(absl::Duration runtime,
+        TF_XLA_ASSIGN_OR_RETURN(absl::Duration runtime,
                             sol_model.RingLatency(
                                 msg_size, num_participating_hosts,
                                 SolGPUCostModel::CollectiveType::kReduceScatter,
@@ -169,7 +169,7 @@ absl::StatusOr<absl::Duration> DCNCollectiveDuration(
     }
     case HloOpcode::kRecv:
     case HloOpcode::kSend: {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           absl::Duration runtime,
           sol_model.RingLatency(msg_size, num_participating_hosts,
                                 SolGPUCostModel::CollectiveType::kSendRecv,
@@ -207,10 +207,10 @@ absl::StatusOr<absl::Duration> DispatchEstimation(
     const GpuHloCostAnalysis& analysis,
     const CollectiveInterpolator* collective_interpolator,
     MLIRContext* mlir_context) {
-  TF_RETURN_IF_ERROR(communication_type.status());
+  TF_XLA_RETURN_IF_ERROR(communication_type.status());
 
   GPUCommunicationType comm = *communication_type;
-  TF_ASSIGN_OR_RETURN(auto num_groups_and_devices,
+  TF_XLA_ASSIGN_OR_RETURN(auto num_groups_and_devices,
                       GetReplicaGroupCountAndSize(&instr));
   int64_t partition_size = GetPartitionSize(instr, sol_flags);
 
@@ -320,11 +320,11 @@ SolLatencyEstimator::ComputeCollectiveTime(
   }
 
   int64_t partition_size = GetPartitionSize(*collective_instr, sol_flags);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GPUCommunicationType communication_type,
       CommunicationType(partition_size, *collective_instr,
                         gpu_device_info.gpu_compute_capability()));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       absl::Duration result,
       DispatchEstimation(communication_type, *collective_instr, gpu_device_info,
                          sol_flags, analysis, collective_interpolator,
@@ -348,16 +348,16 @@ SolLatencyEstimator::Create(
             /*min_latencies_seconds=*/{},
             /*count_multiple_input_accesses=*/true,
         });
-    TF_RETURN_IF_ERROR(computation->Accept(cost_analysis.get()));
+    TF_XLA_RETURN_IF_ERROR(computation->Accept(cost_analysis.get()));
   }
   SolGPUCostModel::Config sol_config =
       SolGPUCostModel::GetConfig(computation->parent(), gpu_info);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveInterpolator> collective_interpolator,
       CreateCollectiveInterpolator(sol_config.gpus_per_node,
                                    *computation->parent(), gpu_info,
                                    *cost_analysis));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<MatmulInterpolator> matmul_interpolator,
       CreateMatmulInterpolator(*computation->parent(), gpu_info));
   return std::unique_ptr<SolLatencyEstimator>(new SolLatencyEstimator(

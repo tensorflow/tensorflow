@@ -69,7 +69,7 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> CreateCommunicator(
   auto f = [blocking]() -> absl::StatusOr<ncclComm_t> {
     // Create a unique NCCL Id.
     ncclUniqueId id;
-    TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclGetUniqueId(&id)));
+    TF_XLA_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclGetUniqueId(&id)));
 
     // Initialize a communicator.
     ncclConfig_t config = NCCL_CONFIG_INITIALIZER;
@@ -91,9 +91,9 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> CreateCommunicator(
     // Wait for the communicator to finish initializing.
     ncclResult_t state = ncclInProgress;
     while (state == ncclInProgress) {
-      TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclCommGetAsyncError(comm, &state)));
+      TF_XLA_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclCommGetAsyncError(comm, &state)));
     }
-    TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(state));
+    TF_XLA_RETURN_IF_ERROR(XLA_NCCL_STATUS(state));
     return comm;
   };
   bool is_async = !blocking;

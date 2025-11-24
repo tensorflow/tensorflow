@@ -47,7 +47,7 @@ absl::Status SnappyOutputBuffer::Append(absl::string_view data) {
 #if defined(TF_CORD_SUPPORT)
 absl::Status SnappyOutputBuffer::Append(const absl::Cord& cord) {
   for (absl::string_view fragment : cord.Chunks()) {
-    TF_RETURN_IF_ERROR(Append(fragment));
+    TF_XLA_RETURN_IF_ERROR(Append(fragment));
   }
   return absl::OkStatus();
 }
@@ -63,7 +63,7 @@ absl::Status SnappyOutputBuffer::Name(absl::string_view* result) const {
 }
 
 absl::Status SnappyOutputBuffer::Sync() {
-  TF_RETURN_IF_ERROR(Flush());
+  TF_XLA_RETURN_IF_ERROR(Flush());
   return file_->Sync();
 }
 
@@ -88,7 +88,7 @@ absl::Status SnappyOutputBuffer::Write(absl::string_view data) {
   // If there isn't enough available space in the input_buffer_ we empty it
   // by uncompressing its contents. If data now fits in input_buffer_
   // we add it there else we directly deflate it.
-  TF_RETURN_IF_ERROR(DeflateBuffered());
+  TF_XLA_RETURN_IF_ERROR(DeflateBuffered());
 
   // input_buffer_ should be empty at this point.
   if (static_cast<int32_t>(bytes_to_write) <= AvailableInputSpace()) {
@@ -102,7 +102,7 @@ absl::Status SnappyOutputBuffer::Write(absl::string_view data) {
   next_in_ = const_cast<char*>(data.data());
   avail_in_ = bytes_to_write;
 
-  TF_RETURN_IF_ERROR(Deflate());
+  TF_XLA_RETURN_IF_ERROR(Deflate());
 
   DCHECK_EQ(avail_in_, 0);  // All input will be used up.
 
@@ -112,8 +112,8 @@ absl::Status SnappyOutputBuffer::Write(absl::string_view data) {
 }
 
 absl::Status SnappyOutputBuffer::Flush() {
-  TF_RETURN_IF_ERROR(DeflateBuffered());
-  TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+  TF_XLA_RETURN_IF_ERROR(DeflateBuffered());
+  TF_XLA_RETURN_IF_ERROR(FlushOutputBufferToFile());
   return absl::OkStatus();
 }
 
@@ -166,14 +166,14 @@ absl::Status SnappyOutputBuffer::AddToOutputBuffer(const char* data,
     avail_out_ -= bytes_to_copy;
     length -= bytes_to_copy;
     if (avail_out_ == 0) {
-      TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+      TF_XLA_RETURN_IF_ERROR(FlushOutputBufferToFile());
     }
   }
   return absl::OkStatus();
 }
 
 absl::Status SnappyOutputBuffer::DeflateBuffered() {
-  TF_RETURN_IF_ERROR(Deflate());
+  TF_XLA_RETURN_IF_ERROR(Deflate());
   DCHECK_EQ(avail_in_, 0);
   next_in_ = input_buffer_.get();
   return absl::OkStatus();
@@ -209,10 +209,10 @@ absl::Status SnappyOutputBuffer::Deflate() {
     // Little endian.
     compressed_length_array[i] = output.size() >> (8 * (3 - i));
   }
-  TF_RETURN_IF_ERROR(AddToOutputBuffer(compressed_length_array, 4));
+  TF_XLA_RETURN_IF_ERROR(AddToOutputBuffer(compressed_length_array, 4));
 
   // Write compressed output to buffer.
-  TF_RETURN_IF_ERROR(AddToOutputBuffer(output.data(), output.size()));
+  TF_XLA_RETURN_IF_ERROR(AddToOutputBuffer(output.data(), output.size()));
   next_in_ += avail_in_;
   avail_in_ = 0;
 

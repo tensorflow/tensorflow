@@ -902,7 +902,7 @@ absl::Status BFloat16Propagation::ResolveInconsistentFusions(
       ShapeTree<HloInstruction*> converted_outputs(hlo->shape());
       // Deep copy the fusion root, and convert a leaf node only if its shape
       // does not match the fusion output.
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           HloInstruction * copy,
           fusion_computation->DeepCopyInstructionWithCustomCopier(
               fusion_root,
@@ -941,12 +941,12 @@ absl::Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
       }
       if (!Shape::Equal().MinorToMajorOnlyInLayout()(hlo->literal().shape(),
                                                      hlo->shape())) {
-        TF_ASSIGN_OR_RETURN(auto converted_literal,
+        TF_XLA_ASSIGN_OR_RETURN(auto converted_literal,
                             hlo->literal().ConvertToShape(hlo->shape()));
         auto new_constant = computation->AddInstruction(
             HloInstruction::CreateConstant(std::move(converted_literal)));
         UpdateLayout(new_constant->mutable_shape());
-        TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_constant));
+        TF_XLA_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_constant));
       }
     }
   }
@@ -964,7 +964,7 @@ absl::Status BFloat16Propagation::SkipNoopConversions(HloModule* module) {
         continue;
       }
       const bool is_root = hlo == computation->root_instruction();
-      TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(source));
+      TF_XLA_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(source));
       if (is_root) {
         computation->set_root_instruction(source);
       }
@@ -1007,7 +1007,7 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
       }
 
       auto operand = inst->mutable_operand(0);
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           HloInstruction * copy,
           computation->DeepCopyInstructionWithCustomCopier(
               operand, [](HloInstruction* leaf, const ShapeIndex& leaf_index,
@@ -1018,11 +1018,11 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
                 return comp->AddInstruction(
                     HloInstruction::CreateConvert(leaf->shape(), leaf));
               }));
-      TF_RETURN_IF_ERROR(operand->ReplaceUseWith(inst, copy));
+      TF_XLA_RETURN_IF_ERROR(operand->ReplaceUseWith(inst, copy));
     }
   }
 
-  TF_ASSIGN_OR_RETURN(dataflow_, HloDataflowAnalysis::Run(*module));
+  TF_XLA_ASSIGN_OR_RETURN(dataflow_, HloDataflowAnalysis::Run(*module));
 
   // The first step is a forward pass (parameters to root), where we determine
   // the potential candidate instructions to use bfloat16 in the outputs that
@@ -1072,7 +1072,7 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
     if (ShouldKeepPrecisionUnchanged(inst)) {
       auto users = inst->users();
       bool is_root = inst == inst->parent()->root_instruction();
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           HloInstruction * copy,
           inst->parent()->DeepCopyInstructionWithCustomCopier(
               inst, [&](HloInstruction* leaf, const ShapeIndex& leaf_index,
@@ -1089,7 +1089,7 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
                     HloInstruction::CreateConvert(converted_shape, leaf));
               }));
       for (auto user : users) {
-        TF_RETURN_IF_ERROR(inst->ReplaceUseWithDifferentShape(user, copy));
+        TF_XLA_RETURN_IF_ERROR(inst->ReplaceUseWithDifferentShape(user, copy));
       }
       if (is_root) {
         inst->parent()->set_root_instruction(copy,
@@ -1110,24 +1110,24 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
   // de-aliasing copies to while loop inputs, or later when converting output
   // types.
   auto clean_up = [this, module]() {
-    TF_RETURN_IF_ERROR(SkipNoopConversions(module));
+    TF_XLA_RETURN_IF_ERROR(SkipNoopConversions(module));
     TupleSimplifier tuple_simplifier;
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         tuple_simplifier.Run(module, execution_threads_).status());
     HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module, execution_threads_).status());
+    TF_XLA_RETURN_IF_ERROR(dce.Run(module, execution_threads_).status());
     return absl::OkStatus();
   };
 
   if (!changed_) {
-    TF_RETURN_IF_ERROR(clean_up());
+    TF_XLA_RETURN_IF_ERROR(clean_up());
     return false;
   }
 
-  TF_RETURN_IF_ERROR(ResolveInconsistentFusions(module));
-  TF_RETURN_IF_ERROR(ResolveConvertedConstants(module));
+  TF_XLA_RETURN_IF_ERROR(ResolveInconsistentFusions(module));
+  TF_XLA_RETURN_IF_ERROR(ResolveConvertedConstants(module));
 
-  TF_RETURN_IF_ERROR(clean_up());
+  TF_XLA_RETURN_IF_ERROR(clean_up());
   return true;
 }
 

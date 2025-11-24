@@ -57,7 +57,7 @@ static absl::StatusOr<HloInstruction*> CheckIndexValidity(
   // Check if the index has any negative values.
   HloInstruction* zero_index = BroadcastZeros(
       computation, index->shape().element_type(), index->shape().dimensions());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloInstruction * negative_index_check,
       MakeCompareHlo(ComparisonDirection::kLe, zero_index, index));
 
@@ -66,23 +66,23 @@ static absl::StatusOr<HloInstruction*> CheckIndexValidity(
   for (int i = 0; i < operand_dims.size(); ++i) {
     max_valid_index[i] = operand_dims[i] - window_sizes[i];
   }
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloInstruction * max_valid_index_constant,
       MakeR1ConstantHlo<int64_t>(computation, index->shape().element_type(),
                                  max_valid_index));
-  TF_ASSIGN_OR_RETURN(HloInstruction * oob_index_check,
+  TF_XLA_ASSIGN_OR_RETURN(HloInstruction * oob_index_check,
                       MakeCompareHlo(ComparisonDirection::kGe,
                                      max_valid_index_constant, index));
 
   // Combine the results of the two checks above.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloInstruction * valid_index,
       MakeBinaryHlo(HloOpcode::kAnd, negative_index_check, oob_index_check));
 
   // Reduce the index validity check vector into a scalar predicate.
   auto reduction_init = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloInstruction * valid_index_reduced,
       MakeReduceHlo(valid_index, reduction_init, HloOpcode::kAnd, module));
 
@@ -131,23 +131,23 @@ absl::StatusOr<std::vector<HloInstruction*>> ScatterExpander::ScatterLoopBody(
   // and transform that to an index into the `operand` space.
   HloInstruction* index_vector;
   if (has_scalar_indices) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         index_vector,
         MakeDynamicSliceHlo(scatter_indices, induction_var_as_vector, {1}));
   } else {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         HloInstruction * index_into_scatter_indices,
         PadVectorWithZeros(induction_var_as_vector,
                            /*zeros_to_prepend=*/0, /*zeros_to_append=*/1));
     int index_vector_size = scatter_indices->shape().dimensions(1);
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         HloInstruction * index_vector_2d,
         MakeDynamicSliceHlo(scatter_indices, index_into_scatter_indices,
                             {1, index_vector_size}));
-    TF_ASSIGN_OR_RETURN(index_vector,
+    TF_XLA_ASSIGN_OR_RETURN(index_vector,
                         ElideDegenerateDims(index_vector_2d, {0}));
   }
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloInstruction * scatter_slice_start,
       ExpandIndexVectorIntoOperandSpace(
           scatter->scatter_indices()->shape(),
@@ -159,7 +159,7 @@ absl::StatusOr<std::vector<HloInstruction*>> ScatterExpander::ScatterLoopBody(
 
   // Extract the slice to be used to update from `updates` tensor for the
   // induction_var corresponding to this iteration of the while loop.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloInstruction * index_into_updates,
       PadVectorWithZeros(
           induction_var_as_vector, /*zeros_to_prepend=*/0,
@@ -182,12 +182,12 @@ absl::StatusOr<std::vector<HloInstruction*>> ScatterExpander::ScatterLoopBody(
 
   for (int i = 0, n = operands.size(); i < n; ++i) {
     HloInstruction* update = updates[i];
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         HloInstruction * update_slice,
         MakeDynamicSliceHlo(update, index_into_updates, update_slice_bounds));
-    TF_ASSIGN_OR_RETURN(HloInstruction * update_slice_for_scatter,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * update_slice_for_scatter,
                         ElideDegenerateDims(update_slice, {0}));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         HloInstruction * update_slice_with_dims_inserted,
         InsertDegenerateDims(update_slice_for_scatter, degenerated_dims));
     update_slices_with_dims_inserted[i] = update_slice_with_dims_inserted;
@@ -203,7 +203,7 @@ absl::StatusOr<std::vector<HloInstruction*>> ScatterExpander::ScatterLoopBody(
     // Extract the slice to update from `operand` tensor.
     HloInstruction* operand = operands[i];
     const Shape& update_slice_shape = update_slice_with_dims_inserted->shape();
-    TF_ASSIGN_OR_RETURN(HloInstruction * operand_slice_to_update,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * operand_slice_to_update,
                         MakeDynamicSliceHlo(operand, scatter_slice_start,
                                             update_slice_shape.dimensions()));
     operand_slices_to_update[i] = operand_slice_to_update;
@@ -214,7 +214,7 @@ absl::StatusOr<std::vector<HloInstruction*>> ScatterExpander::ScatterLoopBody(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloInstruction * is_index_valid,
       CheckIndexValidity(operands[0]->parent(), scatter_slice_start,
                          operands[0]->shape().dimensions(),
@@ -229,16 +229,16 @@ absl::StatusOr<std::vector<HloInstruction*>> ScatterExpander::ScatterLoopBody(
     // computation.
     // NOTE: For scatters with N outputs, we currently have duplicate the Map
     // computation N times because we don't support multioutput Map yet.
-    TF_ASSIGN_OR_RETURN(HloComputation * to_apply,
+    TF_XLA_ASSIGN_OR_RETURN(HloComputation * to_apply,
                         CallAndGetOutput(scatter->to_apply(), i));
-    TF_ASSIGN_OR_RETURN(HloInstruction * updated_operand_slice,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * updated_operand_slice,
                         MakeMapHlo(map_operands, to_apply));
     // Select the updated operand only if the index is valid. If not, select the
     // original value.
-    TF_ASSIGN_OR_RETURN(HloInstruction * updates_to_apply,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * updates_to_apply,
                         MakeSelectHlo(is_index_valid, updated_operand_slice,
                                       operand_slices_to_update[i]));
-    TF_ASSIGN_OR_RETURN(HloInstruction * updated_operand,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * updated_operand,
                         MakeDynamicUpdateSliceHlo(operands[i], updates_to_apply,
                                                   scatter_slice_start));
     updated_loop_state.push_back(updated_operand);
@@ -297,7 +297,7 @@ absl::StatusOr<HloInstruction*> ScatterExpander::ExpandInstruction(
 
   // Canonicalize the scatter_indices, after which the size of its most-major
   // dimension must be same as the while loop trip count.
-  TF_ASSIGN_OR_RETURN(HloInstruction * canonical_scatter_indices,
+  TF_XLA_ASSIGN_OR_RETURN(HloInstruction * canonical_scatter_indices,
                       CanonicalizeScatterIndices(
                           scatter_indices, dim_numbers.index_vector_dim()));
   CHECK_EQ(scatter_loop_trip_count,
@@ -308,10 +308,10 @@ absl::StatusOr<HloInstruction*> ScatterExpander::ExpandInstruction(
   std::vector<HloInstruction*> adjusted_canonical_updates;
   adjusted_canonical_updates.reserve(scatter_updates.size());
   for (HloInstruction* update : scatter_updates) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         HloInstruction * canonical_update,
         PermuteScatterAndWindowDims(update, dim_numbers.update_window_dims()));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         HloInstruction * adjusted_canonical_update,
         AdjustScatterDims(scatter_indices->shape(), canonical_update,
                           dim_numbers.index_vector_dim()));
@@ -334,7 +334,7 @@ absl::StatusOr<HloInstruction*> ScatterExpander::ExpandInstruction(
             return ScatterLoopBody(scatter, induction_var, loop_state);
           },
           scatter->metadata());
-  TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> scatter_loop_result,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<HloInstruction*> scatter_loop_result,
                       scatter_loop_result_status);
   auto results =
       absl::MakeSpan(scatter_loop_result).first(scatter_operands.size());

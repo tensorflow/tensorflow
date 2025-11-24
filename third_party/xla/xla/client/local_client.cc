@@ -127,7 +127,7 @@ absl::Status LocalExecutable::ValidateExecutionOptions(
                              ? run_options.stream()->parent()->device_ordinal()
                              : backend_->default_device_ordinal();
   }
-  TF_RETURN_IF_ERROR(VerifyRunDeviceCompatible(run_device_ordinal));
+  TF_XLA_RETURN_IF_ERROR(VerifyRunDeviceCompatible(run_device_ordinal));
 
   if (!run_options.allocator()) {
     return InvalidArgument("an allocator must be provided to ExecuteLocally");
@@ -145,13 +145,13 @@ absl::Status LocalExecutable::ValidateExecutionOptions(
 
 absl::Status LocalExecutable::VerifyRunDeviceCompatible(
     int run_device_ordinal) const {
-  TF_ASSIGN_OR_RETURN(bool devices_equivalent,
+  TF_XLA_ASSIGN_OR_RETURN(bool devices_equivalent,
                       backend_->devices_equivalent(
                           run_device_ordinal, build_options_.device_ordinal()));
   if (devices_equivalent) return absl::OkStatus();
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * run_executor,
+  TF_XLA_ASSIGN_OR_RETURN(se::StreamExecutor * run_executor,
                       backend_->stream_executor(run_device_ordinal));
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * build_executor,
+  TF_XLA_ASSIGN_OR_RETURN(se::StreamExecutor * build_executor,
                       backend_->stream_executor(build_device_ordinal()));
   return InvalidArgument(
       "executable is built for device %s of type \"%s\"; cannot run it on "
@@ -192,7 +192,7 @@ LocalExecutable::RunHelper(const absl::Span<const Shape* const> argument_shapes,
     }
   }
 
-  TF_RETURN_IF_ERROR(ValidateExecutionOptions(run_options, *backend_));
+  TF_XLA_RETURN_IF_ERROR(ValidateExecutionOptions(run_options, *backend_));
 
   StreamPool::Ptr stream;
   if (run_options.stream() == nullptr) {
@@ -200,7 +200,7 @@ LocalExecutable::RunHelper(const absl::Span<const Shape* const> argument_shapes,
     // `service_options` (otherwise we will end up using a returned stream in
     // ExecuteOnStreamWrapper), which is why it isn't declared in the inner "if"
     // scope.
-    TF_ASSIGN_OR_RETURN(stream, BorrowStreamForDevice(
+    TF_XLA_ASSIGN_OR_RETURN(stream, BorrowStreamForDevice(
                                     run_options.physical_device_ordinal() != -1
                                         ? run_options.physical_device_ordinal()
                                         : run_options.device_ordinal(),
@@ -297,7 +297,7 @@ absl::StatusOr<ScopedShapedBuffer> LocalExecutable::RunAsync(
   for (const ShapedBuffer* const arg : arguments) {
     argument_shapes.push_back(&arg->on_device_shape());
   }
-  TF_ASSIGN_OR_RETURN(auto options_and_stream,
+  TF_XLA_ASSIGN_OR_RETURN(auto options_and_stream,
                       RunHelper(argument_shapes, run_options));
   se::Stream* stream = run_options.stream();
 
@@ -306,7 +306,7 @@ absl::StatusOr<ScopedShapedBuffer> LocalExecutable::RunAsync(
     snapshot = DumpArguments(backend_, executable_.get(), arguments, stream);
   }
 
-  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer outputs,
+  TF_XLA_ASSIGN_OR_RETURN(ScopedShapedBuffer outputs,
                       executable_->ExecuteAsyncOnStreamWrapper(
                           &options_and_stream.first, arguments));
 
@@ -338,7 +338,7 @@ absl::StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
         "vs %d)",
         argument_host_shapes.size(), arguments.size());
   }
-  TF_ASSIGN_OR_RETURN(auto options_and_stream,
+  TF_XLA_ASSIGN_OR_RETURN(auto options_and_stream,
                       RunHelper(argument_host_shapes, run_options));
   se::Stream* stream = run_options.stream();
 
@@ -358,7 +358,7 @@ absl::StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
         DumpArguments(backend_, executable_.get(), shaped_buffer_ptrs, stream);
   }
 
-  TF_ASSIGN_OR_RETURN(ExecutionOutput outputs,
+  TF_XLA_ASSIGN_OR_RETURN(ExecutionOutput outputs,
                       executable_->ExecuteAsyncOnStreamWrapper(
                           &options_and_stream.first, std::move(arguments)));
 
@@ -437,9 +437,9 @@ absl::StatusOr<std::vector<std::unique_ptr<LocalExecutable>>>
 LocalClient::Compile(const XlaComputation& computation,
                      const absl::Span<const Shape* const> argument_layouts,
                      const ExecutableBuildOptions& options) {
-  TF_ASSIGN_OR_RETURN(ExecutableBuildOptions updated_options,
+  TF_XLA_ASSIGN_OR_RETURN(ExecutableBuildOptions updated_options,
                       UpdateBuildOptions(options, default_device_ordinal()));
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
                       local_service_->CompileExecutables(
                           computation, argument_layouts, updated_options));
 
@@ -460,9 +460,9 @@ LocalClient::CompileAheadOfTime(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& options) {
-  TF_ASSIGN_OR_RETURN(ExecutableBuildOptions updated_options,
+  TF_XLA_ASSIGN_OR_RETURN(ExecutableBuildOptions updated_options,
                       UpdateBuildOptions(options, default_device_ordinal()));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       local_service_->CompileAotResults(computation, argument_layouts,
                                         updated_options));
@@ -473,9 +473,9 @@ LocalClient::CompileAheadOfTime(
 absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
     const std::string& serialized_aot_result,
     const ExecutableBuildOptions& options) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                       Compiler::GetForPlatform(platform()));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::AotCompilationResult> aot_result,
       compiler->LoadAotCompilationResult(serialized_aot_result));
   return LoadInternal(std::move(aot_result), compiler.get(), options);
@@ -484,7 +484,7 @@ absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
 absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
     std::unique_ptr<xla::AotCompilationResult> aot_result,
     const ExecutableBuildOptions& options) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                       Compiler::GetForPlatform(platform()));
   return LoadInternal(std::move(aot_result), compiler.get(), options);
 }
@@ -492,13 +492,13 @@ absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
 absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::LoadInternal(
     std::unique_ptr<xla::AotCompilationResult> aot_result, Compiler* compiler,
     const ExecutableBuildOptions& options) {
-  TF_ASSIGN_OR_RETURN(ExecutableBuildOptions updated_options,
+  TF_XLA_ASSIGN_OR_RETURN(ExecutableBuildOptions updated_options,
                       UpdateBuildOptions(options, default_device_ordinal()));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::StreamExecutor * executor,
       backend().stream_executor(updated_options.device_ordinal()));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       std::move(*aot_result).LoadExecutable(compiler, executor));
   return std::make_unique<LocalExecutable>(std::move(executable),
@@ -512,19 +512,19 @@ absl::StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(
   if (allocator == nullptr) {
     allocator = backend().memory_allocator();
   }
-  TF_ASSIGN_OR_RETURN(auto scoped_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(auto scoped_buffer,
                       backend().transfer_manager()->AllocateScopedShapedBuffer(
                           literal.shape(), allocator, device_ordinal));
-  TF_ASSIGN_OR_RETURN(auto stream,
+  TF_XLA_ASSIGN_OR_RETURN(auto stream,
                       mutable_backend()->BorrowStream(device_ordinal));
-  TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
+  TF_XLA_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
       stream.get(), literal, scoped_buffer));
   return std::move(scoped_buffer);
 }
 
 absl::StatusOr<Literal> LocalClient::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
-  TF_ASSIGN_OR_RETURN(auto stream, mutable_backend()->BorrowStream(
+  TF_XLA_ASSIGN_OR_RETURN(auto stream, mutable_backend()->BorrowStream(
                                        shaped_buffer.device_ordinal()));
   return backend().transfer_manager()->TransferLiteralFromDevice(stream.get(),
                                                                  shaped_buffer);
@@ -537,7 +537,7 @@ absl::StatusOr<const ShapedBuffer*> LocalClient::GlobalDataToShapedBuffer(
 
 absl::Status LocalClient::TransferToInfeedLocal(const LiteralSlice& literal,
                                                 int device_ordinal) {
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+  TF_XLA_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
   return backend().transfer_manager()->TransferLiteralToInfeed(executor,
                                                                literal);
@@ -545,7 +545,7 @@ absl::Status LocalClient::TransferToInfeedLocal(const LiteralSlice& literal,
 
 absl::Status LocalClient::TransferFromOutfeedLocal(
     int device_ordinal, MutableBorrowingLiteral literal) {
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+  TF_XLA_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
   return backend().transfer_manager()->TransferLiteralFromOutfeed(executor,
                                                                   literal);
@@ -560,16 +560,16 @@ absl::StatusOr<GlobalDataHandle> LocalClient::TransferToLocalServer(
     const ::xla::BorrowingLiteral& literal, int device_ordinal) {
   const ::xla::Shape& shape = literal.shape();
 
-  TF_ASSIGN_OR_RETURN(::xla::ScopedShapedBuffer shaped_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(::xla::ScopedShapedBuffer shaped_buffer,
                       backend().transfer_manager()->AllocateScopedShapedBuffer(
                           shape, backend().memory_allocator(), device_ordinal));
-  TF_ASSIGN_OR_RETURN(auto stream,
+  TF_XLA_ASSIGN_OR_RETURN(auto stream,
                       mutable_backend()->BorrowStream(device_ordinal));
-  TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
+  TF_XLA_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
       stream.get(), literal, shaped_buffer));
   std::vector<::xla::ScopedShapedBuffer> replicated_buffer;
   replicated_buffer.emplace_back(std::move(shaped_buffer));
-  TF_ASSIGN_OR_RETURN(GlobalDataHandle data,
+  TF_XLA_ASSIGN_OR_RETURN(GlobalDataHandle data,
                       local_service_->RegisterReplicatedBuffers(
                           std::move(replicated_buffer),
                           absl::StrCat("TransferToServer literal of shape ",

@@ -307,7 +307,7 @@ absl::StatusOr<std::string> GetFMHAInstructionPrefix(
 
 // Give fmha instruction a more useful name than "custom-call.42".
 absl::Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha) {
-  TF_ASSIGN_OR_RETURN(std::string fmha_prefix,
+  TF_XLA_ASSIGN_OR_RETURN(std::string fmha_prefix,
                       GetFMHAInstructionPrefix(fmha->custom_call_target()));
   module->SetAndUniquifyInstrName(fmha, fmha_prefix);
   return absl::OkStatus();

@@ -283,6 +283,55 @@ class StatusAdaptorForMacros {
 }  // namespace status_macros
 }  // namespace xla
 
+// We introduce XLA versions of the status macros for decoupling the XLA
+// compiler from the TF/TSL status macros. We will use abseil status macroses in
+// XLA internally and will convert them to XLA status macros for the OSS world.
+// As a result we will see the standard macros at Google and XLA_ prefixed ones
+// in OSS.
+#if defined(PLATFORM_GOOGLE)
+
+#define XLA_XLA_ASSIGN_OR_RETURN(lhs, rexpr) XLA_ASSIGN_OR_RETURN(lhs, rexpr)
+#define XLA_XLA_RETURN_IF_ERROR(expr) XLA_RETURN_IF_ERROR(expr)
+
+#else
+
+#define XLA_XLA_ASSIGN_OR_RETURN(lhs, rexpr)                                 \
+  XLA_XLA_ASSIGN_OR_RETURN_IMPL(                                             \
+      XLA_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, \
+      rexpr)
+
+#define XLA_XLA_RETURN_IF_ERROR(...)             \
+  do {                                       \
+    absl::Status _status = (__VA_ARGS__);    \
+    if (ABSL_PREDICT_FALSE(!_status.ok())) { \
+      MAYBE_ADD_SOURCE_LOCATION(_status)     \
+      return _status;                        \
+    }                                        \
+  } while (0)
+
+#define XLA_ASSERT_OK_AND_ASSIGN(lhs, rexpr)                             \
+  XLA_ASSERT_OK_AND_ASSIGN_IMPL(                                         \
+      XLA_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, \
+      rexpr);
+
+#define XLA_XLA_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr) \
+  auto statusor = (rexpr);                              \
+  if (ABSL_PREDICT_FALSE(!statusor.ok())) {             \
+    return statusor.status();                           \
+  }                                                     \
+  lhs = std::move(statusor).value()
+
+#define XLA_ASSERT_OK_AND_ASSIGN_IMPL(statusor, lhs, rexpr) \
+  auto statusor = (rexpr);                                  \
+  ASSERT_TRUE(statusor.status().ok())                       \
+      << ADD_SOURCE_LOCATION(statusor.status());            \
+  lhs = std::move(statusor).value()
+
+#define XLA_STATUS_MACROS_CONCAT_NAME(x, y) TF_STATUS_MACROS_CONCAT_IMPL(x, y)
+#define XLA_STATUS_MACROS_CONCAT_IMPL(x, y) x##y
+
+#endif
+
 // Returns a Status error if the condition is false. The condition text is
 // included in the error message. The caller can optionally stream more error
 // messages after the macro.

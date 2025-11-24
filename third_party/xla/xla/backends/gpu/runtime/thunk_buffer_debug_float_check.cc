@@ -174,7 +174,7 @@ absl::Status BufferDebugFloatCheck(
 
   auto buffer_debug_log = se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::
       FromDeviceMemoryUnchecked(log_buffer.device_memory());
-  TF_ASSIGN_OR_RETURN(std::vector<BufferDebugFloatCheckEntry> entries,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<BufferDebugFloatCheckEntry> entries,
                       buffer_debug_log.ReadFromDevice(*stream));
 
   std::vector<BufferDebugLogEntryId> entry_ids;
@@ -314,19 +314,19 @@ absl::Status RunFloatCheckPassInternal(SequentialThunk* root_thunk,
   std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store =
       std::make_shared<BufferDebugLogEntryMetadataStore>();
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
                       allocator.NewEmptyAllocation(kLogSizeBytes));
   BufferAllocation::Slice log_slice(log_alloc, 0, log_alloc->size());
 
-  TF_ASSIGN_OR_RETURN(auto buffer_debug_init_thunk,
+  TF_XLA_ASSIGN_OR_RETURN(auto buffer_debug_init_thunk,
                       CreateDebugInitThunk(log_slice, hlo_module));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto buffer_debug_dump_thunk,
       CreateBufferDebugFloatCheckThunk(metadata_store, log_slice, hlo_module));
 
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       root_thunk->TransformAllNestedThunks([&](std::unique_ptr<Thunk> thunk) {
         if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
           return thunk;

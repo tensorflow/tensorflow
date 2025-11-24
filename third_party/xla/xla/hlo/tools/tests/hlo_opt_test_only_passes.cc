@@ -49,9 +49,9 @@ namespace {
 
 absl::StatusOr<HloComputation*> XlaComputationToHloComputation(
     XlaComputation& src_comp, HloModule* dest_module) {
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, src_comp.GetProgramShape());
+  TF_XLA_ASSIGN_OR_RETURN(ProgramShape program_shape, src_comp.GetProgramShape());
   HloModuleConfig config(program_shape);
-  TF_ASSIGN_OR_RETURN(auto new_module,
+  TF_XLA_ASSIGN_OR_RETURN(auto new_module,
                       HloModule::CreateFromProto(src_comp.proto(), config));
   HloCloneContext context(dest_module);
   return dest_module->DeepCloneComputation(new_module->entry_computation(),
@@ -103,13 +103,13 @@ absl::StatusOr<bool> BuildAndReplace(XlaBuilder& builder,
   HloComputation* computation = instruction->parent();
   HloModule* module = computation->parent();
 
-  TF_ASSIGN_OR_RETURN(XlaComputation called_computation, builder.Build());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(XlaComputation called_computation, builder.Build());
+  TF_XLA_ASSIGN_OR_RETURN(
       HloComputation * new_computation,
       XlaComputationToHloComputation(called_computation, module));
   HloInstruction* new_instruction = computation->AddInstruction(
       CreateCustomCallToBuilderMethod(instruction, new_computation));
-  TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_instruction));
+  TF_XLA_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_instruction));
   return true;
 }
 
@@ -124,69 +124,69 @@ absl::StatusOr<bool> XlaBuilderTestPass::ReplaceWithExpandedClientHlo(
 
   // xla_builder.math
   if (custom_call_target == "xla_builder.math.Acos") {
-    TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
+    TF_XLA_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
     xla::Acos(parameters[0]);
     return BuildAndReplace(builder, instruction);
   }
   if (custom_call_target == "xla_builder.math.Acosh") {
-    TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
+    TF_XLA_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
     xla::Acosh(parameters[0]);
     return BuildAndReplace(builder, instruction);
   }
   if (custom_call_target == "xla_builder.math.Asin") {
-    TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
+    TF_XLA_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
     xla::Asin(parameters[0]);
     return BuildAndReplace(builder, instruction);
   }
   if (custom_call_target == "xla_builder.math.Asinh") {
-    TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
+    TF_XLA_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
     xla::Asinh(parameters[0]);
     return BuildAndReplace(builder, instruction);
   }
   if (custom_call_target == "xla_builder.math.Atan") {
-    TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
+    TF_XLA_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
     xla::Atan(parameters[0]);
     return BuildAndReplace(builder, instruction);
   }
   if (custom_call_target == "xla_builder.math.Cosh") {
-    TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
+    TF_XLA_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
     xla::Cosh(parameters[0]);
     return BuildAndReplace(builder, instruction);
   }
   if (custom_call_target == "xla_builder.math.IgammaGradA") {
-    TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 2, custom_call_target));
+    TF_XLA_RETURN_IF_ERROR(VerifyOperandCount(instruction, 2, custom_call_target));
     xla::IgammaGradA(parameters[0], parameters[1]);
     return BuildAndReplace(builder, instruction);
   }
   if (custom_call_target == "xla_builder.math.NextAfter") {
-    TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 2, custom_call_target));
+    TF_XLA_RETURN_IF_ERROR(VerifyOperandCount(instruction, 2, custom_call_target));
     xla::NextAfter(parameters[0], parameters[1]);
     return BuildAndReplace(builder, instruction);
   }
   if (custom_call_target == "xla_builder.math.Polygamma") {
-    TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 2, custom_call_target));
+    TF_XLA_RETURN_IF_ERROR(VerifyOperandCount(instruction, 2, custom_call_target));
     xla::Polygamma(parameters[0], parameters[1]);
     return BuildAndReplace(builder, instruction);
   }
   if (custom_call_target == "xla_builder.math.RandomGammaGrad") {
-    TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 2, custom_call_target));
+    TF_XLA_RETURN_IF_ERROR(VerifyOperandCount(instruction, 2, custom_call_target));
     xla::RandomGammaGrad(parameters[0], parameters[1]);
     return BuildAndReplace(builder, instruction);
   }
   if (custom_call_target == "xla_builder.math.RegularizedIncompleteBeta") {
-    TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 3, custom_call_target));
+    TF_XLA_RETURN_IF_ERROR(VerifyOperandCount(instruction, 3, custom_call_target));
     xla::RegularizedIncompleteBeta(parameters[0], parameters[1], parameters[2]);
     return BuildAndReplace(builder, instruction);
   }
 
   // xla_builder.matrix
   if (custom_call_target == "xla_builder.matrix.GetMatrixDiagonalViaGather") {
-    TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
+    TF_XLA_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
     xla::GetMatrixDiagonalViaGather(parameters[0]);
     return BuildAndReplace(builder, instruction);
   }
   if (custom_call_target == "xla_builder.matrix.Einsum") {
-    TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 2, custom_call_target));
+    TF_XLA_RETURN_IF_ERROR(VerifyOperandCount(instruction, 2, custom_call_target));
     absl::string_view einsum_config = instruction->raw_backend_config_string();
     xla::Einsum(parameters[0], parameters[1], einsum_config);
     return BuildAndReplace(builder, instruction);
@@ -194,23 +194,23 @@ absl::StatusOr<bool> XlaBuilderTestPass::ReplaceWithExpandedClientHlo(
 
   // xla_builder.prng
   if (custom_call_target == "xla_builder.prng.ScramblePhiloxKey") {
-    TF_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
+    TF_XLA_RETURN_IF_ERROR(VerifyOperandCount(instruction, 1, custom_call_target));
     xla::ScramblePhiloxKey(parameters[0]);
     return BuildAndReplace(builder, instruction);
   }
 
   // xla_builder.tridiagonal
   if (custom_call_target == "xla_builder.tridiagonal.TridiagonalSolver") {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         VerifyOperandCounts(instruction, {2, 4}, custom_call_target));
     if (parameters.size() == 2) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           std::ignore, xla::tridiagonal::TridiagonalSolver(
                            tridiagonal::SolverAlgorithm::kThomas, parameters[0],
                            parameters[1]));
       return BuildAndReplace(builder, instruction);
     }
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::ignore, xla::tridiagonal::TridiagonalSolver(
                          tridiagonal::SolverAlgorithm::kThomas, parameters[0],
                          parameters[1], parameters[2], parameters[3]));
@@ -230,7 +230,7 @@ absl::StatusOr<bool> XlaBuilderTestPass::RunImpl(
       // Find custom calls that start with "xla_builder." and expand the HLO
       if (instruction->opcode() == HloOpcode::kCustomCall &&
           instruction->custom_call_target().rfind("xla_builder.", 0) == 0) {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             bool call_changed,
             ReplaceWithExpandedClientHlo(instruction,
                                          instruction->custom_call_target()));

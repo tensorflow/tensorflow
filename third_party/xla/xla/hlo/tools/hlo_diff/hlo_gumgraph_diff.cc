@@ -60,7 +60,7 @@ absl::StatusOr<std::unique_ptr<const HloGumgraphMappings>> FindMappings(
 
   MatchCallGraphs(left, right, *mappings);
 
-  TF_RETURN_IF_ERROR(left.GetCallGraph().VisitNodes(
+  TF_XLA_RETURN_IF_ERROR(left.GetCallGraph().VisitNodes(
       [&](const CallGraphNode& node) {
         if (auto right_node =
                 mappings->left_to_right_computation_map.GetRight(&node);
@@ -101,20 +101,20 @@ absl::StatusOr<HloGumgraphDiffResults> ComputeDiff(const HloModule& left,
                                                    const HloModule& right,
                                                    const DiffOptions& options) {
   LOG(INFO) << "Initializing left module graph";
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<const HloGumgraph> left_graph,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<const HloGumgraph> left_graph,
                       HloGumgraph::Create(&left, options.fingerprint_options));
   LOG(INFO) << "Initialized left module graph of size: "
             << left_graph->GetNodeCount()
             << " and height: " << left_graph->GetRoot().props.height;
 
   LOG(INFO) << "Initializing right module graph";
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<const HloGumgraph> right_graph,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<const HloGumgraph> right_graph,
                       HloGumgraph::Create(&right, options.fingerprint_options));
   LOG(INFO) << "Initialized right module graph of size: "
             << right_graph->GetNodeCount()
             << " and height: " << right_graph->GetRoot().props.height;
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<const HloGumgraphMappings> mappings,
       FindMappings(*left_graph, *right_graph, options.manual_mappings,
                    options.match_options));

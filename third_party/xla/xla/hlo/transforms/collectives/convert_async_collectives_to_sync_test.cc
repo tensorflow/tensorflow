@@ -49,7 +49,7 @@ class ConvertAsyncCollectivesToSyncTest
  public:
   absl::Status RunPass(HloModule *module, bool expect_change,
                        HloPredicate is_nop = {}) {
-    TF_ASSIGN_OR_RETURN(bool changed,
+    TF_XLA_ASSIGN_OR_RETURN(bool changed,
                         ConvertAsyncCollectivesToSync{is_nop}.Run(module));
     EXPECT_EQ(changed, expect_change);
     return absl::OkStatus();

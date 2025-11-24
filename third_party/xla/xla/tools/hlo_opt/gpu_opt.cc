@@ -83,30 +83,30 @@ class GpuOptProvider : public CompiledOptProvider {
   absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view s) override {
     if (s == "llvm-before-optimizations") {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
+      TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedHlo(std::move(module)));
-      TF_ASSIGN_OR_RETURN(std::string llvm_ir,
+      TF_XLA_ASSIGN_OR_RETURN(std::string llvm_ir,
                           LlvmIrBeforeOptimizations(optimized_module.get()));
       return llvm_ir;
 
     } else if (s == "llvm" || s == "llvm-after-optimizations") {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+      TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           GetExecutable(std::move(module)));
       return static_cast<gpu::GpuExecutable*>(executable.get())
           ->ir_module_string();
     } else if (s == "ptx") {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+      TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           GetExecutable(std::move(module)));
       return static_cast<gpu::GpuExecutable*>(executable.get())->text();
     } else if (s == "buffer-assignment") {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+      TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           GetExecutable(std::move(module)));
       auto gpu_executable = static_cast<gpu::GpuExecutable*>(executable.get());
       return gpu_executable->buffer_assignment()->ToVerboseString(
           gpu_executable->alias_info(), 9999);
     } else {
       // Delegate to base class.
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           std::optional<std::string> out,
           CompiledOptProvider::GenerateStage(std::move(module), s));
       return out;
@@ -191,7 +191,7 @@ class GpuOptProvider : public CompiledOptProvider {
   absl::StatusOr<se::DeviceDescription> GetDeviceDescription(
       const HloModule* module) {
     Compiler::CompileOptions opts;
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         Compiler::GpuTargetConfig target_config,
         gpu::GpuCompiler::GetTargetConfig(
             opts, module->config().debug_options(), /*executor=*/nullptr));
@@ -200,23 +200,23 @@ class GpuOptProvider : public CompiledOptProvider {
 
   absl::StatusOr<std::string> LlvmIrBeforeOptimizations(
       HloModule* optimized_module) {
-    TF_ASSIGN_OR_RETURN(se::DeviceDescription device_description,
+    TF_XLA_ASSIGN_OR_RETURN(se::DeviceDescription device_description,
                         GetDeviceDescription(optimized_module));
-    TF_ASSIGN_OR_RETURN(se::Platform * platform,
+    TF_XLA_ASSIGN_OR_RETURN(se::Platform * platform,
                         PlatformUtil::GetPlatform(GetPlatformName()));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                         Compiler::GetForPlatform(platform));
 
     auto* gpu_compiler = static_cast<gpu::GpuCompiler*>(compiler.get());
     std::unique_ptr<gpu::GpuAliasInfo> alias_info =
         gpu_compiler->GetAliasInfo(device_description);
     if (!optimized_module->has_schedule()) {
-      TF_ASSIGN_OR_RETURN(gpu::ScheduleMetadata schedule_metadata,
+      TF_XLA_ASSIGN_OR_RETURN(gpu::ScheduleMetadata schedule_metadata,
                           gpu::ScheduleGpuModule(
                               optimized_module, gpu_compiler->GetPointerSize(),
                               device_description, gpu_compiler->mlir_context(),
                               alias_info.get()));
-      TF_RETURN_IF_ERROR(gpu_compiler->RunPostSchedulingPipelines(
+      TF_XLA_RETURN_IF_ERROR(gpu_compiler->RunPostSchedulingPipelines(
           optimized_module, schedule_metadata.scheduler_mem_limit,
           device_description, alias_info.get()));
     }
@@ -224,7 +224,7 @@ class GpuOptProvider : public CompiledOptProvider {
     llvm::LLVMContext llvm_context;
     BufferValue::SizeFunction buffer_size_bytes_function =
         gpu_compiler->BufferSizeBytesFunction();
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         xla::gpu::CompileModuleResults results,
         xla::gpu::CompileModuleToLlvmIr(
             optimized_module, &llvm_context, gpu_compiler->GetTargetTriple(),

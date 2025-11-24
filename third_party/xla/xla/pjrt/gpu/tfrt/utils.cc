@@ -127,7 +127,7 @@ absl::Status WaitForEventOnStream(se::Stream* stream, se::Event* event) {
 
 absl::StatusOr<std::shared_ptr<se::Event>> CreateCudaEvent(
     TfrtGpuDevice* device) {
-  TF_ASSIGN_OR_RETURN(auto cuda_event, device->executor()->CreateEvent());
+  TF_XLA_ASSIGN_OR_RETURN(auto cuda_event, device->executor()->CreateEvent());
   return absl::ShareUniquePtr(std::move(cuda_event));
 }
 
@@ -172,7 +172,7 @@ absl::StatusOr<Shape> GetDestinationDeviceShape(const Shape& host_shape,
     return InvalidArgument("Buffer allocation: invalid memory space");
   }
 
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(host_shape));
+  TF_XLA_RETURN_IF_ERROR(ShapeUtil::ValidateShape(host_shape));
   TransferManager* transfer_manager =
       client->xla_client()->backend().transfer_manager();
   Shape device_shape = transfer_manager->HostShapeToDeviceShape(host_shape);
@@ -191,12 +191,12 @@ absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
     return Unimplemented(
         "tuple case not implemented for AllocateTfrtGpuDestinationBuffer");
   }
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       Shape on_device_shape,
       GetDestinationDeviceShape(on_host_shape, device, client, memory_space));
   size_t byte_size =
       pack_size > 0 ? pack_size : ShapeUtil::ByteSizeOf(on_device_shape);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto device_buffer,
       GpuDeviceMemory::Allocate(client->allocator(),
                                 device->local_device_id().value(), byte_size,
@@ -430,7 +430,7 @@ SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
     // Allocate event that will signal completion of send operation. We do not
     // actually track the completion of the send callback, we only have to keep
     // the device memory long enough to complete the memcpy command.
-    TF_ASSIGN_OR_RETURN(auto se_event, stream->parent()->CreateEvent());
+    TF_XLA_ASSIGN_OR_RETURN(auto se_event, stream->parent()->CreateEvent());
     auto done_event =
         tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
             std::move(se_event));
@@ -523,7 +523,7 @@ RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
     // Allocate event that will signal completion of recv operation. We record
     // it on a stream after submitting the memcpy for the last chunk (see
     // `TfrtGpuCopyToDeviceStream` implementation above).
-    TF_ASSIGN_OR_RETURN(auto event, stream->parent()->CreateEvent());
+    TF_XLA_ASSIGN_OR_RETURN(auto event, stream->parent()->CreateEvent());
     auto done_event =
         tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
             std::move(event));
@@ -673,14 +673,14 @@ absl::StatusOr<MaybeOwning<se::DeviceMemoryAllocator>> CreateDeviceAllocator(
 
     // The stream in the allocator will be used during compilation.
     se::Stream* stream = device->stream();
-    TF_ASSIGN_OR_RETURN(auto allocator,
+    TF_XLA_ASSIGN_OR_RETURN(auto allocator,
                         CreateAllocatorForDevice(executor, allocator_config));
     allocators.emplace_back(
         std::move(allocator), stream,
         /*memory_space=*/static_cast<int>(se::MemoryType::kDevice),
         executor->device_ordinal(), executor->GetPlatform());
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto collective_bfc_allocator,
         CreateCollectiveBFCAllocator(
             executor,
@@ -690,7 +690,7 @@ absl::StatusOr<MaybeOwning<se::DeviceMemoryAllocator>> CreateDeviceAllocator(
                             /*memory_space=*/1, executor->device_ordinal(),
                             executor->GetPlatform());
 
-    TF_ASSIGN_OR_RETURN(auto host_allocator, GetGpuHostAllocator(executor));
+    TF_XLA_ASSIGN_OR_RETURN(auto host_allocator, GetGpuHostAllocator(executor));
     allocators.emplace_back(
         std::move(host_allocator), stream,
         /*memory_space=*/static_cast<int>(se::MemoryType::kHost),
@@ -744,7 +744,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
        xla_client->backend().stream_executors()) {
     const se::Platform* platform = executor->GetPlatform();
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::se::DeviceDescription> desc,
         platform->DescriptionForDevice(executor->device_ordinal()));
     DeviceProto* device_proto = local_topology.add_devices();
@@ -772,7 +772,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
   if (enable_mock_nccl) {
     TopologySizes sizes;
     if (mock_gpu_topology.has_value()) {
-      TF_ASSIGN_OR_RETURN(sizes, TopologySizes::FromString(*mock_gpu_topology));
+      TF_XLA_ASSIGN_OR_RETURN(sizes, TopologySizes::FromString(*mock_gpu_topology));
     } else {
       // If there is no topology spec, we assume that each node is a partition,
       // there is one process (host) on each partition and each host
@@ -802,11 +802,11 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
         local_topologies[node_id].set_boot_id(absl::StrCat(i));
       }
     }
-    TF_ASSIGN_OR_RETURN(global_topology,
+    TF_XLA_ASSIGN_OR_RETURN(global_topology,
                         BuildGlobalTopology(absl::MakeSpan(local_topologies),
                                             /*assign_global_device_ids=*/true));
   } else {
-    TF_RETURN_IF_ERROR(ExchangeTopologies(
+    TF_XLA_RETURN_IF_ERROR(ExchangeTopologies(
         platform_name, node_id, num_nodes, get_local_topology_timeout,
         get_global_topology_timeout, kv_store.get(), local_topology,
         &global_topology, /*assign_global_device_ids=*/true));
@@ -842,7 +842,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
         // NameDeviceAndLauncherThread(node, device_proto,
         //                             local_device->execute_thread());
 
-        TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+        TF_XLA_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                             xla_client->backend().stream_executor(
                                 device_proto.local_device_ordinal()));
         options.local_device_id = executor->device_ordinal();
@@ -875,7 +875,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
   gpu_executable_run_options->set_gpu_global_device_ids(
       std::move(gpu_device_ids));
 
-  TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
+  TF_XLA_ASSIGN_OR_RETURN(xla::Collectives * collectives,
                       xla::CollectivesRegistry::Default("gpu"));
   xla::gpu::GpuCollectives* gpu_collectives =
       tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
@@ -884,12 +884,12 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     return absl::InternalError("Failed to get GPU collectives");
   }
 
-  TF_RETURN_IF_ERROR(gpu_collectives->InitializeTopology(
+  TF_XLA_RETURN_IF_ERROR(gpu_collectives->InitializeTopology(
       {node_id, global_topology.nodes().size(),
        xla_client->backend().stream_executors().size(), kv_store,
        device_to_node, gpu_executable_run_options}));
 
-  TF_ASSIGN_OR_RETURN(GpuTopologyProto gpu_topology,
+  TF_XLA_ASSIGN_OR_RETURN(GpuTopologyProto gpu_topology,
                       BuildGpuTopology(global_topology));
   return std::make_pair(std::move(devices), gpu_topology);
 }
@@ -914,14 +914,14 @@ absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
 absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
     const Shape& shape, absl::string_view default_memory_kind) {
   if (!shape.IsTuple()) {
-    TF_ASSIGN_OR_RETURN(absl::string_view memory_kind,
+    TF_XLA_ASSIGN_OR_RETURN(absl::string_view memory_kind,
                         MemoryKindFromSimpleShape(shape, default_memory_kind));
     return {{memory_kind}};
   }
   std::vector<absl::string_view> result;
   result.reserve(shape.tuple_shapes().size());
   for (const auto& element_shape : shape.tuple_shapes()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         absl::string_view element_memory_kind,
         MemoryKindFromSimpleShape(element_shape, default_memory_kind));
     result.push_back(element_memory_kind);

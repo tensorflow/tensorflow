@@ -87,7 +87,7 @@ absl::Status IsValidTopologyAndClientForCompile(
 
 absl::StatusOr<std::unique_ptr<xla::Compiler>>
 GetCompilerForDefaultGpuPlatform() {
-  TF_ASSIGN_OR_RETURN(stream_executor::Platform * platform,
+  TF_XLA_ASSIGN_OR_RETURN(stream_executor::Platform * platform,
                       PlatformUtil::GetPlatform("gpu"));
   return Compiler::GetForPlatform(platform);
 }
@@ -98,7 +98,7 @@ absl::StatusOr<std::unique_ptr<xla::Compiler>> GetCompilerForPlatform(
     return GetCompilerForDefaultGpuPlatform();
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       stream_executor::Platform * platform,
       stream_executor::PlatformManager::PlatformWithId(platform_id.value()));
   return Compiler::GetForPlatform(platform);
@@ -120,7 +120,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   // of this class because it's also statically constructed.
   // TODO(b/382417973): Use factories instead of static initialization of
   // singletons.
-  TF_ASSIGN_OR_RETURN(auto gpu_compiler,
+  TF_XLA_ASSIGN_OR_RETURN(auto gpu_compiler,
                       GetCompilerForPlatform(requested_platform_id_));
 
   CompileOptions input_options = options;
@@ -128,8 +128,8 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
     if (client != nullptr) {
       TF_RET_CHECK(IsGpuClient(*client))
           << "GPU compilation requires a GPU PjRt client.";
-      TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+      TF_XLA_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
+      TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
                           client->Compile(computation, options));
       return executable;
     }
@@ -137,7 +137,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
         tensorflow::down_cast<const xla::StreamExecutorGpuTopologyDescription&>(
             topology);
     if (gpu_topology.target_config().has_value()) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           Compiler::GpuTargetConfig target_config,
           Compiler::GpuTargetConfig::FromProto(*gpu_topology.target_config()));
       options.gpu_target_config.emplace(std::move(target_config));
@@ -147,20 +147,20 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
           "not implemented");
     }
   }
-  TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
+  TF_XLA_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
   std::vector<const Shape*> argument_layout_pointers;
-  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+  TF_XLA_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
       computation,
       [](Shape shape) { return LayoutUtil::GetWithDefaultLayout(shape); },
       options.argument_layouts, &options.executable_build_options,
       &argument_layout_pointers));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> hlo_config,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> hlo_config,
                       GetHloModuleConfig(computation, argument_layout_pointers,
                                          options.executable_build_options));
 
   HloModuleProto hlo_module_proto = computation.proto();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProto(hlo_module_proto, *hlo_config));
   UpdateEntryComputationLayout(
@@ -179,7 +179,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   const int num_partitions = hlo_module->config().num_partitions();
   const std::string name = hlo_module->name();
   const std::string fingerprint = hlo_module->GetFingerprint128();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       gpu_compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
   return std::make_unique<StreamExecutorExecutable>(
@@ -196,15 +196,15 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   if (!options.gpu_target_config && client != nullptr) {
     TF_RET_CHECK(IsGpuClient(*client))
         << "GPU compilation requires a GPU PjRt client.";
-    TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+    TF_XLA_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
                         client->Compile(module, options));
     return executable;
   }
 
   CompileOptions input_options = options;
   XlaComputation xla_computation;
-  TF_RETURN_IF_ERROR(MlirToXlaComputation(
+  TF_XLA_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false,

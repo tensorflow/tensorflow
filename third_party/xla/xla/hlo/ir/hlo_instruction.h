@@ -2033,7 +2033,7 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   absl::StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
-    TF_RETURN_IF_ERROR(backend_config_.GetProto(&proto));
+    TF_XLA_RETURN_IF_ERROR(backend_config_.GetProto(&proto));
     return proto;
   }
 

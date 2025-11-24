@@ -116,7 +116,7 @@ OneDnnFusionThunk::CreateOneDnnRuntime(
       info().op_name, onednn_runtime_pool_.num_created());
 
   // Construct oneDNN fusion using user-provided builder function.
-  TF_ASSIGN_OR_RETURN(OneDnnFusion fusion, builder());
+  TF_XLA_ASSIGN_OR_RETURN(OneDnnFusion fusion, builder());
 
   OneDnnRuntime runtime(std::move(fusion), thread_pool);
 
@@ -177,7 +177,7 @@ tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> OneDnnFusionThunk::Execute(
   for (size_t i = 0; i < arguments_.size(); ++i) {
     Argument& argument = arguments_[i];
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         arguments_buffers[i],
         params.buffer_allocations->GetDeviceAddress(argument.slice));
 
@@ -193,7 +193,7 @@ tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> OneDnnFusionThunk::Execute(
   for (size_t i = 0; i < results_.size(); ++i) {
     Result& result = results_[i];
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         results_buffers[i],
         params.buffer_allocations->GetDeviceAddress(results_[i].slice));
 
@@ -207,7 +207,7 @@ tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> OneDnnFusionThunk::Execute(
       params.intra_op_threadpool->getPool();
 
   // Borrow oneDNN runtime from the pool.
-  TF_ASSIGN_OR_RETURN(auto runtime,
+  TF_XLA_ASSIGN_OR_RETURN(auto runtime,
                       onednn_runtime_pool_.GetOrCreate(thread_pool));
   auto executed =
       runtime->Invoke(thread_pool, absl::MakeSpan(arguments_buffers),

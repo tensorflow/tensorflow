@@ -57,7 +57,7 @@ Compiler::GpuTargetConfig::GpuTargetConfig(se::StreamExecutor* s)
 absl::StatusOr<Compiler::GpuTargetConfig> Compiler::GpuTargetConfig::FromProto(
     const se::GpuTargetConfigProto& proto) {
   GpuTargetConfig target_config;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       target_config.device_description,
       stream_executor::DeviceDescription::FromProto(proto.gpu_device_info()));
   target_config.platform_name = proto.platform_name();

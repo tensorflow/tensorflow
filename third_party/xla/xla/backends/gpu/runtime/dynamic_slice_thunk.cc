@@ -95,15 +95,15 @@ DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata::ToProto() const {
 absl::StatusOr<DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata>
 DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata::FromProto(
     const OffsetAsFunctionOfIndvarModulesMetadataProto& proto) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> indvar_init,
       HloModule::CreateFromProtoWithConfig(proto.indvar_init()));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> indvar_update,
       HloModule::CreateFromProtoWithConfig(proto.indvar_update()));
   std::vector<std::unique_ptr<HloModule>> extracted_offset_modules;
   for (const auto& module_proto : proto.extracted_offset_modules()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         HloModule::CreateFromProtoWithConfig(module_proto));
     extracted_offset_modules.push_back(std::move(module));
   }
@@ -236,7 +236,7 @@ absl::Status DynamicSliceThunk::Prepare(
     }
   }
 
-  TF_RETURN_IF_ERROR(embedded_thunk_->Prepare(params, resource_requests));
+  TF_XLA_RETURN_IF_ERROR(embedded_thunk_->Prepare(params, resource_requests));
 
   if (offset_as_function_of_indvar_metadata_ != std::nullopt) {
     Indvar(this) =
@@ -256,14 +256,14 @@ absl::Status DynamicSliceThunk::Prepare(
 }
 
 absl::Status DynamicSliceThunk::Initialize(const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(embedded_thunk_->Initialize(params));
+  TF_XLA_RETURN_IF_ERROR(embedded_thunk_->Initialize(params));
 
   absl::MutexLock lock(mutex_);
   if (offsets_allocs_.contains(params.executor)) return absl::OkStatus();
 
   VLOG(2) << "Allocate " << offsets_allocs_size_
           << " bytes for transferring offsets on executor: " << params.executor;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<se::MemoryAllocation> allocation,
       params.executor->HostMemoryAllocate(offsets_allocs_size_));
   offsets_allocs_.emplace(params.executor, std::move(allocation));
@@ -330,7 +330,7 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
         offset_value(argument_idx, offset_idx) = *const_offset;
 
       } else if (HloModule** offset_module = std::get_if<HloModule*>(&offset)) {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             Literal offset,
             HloEvaluator().Evaluate(**offset_module, {&Indvar(this)}));
         auto offset_int = LiteralUtil::LiteralAsScalarInt64(offset);
@@ -354,7 +354,7 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
 
         // Copy the `offset_idx`-th component of the offset for the
         // `argument_idx`-th argument from device to host.
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             stream.Memcpy(offset_dst, offset_src, *slice.offset_byte_size));
         ++num_transfers;
       }
@@ -363,7 +363,7 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
     // Wait for the completion of all transfers.
     if (num_transfers > 0) {
       VLOG(2) << "Wait for completion of " << num_transfers << " transfer";
-      TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+      TF_XLA_RETURN_IF_ERROR(stream.BlockHostUntilDone());
     }
 
     // Clamp start indices:
@@ -413,7 +413,7 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
       Thunk::ExecuteParams::CloneWithNewAllocations(params, slice_allocations);
 
   // Execute the underlying custom call thunk with the new buffers.
-  TF_RETURN_IF_ERROR(embedded_thunk_->ExecuteOnStream(new_params));
+  TF_XLA_RETURN_IF_ERROR(embedded_thunk_->ExecuteOnStream(new_params));
 
   if (offset_as_function_of_indvar_metadata_ != std::nullopt) {
     Indvar(this) =
@@ -443,9 +443,9 @@ absl::Status DynamicSliceThunk::TransformAllNestedThunks(
     absl::FunctionRef<
         absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
         fn) {
-  TF_RETURN_IF_ERROR(embedded_thunk_->TransformAllNestedThunks(fn));
+  TF_XLA_RETURN_IF_ERROR(embedded_thunk_->TransformAllNestedThunks(fn));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk,
                       fn(std::move(embedded_thunk_)));
   embedded_thunk_ = SequentialThunk::FromThunk(std::move(thunk));
   return absl::OkStatus();
@@ -466,7 +466,7 @@ SerializeOptionalDynamicSliceOffsetsToProto(
         offset_proto.set_const_offset(*const_offset);
       } else if (const BufferAllocation::Slice* slice_offset =
                      std::get_if<BufferAllocation::Slice>(&offset)) {
-        TF_ASSIGN_OR_RETURN(*offset_proto.mutable_slice_offset(),
+        TF_XLA_ASSIGN_OR_RETURN(*offset_proto.mutable_slice_offset(),
                             slice_offset->ToProto());
       } else if (const HloModule* const* module_offset =
                      std::get_if<HloModule*>(&offset)) {
@@ -495,7 +495,7 @@ absl::Status SerializeOffsetsToProto(
         offset_as_function_of_indvar_metadata,
     DynamicSliceThunkProto* proto) {
   for (const auto& offsets_item : offsets) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         *proto->add_offsets(),
         SerializeOptionalDynamicSliceOffsetsToProto(
             offsets_item, offset_as_function_of_indvar_metadata));
@@ -521,7 +521,7 @@ DeserializeOptionalDynamicSliceOffsetsFromProto(
         offsets.push_back(offset_proto.const_offset());
         break;
       case DynamicSliceOffsetProto::kSliceOffset: {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             auto slice, BufferAllocation::Slice::FromProto(
                             offset_proto.slice_offset(), buffer_allocations));
         offsets.push_back(slice);
@@ -553,7 +553,7 @@ DeserializeOffsetsFromProto(
         offset_as_function_of_indvar_metadata) {
   std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets;
   for (const auto& offsets_proto : proto.offsets()) {
-    TF_ASSIGN_OR_RETURN(offsets.emplace_back(),
+    TF_XLA_ASSIGN_OR_RETURN(offsets.emplace_back(),
                         DeserializeOptionalDynamicSliceOffsetsFromProto(
                             offsets_proto, buffer_allocations,
                             offset_as_function_of_indvar_metadata));
@@ -568,7 +568,7 @@ absl::StatusOr<ThunkProto> DynamicSliceThunk::ToProto() const {
   DynamicSliceThunkProto* dynamic_slice_proto =
       proto.mutable_dynamic_slice_thunk();
 
-  TF_ASSIGN_OR_RETURN(ThunkProto embedded_thunk_proto,
+  TF_XLA_ASSIGN_OR_RETURN(ThunkProto embedded_thunk_proto,
                       embedded_thunk_->ToProto());
   TF_RET_CHECK(embedded_thunk_proto.has_sequential_thunk());
   *dynamic_slice_proto->mutable_embedded_thunk() =
@@ -578,11 +578,11 @@ absl::StatusOr<ThunkProto> DynamicSliceThunk::ToProto() const {
   for (const auto& arg : arguments_) {
     auto& proto_arg = *dynamic_slice_proto->add_arguments();
     if (arg.has_value()) {
-      TF_ASSIGN_OR_RETURN(*proto_arg.mutable_slice(), arg->ToProto());
+      TF_XLA_ASSIGN_OR_RETURN(*proto_arg.mutable_slice(), arg->ToProto());
     }
   }
 
-  TF_RETURN_IF_ERROR(SerializeOffsetsToProto(
+  TF_XLA_RETURN_IF_ERROR(SerializeOffsetsToProto(
       offsets_, offset_as_function_of_indvar_metadata_, dynamic_slice_proto));
 
   // orig_shapes
@@ -611,7 +611,7 @@ absl::StatusOr<ThunkProto> DynamicSliceThunk::ToProto() const {
 
   // offset_as_function_of_indvar_metadata
   if (offset_as_function_of_indvar_metadata_.has_value()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         *dynamic_slice_proto
              ->mutable_offset_as_function_of_indvar_modules_metadata(),
         offset_as_function_of_indvar_metadata_->ToProto());
@@ -633,7 +633,7 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
   std::optional<OffsetAsFunctionOfIndvarModulesMetadata>
       offset_as_function_of_indvar_metadata;
   if (proto.has_offset_as_function_of_indvar_modules_metadata()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         offset_as_function_of_indvar_metadata,
         OffsetAsFunctionOfIndvarModulesMetadata::FromProto(
             proto.offset_as_function_of_indvar_modules_metadata()));
@@ -644,14 +644,14 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
   for (auto& arg_proto : proto.arguments()) {
     arguments.push_back(std::nullopt);
     if (arg_proto.has_slice()) {
-      TF_ASSIGN_OR_RETURN(arguments.back(),
+      TF_XLA_ASSIGN_OR_RETURN(arguments.back(),
                           BufferAllocation::Slice::FromProto(
                               arg_proto.slice(), buffer_allocations));
     }
   }
 
   // offsets
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<std::optional<std::vector<Offset>>> offsets,
       DeserializeOffsetsFromProto(proto, buffer_allocations,
                                   offset_as_function_of_indvar_metadata));
@@ -661,7 +661,7 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
   for (auto& shape_proto : proto.orig_shapes()) {
     orig_shapes.push_back(std::nullopt);
     if (shape_proto.has_shape()) {
-      TF_ASSIGN_OR_RETURN(orig_shapes.back(),
+      TF_XLA_ASSIGN_OR_RETURN(orig_shapes.back(),
                           Shape::FromProto(shape_proto.shape()));
     }
   }
@@ -671,7 +671,7 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
   for (auto& shape_proto : proto.sliced_shapes()) {
     sliced_shapes.push_back(std::nullopt);
     if (shape_proto.has_shape()) {
-      TF_ASSIGN_OR_RETURN(sliced_shapes.back(),
+      TF_XLA_ASSIGN_OR_RETURN(sliced_shapes.back(),
                           Shape::FromProto(shape_proto.shape()));
     }
   }
@@ -695,7 +695,7 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
   // embedded_thunk
   std::vector<std::unique_ptr<Thunk>> embedded_thunks;
   for (const auto& thunk_proto : proto.embedded_thunk().thunks()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> embedded_thunk,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> embedded_thunk,
                         deserializer(thunk_proto, fake_allocations));
     embedded_thunks.push_back(std::move(embedded_thunk));
   }

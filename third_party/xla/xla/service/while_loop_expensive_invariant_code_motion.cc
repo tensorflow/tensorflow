@@ -276,7 +276,7 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       WhileUtil::MakeInstructionsLiveInResult live_in_instructions_result,
       WhileUtil::MakeInstructionsLiveIn(while_instr, replacement_instructions));
 
@@ -287,7 +287,7 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
     HloInstruction* instruction_to_replace_in_new_while =
         FindOrDie(live_in_instructions_result.while_body_instruction_map,
                   instructions_to_replace[i]);
-    TF_RETURN_IF_ERROR(new_while_body->ReplaceInstruction(
+    TF_XLA_RETURN_IF_ERROR(new_while_body->ReplaceInstruction(
         instruction_to_replace_in_new_while,
         live_in_instructions_result.while_body_live_in_values[i]));
   }
@@ -340,7 +340,7 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::RunImpl(
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool result,
         TryHoistingInvariantInstructionsFromWhileBody(while_instr));
     changed |= result;

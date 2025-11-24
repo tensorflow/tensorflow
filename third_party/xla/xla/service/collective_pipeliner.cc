@@ -105,7 +105,7 @@ absl::Status UpdateControlDependencies(HloInstruction* original,
     // in the same computation eventually and we do want to add the control
     // dependency here.
     if (it->second->parent() == new_instr->parent()) {
-      TF_RETURN_IF_ERROR(it->second->AddControlDependencyTo(new_instr));
+      TF_XLA_RETURN_IF_ERROR(it->second->AddControlDependencyTo(new_instr));
     }
   }
   return absl::OkStatus();
@@ -749,13 +749,13 @@ void UpdateInstructionChannelId(HloInstruction* cloned_instr,
 absl::Status UpdateInstructionSchedulingAnnotation(
     HloInstruction* cloned_instr, int64_t& scheduling_id,
     absl::flat_hash_map<int64_t, int64_t>& annotation_map) {
-  TF_ASSIGN_OR_RETURN(std::optional<int64_t> annotation_idx,
+  TF_XLA_ASSIGN_OR_RETURN(std::optional<int64_t> annotation_idx,
                       GetSchedulingAnnotationGroupId(cloned_instr));
   if (annotation_idx) {
     if (!annotation_map.contains(*annotation_idx)) {
       annotation_map[*annotation_idx] = scheduling_id++;
     }
-    TF_RETURN_IF_ERROR(SetSchedulingAnnotationGroupId(
+    TF_XLA_RETURN_IF_ERROR(SetSchedulingAnnotationGroupId(
         cloned_instr, annotation_map[*annotation_idx]));
   }
   return absl::OkStatus();
@@ -787,14 +787,14 @@ absl::StatusOr<HloInstruction*> CloneBackwardChain(
     auto new_operands = MapNewOperands(chain_op->operands(), clone_map);
     HloInstruction* cloned = target_computation.AddInstruction(
         chain_op->CloneWithNewOperands(chain_op->shape(), new_operands));
-    TF_RETURN_IF_ERROR(UpdateControlDependencies(chain_op, cloned, clone_map));
+    TF_XLA_RETURN_IF_ERROR(UpdateControlDependencies(chain_op, cloned, clone_map));
     UpdateInstructionChannelId(cloned, next_channel_id);
     if (next_scheduling_id != -1) {
       RemoveSchedulingAnnotation(cloned);
     }
     clone_map[chain_op] = cloned;
     if (postprocess_pipelined_ops) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           postprocess_pipelined_ops(cloned, /*new_while_instr=*/nullptr));
     }
     last_cloned = cloned;
@@ -1638,7 +1638,7 @@ using Intervals = std::vector<Interval>;
 // Parses a string "{{a,b},{c,d},{e,f},...}" to a vector of pairs.
 absl::StatusOr<std::vector<Interval>> ParseVectorOfPairs(
     absl::string_view str) {
-  TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> replica_groups,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> replica_groups,
                       ParseReplicaGroupsOnly(str));
   std::vector<Interval> res;
   res.reserve(replica_groups.size());
@@ -1692,7 +1692,7 @@ absl::Status UpdateSendRecvValidation(
           << loop_analysis.GetLoopIterationCount()->GetSignedValue();
   VLOG(3) << "Collective permute with _xla_send_recv_validation: "
           << instruction->ToString();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       Intervals old_intervals,
       ParseVectorOfPairs(frontend_attributes.at(kSendRecvValidationAttr)));
 
@@ -1873,7 +1873,7 @@ absl::Status TransformLoopForward(
 
   // Duplicate the loop body into the loop parent computation, so that the first
   // iteration happens there.
-  TF_ASSIGN_OR_RETURN(int64_t next_scheduling_id,
+  TF_XLA_ASSIGN_OR_RETURN(int64_t next_scheduling_id,
                       NextSchedulingGroupId(*while_loop->GetModule()));
   absl::flat_hash_map<int64_t, int64_t> annotation_map;
   for (auto* instr : while_body->MakeInstructionPostOrder()) {
@@ -1907,7 +1907,7 @@ absl::Status TransformLoopForward(
           loop_computation->parent()->AddEmbeddedComputation(
               instr->while_body()->CloneWithReplacements(nullptr)));
     }
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         UpdateControlDependencies(instr, cloned_instr, while_body_to_peeled));
     UpdateInstructionChannelId(cloned_instr, next_channel_id);
     if (HasSchedulingAnnotation(cloned_instr) &&
@@ -1916,12 +1916,12 @@ absl::Status TransformLoopForward(
             .iteration_id.has_value()) {
       RemoveSchedulingAnnotation(cloned_instr);
     } else {
-      TF_RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
+      TF_XLA_RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
           cloned_instr, next_scheduling_id, annotation_map));
     }
     // TODO(b/398891001): Remove this once we have eliminated the need for
     // send/recv validation.
-    TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
+    TF_XLA_RETURN_IF_ERROR(UpdateSendRecvValidation(
         cloned_instr, true,
         collective_pipeliner_utils::PipeliningDirection::kForward,
         loop_analysis));
@@ -1991,7 +1991,7 @@ absl::Status TransformLoopForward(
   for (HloInstruction* instruction : new_while_body->instructions()) {
     // TODO(b/398891001): Remove this once we have eliminated the need for
     // send/recv validation.
-    TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
+    TF_XLA_RETURN_IF_ERROR(UpdateSendRecvValidation(
         instruction, false,
         collective_pipeliner_utils::PipeliningDirection::kForward,
         loop_analysis));
@@ -1999,14 +1999,14 @@ absl::Status TransformLoopForward(
   HloInstruction* new_init = loop_computation->AddInstruction(
       HloInstruction::CreateTuple(new_init_operands));
   while_body_to_peeled[while_body->root_instruction()] = new_init;
-  TF_RETURN_IF_ERROR(UpdateControlDependencies(while_body->root_instruction(),
+  TF_XLA_RETURN_IF_ERROR(UpdateControlDependencies(while_body->root_instruction(),
                                                new_init, while_body_to_peeled));
   HloInstruction* new_while_loop =
       loop_computation->AddInstruction(HloInstruction::CreateWhile(
           loop_state_shape, new_while_condition, new_while_body, new_init));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       while_loop->ReplaceAllUsesWithDifferentShape(new_while_loop));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
   // Run WhileLoopAnalysis again on the new loop to collect the position of the
   // all-reduces in the new cloned loop as they aren't the same of the old.
@@ -2074,7 +2074,7 @@ absl::Status TransformLoopForward(
     }
 
     if (post_processing_fn) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           post_processing_fn(processed, /*new_while_instr=*/nullptr));
     }
     InstructionMap new_cloned_map;
@@ -2094,7 +2094,7 @@ absl::Status TransformLoopForward(
       }
       (*formatting_cloned_map)[formatting_op] = processed;
       if (post_processing_fn) {
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             post_processing_fn(processed, /*new_while_instr=*/nullptr));
       }
     }
@@ -2135,7 +2135,7 @@ absl::Status TransformLoopForward(
           computation->AddInstruction(HloInstruction::CreateDynamicSlice(
               slice_target_shape, data_to_slice, indices, dynamic_slice_sizes));
     }
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         sliced_data,
         process_slice(sliced_data, pipelined_values_map, move_info,
                       /*formatting_cloned_map=*/nullptr, update_annotations));
@@ -2158,8 +2158,8 @@ absl::Status TransformLoopForward(
            HloInstruction* new_instr) {
           for (auto* to_replace : to_replace_instrs) {
             HloComputation* computation = to_replace->parent();
-            TF_RETURN_IF_ERROR(to_replace->ReplaceAllUsesWith(new_instr));
-            TF_RETURN_IF_ERROR(
+            TF_XLA_RETURN_IF_ERROR(to_replace->ReplaceAllUsesWith(new_instr));
+            TF_XLA_RETURN_IF_ERROR(
                 computation->RemoveInstructionAndUnusedOperands(to_replace));
           }
           return absl::OkStatus();
@@ -2179,7 +2179,7 @@ absl::Status TransformLoopForward(
               new_while_loop, it->second));
       // This is the case where the instruction is a sink.
       InstructionMap updated_pipelined_values_map;
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           auto* in_sink_instr,
           process_slice(input_data_to_sink, pipelined_values_map_inloop,
                         move_info,
@@ -2194,7 +2194,7 @@ absl::Status TransformLoopForward(
           move_info.sink_instruction->CloneWithNewOperands(
               move_info.sink_instruction->shape(), new_input_sink_operands));
       updated_pipelined_values_map.clear();
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           auto* out_sink_instr,
           process_slice(output_data_to_sink, pipelined_values_map_outloop,
                         move_info,
@@ -2211,11 +2211,11 @@ absl::Status TransformLoopForward(
           move_info.sink_instruction->CloneWithNewOperands(
               move_info.sink_instruction->shape(), new_output_sink_operands));
       RemoveSchedulingAnnotation(out_sink_instr);
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           move_info.sink_instruction->ReplaceAllUsesWith(in_sink_instr));
-      TF_RETURN_IF_ERROR(new_while_body->RemoveInstructionAndUnusedOperands(
+      TF_XLA_RETURN_IF_ERROR(new_while_body->RemoveInstructionAndUnusedOperands(
           move_info.sink_instruction));
-      TF_RETURN_IF_ERROR(replace_instructions_with(
+      TF_XLA_RETURN_IF_ERROR(replace_instructions_with(
           absl::MakeSpan(loop_output_to_replace), out_sink_instr));
       continue;
     }
@@ -2259,12 +2259,12 @@ absl::Status TransformLoopForward(
               move_info.collectives_to_move.front()->operand(0)->shape(),
               new_while_loop, it->second));
     }
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         input_stacked_data,
         extract_and_process_slice(input_stacked_data, input_data_to_slice,
                                   move_info, pipelined_values_map_inloop,
                                   input_dus_idx, /*update_annotations=*/false));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         output_stacked_data,
         extract_and_process_slice(output_stacked_data, output_data_to_slice,
                                   move_info, pipelined_values_map_outloop,
@@ -2280,13 +2280,13 @@ absl::Status TransformLoopForward(
                                       move_info.sliced_idx),
           input_stacked_data);
     }
-    TF_RETURN_IF_ERROR(dyn_update->ReplaceAllUsesWith(new_peeled_dus));
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(dyn_update->ReplaceAllUsesWith(new_peeled_dus));
+    TF_XLA_RETURN_IF_ERROR(
         new_while_body->RemoveInstructionAndUnusedOperands(dyn_update));
-    TF_RETURN_IF_ERROR(replace_instructions_with(
+    TF_XLA_RETURN_IF_ERROR(replace_instructions_with(
         absl::MakeSpan(loop_output_to_replace), output_stacked_data));
   }
-  TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
+  TF_XLA_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
   return absl::OkStatus();
 }
 
@@ -2545,8 +2545,8 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
         inst->operand(1)->IsCustomCall(
             CollectivePipeliner::kSunkByPreviousStep)) {
       HloInstruction* cc = inst->mutable_operand(1);
-      TF_RETURN_IF_ERROR(inst->ReplaceOperandWith(1, cc->mutable_operand(0)));
-      TF_RETURN_IF_ERROR(cc->parent()->RemoveInstruction(cc));
+      TF_XLA_RETURN_IF_ERROR(inst->ReplaceOperandWith(1, cc->mutable_operand(0)));
+      TF_XLA_RETURN_IF_ERROR(cc->parent()->RemoveInstruction(cc));
     }
   }
   CHECK_EQ(while_body->root_instruction()->opcode(), HloOpcode::kTuple);
@@ -2765,8 +2765,8 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
         cloned_body->AddInstruction(HloInstruction::CreateGetTupleElement(
             output->shape(), cloned_body->parameter_instruction(0), *idx));
     HloInstruction* old_operand_param = output->mutable_operand(0);
-    TF_RETURN_IF_ERROR(output->ReplaceOperandWith(0, new_param));
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(output->ReplaceOperandWith(0, new_param));
+    TF_XLA_RETURN_IF_ERROR(
         old_operand_param->parent()->RemoveInstruction(old_operand_param));
     if (insert_non_alias_custom_call && indices_to_insert.contains(i)) {
       auto* old_operand = output->mutable_operand(1);
@@ -2774,7 +2774,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
           cloned_body->AddInstruction(HloInstruction::CreateCustomCall(
               old_operand->shape(), {old_operand},
               /*custom_call_target=*/CollectivePipeliner::kSunkByPreviousStep));
-      TF_RETURN_IF_ERROR(output->ReplaceOperandWith(1, custom_call));
+      TF_XLA_RETURN_IF_ERROR(output->ReplaceOperandWith(1, custom_call));
     }
   }
   HloInstruction* new_while =
@@ -2841,7 +2841,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
     //  an effect on the instruction itself (like say broadcast, slices ...
     //  etc).
     for (HloInstruction* formatting_op : to_move.formatting_ops) {
-      TF_RETURN_IF_ERROR(TransformFormattingOp(
+      TF_XLA_RETURN_IF_ERROR(TransformFormattingOp(
           formatting_op, to_move, loop_computation, pipelined_map,
           to_add_batch_set, next_channel_id));
     }
@@ -2871,10 +2871,10 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
   }
   HloInstruction* new_tuple = loop_computation->AddInstruction(
       HloInstruction::CreateTuple(new_output_tuple));
-  TF_RETURN_IF_ERROR(while_loop->ReplaceAllUsesWithDifferentShape(new_tuple));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(while_loop->ReplaceAllUsesWithDifferentShape(new_tuple));
+  TF_XLA_RETURN_IF_ERROR(
       loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
-  TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
+  TF_XLA_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
   return absl::OkStatus();
 }
 
@@ -2996,7 +2996,7 @@ static absl::Status TransformLoopBackward(
   // Add to the rewritten loop the new parameter/output data that is going to be
   // pipelined. Clone chains of pipelined data in the parent computation in the
   // process (they will endup being executed before the loop).
-  TF_ASSIGN_OR_RETURN(int64_t next_scheduling_id,
+  TF_XLA_ASSIGN_OR_RETURN(int64_t next_scheduling_id,
                       NextSchedulingGroupId(*while_loop->GetModule()));
   absl::flat_hash_map<int64_t, int64_t> annotation_map;
   for (int i = 0; i < loop_analysis.GetMoveInfos().size(); ++i) {
@@ -3005,7 +3005,7 @@ static absl::Status TransformLoopBackward(
         loop_analysis.GetMoveInfos()[i].collectives_to_move[0]->shape();
     new_root_operands[idx] =
         loop_analysis.GetMoveInfos()[i].collectives_to_move[0];
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         new_init_operands[idx],
         CloneBackwardChain(
             *while_loop->parent(), loop_analysis.GetMoveInfos()[i],
@@ -3014,11 +3014,11 @@ static absl::Status TransformLoopBackward(
             /*loop_variant_parameter_info=*/nullptr, post_processing_fn));
 
     if (post_processing_fn) {
-      TF_RETURN_IF_ERROR(post_processing_fn(new_init_operands[idx],
+      TF_XLA_RETURN_IF_ERROR(post_processing_fn(new_init_operands[idx],
                                             /*new_while_instr=*/nullptr));
     }
     if (postprocess_peeled) {
-      TF_RETURN_IF_ERROR(postprocess_peeled(new_init_operands[idx],
+      TF_XLA_RETURN_IF_ERROR(postprocess_peeled(new_init_operands[idx],
                                             /*new_while_instr=*/nullptr));
     }
   }
@@ -3065,7 +3065,7 @@ static absl::Status TransformLoopBackward(
       // Passing -1 as the next scheduling id to indicate that we should not
       // update the scheduling id of the cloned instructions.
       int64_t next_scheduling_id = -1;
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           cloned_instr,
           CloneBackwardChain(
               body_builder, loop_analysis.GetMoveInfos()[it->second],
@@ -3075,11 +3075,11 @@ static absl::Status TransformLoopBackward(
               post_processing_fn));
 
       if (post_processing_fn) {
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             post_processing_fn(cloned_instr, /*new_while_instr=*/nullptr));
       }
       if (postprocess_rotated) {
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             postprocess_rotated(cloned_instr, /*new_while_instr=*/nullptr));
       }
     } else {
@@ -3095,7 +3095,7 @@ static absl::Status TransformLoopBackward(
             while_loop->GetModule()->AddEmbeddedComputation(
                 instr->while_body()->CloneWithReplacements(nullptr)));
       }
-      TF_RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
+      TF_XLA_RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
                                                    while_body_replacement_map));
       UpdateInstructionChannelId(cloned_instr, next_channel_id);
     }
@@ -3119,7 +3119,7 @@ static absl::Status TransformLoopBackward(
     auto it = while_body_replacement_map.find(new_root_operands[idx]);
     CHECK(it != while_body_replacement_map.end())
         << new_root_operands[idx]->ToString() << " not present in map";
-    TF_RETURN_IF_ERROR(value->ReplaceAllUsesWith(it->second));
+    TF_XLA_RETURN_IF_ERROR(value->ReplaceAllUsesWith(it->second));
   }
 
   new_root_operands.back() =
@@ -3140,13 +3140,13 @@ static absl::Status TransformLoopBackward(
   HloComputation* new_while_body =
       while_loop->GetModule()->AddEmbeddedComputation(
           body_builder.Build(new_loop_root));
-  TF_RETURN_IF_ERROR(UpdateControlDependencies(while_body->root_instruction(),
+  TF_XLA_RETURN_IF_ERROR(UpdateControlDependencies(while_body->root_instruction(),
                                                new_loop_root,
                                                while_body_replacement_map));
   for (HloInstruction* instruction : new_while_body->instructions()) {
     // TODO(b/398891001): Remove this once we have eliminated the need for
     // send/recv validation.
-    TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
+    TF_XLA_RETURN_IF_ERROR(UpdateSendRecvValidation(
         instruction, false,
         collective_pipeliner_utils::PipeliningDirection::kBackward,
         loop_analysis));
@@ -3187,7 +3187,7 @@ static absl::Status TransformLoopBackward(
           cond_builder.Build(comparison));
   HloInstruction* new_loop_init = while_loop->parent()->AddInstruction(
       HloInstruction::CreateTuple(new_init_operands));
-  TF_RETURN_IF_ERROR(UpdateControlDependencies(while_body->root_instruction(),
+  TF_XLA_RETURN_IF_ERROR(UpdateControlDependencies(while_body->root_instruction(),
                                                new_loop_init, chain_clone_map));
   // Create the new loop.
   HloInstruction* new_while_loop =
@@ -3227,18 +3227,18 @@ static absl::Status TransformLoopBackward(
         instr->CloneWithNewOperands(instr->shape(), new_operands));
     if (postprocess_peeled_trailing_op) {
       CHECK_NE(new_while_loop, nullptr);
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           postprocess_peeled_trailing_op(cloned_instr, new_while_loop));
     }
 
-    TF_RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
+    TF_XLA_RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
                                                  while_body_replacement_map));
     UpdateInstructionChannelId(cloned_instr, next_channel_id);
-    TF_RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
+    TF_XLA_RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
         cloned_instr, next_scheduling_id, annotation_map));
     // TODO(b/398891001): Remove this once we have eliminated the need for
     // send/recv validation.
-    TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
+    TF_XLA_RETURN_IF_ERROR(UpdateSendRecvValidation(
         cloned_instr, true,
         collective_pipeliner_utils::PipeliningDirection::kBackward,
         loop_analysis));
@@ -3253,11 +3253,11 @@ static absl::Status TransformLoopBackward(
   HloInstruction* final_loop_output = while_loop->parent()->AddInstruction(
       HloInstruction::CreateTuple(output_tuple_instructions));
   HloComputation* loop_computation = while_loop->parent();
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       while_loop->ReplaceAllUsesWithDifferentShape(final_loop_output));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
-  TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
+  TF_XLA_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
   return absl::OkStatus();
 }
 
@@ -3269,7 +3269,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
   // Precompute module-scoped analyses. Because we are running a while-loop
   // analysis over all while instructions in the module, computing them here and
   // passing them in avoids recomputing them once for each while instruction.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis,
       TuplePointsToAnalysis::Run(module));
 
@@ -3329,7 +3329,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     if (config_.pipelining_direction ==
         collective_pipeliner_utils::PipeliningDirection::kForward) {
       CHECK(config_.reuse_pipelined_op_buffer);
-      TF_RETURN_IF_ERROR(TransformLoopForward(
+      TF_XLA_RETURN_IF_ERROR(TransformLoopForward(
           *loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.pipeline_use_tree, config_.process_different_sized_ops,
           config_.should_process, config_.acceptable_formatting,
@@ -3337,14 +3337,14 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
           config_.postprocess_pipelined_ops));
     } else if (config_.pipelining_direction ==
                collective_pipeliner_utils::PipeliningDirection::kForwardSink) {
-      TF_RETURN_IF_ERROR(TransformLoopForwardSink(
+      TF_XLA_RETURN_IF_ERROR(TransformLoopForwardSink(
           *loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.pipeline_use_tree, config_.process_different_sized_ops,
           config_.should_process, next_channel_id));
     } else {
       CHECK_EQ(config_.pipelining_direction,
                collective_pipeliner_utils::PipeliningDirection::kBackward);
-      TF_RETURN_IF_ERROR(TransformLoopBackward(
+      TF_XLA_RETURN_IF_ERROR(TransformLoopBackward(
           *loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.process_different_sized_ops, config_.acceptable_formatting,
           config_.postprocess_backward_peeled_op,
@@ -3364,14 +3364,14 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
         if (instruction->IsCustomCall(
                 CollectivePipeliner::kInsertedByPreviousStep)) {
           to_remove.push_back(instruction);
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(
               instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
           changed = true;
         }
       }
     }
     for (auto* instruction : to_remove) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           instruction->parent()->RemoveInstructionAndUnusedOperands(
               instruction));
     }
@@ -3382,7 +3382,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
           << GetPipelineDirectionString(config_.pipelining_direction);
   // Run necessary cleanup to make sure unused code doesn't trigger HloVerifier.
   if (changed) {
-    TF_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
+    TF_XLA_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
   }
 
   return changed;
@@ -3407,13 +3407,13 @@ absl::StatusOr<bool> CollectivePipeliner::RunImpl(
   bool changed = true;
   int64_t iter = 0;
   while (changed) {
-    TF_ASSIGN_OR_RETURN(changed, RunPipeliner(module, execution_threads));
+    TF_XLA_ASSIGN_OR_RETURN(changed, RunPipeliner(module, execution_threads));
     VLOG(1) << "Finished running pipeliner's iteration for small collectives: "
             << iter;
     iter++;
   }
   config_.delay_sinking_large_collectives = false;
-  TF_ASSIGN_OR_RETURN(changed, RunPipeliner(module, execution_threads));
+  TF_XLA_ASSIGN_OR_RETURN(changed, RunPipeliner(module, execution_threads));
   VLOG(1) << "Finished running pipeliner's iteration for large collectives: "
           << iter;
   return iter > 1 || changed;

@@ -137,7 +137,7 @@ using StatusReturningFunction = std::function<absl::Status()>;
 
 absl::StatusOr<int> CallStatusReturningFunction(
     const StatusReturningFunction& func) {
-  TF_RETURN_IF_ERROR(func());
+  TF_XLA_RETURN_IF_ERROR(func());
   return 42;
 }
 
@@ -155,7 +155,7 @@ TEST(StatusMacros, ReturnIfErrorOnError) {
 
 TEST(StatusMacros, AssignOrReturnSuccessfully) {
   absl::Status status = []() {
-    TF_ASSIGN_OR_RETURN(int value, CreateIntSuccessfully());
+    TF_XLA_ASSIGN_OR_RETURN(int value, CreateIntSuccessfully());
     EXPECT_EQ(value, 42);
     return absl::OkStatus();
   }();
@@ -164,7 +164,7 @@ TEST(StatusMacros, AssignOrReturnSuccessfully) {
 
 TEST(StatusMacros, AssignOrReturnUnsuccessfully) {
   absl::Status status = []() {
-    TF_ASSIGN_OR_RETURN(int value, CreateIntUnsuccessfully());
+    TF_XLA_ASSIGN_OR_RETURN(int value, CreateIntUnsuccessfully());
     (void)value;
     return absl::OkStatus();
   }();
@@ -188,6 +188,43 @@ TEST(StatusMacros, RetCheckPrintAbslStringify) {
   EXPECT_EQ(status.code(), tsl::error::INTERNAL);
   EXPECT_THAT(status.message(),
               ::testing::ContainsRegex("RET_CHECK.*Stringify-123"));
+}
+
+absl::StatusOr<int> CallStatusReturningFunctionXla(
+    const StatusReturningFunction& func) {
+  XLA_XLA_RETURN_IF_ERROR(func());
+  return 42;
+}
+
+TEST(StatusMacros, XlaReturnIfErrorOnOK) {
+  absl::StatusOr<int> rc = CallStatusReturningFunctionXla(ReturnStatusOK);
+  EXPECT_IS_OK(rc);
+  EXPECT_EQ(42, std::move(rc).value());
+}
+
+TEST(StatusMacros, XlaReturnIfErrorOnError) {
+  absl::StatusOr<int> rc = CallStatusReturningFunctionXla(ReturnStatusError);
+  EXPECT_FALSE(rc.ok());
+  EXPECT_EQ(rc.status().code(), tsl::error::INTERNAL);
+}
+
+TEST(StatusMacros, XlaAssignOrReturnSuccessfully) {
+  absl::Status status = []() {
+    XLA_XLA_ASSIGN_OR_RETURN(int value, CreateIntSuccessfully());
+    EXPECT_EQ(value, 42);
+    return absl::OkStatus();
+  }();
+  EXPECT_IS_OK(status);
+}
+
+TEST(StatusMacros, XlaAssignOrReturnUnsuccessfully) {
+  absl::Status status = []() {
+    XLA_XLA_ASSIGN_OR_RETURN(int value, CreateIntUnsuccessfully());
+    (void)value;
+    return absl::OkStatus();
+  }();
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), tsl::error::INTERNAL);
 }
 
 }  // namespace xla

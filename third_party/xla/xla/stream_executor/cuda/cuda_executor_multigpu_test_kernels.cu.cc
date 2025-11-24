@@ -38,8 +38,8 @@ __global__ void MulticastReduceKernel(int* input, int* output, size_t size) {
 }  // namespace
 
 __host__ absl::Status MulticastReduce(int* input, int* output, size_t size) {
-  TF_RETURN_IF_ERROR(stream_executor::cuda::ToStatus(cudaSetDevice(0)));
-  TF_RETURN_IF_ERROR(stream_executor::cuda::ToStatus(cudaDeviceSynchronize()));
+  TF_XLA_RETURN_IF_ERROR(stream_executor::cuda::ToStatus(cudaSetDevice(0)));
+  TF_XLA_RETURN_IF_ERROR(stream_executor::cuda::ToStatus(cudaDeviceSynchronize()));
   MulticastReduceKernel<<<1, 1, 0>>>(input, output, size);
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {

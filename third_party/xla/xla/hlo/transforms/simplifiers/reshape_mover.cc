@@ -294,7 +294,7 @@ absl::StatusOr<bool> ReshapeMover::SinkRearrangeOperands(
   for (size_t i = 0; i < operands.size(); ++i) {
     VLOG(3) << "Updating operand #" << i << ": "
             << operands[i]->ToString(print_no_metadata);
-    TF_ASSIGN_OR_RETURN(operands[i],
+    TF_XLA_ASSIGN_OR_RETURN(operands[i],
                         ApplyInverseRearrange(rearrange, operands[i]));
     VLOG(3) << "Updated operand #" << i
             << " to: " << operands[i]->ToString(print_no_metadata);
@@ -330,7 +330,7 @@ absl::StatusOr<bool> ReshapeMover::SinkRearrangeOperands(
     new_elementwise->clear_sharding();
   }
 
-  TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+  TF_XLA_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
       instruction, std::move(new_rearrange)));
   return true;
 }
@@ -389,7 +389,7 @@ absl::StatusOr<bool> ReshapeMover::TryReshapeMoveOnCandidates(
         })) {
       break;
     }
-    TF_ASSIGN_OR_RETURN(bool did_change, SinkRearrangeOperands(instruction));
+    TF_XLA_ASSIGN_OR_RETURN(bool did_change, SinkRearrangeOperands(instruction));
     CHECK(did_change);
   }
   return true;
@@ -406,7 +406,7 @@ absl::StatusOr<bool> ReshapeMover::RunImpl(
         candidates.insert(instruction);
       }
     }
-    TF_ASSIGN_OR_RETURN(bool did_change,
+    TF_XLA_ASSIGN_OR_RETURN(bool did_change,
                         TryReshapeMoveOnCandidates(&candidates));
     changed |= did_change;
   }

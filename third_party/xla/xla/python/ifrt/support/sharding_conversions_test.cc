@@ -56,7 +56,7 @@ using xla::HloSharding;
 
 absl::StatusOr<HloSharding> ToHloShardingViaOpSharding(
     const ShardingParam& sharding_param, const DeviceListRef& device_list) {
-  TF_ASSIGN_OR_RETURN(xla::OpSharding op_sharding,
+  TF_XLA_ASSIGN_OR_RETURN(xla::OpSharding op_sharding,
                       ToOpSharding(sharding_param, device_list));
   return HloSharding::FromProto(op_sharding);
 }

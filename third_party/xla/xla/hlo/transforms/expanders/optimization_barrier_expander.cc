@@ -57,12 +57,12 @@ absl::StatusOr<bool> OptimizationBarrierExpander::RunImpl(
 
   for (HloInstruction* inst : barriers) {
     HloInstruction* arg = inst->mutable_operand(0);
-    TF_RETURN_IF_ERROR(arg->CopyAllControlDepsFrom(inst));
+    TF_XLA_RETURN_IF_ERROR(arg->CopyAllControlDepsFrom(inst));
 
-    TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(arg));
-    TF_RETURN_IF_ERROR(inst->DropAllControlDeps());
+    TF_XLA_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(arg));
+    TF_XLA_RETURN_IF_ERROR(inst->DropAllControlDeps());
 
-    TF_RETURN_IF_ERROR(inst->parent()->RemoveInstruction(inst));
+    TF_XLA_RETURN_IF_ERROR(inst->parent()->RemoveInstruction(inst));
   }
 
   return !barriers.empty();

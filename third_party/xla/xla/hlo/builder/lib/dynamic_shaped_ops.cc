@@ -90,7 +90,7 @@ absl::StatusOr<XlaOp> ReconsileBranchDifference(const Shape& left_branch_shape,
     results.reserve(left_branch_shape.tuple_shapes().size());
     for (int i = 0; i < left_branch_shape.tuple_shapes().size(); ++i) {
       XlaOp sub_tuple = GetTupleElement(left_root, i);
-      TF_ASSIGN_OR_RETURN(XlaOp elem,
+      TF_XLA_ASSIGN_OR_RETURN(XlaOp elem,
                           ReconsileBranchDifference(
                               left_branch_shape.tuple_shapes(i),
                               right_branch_shape.tuple_shapes(i), sub_tuple));
@@ -161,12 +161,12 @@ XlaOp DynamicConditional(XlaBuilder* builder, XlaOp predicate,
       if (!elem.ok()) return elem.status();
       return builder.Build();
     };
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto true_computation_rewritten,
         reconsile_branch(true_shape, builder->GetShape(true_operand).value(),
                          false_shape, true_computation));
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto false_computation_rewritten,
         reconsile_branch(false_shape, builder->GetShape(false_operand).value(),
                          true_shape, false_computation));
@@ -183,7 +183,7 @@ XlaOp DynamicConditional(
     std::vector<Shape> root_shapes;
     root_shapes.reserve(branch_computations.size());
     for (int64_t i = 0; i < branch_computations.size(); ++i) {
-      TF_ASSIGN_OR_RETURN(auto program_shape,
+      TF_XLA_ASSIGN_OR_RETURN(auto program_shape,
                           branch_computations[i]->GetProgramShape());
       root_shapes.push_back(program_shape.result());
     }
@@ -223,10 +223,10 @@ XlaOp DynamicConditional(
     rewritten_computations.reserve(branch_computations.size());
 
     for (int64_t i = 0; i < branch_computations.size(); ++i) {
-      TF_ASSIGN_OR_RETURN(Shape branch_operand_shape,
+      TF_XLA_ASSIGN_OR_RETURN(Shape branch_operand_shape,
                           builder->GetShape(branch_operands[i]));
 
-      TF_ASSIGN_OR_RETURN(auto rewritten,
+      TF_XLA_ASSIGN_OR_RETURN(auto rewritten,
                           reconsile_branch(root_shapes[i], branch_operand_shape,
                                            max_shape, *branch_computations[i]));
       rewritten_computations.push_back(std::move(rewritten));
@@ -248,11 +248,11 @@ absl::StatusOr<XlaOp> SetDimensionSizeWithRebound(
       dimension_size, xla::ValueInferenceMode::kUpperBound);
 
   auto dynamism_status_or = value_inference->AnalyzeIsDynamic(dimension_size);
-  TF_RETURN_IF_ERROR(inferred_bound_status_or.status());
-  TF_RETURN_IF_ERROR(dynamism_status_or.status());
+  TF_XLA_RETURN_IF_ERROR(inferred_bound_status_or.status());
+  TF_XLA_RETURN_IF_ERROR(dynamism_status_or.status());
   if (inferred_bound_status_or->AllValid()) {
     int64_t inferred_bound = inferred_bound_status_or->Get<int32_t>({}).value();
-    TF_ASSIGN_OR_RETURN(auto* shape_ptr,
+    TF_XLA_ASSIGN_OR_RETURN(auto* shape_ptr,
                         operand.builder()->GetShapePtr(operand));
     // Found a tighter bound, do a slice.
     if (shape_ptr->dimensions(dimension) > inferred_bound) {
@@ -270,15 +270,15 @@ absl::StatusOr<XlaOp> SetDimensionSizeWithRebound(
 absl::StatusOr<XlaOp> SetAllDimensionSizes(ValueInference* value_inference,
                                            XlaOp operand, XlaOp size_vector) {
   auto builder = value_inference->builder();
-  TF_RETURN_IF_ERROR(builder->GetCurrentStatus());
-  TF_ASSIGN_OR_RETURN(auto shape_ptr, builder->GetShapePtr(operand));
+  TF_XLA_RETURN_IF_ERROR(builder->GetCurrentStatus());
+  TF_XLA_ASSIGN_OR_RETURN(auto shape_ptr, builder->GetShapePtr(operand));
 
   for (int64_t i = 0; i < shape_ptr->dimensions().size(); ++i) {
     // If a dimension is dynamic, call set-dimension-size on the output.
     auto dim_size = xla::Slice(size_vector, {i}, {i + 1}, {1});
     dim_size = xla::Reshape(dim_size, {});
     dim_size = xla::ConvertElementType(dim_size, xla::S32);
-    TF_ASSIGN_OR_RETURN(auto dynamism,
+    TF_XLA_ASSIGN_OR_RETURN(auto dynamism,
                         value_inference->AnalyzeIsDynamic(dim_size));
     if (dynamism.Get<bool>({})) {
       operand = xla::SetDimensionSize(operand, dim_size, i);

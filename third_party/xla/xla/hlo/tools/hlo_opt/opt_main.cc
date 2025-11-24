@@ -102,14 +102,14 @@ absl::StatusOr<std::string> GetHloContents(const HloOptConfig& opts, int argc,
   }
 
   std::string data;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), hlo_path, &data));
   return data;
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
     const HloOptConfig& opts, int argc, char** argv) {
-  TF_ASSIGN_OR_RETURN(std::string module_data,
+  TF_XLA_ASSIGN_OR_RETURN(std::string module_data,
                       GetHloContents(opts, argc, argv));
 
   std::vector<std::string> hlos;
@@ -139,7 +139,7 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
             "specified");
       }
     }
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         LoadModuleFromData(hlo, format));
     out.push_back(std::move(module));
   }
@@ -159,7 +159,7 @@ std::unique_ptr<HloModule> GetDummyModule() {
 
 absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
                                              const HloOptConfig& opts) {
-  TF_ASSIGN_OR_RETURN(OptProvider * provider,
+  TF_XLA_ASSIGN_OR_RETURN(OptProvider * provider,
                       OptProvider::GetProviderForPlatform(opts.platform));
 
   if (opts.list_stages) {
@@ -173,7 +173,7 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
     return provider->GetRegisteredPassNames();
   }
 
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<HloModule>> modules,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<HloModule>> modules,
                       GetModules(opts, argc, argv));
   if (opts.emit_proto) {
     std::string proto_str_combined;
@@ -194,10 +194,10 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
   for (std::unique_ptr<HloModule>& m : modules) {
     std::optional<std::string> out;
     if (!opts.passes.empty()) {
-      TF_ASSIGN_OR_RETURN(out, provider->BuildAndRunTransformPipeline(
+      TF_XLA_ASSIGN_OR_RETURN(out, provider->BuildAndRunTransformPipeline(
                                    std::move(m), opts.passes));
     } else {
-      TF_ASSIGN_OR_RETURN(out,
+      TF_XLA_ASSIGN_OR_RETURN(out,
                           provider->GenerateStage(std::move(m), opts.stage));
     }
     if (!out.has_value()) {
@@ -210,11 +210,11 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
 }
 
 absl::Status RunOpt(int argc, char** argv, const HloOptConfig& opts) {
-  TF_ASSIGN_OR_RETURN(std::string output, TranslateToStage(argc, argv, opts));
+  TF_XLA_ASSIGN_OR_RETURN(std::string output, TranslateToStage(argc, argv, opts));
   if (opts.output_file == "-") {
     std::cout << output << std::endl;
   } else {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         tsl::WriteStringToFile(tsl::Env::Default(), opts.output_file, output));
   }
   return absl::OkStatus();

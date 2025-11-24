@@ -83,17 +83,17 @@ class CubPrefixSumKernelCudaTest
     // Load kernel
     gpu::GpuKernelRegistry registry =
         gpu::GpuKernelRegistry::GetGlobalRegistry();
-    TF_ASSIGN_OR_RETURN(auto kernel, registry.LoadKernel<Kernel>(executor_));
+    TF_XLA_ASSIGN_OR_RETURN(auto kernel, registry.LoadKernel<Kernel>(executor_));
 
     // Setup device buffers
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         se::DeviceMemory<T> device_input,
         CheckNotNull(executor_->AllocateArray<T>(input.size()), "input"));
     se::DeviceMemory<T> device_output;
     if (in_place) {
       device_output = device_input;
     } else {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           device_output,
           CheckNotNull(executor_->AllocateArray<T>(output.size()), "output"));
     }
@@ -104,19 +104,19 @@ class CubPrefixSumKernelCudaTest
       executor_->Deallocate(&device_input);
     });
 
-    TF_RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
+    TF_XLA_RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
                                        input.size() * sizeof(input[0])));
     // For large number of items, limit the number of threads per block to 512
     // to avoid running out of shared memory.
     size_t num_threads_per_block =
         std::min(size_t{512}, absl::bit_ceil(num_items));
     // Call kernel
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         kernel.Launch(stream_executor::ThreadDim(num_threads_per_block, 1, 1),
                       stream_executor::BlockDim(num_rows, 1, 1), stream_.get(),
                       device_input, device_output, num_items));
-    TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
-    TF_RETURN_IF_ERROR(stream_->Memcpy(output.data(), device_output,
+    TF_XLA_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    TF_XLA_RETURN_IF_ERROR(stream_->Memcpy(output.data(), device_output,
                                        output.size() * sizeof(output[0])));
     return absl::OkStatus();
   }
@@ -139,7 +139,7 @@ class CubPrefixSumKernelCudaTest
         }
       }
     }
-    TF_RETURN_IF_ERROR(ComputePrefixSumOnDevice<Kernel>(input, output, num_rows,
+    TF_XLA_RETURN_IF_ERROR(ComputePrefixSumOnDevice<Kernel>(input, output, num_rows,
                                                         num_items, in_place));
     EXPECT_EQ(output, expected);
     return absl::OkStatus();

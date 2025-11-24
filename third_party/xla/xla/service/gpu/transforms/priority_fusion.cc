@@ -306,7 +306,7 @@ class PriorityFusionQueue {
 
     EstimateRunTimeData runtime_data;
     if (IsGenericTritonFusion(*producer)) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           runtime_data,
           gpu_indexing_performance_model_.EstimateRunTimeForTriton(producer));
     } else {
@@ -324,10 +324,10 @@ class PriorityFusionQueue {
     // Revisit costs of all updated ops. It's important to update cost analysis
     // before recalculating priorities.
     for (auto instruction : to_update_priority_) {
-      TF_RETURN_IF_ERROR(cost_analysis_.RevisitInstruction(instruction));
+      TF_XLA_RETURN_IF_ERROR(cost_analysis_.RevisitInstruction(instruction));
     }
     for (auto producer : to_update_priority_) {
-      TF_RETURN_IF_ERROR(UpdatePerformanceModelCache(producer));
+      TF_XLA_RETURN_IF_ERROR(UpdatePerformanceModelCache(producer));
     }
 
     ComputeAndSetPriorities(std::vector<HloInstruction*>{
@@ -1208,7 +1208,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
             Fuse(producer, consumer, use_multi_output_fusion);
         auto backend_config_it = block_level_parameters_map.find(consumer);
         if (backend_config_it != block_level_parameters_map.end()) {
-          TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(
+          TF_XLA_RETURN_IF_ERROR(fusion_instruction->set_backend_config(
               GetTritonGpuBackendConfig(backend_config_it->second)));
           fusion_instruction->set_fusion_kind(
               HloInstruction::FusionKind::kCustom);
@@ -1229,7 +1229,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
         // have been removed already.
         if (!use_multi_output_fusion) {
           producer->DetachFromOperandsAndUsers();
-          TF_RETURN_IF_ERROR(computation->RemoveInstruction(producer));
+          TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(producer));
         }
       }
 
@@ -1239,7 +1239,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
       for (auto consumer_id : pre_fusion_consumer_ids) {
         fusion_analysis_cache_.Invalidate(consumer_id);
       }
-      TF_RETURN_IF_ERROR(fusion_queue->UpdatePriorities());
+      TF_XLA_RETURN_IF_ERROR(fusion_queue->UpdatePriorities());
     }
 
     // Fuse all constants.

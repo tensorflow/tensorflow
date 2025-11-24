@@ -590,7 +590,7 @@ absl::StatusOr<CallFrame> CallFrame::CopyWithBuffers(
     absl::Span<const se::DeviceMemoryBase> args,
     absl::Span<const se::DeviceMemoryBase> rets) const {
   CallFrame clone(CopyArgs(*arguments_), CopyRets(*results_), attributes_);
-  TF_RETURN_IF_ERROR(clone.UpdateWithBuffers(args, rets));
+  TF_XLA_RETURN_IF_ERROR(clone.UpdateWithBuffers(args, rets));
   return clone;
 }
 

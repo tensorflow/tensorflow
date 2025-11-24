@@ -140,7 +140,7 @@ absl::Status HloDimensionAnalysis::AnnotateEntryComputationParameters(
   const auto& params = module.entry_computation()->parameter_instructions();
   info_map_.reserve(params.size());
   for (HloInstruction* instruction : params) {
-    TF_RETURN_IF_ERROR(SetDimensionInfo(instruction, DimensionInfo::kWeight));
+    TF_XLA_RETURN_IF_ERROR(SetDimensionInfo(instruction, DimensionInfo::kWeight));
   }
   return absl::OkStatus();
 }
@@ -159,8 +159,8 @@ absl::StatusOr<std::unique_ptr<HloDimensionAnalysis>> HloDimensionAnalysis::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<HloDimensionAnalysis> analysis =
       absl::WrapUnique(new HloDimensionAnalysis(module, execution_threads));
-  TF_RETURN_IF_ERROR(analysis->AnnotateEntryComputationParameters(module));
-  TF_RETURN_IF_ERROR(analysis->RunOnComputation(*module.entry_computation()));
+  TF_XLA_RETURN_IF_ERROR(analysis->AnnotateEntryComputationParameters(module));
+  TF_XLA_RETURN_IF_ERROR(analysis->RunOnComputation(*module.entry_computation()));
   return analysis;
 }
 
@@ -184,7 +184,7 @@ absl::Status HloDimensionAnalysis::RunOnComputation(
       continue;
     }
     ClearDotDependent(dimension_info_iter->second);
-    TF_RETURN_IF_ERROR(SetDimensionInfo(computation.parameter_instructions()[i],
+    TF_XLA_RETURN_IF_ERROR(SetDimensionInfo(computation.parameter_instructions()[i],
                                         dimension_info_iter->second));
   }
   return RunOnComputation(computation);
@@ -192,10 +192,10 @@ absl::Status HloDimensionAnalysis::RunOnComputation(
 
 absl::Status HloDimensionInfoPropagation::Run(
     const HloComputation& computation) {
-  TF_RETURN_IF_ERROR(computation.root_instruction()->Accept(this));
+  TF_XLA_RETURN_IF_ERROR(computation.root_instruction()->Accept(this));
   for (HloInstruction* instruction : computation.instructions()) {
     if (instruction->user_count() == 0) {
-      TF_RETURN_IF_ERROR(instruction->Accept(this));
+      TF_XLA_RETURN_IF_ERROR(instruction->Accept(this));
     }
   }
   return absl::OkStatus();
@@ -213,7 +213,7 @@ absl::Status HloDimensionInfoPropagation::DefaultAction(
   // dot-dependent operand.
   for (const HloInstruction* operand : instruction->operands()) {
     if (analysis_->IsDotOrHasDotDependent(operand)) {
-      TF_RETURN_IF_ERROR(analysis_->SetDimensionInfo(
+      TF_XLA_RETURN_IF_ERROR(analysis_->SetDimensionInfo(
           instruction, ShapeTree<DimensionInfo>(instruction->shape(),
                                                 DimensionInfo::kDotDependent)));
       break;
@@ -237,7 +237,7 @@ absl::Status HloDimensionInfoPropagation::HandleTuple(HloInstruction* tuple) {
   }
 
   if (has_dim_info) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         analysis_->SetDimensionInfo(tuple, std::move(dim_info_tree)));
   }
 
@@ -253,7 +253,7 @@ absl::Status HloDimensionInfoPropagation::HandleGetTupleElement(
                                             DimensionInfo::kUnknown);
     dimension_info.CopySubtreeFrom(*analysis_->GetDimensionInfo(operand),
                                    {get_tuple_element->tuple_index()}, {});
-    TF_RETURN_IF_ERROR(analysis_->SetDimensionInfo(get_tuple_element,
+    TF_XLA_RETURN_IF_ERROR(analysis_->SetDimensionInfo(get_tuple_element,
                                                    std::move(dimension_info)));
   }
   return absl::OkStatus();
@@ -262,13 +262,13 @@ absl::Status HloDimensionInfoPropagation::HandleGetTupleElement(
 absl::Status HloDimensionInfoPropagation::HandleCall(HloInstruction* call) {
   RETURN_IF_ALREADY_PROPAGATED(call);
   HloComputation* computation = call->called_computations()[0];
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       analysis_->RunOnComputation(*computation, call->operands()));
   if (analysis_->IsWeight(computation->root_instruction())) {
     ShapeTree<DimensionInfo> dimension_info_tree =
         *analysis_->GetDimensionInfo(computation->root_instruction());
     ClearDotDependent(dimension_info_tree);
-    TF_RETURN_IF_ERROR(analysis_->SetDimensionInfo(call, dimension_info_tree));
+    TF_XLA_RETURN_IF_ERROR(analysis_->SetDimensionInfo(call, dimension_info_tree));
   }
   return absl::OkStatus();
 }
@@ -276,16 +276,16 @@ absl::Status HloDimensionInfoPropagation::HandleCall(HloInstruction* call) {
 absl::Status HloDimensionInfoPropagation::HandleWhile(
     HloInstruction* xla_while) {
   RETURN_IF_ALREADY_PROPAGATED(xla_while);
-  TF_RETURN_IF_ERROR(analysis_->RunOnComputation(*xla_while->while_condition(),
+  TF_XLA_RETURN_IF_ERROR(analysis_->RunOnComputation(*xla_while->while_condition(),
                                                  xla_while->operands()));
   HloComputation* computation = xla_while->while_body();
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       analysis_->RunOnComputation(*computation, xla_while->operands()));
   if (analysis_->IsWeight(computation->root_instruction())) {
     ShapeTree<DimensionInfo> dimension_info_tree =
         *analysis_->GetDimensionInfo(computation->root_instruction());
     ClearDotDependent(dimension_info_tree);
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         analysis_->SetDimensionInfo(xla_while, dimension_info_tree));
   }
   return absl::OkStatus();
@@ -297,9 +297,9 @@ absl::Status HloDimensionInfoPropagation::HandleSimpleOp(HloInstruction* op) {
   RETURN_IF_ALREADY_PROPAGATED(op);
   const HloInstruction* operand = op->operand(0);
   if (analysis_->IsWeight(operand)) {
-    TF_RETURN_IF_ERROR(analysis_->SetDimensionInfo(op, DimensionInfo::kWeight));
+    TF_XLA_RETURN_IF_ERROR(analysis_->SetDimensionInfo(op, DimensionInfo::kWeight));
   } else if (analysis_->IsDotOrHasDotDependent(operand)) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         analysis_->SetDimensionInfo(op, DimensionInfo::kDotDependent));
   }
   return absl::OkStatus();
@@ -318,11 +318,11 @@ absl::Status HloDimensionInfoPropagation::HandleDynamicUpdateSlice(
   const HloInstruction* operand = dynamic_update_slice->operand(0);
   const HloInstruction* update = dynamic_update_slice->operand(1);
   if (analysis_->IsWeight(operand) || analysis_->IsWeight(update)) {
-    TF_RETURN_IF_ERROR(analysis_->SetDimensionInfo(dynamic_update_slice,
+    TF_XLA_RETURN_IF_ERROR(analysis_->SetDimensionInfo(dynamic_update_slice,
                                                    DimensionInfo::kWeight));
   } else if (analysis_->IsDotDependent(operand) ||
              analysis_->IsDotDependent(update)) {
-    TF_RETURN_IF_ERROR(analysis_->SetDimensionInfo(
+    TF_XLA_RETURN_IF_ERROR(analysis_->SetDimensionInfo(
         dynamic_update_slice, DimensionInfo::kDotDependent));
   }
   return absl::OkStatus();
@@ -369,7 +369,7 @@ absl::Status HloDimensionInfoPropagation::HandleOptimizationBarrier(
   const HloInstruction* optimization_barrier_operand =
       optimization_barrier->operand(0);
   if (analysis_->IsKnownDimensionInfo(optimization_barrier_operand)) {
-    TF_RETURN_IF_ERROR(analysis_->SetDimensionInfo(
+    TF_XLA_RETURN_IF_ERROR(analysis_->SetDimensionInfo(
         optimization_barrier,
         *analysis_->GetDimensionInfo(optimization_barrier_operand)));
   }

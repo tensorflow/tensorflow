@@ -95,7 +95,7 @@ absl::StatusOr<HloInputOutputAliasConfig> FlattenInputOutputAliasConfig(
   for (auto& indexed : ShapeUtil::GetLeafShapes(layout.result_shape())) {
     if (auto alias = alias_config.GetAliasedParameter(indexed.index)) {
       Key key = {alias->parameter_number, alias->parameter_index};
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           flat_alias_config.SetUpAlias(indexed.index, flat_params.at(key),
                                        /*param_index=*/{}, alias->kind));
     }
@@ -115,7 +115,7 @@ absl::Status FlattenEntryParameters(HloModule* hlo_module) {
   }
 
   // Compute new input-output alias config for flattened parameters.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloInputOutputAliasConfig flat_alias_config,
       FlattenInputOutputAliasConfig(hlo_module->entry_computation_layout(),
                                     hlo_module->input_output_alias_config()));
@@ -155,7 +155,7 @@ absl::Status FlattenEntryParameters(HloModule* hlo_module) {
 
     // Forward non-tuple parameters to the new instructions.
     if (!param->shape().IsTuple()) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           param->ReplaceAllUsesWith(flat_params.at({i, {}}).get()));
       continue;
     }
@@ -183,12 +183,12 @@ absl::Status FlattenEntryParameters(HloModule* hlo_module) {
     };
 
     // Replace original tuple parameter with a tuple of flatten parameters.
-    TF_RETURN_IF_ERROR(param->ReplaceAllUsesWith(make_tuple({})));
+    TF_XLA_RETURN_IF_ERROR(param->ReplaceAllUsesWith(make_tuple({})));
   }
 
   // Remove all original parameters from the entry computation.
   for (int32_t i = entry->num_parameters() - 1; i >= 0; --i) {
-    TF_RETURN_IF_ERROR(entry->RemoveParameter(i));
+    TF_XLA_RETURN_IF_ERROR(entry->RemoveParameter(i));
   }
 
   // Add flattened parameters to the entry computation.
@@ -238,7 +238,7 @@ absl::Status AppendDestinationParameters(HloModule* hlo_module) {
 
   // Append output parameters for aliased outputs.
   Shape original_result_shape = layout.result_shape();
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(original_result_shape,
+  TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(original_result_shape,
                                                           append_output_param));
 
   return absl::OkStatus();
@@ -259,8 +259,8 @@ absl::Status RewriteToDestinationPassingStyle(
     return absl::OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(FlattenEntryParameters(hlo_module));
-  TF_RETURN_IF_ERROR(AppendDestinationParameters(hlo_module));
+  TF_XLA_RETURN_IF_ERROR(FlattenEntryParameters(hlo_module));
+  TF_XLA_RETURN_IF_ERROR(AppendDestinationParameters(hlo_module));
 
   return absl::OkStatus();
 }

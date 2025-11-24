@@ -84,12 +84,12 @@ absl::Status GetError() {
 }
 
 absl::Status PropagateError() {
-  TF_RETURN_IF_ERROR(GetError());
+  TF_XLA_RETURN_IF_ERROR(GetError());
   return absl::OkStatus();
 }
 
 absl::Status PropagateError2() {
-  TF_RETURN_IF_ERROR(PropagateError());
+  TF_XLA_RETURN_IF_ERROR(PropagateError());
   return absl::OkStatus();
 }
 

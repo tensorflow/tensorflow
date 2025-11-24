@@ -105,9 +105,9 @@ absl::Status CheckTypes(HloInstruction* conv, const se::GpuComputeCapability cc,
     return absl::OkStatus();
   };
 
-  TF_RETURN_IF_ERROR(valid_shape(conv->shape()));
-  TF_RETURN_IF_ERROR(valid_shape(conv->operand(0)->shape()));
-  TF_RETURN_IF_ERROR(valid_shape(conv->operand(1)->shape()));
+  TF_XLA_RETURN_IF_ERROR(valid_shape(conv->shape()));
+  TF_XLA_RETURN_IF_ERROR(valid_shape(conv->operand(0)->shape()));
+  TF_XLA_RETURN_IF_ERROR(valid_shape(conv->operand(1)->shape()));
   return absl::OkStatus();
 }
 
@@ -818,7 +818,7 @@ CudnnConvBackendConfig GetDefaultBackendConfig() {
 static absl::StatusOr<HloInstruction*> CreateCustomCallHelper(
     HloInstruction* conv, const se::GpuComputeCapability& cc,
     const se::dnn::VersionInfo& dnn_version) {
-  TF_RETURN_IF_ERROR(CheckTypes(conv, cc, dnn_version));
+  TF_XLA_RETURN_IF_ERROR(CheckTypes(conv, cc, dnn_version));
   if (ConvolutionMatch m = MatchBackwardInput(conv)) {
     auto& [window, dnums, rhs] = *m;
     return CreateGpuConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
@@ -857,7 +857,7 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv,
                                       const se::dnn::VersionInfo& dnn_version) {
   CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
 
-  TF_ASSIGN_OR_RETURN(HloInstruction * custom_call,
+  TF_XLA_ASSIGN_OR_RETURN(HloInstruction * custom_call,
                       CreateCustomCallHelper(conv, cc, dnn_version));
   if (custom_call == nullptr) {
     return false;
@@ -866,14 +866,14 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv,
   GpuBackendConfig gpu_backend_config;
   *gpu_backend_config.mutable_cudnn_conv_backend_config() =
       GetDefaultBackendConfig();
-  TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
+  TF_XLA_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
 
   VLOG(1) << "Replacing convolution " << conv->ToString() << " with "
           << custom_call->ToString();
 
   // The CustomCall returns a tuple (conv_result, scratch_memory).  Extract
   // out the conv result and replace `conv` with it.
-  TF_RETURN_IF_ERROR(conv->parent()->ReplaceWithNewInstruction(
+  TF_XLA_RETURN_IF_ERROR(conv->parent()->ReplaceWithNewInstruction(
       conv,
       HloInstruction::CreateGetTupleElement(conv->shape(), custom_call, 0)));
   return true;
@@ -894,7 +894,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
 
   bool changed = false;
   for (HloInstruction* conv : convs) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, cc, dnn_version));
+    TF_XLA_ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, cc, dnn_version));
     changed |= result;
   }
   return changed;
@@ -908,7 +908,7 @@ absl::StatusOr<bool> ConvRewriter::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool result,
         RunOnComputation(computation, compute_capability_, dnn_version_));
     changed |= result;

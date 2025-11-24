@@ -27,21 +27,21 @@ namespace xla::cpu {
 absl::StatusOr<YnnSubgraph> CreateYnnSubgraph(
     absl::FunctionRef<ynn_status(ynn_subgraph_t*)> builder) {
   ynn_subgraph_t subgraph = nullptr;
-  YNN_RETURN_IF_ERROR(builder(&subgraph));
+  YNN_XLA_RETURN_IF_ERROR(builder(&subgraph));
   return YnnSubgraph(subgraph);
 }
 
 absl::StatusOr<YnnRuntime> CreateYnnRuntime(
     absl::FunctionRef<ynn_status(ynn_runtime_t*)> builder) {
   ynn_runtime_t runtime = nullptr;
-  YNN_RETURN_IF_ERROR(builder(&runtime));
+  YNN_XLA_RETURN_IF_ERROR(builder(&runtime));
   return YnnRuntime(runtime);
 }
 
 absl::StatusOr<YnnThreadpool> CreateYnnThreadpool(
     absl::FunctionRef<ynn_status(ynn_threadpool_t*)> builder) {
   ynn_threadpool_t threadpool = nullptr;
-  YNN_RETURN_IF_ERROR(builder(&threadpool));
+  YNN_XLA_RETURN_IF_ERROR(builder(&threadpool));
   return YnnThreadpool(threadpool);
 }
 

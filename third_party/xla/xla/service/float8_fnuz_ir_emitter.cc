@@ -116,10 +116,10 @@ absl::StatusOr<uint64_t> ComputeMaximumValue(PrimitiveType input_type,
   TF_RET_CHECK(primitive_util::IsFloatingPointType(output_type));
   TF_RET_CHECK(BitWidth(input_type) > BitWidth(output_type));
 
-  TF_ASSIGN_OR_RETURN(auto output_semantics,
+  TF_XLA_ASSIGN_OR_RETURN(auto output_semantics,
                       PrimitiveTypeToAPFloatSemantics(output_type));
 
-  TF_ASSIGN_OR_RETURN(auto input_semantics,
+  TF_XLA_ASSIGN_OR_RETURN(auto input_semantics,
                       PrimitiveTypeToAPFloatSemantics(input_type));
 
   // Compute the largest number of the output type and convert it to the input
@@ -160,7 +160,7 @@ absl::StatusOr<llvm::Value*> IsInputOutsideOutputRange(
   // Ignore the sign bit.
   llvm::Value* non_sign_bits = b->CreateAnd(value, bit_mask);
 
-  TF_ASSIGN_OR_RETURN(uint64_t maximum_value,
+  TF_XLA_ASSIGN_OR_RETURN(uint64_t maximum_value,
                       ComputeMaximumValue(input_type, output_type, b));
 
   // Compare against the maximum value.
@@ -389,7 +389,7 @@ absl::StatusOr<llvm::Value*> DynamicRoundingBias(PrimitiveType input_type,
   llvm::Type* int_type = b->getIntNTy(BitWidth(input_type));
 
   // Find the bit position of the last mantissa bit.
-  TF_ASSIGN_OR_RETURN(llvm::Value * shift,
+  TF_XLA_ASSIGN_OR_RETURN(llvm::Value * shift,
                       LastMantissaBit(input_type, value, output_type, b));
 
   // Compute the mask to select that bit.
@@ -511,7 +511,7 @@ llvm::Value* BuildOutputSign(llvm::Value* sign, PrimitiveType output_type,
 }
 
 absl::StatusOr<uint64_t> GetQNaN(PrimitiveType type) {
-  TF_ASSIGN_OR_RETURN(auto semantics, PrimitiveTypeToAPFloatSemantics(type));
+  TF_XLA_ASSIGN_OR_RETURN(auto semantics, PrimitiveTypeToAPFloatSemantics(type));
 
   return llvm::APFloat::getQNaN(*semantics).bitcastToAPInt().getZExtValue();
 }
@@ -534,9 +534,9 @@ absl::StatusOr<llvm::Value*> EmitF8fnuzToFloating(PrimitiveType input_type,
 
   const std::string lut_name = PrimitiveType_Name(input_type) + "To" +
                                PrimitiveType_Name(output_type) + "LUT";
-  TF_ASSIGN_OR_RETURN(auto input_semantics,
+  TF_XLA_ASSIGN_OR_RETURN(auto input_semantics,
                       PrimitiveTypeToAPFloatSemantics(input_type));
-  TF_ASSIGN_OR_RETURN(auto output_semantics,
+  TF_XLA_ASSIGN_OR_RETURN(auto output_semantics,
                       PrimitiveTypeToAPFloatSemantics(output_type));
 
   llvm::Constant* global_result_lut_array = module->getOrInsertGlobal(
@@ -570,7 +570,7 @@ absl::StatusOr<llvm::Value*> EmitF8fnuzToFloating(PrimitiveType input_type,
       });
 
   // Check for NaN, since it's a special case.
-  TF_ASSIGN_OR_RETURN(const uint64_t input_qnan, GetQNaN(input_type));
+  TF_XLA_ASSIGN_OR_RETURN(const uint64_t input_qnan, GetQNaN(input_type));
   llvm::Value* nan_pred = b->CreateICmpEQ(
       f8_value, llvm::ConstantInt::get(b->getInt8Ty(), input_qnan));
 
@@ -603,8 +603,8 @@ absl::StatusOr<llvm::Value*> EmitF8fnuzToFloating(PrimitiveType input_type,
   llvm::Value* result = b->CreateOr(sign, result_abs);
 
   // Bitcast to the output type.
-  TF_ASSIGN_OR_RETURN(auto type, PrimitiveTypeToLLVMType(b, output_type));
-  TF_ASSIGN_OR_RETURN(const uint64_t output_qnan, GetQNaN(output_type));
+  TF_XLA_ASSIGN_OR_RETURN(auto type, PrimitiveTypeToLLVMType(b, output_type));
+  TF_XLA_ASSIGN_OR_RETURN(const uint64_t output_qnan, GetQNaN(output_type));
   return b->CreateBitCast(
       b->CreateSelect(nan_pred,
                       llvm::ConstantInt::get(output_int_type, output_qnan),

@@ -345,7 +345,7 @@ absl::Status AMDGPUTargetModuleLinker(
     return xla::Internal("Incompatible compute capability was specified.");
   }
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       amdgpu::LinkROCDLIfNecessary(module, compute_capability->gfx_version(),
                                    debug_options, device_bitcode_dir_path));
 
@@ -535,7 +535,7 @@ absl::Status LinkROCDLIfNecessary(llvm::Module* module,
     return absl::OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       LinkWithBitcodeVector(module, GetROCDLPaths(rocdl_dir_path)));
 
   // Sanitize stray metadata from the bitcode files
@@ -634,13 +634,13 @@ absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
                                debug_options);
 
     // Link with ROCm-Device-Libs, and optimize the LLVM module.
-    TF_RETURN_IF_ERROR(gpu::LinkAndOptimizeModule(
+    TF_XLA_RETURN_IF_ERROR(gpu::LinkAndOptimizeModule(
         module, gpu_version, debug_options, rocdl_dir_path,
         AMDGPUTargetModuleLinker, default_target_triple, target_machine.get(),
         kAMDGPUInlineThreshold));
 
     // Lower optimized LLVM module to HSA code object.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         hsaco, EmitModuleToHsaco(module, target_machine.get(), debug_options));
     HsacoCache::Add(str, hash, gcn_arch_name, hsaco);
   }

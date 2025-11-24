@@ -49,10 +49,10 @@ absl::Status GpuConvertAsyncCollectivesToSync::ConvertAsyncInstructionsToSync(
   absl::flat_hash_map<HloInstruction*, HloInstruction*> replaced_ops;
   for (auto& [async_start, async_done] : async_pairs) {
     // Tag the async start with is_sync = true.
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+    TF_XLA_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                         async_start->backend_config<GpuBackendConfig>());
     gpu_config.mutable_collective_backend_config()->set_is_sync(true);
-    TF_RETURN_IF_ERROR(async_start->set_backend_config(gpu_config));
+    TF_XLA_RETURN_IF_ERROR(async_start->set_backend_config(gpu_config));
     replaced_ops[async_start] = nullptr;
     replaced_ops[async_done] = async_start;
   }

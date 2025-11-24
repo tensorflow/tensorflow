@@ -131,29 +131,29 @@ absl::Status CpuLayoutAssignment::AddBackendConstraints(
   for (auto* instruction : computation->instructions()) {
     if (OperandsAndResultMustHaveRowMajorLayout(*instruction,
                                                 target_machine_features_)) {
-      TF_RETURN_IF_ERROR(SetInstructionLayout(
+      TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(
           RowMajorShape(instruction->shape()), instruction));
       for (int i = 0; i < instruction->operand_count(); i++) {
-        TF_RETURN_IF_ERROR(SetOperandLayout(
+        TF_XLA_RETURN_IF_ERROR(SetOperandLayout(
             RowMajorShape(instruction->operand(i)->shape()), instruction, i));
       }
     } else if (optional<int64_t> op_idx =
                    ShouldMakeOperandColumnMajor(&cache, *instruction)) {
       const HloInstruction* op = instruction->operand(*op_idx);
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           SetOperandLayout(ColMajorShape(op->shape()), instruction, *op_idx));
     } else if (instruction->opcode() == HloOpcode::kReduceScatter) {
       // XLA:CPU can only support reduce-scatter where the scatter dimension
       // is the most major dimension in the layout.
       auto ars = Cast<HloReduceScatterInstruction>(instruction);
-      TF_RETURN_IF_ERROR(SetInstructionLayout(
+      TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(
           ShapeUtil::MoveDimToMajor(ars->shape(), ars->scatter_dimension()),
           ars));
     } else if (instruction->opcode() == HloOpcode::kAllGather) {
       // XLA:CPU can only support all-gathers where the gather dimension is the
       // most major dimension in the layout.
       auto ag = Cast<HloAllGatherInstruction>(instruction);
-      TF_RETURN_IF_ERROR(SetInstructionLayout(
+      TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(
           ShapeUtil::MoveDimToMajor(ag->shape(), ag->all_gather_dimension()),
           ag));
     } else {
@@ -173,7 +173,7 @@ absl::Status CpuLayoutAssignment::AddBackendConstraints(
         }
         Shape operand_shape(
             RowMajorShape(instruction->operand(operand_no)->shape()));
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             SetOperandLayout(operand_shape, instruction, operand_no));
       }
       // Skip over the root instruction for the top-level computation.
