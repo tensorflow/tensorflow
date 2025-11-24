@@ -29,6 +29,7 @@ namespace tsl {
 namespace profiler {
 
 void ProfilerServer::StartProfilerServer(int32_t port) {
+  LOG(INFO) << "ProfilerServer::StartProfilerServer";
   VLOG(1) << "Starting profiler server.";
   std::string server_address = absl::StrCat("[::]:", port);
   service_ = CreateProfilerService();
@@ -49,6 +50,7 @@ void ProfilerServer::StartProfilerServer(int32_t port) {
 }
 
 ProfilerServer::~ProfilerServer() {
+  LOG(INFO) << "ProfilerServer::~ProfilerServer";
   if (server_) {
     server_->Shutdown();
     server_->Wait();
