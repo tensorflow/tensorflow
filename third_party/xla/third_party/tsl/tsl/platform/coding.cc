@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tsl/platform/coding.h"
 
+#include <cstdint>
+#include <cstring>
+
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/byte_order.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
