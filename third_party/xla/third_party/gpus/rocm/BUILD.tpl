@@ -144,6 +144,8 @@ cc_library(
     linkopts = select({
         ":build_hermetic": [
             "-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib",
+            "-Wl,-rpath,external/local_config_rocm/rocm/%{rocm_root}/lib/llvm/lib",
+            "-Lexternal/local_config_rocm/rocm/%{rocm_root}/lib",
         ],
         ":multiple_rocm_paths": [
             "-Wl,-rpath=%{rocm_lib_paths}",
@@ -166,11 +168,17 @@ cc_library(
 
 cc_library(
     name = "rocm_hip",
-    srcs = glob([
-        "%{rocm_root}/lib/libamdhip*.so*",
-        "%{rocm_root}/lib/libhiprtc.so*",
-        "%{rocm_root}/lib/libhiprtc-builtins.so*",
-    ]),
+    srcs = glob(
+        [
+            "%{rocm_root}/lib/libamdhip*.so*",
+            "%{rocm_root}/lib/libhiprtc.so*",
+            "%{rocm_root}/lib/libhiprtc-builtins.so*",
+        ],
+        exclude = [
+            # exclude files like libamdhip64.so.7.1.25445-7484b05b13 -> misplaced
+            "%{rocm_root}/**/*.so.*.*",
+        ],
+    ),
     hdrs = glob(["%{rocm_root}/include/hip/**"]),
     include_prefix = "rocm",
     includes = [
@@ -191,12 +199,17 @@ cc_library(
 # Used by jax_rocm_plugin to minimally link to hip runtime.
 cc_library(
     name = "hip_runtime",
-    srcs = glob([
-        "%{rocm_root}/lib/libamdhip*.so*",
-        "%{rocm_root}/lib/libhiprtc.so*",
-        "%{rocm_root}/lib/libhiprtc-builtins.so*",
-        "%{rocm_root}/lib/libamd_comgr.so*",
-    ]),
+    srcs = glob(
+        [
+            "%{rocm_root}/lib/libamdhip*.so*",
+            "%{rocm_root}/lib/libhiprtc.so*",
+            "%{rocm_root}/lib/libhiprtc-builtins.so*",
+        ],
+        exclude = [
+            # exclude files like libamdhip64.so.7.1.25445-7484b05b13 -> misplaced
+            "%{rocm_root}/**/*.so.*.*",
+        ],
+    ),
     hdrs = glob(["%{rocm_root}/include/hip/**"]),
     include_prefix = "rocm",
     includes = [
@@ -207,6 +220,7 @@ cc_library(
     deps = [
         ":amd_comgr",
         ":rocm_config",
+        ":rocm_rpath",
         ":rocprofiler_register",
         ":system_libs",
     ],
@@ -217,6 +231,7 @@ cc_library(
     hdrs = glob(["%{rocm_root}/include/rocblas/**"]),
     data = glob([
         "%{rocm_root}/lib/librocblas*.so*",
+        "%{rocm_root}/lib/librocroller*.so*",
         "%{rocm_root}/lib/rocblas/**",
     ]),
     include_prefix = "rocm",
@@ -314,6 +329,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":rocm_config",
+        ":roctracer",
         ":system_libs",
     ],
 )
@@ -363,11 +379,11 @@ cc_library(
 
 cc_library(
     name = "roctracer",
-    hdrs = glob(["%{rocm_root}/include/roctracer/**"]),
-    data = glob([
+    srcs = glob([
         "%{rocm_root}/lib/libroctracer*.so*",
         "%{rocm_root}/lib/libroctx64.so*",
     ]),
+    hdrs = glob(["%{rocm_root}/include/roctracer/**"]),
     include_prefix = "rocm",
     includes = [
         "%{rocm_root}/include/",
@@ -517,16 +533,28 @@ cc_library(
 
 cc_library(
     name = "amd_comgr",
-    srcs = glob([
-        "%{rocm_root}/lib/libamd_comgr.so*",
-    ]),
     hdrs = glob(["%{rocm_root}/include/amd_comgr/**"]),
+    data = glob([
+        "%{rocm_root}/lib/libamd_comgr_loader.so*",
+        "%{rocm_root}/lib/libamd_comgr.so*",
+        "%{rocm_root}/lib/llvm/lib/libLLVM.so*",
+    ]),
     include_prefix = "rocm",
     includes = [
         "%{rocm_root}/include",
     ],
+    linkopts = select({
+        ":build_hermetic": [
+            "-lamd_comgr_loader",
+        ],
+        "//conditions:default": [],
+    }),
     strip_include_prefix = "%{rocm_root}",
-    deps = [":rocm_config"],
+    deps = [
+        ":rocm_config",
+        ":rocm_rpath",
+        ":system_libs",
+    ],
 )
 
 cc_library(
@@ -550,13 +578,10 @@ cc_library(
 cc_library(
     name = "system_libs",
     srcs = glob([
-        "rocm_dist/usr/lib/**/libelf.so*",
-        "rocm_dist/usr/lib/**/libdrm.so*",
-        "rocm_dist/usr/lib/**/libnuma.so*",
-        "rocm_dist/usr/lib/**/libdrm_amdgpu.so*",
+        "%{rocm_root}/lib/rocm_sysdeps/lib/*.so*",
     ]),
     data = glob([
-        "rocm_dist/usr/**",
+        "%{rocm_root}/lib/rocm_sysdeps/share/**",
     ]),
 )
 

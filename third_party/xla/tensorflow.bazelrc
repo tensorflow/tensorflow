@@ -287,9 +287,9 @@ common:rocm_clang_official --host_linkopt="-fuse-ld=lld"
 common:rocm --config=rocm_clang_official
 common:rocm_ci --config=rocm
 
+common:rocm_ci_hermetic --dynamic_mode=off
 common:rocm_ci_hermetic --config=rocm_clang_official
-common:rocm_ci_hermetic --repo_env="OS=ubuntu_22.04"
-common:rocm_ci_hermetic --repo_env="ROCM_VERSION=6.4.1"
+common:rocm_ci_hermetic --repo_env="ROCM_DISTRO_VERSION=rocm_7.10.0_gfx94X"
 common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 # This config option is used for SYCL as GPU backend.
