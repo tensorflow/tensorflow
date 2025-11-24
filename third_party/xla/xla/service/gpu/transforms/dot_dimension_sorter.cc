@@ -127,7 +127,7 @@ absl::StatusOr<bool> DotDimensionSorter::RunImpl(
     return false;
   }
   for (HloInstruction* dot : dots_to_process) {
-    TF_RETURN_IF_ERROR(SortDotDimensions(Cast<HloDotInstruction>(dot)));
+    TF_XLA_RETURN_IF_ERROR(SortDotDimensions(Cast<HloDotInstruction>(dot)));
   }
   return true;
 }

@@ -119,7 +119,7 @@ static absl::StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
     llvm::SmallVector<mlir::Type, 4> contents;
     contents.reserve(shape.tuple_shapes().size());
     for (const auto& subtype : shape.tuple_shapes()) {
-      TF_ASSIGN_OR_RETURN(auto mlir_subtype,
+      TF_XLA_ASSIGN_OR_RETURN(auto mlir_subtype,
                           ConvertShapeToType<TypeT>(subtype, builder));
       contents.push_back(mlir_subtype);
     }

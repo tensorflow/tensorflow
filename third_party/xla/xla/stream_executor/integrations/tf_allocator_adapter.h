@@ -135,7 +135,7 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
     auto it = memory_space_to_per_device_allocators_.find(memory_space);
     CHECK(it != memory_space_to_per_device_allocators_.end());
     CHECK_LT(device_ordinal, it->second.size());
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto result, it->second[device_ordinal]->Allocate(
                          device_ordinal, size, retry_on_failure, memory_space));
 

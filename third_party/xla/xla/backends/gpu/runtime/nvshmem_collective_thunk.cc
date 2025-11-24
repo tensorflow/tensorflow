@@ -84,15 +84,15 @@ NvshmemCollectiveThunk::NvshmemCollectiveThunk(Kind kind, ThunkInfo thunk_info,
       async_events_(is_sync ? nullptr : new CollectiveThunk::AsyncEvents()) {}
 
 absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectivesFromRegistry() {
-  TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
+  TF_XLA_ASSIGN_OR_RETURN(xla::Collectives * collectives,
                       xla::CollectivesRegistry::Get("gpu", "nvshmem"));
   return tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
 }
 
 absl::Status NvshmemCollectiveThunk::Prepare(
     const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
+  TF_XLA_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(collectives, *params.collective_params,
                       config().replica_groups, config().group_mode,
@@ -103,7 +103,7 @@ absl::Status NvshmemCollectiveThunk::Prepare(
 absl::Status NvshmemCollectiveThunk::Initialize(
     const InitializeParams& params) {
   if (async_events_) {
-    TF_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
+    TF_XLA_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
   }
   // Any nvshmem collective will need to require a barrier at the end of
   // graph execution to make sure all reads and writes to symmetrics buffers
@@ -126,17 +126,17 @@ absl::Status NvshmemCollectiveThunk::ExecuteOnStream(
         *params.collective_params->async_streams.at(async_stream_idx);
 
     // Wait for main compute stream to make sure all buffers are ready.
-    TF_RETURN_IF_ERROR(async_stream.WaitFor(params.stream));
+    TF_XLA_RETURN_IF_ERROR(async_stream.WaitFor(params.stream));
 
-    TF_RETURN_IF_ERROR(RunNvshmemCollective(params, async_stream));
+    TF_XLA_RETURN_IF_ERROR(RunNvshmemCollective(params, async_stream));
 
     // Record collective operation completion.
-    TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
-    TF_RETURN_IF_ERROR(async_stream.RecordEvent(event));
+    TF_XLA_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
+    TF_XLA_RETURN_IF_ERROR(async_stream.RecordEvent(event));
 
   } else {
     // Launch collective operation on a main stream.
-    TF_RETURN_IF_ERROR(RunNvshmemCollective(params, *params.stream));
+    TF_XLA_RETURN_IF_ERROR(RunNvshmemCollective(params, *params.stream));
   }
   return absl::OkStatus();
 }
@@ -152,7 +152,7 @@ NvshmemCollectiveDoneThunk::NvshmemCollectiveDoneThunk(
 absl::Status NvshmemCollectiveDoneThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
-  TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
+  TF_XLA_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
   return params.stream->WaitFor(event);
 }
 

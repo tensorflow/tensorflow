@@ -49,7 +49,7 @@ limitations under the License.
         str, ncclGetErrorString(s), ncclGetLastError(nullptr));       \
   }(expr, #expr)
 
-#define XLA_NCCL_RETURN_IF_ERROR(expr)      \
+#define XLA_NCCL_XLA_RETURN_IF_ERROR(expr)      \
   do {                                      \
     absl::Status s = XLA_NCCL_STATUS(expr); \
     if (!s.ok()) {                          \

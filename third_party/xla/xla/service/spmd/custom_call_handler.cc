@@ -208,7 +208,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
   XlaComputation comparator = CreateScalarComparisonComputation(
       "compare-value-and-index", {input->shape().element_type(), S32}, {Gt, Lt},
       &b);
-  TF_ASSIGN_OR_RETURN(HloComputation * compare_computation,
+  TF_XLA_ASSIGN_OR_RETURN(HloComputation * compare_computation,
                       XlaComputationToHloComputation(comparator, module_));
   // Each partition needs to do TopK separately, thus the base shape for sort
   // becomes [ceil(batch_size / batch_dim_partition), k * shard_count].
@@ -254,7 +254,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
 
 absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
     HloInstruction* hlo) {
-  TF_ASSIGN_OR_RETURN(auto attrs, ParseOpaqueAsAttributes(hlo));
+  TF_XLA_ASSIGN_OR_RETURN(auto attrs, ParseOpaqueAsAttributes(hlo));
   auto dim_it = attrs.find("dimension");
   TF_RET_CHECK(dim_it != attrs.end())
       << "No dimension attribute in SPMD rotate op";

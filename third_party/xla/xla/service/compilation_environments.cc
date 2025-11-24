@@ -162,7 +162,7 @@ CompilationEnvironments::CreateFromProto(
           fullname);
     }
 
-    TF_RETURN_IF_ERROR(envs->AddEnv(std::move(env)));
+    TF_XLA_RETURN_IF_ERROR(envs->AddEnv(std::move(env)));
   }
 
   return envs;
@@ -199,7 +199,7 @@ absl::Status CompilationEnvironments::InitializeAllKnownEnvs() {
   for (const auto& descriptor : descriptors) {
     auto it = environments_.find(descriptor);
     if (it == environments_.end()) {
-      TF_RETURN_IF_ERROR(AddEnvImpl(*descriptor, nullptr));
+      TF_XLA_RETURN_IF_ERROR(AddEnvImpl(*descriptor, nullptr));
       DefaultEnvCreatedByCompilationEnvironments(descriptor->full_name());
     }
   }
@@ -276,7 +276,7 @@ absl::Status CompilationEnvironments::AddEnvImpl(
     return absl::InvalidArgumentError(absl::StrCat(
         "Unknown CompilationEnvironment type ", descriptor.full_name()));
   }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<tsl::protobuf::Message> processed_env,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<tsl::protobuf::Message> processed_env,
                       process_new_env(std::move(env)));
 
   // Check for unknown fields

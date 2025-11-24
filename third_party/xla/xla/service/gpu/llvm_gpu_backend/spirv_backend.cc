@@ -140,7 +140,7 @@ absl::StatusOr<std::string> CompileToSPIRV(
   llvm::Triple default_target_triple("spirv64-unknown-unknown");
   std::unique_ptr<llvm::TargetMachine> target_machine =
       GetTargetMachine(default_target_triple, "", debug_options, "");
-  TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
+  TF_XLA_RETURN_IF_ERROR(LinkAndOptimizeModule(
       module, gpu_version, debug_options, "", SPIRVTargetModuleLinker,
       default_target_triple, target_machine.get(), kDefaultInlineThreshold));
 

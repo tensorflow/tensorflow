@@ -210,7 +210,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   Shape* filter_shape;
   Shape* output_shape;
 
-  TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(instr));
+  TF_XLA_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(instr));
   switch (kind) {
     case CudnnConvKind::kForward:
     case CudnnConvKind::kForwardActivation:
@@ -238,7 +238,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
     std::tie(input, filter, output) =
         HeuristicLayoutAssignment(instr, gpu_version_, dnn_version_);
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::tie(*input_shape->mutable_layout(),
                  *filter_shape->mutable_layout(),
                  *output_shape->mutable_layout()),
@@ -249,21 +249,21 @@ absl::Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   // The custom call returns a tuple of (actual_result, scratch_buffer);
   // call_result_buf is the logical buffer for actual_result, the thing that
   // contains the result of the conv call.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const LogicalBuffer* call_result_buf,
       points_to_analysis_->GetBufferDefinedAt(instr, /*index=*/{0}));
 
   // Set layouts of the instructions' shapes.
-  TF_RETURN_IF_ERROR(SetOperandLayout(lhs_shape, instr, 0));
-  TF_RETURN_IF_ERROR(SetOperandLayout(rhs_shape, instr, 1));
-  TF_RETURN_IF_ERROR(SetBufferLayout(result_shape.layout(), *call_result_buf));
+  TF_XLA_RETURN_IF_ERROR(SetOperandLayout(lhs_shape, instr, 0));
+  TF_XLA_RETURN_IF_ERROR(SetOperandLayout(rhs_shape, instr, 1));
+  TF_XLA_RETURN_IF_ERROR(SetBufferLayout(result_shape.layout(), *call_result_buf));
   // For fused convolutions, instr->operand(2), if exists, is the bias buffer.
   // There is no need to assign layout to it, as it has only one dimension.
   // instr->operand(3), if exists, is the side input buffer.
   if (kind == CudnnConvKind::kForwardActivation &&
       instr->operand_count() == 4) {
     // The side input layout must match the output layout.
-    TF_RETURN_IF_ERROR(SetOperandLayout(*output_shape, instr, 3));
+    TF_XLA_RETURN_IF_ERROR(SetOperandLayout(*output_shape, instr, 3));
   }
 
   // For graph convolutions, align the layouts of the non-scalar inputs to any
@@ -271,7 +271,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   if (kind == CudnnConvKind::kForwardGraph) {
     for (int k = 2; k < instr->operand_count(); ++k) {
       if (!ShapeUtil::IsScalar(instr->operand(k)->shape())) {
-        TF_RETURN_IF_ERROR(SetOperandLayout(*output_shape, instr, k));
+        TF_XLA_RETURN_IF_ERROR(SetOperandLayout(*output_shape, instr, k));
       }
     }
   }
@@ -410,17 +410,17 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
     Side side = {operand_no, instruction->operand(operand_no), batch_dims,
                  contracting_dims};
     side.type = side.operand->shape().element_type();
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         side.non_contracting_dims,
         GetNonContractingDims(side.operand->shape(), side.batch_dims,
                               side.contracting_dims));
     return side;
   };
   const DotDimensionNumbers& dot_dims = instruction->dot_dimension_numbers();
-  TF_ASSIGN_OR_RETURN(const Side lhs,
+  TF_XLA_ASSIGN_OR_RETURN(const Side lhs,
                       make_side(0, dot_dims.lhs_batch_dimensions(),
                                 dot_dims.lhs_contracting_dimensions()));
-  TF_ASSIGN_OR_RETURN(const Side rhs,
+  TF_XLA_ASSIGN_OR_RETURN(const Side rhs,
                       make_side(1, dot_dims.rhs_batch_dimensions(),
                                 dot_dims.rhs_contracting_dimensions()));
 
@@ -452,17 +452,17 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
   for (const Side& side : {lhs, rhs}) {
     if ((IsPackedInstruction(side.operand) && pack_along_contracting_dims) ||
         both_operands_require_minor_contraction_dims) {
-      TF_RETURN_IF_ERROR(SetDotOperandLayoutToMinorContracting(
+      TF_XLA_RETURN_IF_ERROR(SetDotOperandLayoutToMinorContracting(
           instruction, side.operand_no, side.batch_dims, side.contracting_dims,
           side.non_contracting_dims));
     } else if (!side.batch_dims.empty() || side.contracting_dims.size() > 1 ||
                side.non_contracting_dims.size() > 1) {
-      TF_RETURN_IF_ERROR(SetDotOperandLayout(
+      TF_XLA_RETURN_IF_ERROR(SetDotOperandLayout(
           instruction, side.operand_no, side.batch_dims, side.contracting_dims,
           side.non_contracting_dims));
     } else if (ChainEndsWithAutoLayout(side.operand,
                                        saved_entry_computation_layout())) {
-      TF_RETURN_IF_ERROR(SetDotOperandLayout(
+      TF_XLA_RETURN_IF_ERROR(SetDotOperandLayout(
           instruction, side.operand_no, side.batch_dims, side.contracting_dims,
           side.non_contracting_dims, /*mandatory=*/false));
     }
@@ -473,7 +473,7 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
   // the dot output.
   if (!lhs.batch_dims.empty() || lhs.non_contracting_dims.size() > 1 ||
       rhs.non_contracting_dims.size() > 1) {
-    TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
+    TF_XLA_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
   }
 
   return absl::OkStatus();
@@ -489,7 +489,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
        ++iterator) {
     HloInstruction* instruction = *iterator;
     if (IsCustomCallToDnnConvolution(*instruction)) {
-      TF_RETURN_IF_ERROR(AddBackendConstraintsToDnnConvCustomCall(
+      TF_XLA_RETURN_IF_ERROR(AddBackendConstraintsToDnnConvCustomCall(
           Cast<HloCustomCallInstruction>(instruction), constraints));
     }
 
@@ -497,7 +497,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
         << "Gemm rewriting should run after layout assignment";
 
     if (HloPredicateIsOp<HloOpcode::kDot>(instruction)) {
-      TF_RETURN_IF_ERROR(AddDotBackendConstraints(
+      TF_XLA_RETURN_IF_ERROR(AddDotBackendConstraints(
           constraints, Cast<HloDotInstruction>(instruction)));
     } else if (HloPredicateIsOp<HloOpcode::kTranspose>(instruction)) {
       const HloInstruction* operand = instruction->operand(0);
@@ -513,7 +513,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
           LayoutUtil::MakeLayoutFromMajorToMinor(instruction->dimensions());
 
       if (DotCanSupportShapeWithLayout(operand, shape)) {
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             SetOperandLayout(shape, instruction, /*operand_no=*/0));
       }
     } else if (HloPredicateIsOp<HloOpcode::kFft>(instruction)) {
@@ -522,8 +522,8 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       LayoutUtil::SetToDefaultLayout(&op0_shape);
       Shape output_shape = instruction->shape();
       LayoutUtil::SetToDefaultLayout(&output_shape);
-      TF_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
-      TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
+      TF_XLA_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
+      TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
     } else if ((HloPredicateIsOp<HloOpcode::kSort>(instruction) ||
                 IsCubDeviceRadixSort(*instruction)) &&
                instruction->operand(0)->shape().dimensions().size() > 1) {
@@ -534,31 +534,31 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       for (int64_t i = 0; i < instruction->operand_count(); ++i) {
         Shape shape = instruction->operand(i)->shape();
         *shape.mutable_layout() = keys_layout;
-        TF_RETURN_IF_ERROR(SetOperandLayout(shape, instruction, i));
+        TF_XLA_RETURN_IF_ERROR(SetOperandLayout(shape, instruction, i));
         const LogicalBuffer* output_buffer;
         if (instruction->shape().IsArray()) {
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               output_buffer,
               points_to_analysis_->GetBufferDefinedAt(instruction, {}));
         } else {
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               output_buffer,
               points_to_analysis_->GetBufferDefinedAt(instruction, {i}));
         }
-        TF_RETURN_IF_ERROR(SetBufferLayout(keys_layout, *output_buffer));
+        TF_XLA_RETURN_IF_ERROR(SetBufferLayout(keys_layout, *output_buffer));
       }
     } else if (IsCustomCallToTopK(*instruction)) {
       // The output of the TopK custom call needs to have default layout.
       Layout default_layout = LayoutUtil::GetDefaultLayoutForRank(
           instruction->operand(0)->shape().dimensions().size());
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           auto values_buffer,
           points_to_analysis_->GetBufferDefinedAt(instruction, {0}));
-      TF_RETURN_IF_ERROR(SetBufferLayout(default_layout, *values_buffer));
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_RETURN_IF_ERROR(SetBufferLayout(default_layout, *values_buffer));
+      TF_XLA_ASSIGN_OR_RETURN(
           auto indices_buffer,
           points_to_analysis_->GetBufferDefinedAt(instruction, {1}));
-      TF_RETURN_IF_ERROR(SetBufferLayout(default_layout, *indices_buffer));
+      TF_XLA_RETURN_IF_ERROR(SetBufferLayout(default_layout, *indices_buffer));
     } else if (HloPredicateIsOp<HloOpcode::kBitcastConvert>(instruction)) {
       Shape operand_shape = instruction->operand(0)->shape();
       Shape output_shape = instruction->shape();
@@ -587,10 +587,10 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       }
 
       if (ranks_differ) {
-        TF_RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction,
+        TF_XLA_RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction,
                                             /*operand_no=*/0,
                                             /*mandatory=*/true));
-        TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction,
+        TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction,
                                                 /*mandatory=*/true));
       }
     } else if (HloPredicateIsOp<HloOpcode::kTriangularSolve>(instruction)) {
@@ -606,21 +606,21 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       SetFortranLayout(&op0_shape);
       SetFortranLayout(&op1_shape);
       SetFortranLayout(&output_shape);
-      TF_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
-      TF_RETURN_IF_ERROR(SetOperandLayout(op1_shape, instruction, 1));
-      TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
+      TF_XLA_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
+      TF_XLA_RETURN_IF_ERROR(SetOperandLayout(op1_shape, instruction, 1));
+      TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
     } else if (HloPredicateIsOp<HloOpcode::kReduceScatter>(instruction)) {
       // XLA:GPU can only support reduce-scatter where the scatter dimension
       // is the most major dimension in the layout.
       auto ars = Cast<HloReduceScatterInstruction>(instruction);
-      TF_RETURN_IF_ERROR(SetInstructionLayout(
+      TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(
           ShapeUtil::MoveDimToMajor(ars->shape(), ars->scatter_dimension()),
           ars));
     } else if (HloPredicateIsOp<HloOpcode::kAllGather>(instruction)) {
       // XLA:GPU can only support all-gathers where the gather dimension is the
       // most major dimension in the layout.
       auto ag = Cast<HloAllGatherInstruction>(instruction);
-      TF_RETURN_IF_ERROR(SetInstructionLayout(
+      TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(
           ShapeUtil::MoveDimToMajor(ag->shape(), ag->all_gather_dimension()),
           ag));
     } else if (HloPredicateIsOp<HloOpcode::kAllToAll>(instruction) &&
@@ -628,7 +628,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       // XLA:GPU can only support all-to-all with split dimensions where the
       // split dimension is the most major dimension in the layout.
       auto* all_to_all = Cast<HloAllToAllInstruction>(instruction);
-      TF_RETURN_IF_ERROR(SetInstructionLayout(
+      TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(
           ShapeUtil::MoveDimToMajor(all_to_all->shape(),
                                     *all_to_all->split_dimension()),
           all_to_all));
@@ -636,14 +636,14 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       auto* ragged_all_to_all = Cast<HloRaggedAllToAllInstruction>(instruction);
       // XLA:GPU can only support ragged-all-to-all with the most major ragged
       // dimension in the layout.
-      TF_RETURN_IF_ERROR(SetInstructionLayout(
+      TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(
           ShapeUtil::MoveDimToMajor(ragged_all_to_all->shape(), 0),
           ragged_all_to_all));
     } else if (HloPredicateIsOp<HloOpcode::kSend>(instruction)) {
       Shape s = instruction->operand(0)->shape();
       LayoutUtil::SetToDefaultLayout(&s);
-      TF_RETURN_IF_ERROR(SetInstructionLayout(s, instruction->operand(0)));
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(s, instruction->operand(0)));
+      TF_XLA_RETURN_IF_ERROR(
           SetArrayOperandLayout(s.layout(), instruction->operand(0), 0));
     } else if (HloPredicateIsOp<HloOpcode::kRecv>(instruction)) {
       Shape s = instruction->shape();
@@ -651,14 +651,14 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
           &s, [&](Shape* subshape, const ShapeIndex& index) {
             LayoutUtil::SetToDefaultLayout(subshape);
           });
-      TF_RETURN_IF_ERROR(SetInstructionLayout(s, instruction));
+      TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(s, instruction));
     } else if (IsCustomCallToMemoryPlacement(instruction)) {
       // Make sure that host memory buffers use the default layout so that
       // the compiler does not insert transposes on host memory buffers.
       Shape operand_shape = instruction->operand(0)->shape();
       LayoutUtil::SetToDefaultLayout(&operand_shape);
-      TF_RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction, 0));
-      TF_RETURN_IF_ERROR(SetInstructionLayout(operand_shape, instruction));
+      TF_XLA_RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction, 0));
+      TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(operand_shape, instruction));
     } else if (instruction->opcode() == HloOpcode::kAsyncStart) {
       HloComputation* called_computation =
           instruction->async_wrapped_computation();
@@ -673,7 +673,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
           called_computation->ComputeProgramShape().parameters());
       *new_shape.mutable_tuple_shapes(1) =
           called_computation->ComputeProgramShape().result();
-      TF_RETURN_IF_ERROR(SetInstructionLayout(new_shape, instruction,
+      TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(new_shape, instruction,
                                               /*mandatory=*/true, /*dfs=*/true,
                                               /*allow_alias=*/true));
     } else if (instruction->opcode() == HloOpcode::kAsyncDone) {
@@ -687,7 +687,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
 
       Shape new_shape = called_computation->root_instruction()->shape();
 
-      TF_RETURN_IF_ERROR(SetInstructionLayout(new_shape, instruction,
+      TF_XLA_RETURN_IF_ERROR(SetInstructionLayout(new_shape, instruction,
                                               /*mandatory=*/true, /*dfs=*/true,
                                               /*allow_alias=*/true));
     }

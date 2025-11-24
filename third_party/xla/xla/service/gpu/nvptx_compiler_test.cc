@@ -75,7 +75,7 @@ class NVPTXCompilerTest : public HloTestBase {
     NVPTXCompiler compiler;
     std::unique_ptr<GpuAliasInfo> alias_info =
         compiler.GetAliasInfo(gpu_device_info);
-    TF_RETURN_IF_ERROR(ScheduleGpuModule(module, pointer_size, gpu_device_info,
+    TF_XLA_RETURN_IF_ERROR(ScheduleGpuModule(module, pointer_size, gpu_device_info,
                                          &mlir_context_, alias_info.get())
                            .status());
 

@@ -59,7 +59,7 @@ class Profiler {
   // Profiles a single executable.
   virtual absl::StatusOr<ProfileResult> Profile(
       std::unique_ptr<Executable> executable) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
                         CreateInputBuffers(executable.get()));
     return Profile(executable.get(), *buffers);
   }

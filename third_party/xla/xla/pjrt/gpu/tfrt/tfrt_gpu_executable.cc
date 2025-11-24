@@ -207,9 +207,9 @@ absl::StatusOr<std::string> TfrtGpuExecutable::SerializeExecutable() const {
   }
   Executable* built_executable = executables_[0]->executable();
   Compiler* compiler = client_->xla_client()->backend().compiler();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
                       compiler->Export(built_executable));
-  TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
+  TF_XLA_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
   if (serialized.empty()) {
     return Internal(
         "TfrtGpuExecutable::SerializeExecutable proto serialization "
@@ -217,7 +217,7 @@ absl::StatusOr<std::string> TfrtGpuExecutable::SerializeExecutable() const {
   }
   ExecutableAndOptionsProto proto;
   *proto.mutable_serialized_executable() = std::move(serialized);
-  TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+  TF_XLA_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                       compile_options_.ToProto());
   *proto.mutable_pjrt_client_name() = kPjRtClientName;
   return proto.SerializeAsString();
@@ -337,7 +337,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     CHECK(device_assignment_ != nullptr);
     const int device_id = (*device_assignment_)(replica, partition);
     VLOG(3) << "device_id: " << device_id;
-    TF_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
+    TF_XLA_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
                         client_->LookupDevice(PjRtGlobalDeviceId(device_id)));
     device = tsl::down_cast<TfrtGpuDevice*>(pjrt_device);
     device_assignment = device_assignment_;
@@ -386,7 +386,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   // SPMD sharding produces a single executable for multiple partitions.
   int executable_idx = executables_.size() > 1 ? partition : 0;
 
-  TF_ASSIGN_OR_RETURN(std::vector<Shape> output_shapes, GetOutputShapes());
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<Shape> output_shapes, GetOutputShapes());
   const Shape& result_shape = output_shapes[executable_idx];
 
   // `scheduled_event` indicates whether gpu computation is dispatched to the
@@ -443,9 +443,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       VLOG(3) << "Buffer for argument_handles[" << i << "] is donated";
 
       ++donate_it;
-      TF_RETURN_IF_ERROR(TestBufferDonationClashes(
+      TF_XLA_RETURN_IF_ERROR(TestBufferDonationClashes(
           handle, donation_clashes, must_donate, i, replica, partition));
-      TF_ASSIGN_OR_RETURN(auto donation_transaction,
+      TF_XLA_ASSIGN_OR_RETURN(auto donation_transaction,
                           tfrt_buffer->AcquireDonation());
 
       // After acquiring the buffer for donation, we retrieve the dependent
@@ -502,7 +502,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     input_deps.push_back(std::move(ordering_event));
   }
 
-  TF_ASSIGN_OR_RETURN(auto output_cuda_execute_event, CreateCudaEvent(device));
+  TF_XLA_ASSIGN_OR_RETURN(auto output_cuda_execute_event, CreateCudaEvent(device));
 
   std::vector<tsl::AsyncValueRef<GpuDeviceMemory>> output_buffers;
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
@@ -528,7 +528,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           device->default_memory_space().value_or(nullptr);
       if (shape.has_layout() &&
           shape.layout().memory_space() == Layout::kHostMemorySpace) {
-        TF_ASSIGN_OR_RETURN(memory_space, device->memory_space_by_kind_id(
+        TF_XLA_ASSIGN_OR_RETURN(memory_space, device->memory_space_by_kind_id(
                                               PinnedHostMemorySpace::kKindId));
       }
 
@@ -552,7 +552,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         device->default_memory_space().value_or(nullptr);
     if (shape.has_layout() &&
         shape.layout().memory_space() == Layout::kHostMemorySpace) {
-      TF_ASSIGN_OR_RETURN(memory_space, device->memory_space_by_kind_id(
+      TF_XLA_ASSIGN_OR_RETURN(memory_space, device->memory_space_by_kind_id(
                                             PinnedHostMemorySpace::kKindId));
     }
 
@@ -1025,7 +1025,7 @@ TfrtGpuExecutable::Execute(
       const int replica = addressable_device_logical_ids_[i].replica;
       const int partition = addressable_device_logical_ids_[i].partition;
       const int device_id = (*device_assignment_)(replica, partition);
-      TF_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
+      TF_XLA_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
                           client_->LookupDevice(PjRtGlobalDeviceId(device_id)));
       TfrtGpuDevice* gpu_device =
           tensorflow::down_cast<TfrtGpuDevice*>(pjrt_device);
@@ -1102,7 +1102,7 @@ TfrtGpuExecutable::ExecuteSharded(
       VLOG(1) << "ExecuteShard executes computation " << name()
               << " on assigned replica/partition on device "
               << device->DebugString();
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           auto result,
           ExecuteHelper(argument_handles,
                         addressable_device_logical_ids_[i].replica,
@@ -1140,7 +1140,7 @@ TfrtGpuExecutable::ExecutePortable(
   }
   VLOG(1) << "ExecutePortable executes single-core portable executable "
           << name();
-  TF_ASSIGN_OR_RETURN(auto result,
+  TF_XLA_ASSIGN_OR_RETURN(auto result,
                       ExecuteHelper(argument_handles,
                                     /*replica=*/0,
                                     /*partition=*/0, options, fill_future,
@@ -1173,18 +1173,18 @@ TfrtGpuExecutable::GetHloModules() const {
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 TfrtGpuExecutable::GetOutputMemoryKinds() const {
-  TF_ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
+  TF_XLA_ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
   if (addressable_devices().empty()) {
     return Unimplemented(
         "GetOutputMemoryKinds is not supported when there are no addressable "
         "devices in TfrtGpuExecutable.");
   }
-  TF_ASSIGN_OR_RETURN(PjRtMemorySpace * default_memory_space,
+  TF_XLA_ASSIGN_OR_RETURN(PjRtMemorySpace * default_memory_space,
                       addressable_devices()[0]->default_memory_space());
   std::vector<std::vector<absl::string_view>> out;
   out.reserve(shapes.size());
   for (const auto& shape : shapes) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::vector<absl::string_view> memory_kind,
         MemoryKindsFromShape(shape, default_memory_space->kind()));
     out.push_back(memory_kind);
@@ -1195,7 +1195,7 @@ TfrtGpuExecutable::GetOutputMemoryKinds() const {
 absl::Status TfrtGpuExecutable::SetUpDonation(bool tuple_inputs) {
   parameters_that_must_be_donated_.reserve(executables_.size());
   for (auto& executable : executables_) {
-    TF_ASSIGN_OR_RETURN(std::vector<int> parameters_to_donate,
+    TF_XLA_ASSIGN_OR_RETURN(std::vector<int> parameters_to_donate,
                         ComputeParametersThatMustBeDonated(
                             executable->executable()->module(), tuple_inputs));
     parameters_that_must_be_donated_.emplace_back(
@@ -1217,7 +1217,7 @@ absl::StatusOr<CompiledMemoryStats> TfrtGpuExecutable::GetCompiledMemoryStats()
       executables_[0]->executable()->buffer_assignment_proto();
   if (proto != nullptr) {
     memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
-    TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(*proto));
+    TF_XLA_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(*proto));
     memory_stats.peak_memory_in_bytes = peak_memory;
   }
   memory_stats.PopulateBufferStatsFromAllocations(

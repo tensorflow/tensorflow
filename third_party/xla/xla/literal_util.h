@@ -604,7 +604,7 @@ template <PrimitiveType type, typename T>
   using NativeT = primitive_util::NativeTypeOf<type>;
   TF_RET_CHECK(shape.element_type() == type);
   Literal literal(shape);
-  TF_RETURN_IF_ERROR(literal.Populate<NativeT>(
+  TF_XLA_RETURN_IF_ERROR(literal.Populate<NativeT>(
       [=](absl::Span<const int64_t> indexes) { return generator(indexes); }));
   return std::move(literal);
 }

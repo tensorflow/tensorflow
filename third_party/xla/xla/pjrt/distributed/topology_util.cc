@@ -283,17 +283,17 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
   // puts it to the key-value store.
   std::string global_topology_key = GetGlobalTopologyKey(platform);
   if (node_id == 0) {
-    TF_ASSIGN_OR_RETURN(std::vector<LocalTopologyProto> local_topologies,
+    TF_XLA_ASSIGN_OR_RETURN(std::vector<LocalTopologyProto> local_topologies,
                         GetAllLocalTopologies(platform, num_nodes, kv_store,
                                               get_local_topology_timeout));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         *global_topology,
         BuildGlobalTopology(absl::Span<LocalTopologyProto>(local_topologies),
                             assign_global_device_ids));
-    TF_RETURN_IF_ERROR(kv_store->Set(global_topology_key,
+    TF_XLA_RETURN_IF_ERROR(kv_store->Set(global_topology_key,
                                      global_topology->SerializeAsString()));
   } else {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::string global_topology_str,
         kv_store->Get(global_topology_key, get_global_topology_timeout));
     global_topology->ParseFromString(global_topology_str);

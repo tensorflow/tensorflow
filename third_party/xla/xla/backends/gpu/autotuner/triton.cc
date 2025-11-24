@@ -149,7 +149,7 @@ TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> TritonBackend::GetDefaultConfig(
     const HloInstruction& instr) {
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
                       GetSupportedConfigs(instr));
   if (configs.empty()) {
     return absl::InvalidArgumentError(
@@ -170,19 +170,19 @@ absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
         "Failed to unpack TritonBackendConfig from Any.");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  TF_XLA_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       instr.backend_config<GpuBackendConfig>());
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
 
   backend_config.set_kind(kTritonGemmFusionKind);
   *backend_config.mutable_triton_gemm_config() = triton_config_proto;
-  TF_RETURN_IF_ERROR(instr.set_backend_config(gpu_config));
+  TF_XLA_RETURN_IF_ERROR(instr.set_backend_config(gpu_config));
 
-  TF_ASSIGN_OR_RETURN(TritonGemmConfig triton_config,
+  TF_XLA_ASSIGN_OR_RETURN(TritonGemmConfig triton_config,
                       TritonGemmConfig::FromProto(triton_config_proto));
   if (triton_config.split_k > 1) {
-    TF_RETURN_IF_ERROR(MakeDotSplitKBatch(&instr, triton_config));
+    TF_XLA_RETURN_IF_ERROR(MakeDotSplitKBatch(&instr, triton_config));
   }
   return absl::OkStatus();
 }
@@ -196,7 +196,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
     GpuFloatSupport float_support(gpu_device_info.cuda_compute_capability(),
                                   type);
     FloatNormalization float_normalization(&float_support);
-    TF_RETURN_IF_ERROR(float_normalization.Run(hlo_module.get()).status());
+    TF_XLA_RETURN_IF_ERROR(float_normalization.Run(hlo_module.get()).status());
   }
 
   HloCostAnalysis::Options priority_fusion_options;
@@ -204,15 +204,15 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   PriorityFusion priority_fusion(
       /*thread_pool=*/nullptr, gpu_device_info, priority_fusion_options,
       mlir_context_);
-  TF_RETURN_IF_ERROR(priority_fusion.Run(hlo_module.get()).status());
+  TF_XLA_RETURN_IF_ERROR(priority_fusion.Run(hlo_module.get()).status());
 
   // If the priority fusion pass above skipped some instructions, turn them
   // into fusions.
   FusionWrapper fusion_wrapper(gpu_device_info);
-  TF_RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
+  TF_XLA_RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
 
   NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context_);
-  TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(hlo_module.get()).status());
+  TF_XLA_RETURN_IF_ERROR(nest_gemm_fusion.Run(hlo_module.get()).status());
   return hlo_module;
 }
 

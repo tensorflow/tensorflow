@@ -331,14 +331,14 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
   shift_dimension(new_dnums.mutable_rhs_batch_dimensions(), rhs_k_idx);
   new_dnums.mutable_lhs_batch_dimensions()->Add(lhs_k_idx);
   new_dnums.mutable_rhs_batch_dimensions()->Add(rhs_k_idx);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloInstruction * new_dot,
       MakeDotHlo(lhs, rhs, new_dnums, src_dot->precision_config(),
                  accumulator_type, &src_dot->metadata()));
 
   // Reduce along the new batch dimension.
   const int64_t splitk_dim_idx = new_dnums.lhs_batch_dimensions_size() - 1;
-  TF_ASSIGN_OR_RETURN(HloInstruction * splitk_root,
+  TF_XLA_ASSIGN_OR_RETURN(HloInstruction * splitk_root,
                       ReduceDimension(new_dot, splitk_dim_idx));
   *splitk_root->mutable_shape()->mutable_layout() = src_dot->shape().layout();
   if (output_type != accumulator_type) {
@@ -373,9 +373,9 @@ class SplitkRewriterVisitor : public DfsHloRewriteVisitor {
     if (split_k == 1) {
       return absl::OkStatus();
     }
-    TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * new_dot,
                         SplitKDimensionOfDot(dot, split_k));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(instr, new_dot));
+    TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(instr, new_dot));
     return absl::OkStatus();
   }
 
@@ -397,7 +397,7 @@ absl::StatusOr<bool> SplitkRewriter::RunImpl(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     SplitkRewriterVisitor visitor(device_description_);
-    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+    TF_XLA_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }
   return changed;

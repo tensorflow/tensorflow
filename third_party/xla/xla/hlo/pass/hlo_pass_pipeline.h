@@ -144,7 +144,7 @@ class HloPassPipeline : public HloPassInterface {
   static absl::StatusOr<bool> RunHelper(
       HloPassInterface* pass, HloT module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
-    TF_ASSIGN_OR_RETURN(bool changed, pass->Run(module, execution_threads));
+    TF_XLA_ASSIGN_OR_RETURN(bool changed, pass->Run(module, execution_threads));
     module->Cleanup();
     return changed;
   }

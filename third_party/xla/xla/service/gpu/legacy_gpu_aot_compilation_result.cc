@@ -67,7 +67,7 @@ LegacyGpuAotCompilationResult::FromString(const std::string& serialized,
     return Internal("Failed to parse serialized GpuThunkAotCompilationResult.");
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProtoWithConfig(proto.hlo_module_with_config()));
   return std::unique_ptr<LegacyGpuAotCompilationResult>(

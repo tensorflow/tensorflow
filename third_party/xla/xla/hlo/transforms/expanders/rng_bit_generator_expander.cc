@@ -86,8 +86,8 @@ RngBitGeneratorExpander::GetGeneratorComputation(const Shape& data_shape,
   XlaOp final_state =
       ConcatInDim(&builder, {Reshape(key_op, {1}), output.state}, 0);
   Tuple(&builder, {final_state, output.value});
-  TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
-  TF_ASSIGN_OR_RETURN(HloComputation * new_computation,
+  TF_XLA_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
+  TF_XLA_ASSIGN_OR_RETURN(HloComputation * new_computation,
                       XlaComputationToHloComputation(xla_computation, module));
   computation_cache_.emplace(cache_key, new_computation);
   return new_computation;
@@ -104,7 +104,7 @@ absl::StatusOr<HloInstruction*> RngBitGeneratorExpander::ExpandInstruction(
   HloModule* module = hlo->GetModule();
   const Shape& data_shape = rng->shape().tuple_shapes(1);
   const Shape& state_shape = rng->operand(0)->shape();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloComputation * generator_computation,
       GetGeneratorComputation(data_shape, state_shape, algorithm, module));
   return hlo->parent()->AddInstruction(HloInstruction::CreateCall(

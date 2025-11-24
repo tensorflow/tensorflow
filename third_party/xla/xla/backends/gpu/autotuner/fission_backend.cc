@@ -85,14 +85,14 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       GetFissionedAndRewrittenModule(instr));
   absl::StatusOr<HloInstruction*> supported_instr =
       FindFirstSupportedInstruction(hlo_module.get());
   if (supported_instr.status().code() == absl::StatusCode::kNotFound) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
-  TF_RETURN_IF_ERROR(supported_instr.status());
+  TF_XLA_RETURN_IF_ERROR(supported_instr.status());
   return codegen_backend_->GetSupportedConfigs(**supported_instr);
 
   return std::vector<std::unique_ptr<BackendConfig>>();
@@ -103,9 +103,9 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> FissionBackend::GetDefaultConfig(
   if (!IsSupported(instr)) {
     return absl::InvalidArgumentError("Not a fusion instruction.");
   }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       GetFissionedAndRewrittenModule(instr));
-  TF_ASSIGN_OR_RETURN(HloInstruction * supported_instr,
+  TF_XLA_ASSIGN_OR_RETURN(HloInstruction * supported_instr,
                       FindFirstSupportedInstruction(hlo_module.get()));
   return codegen_backend_->GetDefaultConfig(*supported_instr);
 }
@@ -113,7 +113,7 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> FissionBackend::GetDefaultConfig(
 absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::RunHloPasses(
     std::unique_ptr<HloModule> hlo_module,
     const Compiler::CompileOptions& options) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       codegen_backend_->RunHloPasses(std::move(hlo_module), options));
 
@@ -124,17 +124,17 @@ absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::RunHloPasses(
   PriorityFusion priority_fusion(
       /*thread_pool=*/nullptr, target_config().device_description,
       priority_fusion_options, mlir_context_);
-  TF_RETURN_IF_ERROR(priority_fusion.Run(module.get()).status());
+  TF_XLA_RETURN_IF_ERROR(priority_fusion.Run(module.get()).status());
   return module;
 }
 
 absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
                                          const BackendConfig& config) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       GetFissionedAndRewrittenModule(instr));
-  TF_ASSIGN_OR_RETURN(HloInstruction * supported_instr,
+  TF_XLA_ASSIGN_OR_RETURN(HloInstruction * supported_instr,
                       FindFirstSupportedInstruction(hlo_module.get()));
-  TF_RETURN_IF_ERROR(codegen_backend_->ApplyConfig(*supported_instr, config));
+  TF_XLA_RETURN_IF_ERROR(codegen_backend_->ApplyConfig(*supported_instr, config));
   return InlineFissionedComputation(&instr, hlo_module->entry_computation());
 }
 
@@ -148,7 +148,7 @@ FissionBackend::GetFissionedAndRewrittenModule(
   const auto* fusion = Cast<HloFusionInstruction>(&fusion_instr);
   std::unique_ptr<HloModule> hlo_module =
       ExtractComputationIntoNewModule(*fusion->called_computation());
-  TF_RETURN_IF_ERROR(rewriter_pipeline_->Run(hlo_module.get()).status());
+  TF_XLA_RETURN_IF_ERROR(rewriter_pipeline_->Run(hlo_module.get()).status());
   return hlo_module;
 }
 

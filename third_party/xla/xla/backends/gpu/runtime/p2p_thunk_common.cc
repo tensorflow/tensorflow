@@ -75,7 +75,7 @@ absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
         absl::StrCat("expecting send/recv op with string attribute ",
                      kSendRecvSourceTargetPairsAttr));
   }
-  TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> replica_groups,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> replica_groups,
                       ParseReplicaGroupsOnly(src_dst_string.str()));
   std::vector<std::pair<int64_t, int64_t>> source_target_pairs;
   source_target_pairs.reserve(replica_groups.size());
@@ -198,7 +198,7 @@ absl::StatusOr<const int64_t> GetCollectiveCurrentId(
     Thunk::CollectiveExecuteParams* collective_params,
     const P2PConfig& config) {
   GlobalDeviceId global_device_id = collective_params->global_device_id;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const DeviceAssignment::LogicalID current_logical_id,
       collective_params->device_assn->LogicalIdForDevice(global_device_id));
   const int64_t current_id =

@@ -92,19 +92,19 @@ class AllReduceKernelTest : public ::testing::Test,
 
     int64_t num_elements = input_data[0].num_elements();
 
-    TF_RETURN_IF_ERROR(executors[0]->EnablePeerAccessTo(executors[1]));
-    TF_RETURN_IF_ERROR(executors[1]->EnablePeerAccessTo(executors[0]));
+    TF_XLA_RETURN_IF_ERROR(executors[0]->EnablePeerAccessTo(executors[1]));
+    TF_XLA_RETURN_IF_ERROR(executors[1]->EnablePeerAccessTo(executors[0]));
 
     std::unique_ptr<stream_executor::gpu::GpuExecutor::MulticastMemory>
         multicast_memory;
     if (params_.all_reduce_strategy == AllReduceStrategy::kMultimem) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           multicast_memory,
           dynamic_cast<stream_executor::gpu::GpuExecutor*>(executors[0])
               ->CreateMulticastMemory(num_elements * sizeof(T), num_ranks));
 
       for (int i = 0; i < num_ranks; ++i) {
-        TF_RETURN_IF_ERROR(multicast_memory->SubscribeDevice(i));
+        TF_XLA_RETURN_IF_ERROR(multicast_memory->SubscribeDevice(i));
       }
     }
 
@@ -142,9 +142,9 @@ class AllReduceKernelTest : public ::testing::Test,
       signal_flags_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
           2 * aligned_input_size, aligned_signal_size));
       TF_RET_CHECK(!signal_flags_buffers[i].is_null());
-      TF_RETURN_IF_ERROR(executor->SynchronousMemZero(&signal_flags_buffers[i],
+      TF_XLA_RETURN_IF_ERROR(executor->SynchronousMemZero(&signal_flags_buffers[i],
                                                       aligned_signal_size));
-      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&local_input_buffers[i],
+      TF_XLA_RETURN_IF_ERROR(streams[i]->Memcpy(&local_input_buffers[i],
                                             input_data[i].data(), input_size));
     }
 
@@ -170,7 +170,7 @@ class AllReduceKernelTest : public ::testing::Test,
         stream_executor::gpu::GpuExecutor* gpu_executor =
             dynamic_cast<stream_executor::gpu::GpuExecutor*>(executors[i]);
         TF_RET_CHECK(gpu_executor != nullptr);
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             void* mapped_memory,
             multicast_memory->MapMemory(allocated_buffers[i], gpu_executor));
         metadata.multicast_buffer_ptr = mapped_memory;
@@ -188,20 +188,20 @@ class AllReduceKernelTest : public ::testing::Test,
       metadata.param_to_peers =
           reinterpret_cast<void**>(param_to_peers_ptrs_buffer.opaque());
 
-      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&metadata_buffers[i], &metadata,
+      TF_XLA_RETURN_IF_ERROR(streams[i]->Memcpy(&metadata_buffers[i], &metadata,
                                             sizeof(CollectiveKernelMetadata)));
-      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&param_to_peers_ptrs_buffer,
+      TF_XLA_RETURN_IF_ERROR(streams[i]->Memcpy(&param_to_peers_ptrs_buffer,
                                             param_to_peers_ptrs.data(),
                                             param_to_peers_size));
     }
 
     for (int i = 0; i < num_ranks; ++i) {
-      TF_RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
+      TF_XLA_RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
     }
 
     for (int i = 0; i < num_ranks; ++i) {
       auto active_context = executors[i]->Activate();
-      TF_RETURN_IF_ERROR(RunAllReduceKernel(
+      TF_XLA_RETURN_IF_ERROR(RunAllReduceKernel(
           streams[i].get(), launch_dimensions,
           primitive_util::NativeToPrimitiveType<T>(),
           /*reduction_kind=*/reduction_kind,
@@ -219,14 +219,14 @@ class AllReduceKernelTest : public ::testing::Test,
     }
 
     for (int i = 0; i < num_ranks; ++i) {
-      TF_RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
+      TF_XLA_RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
     }
 
     std::vector<Array<T>> results;
 
     for (int i = 0; i < num_ranks; ++i) {
       Array<T> output_results({num_elements});
-      TF_RETURN_IF_ERROR(streams[i]->Memcpy(output_results.data(),
+      TF_XLA_RETURN_IF_ERROR(streams[i]->Memcpy(output_results.data(),
                                             local_input_buffers[i],
                                             num_elements * sizeof(T)));
 

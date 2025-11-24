@@ -47,7 +47,7 @@ absl::StatusOr<nb::bytes> SerializedVersionedProgram(
     MlirModule module, absl::string_view ifrt_ir_version,
     absl::string_view atom_program_version, bool version_in_place) {
   auto program = std::make_unique<IfrtIRProgram>(unwrap(module));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       Serialized serialized,
       Serialize(*program,
                 std::make_unique<SerializeIfrtIRProgramOptions>(
@@ -61,10 +61,10 @@ absl::StatusOr<nb::bytes> SerializedVersionedProgram(
     absl::string_view module_str, absl::string_view ifrt_ir_version,
     absl::string_view atom_program_version, bool version_in_place) {
   mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(auto module,
+  TF_XLA_ASSIGN_OR_RETURN(auto module,
                       support::ParseMlirModuleString(module_str, context));
   auto program = std::make_unique<IfrtIRProgram>(module.release());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto serialized,
       Serialize(*program,
                 std::make_unique<SerializeIfrtIRProgramOptions>(
@@ -79,7 +79,7 @@ absl::StatusOr<mlir::ModuleOp> DeserializeVersionedProgram(
   xla::ifrt::Serialized serialized;
   serialized.set_type_name(std::string(IfrtIRProgram::type_name()));
   serialized.set_data(std::string(serialized_program));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto program,
       Deserialize<IfrtIRProgram>(
           serialized,
@@ -91,7 +91,7 @@ absl::StatusOr<nb::bytes> DeserializeVersionedProgram(
     absl::string_view serialized_program) {
   mlir::MLIRContext context;
   support::RegisterMlirDialects(context);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto module, DeserializeVersionedProgram(&context, serialized_program));
   std::string out =
       OperationToString(module, mlir::OpPrintingFlags().enableDebugInfo(true));

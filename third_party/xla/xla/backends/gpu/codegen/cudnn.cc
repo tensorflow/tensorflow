@@ -37,7 +37,7 @@ absl::StatusOr<FusionEmissionResult> CuDnnFusion::Emit(
     const HloFusionInstruction& fusion) const {
   VLOG(3) << fusion.ToString();
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto kernel_arguments,
       emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
                                         GetDefaultBufferAlignment(), &fusion));

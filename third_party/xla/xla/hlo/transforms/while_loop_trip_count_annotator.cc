@@ -67,7 +67,7 @@ absl::StatusOr<bool> WhileLoopTripCountAnnotator::RunImpl(
           config.mutable_known_trip_count()->set_n(*trip_count);
         }
 
-        TF_RETURN_IF_ERROR(instr->set_backend_config(config));
+        TF_XLA_RETURN_IF_ERROR(instr->set_backend_config(config));
         changed = true;
       }
     }

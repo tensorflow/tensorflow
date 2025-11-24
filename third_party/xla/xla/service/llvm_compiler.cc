@@ -54,9 +54,9 @@ absl::StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
     return absl::StrFormat("XlaCompile:#module=%s,program_id=%d#",
                            hlo_module->name(), hlo_module->unique_id());
   }};
-  TF_ASSIGN_OR_RETURN(hlo_module, RunHloPasses(std::move(hlo_module),
+  TF_XLA_ASSIGN_OR_RETURN(hlo_module, RunHloPasses(std::move(hlo_module),
                                                stream_execs[0], options));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       RunBackend(std::move(hlo_module), stream_execs[0], options));
   result.push_back(std::move(executable));

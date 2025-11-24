@@ -107,7 +107,7 @@ HloInputOutputAliasConfig::CreateFromProto(
     ShapeIndex param_index(entry.parameter_shape_index().begin(),
                            entry.parameter_shape_index().end());
     AliasKind kind = entry.kind() == Kind::MAY_ALIAS ? kMayAlias : kMustAlias;
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         result.SetUpAlias(output_index, param_number, param_index, kind));
   }
   return result;
@@ -191,7 +191,7 @@ absl::Status HloInputOutputAliasConfig::ForEachAliasWithStatus(
   return alias_.ForEachElementWithStatus(
       [&](const ShapeIndex& output_index, std::optional<Alias> aliased) {
         if (aliased) {
-          TF_RETURN_IF_ERROR(fn(output_index, *aliased));
+          TF_XLA_RETURN_IF_ERROR(fn(output_index, *aliased));
         }
         return absl::OkStatus();
       });
@@ -291,7 +291,7 @@ absl::StatusOr<HloBufferDonorConfig> HloBufferDonorConfig::CreateFromProto(
     int64_t param_number = entry.parameter_number();
     ShapeIndex param_index(entry.parameter_shape_index().begin(),
                            entry.parameter_shape_index().end());
-    TF_RETURN_IF_ERROR(result.AddBufferDonor(param_number, param_index));
+    TF_XLA_RETURN_IF_ERROR(result.AddBufferDonor(param_number, param_index));
   }
   return result;
 }

@@ -147,14 +147,14 @@ absl::StatusOr<TransferManager*> TfrtGpuDevice::GetTransferManager() {
 }
 
 absl::Status TfrtGpuDevice::TransferToInfeed(const LiteralSlice& literal) {
-  TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager, GetTransferManager());
+  TF_XLA_ASSIGN_OR_RETURN(TransferManager * transfer_manager, GetTransferManager());
 
   return transfer_manager->TransferLiteralToInfeed(executor_, literal);
 }
 
 absl::Status TfrtGpuDevice::TransferFromOutfeed(
     MutableBorrowingLiteral literal) {
-  TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager, GetTransferManager());
+  TF_XLA_ASSIGN_OR_RETURN(TransferManager * transfer_manager, GetTransferManager());
 
   return transfer_manager->TransferLiteralFromOutfeed(executor_, literal);
 }
@@ -235,7 +235,7 @@ absl::StatusOr<tsl::AllocatorStats> TfrtGpuDevice::GetAllocatorStats() const {
         "allocator");
   }
 
-  TF_ASSIGN_OR_RETURN(auto allocator, allocator_adapter->GetAllocator(
+  TF_XLA_ASSIGN_OR_RETURN(auto allocator, allocator_adapter->GetAllocator(
                                           local_device_id().value()));
 
   auto stats = allocator->GetStats();

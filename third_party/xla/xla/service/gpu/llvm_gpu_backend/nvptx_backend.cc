@@ -125,7 +125,7 @@ absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
                                      const std::string& device_bitcode_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
-  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, device_bitcode_path));
+  TF_XLA_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, device_bitcode_path));
 
   // Set the flush-denormals-to-zero flag on the module so the NVVM reflect pass
   // can access it.
@@ -339,7 +339,7 @@ absl::StatusOr<std::string> CompileToPtx(
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
     // Link with libdevice, and optimize the LLVM module.
-    TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
+    TF_XLA_RETURN_IF_ERROR(LinkAndOptimizeModule(
         module, gpu_version, debug_options,
         LibDevicePath(debug_options.xla_gpu_cuda_data_dir()),
         NVPTXTargetModuleLinker, default_target_triple, target_machine.get(),

@@ -59,7 +59,7 @@ absl::StatusOr<HloUnoptimizedSnapshot> SerializeAndDeserialize(
     const HloUnoptimizedSnapshot& snapshot) {
   std::string serialized_snapshot;
   tsl::protobuf::io::StringOutputStream output_stream(&serialized_snapshot);
-  TF_RETURN_IF_ERROR(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
+  TF_XLA_RETURN_IF_ERROR(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
 
   tsl::protobuf::io::ArrayInputStream input_stream(serialized_snapshot.data(),
                                                    serialized_snapshot.size());

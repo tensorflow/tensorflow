@@ -602,7 +602,7 @@ class IsSolLatencyEstimatorEnabledTest : public HloTestBase {
         HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({2})));
     HloInstruction* call =
         entry->AddInstruction(HloInstruction::CreateCall(shape, dummy_operand));
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig new_backend_config,
+    TF_XLA_ASSIGN_OR_RETURN(GpuBackendConfig new_backend_config,
                         call->backend_config<GpuBackendConfig>());
     new_backend_config.set_device_type(DEVICE_TYPE_HOST);
     return call->set_backend_config(new_backend_config);

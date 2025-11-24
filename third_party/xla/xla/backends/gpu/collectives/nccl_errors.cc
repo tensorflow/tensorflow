@@ -40,7 +40,7 @@ absl::Status PollUntilDone(ncclComm_t comm, const std::atomic_bool& aborted) {
                  const std::atomic_bool& aborted) -> absl::Status {
     ncclResult_t state = ncclInProgress;
     while (state == ncclInProgress && !aborted.load()) {
-      XLA_NCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &state));
+      XLA_NCCL_XLA_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &state));
     }
     if (aborted.load()) {
       return Cancelled("NcclCommunicator aborted");

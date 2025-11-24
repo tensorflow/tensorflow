@@ -71,7 +71,7 @@ absl::Status HostBufferStore::ReadFromDisk(uint64_t handle) {
   MemRegion value;
   {
     std::unique_ptr<tsl::ReadOnlyMemoryRegion> tsl_mmaped;
-    TF_RETURN_IF_ERROR(tsl::Env::Default()->NewReadOnlyMemoryRegionFromFile(
+    TF_XLA_RETURN_IF_ERROR(tsl::Env::Default()->NewReadOnlyMemoryRegionFromFile(
         *file_path, &tsl_mmaped));
 
     auto view_ptr = new absl::string_view(

@@ -108,9 +108,9 @@ absl::Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     // TODO(b/111309141): Run this on a separate stream so it doesn't block
     // the GPU from doing work during the transfer.
-    TF_RETURN_IF_ERROR(stream.Memcpy(buffer->destination()->untyped_data(),
+    TF_XLA_RETURN_IF_ERROR(stream.Memcpy(buffer->destination()->untyped_data(),
                                      data_address, buffer->length()));
-    TF_RETURN_IF_ERROR(stream.DoHostCallback([&buffer]() { buffer->Done(); }));
+    TF_XLA_RETURN_IF_ERROR(stream.DoHostCallback([&buffer]() { buffer->Done(); }));
   }
 
   absl::Status block_status = stream.BlockHostUntilDone();
@@ -129,7 +129,7 @@ absl::StatusOr<std::unique_ptr<OutfeedThunk>> OutfeedThunk::FromProto(
   std::vector<ShapedSlice> source_slices;
   source_slices.reserve(proto.source_slices_size());
   for (const ShapedSliceProto& proto_source_slice : proto.source_slices()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         source_slices.emplace_back(),
         ShapedSlice::FromProto(proto_source_slice, source_allocations));
   }
@@ -143,7 +143,7 @@ absl::StatusOr<ThunkProto> OutfeedThunk::ToProto() const {
   *thunk_proto.mutable_thunk_info() = thunk_info().ToProto();
 
   for (const ShapedSlice& shaped_slice : source_slices_) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         *thunk_proto.mutable_outfeed_thunk()->add_source_slices(),
         shaped_slice.ToProto());
   }

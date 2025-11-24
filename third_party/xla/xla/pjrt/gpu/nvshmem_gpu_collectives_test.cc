@@ -57,7 +57,7 @@ static const char* test_binary_name;
 absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
     absl::string_view program, xla::PjRtClient& client,
     xla::CompileOptions compile_options = xla::CompileOptions()) {
-  TF_ASSIGN_OR_RETURN(auto hlo_module,
+  TF_XLA_ASSIGN_OR_RETURN(auto hlo_module,
                       ParseAndReturnUnverifiedModule(program, {}));
 
   xla::XlaComputation xla_computation(hlo_module->ToProto());
@@ -153,7 +153,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
   if (rank_id == 0) {
     xla::CoordinationServiceImpl::Options service_options;
     service_options.num_nodes = num_ranks;
-    TF_ASSIGN_OR_RETURN(service, xla::GetDistributedRuntimeService(
+    TF_XLA_ASSIGN_OR_RETURN(service, xla::GetDistributedRuntimeService(
                                      "[::]:12345", service_options));
   }
 
@@ -170,7 +170,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
   client_options.num_nodes = num_ranks;
   client_options.kv_store = GetDistributedKeyValueStore(distributed_client,
                                                         /*key_prefix=*/"gpu:");
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                       GetStreamExecutorGpuClient(client_options));
 
   xla::CompileOptions options;
@@ -179,7 +179,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
   options.executable_build_options.set_run_backend_only(true);
   options.executable_build_options.set_use_spmd_partitioning(false);
   options.executable_build_options.set_num_replicas(num_ranks);
-  TF_ASSIGN_OR_RETURN(std::string data_type_str, GetDataTypeString(data_type));
+  TF_XLA_ASSIGN_OR_RETURN(std::string data_type_str, GetDataTypeString(data_type));
   std::string kProgram;
 
   if (test_case == "collective_permute") {
@@ -229,9 +229,9 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
         data_type_str, data_type_str, data_type_str);
   }
 
-  TF_ASSIGN_OR_RETURN(auto executable,
+  TF_XLA_ASSIGN_OR_RETURN(auto executable,
                       CompileExecutable(kProgram, *client, options));
-  TF_ASSIGN_OR_RETURN(auto hlo_modules, executable->GetHloModules());
+  TF_XLA_ASSIGN_OR_RETURN(auto hlo_modules, executable->GetHloModules());
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result;
   if (test_case == "all_reduce") {
     Shape shape =
@@ -244,7 +244,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
     switch (data_type) {
       case xla::PrimitiveType::F32: {
         std::vector<float> data_array{10};
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             input,
             client->BufferFromHostBuffer(
                 data_array.data(), shape.element_type(), shape.dimensions(),
@@ -258,7 +258,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
       }
       case xla::PrimitiveType::F64: {
         std::vector<double> data_array{10};
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             input,
             client->BufferFromHostBuffer(
                 data_array.data(), shape.element_type(), shape.dimensions(),
@@ -272,7 +272,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
       }
       case xla::PrimitiveType::BF16: {
         std::vector<Eigen::bfloat16> data_array{10};
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             input,
             client->BufferFromHostBuffer(
                 data_array.data(), shape.element_type(), shape.dimensions(),
@@ -286,7 +286,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
       }
       case xla::PrimitiveType::F16: {
         std::vector<Eigen::half> data_array{10};
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             input,
             client->BufferFromHostBuffer(
                 data_array.data(), shape.element_type(), shape.dimensions(),
@@ -300,7 +300,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
       }
       case xla::PrimitiveType::U32: {
         std::vector<uint32_t> data_array{10};
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             input,
             client->BufferFromHostBuffer(
                 data_array.data(), shape.element_type(), shape.dimensions(),
@@ -314,7 +314,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
       }
       case xla::PrimitiveType::U64: {
         std::vector<uint64_t> data_array{10};
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             input,
             client->BufferFromHostBuffer(
                 data_array.data(), shape.element_type(), shape.dimensions(),
@@ -328,7 +328,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
       }
       case xla::PrimitiveType::S32: {
         std::vector<int32_t> data_array{10};
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             input,
             client->BufferFromHostBuffer(
                 data_array.data(), shape.element_type(), shape.dimensions(),
@@ -342,7 +342,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
       }
       case xla::PrimitiveType::S64: {
         std::vector<int64_t> data_array{10};
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             input,
             client->BufferFromHostBuffer(
                 data_array.data(), shape.element_type(), shape.dimensions(),
@@ -355,7 +355,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
       }
       case xla::PrimitiveType::PRED: {
         std::vector<uint8_t> data_array{10};
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             input,
             client->BufferFromHostBuffer(
                 data_array.data(), shape.element_type(), shape.dimensions(),
@@ -368,7 +368,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
       }
       case xla::PrimitiveType::S8: {
         std::vector<int8_t> data_array{10};
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             input,
             client->BufferFromHostBuffer(
                 data_array.data(), shape.element_type(), shape.dimensions(),
@@ -381,7 +381,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
       }
       case xla::PrimitiveType::U8: {
         std::vector<uint8_t> data_array{10};
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             input,
             client->BufferFromHostBuffer(
                 data_array.data(), shape.element_type(), shape.dimensions(),
@@ -395,13 +395,13 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
       default:
         return absl::InvalidArgumentError("Invalida data type.");
     }
-    TF_ASSIGN_OR_RETURN(result,
+    TF_XLA_ASSIGN_OR_RETURN(result,
                         executable->Execute({{input.get()}}, ExecuteOptions()));
   } else {
-    TF_ASSIGN_OR_RETURN(result, executable->Execute({{}}, ExecuteOptions()));
+    TF_XLA_ASSIGN_OR_RETURN(result, executable->Execute({{}}, ExecuteOptions()));
   }
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> literal,
+  TF_XLA_ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> literal,
                       result_buffers[0]->ToLiteralSync());
 
   if (test_case == "collective_permute") {

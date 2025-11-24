@@ -678,7 +678,7 @@ absl::Status AddCopiesToRoot(HloComputation* body,
     }
     copies[i] = body->AddInstruction(HloInstruction::CreateUnary(
         element->shape(), HloOpcode::kCopy, element));
-    TF_RETURN_IF_ERROR(root->ReplaceOperandWith(i, copies[i]));
+    TF_XLA_RETURN_IF_ERROR(root->ReplaceOperandWith(i, copies[i]));
   }
   for (int64_t i = 0; i < copies.size(); ++i) {
     auto copy = copies[i];
@@ -710,7 +710,7 @@ absl::Status RemoveCopiesFromRoot(HloComputation* body) {
   for (int64_t i = 0; i < root->operand_count(); ++i) {
     auto copy = root->mutable_operand(i);
     if (copy->opcode() == HloOpcode::kCopy) {
-      TF_RETURN_IF_ERROR(root->ReplaceOperandWith(i, copy->mutable_operand(0)));
+      TF_XLA_RETURN_IF_ERROR(root->ReplaceOperandWith(i, copy->mutable_operand(0)));
     }
   }
   return absl::OkStatus();
@@ -761,7 +761,7 @@ absl::Status RewriteLoopWithConcatGroups(
     init_elements[i] =
         group.CreateConcat(std::move(input_concat_elements), loop->parent());
   }
-  TF_RETURN_IF_ERROR(loop->ReplaceOperandWithDifferentShape(
+  TF_XLA_RETURN_IF_ERROR(loop->ReplaceOperandWithDifferentShape(
       0, loop->parent()->AddInstruction(
              HloInstruction::CreateTuple(init_elements))));
   // Adjust loop users.
@@ -790,7 +790,7 @@ absl::Status RewriteLoopWithConcatGroups(
   auto new_output_tuple = loop->parent()->AddInstruction(
       HloInstruction::CreateTuple(output_elements));
   for (auto user : original_loop_users) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         loop->ReplaceUseWithDifferentShape(user, new_output_tuple));
   }
   if (loop_is_root) {
@@ -868,7 +868,7 @@ absl::Status RewriteLoopWithConcatGroups(
                                      new_dims),
                 hlo->mutable_operand(i)));
             new_reshapes.insert(reshape);
-            TF_RETURN_IF_ERROR(
+            TF_XLA_RETURN_IF_ERROR(
                 hlo->ReplaceOperandWithDifferentShape(i, reshape));
           }
           continue;
@@ -914,7 +914,7 @@ absl::Status RewriteLoopWithConcatGroups(
           broadcast = body->AddInstruction(
               HloInstruction::CreateReshape(data_shape, broadcast));
         }
-        TF_RETURN_IF_ERROR(hlo->ReplaceOperandWithDifferentShape(i, broadcast));
+        TF_XLA_RETURN_IF_ERROR(hlo->ReplaceOperandWithDifferentShape(i, broadcast));
       }
     }
     VLOG(2) << "Modifying HLO to full shape " << hlo->ToString();
@@ -947,13 +947,13 @@ absl::Status RewriteLoopWithConcatGroups(
         const auto& operand_group = groups.GetGroup(operand_group_index->first);
         auto slice = operand_group.CreateSlice(
             operand_group.elements[0], operand_group_index->second, body);
-        TF_RETURN_IF_ERROR(hlo->ReplaceOperandWithDifferentShape(i, slice));
+        TF_XLA_RETURN_IF_ERROR(hlo->ReplaceOperandWithDifferentShape(i, slice));
       }
     }
   }
   for (auto slice : slices_to_remove) {
-    TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(slice->mutable_operand(0)));
-    TF_RETURN_IF_ERROR(body->RemoveInstruction(slice));
+    TF_XLA_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(slice->mutable_operand(0)));
+    TF_XLA_RETURN_IF_ERROR(body->RemoveInstruction(slice));
   }
   return absl::OkStatus();
 }
@@ -1013,8 +1013,8 @@ absl::StatusOr<bool> RunOnLoop(HloInstruction* loop,
     return false;
   }
 
-  TF_RETURN_IF_ERROR(AddCopiesToRoot(body, gtes, &groups));
-  TF_RETURN_IF_ERROR(RewriteLoopWithConcatGroups(loop, gtes, groups));
+  TF_XLA_RETURN_IF_ERROR(AddCopiesToRoot(body, gtes, &groups));
+  TF_XLA_RETURN_IF_ERROR(RewriteLoopWithConcatGroups(loop, gtes, groups));
   for (auto concat : concats) {
     if (concat == nullptr) {
       continue;
@@ -1022,17 +1022,17 @@ absl::StatusOr<bool> RunOnLoop(HloInstruction* loop,
     // We have repalced the operands of the concat with slices of full data.
     auto new_slice = concat->mutable_operand(0);
     CHECK_EQ(new_slice->opcode(), HloOpcode::kSlice);
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         concat->ReplaceAllUsesWith(new_slice->mutable_operand(0)));
-    TF_RETURN_IF_ERROR(body->RemoveInstruction(concat));
+    TF_XLA_RETURN_IF_ERROR(body->RemoveInstruction(concat));
   }
-  TF_RETURN_IF_ERROR(RemoveCopiesFromRoot(body));
+  TF_XLA_RETURN_IF_ERROR(RemoveCopiesFromRoot(body));
   // Finally pass-through replaced elements from parameter to root, so that
   // while loop simplifier can get rid of them.
   for (auto gte : gtes) {
     auto group_index = groups.GetGroupIndex(gte);
     if (group_index.has_value() && group_index->second > 0) {
-      TF_RETURN_IF_ERROR(root->ReplaceOperandWith(gte->tuple_index(), gte));
+      TF_XLA_RETURN_IF_ERROR(root->ReplaceOperandWith(gte->tuple_index(), gte));
     }
   }
   return true;
@@ -1048,7 +1048,7 @@ absl::StatusOr<bool> WhileLoopConcatCodeMotion::RunImpl(
        module->MakeComputationPostOrder(execution_threads)) {
     for (HloInstruction* hlo : comp->MakeInstructionPostOrder()) {
       if (hlo->opcode() == HloOpcode::kWhile) {
-        TF_ASSIGN_OR_RETURN(bool loop_changed,
+        TF_XLA_ASSIGN_OR_RETURN(bool loop_changed,
                             RunOnLoop(hlo, min_operand_count_to_optimize_));
         changed |= loop_changed;
       }
@@ -1061,7 +1061,7 @@ absl::StatusOr<bool> WhileLoopConcatCodeMotion::RunImpl(
     pipeline.AddPass<WhileLoopSimplifier>();
     pipeline.AddPass<TupleSimplifier>();
     pipeline.AddPass<HloDCE>();
-    TF_RETURN_IF_ERROR(pipeline.Run(module, execution_threads).status());
+    TF_XLA_RETURN_IF_ERROR(pipeline.Run(module, execution_threads).status());
   }
   return changed;
 }

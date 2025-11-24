@@ -185,7 +185,7 @@ PjRtCApiBuffer_CreateRawAliasOfBuffer_Factory(PjRtBuffer* buffer) {
       return absl::UnimplementedError(
           "RawBuffer extension not implemented in this PJRT plugin.");
     }
-    TF_ASSIGN_OR_RETURN(PJRT_RawBuffer * raw_buffer,
+    TF_XLA_ASSIGN_OR_RETURN(PJRT_RawBuffer * raw_buffer,
                         pjrt::PjRtCApiBuffer_CreateRawAliasOfBuffer(
                             c_api, extension, c_api_buffer->c_buffer()));
     return tsl::MakeRef<PjRtCApiRawBuffer>(

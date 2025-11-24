@@ -293,7 +293,7 @@ absl::StatusOr<bool> CallSplitter::RunImpl(
     auto split_result = get_split(call->to_apply());
     if (split_result.first != nullptr) {
       changed |= true;
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           SplitCallSite(call, split_result.first, split_result.second));
     }
   }

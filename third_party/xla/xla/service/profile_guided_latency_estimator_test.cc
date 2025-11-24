@@ -81,7 +81,7 @@ absl::StatusOr<bool> RunScheduler(
           &alias_info, shape_size_bytes);
   auto scheduler_core =
       std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       bool value,
       LatencyHidingScheduler(scheduling_context, std::move(scheduler_core))
           .Run(module));

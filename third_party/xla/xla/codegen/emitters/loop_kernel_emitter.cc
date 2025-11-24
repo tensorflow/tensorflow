@@ -95,7 +95,7 @@ LoopFusionKernelEmitter::EmitKernelDefinition() {
   bool force_64_bit = backend_kind_ == BackendKind::kCpu;
   emitters::SetIndexDataLayout(*module, fusion_, force_64_bit);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       mlir::func::FuncOp entry_func,
       emitters::EmitKernelApi(*module, fusion_, buffer_assignment_,
                               buffer_alignment_, entry_function_name_));
@@ -104,13 +104,13 @@ LoopFusionKernelEmitter::EmitKernelDefinition() {
   // Loop emitters don't support epilogues.
   emitters::PartitionedComputations computations(
       fusion_.fused_instructions_computation(), &mlir_context_);
-  TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
+  TF_XLA_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
                                              *module, computations));
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       EmitEntryFunction(computations, call_targets, entry_func, fusion_));
 
-  TF_ASSIGN_OR_RETURN(auto kernel_spec,
+  TF_XLA_ASSIGN_OR_RETURN(auto kernel_spec,
                       GetKernelSpec(entry_function_name_, fusion_,
                                     buffer_assignment_, work_dimensions_));
 

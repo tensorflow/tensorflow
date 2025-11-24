@@ -68,18 +68,18 @@ absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
     const HloInstruction* root = &root_adaptor.instruction();
     const HloInstruction* src_instr =
         fusion.operand(root->operand(0)->parameter_number());
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                         buffer_assignment_->GetUniqueSlice(src_instr, {}));
     src_buffers.push_back(slice);
   }
 
   std::vector<BufferAllocation::Slice> dst_buffers;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       fusion.shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray()) {
           return absl::OkStatus();
         }
-        TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+        TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                             buffer_assignment_->GetUniqueSlice(&fusion, index));
         dst_buffers.push_back(slice);
         return absl::OkStatus();
@@ -117,11 +117,11 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
     // prefix, one for the updated slice, one for the unchanged suffix). The
     // first option is inefficient, the second option is currently not
     // implemented: we only support dynamic offsets, no dynamic sizes.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         BufferAllocation::Slice input_slice,
         buffer_assignment_->GetUniqueSlice(
             &SkipOptionalBitcast(root.GetOperand(0)).instruction(), {}));
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_slice,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_slice,
                         buffer_assignment_->GetUniqueSlice(&fusion, {}));
     CHECK_EQ(input_slice, dst_slice);
 
@@ -135,14 +135,14 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
 
   const auto* src_instr =
       &SkipOptionalBitcast(root.GetOperand(source_operand_index)).instruction();
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
                       buffer_assignment_->GetUniqueSlice(src_instr, {}));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
                       buffer_assignment_->GetUniqueSlice(&fusion, {}));
 
   FusionEmissionResult result;
 
-  TF_ASSIGN_OR_RETURN(auto config, fusion.backend_config<GpuBackendConfig>());
+  TF_XLA_ASSIGN_OR_RETURN(auto config, fusion.backend_config<GpuBackendConfig>());
   const auto& memcpy_config =
       config.fusion_backend_config().dynamic_memcpy_config();
   DynamicMemcpyThunk::Offsets offsets;

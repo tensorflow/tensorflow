@@ -255,7 +255,7 @@ absl::Status LinkAndOptimizeModule(
     return absl::StrFormat("XlaOptimizeLlvmIr:#module=%s#",
                            module->getName().str());
   });
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       module_linker(module, gpu_version, debug_options, device_bitcode_path));
 
   llvm::LoopAnalysisManager lam;

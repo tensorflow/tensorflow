@@ -313,13 +313,13 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
       options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
     }
 
-    TF_ASSIGN_OR_RETURN(auto alias_analysis,
+    TF_XLA_ASSIGN_OR_RETURN(auto alias_analysis,
                         HloAliasAnalysis::Run(module, &alias_info_));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
                         HloLiveRange::Run(module->schedule(), *alias_analysis,
                                           module->entry_computation()));
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<PresetAssignments> preset_assignments,
         MemorySpaceAssignment::Run(module, *hlo_live_range, *alias_analysis,
                                    &alias_info_, options));

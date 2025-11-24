@@ -55,7 +55,7 @@ namespace {
 absl::StatusOr<hipGraph_t> CreateGraph() {
   VLOG(2) << "Create new HIP graph";
   hipGraph_t graph;
-  TF_RETURN_IF_ERROR(ToStatus(wrap::hipGraphCreate(&graph, /*flags=*/0),
+  TF_XLA_RETURN_IF_ERROR(ToStatus(wrap::hipGraphCreate(&graph, /*flags=*/0),
                               "Failed to create HIP graph"));
   VLOG(2) << "Created HIP graph " << graph;
   return graph;
@@ -95,7 +95,7 @@ GraphNodeHandle FromHipGraphHandle(hipGraphNode_t handle) {
 
 absl::StatusOr<std::unique_ptr<RocmCommandBuffer>> RocmCommandBuffer::Create(
     Mode mode, StreamExecutor* executor) {
-  TF_ASSIGN_OR_RETURN(hipGraph_t graph, CreateGraph());
+  TF_XLA_ASSIGN_OR_RETURN(hipGraph_t graph, CreateGraph());
   return std::unique_ptr<RocmCommandBuffer>(
       new RocmCommandBuffer(mode, executor, graph, /*is_owned_graph=*/true));
 }
@@ -155,7 +155,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemsetNode(
   std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
 
   hipGraphNode_t node_handle = nullptr;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       ToStatus(wrap::hipGraphAddMemsetNode(&node_handle, graph_, deps.data(),
                                            deps.size(), &params),
                "Failed to add memset node to a HIP graph"));
@@ -194,7 +194,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemcpyD2DNode(
   std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
 
   hipGraphNode_t node_handle = nullptr;
-  TF_RETURN_IF_ERROR(ToStatus(
+  TF_XLA_RETURN_IF_ERROR(ToStatus(
       wrap::hipGraphAddMemcpyNode1D(&node_handle, graph_, deps.data(),
                                     deps.size(), AsDevicePtr(destination),
                                     AsDevicePtr(source), size,
@@ -235,7 +235,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateChildNode(
   std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
 
   hipGraphNode_t node_handle = nullptr;
-  TF_RETURN_IF_ERROR(ToStatus(
+  TF_XLA_RETURN_IF_ERROR(ToStatus(
       wrap::hipGraphAddChildGraphNode(&node_handle, graph_, deps.data(),
                                       deps.size(), child_graph),
       "Failed to create a child graph node and add it to a HIP graph"));
@@ -287,7 +287,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
   params.extra = nullptr;
 
   if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(ToStatus(
+    TF_XLA_RETURN_IF_ERROR(ToStatus(
         wrap::hipFuncSetAttribute(function,
                                   hipFuncAttributeMaxDynamicSharedMemorySize,
                                   shared_mem_bytes),
@@ -297,7 +297,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
   std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
 
   hipGraphNode_t node_handle = nullptr;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       ToStatus(wrap::hipGraphAddKernelNode(&node_handle, graph_, deps.data(),
                                            deps.size(), &params),
                "Failed to add kernel node to a HIP graph"));
@@ -333,7 +333,7 @@ absl::Status RocmCommandBuffer::UpdateKernelNode(
   params.extra = nullptr;
 
   if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(ToStatus(
+    TF_XLA_RETURN_IF_ERROR(ToStatus(
         wrap::hipFuncSetAttribute(function,
                                   hipFuncAttributeMaxDynamicSharedMemorySize,
                                   shared_mem_bytes),
@@ -352,8 +352,8 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateEmptyNode(
 
 absl::Status RocmCommandBuffer::Trace(
     Stream* stream, absl::AnyInvocable<absl::Status()> function) {
-  TF_RETURN_IF_ERROR(CheckNotFinalized());
-  TF_ASSIGN_OR_RETURN(size_t count, GetNodeCount());
+  TF_XLA_RETURN_IF_ERROR(CheckNotFinalized());
+  TF_XLA_ASSIGN_OR_RETURN(size_t count, GetNodeCount());
   if (count != 0 || !is_owned_graph_)
     return absl::InternalError(
         "Stream can't be traced on non empty command buffer");
@@ -366,7 +366,7 @@ absl::Status RocmCommandBuffer::Trace(
 
   // Switch stream into the capture mode.
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       ToStatus(wrap::hipStreamBeginCapture(stream_handle,
                                            hipStreamCaptureModeThreadLocal),
                "Failed to begin stream capture"));
@@ -375,10 +375,10 @@ absl::Status RocmCommandBuffer::Trace(
   // Always stop capturing the stream before checking `traced` result.
   VLOG(5) << "End stream " << stream << " capture";
   hipGraph_t captured_graph;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       ToStatus(wrap::hipStreamEndCapture(stream_handle, &captured_graph),
                "Failed to end stream capture"));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       ToStatus(wrap::hipGraphDestroy(std::exchange(graph_, captured_graph)),
                "Failed to destroy HIP graph"));
   uint64_t end_nanos = tsl::Env::Default()->NowNanos();
@@ -403,7 +403,7 @@ absl::Status RocmCommandBuffer::LaunchGraph(Stream* stream) {
 }
 absl::StatusOr<size_t> RocmCommandBuffer::GetNodeCount() const {
   size_t numNodes;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       ToStatus(wrap::hipGraphGetNodes(graph_, /*nodes=*/nullptr, &numNodes),
                "Failed to get HIP graph node count"));
 

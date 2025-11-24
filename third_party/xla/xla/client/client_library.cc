@@ -107,7 +107,7 @@ ClientLibrary::~ClientLibrary() = default;
   absl::MutexLock lock(client_library.service_mutex_);
 
   if (platform == nullptr) {
-    TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
+    TF_XLA_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
 
   auto it = client_library.local_instances_.find(platform->id());
@@ -122,7 +122,7 @@ ClientLibrary::~ClientLibrary() = default;
       options.intra_op_parallelism_threads());
   service_options.set_allowed_devices(options.allowed_devices());
   auto instance = std::make_unique<LocalInstance>();
-  TF_ASSIGN_OR_RETURN(instance->service,
+  TF_XLA_ASSIGN_OR_RETURN(instance->service,
                       LocalService::NewService(service_options));
   instance->client = std::make_unique<LocalClient>(instance->service.get());
   LocalClient* cl = instance->client.get();
@@ -153,7 +153,7 @@ ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
   absl::MutexLock lock(client_library.service_mutex_);
 
   if (platform == nullptr) {
-    TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
+    TF_XLA_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
 
   auto it = client_library.compile_only_instances_.find(platform->id());
@@ -162,7 +162,7 @@ ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
   }
 
   auto instance = std::make_unique<CompileOnlyInstance>();
-  TF_ASSIGN_OR_RETURN(instance->service,
+  TF_XLA_ASSIGN_OR_RETURN(instance->service,
                       CompileOnlyService::NewService(platform));
   instance->client =
       std::make_unique<CompileOnlyClient>(instance->service.get());

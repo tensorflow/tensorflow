@@ -88,13 +88,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
     std::string hlo_string = StripLogHeaders(data);
     HloModuleConfig config;
     config.set_debug_options(debug_options);
-    TF_RETURN_IF_ERROR(OverrideConfig(ovr_config, &config));
+    TF_XLA_RETURN_IF_ERROR(OverrideConfig(ovr_config, &config));
     if (config_modifier_hook) {
       config_modifier_hook(&config);
     }
     HloParserOptions options;
     options.set_fill_missing_layouts(fill_missing_layouts);
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         module, ParseAndReturnUnverifiedModule(hlo_string, config, options));
   } else {
     HloSnapshot proto;
@@ -126,14 +126,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
           "or pbtxt",
           format);
     }
-    TF_ASSIGN_OR_RETURN(HloModuleConfig config,
+    TF_XLA_ASSIGN_OR_RETURN(HloModuleConfig config,
                         HloModule::CreateModuleConfigFromProto(
                             proto.hlo().hlo_module(), debug_options));
-    TF_RETURN_IF_ERROR(OverrideConfig(ovr_config, &config));
+    TF_XLA_RETURN_IF_ERROR(OverrideConfig(ovr_config, &config));
     if (config_modifier_hook) {
       config_modifier_hook(&config);
     }
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         module, HloModule::CreateFromProto(proto.hlo().hlo_module(), config));
   }
   return std::move(module);
@@ -148,7 +148,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
   if (format.empty()) {
     format = std::string(tsl::io::Extension(path));
   }
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
+  TF_XLA_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return LoadModuleFromData(data, format, ovr_config, config_modifier_hook,
                             buffer_assignment_proto, fill_missing_layouts);
 }
@@ -191,7 +191,7 @@ LoadInputFromFile(const std::string& path, std::string format) {
   if (format.empty()) {
     format = std::string(tsl::io::Extension(path));
   }
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
+  TF_XLA_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return LoadInputFromData(data, format);
 }
 

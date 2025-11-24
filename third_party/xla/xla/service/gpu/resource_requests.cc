@@ -120,7 +120,7 @@ ResourceRequests::AcquireCollectiveCliques(
           " in clique key ", r.key.ToString()));
     }
 
-    TF_ASSIGN_OR_RETURN(const CliqueIdCallback* clique_id_callback,
+    TF_XLA_ASSIGN_OR_RETURN(const CliqueIdCallback* clique_id_callback,
                         params.collectives->GetCliqueIdCallback(
                             params.nccl_clique_id_callback, r.key.is_local()));
 
@@ -141,7 +141,7 @@ ResourceRequests::AcquireCollectiveCliques(
 
     // If we don't have a persistent clique we have to acquire a transient
     // one.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::shared_ptr<LockableGpuClique::Lock> clique,
         AcquireGpuClique(params.collectives, params.executor, params.run_id,
                          r.key, *clique_id_callback, *rank, cliques_map,

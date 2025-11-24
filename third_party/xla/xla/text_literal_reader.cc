@@ -72,7 +72,7 @@ absl::StatusOr<Literal> TextLiteralReader::ReadAllLines() {
   }
 
   absl::StripAsciiWhitespace(&shape_string);
-  TF_ASSIGN_OR_RETURN(Shape shape, ParseShape(shape_string));
+  TF_XLA_ASSIGN_OR_RETURN(Shape shape, ParseShape(shape_string));
   if (shape.element_type() != F32) {
     return Unimplemented(
         "unsupported element type for text literal reading: %s",

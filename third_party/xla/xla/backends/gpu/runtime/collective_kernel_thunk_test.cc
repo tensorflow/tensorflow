@@ -211,7 +211,7 @@ absl::StatusOr<se::DeviceMemoryBase> RunCollectiveKernelThunk(
       std::map{std::make_pair(0, GlobalDeviceId(0)),
                std::make_pair(1, GlobalDeviceId(1))});
 
-  TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+  TF_XLA_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
   ServiceExecutableRunOptions run_options;
   run_options.mutable_run_options()->set_stream(stream.get());
   DeviceAssignment device_assignment(/*replica_count=*/metadata.num_devices,
@@ -225,7 +225,7 @@ absl::StatusOr<se::DeviceMemoryBase> RunCollectiveKernelThunk(
   run_options.mutable_run_options()->set_gpu_executable_run_options(
       &gpu_options);
 
-  TF_ASSIGN_OR_RETURN(auto collective_params,
+  TF_XLA_ASSIGN_OR_RETURN(auto collective_params,
                       Thunk::CollectiveExecuteParams::Create(
                           run_options, /*async_streams=*/{},
                           /*local_device_ordinal=*/executor->device_ordinal()));
@@ -243,9 +243,9 @@ absl::StatusOr<se::DeviceMemoryBase> RunCollectiveKernelThunk(
 
   if (!input_data.empty()) {
     VLOG(3) << "Copying input data to the device";
-    TF_RETURN_IF_ERROR(stream->Memcpy(&input_buffer, input_data.data(),
+    TF_XLA_RETURN_IF_ERROR(stream->Memcpy(&input_buffer, input_data.data(),
                                       metadata.input_data_size_bytes));
-    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    TF_XLA_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
 
   Thunk::InitializeParams initialize_params;
@@ -254,13 +254,13 @@ absl::StatusOr<se::DeviceMemoryBase> RunCollectiveKernelThunk(
   initialize_params.buffer_allocations = &buffer_allocations;
   initialize_params.collective_params = &collective_params;
   initialize_params.src = {kKernelSource};
-  TF_RETURN_IF_ERROR(metadata.thunk->Initialize(initialize_params));
+  TF_XLA_RETURN_IF_ERROR(metadata.thunk->Initialize(initialize_params));
 
   auto execute_params = Thunk::ExecuteParams::Create(
       run_options, buffer_allocations, stream.get(),
       /*command_buffer_trace_stream=*/nullptr, &collective_params,
       /*collective_cliques=*/nullptr);
-  TF_RETURN_IF_ERROR(metadata.thunk->ExecuteOnStream(execute_params));
+  TF_XLA_RETURN_IF_ERROR(metadata.thunk->ExecuteOnStream(execute_params));
   return output_buffer;
 }
 

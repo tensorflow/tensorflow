@@ -123,7 +123,7 @@ absl::Status MorphModuleWithLiterals(
           HloInstruction::CreateConstant(std::move(literal)));
       absl::Status replace_status =
           entry_computation->ReplaceInstruction(instruction, new_instruction);
-      TF_RETURN_IF_ERROR(replace_status);
+      TF_XLA_RETURN_IF_ERROR(replace_status);
     }
   }
 
@@ -156,15 +156,15 @@ absl::StatusOr<bool> HloBisectState::TrimEntryComputation() {
   for (int iter = 0; changed || iter < 2; iter++) {
     if (iter % 2 == 0) {
       VLOG(2) << "Trimming by outputs, iteration " << iter;
-      TF_ASSIGN_OR_RETURN(changed, TrimByOutputs());
+      TF_XLA_ASSIGN_OR_RETURN(changed, TrimByOutputs());
     } else {
       VLOG(2) << "Trimming by instructions, iteration " << iter;
-      TF_ASSIGN_OR_RETURN(changed, TrimByInstructions());
+      TF_XLA_ASSIGN_OR_RETURN(changed, TrimByInstructions());
     }
     changed_in_loop |= changed;
   }
   VLOG(2) << "Trimming by replacing instructions with literals";
-  TF_ASSIGN_OR_RETURN(changed, TrimByUsingConstants());
+  TF_XLA_ASSIGN_OR_RETURN(changed, TrimByUsingConstants());
   VLOG(2) << "Final module: " << module_->ToString();
   return changed || changed_in_loop;
 }
@@ -178,7 +178,7 @@ absl::StatusOr<bool> HloBisectState::RunModule(const HloModule& module) {
 
   // Run the modified module with the bug checker.
   absl::StatusOr<bool> bug_result = bug_checker_->Run(module);
-  TF_RETURN_IF_ERROR(bug_result.status());
+  TF_XLA_RETURN_IF_ERROR(bug_result.status());
   VLOG(3) << "Bug checker result: " << bug_result.value();
 
   // Update foldable instructions data.
@@ -207,7 +207,7 @@ absl::StatusOr<bool> HloBisectState::TrimByOutputs() {
     std::unique_ptr<HloModule> new_module = module_->Clone(/*suffix=*/"");
     HloInstruction* const* new_operands =
         new_module->entry_computation()->root_instruction()->operands().begin();
-    TF_RETURN_IF_ERROR(MorphModuleWithOutputs(
+    TF_XLA_RETURN_IF_ERROR(MorphModuleWithOutputs(
         new_module.get(),
         absl::MakeSpan(new_operands + start, end - start + 1)));
     return RunModule(*new_module);
@@ -220,11 +220,11 @@ absl::StatusOr<bool> HloBisectState::TrimByOutputs() {
     int64_t cur = bisect_low + (bisect_high - bisect_low) / 2;
     VLOG(2) << "Number of outputs: " << (cur - bisect_low + 1) << " ["
             << bisect_low << ".." << cur << "]";
-    TF_ASSIGN_OR_RETURN(bool has_bug, run_modified(bisect_low, cur));
+    TF_XLA_ASSIGN_OR_RETURN(bool has_bug, run_modified(bisect_low, cur));
     if (has_bug) {
       bisect_high = cur;
     } else {
-      TF_ASSIGN_OR_RETURN(has_bug, run_modified(cur + 1, bisect_high));
+      TF_XLA_ASSIGN_OR_RETURN(has_bug, run_modified(cur + 1, bisect_high));
       if (has_bug) {
         bisect_low = cur + 1;
       } else {
@@ -237,11 +237,11 @@ absl::StatusOr<bool> HloBisectState::TrimByOutputs() {
   bool changed =
       (bisect_high - bisect_low) < (root_instruction->operand_count() - 1);
   if (changed) {
-    TF_RETURN_IF_ERROR(MorphModuleWithOutputs(
+    TF_XLA_RETURN_IF_ERROR(MorphModuleWithOutputs(
         module_.get(),
         absl::MakeSpan(root_instruction->operands().begin() + bisect_low,
                        bisect_high - bisect_low + 1)));
-    TF_RETURN_IF_ERROR(ExpectModuleIsBuggy());
+    TF_XLA_RETURN_IF_ERROR(ExpectModuleIsBuggy());
   }
   return changed;
 }
@@ -261,8 +261,8 @@ absl::StatusOr<bool> HloBisectState::TrimByInstructions() {
     VLOG(2) << "Number of instructions: " << cur << " (of "
             << computation->instruction_count() << ")";
     std::unique_ptr<HloModule> new_module = module_->Clone(/*suffix=*/"");
-    TF_RETURN_IF_ERROR(MorphModuleWithInstructions(new_module.get(), cur));
-    TF_ASSIGN_OR_RETURN(bool has_bug, RunModule(*new_module));
+    TF_XLA_RETURN_IF_ERROR(MorphModuleWithInstructions(new_module.get(), cur));
+    TF_XLA_ASSIGN_OR_RETURN(bool has_bug, RunModule(*new_module));
     if (has_bug) {
       bisect_high = cur;
     } else {
@@ -280,8 +280,8 @@ absl::StatusOr<bool> HloBisectState::TrimByInstructions() {
   // Update the current module and verify that the bug is present, if changed.
   bool changed = bisect_high < upper_bound;
   if (changed) {
-    TF_RETURN_IF_ERROR(MorphModuleWithInstructions(module_.get(), bisect_high));
-    TF_RETURN_IF_ERROR(ExpectModuleIsBuggy());
+    TF_XLA_RETURN_IF_ERROR(MorphModuleWithInstructions(module_.get(), bisect_high));
+    TF_XLA_RETURN_IF_ERROR(ExpectModuleIsBuggy());
   }
   return changed;
 }
@@ -300,7 +300,7 @@ absl::StatusOr<bool> HloBisectState::TrimByUsingConstants() {
       literal_map.insert(std::move(it));
     } else if (foldable_instructions_.contains(instr->name())) {
       absl::StatusOr<Literal> literal_status = MakeFakeLiteral(instr->shape());
-      TF_RETURN_IF_ERROR(literal_status.status());
+      TF_XLA_RETURN_IF_ERROR(literal_status.status());
       literal_map[instr->name()] = std::move(literal_status).value();
       ++random_literals_count;
     }
@@ -312,9 +312,9 @@ absl::StatusOr<bool> HloBisectState::TrimByUsingConstants() {
   // It is possible that the random literals will make the bug disappear, in
   // which case the module will not get reduced.
   std::unique_ptr<HloModule> new_module = module_->Clone(/*suffix=*/"");
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       MorphModuleWithLiterals(new_module.get(), std::move(literal_map)));
-  TF_ASSIGN_OR_RETURN(bool has_bug, RunModule(*new_module));
+  TF_XLA_ASSIGN_OR_RETURN(bool has_bug, RunModule(*new_module));
   if (has_bug) {
     std::swap(module_, new_module);
   }
@@ -323,7 +323,7 @@ absl::StatusOr<bool> HloBisectState::TrimByUsingConstants() {
 
 absl::Status HloBisectState::ExpectModuleIsBuggy() {
   // Verify that the current module has a bug.
-  TF_ASSIGN_OR_RETURN(bool has_bug, RunModule(*module_));
+  TF_XLA_ASSIGN_OR_RETURN(bool has_bug, RunModule(*module_));
   if (has_bug) {
     return absl::OkStatus();
   }
@@ -332,7 +332,7 @@ absl::Status HloBisectState::ExpectModuleIsBuggy() {
   const int retry_count = 5;
   int bug_count = 0;
   for (int i = 0; i < retry_count; i++) {
-    TF_ASSIGN_OR_RETURN(has_bug, bug_checker_->Run(*module_));
+    TF_XLA_ASSIGN_OR_RETURN(has_bug, bug_checker_->Run(*module_));
     if (has_bug) {
       bug_count++;
     }

@@ -1113,7 +1113,7 @@ absl::Status CuptiTracer::Enable(
     return status;
   }
 
-  TF_RETURN_IF_ERROR(EnableActivityTracing());
+  TF_XLA_RETURN_IF_ERROR(EnableActivityTracing());
   tsl::profiler::AnnotationStack::Enable(true);
 
   int num_gpus_requested = xplanes.size();
@@ -1141,11 +1141,11 @@ absl::Status CuptiTracer::Enable(
                                        collector_->GetProfileStartTimeNs());
         };
     // Creates PM sampler object.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         cupti_pm_sampler_,
         CreatePmSampler(num_gpus_requested, option_->pm_sampler_options));
 
-    TF_RETURN_IF_ERROR(cupti_pm_sampler_->StartSampler());
+    TF_XLA_RETURN_IF_ERROR(cupti_pm_sampler_->StartSampler());
     pm_sampling_enabled_ = true;
   }
 
@@ -1525,10 +1525,10 @@ absl::Status CuptiTracer::HandleDriverApiCallback(
   }
 
   if (cbdata->callbackSite == CUPTI_API_ENTER) {
-    TF_RETURN_IF_ERROR(cupti_driver_api_hook_->OnDriverApiEnter(
+    TF_XLA_RETURN_IF_ERROR(cupti_driver_api_hook_->OnDriverApiEnter(
         device_id, domain, cbid, cbdata));
   } else if (cbdata->callbackSite == CUPTI_API_EXIT) {
-    TF_RETURN_IF_ERROR(cupti_driver_api_hook_->OnDriverApiExit(
+    TF_XLA_RETURN_IF_ERROR(cupti_driver_api_hook_->OnDriverApiExit(
         device_id, domain, cbid, cbdata));
   }
   return absl::OkStatus();

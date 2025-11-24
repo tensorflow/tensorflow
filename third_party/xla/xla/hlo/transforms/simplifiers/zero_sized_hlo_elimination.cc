@@ -71,7 +71,7 @@ absl::StatusOr<bool> ZeroSizedHloElimination::RunImpl(
       }
 
       if (comp->IsSafelyRemovable(instruction)) {
-        TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
+        TF_XLA_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
             instruction,
             HloInstruction::CreateConstant(Literal::CreateFromShape(shape))));
         changed = true;
@@ -81,7 +81,7 @@ absl::StatusOr<bool> ZeroSizedHloElimination::RunImpl(
         HloInstruction* constant =
             comp->AddInstruction(HloInstruction::CreateConstant(
                 Literal::CreateFromShape(instruction->shape())));
-        TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(constant));
+        TF_XLA_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(constant));
         changed = true;
       }
     }

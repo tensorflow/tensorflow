@@ -107,10 +107,10 @@ AutotunerCompileUtil::ProfileExecutable(
         ExecutionInputsFromBuffers(input_buffers, input_shapes);
     // Warmup: in and out buffers are reused while probing different configs,
     // so GPU caches should be in some comparable states during measurements.
-    TF_ASSIGN_OR_RETURN(ExecutionOutput execution_output,
+    TF_XLA_ASSIGN_OR_RETURN(ExecutionOutput execution_output,
                         Execute(*executable, std::move(execution_inputs)));
 
-    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    TF_XLA_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
   std::vector<ExecutionInput> execution_inputs =
       ExecutionInputsFromBuffers(input_buffers, input_shapes);
@@ -118,7 +118,7 @@ AutotunerCompileUtil::ProfileExecutable(
   // Flag that a warm-up run was executed so that GpuTimer can use the, more
   // accurate, delay kernel implementation.
   profile.set_warmup_run_executed(true);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       ExecutionOutput execution_output,
       Execute(*executable, std::move(execution_inputs), &profile));
   return ProfilingOutput(absl::Nanoseconds(profile.compute_time_ns()),
@@ -168,8 +168,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> AutotunerCompileUtil::ExtractModule(
   }
   se::StreamExecutor* stream_exec = config.GetExecutor();
   se::DeviceMemoryAllocator* allocator = config.GetAllocator();
-  TF_ASSIGN_OR_RETURN(se::Stream* const stream, config.GetStream());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+  TF_XLA_ASSIGN_OR_RETURN(se::Stream* const stream, config.GetStream());
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                       Compiler::GetForPlatform(stream_exec->GetPlatform()));
   return AutotunerCompileUtil(std::move(compiler), *stream_exec, *stream,
                               *allocator, opts);
@@ -190,7 +190,7 @@ absl::StatusOr<ExecutionOutput> AutotunerCompileUtil::Execute(
   run_options.set_gpu_executable_run_options(&gpu_opts);
   run_options.set_execution_profile(profile);
   ServiceExecutableRunOptions service_run_options(run_options);
-  TF_ASSIGN_OR_RETURN(ExecutionOutput output,
+  TF_XLA_ASSIGN_OR_RETURN(ExecutionOutput output,
                       executable.ExecuteAsyncOnStreamWrapper(
                           &service_run_options, std::move(arguments)));
 

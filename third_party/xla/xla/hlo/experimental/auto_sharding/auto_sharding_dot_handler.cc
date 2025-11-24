@@ -989,7 +989,7 @@ absl::Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
   DotHandler handler(strategy_group, strategy_map, Cast<HloDotInstruction>(ins),
                      instruction_id, instruction_sequence, hlo_cost_analysis,
                      cluster_env, option, call_graph);
-  TF_RETURN_IF_ERROR(handler.RegisterStrategies());
+  TF_XLA_RETURN_IF_ERROR(handler.RegisterStrategies());
   return absl::OkStatus();
 }
 
@@ -1013,13 +1013,13 @@ absl::Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
                        Cast<HloConvolutionInstruction>(ins), instruction_id,
                        instruction_sequence, hlo_cost_analysis,
                        conv_as_dot_dims, cluster_env, option, call_graph);
-    TF_RETURN_IF_ERROR(handler.RegisterStrategies());
+    TF_XLA_RETURN_IF_ERROR(handler.RegisterStrategies());
 
   } else {
     ConvHandler handler(strategy_group, strategy_map, ins, instruction_id,
                         instruction_sequence, hlo_cost_analysis, cluster_env,
                         option, call_graph);
-    TF_RETURN_IF_ERROR(handler.RegisterStrategies());
+    TF_XLA_RETURN_IF_ERROR(handler.RegisterStrategies());
   }
   return absl::OkStatus();
 }

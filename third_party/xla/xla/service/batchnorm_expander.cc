@@ -180,11 +180,11 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   const Shape feature_shape = scale->shape();
 
   auto zero_literal = LiteralUtil::CreateR0(0.0f);
-  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
+  TF_XLA_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
   auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
+  TF_XLA_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   Shape scalar_broadcast_shape = ShapeUtil::MakeStaticShape(operand_shape);
   auto epsilon = add(HloInstruction::CreateBroadcast(
       scalar_broadcast_shape,
@@ -317,7 +317,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
   Shape scalar_broadcast_shape = ShapeUtil::MakeStaticShape(feature_shape);
 
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
+  TF_XLA_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   auto epsilon = computation_->AddInstruction(HloInstruction::CreateBroadcast(
       scalar_broadcast_shape,
       computation_->AddInstruction(
@@ -435,11 +435,11 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       add(DynamicElementCountPerFeature(activation, feature_index, add));
 
   auto zero_literal = LiteralUtil::CreateR0(0.0f);
-  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
+  TF_XLA_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
   auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
+  TF_XLA_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   auto epsilon_scalar =
       add(HloInstruction::CreateConstant(std::move(epsilon_literal)));
   auto epsilon_activation = add(HloInstruction::CreateBroadcast(

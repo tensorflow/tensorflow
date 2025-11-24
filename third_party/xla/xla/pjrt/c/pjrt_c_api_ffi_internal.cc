@@ -30,7 +30,7 @@ limitations under the License.
 namespace pjrt {
 
 static PJRT_Error* PJRT_FFI_Type_Register(PJRT_FFI_Type_Register_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_FFI_Type_Register_Args", PJRT_FFI_Type_Register_Args_STRUCT_SIZE,
       args->struct_size));
 
@@ -43,14 +43,14 @@ static PJRT_Error* PJRT_FFI_Type_Register(PJRT_FFI_Type_Register_Args* args) {
   if (type_id == xla::ffi::TypeRegistry::kUnknownTypeId) {
     // If type_id is unknown, we are registering a new type and XLA will assign
     // a unique type id to it.
-    PJRT_ASSIGN_OR_RETURN(
+    PJRT_XLA_ASSIGN_OR_RETURN(
         auto assigned_type_id,
         xla::ffi::TypeRegistry::AssignExternalTypeId(type_name, type_info));
     args->type_id = assigned_type_id.value();
 
   } else {
     // If type_id is set, we are relying on the caller-provided unique type id.
-    PJRT_RETURN_IF_ERROR(xla::ffi::TypeRegistry::RegisterExternalTypeId(
+    PJRT_XLA_RETURN_IF_ERROR(xla::ffi::TypeRegistry::RegisterExternalTypeId(
         type_name, type_id, type_info));
   }
 
@@ -58,7 +58,7 @@ static PJRT_Error* PJRT_FFI_Type_Register(PJRT_FFI_Type_Register_Args* args) {
 }
 
 static PJRT_Error* PJRT_FFI_UserData_Add(PJRT_FFI_UserData_Add_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_FFI_UserData_Add_Args", PJRT_FFI_UserData_Add_Args_STRUCT_SIZE,
       args->struct_size));
 
@@ -68,14 +68,14 @@ static PJRT_Error* PJRT_FFI_UserData_Add(PJRT_FFI_UserData_Add_Args* args) {
   }
 
   xla::ffi::TypeRegistry::TypeId type_id(args->user_data.type_id);
-  PJRT_RETURN_IF_ERROR(args->context->execute_context->ffi_context().Insert(
+  PJRT_XLA_RETURN_IF_ERROR(args->context->execute_context->ffi_context().Insert(
       type_id, args->user_data.data));
   return nullptr;
 }
 
 static PJRT_Error* PJRT_FFI_Register_Handler(
     PJRT_FFI_Register_Handler_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_FFI_Register_Handler_Args",
       PJRT_FFI_Register_Handler_Args_STRUCT_SIZE, args->struct_size));
   std::string target_name(args->target_name, args->target_name_size);

@@ -39,7 +39,7 @@ class TypedKernelFactory {
   // Creates a typed kernel on a given executor from a kernel specification.
   static absl::StatusOr<TypedKernel<Params...>> Create(
       StreamExecutor *executor, const KernelLoaderSpec &spec) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Kernel> kernel,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Kernel> kernel,
                         executor->LoadKernel(spec));
     return TypedKernel<Params...>(std::move(kernel));
   }

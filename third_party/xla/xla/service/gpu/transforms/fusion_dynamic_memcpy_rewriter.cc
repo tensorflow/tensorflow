@@ -57,12 +57,12 @@ class DynamicOffsetEvaluator {
   absl::StatusOr<int64_t> EvaluateArrayIndexForOffset(
       const DynamicMemcpyThunk::MemcpyDescriptor::DynamicOffset& offset,
       const WhileLoopBackendConfig& loop_config, int64_t iteration) {
-    TF_ASSIGN_OR_RETURN(auto call_stack, ComputeCallStack(offset));
+    TF_XLA_ASSIGN_OR_RETURN(auto call_stack, ComputeCallStack(offset));
 
     // Walk up the call stack and compute the required parameter's values at
     // each step, using them as the substitutions for the next call. By
     // definition, the first call can only depend on the induction variable.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto substitutions,
         GetInductionVariableSubstitutions(offset, loop_config, iteration));
     HloEvaluator evaluator(/*max_loop_iterations=*/0);
@@ -83,7 +83,7 @@ class DynamicOffsetEvaluator {
         // Only compute the value if we didn't already need it for a different
         // offset.
         if (!known_values_.contains(operand)) {
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               known_values_[operand],
               evaluator.Evaluate(operand, {}, true, substitutions));
         }
@@ -95,7 +95,7 @@ class DynamicOffsetEvaluator {
 
     // We now have the parameter values for the innermost call, so we can
     // compute the offset.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto array_index_literal,
         evaluator.Evaluate(offset.offset, {}, true, substitutions));
 
@@ -178,7 +178,7 @@ class DynamicOffsetEvaluator {
           iteration * loop_config.known_init_step().step();
 
       Literal induction_variable_literal(offset.induction_variable->shape());
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           induction_variable_literal.SetIntegralAsS64({}, induction_variable));
       known_values_[offset.induction_variable] =
           std::move(induction_variable_literal);
@@ -198,7 +198,7 @@ absl::StatusOr<int64_t> EvaluateDynamicOffsets(
   int64_t offset_sum = 0;
   DynamicOffsetEvaluator evaluator;
   for (const auto& offset : offsets) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         int64_t clamped_index,
         evaluator.EvaluateArrayIndexForOffset(offset, loop_config, iteration));
     offset_sum += clamped_index * offset.byte_stride;
@@ -227,7 +227,7 @@ absl::StatusOr<WhileLoopBackendConfig> GetLoopConfig(
     return absl::InternalError("Did not find a loop.");
   }
 
-  TF_ASSIGN_OR_RETURN(auto config,
+  TF_XLA_ASSIGN_OR_RETURN(auto config,
                       loop->backend_config<WhileLoopBackendConfig>());
   if (!config.has_known_init_step() || !config.has_known_trip_count()) {
     return absl::InternalError(
@@ -242,7 +242,7 @@ absl::Status ComputeOffsetsForLoop(
     int64_t static_offset, const WhileLoopBackendConfig& loop_config,
     tsl::protobuf::RepeatedField<int64_t>* output_offsets) {
   for (int64_t i = 0; i < loop_config.known_trip_count().n(); ++i) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto dynamic_offset,
         EvaluateDynamicOffsets(dynamic_offsets, loop_config, i));
     output_offsets->Add(static_offset + dynamic_offset);
@@ -253,13 +253,13 @@ absl::Status ComputeOffsetsForLoop(
 absl::Status SetLoopMemcpyConfig(
     const DynamicMemcpyThunk::MemcpyDescriptor& descriptor,
     DynamicMemcpyConfig* config) {
-  TF_ASSIGN_OR_RETURN(auto loop_config, GetLoopConfig(descriptor));
+  TF_XLA_ASSIGN_OR_RETURN(auto loop_config, GetLoopConfig(descriptor));
 
   config->set_depends_on_loop(true);
-  TF_RETURN_IF_ERROR(ComputeOffsetsForLoop(
+  TF_XLA_RETURN_IF_ERROR(ComputeOffsetsForLoop(
       descriptor.src_dynamic_offsets, descriptor.src_byte_static_offset,
       loop_config, config->mutable_src_offset_bytes()));
-  TF_RETURN_IF_ERROR(ComputeOffsetsForLoop(
+  TF_XLA_RETURN_IF_ERROR(ComputeOffsetsForLoop(
       descriptor.dst_dynamic_offsets, descriptor.dst_byte_static_offset,
       loop_config, config->mutable_dst_offset_bytes()));
   return absl::OkStatus();
@@ -285,7 +285,7 @@ absl::StatusOr<bool> FusionDynamicMemcpyRewriter::RunImpl(
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(auto backend_config,
+    TF_XLA_ASSIGN_OR_RETURN(auto backend_config,
                         fusion->backend_config<GpuBackendConfig>());
     auto* fusion_config = backend_config.mutable_fusion_backend_config();
     fusion_config->set_kind(kDynamicMemcpyFusionKind);
@@ -304,7 +304,7 @@ absl::StatusOr<bool> FusionDynamicMemcpyRewriter::RunImpl(
       }
     }
 
-    TF_RETURN_IF_ERROR(fusion->set_backend_config(backend_config));
+    TF_XLA_RETURN_IF_ERROR(fusion->set_backend_config(backend_config));
     has_changed = true;
   }
 

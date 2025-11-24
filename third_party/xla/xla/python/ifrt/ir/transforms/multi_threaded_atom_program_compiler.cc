@@ -146,7 +146,7 @@ MultiThreadedAtomProgramCompiler::GetXlaCompileOptions(
   // compile options.
   auto compile_options_key =
       call_op->getAttrOfType<mlir::StringAttr>(kIfrtCompileOptionsKey);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::optional<xla::CompileOptions> compile_options_override,
       GetModuleXlaCompileOverrides(compile_options_key,
                                    compile_options_overrides_));
@@ -192,7 +192,7 @@ MultiThreadedAtomProgramCompiler::GetXlaCompileOptions(
 absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileXla(
     CallOp call_op, mlir::ModuleOp module_op,
     tsl::thread::ThreadPool* thread_pool) {
-  TF_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
+  TF_XLA_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
                       GetXlaCompileOptions(call_op, module_op));
 
   // We must clone the module in order ensure the module string representation
@@ -232,7 +232,7 @@ MultiThreadedAtomProgramCompiler::CompileMpmdReshard(mlir::ModuleOp module_op) {
     auto array_type = mlir::dyn_cast<IfrtArrayType>(arg_type);
     TF_RET_CHECK(array_type != nullptr)
         << "Unsupported argument type `" << mlir::debugString(arg_type) << "`";
-    TF_ASSIGN_OR_RETURN(DType dtype,
+    TF_XLA_ASSIGN_OR_RETURN(DType dtype,
                         ToIfrtDType(array_type.getShape().getElementType()));
     dtypes.push_back(std::move(dtype));
     shapes.push_back(Shape(array_type.getShape().getShape()));

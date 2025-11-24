@@ -79,7 +79,7 @@ class LazyOpRunner {
     if (!runner) {
       return absl::InternalError("Null runner argument to FromOpRunner");
     }
-    TF_ASSIGN_OR_RETURN(auto desc, runner->ToAlgorithmDesc());
+    TF_XLA_ASSIGN_OR_RETURN(auto desc, runner->ToAlgorithmDesc());
     // Private constructor cannot be called by make_unique :(
     return {std::unique_ptr<LazyOpRunner>(
         new LazyOpRunner(desc, std::move(runner)))};
@@ -168,7 +168,7 @@ struct ConvOp {
   static absl::StatusOr<std::unique_ptr<const OpRunner<ConvSignature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
-    TF_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
+    TF_XLA_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
     return dnn->ConvolveRunnerFromDesc(
         stream, desc, config.kind, config.input_type, config.output_type,
         config.input_descriptor, config.filter_descriptor,
@@ -194,7 +194,7 @@ struct GraphConvOp {
   static absl::StatusOr<std::unique_ptr<const OpRunner<Signature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
-    TF_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
+    TF_XLA_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
     return dnn->GraphConvolveRunnerFromDesc(
         stream, desc, config.kind, config.input_type, config.output_type,
         config.input_descriptor, config.filter_descriptor,
@@ -222,7 +222,7 @@ struct FusedConvOp {
   static absl::StatusOr<std::unique_ptr<const OpRunner<FusedConvSignature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
-    TF_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
+    TF_XLA_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
     return dnn->FusedConvolveRunnerFromDesc(
         stream, desc, config.kind, config.input_type, config.bias_type,
         config.output_type, config.conv_scale, config.side_input_scale,
@@ -254,7 +254,7 @@ struct NormOp {
   static absl::StatusOr<std::unique_ptr<const OpRunner<Signature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
-    TF_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
+    TF_XLA_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
     return dnn->NormRunnerFromDesc(
         stream, desc, config.kind, config.epsilon, config.x_descriptor,
         config.scale_descriptor, config.y_or_dx_descriptor,

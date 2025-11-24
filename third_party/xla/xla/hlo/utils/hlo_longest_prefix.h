@@ -29,10 +29,10 @@ template <typename Visitor>
 absl::Status VisitInstAndCalledButNotOperands(Visitor& visitor,
                                               const HloInstruction& inst) {
   // Visit the given instruction, and the things it calls, but not its operands.
-  TF_RETURN_IF_ERROR(visitor.DefaultAction(&inst));
+  TF_XLA_RETURN_IF_ERROR(visitor.DefaultAction(&inst));
   for (const HloComputation* called : inst.called_computations()) {
     const HloInstruction* const root = called->root_instruction();
-    TF_RETURN_IF_ERROR(root->Accept(&visitor, /*call_finish_visit=*/false,
+    TF_XLA_RETURN_IF_ERROR(root->Accept(&visitor, /*call_finish_visit=*/false,
                                     /*ignore_control_predecessors=*/true,
                                     /*cross_computation=*/true));
   }

@@ -89,7 +89,7 @@ absl::Status UpdateWhileUsesWithTuple(HloInstruction* while_instr,
     while_instr->parent()->set_root_instruction(tuple);
   }
   if (!users.empty()) {
-    TF_RETURN_IF_ERROR(while_instr->ReplaceUsesWith(users, tuple));
+    TF_XLA_RETURN_IF_ERROR(while_instr->ReplaceUsesWith(users, tuple));
   }
   return absl::OkStatus();
 }
@@ -118,7 +118,7 @@ absl::StatusOr<HloInstruction*> AppendToWhileState(
   *condition->parameter_instruction(0)->mutable_shape() = while_input->shape();
   // Finalize the update by changing the uses of the while loop and updating its
   // shape.
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       UpdateWhileUsesWithTuple(while_instr, while_input->operand_count() - 1));
   *while_instr->mutable_shape() = while_input->shape();
   // The new body root tuple element has the same value as the new operand.
@@ -229,7 +229,7 @@ absl::StatusOr<bool> TryRewritingBroadcastAsAllocateBuffer(
   // inside the body to create a predicate that checks if the loop iteration
   // variable is equal to the first iteration value. This is done only once
   // regardless of the number of sinkable indices.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloInstruction * loop_iteration_variable_initial_value_gte,
       AppendToWhileState(while_instr, loop_iteration_variable_initial_value));
   HloInstruction* iteration_var_gte = hlo_query::GetUniqueGteInstruction(
@@ -252,15 +252,15 @@ absl::StatusOr<bool> TryRewritingBroadcastAsAllocateBuffer(
     // It is possible that the same broadcast has multiple users, first clone
     // the buffer and then replace this specific use with the clone.
     HloInstruction* buffer_clone = buffer->AddInstruction(buffer->Clone());
-    TF_RETURN_IF_ERROR(while_instr->while_init()->ReplaceOperandWith(
+    TF_XLA_RETURN_IF_ERROR(while_instr->while_init()->ReplaceOperandWith(
         loop_index, buffer_clone));
 
     // Replace the clone with a free AllocateBuffer.
     HloInstruction* new_buffer =
         while_instr->parent()->AddInstruction(HloInstruction::CreateCustomCall(
             buffer_clone->shape(), {}, "AllocateBuffer"));
-    TF_RETURN_IF_ERROR(buffer_clone->ReplaceAllUsesWith(new_buffer));
-    TF_RETURN_IF_ERROR(buffer_clone->parent()->RemoveInstruction(buffer_clone));
+    TF_XLA_RETURN_IF_ERROR(buffer_clone->ReplaceAllUsesWith(new_buffer));
+    TF_XLA_RETURN_IF_ERROR(buffer_clone->parent()->RemoveInstruction(buffer_clone));
     // Broadcast the predicate to the shape of the buffer.
     HloInstruction* is_first_iteration_pred_broadcast =
         while_body->AddInstruction(HloInstruction::CreateBroadcast(
@@ -282,9 +282,9 @@ absl::StatusOr<bool> TryRewritingBroadcastAsAllocateBuffer(
             new_buffer->shape(), HloOpcode::kSelect,
             is_first_iteration_pred_broadcast, sunk_constant_broadcast,
             buffer_body_gte));
-    TF_RETURN_IF_ERROR(buffer_body_gte->ReplaceAllUsesWith(new_buffer_value));
+    TF_XLA_RETURN_IF_ERROR(buffer_body_gte->ReplaceAllUsesWith(new_buffer_value));
     if (buffer->user_count() == 0) {
-      TF_RETURN_IF_ERROR(buffer->parent()->RemoveInstruction(buffer));
+      TF_XLA_RETURN_IF_ERROR(buffer->parent()->RemoveInstruction(buffer));
     }
     changed = true;
   }
@@ -414,7 +414,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
 
     if (init_value->IsRoot() || init_value->user_count() > 1) {
       init_value = init_value->AddInstruction(init_value->Clone());
-      TF_RETURN_IF_ERROR(while_instr->ReplaceOperandWith(0, init_value));
+      TF_XLA_RETURN_IF_ERROR(while_instr->ReplaceOperandWith(0, init_value));
     }
     // Original value should be a fusible subgraph.
     if (!IsSinkableFusion(invariant_value)) {
@@ -441,7 +441,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
         while_instr->parent()->set_root_instruction(tuple);
       }
       if (!uses.empty()) {
-        TF_RETURN_IF_ERROR(while_instr->ReplaceUsesWith(uses, tuple));
+        TF_XLA_RETURN_IF_ERROR(while_instr->ReplaceUsesWith(uses, tuple));
       }
     }
 
@@ -453,7 +453,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
       }
     }
     for (auto use : invariant_output_uses) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           while_instr->parent()->ReplaceInstruction(use, invariant_value));
     }
 
@@ -482,10 +482,10 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
 
     auto cloned_fusion = while_body->AddInstruction(
         fusion->CloneWithNewOperands(fusion->shape(), new_operands));
-    TF_RETURN_IF_ERROR(fusion->parent()->RemoveInstruction(fusion));
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(fusion->parent()->RemoveInstruction(fusion));
+    TF_XLA_RETURN_IF_ERROR(
         while_body->ReplaceInstruction(invariant_body_gte, cloned_fusion));
-    TF_RETURN_IF_ERROR(cloned_fusion->Defuse());
+    TF_XLA_RETURN_IF_ERROR(cloned_fusion->Defuse());
   }
   return changed;
 }
@@ -530,7 +530,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::RunImpl(
   }
 
   for (HloInstruction* while_instr : while_instrs) {
-    TF_ASSIGN_OR_RETURN(bool result,
+    TF_XLA_ASSIGN_OR_RETURN(bool result,
                         TrySinkingFusiblesIntoWhileLoop(while_instr));
     changed |= result;
   }
@@ -540,7 +540,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::RunImpl(
       for (HloInstruction* instr : comp->instructions()) {
         // TODO: b/358837872 - Handle loops with sharding.
         if (Match(instr, match::While()) && !instr->has_sharding()) {
-          TF_ASSIGN_OR_RETURN(bool result,
+          TF_XLA_ASSIGN_OR_RETURN(bool result,
                               TryRewritingBroadcastAsAllocateBuffer(instr));
           changed |= result;
         }

@@ -103,7 +103,7 @@ absl::StatusOr<bool> SubByteNormalization::RunImpl(
     // element_size_in_bits within fusions being meaningless, because HloVerfier
     // checks for the correct use of element_size_in_bits even in fusion
     // computations.
-    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+    TF_XLA_RETURN_IF_ERROR(computation->Accept(&visitor));
   }
   auto* computation_layout = module->mutable_entry_computation_layout();
   for (int param_no = 0; param_no < computation_layout->parameter_count();

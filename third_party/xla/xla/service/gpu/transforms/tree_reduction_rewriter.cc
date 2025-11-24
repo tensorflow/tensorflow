@@ -317,7 +317,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     // Inner reduce that reduces [k1, k2] to [k1].
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto tuple_shape,
         ShapeUtil::MakeValidatedMaybeTupleShape(inner_reduce_shapes));
     HloInstruction *inner_reduce = reduce->parent()->AddInstruction(
@@ -353,7 +353,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
           ShapeUtil::DeleteDimension(minor_reduction_dim, input->shape()));
     }
 
-    TF_ASSIGN_OR_RETURN(auto tuple_shape,
+    TF_XLA_ASSIGN_OR_RETURN(auto tuple_shape,
                         ShapeUtil::MakeValidatedMaybeTupleShape(tuple_shapes));
     HloInstruction *inner_reduce =
         hlo->parent()->AddInstruction(HloInstruction::CreateReduce(
@@ -374,7 +374,7 @@ absl::StatusOr<bool> TreeReductionRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Rewriter input: " << module->ToString();
-  TF_ASSIGN_OR_RETURN(bool changed,
+  TF_XLA_ASSIGN_OR_RETURN(bool changed,
                       ReductionRewriterVisitor(device_description_)
                           .RunOnModule(module, execution_threads));
   VLOG(5) << "Rewriter output: " << module->ToString();

@@ -142,7 +142,7 @@ bool RocmContext::IsActive() const { return CurrentContext() == context_; }
 
 absl::Status RocmContext::Synchronize() {
   ScopedActivateContext activation(this);
-  TF_RETURN_IF_ERROR(ToStatus(wrap::hipDeviceSynchronize(),
+  TF_XLA_RETURN_IF_ERROR(ToStatus(wrap::hipDeviceSynchronize(),
                               "could not synchronize on ROCM device"));
   return absl::OkStatus();
 }

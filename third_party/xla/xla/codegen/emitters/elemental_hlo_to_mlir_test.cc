@@ -111,13 +111,13 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
     auto& entry_pc =
         partitioned_computations.FindPartitionedComputation(entry_computation);
     auto call_targets = partitioned_computations.CreateCallTargetProvider(fns);
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         SubgraphToMlirFunction(entry_pc, entry_pc.GetRootSubgraph(), entry_func,
                                call_targets, &mlir_context_));
 
     if (!partitioned_computations.epilogues().empty()) {
       const auto& epilogue = partitioned_computations.epilogues().front();
-      TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
+      TF_XLA_RETURN_IF_ERROR(SubgraphToMlirFunction(
           entry_pc, epilogue, fns[&epilogue], call_targets, &mlir_context_));
     }
 
@@ -131,7 +131,7 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
     llvm::raw_string_ostream stream(out);
     stream << module.get();
 
-    TF_ASSIGN_OR_RETURN(auto filecheck_result,
+    TF_XLA_ASSIGN_OR_RETURN(auto filecheck_result,
                         RunFileCheck(out, filecheck_str));
     TF_RET_CHECK(filecheck_result);
     return absl::OkStatus();

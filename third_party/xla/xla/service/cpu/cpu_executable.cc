@@ -102,7 +102,7 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
 
   ThunkExecutor::Options thunk_executor_options;
   thunk_executor_options.is_nested_executor = false;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       executable->thunks_,
       ThunkExecutor::Create(std::move(thunks), thunk_executor_options));
 
@@ -191,7 +191,7 @@ static absl::StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
   }
 
   int64_t buffer_size = allocation.size();
-  TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory out,
+  TF_XLA_ASSIGN_OR_RETURN(se::OwningDeviceMemory out,
                       memory_allocator->Allocate(device_ordinal, buffer_size));
   VLOG(3) << "buffer allocated " << buffer_size << " bytes [" << out->opaque()
           << "]";
@@ -215,13 +215,13 @@ CpuExecutable::CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
   for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
        ++i) {
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
-    TF_ASSIGN_OR_RETURN(buffers[i],
+    TF_XLA_ASSIGN_OR_RETURN(buffers[i],
                         MemoryForAllocation(allocation, arguments, constants_,
                                             memory_allocator, device_ordinal));
   }
 
   if (VLOG_IS_ON(3)) {
-    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+    TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
                         assignment_->GetUniqueTopLevelOutputSlice());
     VLOG(3) << "result index: " << result_slice.index();
   }
@@ -262,23 +262,23 @@ absl::Status CpuExecutable::ExecuteThunks(
   VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
 
   // Prepare for executing XLA program collectively.
-  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_execute_params,
+  TF_XLA_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_execute_params,
                       Thunk::CollectiveExecuteParams::Create(run_options));
 
   // Prepare for executing XLA custom calls.
-  TF_ASSIGN_OR_RETURN(Thunk::CustomCallExecuteParams custom_call_execute_params,
+  TF_XLA_ASSIGN_OR_RETURN(Thunk::CustomCallExecuteParams custom_call_execute_params,
                       Thunk::CustomCallExecuteParams::Create(run_options));
 
   // Prepare for executing XNNPACK fusions.
   std::optional<Thunk::XnnParams> xnn_params;
   if (has_xnn_fusions()) {
-    TF_ASSIGN_OR_RETURN(xnn_params, Thunk::XnnParams::Create(run_options));
+    TF_XLA_ASSIGN_OR_RETURN(xnn_params, Thunk::XnnParams::Create(run_options));
   }
 
   // Prepare for executing YNNPACK fusions.
   std::optional<Thunk::YnnParams> ynn_params;
   if (has_ynn_fusions()) {
-    TF_ASSIGN_OR_RETURN(ynn_params, Thunk::YnnParams::Create(run_options));
+    TF_XLA_ASSIGN_OR_RETURN(ynn_params, Thunk::YnnParams::Create(run_options));
   }
 
   // Use the intra-op thread pool to offload thunk executor tasks.
@@ -341,7 +341,7 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
 
     // The source for this result buffer can be a nested buffer such as
     // a tuple element.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         const BufferAllocation::Slice slice,
         this->assignment_->GetUniqueSlice(src, value_source->index()));
     const BufferAllocation::Index buffer_index = slice.index();
@@ -383,7 +383,7 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
                    "buffer is not donated; allocating a fresh buffer";
         int64_t allocation_size =
             ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(root_shape, index));
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             se::OwningDeviceMemory allocated_buffer,
             run_options->allocator()->Allocate(
                 stream->parent()->device_ordinal(), allocation_size));
@@ -443,12 +443,12 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
 
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<MaybeOwningDeviceMemory> buffers,
       CreateBufferTable(memory_allocator, stream->parent()->device_ordinal(),
                         arguments));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       ExecutionOutput result,
       CreateResultShapedBuffer(run_options, absl::MakeSpan(buffers),
                                absl::MakeSpan(arguments)));
@@ -478,7 +478,7 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   tsl::port::ScopedSetRound round(FE_TONEAREST);
 
   DCHECK(has_thunks());
-  TF_RETURN_IF_ERROR(ExecuteThunks(&run_options->run_options(), buffers));
+  TF_XLA_RETURN_IF_ERROR(ExecuteThunks(&run_options->run_options(), buffers));
 
   MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
   return std::move(result);

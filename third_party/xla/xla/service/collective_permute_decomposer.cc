@@ -174,8 +174,8 @@ static absl::StatusOr<DecomposedCp> DecomposeCollectivePermute(
       HloInstruction::CreateGetTupleElement(recv_done, 0),
       absl::StrCat(cp_name, "-recv-data"));
 
-  TF_RETURN_IF_ERROR(cp->ReplaceAllUsesWith(recv_data));
-  TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(cp));
+  TF_XLA_RETURN_IF_ERROR(cp->ReplaceAllUsesWith(recv_data));
+  TF_XLA_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(cp));
 
   // We choose to run recv before send as an invariant, which helps avoid
   // deadlocks. At the same time, running recv before send allows for pipelining
@@ -183,11 +183,11 @@ static absl::StatusOr<DecomposedCp> DecomposeCollectivePermute(
   // pipeline parallelism.
   switch (pipeline_parallelism_opt_level) {
     case DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE:
-      TF_RETURN_IF_ERROR(recv->AddControlDependencyTo(send));
-      TF_RETURN_IF_ERROR(send->AddControlDependencyTo(recv_done));
+      TF_XLA_RETURN_IF_ERROR(recv->AddControlDependencyTo(send));
+      TF_XLA_RETURN_IF_ERROR(send->AddControlDependencyTo(recv_done));
       break;
     case DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE:
-      TF_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send));
+      TF_XLA_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send));
       break;
     default:
       return absl::InvalidArgumentError(
@@ -270,8 +270,8 @@ static absl::Status EnforceOrderOfSendRecvChain(
   for (size_t i = 1; i < deco_post_order.size(); ++i) {
     DecomposedCp& cur = deco_post_order[i];
     DecomposedCp& prev = deco_post_order[i - 1];
-    TF_RETURN_IF_ERROR(prev.send->AddControlDependencyTo(cur.recv));
-    TF_RETURN_IF_ERROR(prev.send_done->AddControlDependencyTo(cur.recv_done));
+    TF_XLA_RETURN_IF_ERROR(prev.send->AddControlDependencyTo(cur.recv));
+    TF_XLA_RETURN_IF_ERROR(prev.send_done->AddControlDependencyTo(cur.recv_done));
   }
   return absl::OkStatus();
 }
@@ -285,7 +285,7 @@ static absl::Status EnforceOrderOfSendRecvChainRelativeToConflictingCollectives(
 
   // Add control dependencies from chain to all conflicting collectives.
   for (HloInstruction* instr : conflicting_collectives) {
-    TF_RETURN_IF_ERROR(last_in_chain->AddControlDependencyTo(instr));
+    TF_XLA_RETURN_IF_ERROR(last_in_chain->AddControlDependencyTo(instr));
   }
 
   return absl::OkStatus();
@@ -416,7 +416,7 @@ absl::StatusOr<bool> CollectivePermuteDecomposer::RunImpl(
       } else if (cp1_to_pipeline == cp) {
         pipeline_decision = "1";
       }
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           DecomposedCp decomposed_ops,
           DecomposeCollectivePermute(cp, computation, pipeline_decision,
                                      pipeline_parallelism_opt_level_));
@@ -437,8 +437,8 @@ absl::StatusOr<bool> CollectivePermuteDecomposer::RunImpl(
     // enforce all other conflicting collectives to follow the send/recv chain
     // so that these cannot be scheduled in between the send/recv, which would
     // also lead to deadlocks.
-    TF_RETURN_IF_ERROR(EnforceOrderOfSendRecvChain(deco_post_order));
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(EnforceOrderOfSendRecvChain(deco_post_order));
+    TF_XLA_RETURN_IF_ERROR(
         EnforceOrderOfSendRecvChainRelativeToConflictingCollectives(
             deco_post_order, conflicing_collectives));
 

@@ -40,7 +40,7 @@ TiledHloFusionInstruction::Create(
     llvm::SmallVector<int64_t> tile_sizes,
     llvm::SmallVector<int64_t> tile_strides,
     std::optional<IndexingMap> tile_offsets_indexing) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<TiledHloInstruction> tiled_hlo,
       TiledHloInstruction::Create(
           hlo, std::move(operands), std::move(runtime_variables),

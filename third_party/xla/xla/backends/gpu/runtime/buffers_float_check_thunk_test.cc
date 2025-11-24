@@ -214,9 +214,9 @@ TEST_F(BuffersDebugFloatCheckThunkTest,
     BufferAllocations allocations;
   };
   auto setup_device = [this](int device_ordinal) -> absl::StatusOr<TestDevice> {
-    TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+    TF_XLA_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                         platform_->ExecutorForDevice(device_ordinal));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
                         executor->CreateStream());
     auto allocator =
         std::make_unique<se::StreamExecutorMemoryAllocator>(executor);

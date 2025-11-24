@@ -204,8 +204,8 @@ absl::StatusOr<bool> AllGatherBroadcastReorder::RunImpl(
             HloInstruction::CreateReshape(ag->shape(), bcast));
       }
 
-      TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(replacement));
-      TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ag));
+      TF_XLA_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(replacement));
+      TF_XLA_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ag));
       changed = true;
     }
   }

@@ -59,14 +59,14 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
   SetModuleMemoryRegionName(*thread_safe_module.getModuleUnlocked(),
                             "kernel_runner_test");
 
-  TF_RETURN_IF_ERROR(compiler.AddModule(std::move(thread_safe_module)));
+  TF_XLA_RETURN_IF_ERROR(compiler.AddModule(std::move(thread_safe_module)));
 
   absl::string_view kernel_name = spec.name();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> library,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> library,
                       std::move(compiler).Compile(
                           {FunctionLibrary::Sym<XLA_CPU_Kernel>(kernel_name)}));
 
-  TF_ASSIGN_OR_RETURN(XLA_CPU_Kernel * kernel_fn,
+  TF_XLA_ASSIGN_OR_RETURN(XLA_CPU_Kernel * kernel_fn,
                       library->ResolveFunction<XLA_CPU_Kernel>(kernel_name));
 
   return KernelRunner(std::move(library), Kernel(1, kernel_fn),
@@ -77,7 +77,7 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
     KernelDefinition<MlirKernelSource> kernel, JitCompiler compiler) {
   auto spec = kernel.spec();
   auto source = std::move(kernel).TakeSource();
-  TF_ASSIGN_OR_RETURN(LlvmKernelSource llvm_kernel_source, LowerToLlvm(source));
+  TF_XLA_ASSIGN_OR_RETURN(LlvmKernelSource llvm_kernel_source, LowerToLlvm(source));
 
   return Create(KernelDefinition(spec, std::move(llvm_kernel_source)),
                 std::move(compiler));
@@ -148,7 +148,7 @@ absl::StatusOr<LlvmKernelSource> LowerToLlvm(
   options.fast_min_max = true;
   FusionCompiler fusion_compiler(mlir_kernel_source.module().getContext(),
                                  options);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::Module> llvm_module,
       fusion_compiler.Compile(*llvm_context, mlir_kernel_source.module()));
 

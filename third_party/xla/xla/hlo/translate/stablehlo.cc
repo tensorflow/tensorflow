@@ -106,20 +106,20 @@ absl::Status ConvertStablehloToHloProtoInternal(mlir::ModuleOp module,
                                                 bool run_canonicalizer) {
   if (!module) return absl::InvalidArgumentError("Module is null");
 
-  TF_RETURN_IF_ERROR(StablehloToMhlo(module, run_canonicalizer));
+  TF_XLA_RETURN_IF_ERROR(StablehloToMhlo(module, run_canonicalizer));
 
   mlir::MlirToHloConversionOptions options;
   options.return_tuple = return_tuple;
   options.use_tuple_args = use_tuple_args;
   options.direct_stablehlo_to_hlo = true;
-  TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module, hlo_proto, options));
+  TF_XLA_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module, hlo_proto, options));
   return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHloInternal(
     mlir::ModuleOp module, bool use_tuple_args, bool return_tuple) {
   xla::HloProto hlo_proto;
-  TF_RETURN_IF_ERROR(ConvertStablehloToHloProtoInternal(
+  TF_XLA_RETURN_IF_ERROR(ConvertStablehloToHloProtoInternal(
       module, &hlo_proto, use_tuple_args, return_tuple,
       /*run_canonicalizer=*/true));
 
@@ -142,7 +142,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
     mlir::MLIRContext& ctx, const xla::HloModule* hlo_module) {
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
-  TF_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
+  TF_XLA_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
                                        /*import_all_computation=*/true,
                                        /*flatten_computation_args_result=*/true,
                                        /*emit_stablehlo=*/true)
@@ -154,7 +154,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
     mlir::MLIRContext& ctx, const xla::HloModuleProto* hlo_module_proto) {
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
-  TF_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
+  TF_XLA_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
                                        /*import_all_computation=*/true,
                                        /*flatten_computation_args_result=*/true,
                                        /*emit_stablehlo=*/true)
@@ -168,7 +168,7 @@ ConvertHloToStablehloWithOptions(mlir::MLIRContext& ctx,
                                  bool import_all_computations) {
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
-  TF_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
+  TF_XLA_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
                                        import_all_computations,
                                        /*flatten_computation_args_result=*/true,
                                        /*emit_stablehlo=*/true)

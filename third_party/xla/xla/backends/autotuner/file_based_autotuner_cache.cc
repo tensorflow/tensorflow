@@ -54,7 +54,7 @@ absl::StatusOr<std::unique_ptr<AutotunerCacheInterface>>
 FileBasedAutotunerCache::Create(const FileBasedCacheConfig& cache_config) {
   auto cache = absl::WrapUnique(new FileBasedAutotunerCache(cache_config));
   if (!cache_config.autotune_cache_dir.empty()) {
-    TF_RETURN_IF_ERROR(cache->Load());
+    TF_XLA_RETURN_IF_ERROR(cache->Load());
   }
   return cache;
 }
@@ -97,7 +97,7 @@ absl::StatusOr<std::string> GetBase64EncodedSha256Hash(absl::string_view s) {
   absl::string_view hash_view(reinterpret_cast<const char*>(hash.data()),
                               hash.size());
   std::string base64_encoded_hash;
-  TF_RETURN_IF_ERROR(tsl::Base64Encode(hash_view, &base64_encoded_hash));
+  TF_XLA_RETURN_IF_ERROR(tsl::Base64Encode(hash_view, &base64_encoded_hash));
   return base64_encoded_hash;
 }
 
@@ -112,7 +112,7 @@ absl::StatusOr<std::string> GetHloHash(const HloInstruction* instr) {
 
 absl::StatusOr<std::string> FileBasedAutotunerCache::GetMapKey(
     const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(const std::string hlo_hash, GetHloHash(instr));
+  TF_XLA_ASSIGN_OR_RETURN(const std::string hlo_hash, GetHloHash(instr));
   return absl::StrCat(hlo_hash, "|",
                       DeviceDescriptionToString(cache_config_.device_desc), "|",
                       version_);
@@ -120,7 +120,7 @@ absl::StatusOr<std::string> FileBasedAutotunerCache::GetMapKey(
 
 absl::StatusOr<AutotunerCacheKey> FileBasedAutotunerCache::GetProtoKey(
     const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(const std::string hlo_hash, GetHloHash(instr));
+  TF_XLA_ASSIGN_OR_RETURN(const std::string hlo_hash, GetHloHash(instr));
   AutotunerCacheKey key;
   key.set_hlo_fingerprint(hlo_hash);
   key.set_device_str(DeviceDescriptionToString(cache_config_.device_desc));
@@ -153,8 +153,8 @@ absl::Status FileBasedAutotunerCache::Insert(
       FileBasedCacheConfig::CacheMode::READ) {
     return absl::OkStatus();
   }
-  TF_ASSIGN_OR_RETURN(const std::string map_key, GetMapKey(instr));
-  TF_ASSIGN_OR_RETURN(AutotunerCacheKey proto_key, GetProtoKey(instr));
+  TF_XLA_ASSIGN_OR_RETURN(const std::string map_key, GetMapKey(instr));
+  TF_XLA_ASSIGN_OR_RETURN(AutotunerCacheKey proto_key, GetProtoKey(instr));
   absl::MutexLock lock(mutex_);
   AutotunerCacheEntry entry;
   *entry.mutable_key() = proto_key;
@@ -169,7 +169,7 @@ absl::Status FileBasedAutotunerCache::Insert(
 
 absl::StatusOr<std::string> FileBasedAutotunerCache::GetCacheFilePath(
     absl::string_view map_key) {
-  TF_ASSIGN_OR_RETURN(const std::string key_hash,
+  TF_XLA_ASSIGN_OR_RETURN(const std::string key_hash,
                       GetBase64EncodedSha256Hash(map_key));
   return tsl::io::JoinPath(cache_config_.autotune_cache_dir,
                            absl::StrCat(key_hash, ".textproto"));
@@ -185,7 +185,7 @@ absl::Status FileBasedAutotunerCache::Load() {
   VLOG(1) << "Loading autotuner cache from: " << file_pattern;
 
   std::vector<std::string> cache_files;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       tsl::Env::Default()->GetMatchingPaths(file_pattern, &cache_files));
 
   if (cache_files.empty()) {
@@ -225,7 +225,7 @@ absl::Status FileBasedAutotunerCache::Load() {
 
 absl::Status FileBasedAutotunerCache::Save(absl::string_view map_key,
                                            const AutotunerCacheEntry& entry) {
-  TF_ASSIGN_OR_RETURN(const std::string file_path, GetCacheFilePath(map_key));
+  TF_XLA_ASSIGN_OR_RETURN(const std::string file_path, GetCacheFilePath(map_key));
   VLOG(1) << "Saving autotuner entry to: " << file_path;
 
   std::string proto_string;
@@ -234,7 +234,7 @@ absl::Status FileBasedAutotunerCache::Save(absl::string_view map_key,
   }
 
   tsl::Env* default_env = tsl::Env::Default();
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       default_env->RecursivelyCreateDir(cache_config_.autotune_cache_dir));
 
   // Rename trick: Write to a temporary file, then rename it to the final file
@@ -242,18 +242,18 @@ absl::Status FileBasedAutotunerCache::Save(absl::string_view map_key,
   // file. Also avoids reading incomplete files.
   const std::string tmp_dir =
       tsl::io::JoinPath(cache_config_.autotune_cache_dir, "tmp");
-  TF_RETURN_IF_ERROR(default_env->RecursivelyCreateDir(tmp_dir));
+  TF_XLA_RETURN_IF_ERROR(default_env->RecursivelyCreateDir(tmp_dir));
 
-  TF_ASSIGN_OR_RETURN(const std::string key_hash,
+  TF_XLA_ASSIGN_OR_RETURN(const std::string key_hash,
                       GetBase64EncodedSha256Hash(map_key));
   int64_t time_stamp = default_env->NowNanos();
   const std::string temp_file_path = tsl::io::JoinPath(
       tmp_dir, absl::StrCat("tmp_cache_", key_hash, "_",
                             std::to_string(time_stamp), ".textproto"));
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       tsl::WriteStringToFile(default_env, temp_file_path, proto_string));
-  TF_RETURN_IF_ERROR(default_env->RenameFile(temp_file_path, file_path));
+  TF_XLA_RETURN_IF_ERROR(default_env->RenameFile(temp_file_path, file_path));
   VLOG(1) << "Saved entry to autotuner cache: " << file_path;
   return absl::OkStatus();
 }

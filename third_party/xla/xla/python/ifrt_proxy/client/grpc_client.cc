@@ -113,7 +113,7 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
 
     ::grpc::ClientContext context;
     GrpcGetVersionResponse response;
-    TF_RETURN_IF_ERROR(xla::FromGrpcStatus(
+    TF_XLA_RETURN_IF_ERROR(xla::FromGrpcStatus(
         control_path_stub->GetVersion(&context, request, &response)));
 
     CHECK_GE(response.version().protocol_version(), kClientMinVersion);
@@ -145,7 +145,7 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
         promise.Set(resp);
       });
 
-  TF_ASSIGN_OR_RETURN(auto init_response, init_response_future.Await());
+  TF_XLA_ASSIGN_OR_RETURN(auto init_response, init_response_future.Await());
 
   bool reuse_control_path_stub_for_data_path =
       GetGlobalClientFlags()->synchronous_host_buffer_store ||

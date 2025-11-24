@@ -217,7 +217,7 @@ absl::Status ParallelLoopEmitter::EmitSerialLoop(absl::string_view loop_name,
   for (const llvm_ir::IrArray::Index& array_index :
        EmitIndexAndSetExitBasicBlock(loop_name, index_type, base_indvar)) {
     if (!check_bounds) {
-      TF_RETURN_IF_ERROR(body_emitter_(array_index));
+      TF_XLA_RETURN_IF_ERROR(body_emitter_(array_index));
     } else {
       // If the unroll_factor does not divide the number of elements, we must
       // check that the index is in bounds, since the last iteration of the last
@@ -232,7 +232,7 @@ absl::Status ParallelLoopEmitter::EmitSerialLoop(absl::string_view loop_name,
                             llvm::ConstantInt::get(index_type, num_elements)),
           llvm_ir::IrName(loop_name, "unrolled_in_bounds"), b_, false);
       llvm_ir::SetToFirstInsertPoint(if_in_bounds.true_block, b_);
-      TF_RETURN_IF_ERROR(body_emitter_(array_index));
+      TF_XLA_RETURN_IF_ERROR(body_emitter_(array_index));
       llvm_ir::SetToFirstInsertPoint(if_in_bounds.after_block, b_);
     }
   }
@@ -250,14 +250,14 @@ absl::Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
   // to add a loop inside the kernel.
   if (total_threads * launch_config_.unroll_factor >= num_elements) {
     VLOG(1) << "No loops inside the kernel";
-    TF_RETURN_IF_ERROR(EmitSerialLoop(loop_name, index_type));
+    TF_XLA_RETURN_IF_ERROR(EmitSerialLoop(loop_name, index_type));
   } else {
     KernelSupportLibrary ksl(b_, llvm_ir::UnrollMode::kDefaultUnroll);
     auto constant = [&](int64_t val) {
       return llvm::ConstantInt::get(index_type, val);
     };
 
-    TF_RETURN_IF_ERROR(ksl.ForWithStatus(
+    TF_XLA_RETURN_IF_ERROR(ksl.ForWithStatus(
         "loop", constant(0), constant(num_elements),
         constant(total_threads * launch_config_.unroll_factor),
         [&](llvm::Value* base_indvar) {

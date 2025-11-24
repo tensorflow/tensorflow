@@ -96,9 +96,9 @@ absl::StatusOr<xla::ifrt::ShardingRef> GetSharding(
   TF_RET_CHECK(sharding_param_attr != nullptr)
       << "Array type: " << mlir::debugString(array_type)
       << " if not of type `IfrtShardingParamAttr`";
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
+  TF_XLA_ASSIGN_OR_RETURN(DeviceListRef device_list,
                       client->MakeDeviceList(std::move(out_devices)));
-  TF_ASSIGN_OR_RETURN(auto sharding,
+  TF_XLA_ASSIGN_OR_RETURN(auto sharding,
                       xla::ifrt::ShardingParamSharding::Create(
                           sharding_param_attr.getSharding(),
                           std::move(device_list), array_type.MemoryKind()));
@@ -134,7 +134,7 @@ PopulateShardingCache(mlir::func::FuncOp main_func, xla::ifrt::Client* client,
             << PrettyPrintGeneric(copy_arrays_op);
         if (array_type_to_sharding.find(array_type) ==
             array_type_to_sharding.end()) {
-          TF_ASSIGN_OR_RETURN(auto sharding,
+          TF_XLA_ASSIGN_OR_RETURN(auto sharding,
                               GetSharding(array_type, client, devices));
           array_type_to_sharding[array_type] = std::move(sharding);
         }
@@ -149,7 +149,7 @@ PopulateShardingCache(mlir::func::FuncOp main_func, xla::ifrt::Client* client,
             << PrettyPrintGeneric(remap_op);
         if (array_type_to_sharding.find(array_type) ==
             array_type_to_sharding.end()) {
-          TF_ASSIGN_OR_RETURN(auto sharding,
+          TF_XLA_ASSIGN_OR_RETURN(auto sharding,
                               GetSharding(array_type, client, devices));
           array_type_to_sharding[array_type] = std::move(sharding);
         }
@@ -188,7 +188,7 @@ absl::StatusOr<std::unique_ptr<ProgramInterpreter>> ProgramInterpreter::Create(
         "`main` function of IFRT IR program: ", program->program_name,
         " is not an IFRT function."));
   }
-  TF_ASSIGN_OR_RETURN(auto array_type_to_sharding,
+  TF_XLA_ASSIGN_OR_RETURN(auto array_type_to_sharding,
                       PopulateShardingCache(main_func, client, devices));
   return std::unique_ptr<ProgramInterpreter>(new ProgramInterpreter(
       client, std::move(program), std::move(devices), mlir::Liveness(main_func),
@@ -330,7 +330,7 @@ absl::Status ProgramInterpreter::ExecuteOp(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       xla::ifrt::LoadedExecutable::ExecuteResult result,
       exec_it->second->Execute(absl::MakeSpan(inputs), execute_options,
                                /*devices=*/std::nullopt));
@@ -465,7 +465,7 @@ absl::Status ProgramInterpreter::ExecuteOp(xla::ifrt::RemapArraysOp remap_op,
   for (const auto [idx, output] : llvm::enumerate(remap_op.getOutputs())) {
     const auto array_type =
         llvm::cast<xla::ifrt::IfrtArrayType>(output.getType());
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         xla::ifrt::DType dtype,
         xla::ifrt::ToIfrtDType(array_type.getShape().getElementType()));
     output_specs.push_back(xla::ifrt::ArraySpec{
@@ -478,7 +478,7 @@ absl::Status ProgramInterpreter::ExecuteOp(xla::ifrt::RemapArraysOp remap_op,
   xla::ifrt::ArrayCopySemantics copy_semantics =
       *is_donated ? xla::ifrt::ArrayCopySemantics::kDonateInput
                   : xla::ifrt::ArrayCopySemantics::kReuseInput;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto out_arrays,
       client_->RemapArrays({
                                /*input_specs=*/std::move(input_specs),
@@ -573,7 +573,7 @@ absl::Status ProgramInterpreter::ExecuteOp(
                                   : xla::ifrt::ArrayCopySemantics::kAlwaysCopy;
   // It is safe to get the devices and memory kind from the first output
   // because all outputs use the same devices and have the same memory kind.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto copied_arrays,
       client_->CopyArrays(absl::MakeSpan(inputs), new_sharding->devices(),
                           new_sharding->memory_kind(), array_copy_semantics));

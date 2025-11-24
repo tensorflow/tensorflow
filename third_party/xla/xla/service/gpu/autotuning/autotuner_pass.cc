@@ -112,7 +112,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
           debug_options.xla_gpu_experimental_autotune_cache_mode(),
           target_config->device_description);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,
       Autotuner::Create(std::move(backends), std::move(profiler),
                         autotune_config, std::move(cache), thread_pool));
@@ -129,10 +129,10 @@ absl::StatusOr<bool> AutotunerPass::RunImpl(
   bool shard_autotuning =
       enable_sharding_ && key_value_store_.process_count > 1;
   if (shard_autotuning) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         autotuner_->Autotune(module, should_autotune_, key_value_store_));
   } else {
-    TF_RETURN_IF_ERROR(autotuner_->Autotune(module, should_autotune_));
+    TF_XLA_RETURN_IF_ERROR(autotuner_->Autotune(module, should_autotune_));
   }
   return true;
 }

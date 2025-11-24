@@ -95,9 +95,9 @@ absl::Status NvshmemCollectives::InitializeOnce() {
         char buf[sizeof(nvshmemx_uniqueid_t)];
         std::memcpy(buf, &nvshmem_id, sizeof(nvshmemx_uniqueid_t));
         absl::string_view nvshmem_id_str{buf, sizeof(buf)};
-        TF_RETURN_IF_ERROR(kv_store->Set(kKvStoreKey, nvshmem_id_str));
+        TF_XLA_RETURN_IF_ERROR(kv_store->Set(kKvStoreKey, nvshmem_id_str));
       } else {
-        TF_ASSIGN_OR_RETURN(std::string id_str,
+        TF_XLA_ASSIGN_OR_RETURN(std::string id_str,
                             kv_store->Get(kKvStoreKey, absl::Minutes(10)));
         CHECK(id_str.size() >= sizeof(nvshmemx_uniqueid_t));
         std::memcpy(&nvshmem_id, id_str.data(), sizeof(nvshmemx_uniqueid_t));
@@ -139,7 +139,7 @@ void NvshmemCollectives::Finalize() {
 }
 
 absl::StatusOr<void*> NvshmemCollectives::Allocate(uint64_t bytes) {
-  TF_RETURN_IF_ERROR(InitializeOnce());
+  TF_XLA_RETURN_IF_ERROR(InitializeOnce());
   VLOG(3) << absl::StreamFormat(
       "Start allocation of %s (%llu bytes) for NVSHMEM",
       tsl::strings::HumanReadableNumBytes(bytes), bytes);
@@ -153,7 +153,7 @@ absl::StatusOr<void*> NvshmemCollectives::Allocate(uint64_t bytes) {
 }
 
 absl::Status NvshmemCollectives::Deallocate(void* buffer) {
-  TF_RETURN_IF_ERROR(InitializeOnce());
+  TF_XLA_RETURN_IF_ERROR(InitializeOnce());
   VLOG(3) << absl::StreamFormat("Start de-allocation for NVSHMEM buffer: %p",
                                 buffer);
   nvshmem_free(buffer);

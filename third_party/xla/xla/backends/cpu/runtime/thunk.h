@@ -403,7 +403,7 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
   static absl::StatusOr<ThunkSequence> Of(Args&&... args) {
     static_assert(std::is_base_of_v<Thunk, T>,
                   "ThunkSequence::Of() requires `T` to be a `Thunk` subclass.");
-    TF_ASSIGN_OR_RETURN(auto thunk, T::Create(std::forward<Args>(args)...));
+    TF_XLA_ASSIGN_OR_RETURN(auto thunk, T::Create(std::forward<Args>(args)...));
     return ThunkSequence(std::move(thunk));
   }
 

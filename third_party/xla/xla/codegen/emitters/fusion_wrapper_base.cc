@@ -42,7 +42,7 @@ absl::StatusOr<bool> FusionWrapperBase::RunImpl(
       for (auto* computation : instruction->called_computations()) {
         for (auto* inner_instruction :
              computation->MakeInstructionPostOrder()) {
-          TF_RETURN_IF_ERROR(handle_instruction(inner_instruction));
+          TF_XLA_RETURN_IF_ERROR(handle_instruction(inner_instruction));
         }
       }
       return absl::OkStatus();
@@ -66,16 +66,16 @@ absl::StatusOr<bool> FusionWrapperBase::RunImpl(
       module->schedule().replace_instruction(computation, instruction,
                                              fusion_instruction);
     }
-    TF_RETURN_IF_ERROR(fusion_instruction->CopyAllControlDepsFrom(instruction));
-    TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
-    TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(fusion_instruction));
-    TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+    TF_XLA_RETURN_IF_ERROR(fusion_instruction->CopyAllControlDepsFrom(instruction));
+    TF_XLA_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+    TF_XLA_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(fusion_instruction));
+    TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
     changed = true;
     return absl::OkStatus();
   };
 
   for (auto* instruction : instructions) {
-    TF_RETURN_IF_ERROR(handle_instruction(instruction));
+    TF_XLA_RETURN_IF_ERROR(handle_instruction(instruction));
   }
   return changed;
 }

@@ -46,12 +46,12 @@ namespace {
 //
 // Serialization:
 // ```
-// TF_ASSIGN_OR_RETURN(Serialized serialized, Serialize(xla_program));
+// TF_XLA_ASSIGN_OR_RETURN(Serialized serialized, Serialize(xla_program));
 // ```
 //
 // Deserialization:
 // ```
-// TF_ASSIGN_OR_RETURN(auto deserialized, Deserialize(serialized));
+// TF_XLA_ASSIGN_OR_RETURN(auto deserialized, Deserialize(serialized));
 // auto xla_program = llvm::dyn_cast<HloProgram>(deserialized);
 // ```
 

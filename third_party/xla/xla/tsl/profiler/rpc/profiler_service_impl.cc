@@ -74,7 +74,7 @@ absl::Status CollectData(const ProfileRequest& request,
   tensorflow::profiler::XSpace xspace;
   tensorflow::profiler::XSpace* xspace_ptr =
       request.emit_xspace() ? response->mutable_xspace() : &xspace;
-  TF_RETURN_IF_ERROR(profiler->CollectData(xspace_ptr));
+  TF_XLA_RETURN_IF_ERROR(profiler->CollectData(xspace_ptr));
   VLOG(3) << "Collected XSpace to "
           << (request.emit_xspace() ? "response" : "repository") << ".";
   response->set_empty_trace(IsEmpty(*xspace_ptr));

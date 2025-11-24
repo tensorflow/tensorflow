@@ -179,7 +179,7 @@ void ShardingParam::PrintV1(mlir::AsmPrinter& ods_printer,
 }
 
 absl::Status ShardingParam::verify() const {
-  TF_RETURN_IF_ERROR(minor_to_major().verify());
+  TF_XLA_RETURN_IF_ERROR(minor_to_major().verify());
   int dim_index = 0;
   int cum_size = 1;
   for (const int index : minor_to_major().permutation) {

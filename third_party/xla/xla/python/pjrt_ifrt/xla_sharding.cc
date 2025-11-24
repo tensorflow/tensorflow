@@ -221,7 +221,7 @@ HloSharding::Disassemble(
   const absl::Span<Device* const> devices = devices_->devices();
   if (is_even_sharding) {
     // Fast path for even sharding.
-    TF_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape, GetShardShape(shape));
+    TF_XLA_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape, GetShardShape(shape));
     std::vector<std::pair<Shape, ShardingRef>> result;
     if (single_device_shard_semantics ==
         SingleDeviceShardSemantics::kAllShards) {
@@ -242,7 +242,7 @@ HloSharding::Disassemble(
     return result;
   }
   // Slow path that uses `IndexDomains()` to handle uneven sharding.
-  TF_ASSIGN_OR_RETURN(std::vector<IndexDomain> index_domains,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<IndexDomain> index_domains,
                       IndexDomains(shape));
   CHECK_EQ(index_domains.size(), devices_->size());
   std::vector<std::pair<Shape, ShardingRef>> result;
@@ -337,11 +337,11 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
                         shape.DebugString(), xla_hlo_sharding_.ToString()));
   }
 
-  TF_ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));
+  TF_XLA_ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));
 
   const absl::Span<const int64_t> shape_dims = shape.dims();
   std::vector<std::optional<IndexDomain>> all(num_devices);
-  TF_RETURN_IF_ERROR(xla_hlo_sharding_.EachTile(
+  TF_XLA_RETURN_IF_ERROR(xla_hlo_sharding_.EachTile(
       shape_dims, [shape_dims, &all](int device_index,
                                      absl::Span<const int64_t> tile_offset,
                                      absl::Span<const int64_t> tile_limit) {

@@ -55,7 +55,7 @@ absl::Status ComputeEngineMetadataClient::GetMetadata(
     request->SetUri(metadata_url + path);
     request->AddHeader("Metadata-Flavor", "Google");
     request->SetResultBuffer(response_buffer);
-    TF_RETURN_IF_ERROR(request->Send());
+    TF_XLA_RETURN_IF_ERROR(request->Send());
     return absl::OkStatus();
   };
 

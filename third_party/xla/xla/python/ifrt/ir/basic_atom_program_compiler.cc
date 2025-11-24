@@ -50,7 +50,7 @@ BasicAtomProgramCompiler::Create(
     xla::ifrt::Client* absl_nonnull client,
     absl::Span<const xla::ifrt::DeviceId> device_assignments) {
   for (const xla::ifrt::DeviceId device_id : device_assignments) {
-    TF_RETURN_IF_ERROR(client->LookupDevice(device_id).status());
+    TF_XLA_RETURN_IF_ERROR(client->LookupDevice(device_id).status());
   }
   return absl::WrapUnique(
       new BasicAtomProgramCompiler(client, device_assignments));
@@ -70,7 +70,7 @@ BasicAtomProgramCompiler::CompileXla(
   // Rewrite device assignment from logical ids to IFRT device ids.
   xla::DeviceAssignment device_assignment =
       options.executable_build_options.device_assignment();
-  TF_RETURN_IF_ERROR(device_assignment.EachStatus(
+  TF_XLA_RETURN_IF_ERROR(device_assignment.EachStatus(
       [&](absl::Span<const int64_t>, int64_t* id) -> absl::Status {
         if (*id < 0 || *id >= device_assignments_.size()) {
           return absl::NotFoundError(
@@ -84,10 +84,10 @@ BasicAtomProgramCompiler::CompileXla(
   options.executable_build_options.set_device_assignment(device_assignment);
 
   xla::ifrt::AtomProgramCompileResult result;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       xla::ifrt::DeviceListRef devices,
       xla::ifrt::GetDeviceListFromXlaCompileOptions(client_, options));
-  TF_ASSIGN_OR_RETURN(result.executable,
+  TF_XLA_ASSIGN_OR_RETURN(result.executable,
                       client_->GetDefaultCompiler()->CompileAndLoad(
                           std::move(hlo_program),
                           std::make_unique<xla::ifrt::XlaCompileOptions>(

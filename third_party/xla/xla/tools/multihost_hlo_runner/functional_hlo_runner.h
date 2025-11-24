@@ -57,10 +57,10 @@ class XSpaceProfilerInterface : public ProfilerInterface {
 // profiling sessions for the MultihostHloRunner. It needs to be created after
 // PJRT client is initialized. Example usage:
 //
-//   TF_ASSIGN_OR_RETURN(
+//   TF_XLA_ASSIGN_OR_RETURN(
 //       env, xla::GetPjRtEnvironmentForGpu(...)));
 //   if (env.client != nullptr) {
-//     TF_ASSIGN_OR_RETURN(auto profiler, HLORunnerProfiler::Create());
+//     TF_XLA_ASSIGN_OR_RETURN(auto profiler, HLORunnerProfiler::Create());
 //   }
 //   profiler.CreateSession();
 //   ...

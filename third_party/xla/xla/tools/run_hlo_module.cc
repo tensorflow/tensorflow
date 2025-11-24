@@ -195,13 +195,13 @@ absl::Status RunAndCompareInternal(
   if (options.flatten_control_flow) {
     HloControlFlowFlattening control_flow_flattening(
         HloControlFlowFlattening::Options{/*while_execution_count=*/1});
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         copy_result_on_failure(control_flow_flattening.Run(test_module.get()),
                                ModuleResult::kCompilationError, test_run_result)
             .status());
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto args, copy_result_on_failure(
                      MakeFakeArguments(test_module.get(), engine,
                                        options.use_large_float_range,
@@ -219,7 +219,7 @@ absl::Status RunAndCompareInternal(
           "number of expected arguments.");
     } else {
       for (int i = 0; i < args.size(); ++i) {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             auto expected_shape,
             xla::Shape::FromProto(
                 iteration_literals_proto->arguments(i).shape()));
@@ -234,7 +234,7 @@ absl::Status RunAndCompareInternal(
               "because of a shape mismatch.",
               i);
         }
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             args[i],
             copy_result_on_failure(xla::Literal::CreateFromProto(
                                        iteration_literals_proto->arguments(i)),
@@ -263,7 +263,7 @@ absl::Status RunAndCompareInternal(
 
     // PrepareReferenceModule needs to know the *test* runner, in order to
     // properly match the test runner's numerics.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         reference_module,
         copy_result_on_failure(
             PrepareReferenceModule(
@@ -272,7 +272,7 @@ absl::Status RunAndCompareInternal(
             ModuleResult::kCompilationError, reference_run_result));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto test_result,
       copy_result_on_failure(
           ExecuteWithRunner(std::move(test_module), buffer_assignment_proto,
@@ -307,7 +307,7 @@ absl::Status RunAndCompareInternal(
     return absl::OkStatus();
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto reference_result,
       copy_result_on_failure(
           ExecuteWithRunner(std::move(reference_module),
@@ -442,7 +442,7 @@ absl::Status RunIsolatedAndCompare(
 
   std::vector<ChunkResult> chunk_results;
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<HloModule>> modules,
       DecomposeHloModule(*test_module, /*deduplicate_modules=*/true));
 
@@ -506,7 +506,7 @@ absl::Status RunAndCompare(
     input_format = std::string(tsl::io::Extension(hlo_filename));
   }
   BufferAssignmentProto buffer_assignment_proto;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto test_module,
       LoadModuleFromFile(
           hlo_filename, input_format, hlo_module_loader_details::Config(),
@@ -516,7 +516,7 @@ absl::Status RunAndCompare(
   HloVerifier verifier(
       HloVerifierOpts{}.WithLayoutSensitive(false).WithAllowMixedPrecision(
           true));
-  TF_RETURN_IF_ERROR(verifier.Run(test_module.get()).status());
+  TF_XLA_RETURN_IF_ERROR(verifier.Run(test_module.get()).status());
   if (compilation_env_modifier_hook) {
     TF_CHECK_OK(compilation_env_modifier_hook(options, *test_module))
         << "Could not adjust the compilation environment for user provided "
@@ -534,7 +534,7 @@ absl::Status RunAndCompare(
         (input_format == "pb" || input_format == "pbtxt")) {
       // User is giving a snapshot (which contains inputs)
       LOG(INFO) << "Using input data from the user-provided snapshot.";
-      TF_ASSIGN_OR_RETURN(iteration_literals_proto_local,
+      TF_XLA_ASSIGN_OR_RETURN(iteration_literals_proto_local,
                           LoadInputFromFile(hlo_filename, input_format));
       iteration_literals_proto = iteration_literals_proto_local.get();
     } else if (input_format == "pb" || input_format == "pbtxt") {

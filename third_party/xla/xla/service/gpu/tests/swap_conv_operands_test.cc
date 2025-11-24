@@ -34,7 +34,7 @@ namespace {
 class SwapConvOperandsTest : public GpuCodegenTest {
  public:
   absl::StatusOr<se::GpuComputeCapability> GpuComputeCapability() {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<se::DeviceDescription> device_description,
         GetTestPlatform()->DescriptionForDevice(0));
 

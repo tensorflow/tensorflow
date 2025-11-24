@@ -72,7 +72,7 @@ absl::StatusOr<bool> CollectivesScheduleLinearizer::RunImpl(
 
       if (prev_done && !reachability->IsConnected(start, prev_done)) {
         // If prev_done and start are independent, enforce ordering.
-        TF_RETURN_IF_ERROR(prev_done->AddControlDependencyTo(next));
+        TF_XLA_RETURN_IF_ERROR(prev_done->AddControlDependencyTo(next));
         // Adding control dependency does not update the reachability map.
         reachability->UpdateReachabilityThroughInstruction(start);
 

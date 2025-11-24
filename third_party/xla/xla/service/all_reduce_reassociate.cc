@@ -234,12 +234,12 @@ absl::StatusOr<bool> AllReduceReassociate::RunImpl(
       // Check Dynamic-slice pattern is identical
       if (lhs->opcode() == HloOpcode::kDynamicSlice) {
         HloInstruction* original_rhs_operand = rhs->mutable_operand(0);
-        TF_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, lhs->mutable_operand(0)));
+        TF_XLA_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, lhs->mutable_operand(0)));
         if (!lhs->Identical(*rhs)) {
-          TF_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, original_rhs_operand));
+          TF_XLA_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, original_rhs_operand));
           continue;
         }
-        TF_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, original_rhs_operand));
+        TF_XLA_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, original_rhs_operand));
         ar0 = Cast<HloAllReduceInstruction>(lhs->mutable_operand(0));
         ar1 = Cast<HloAllReduceInstruction>(rhs->mutable_operand(0));
         reduce_scatter_pattern_match = true;
@@ -298,12 +298,12 @@ absl::StatusOr<bool> AllReduceReassociate::RunImpl(
       HloInstruction* new_op_operand1 = ar1->mutable_operand(0);
       if (convert0) {
         HloInstruction* ar0_operand = ar0->mutable_operand(0);
-        TF_RETURN_IF_ERROR(convert0->ReplaceOperandWith(0, ar0_operand));
+        TF_XLA_RETURN_IF_ERROR(convert0->ReplaceOperandWith(0, ar0_operand));
         new_op_operand0 = convert0;
       }
       if (convert1) {
         HloInstruction* ar1_operand = ar1->mutable_operand(0);
-        TF_RETURN_IF_ERROR(convert1->ReplaceOperandWith(0, ar1_operand));
+        TF_XLA_RETURN_IF_ERROR(convert1->ReplaceOperandWith(0, ar1_operand));
         new_op_operand1 = convert1;
       }
 
@@ -324,8 +324,8 @@ absl::StatusOr<bool> AllReduceReassociate::RunImpl(
       } else if (reduce_scatter_pattern_match) {
         new_ar_out_shape = ar0->shape();
       } else {
-        TF_RETURN_IF_ERROR(ar0->ReplaceAllUsesWith(ar0->mutable_operand(0)));
-        TF_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(ar1->mutable_operand(0)));
+        TF_XLA_RETURN_IF_ERROR(ar0->ReplaceAllUsesWith(ar0->mutable_operand(0)));
+        TF_XLA_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(ar1->mutable_operand(0)));
       }
 
       HloInstruction* new_ar = computation->AddInstruction(
@@ -351,32 +351,32 @@ absl::StatusOr<bool> AllReduceReassociate::RunImpl(
         HloComputation* to_apply_promoted =
             inst->GetModule()->AddEmbeddedComputation(promoted.Build());
         new_ar->set_to_apply(to_apply_promoted);
-        TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(new_ar));
+        TF_XLA_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(new_ar));
       } else if (reduce_scatter_pattern_match) {
         auto dyn_slice_operands = lhs->mutable_operands();
         dyn_slice_operands[0] = new_ar;
         HloInstruction* new_dyn_slice = inst->parent()->AddInstruction(
             lhs->CloneWithNewOperands(inst->shape(), dyn_slice_operands));
-        TF_RETURN_IF_ERROR(inst->ReplaceUsesWith(op_users, new_dyn_slice));
+        TF_XLA_RETURN_IF_ERROR(inst->ReplaceUsesWith(op_users, new_dyn_slice));
       } else {
-        TF_RETURN_IF_ERROR(inst->ReplaceUsesWith(op_users, new_ar));
+        TF_XLA_RETURN_IF_ERROR(inst->ReplaceUsesWith(op_users, new_ar));
       }
 
       // Note that RemoveInstructionAndUnusedOperands may not remove the 2
       // all-reduce operands of `inst` if they are not safe to remove otherwise,
       // so manually these instructions.
       if (should_promote_ar || reduce_scatter_pattern_match) {
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(inst));
+        TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(inst));
       }
       if (reduce_scatter_pattern_match) {
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(lhs));
+        TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(lhs));
         if (lhs != rhs) {
-          TF_RETURN_IF_ERROR(computation->RemoveInstruction(rhs));
+          TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(rhs));
         }
       }
-      TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
+      TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
       if (ar0 != ar1) {
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
+        TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
       }
       changed = true;
     }

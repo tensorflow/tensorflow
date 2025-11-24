@@ -213,12 +213,12 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
     output.set_device_ordinal(input.device_ordinal());
   }
   if (input.has_result_layout()) {
-    TF_ASSIGN_OR_RETURN(Shape result_layout,
+    TF_XLA_ASSIGN_OR_RETURN(Shape result_layout,
                         Shape::FromProto(input.result_layout()));
     output.set_result_layout(result_layout);
   }
   if (input.has_comp_envs()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto comp_envs,
         xla::CompilationEnvironments::CreateFromProto(input.comp_envs()));
     *output.mutable_comp_envs() = std::move(*comp_envs);
@@ -237,7 +237,7 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   output.set_memory_fitting_level(input.memory_fitting_level());
   output.set_deduplicate_hlo(input.deduplicate_hlo());
   if (input.has_device_assignment()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::DeviceAssignment> assignment,
         xla::DeviceAssignment::Deserialize(input.device_assignment()));
     output.set_device_assignment(*assignment);

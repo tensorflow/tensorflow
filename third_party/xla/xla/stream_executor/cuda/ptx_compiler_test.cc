@@ -158,7 +158,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileHelper(
   stream_executor::GpuAsmOpts options(disable_gpuasm_optimizations,
                                       /*preferred_cuda_dir=*/"", extra_flags);
 
-  TF_ASSIGN_OR_RETURN(stream_executor::cuda::Assembly assembly,
+  TF_XLA_ASSIGN_OR_RETURN(stream_executor::cuda::Assembly assembly,
                       stream_executor::CompileGpuAsmUsingLibNvPtxCompiler(
                           cc, ptx_input, options, cancel_if_reg_spill,
                           /*dump_compilation_log=*/false));

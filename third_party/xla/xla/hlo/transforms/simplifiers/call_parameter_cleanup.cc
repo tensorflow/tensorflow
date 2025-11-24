@@ -213,7 +213,7 @@ absl::StatusOr<bool> RemoveDeadParameters(HloComputation* computation) {
 
   // The new call computation is ready, now make all the call sites use it.
   for (HloInstruction* old_call : computation->caller_instructions()) {
-    TF_RETURN_IF_ERROR(ReplaceCallSite(old_call, new_computation,
+    TF_XLA_RETURN_IF_ERROR(ReplaceCallSite(old_call, new_computation,
                                        old_to_new_parameter_number,
                                        old_to_new_output_number, adjust_root));
   }
@@ -252,7 +252,7 @@ absl::StatusOr<bool> CallParameterCleanup::RunImpl(
 
   bool changed = false;
   for (HloComputation* computation : computations_to_process) {
-    TF_ASSIGN_OR_RETURN(bool removed, RemoveDeadParameters(computation));
+    TF_XLA_ASSIGN_OR_RETURN(bool removed, RemoveDeadParameters(computation));
     changed |= removed;
   }
   return changed;

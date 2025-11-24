@@ -119,9 +119,9 @@ absl::Status ZlibOutputBuffer::DeflateBuffered(int flush_mode) {
     // to file.
     if (z_stream_->avail_out == 0 ||
         (IsSyncOrFullFlush(flush_mode) && z_stream_->avail_out < 6)) {
-      TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+      TF_XLA_RETURN_IF_ERROR(FlushOutputBufferToFile());
     }
-    TF_RETURN_IF_ERROR(Deflate(flush_mode));
+    TF_XLA_RETURN_IF_ERROR(Deflate(flush_mode));
   } while (z_stream_->avail_out == 0);
 
   DCHECK(z_stream_->avail_in == 0);
@@ -160,7 +160,7 @@ absl::Status ZlibOutputBuffer::Append(absl::string_view data) {
     return absl::OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(DeflateBuffered(zlib_options_.flush_mode));
+  TF_XLA_RETURN_IF_ERROR(DeflateBuffered(zlib_options_.flush_mode));
 
   // At this point input stream should be empty.
   if (bytes_to_write <= static_cast<size_t>(AvailableInputSpace())) {
@@ -178,9 +178,9 @@ absl::Status ZlibOutputBuffer::Append(absl::string_view data) {
     if (z_stream_->avail_out == 0) {
       // No available output space.
       // Write output buffer to file.
-      TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+      TF_XLA_RETURN_IF_ERROR(FlushOutputBufferToFile());
     }
-    TF_RETURN_IF_ERROR(Deflate(zlib_options_.flush_mode));
+    TF_XLA_RETURN_IF_ERROR(Deflate(zlib_options_.flush_mode));
   } while (z_stream_->avail_out == 0);
 
   DCHECK(z_stream_->avail_in == 0);  // All input will be used up.
@@ -194,15 +194,15 @@ absl::Status ZlibOutputBuffer::Append(absl::string_view data) {
 #if defined(TF_CORD_SUPPORT)
 absl::Status ZlibOutputBuffer::Append(const absl::Cord& cord) {
   for (absl::string_view fragment : cord.Chunks()) {
-    TF_RETURN_IF_ERROR(Append(fragment));
+    TF_XLA_RETURN_IF_ERROR(Append(fragment));
   }
   return absl::OkStatus();
 }
 #endif
 
 absl::Status ZlibOutputBuffer::Flush() {
-  TF_RETURN_IF_ERROR(DeflateBuffered(Z_PARTIAL_FLUSH));
-  TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+  TF_XLA_RETURN_IF_ERROR(DeflateBuffered(Z_PARTIAL_FLUSH));
+  TF_XLA_RETURN_IF_ERROR(FlushOutputBufferToFile());
   return file_->Flush();
 }
 
@@ -211,14 +211,14 @@ absl::Status ZlibOutputBuffer::Name(absl::string_view* result) const {
 }
 
 absl::Status ZlibOutputBuffer::Sync() {
-  TF_RETURN_IF_ERROR(Flush());
+  TF_XLA_RETURN_IF_ERROR(Flush());
   return file_->Sync();
 }
 
 absl::Status ZlibOutputBuffer::Close() {
   if (z_stream_) {
-    TF_RETURN_IF_ERROR(DeflateBuffered(Z_FINISH));
-    TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+    TF_XLA_RETURN_IF_ERROR(DeflateBuffered(Z_FINISH));
+    TF_XLA_RETURN_IF_ERROR(FlushOutputBufferToFile());
     deflateEnd(z_stream_.get());
     z_stream_.reset(nullptr);
   }

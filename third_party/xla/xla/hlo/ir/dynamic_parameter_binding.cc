@@ -69,7 +69,7 @@ std::string DynamicParameterBinding::ToString() const {
 
 absl::Status DynamicParameterBinding::ForEachBinding(BindingFn fn) const {
   for (const auto& binding : bindings_) {
-    TF_RETURN_IF_ERROR(fn(binding.second, binding.first));
+    TF_XLA_RETURN_IF_ERROR(fn(binding.second, binding.first));
   }
   return absl::OkStatus();
 }

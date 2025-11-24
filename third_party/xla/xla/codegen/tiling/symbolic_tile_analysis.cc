@@ -231,7 +231,7 @@ absl::StatusOr<OutputTilingInfo> ComputeOutputTilingInfo(
       dim_vars, /*range_vars=*/{}, /*rt_vars=*/root_indexing.GetRTVars(),
       constraints};
 
-  TF_ASSIGN_OR_RETURN(IndexingMap program_id_to_tile_offsets,
+  TF_XLA_ASSIGN_OR_RETURN(IndexingMap program_id_to_tile_offsets,
                       schedule.Schedule(output_tile_offset_indexing,
                                         iteration_space, mlir_context));
   return OutputTilingInfo{outer_loop_bounds,
@@ -664,7 +664,7 @@ absl::Status PopulateNestedParameters(
           HloFusionAdaptor::ForComputation(
               instruction_adaptor.instruction()
                   .fused_instructions_computation());
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           PopulateNestedParameters(*nested_fusion_adaptor, parameter_mapping));
       continue;
     }
@@ -674,7 +674,7 @@ absl::Status PopulateNestedParameters(
                                    .dot_dimension_numbers()
                                    .lhs_contracting_dimensions()
                                    .size();
-      TF_RETURN_IF_ERROR(set_mapping_for_instruction(
+      TF_XLA_RETURN_IF_ERROR(set_mapping_for_instruction(
           instruction_adaptor.instruction(), num_parameters));
     }
   }
@@ -706,7 +706,7 @@ ParameterMappingFromFusionAdaptor(const HloFusionAdaptor& fusion_adaptor,
   int64_t num_tile_sizes = real_root.shape().dimensions().size();
   parameter_mapping.push_back({&real_root, num_tile_sizes});
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       PopulateNestedParameters(fusion_adaptor, parameter_mapping));
 
   return parameter_mapping;
@@ -870,7 +870,7 @@ absl::StatusOr<IndexingMap> IndexingMapForRootInstruction(
     MLIRContext* mlir_context) {
   auto fusion_adaptor_roots = fusion.GetRoots();
 
-  TF_ASSIGN_OR_RETURN(int64_t real_root_index,
+  TF_XLA_ASSIGN_OR_RETURN(int64_t real_root_index,
                       GetRealRootIndex(fusion_adaptor_roots));
 
   // Keep track of the roots separately. If there is just a single root, we
@@ -880,7 +880,7 @@ absl::StatusOr<IndexingMap> IndexingMapForRootInstruction(
   absl::InlinedVector<const HloInstruction*, 2> roots =
       ToInstructions(fusion_adaptor_roots);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       IndexingMap indexing_map,
       IndexingMapForRootInstruction(roots[real_root_index], parameter_mapping,
                                     mlir_context));
@@ -1339,11 +1339,11 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
   const ConstraintExpression& constraints = tiling_specification_.constraints();
   CHECK(constraints.is_satisfiable());  // Crash OK
 
-  TF_ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
+  TF_XLA_ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
                       tiling.Flatten(tiling_specification_));
 
   if (emitter_specific_constraints_ != nullptr) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool constraints_are_satisfied,
         emitter_specific_constraints_->ParametersSatisfyConstraints(
             flat_tiling_parameters));
@@ -1431,7 +1431,7 @@ absl::StatusOr<bool> IsSafeForBufferSharing(const TiledHloInstruction& output,
   auto iota = llvm::seq<int64_t>(0, output.hlo()->shape().dimensions().size());
   std::vector<int64_t> major_to_minor_active_tiling_parameters(iota.begin(),
                                                                iota.end());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto tiling_info,
       ComputeOutputTilingInfo(identity_indexing_map, output.tile_sizes(),
                               major_to_minor_active_tiling_parameters, schedule,
@@ -1483,7 +1483,7 @@ absl::StatusOr<std::vector<const TiledHloInstruction*>> InitializeTiledRoots(
     // We potentially allow sharing an input buffer with an output buffer.
     // Therefore we need to make sure that we use an input tile only in the
     // iteration in which we overwrite it.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool valid, IsSafeForBufferSharing(*tiled_hlo_instr,
                                            /*reference_num_output_tiles=*/
                                            Product(num_output_tiles_per_dim),
@@ -1613,7 +1613,7 @@ absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructionsImpl(
   // TODO(b/390569102): This assumes that there is only one root that matters
   // for computing the tiling, and that it is the last symbolic tiled hlo
   // instruction in the list.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       OutputTilingInfo output_tiling_info,
       ComputeOutputTilingInfo(real_root_indexing, flat_tiling_parameters,
                               major_to_minor_active_tiling_parameters,
@@ -1654,7 +1654,7 @@ absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructionsImpl(
                    .GetRTVarsCount(),
                0)
           << "runtime variables for output tiling are not supported";
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           tile_offset_indexing,
           ComputeTileOffsetIndexing(
               *symbolic_tiled_hlo,
@@ -1683,7 +1683,7 @@ absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructionsImpl(
             dynamic_cast<const SymbolicTiledHloFusionInstruction*>(
                 symbolic_tiled_hlo.get())) {
       // Compute tiled instructions recursively.
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           auto tiled_hlo_computation,
           ComputeTiledHloInstructionsImpl(
               symbolic_fusion_tiling->analysis_, flat_tiling_parameters,
@@ -1691,7 +1691,7 @@ absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructionsImpl(
               compute_all_tile_offset_indexing_maps, fusion_tile_dim_bounds,
               mlir_context, symbolic_to_tiled_hlo_map));
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           tiled_instruction,
           TiledHloFusionInstruction::Create(
               hlo, std::move(operands), std::move(runtime_variables),
@@ -1700,7 +1700,7 @@ absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructionsImpl(
               std::move(tile_sizes), std::move(tile_strides),
               std::move(tile_offset_indexing)));
     } else {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           tiled_instruction,
           TiledHloInstruction::Create(
               hlo, std::move(operands), std::move(runtime_variables),
@@ -1714,7 +1714,7 @@ absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructionsImpl(
     symbolic_to_tiled_hlo_map[symbolic_tiled_hlo.get()] = tiled_hlo;
   }
   auto tiled_hlo_instructions = tiled_hlo_instructions_set.ExtractData();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto tiled_roots,
       InitializeTiledRoots(
           analysis.GetRoots(), tiled_hlo_instructions, tiled_hlo_schedule,
@@ -1736,17 +1736,17 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
   // because the latter is called recursively, and we don't want to perform
   // this check multiple times.
   if (!constraints_are_known_satisfied) {
-    TF_ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
+    TF_XLA_ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
                         ParametersSatisfyConstraints(tiling));
     if (!parameters_satisfy_constraints) {
       return absl::InvalidArgumentError("Tiling does not satisfy constraints.");
     }
   }
 
-  TF_ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
+  TF_XLA_ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
                       tiling.Flatten(GetTilingSpecification()));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<TiledHloSchedule> tiled_hlo_schedule,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<TiledHloSchedule> tiled_hlo_schedule,
                       schedule_builder(GetTilingSpecification()));
 
   return ComputeTiledHloInstructionsImpl(
@@ -1811,7 +1811,7 @@ absl::StatusOr<std::vector<FlatTiling>> GetFlatTilingsForInputSpace(
   std::vector<FlatTiling> flat_tilings;
   flat_tilings.push_back({});
   for (int parameter_size : input_space) {
-    TF_ASSIGN_OR_RETURN(std::vector<int64_t> possible_tile_sizes,
+    TF_XLA_ASSIGN_OR_RETURN(std::vector<int64_t> possible_tile_sizes,
                         PossibleTileSizesForOneDimension(parameter_size));
     std::vector<FlatTiling> extended_tilings;
     extended_tilings.reserve(flat_tilings.size() * possible_tile_sizes.size());
@@ -1836,14 +1836,14 @@ absl::StatusOr<std::vector<Tiling>> SymbolicTileAnalysis::GetValidTilings()
       tiling_specification_.parameter_mapping();
 
   std::vector<Tiling> tilings;
-  TF_ASSIGN_OR_RETURN(std::vector<FlatTiling> flat_tilings,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<FlatTiling> flat_tilings,
                       detail::GetFlatTilingsForInputSpace(
                           InputSpaceForParameterMapping(parameter_mapping)));
   for (const FlatTiling& flat_tile_sizes : flat_tilings) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         Tiling tiling,
         Tiling::Unflatten(flat_tile_sizes, tiling_specification_));
-    TF_ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
+    TF_XLA_ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
                         ParametersSatisfyConstraints(tiling));
     if (parameters_satisfy_constraints) {
       tilings.push_back(tiling);

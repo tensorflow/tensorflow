@@ -39,7 +39,7 @@ AsyncExecution::AsyncExecution(Backend* backend,
 
 absl::Status AsyncExecution::BlockUntilDone() const {
   for (auto& stream : streams_) {
-    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    TF_XLA_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
   return absl::OkStatus();
 }

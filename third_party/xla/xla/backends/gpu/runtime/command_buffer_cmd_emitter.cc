@@ -112,10 +112,10 @@ static absl::StatusOr<Command> Convert(const Memset32BitValueThunk& thunk) {
 
 static absl::StatusOr<Command> Convert(
     const WhileThunk& thunk, const ConvertToCommandsOptions& options) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CommandBufferCmdExecutor cond_cmds,
       ConvertToCommands(thunk.condition_thunk_sequence()->thunks(), options));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CommandBufferCmdExecutor body_cmds,
       ConvertToCommands(thunk.body_thunk_sequence()->thunks(), options));
 
@@ -146,15 +146,15 @@ static absl::StatusOr<Command> Convert(
     // For boolean predicates, we need to convert the branches in reverse order
     // because the first branch is the "false" branch and the second is "true"
     CHECK_EQ(thunk.branch_thunks().size(), 2);
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         branch_cmds.emplace_back(),
         ConvertToCommands(thunk.branch_thunks()[1]->thunks(), options));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         branch_cmds.emplace_back(),
         ConvertToCommands(thunk.branch_thunks()[0]->thunks(), options));
   } else {
     for (auto& branch_thunk : thunk.branch_thunks()) {
-      TF_ASSIGN_OR_RETURN(CommandBufferCmdExecutor cmds,
+      TF_XLA_ASSIGN_OR_RETURN(CommandBufferCmdExecutor cmds,
                           ConvertToCommands(branch_thunk->thunks(), options));
       branch_cmds.emplace_back(std::move(cmds));
     }
@@ -201,7 +201,7 @@ static absl::StatusOr<Command> Convert(
 
 static absl::StatusOr<Command> Convert(
     const DynamicSliceThunk& thunk, const ConvertToCommandsOptions& options) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CommandBufferCmdExecutor embedded_cmds,
       ConvertToCommands(thunk.get_embedded_thunk()->thunks(), options));
 
@@ -376,7 +376,7 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
                                    const ConvertToCommandsOptions& options) {
   absl::flat_hash_map<const Thunk*, int64_t> thunk_to_index;
   for (const std::unique_ptr<Thunk>& thunk : sequence) {
-    TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence, *thunk, options));
+    TF_XLA_RETURN_IF_ERROR(AppendCommands(cmd_sequence, *thunk, options));
     thunk_to_index[thunk.get()] = cmd_sequence.size() - 1;
   }
 
@@ -399,7 +399,7 @@ absl::StatusOr<CommandBufferCmdExecutor> ConvertToCommands(
       "Convert thunk sequence to command executor: synchronization_mode=%v",
       options.synchronization_mode);
   CommandBufferCmdSequence cmd_sequence;
-  TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence, sequence, options));
+  TF_XLA_RETURN_IF_ERROR(AppendCommands(cmd_sequence, sequence, options));
   return CommandBufferCmdExecutor::Create(std::move(cmd_sequence),
                                           options.synchronization_mode);
 }

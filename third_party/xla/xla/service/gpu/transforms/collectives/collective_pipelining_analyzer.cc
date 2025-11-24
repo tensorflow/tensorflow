@@ -228,7 +228,7 @@ absl::StatusOr<bool> CollectivePipeliningAnalyzer::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+    TF_XLA_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }
   return changed;

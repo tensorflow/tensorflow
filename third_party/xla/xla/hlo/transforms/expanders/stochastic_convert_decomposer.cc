@@ -48,7 +48,7 @@ absl::Status DecomposeStochasticConvert(HloComputation* comp,
   PrimitiveType from_type = operand->shape().element_type();
   PrimitiveType random_type = random->shape().element_type();
   PrimitiveType to_type = instruction->shape().element_type();
-  TF_RETURN_IF_ERROR(ShapeInference::InferStochasticConvertShape(
+  TF_XLA_RETURN_IF_ERROR(ShapeInference::InferStochasticConvertShape(
                          operand->shape(), random->shape(), to_type)
                          .status());
   VLOG(1) << "Decomposing instruction: " << instruction->ToString();
@@ -61,16 +61,16 @@ absl::Status DecomposeStochasticConvert(HloComputation* comp,
   // random value is less than the fractional bits, otherwise it will be
   // rounded down.
   if (primitive_util::IsSignedIntegralType(to_type)) {
-    TF_ASSIGN_OR_RETURN(HloInstruction * operand_sign,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * operand_sign,
                         MakeUnaryHlo(HloOpcode::kSign, operand));
-    TF_ASSIGN_OR_RETURN(HloInstruction * should_neg,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * should_neg,
                         MakeCompareHlo(Comparison::Direction::kLt, operand_sign,
                                        MakeScalarLike(operand_sign, 0)));
-    TF_ASSIGN_OR_RETURN(HloInstruction * operand_abs,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * operand_abs,
                         MakeUnaryHlo(HloOpcode::kAbs, operand));
-    TF_ASSIGN_OR_RETURN(HloInstruction * truncated_fp,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * truncated_fp,
                         MakeUnaryHlo(HloOpcode::kFloor, operand_abs));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         HloInstruction * fractional,
         MakeBinaryHlo(HloOpcode::kSubtract, operand_abs, truncated_fp));
     // Upcasts the operand to F32 as calculating fixed_fractional needs a
@@ -83,7 +83,7 @@ absl::Status DecomposeStochasticConvert(HloComputation* comp,
     // normalizing random values into [0, 1): fractional vs. (random /
     // random_max). This equals to comparing (fractional * random_max) vs.
     // random.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         HloInstruction * fixed_fractional,
         MakeBinaryHlo(
             HloOpcode::kMultiply, fractional,
@@ -91,20 +91,20 @@ absl::Status DecomposeStochasticConvert(HloComputation* comp,
                                                            random_type)))));
     // Rounds the integer output up if the fractional pieces is larger than
     // the input random number.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         HloInstruction * should_round_up,
         MakeCompareHlo(Comparison::Direction::kLt, random,
                        MakeConvertToHlo(fixed_fractional, random_type)));
     HloInstruction* truncated_int = MakeConvertToHlo(truncated_fp, to_type);
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         truncated_int,
         MakeSelectHlo(should_round_up,
                       MakeBinaryHlo(HloOpcode::kAdd, truncated_int,
                                     MakeScalarLike(truncated_int, 1))
                           .value(),
                       truncated_int));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         HloInstruction * result,
         MakeSelectHlo(should_neg,
                       MakeUnaryHlo(HloOpcode::kNegate, truncated_int).value(),
@@ -114,22 +114,22 @@ absl::Status DecomposeStochasticConvert(HloComputation* comp,
     auto min = static_cast<int64_t>(
         (static_cast<uint64_t>(1) + ~static_cast<uint64_t>(1))
         << (to_bits - 1));
-    TF_ASSIGN_OR_RETURN(HloInstruction * is_min,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * is_min,
                         MakeCompareHlo(Comparison::Direction::kLe, operand,
                                        MakeScalarLike(operand, min)));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         result, MakeSelectHlo(is_min, MakeScalarLike(result, min), result));
     // Deals with max values
     auto max =
         static_cast<int64_t>((static_cast<uint64_t>(1) << (to_bits - 1)) - 1);
-    TF_ASSIGN_OR_RETURN(HloInstruction * is_max,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * is_max,
                         MakeCompareHlo(Comparison::Direction::kGe, operand,
                                        MakeScalarLike(operand, max)));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         result, MakeSelectHlo(is_max, MakeScalarLike(result, max), result));
 
-    TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(result));
-    TF_RETURN_IF_ERROR(comp->RemoveInstruction(instruction));
+    TF_XLA_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(result));
+    TF_XLA_RETURN_IF_ERROR(comp->RemoveInstruction(instruction));
     return absl::OkStatus();
   }
 
@@ -150,7 +150,7 @@ absl::StatusOr<bool> StochasticConvertDecomposer::RunImpl(
       if (instruction->opcode() != HloOpcode::kStochasticConvert) {
         continue;
       }
-      TF_RETURN_IF_ERROR(DecomposeStochasticConvert(computation, instruction));
+      TF_XLA_RETURN_IF_ERROR(DecomposeStochasticConvert(computation, instruction));
       changed = true;
     }
   }

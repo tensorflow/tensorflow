@@ -70,7 +70,7 @@ static bool IsAtLeastCuda12300(
 
 absl::StatusOr<std::vector<const CommandBuffer::Command*>> Wrap(
     absl::StatusOr<const CommandBuffer::Command*> command) {
-  TF_RETURN_IF_ERROR(command.status());
+  TF_XLA_RETURN_IF_ERROR(command.status());
   return std::vector<const CommandBuffer::Command*>{*command};
 }
 

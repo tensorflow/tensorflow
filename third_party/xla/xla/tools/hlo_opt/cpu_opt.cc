@@ -84,7 +84,7 @@ class CpuOptProvider : public CompiledOptProvider {
   absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view s) override {
     if (s == "llvm-before-optimizations") {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+      TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           GetExecutable(std::move(module)));
       return static_cast<cpu::CpuExecutable*>(executable.get())
           ->ir_module_string();

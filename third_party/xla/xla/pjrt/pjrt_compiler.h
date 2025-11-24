@@ -129,15 +129,15 @@ class PjRtTopologyDescription {
 
   // Returns the number of chips.
   virtual absl::StatusOr<int> ChipCount() const {
-    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
-    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    TF_XLA_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    TF_XLA_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
     return process_count * chips_per_process;
   }
 
   // Returns the total number of cores of the default type.
   virtual absl::StatusOr<int> CoreCountOfDefaultType() const {
-    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
-    TF_ASSIGN_OR_RETURN(int cores_per_process,
+    TF_XLA_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    TF_XLA_ASSIGN_OR_RETURN(int cores_per_process,
                         CoreCountOfDefaultTypePerProcess());
     return process_count * cores_per_process;
   }
@@ -145,16 +145,16 @@ class PjRtTopologyDescription {
   // As above, but returns the number of logical devices per host.
   virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerProcess()
       const {
-    TF_ASSIGN_OR_RETURN(int logical_devices_per_chip,
+    TF_XLA_ASSIGN_OR_RETURN(int logical_devices_per_chip,
                         LogicalDeviceCountOfDefaultTypePerChip());
-    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    TF_XLA_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
     return chips_per_process * logical_devices_per_chip;
   }
 
   // Returns the total number of logical devices of the default type.
   virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const {
-    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
-    TF_ASSIGN_OR_RETURN(int logical_devices_per_process,
+    TF_XLA_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    TF_XLA_ASSIGN_OR_RETURN(int logical_devices_per_process,
                         LogicalDeviceCountOfDefaultTypePerProcess());
     return process_count * logical_devices_per_process;
   }
@@ -167,8 +167,8 @@ class PjRtTopologyDescription {
 
   // Returns the number of cores of the default type per process.
   virtual absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const {
-    TF_ASSIGN_OR_RETURN(int cores_per_chip, CoreCountOfDefaultTypePerChip());
-    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    TF_XLA_ASSIGN_OR_RETURN(int cores_per_chip, CoreCountOfDefaultTypePerChip());
+    TF_XLA_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
     return cores_per_chip * chips_per_process;
   }
 

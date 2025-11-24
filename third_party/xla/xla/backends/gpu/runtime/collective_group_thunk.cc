@@ -55,16 +55,16 @@ CollectiveGroupThunk::CollectiveGroupThunk(
 absl::Status CollectiveGroupThunk::Prepare(
     const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
+    TF_XLA_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
   }
   return absl::OkStatus();
 }
 absl::Status CollectiveGroupThunk::Initialize(const InitializeParams& params) {
   if (async_events_) {
-    TF_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
+    TF_XLA_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
   }
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(params));
+    TF_XLA_RETURN_IF_ERROR(thunk->Initialize(params));
   }
   return absl::OkStatus();
 }
@@ -77,7 +77,7 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
   // elements to index by the AsyncStreamKind enum.
   se::Stream* async_stream =
       params.collective_params->async_streams.at(async_stream_idx);
-  TF_RETURN_IF_ERROR(async_stream->WaitFor(params.stream));
+  TF_XLA_RETURN_IF_ERROR(async_stream->WaitFor(params.stream));
 
   // Gather the set of all communicators. There should be only one.
   absl::flat_hash_set<Communicator*> communicator_set;
@@ -106,15 +106,15 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
   Future<> group_future = gpu_comm->GroupExecute(
       [this, &params](GpuCommunicator* comm) -> absl::Status {
         for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-          TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
+          TF_XLA_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
         }
         return absl::OkStatus();
       });
-  TF_RETURN_IF_ERROR(group_future.Await());
+  TF_XLA_RETURN_IF_ERROR(group_future.Await());
 
-  TF_ASSIGN_OR_RETURN(se::Event * event,
+  TF_XLA_ASSIGN_OR_RETURN(se::Event * event,
                       async_events_->GetEvent(params.stream->parent()));
-  TF_RETURN_IF_ERROR(async_stream->RecordEvent(event));
+  TF_XLA_RETURN_IF_ERROR(async_stream->RecordEvent(event));
 
   return absl::OkStatus();
 }
@@ -140,8 +140,8 @@ absl::Status CollectiveGroupThunk::TransformAllNestedThunks(
         absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
         fn) {
   for (std::unique_ptr<Thunk>& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->TransformAllNestedThunks(fn));
-    TF_ASSIGN_OR_RETURN(thunk, fn(std::move(thunk)));
+    TF_XLA_RETURN_IF_ERROR(thunk->TransformAllNestedThunks(fn));
+    TF_XLA_ASSIGN_OR_RETURN(thunk, fn(std::move(thunk)));
   }
   return absl::OkStatus();
 }

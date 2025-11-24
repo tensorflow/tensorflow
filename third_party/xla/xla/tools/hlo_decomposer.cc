@@ -106,7 +106,7 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> DecomposeHloModule(
     return true;
   };
 
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<HloModule>> isolated_modules,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<HloModule>> isolated_modules,
                       Decompose(module));
   for (auto& module : isolated_modules) {
     if (should_add_module(module.get())) {

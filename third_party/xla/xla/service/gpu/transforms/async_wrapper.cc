@@ -57,7 +57,7 @@ absl::StatusOr<bool> AsyncWrapper::RunImpl(
                    "AsyncWrapper will make the following instruction async:\n",
                    instruction->ToString()));
         // If the predicate matches, then wrap the instructions in async blocks.
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             computation
                 ->CreateAsyncInstructions(instruction,
                                           {ShapeUtil::MakeScalarShape(U32)})

@@ -91,14 +91,14 @@ absl::Status IfrtVerifyBoundExternalLoadedExecutablePass::VerifyShardingsEqual(
     absl::string_view sharding_type) {
   for (const auto& it : llvm::enumerate(llvm::zip(types, shardings))) {
     const auto& [param_type, sharding] = it.value();
-    TF_ASSIGN_OR_RETURN(auto hlo_sharding,
+    TF_XLA_ASSIGN_OR_RETURN(auto hlo_sharding,
                         xla::HloSharding::FromProto(sharding));
     auto array_type = llvm::dyn_cast<IfrtArrayType>(param_type);
     CHECK(array_type);
     auto array_sharding =
         llvm::dyn_cast<IfrtShardingParamAttr>(array_type.getShardingAttr());
     CHECK(array_sharding);
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         const xla::HloSharding hlo_type_sharding,
         xla::ifrt::support::ToHloSharding(array_sharding.getSharding()));
     if (hlo_sharding != hlo_type_sharding) {

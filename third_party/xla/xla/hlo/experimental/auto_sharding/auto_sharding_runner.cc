@@ -32,9 +32,9 @@ namespace {
 
 absl::Status RunAutoShardingPassFromFile(const std::string& file_name) {
   std::string hlo_text;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), file_name, &hlo_text));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       LoadModuleFromData(/*data=*/hlo_text, /*format=*/"hlo"));
 
   AutoShardingOption option;
@@ -44,7 +44,7 @@ absl::Status RunAutoShardingPassFromFile(const std::string& file_name) {
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
   AliasInfo alias_info;
-  TF_ASSIGN_OR_RETURN(bool changed,
+  TF_XLA_ASSIGN_OR_RETURN(bool changed,
                       AutoSharding(option, &alias_info).Run(hlo_module.get()));
   CHECK(changed);
   std::cout << hlo_module->ToString() << std::endl;

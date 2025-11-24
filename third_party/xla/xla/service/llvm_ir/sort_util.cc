@@ -172,7 +172,7 @@ absl::Status EmitCompareLoopBody(
 
     // if (index_is_inbounds)
     KernelSupportLibrary ksl(b);
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         ksl.IfWithStatus("smaller_comparison_index", index_is_inbounds, [&]() {
           std::vector<llvm::Value*> values_to_compare;
           std::vector<llvm::Type*> values_to_compare_types;
@@ -190,7 +190,7 @@ absl::Status EmitCompareLoopBody(
           llvm::Value* compare_return_buffer =
               llvm_ir::EmitAllocaAtFunctionEntry(pred_type,
                                                  "compare_return_buffer", b);
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(
               emit_compare_callback(values_to_compare, compare_return_buffer));
           llvm::Value* result = b->CreateLoad(pred_type, compare_return_buffer);
 
@@ -319,7 +319,7 @@ absl::Status EmitTiledCompareLoop(
     if (dimension_to_sort_bound % tile_size) {
       // Otherwise we need a bounds check for the last tile. The last tile has
       // size 'dimension_to_sort_bound' % 'tile_size'.
-      TF_RETURN_IF_ERROR(ksl.IfWithStatus(
+      TF_XLA_RETURN_IF_ERROR(ksl.IfWithStatus(
           "is_last_tile",
           b->CreateICmpUGE(
               b->CreateMul(
@@ -344,7 +344,7 @@ absl::Status EmitTiledCompareLoop(
                 /*needs_bounds_checks=*/false);
           }));
     } else {
-      TF_RETURN_IF_ERROR(EmitCompareLoopBody(
+      TF_XLA_RETURN_IF_ERROR(EmitCompareLoopBody(
           tile_size, num_threads, unroll_factor / 2, params.size(),
           element_pair_index, xor_mask, tiled_keys_index.GetType(),
           element_address, element_address_pointee_type, write_element,
@@ -459,7 +459,7 @@ absl::Status EmitSortInPlace(
     if (xor_masks.size() > 1) {
       IrArray::Index keys_index(keys_multi_index, values_arrays[0].GetShape(),
                                 tiles_index.GetType());
-      TF_RETURN_IF_ERROR(EmitTiledCompareLoop(
+      TF_XLA_RETURN_IF_ERROR(EmitTiledCompareLoop(
           keys_index, dimension_to_sort, dimension_to_sort_bound, num_threads,
           xor_masks, values_arrays, param_shmem_buffers, tile_size,
           unroll_factor, emit_compare_callback, b));
@@ -482,7 +482,7 @@ absl::Status EmitSortInPlace(
                                   tiles_index.GetType());
         values_arrays[operand].EmitWriteArrayElement(keys_index, value, b);
       };
-      TF_RETURN_IF_ERROR(EmitCompareLoopBody(
+      TF_XLA_RETURN_IF_ERROR(EmitCompareLoopBody(
           dimension_to_sort_bound, /*num_threads=*/1, unroll_factor / 2,
           values_arrays.size(), tiles_index[rank - 1], xor_masks[0],
           tiles_index.GetType(), element_address, element_address_pointee_type,

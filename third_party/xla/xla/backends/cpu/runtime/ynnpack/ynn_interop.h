@@ -32,7 +32,7 @@ namespace xla::cpu {
 // YNNPACK status to ABSL status conversion macros.
 //===----------------------------------------------------------------------===//
 
-#define YNN_RETURN_IF_ERROR(expr)             \
+#define YNN_XLA_RETURN_IF_ERROR(expr)             \
   do {                                        \
     absl::Status s = YnnStatusToStatus(expr); \
     if (!s.ok()) {                            \

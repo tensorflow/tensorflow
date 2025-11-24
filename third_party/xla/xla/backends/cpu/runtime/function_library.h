@@ -69,7 +69,7 @@ class FunctionLibrary {
 
   template <typename F, std::enable_if_t<std::is_function_v<F>>* = nullptr>
   absl::StatusOr<F*> ResolveFunction(absl::string_view name) {
-    TF_ASSIGN_OR_RETURN(void* ptr, ResolveFunction(GetTypeId<F>(), name));
+    TF_XLA_ASSIGN_OR_RETURN(void* ptr, ResolveFunction(GetTypeId<F>(), name));
     return reinterpret_cast<F*>(ptr);  // NOLINT
   }
 

@@ -48,7 +48,7 @@ absl::StatusOr<EventPool::Handle> EventPool::AllocateEvent(
     }
   }
   if (!event.event_) {
-    TF_ASSIGN_OR_RETURN(event.event_, executor->CreateEvent());
+    TF_XLA_ASSIGN_OR_RETURN(event.event_, executor->CreateEvent());
   }
   return event;
 }
@@ -61,7 +61,7 @@ void EventPool::ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle) {
 
 absl::StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
     se::Stream* stream) {
-  TF_ASSIGN_OR_RETURN(EventPool::Handle handle,
+  TF_XLA_ASSIGN_OR_RETURN(EventPool::Handle handle,
                       AllocateEvent(stream->parent()));
   ThenRecordEvent(stream, handle);
   return handle;

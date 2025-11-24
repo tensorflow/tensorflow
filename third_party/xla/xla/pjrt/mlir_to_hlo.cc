@@ -109,7 +109,7 @@ absl::Status MlirToXlaComputation(
           << "Module has GSPMD attrs or ops, but Shardy is enabled. Disabling "
              "Shardy and falling back to using GSPMD propagation.";
       exec_build_options->set_use_shardy_partitioner(false);
-      TF_RETURN_IF_ERROR(ExportShardyForGSPMD(module));
+      TF_XLA_RETURN_IF_ERROR(ExportShardyForGSPMD(module));
     }
 
     // Export a StableHLO + Shardy module into a pure StableHLO module, to
@@ -161,7 +161,7 @@ absl::Status MlirToXlaComputation(
     use_tuple_args = false;
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       xla::ConvertStablehloToHloWithOptions(
                           module, use_tuple_args, return_tuple));
 
@@ -190,7 +190,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
     return diagnostic_handler.ConsumeStatus();
   }
 
-  TF_RETURN_IF_ERROR(UpgradeVersionedStablehlo(*module));
+  TF_XLA_RETURN_IF_ERROR(UpgradeVersionedStablehlo(*module));
   return std::move(module);
 }
 
@@ -198,7 +198,7 @@ absl::Status ParseMlirModuleStringAndConvertToXlaComputation(
     absl::string_view mlir_module_str, XlaComputation& xla_computation,
     bool use_tuple_args, bool return_tuple) {
   mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+  TF_XLA_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       xla::ParseMlirModuleString(mlir_module_str, context));
   return xla::MlirToXlaComputation(*module, xla_computation, use_tuple_args,
                                    return_tuple,
@@ -277,7 +277,7 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   // Usually the plugin is older than the framework, but occasionally a plugin's
   // nightly build will use the latest public release of a framework. Serialize
   // using the framework's version in these cases.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::string target,
       ExpectSuccess(mlir::stablehlo::getSmallerVersion(
                         requested_target, mlir::stablehlo::getCurrentVersion()),
@@ -386,7 +386,7 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
                                       bool inplace) {
   // Current PJRT users expect 12 weeks forward compat, VHLO provides this
   // compat.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto version,
       ExpectSuccess(mlir::vhlo::Version::fromString(target),
                     "Invalid StableHLO target version requested."));

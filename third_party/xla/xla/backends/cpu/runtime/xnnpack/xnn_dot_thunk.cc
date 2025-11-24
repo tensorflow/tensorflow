@@ -48,7 +48,7 @@ namespace xla::cpu {
 absl::StatusOr<XnnSubgraph> XnnDotThunk::BuildDotSubgraph(
     absl::Span<const Argument> arguments, absl::Span<const Result> results,
     absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
-  TF_ASSIGN_OR_RETURN(XnnSubgraph subgraph,
+  TF_XLA_ASSIGN_OR_RETURN(XnnSubgraph subgraph,
                       CreateXnnSubgraph([](xnn_subgraph_t* subgraph) {
                         return xnn_create_subgraph(
                             /*external_value_ids=*/3,
@@ -76,20 +76,20 @@ absl::StatusOr<XnnSubgraph> XnnDotThunk::BuildDotSubgraph(
       (dtype == F32) ? xnn_datatype_fp32 : xnn_datatype_bf16;
   xnn_datatype output_dtype = xnn_datatype_fp32;
 
-  XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
+  XNN_XLA_RETURN_IF_ERROR(xnn_define_tensor_value(
       subgraph.get(), input_dtype, lhs_dims.size(), lhs_dims.data(), nullptr,
       /*external_id=*/0, XNN_VALUE_FLAG_EXTERNAL_INPUT, &lhs_id));
 
-  XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
+  XNN_XLA_RETURN_IF_ERROR(xnn_define_tensor_value(
       subgraph.get(), input_dtype, rhs_dims.size(), rhs_dims.data(),
       capture_rhs_ ? arguments_buffers[1].opaque() : nullptr,
       /*external_id=*/1, XNN_VALUE_FLAG_EXTERNAL_INPUT, &rhs_id));
 
-  XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
+  XNN_XLA_RETURN_IF_ERROR(xnn_define_tensor_value(
       subgraph.get(), output_dtype, out_dims.size(), out_dims.data(), nullptr,
       /*external_id=*/2, XNN_VALUE_FLAG_EXTERNAL_OUTPUT, &out_id));
 
-  XNN_RETURN_IF_ERROR(xnn_define_batch_matrix_multiply(
+  XNN_XLA_RETURN_IF_ERROR(xnn_define_batch_matrix_multiply(
       subgraph.get(), lhs_id, rhs_id, out_id,
       (/*flags=*/dot_canonical_dims_.rhs_canonical ? 0 : XNN_FLAG_TRANSPOSE_B) |
           XNN_FLAG_NO_BROADCAST));
@@ -102,12 +102,12 @@ absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunk::Create(
     BufferAllocation::Slice lhs_buffer, Shape lhs_shape,
     BufferAllocation::Slice rhs_buffer, Shape rhs_shape,
     BufferAllocation::Slice out_buffer, Shape out_shape, bool capture_rhs) {
-  TF_RETURN_IF_ERROR(InitializeXnnPack());
+  TF_XLA_RETURN_IF_ERROR(InitializeXnnPack());
 
-  TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
+  TF_XLA_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
                                                       rhs_shape, out_shape));
 
-  TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
+  TF_XLA_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
                       GetDotCanonicalDims(dot_dimensions, dot_shape));
 
   DotSlices dot_slices{lhs_buffer, std::move(lhs_shape),

@@ -56,17 +56,17 @@ absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
           "PjRtStreamExecutorClient::SerializeExecutable unimplemented for "
           "MPMD executables");
     }
-    TF_ASSIGN_OR_RETURN(serialized, aot_executables[0]->SerializeAsString());
+    TF_XLA_ASSIGN_OR_RETURN(serialized, aot_executables[0]->SerializeAsString());
   } else {
     const auto& local_executables =
         std::get<std::vector<std::unique_ptr<LocalExecutable>>>(executables_);
     Executable* built_executable = local_executables[0]->executable();
     CHECK(local_client_ != nullptr);
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<AotCompilationResult> aot_result,
         local_client_->backend().compiler()->Export(built_executable));
 
-    TF_ASSIGN_OR_RETURN(serialized, aot_result->SerializeAsString());
+    TF_XLA_ASSIGN_OR_RETURN(serialized, aot_result->SerializeAsString());
   }
 
   if (serialized.empty()) {
@@ -76,7 +76,7 @@ absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
   }
   ExecutableAndOptionsProto proto;
   *proto.mutable_serialized_executable() = std::move(serialized);
-  TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+  TF_XLA_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                       compile_options_.ToProto());
   return proto.SerializeAsString();
 }
@@ -117,7 +117,7 @@ StreamExecutorExecutable::GetCompiledMemoryStats() const {
           "executables.");
     }
     const auto& aot_executable = (*aot_executables)[0];
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffers,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffers,
                         aot_executable->buffer_assignment());
 
     BufferAssignmentProto proto = buffers->ToProto();
@@ -128,7 +128,7 @@ StreamExecutorExecutable::GetCompiledMemoryStats() const {
       alloc_ptrs.push_back(&alloc);
     }
     memory_stats.PopulateBufferStatsFromAllocations(alloc_ptrs);
-    TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(proto));
+    TF_XLA_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(proto));
     memory_stats.peak_memory_in_bytes = peak_memory;
     return memory_stats;
   }
@@ -144,7 +144,7 @@ StreamExecutorExecutable::GetCompiledMemoryStats() const {
       local_executables[0]->executable()->buffer_assignment_proto();
   if (proto != nullptr) {
     memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
-    TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(*proto));
+    TF_XLA_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(*proto));
     memory_stats.peak_memory_in_bytes = peak_memory;
   }
   memory_stats.PopulateBufferStatsFromAllocations(
@@ -189,14 +189,14 @@ absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
 absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
     const Shape& shape, absl::string_view default_memory_kind) {
   if (!shape.IsTuple()) {
-    TF_ASSIGN_OR_RETURN(absl::string_view memory_kind,
+    TF_XLA_ASSIGN_OR_RETURN(absl::string_view memory_kind,
                         MemoryKindFromSimpleShape(shape, default_memory_kind));
     return {{memory_kind}};
   }
   std::vector<absl::string_view> result;
   result.reserve(shape.tuple_shapes().size());
   for (const auto& element_shape : shape.tuple_shapes()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         absl::string_view element_memory_kind,
         MemoryKindFromSimpleShape(element_shape, default_memory_kind));
     result.push_back(element_memory_kind);
@@ -208,11 +208,11 @@ absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 StreamExecutorExecutable::GetOutputMemoryKinds() const {
-  TF_ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
+  TF_XLA_ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
   std::vector<std::vector<absl::string_view>> out;
   out.reserve(shapes.size());
   for (const auto& shape : shapes) {
-    TF_ASSIGN_OR_RETURN(std::vector<absl::string_view> memory_kind,
+    TF_XLA_ASSIGN_OR_RETURN(std::vector<absl::string_view> memory_kind,
                         MemoryKindsFromShape(shape, default_memory_kind_));
     out.push_back(memory_kind);
   }
@@ -235,7 +235,7 @@ StreamExecutorExecutable::ConsumeExecutable(
     std::vector<std::unique_ptr<LocalExecutable>> local_executables;
     local_executables.reserve(aot_executables.size());
     for (int i = 0; i < aot_executables.size(); ++i) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           std::unique_ptr<LocalExecutable> local_executable,
           client->Load(std::move(aot_executables[i]),
                        compile_options.executable_build_options));

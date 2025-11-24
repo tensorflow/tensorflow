@@ -23,7 +23,7 @@ absl::StatusOr<std::unique_ptr<Executable>>
 CodegenTestBase::CompileToExecutable(std::unique_ptr<HloModule> hlo_module,
                                      bool run_optimization_passes) {
   if (run_optimization_passes) {
-    TF_ASSIGN_OR_RETURN(hlo_module, backend().compiler()->RunHloPasses(
+    TF_XLA_ASSIGN_OR_RETURN(hlo_module, backend().compiler()->RunHloPasses(
                                         std::move(hlo_module),
                                         backend().default_stream_executor(),
                                         /*device_allocator=*/nullptr));
@@ -37,7 +37,7 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>>
 CodegenTestBase::CompileToAotCompilationResult(
     std::unique_ptr<HloModule> hlo_module,
     const AotCompilationOptions& options) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<AotCompilationResult>> results,
       backend().compiler()->CompileAheadOfTime(std::move(hlo_module), options));
   return std::move(results.front());

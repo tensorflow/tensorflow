@@ -751,7 +751,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     const auto& shape_tuple_shapes = shape.tuple_shapes();
     elements.reserve(shape_tuple_shapes.size());
     for (const Shape& element_shape : shape_tuple_shapes) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           Literal element,
           MakeFakeLiteral(element_shape, engine, limit, is_sorted,
                           no_duplicates, use_large_range,
@@ -771,7 +771,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
   new_shape.mutable_layout()->set_element_size_in_bits(0);
   Literal literal(new_shape);
 
-  TF_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
+  TF_XLA_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
       [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;

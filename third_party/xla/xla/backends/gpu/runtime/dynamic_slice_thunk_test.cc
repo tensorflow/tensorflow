@@ -207,7 +207,7 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> CreateSlicedGemmThunk(
   backing_allocations.push_back(std::move(alloc_lhs_offset_0));
   backing_allocations.push_back(std::move(alloc_lhs_offset_1));
   // Preparing config for GEMM thunk.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -375,7 +375,7 @@ CreateMultipleSlicedOperandsGemmThunk(
   backing_allocations.push_back(std::move(alloc_rhs_offset_1));
 
   // Preparing config for GEMM thunk.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -913,7 +913,7 @@ CreateSlicedGemmArbitraryArgumentOrderThunk(
   backing_allocations.push_back(std::move(alloc_lhs_offset_1));
 
   // Preparing config for GEMM thunk.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -1086,7 +1086,7 @@ CreateSlicedGemmArbitraryNumberOfArgumentsThunk(
   backing_allocations.push_back(std::move(alloc_lhs_offset_1));
 
   // Preparing config for GEMM thunk.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -1250,7 +1250,7 @@ CreateSlicedTupledOperandGemmThunk(
   backing_allocations.push_back(std::move(alloc_lhs_offset_1));
 
   // Preparing config for GEMM thunk.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -1626,7 +1626,7 @@ CreateSlicedOperandsSameBufferGemmThunk(
   backing_allocations.push_back(std::move(alloc_lhs_offset_1));
 
   // Preparing config for GEMM thunk.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -1761,7 +1761,7 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
       ROOT select = s32[] select(compare, add, p0)
     }
   )";
-  TF_ASSIGN_OR_RETURN(auto offset_module,
+  TF_XLA_ASSIGN_OR_RETURN(auto offset_module,
                       ParseAndReturnUnverifiedModule(offset));
   offset_modules.emplace_back(std::move(offset_module));
   HloModule* offset_module_ptr = offset_modules.back().get();
@@ -1771,7 +1771,7 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
       ROOT c0 = s32[] constant(0)
     }
   )";
-  TF_ASSIGN_OR_RETURN(auto indvar_init_module,
+  TF_XLA_ASSIGN_OR_RETURN(auto indvar_init_module,
                       ParseAndReturnUnverifiedModule(indvar_init));
   const char* indvar_update = R"(
     HloModule indvar_update
@@ -1781,7 +1781,7 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
       ROOT add = s32[] add(p0, c1)
     }
   )";
-  TF_ASSIGN_OR_RETURN(auto indvar_update_module,
+  TF_XLA_ASSIGN_OR_RETURN(auto indvar_update_module,
                       ParseAndReturnUnverifiedModule(indvar_update));
   se::StreamExecutor* executor = GpuExecutor();
 
@@ -1821,7 +1821,7 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
 
   // Preparing config for GEMM thunk.
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           /*lhs_shape=*/ShapeUtil::MakeShape(

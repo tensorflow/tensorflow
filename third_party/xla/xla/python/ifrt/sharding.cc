@@ -195,7 +195,7 @@ absl::StatusOr<ShardingProto> Sharding::ToProto(SerDesVersion version) const {
   // `ShardingProto` does not store its own version. It delegates the details to
   // SerDes of the `Sharding` subclasses.
   auto options = std::make_unique<SerializeOptions>(version);
-  TF_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
+  TF_XLA_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
                       Serialize(*this, std::move(options)));
   return sharding_proto;
 }
@@ -852,7 +852,7 @@ ShardingParamSharding::Disassemble(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
-  TF_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
+  TF_XLA_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
 
   std::vector<std::pair<Shape, ShardingRef>> result;
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
@@ -949,7 +949,7 @@ absl::StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
   DCHECK(this);
 
   // Calculate the origins of tiles, ignoring device assignments.
-  TF_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
+  TF_XLA_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
   std::vector<Index> tile_indices =
       GetTileIndices(sharding_param_.dim_shards());
   std::vector<Index> origins;

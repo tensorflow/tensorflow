@@ -76,13 +76,13 @@ absl::StatusOr<Literal> Client::ExecuteAndTransfer(
     const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<GlobalData> data,
       Execute(computation, arguments, execution_options, execution_profile));
 
   std::optional<Shape> shape_with_output_layout;
   if (execution_options && execution_options->has_shape_with_output_layout()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         shape_with_output_layout,
         Shape::FromProto(execution_options->shape_with_output_layout()));
   }
@@ -133,7 +133,7 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     }
     execution_options = &*options_storage;
 
-    TF_ASSIGN_OR_RETURN(auto device_handles,
+    TF_XLA_ASSIGN_OR_RETURN(auto device_handles,
                         GetDeviceHandles(/*device_count=*/1));
     TF_RET_CHECK(!device_handles.empty());
     *options_storage->add_device_handles() = std::move(device_handles[0]);
@@ -148,7 +148,7 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
   // caches the executable forever, which isn't what we want.
   VLOG(1) << "Making ExecuteParallel request: "
           << execution_options->DebugString();
-  TF_ASSIGN_OR_RETURN(auto results, stub_->ExecuteGraph(computation_instance));
+  TF_XLA_ASSIGN_OR_RETURN(auto results, stub_->ExecuteGraph(computation_instance));
   VLOG(1) << "ExecuteParallel request done.";
 
   // The result selection is a bit hacky, but better than assuming it is
@@ -156,7 +156,7 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
   //
   // TODO(b/118493728): Allow Execute to return one result per computation.
   for (int64_t i = 0, end = results.size(); i < end; i++) {
-    TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(*results[i]));
+    TF_XLA_ASSIGN_OR_RETURN(const Shape& shape, GetShape(*results[i]));
     if (!ShapeUtil::IsEmptyTuple(shape)) {
       VLOG(3) << "Fetching result from device " << i << ": "
               << ShapeUtil::HumanString(shape);
@@ -188,7 +188,7 @@ Client::DeconstructTuple(const GlobalData& data) {
 
 absl::StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
     const XlaComputation& computation) {
-  TF_ASSIGN_OR_RETURN(const auto& result, computation.GetProgramShape());
+  TF_XLA_ASSIGN_OR_RETURN(const auto& result, computation.GetProgramShape());
   return std::make_unique<ProgramShape>(result);
 }
 

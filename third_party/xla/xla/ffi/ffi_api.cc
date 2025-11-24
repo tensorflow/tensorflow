@@ -238,14 +238,14 @@ static absl::Status BlockUntilReady(XLA_FFI_Future* future) {
 
 absl::Status Call(Ffi& handler, CallFrame& call_frame,
                   const CallOptions& options, ExecutionStage stage) {
-  TF_ASSIGN_OR_RETURN(XLA_FFI_Future * future,
+  TF_XLA_ASSIGN_OR_RETURN(XLA_FFI_Future * future,
                       Call<Ffi>(handler, call_frame, options, stage));
   return BlockUntilReady(future);
 }
 
 absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
                   const CallOptions& options, XLA_FFI_ExecutionStage stage) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       XLA_FFI_Future * future,
       Call<XLA_FFI_Handler*>(handler, call_frame, options,
                              static_cast<ExecutionStage>(stage)));
@@ -255,7 +255,7 @@ absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
 tsl::AsyncValueRef<tsl::Chain> CallAsync(Ffi& handler, CallFrame& call_frame,
                                          const CallOptions& options,
                                          ExecutionStage stage) {
-  TF_ASSIGN_OR_RETURN(XLA_FFI_Future * future,
+  TF_XLA_ASSIGN_OR_RETURN(XLA_FFI_Future * future,
                       Call<Ffi>(handler, call_frame, options, stage));
   return TakeFuture(future);
 }
@@ -264,7 +264,7 @@ tsl::AsyncValueRef<tsl::Chain> CallAsync(XLA_FFI_Handler* handler,
                                          CallFrame& call_frame,
                                          const CallOptions& options,
                                          XLA_FFI_ExecutionStage stage) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       XLA_FFI_Future * future,
       Call<XLA_FFI_Handler*>(handler, call_frame, options,
                              static_cast<ExecutionStage>(stage)));
@@ -390,7 +390,7 @@ static absl::Status RegisterHandler(absl::string_view name,
                                     absl::string_view platform,
                                     XLA_FFI_Handler_Bundle bundle,
                                     XLA_FFI_Handler_Traits traits) {
-  TF_ASSIGN_OR_RETURN(std::string canonical_platform,
+  TF_XLA_ASSIGN_OR_RETURN(std::string canonical_platform,
                       PlatformUtil::CanonicalPlatformName(platform));
 
   if (bundle.execute == nullptr) {
@@ -401,7 +401,7 @@ static absl::Status RegisterHandler(absl::string_view name,
   }
 
   // Check the API version that FFI handler was compiled with is supported.
-  TF_ASSIGN_OR_RETURN(XLA_FFI_Metadata metadata, GetMetadata(bundle.execute));
+  TF_XLA_ASSIGN_OR_RETURN(XLA_FFI_Metadata metadata, GetMetadata(bundle.execute));
   if (!IsSupportedApiVersion(metadata.api_version)) {
     return InvalidArgument(
         "XLA FFI handler registration for %s on platform %s (canonical %s) "
@@ -421,7 +421,7 @@ static absl::Status RegisterHandler(absl::string_view name,
 
   // Incorporate state type id from the instantiate implementation if present.
   if (bundle.instantiate) {
-    TF_ASSIGN_OR_RETURN(XLA_FFI_Metadata instantiate_metadata,
+    TF_XLA_ASSIGN_OR_RETURN(XLA_FFI_Metadata instantiate_metadata,
                         GetMetadata(bundle.instantiate));
     metadata.state_type_id = instantiate_metadata.state_type_id;
   }
@@ -460,7 +460,7 @@ static absl::Status RegisterHandler(absl::string_view name,
 
 absl::StatusOr<HandlerRegistration> FindHandler(absl::string_view name,
                                                 absl::string_view platform) {
-  TF_ASSIGN_OR_RETURN(std::string canonical_platform,
+  TF_XLA_ASSIGN_OR_RETURN(std::string canonical_platform,
                       PlatformUtil::CanonicalPlatformName(platform));
 
   auto it = GetHandlerRegistry().find(MakeHandlerKey(name, canonical_platform));
@@ -474,7 +474,7 @@ absl::StatusOr<HandlerRegistration> FindHandler(absl::string_view name,
 
 absl::StatusOr<absl::flat_hash_map<std::string, HandlerRegistration>>
 StaticRegisteredHandlers(absl::string_view platform) {
-  TF_ASSIGN_OR_RETURN(std::string canonical_platform,
+  TF_XLA_ASSIGN_OR_RETURN(std::string canonical_platform,
                       PlatformUtil::CanonicalPlatformName(platform));
 
   absl::flat_hash_map<std::string, HandlerRegistration> calls;
@@ -550,7 +550,7 @@ static absl::StatusCode ToStatusCode(XLA_FFI_Error_Code errc) {
   }
 }
 
-#define XLA_FFI_RETURN_IF_ERROR(expr)                                   \
+#define XLA_FFI_XLA_RETURN_IF_ERROR(expr)                                   \
   do {                                                                  \
     absl::Status _status = (expr);                                      \
     if (!_status.ok()) {                                                \
@@ -560,7 +560,7 @@ static absl::StatusCode ToStatusCode(XLA_FFI_Error_Code errc) {
   } while (false)
 
 static XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_Error_Create", XLA_FFI_Error_Create_Args_STRUCT_SIZE,
       args->struct_size));
 
@@ -591,7 +591,7 @@ static void XLA_FFI_Error_Destroy(XLA_FFI_Error_Destroy_Args* args) {
 }
 
 static XLA_FFI_Error* XLA_FFI_Future_Create(XLA_FFI_Future_Create_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_Future_Create", XLA_FFI_Future_Create_Args_STRUCT_SIZE,
       args->struct_size));
   args->future =
@@ -601,7 +601,7 @@ static XLA_FFI_Error* XLA_FFI_Future_Create(XLA_FFI_Future_Create_Args* args) {
 
 static XLA_FFI_Error* XLA_FFI_Future_SetAvailable(
     XLA_FFI_Future_SetAvailable_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_Future_SetAvailable",
       XLA_FFI_Future_SetAvailable_Args_STRUCT_SIZE, args->struct_size));
   args->future->async_value.SetStateConcrete();
@@ -610,7 +610,7 @@ static XLA_FFI_Error* XLA_FFI_Future_SetAvailable(
 
 static XLA_FFI_Error* XLA_FFI_Future_SetError(
     XLA_FFI_Future_SetError_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_Future_SetError", XLA_FFI_Future_SetError_Args_STRUCT_SIZE,
       args->struct_size));
 
@@ -626,7 +626,7 @@ static XLA_FFI_Error* XLA_FFI_Future_SetError(
 
 static XLA_FFI_Error* XLA_FFI_Handler_Register(
     XLA_FFI_Handler_Register_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_Handler_Register", XLA_FFI_Handler_Register_Args_STRUCT_SIZE,
       args->struct_size));
 
@@ -641,7 +641,7 @@ static XLA_FFI_Error* XLA_FFI_Handler_Register(
 }
 
 static XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_Stream_Get", XLA_FFI_Stream_Get_Args_STRUCT_SIZE,
       args->struct_size));
 
@@ -665,7 +665,7 @@ static XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args) {
 }
 
 static XLA_FFI_Error* XLA_FFI_RunId_Get(XLA_FFI_RunId_Get_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_RunId_Get", XLA_FFI_RunId_Get_Args_STRUCT_SIZE,
       args->struct_size));
 
@@ -676,7 +676,7 @@ static XLA_FFI_Error* XLA_FFI_RunId_Get(XLA_FFI_RunId_Get_Args* args) {
 
 static XLA_FFI_Error* XLA_FFI_DeviceOrdinal_Get(
     XLA_FFI_DeviceOrdinal_Get_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_DeviceOrdinal_Get", XLA_FFI_DeviceOrdinal_Get_Args_STRUCT_SIZE,
       args->struct_size));
   args->device_ordinal = args->ctx->device_ordinal;
@@ -684,7 +684,7 @@ static XLA_FFI_Error* XLA_FFI_DeviceOrdinal_Get(
 }
 
 static XLA_FFI_Error* XLA_FFI_Type_Register(XLA_FFI_Type_Register_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_ExecutionContext_Get_Args",
       XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE, args->struct_size));
 
@@ -717,7 +717,7 @@ static XLA_FFI_Error* XLA_FFI_Type_Register(XLA_FFI_Type_Register_Args* args) {
 
 static XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
     XLA_FFI_ExecutionContext_Get_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_ExecutionContext_Get_Args",
       XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE, args->struct_size));
 
@@ -733,7 +733,7 @@ static XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
 }
 
 static XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_State_Set_Args", XLA_FFI_State_Set_Args_STRUCT_SIZE,
       args->struct_size));
 
@@ -749,7 +749,7 @@ static XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args) {
 }
 
 static XLA_FFI_Error* XLA_FFI_State_Get(XLA_FFI_State_Get_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_State_Get_Args", XLA_FFI_State_Get_Args_STRUCT_SIZE,
       args->struct_size));
 
@@ -766,7 +766,7 @@ static XLA_FFI_Error* XLA_FFI_State_Get(XLA_FFI_State_Get_Args* args) {
 
 static XLA_FFI_Error* XLA_FFI_DeviceMemory_Allocate(
     XLA_FFI_DeviceMemory_Allocate_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_DeviceMemory_Allocate_Args",
       XLA_FFI_DeviceMemory_Allocate_Args_STRUCT_SIZE, args->struct_size));
 
@@ -809,7 +809,7 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Allocate(
 
 static XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
     XLA_FFI_DeviceMemory_Free_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_DeviceMemory_Free_Args",
       XLA_FFI_DeviceMemory_Free_Args_STRUCT_SIZE, args->struct_size));
 
@@ -857,7 +857,7 @@ static absl::StatusOr<const Eigen::ThreadPoolDevice*> GetIntraOpThreadPool(
 
 static XLA_FFI_Error* XLA_FFI_ThreadPool_Schedule(
     XLA_FFI_ThreadPool_Schedule_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_ThreadPool_Schedule_Args",
       XLA_FFI_ThreadPool_Schedule_Args_STRUCT_SIZE, args->struct_size));
 
@@ -875,7 +875,7 @@ static XLA_FFI_Error* XLA_FFI_ThreadPool_Schedule(
 
 static XLA_FFI_Error* XLA_FFI_ThreadPool_NumThreads(
     XLA_FFI_ThreadPool_NumThreads_Args* args) {
-  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  XLA_FFI_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_ThreadPool_NumThreads_Args",
       XLA_FFI_ThreadPool_NumThreads_Args_STRUCT_SIZE, args->struct_size));
 

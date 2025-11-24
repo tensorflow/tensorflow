@@ -98,7 +98,7 @@ static absl::StatusOr<bool> DecomposeAllReduce(HloInstruction* hlo,
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(auto replica_group_count_and_size,
+  TF_XLA_ASSIGN_OR_RETURN(auto replica_group_count_and_size,
                       GetReplicaGroupCountAndSize(all_reduce));
 
   if (!replica_group_count_and_size.has_value()) {
@@ -112,7 +112,7 @@ static absl::StatusOr<bool> DecomposeAllReduce(HloInstruction* hlo,
   // all-gather and reduction dimension.
   HloInstruction* reshape = PrependSize1MajorDimension(input, computation);
 
-  TF_ASSIGN_OR_RETURN(Shape all_gather_shape,
+  TF_XLA_ASSIGN_OR_RETURN(Shape all_gather_shape,
                       ShapeInference::InferAllGatherShape(
                           {&reshape->shape()}, /*all_gather_dimension=*/0,
                           num_participating_devices));
@@ -131,8 +131,8 @@ static absl::StatusOr<bool> DecomposeAllReduce(HloInstruction* hlo,
           input->shape(), all_gather, init,
           /*dimensions_to_reduce=*/{0}, all_reduce->to_apply()));
 
-  TF_RETURN_IF_ERROR(all_reduce->ReplaceAllUsesWith(reduce));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(all_reduce->ReplaceAllUsesWith(reduce));
+  TF_XLA_RETURN_IF_ERROR(
       computation->RemoveInstructionAndUnusedOperands(all_reduce));
 
   return true;
@@ -148,7 +148,7 @@ absl::StatusOr<bool> AllReduceDecomposer::RunImpl(
       if (!IsSmallAllReduce(hlo)) {
         continue;
       }
-      TF_ASSIGN_OR_RETURN(bool decomposed,
+      TF_XLA_ASSIGN_OR_RETURN(bool decomposed,
                           DecomposeAllReduce(hlo, computation, module));
       changed |= decomposed;
     }

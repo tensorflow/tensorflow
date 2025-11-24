@@ -55,7 +55,7 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
 
   std::unique_ptr<se::DeviceMemoryAllocator> allocator =
       std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::Stream * stream,
       allocator->GetStream(stream_executor()->device_ordinal()));
 
@@ -65,7 +65,7 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
   GemmBackendConfig backend_config;
   backend_config =
       instr.backend_config<GpuBackendConfig>()->gemm_backend_config();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GemmConfig gemm_config,
       GemmConfig::For(
           &instr, backend_config,
@@ -73,7 +73,7 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
 
   auto create_matrix_desc = [](const se::gpu::MatrixLayout& layout)
       -> absl::StatusOr<se::gpu::MatrixDescriptor> {
-    TF_ASSIGN_OR_RETURN(se::blas::DataType type,
+    TF_XLA_ASSIGN_OR_RETURN(se::blas::DataType type,
                         se::gpu::AsBlasDataType(layout.dtype));
     return se::gpu::MatrixDescriptor{
         /*data=*/se::DeviceMemoryBase(), layout.leading_dim_stride,
@@ -84,11 +84,11 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
              : se::blas::Transpose::kTranspose)};
   };
 
-  TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor lhs_desc,
+  TF_XLA_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor lhs_desc,
                       create_matrix_desc(gemm_config.lhs_layout));
-  TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor rhs_desc,
+  TF_XLA_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor rhs_desc,
                       create_matrix_desc(gemm_config.rhs_layout));
-  TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor output_desc_base,
+  TF_XLA_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor output_desc_base,
                       create_matrix_desc(gemm_config.output_layout));
 
   se::gpu::OutputMatrixDescriptor out_desc(std::move(output_desc_base));
@@ -96,7 +96,7 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
   out_desc.m = gemm_config.output_layout.num_rows;
   out_desc.n = gemm_config.output_layout.num_cols;
   out_desc.k = gemm_config.lhs_layout.num_cols;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       out_desc.compute_type,
       se::gpu::GetBlasComputationType(
           gemm_config.precision_algorithm, gemm_config.lhs_layout.dtype,
@@ -145,11 +145,11 @@ absl::Status CublasBackend::ApplyConfig(HloInstruction& instr,
     return absl::InvalidArgumentError(
         "Failed to unpack CublasBackendConfig from Any.");
   }
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  TF_XLA_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       instr.backend_config<GpuBackendConfig>());
   GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();
   backend_config.set_selected_algorithm(gemm_key.algorithm());
-  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  TF_XLA_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
   return absl::OkStatus();
 }
 

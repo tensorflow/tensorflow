@@ -59,7 +59,7 @@ static absl::StatusOr<se::DeviceMemoryHandle> CopyBufferToDevice(
   se::StreamExecutor* executor = stream->parent();
   se::DeviceMemoryHandle buffer(executor,
                                 executor->AllocateArray<uint8_t>(size));
-  TF_RETURN_IF_ERROR(stream->Memcpy(buffer.memory_ptr(), source, size));
+  TF_XLA_RETURN_IF_ERROR(stream->Memcpy(buffer.memory_ptr(), source, size));
 
   return std::move(buffer);
 }
@@ -78,7 +78,7 @@ absl::Status InfeedManager::TransferLiteralToInfeed(
   for (auto& leaf : buffer_tree.leaves()) {
     const Shape& sub_shape = ShapeUtil::GetSubshape(literal_shape, leaf.first);
     CHECK(sub_shape.IsArray()) << ShapeUtil::HumanStringWithLayout(sub_shape);
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         leaf.second,
         CopyBufferToDevice(stream(), ShapeUtil::ByteSizeOf(sub_shape),
                            literal.untyped_data(leaf.first)));

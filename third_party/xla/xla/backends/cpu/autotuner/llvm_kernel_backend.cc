@@ -92,7 +92,7 @@ LlvmKernelBackend::GetDefaultConfig(const HloInstruction& instr) {
 
 absl::Status LlvmKernelBackend::ApplyConfig(HloInstruction& instr,
                                             const xla::BackendConfig& config) {
-  TF_ASSIGN_OR_RETURN(auto backend_config,
+  TF_XLA_ASSIGN_OR_RETURN(auto backend_config,
                       instr.backend_config<xla::cpu::BackendConfig>());
 
   LlvmKernelBackend::Config llvm_kernel_config;
@@ -100,7 +100,7 @@ absl::Status LlvmKernelBackend::ApplyConfig(HloInstruction& instr,
 
   *backend_config.mutable_llvm_kernel_options() = llvm_kernel_config;
 
-  TF_RETURN_IF_ERROR(instr.set_backend_config(backend_config));
+  TF_XLA_RETURN_IF_ERROR(instr.set_backend_config(backend_config));
 
   return absl::OkStatus();
 }

@@ -31,7 +31,7 @@ absl::Status VerifiedHloModule::ParseHloStringAndVerifyModule(
     absl::string_view str, const HloParserOptions& options) {
   TF_RET_CHECK(computation_count() == 0);
   auto parser = HloParser::CreateHloParserForTests(str, options);
-  TF_RETURN_IF_ERROR(parser->Run(this));
+  TF_XLA_RETURN_IF_ERROR(parser->Run(this));
   return Verify();
 }
 

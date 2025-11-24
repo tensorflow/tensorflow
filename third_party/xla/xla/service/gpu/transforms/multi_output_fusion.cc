@@ -426,7 +426,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
                                     /*min_latencies_seconds=*/{},
                                     /*count_multiple_input_accesses=*/true},
                                    device_info_);
-  TF_RETURN_IF_ERROR(computation_->Accept(&cost_analysis));
+  TF_XLA_RETURN_IF_ERROR(computation_->Accept(&cost_analysis));
   std::vector<HloInstruction*> defs_before_uses =
       computation_->MakeInstructionPostOrder();
 
@@ -469,8 +469,8 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
     changed = true;
     fusion_info_cache.Invalidate(producer);
     fusion_info_cache.Invalidate(consumer_for_fusion);
-    TF_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(producer));
-    TF_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(consumer_for_fusion));
+    TF_XLA_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(producer));
+    TF_XLA_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(consumer_for_fusion));
 
     HloInstruction* input_fusion;
     if (HloPredicateIsOp<HloOpcode::kFusion>(consumer_for_fusion)) {
@@ -502,7 +502,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
       CHECK_EQ(0, producer->user_count());
       TF_CHECK_OK(computation_->RemoveInstruction(producer));
     }
-    TF_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(input_fusion));
+    TF_XLA_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(input_fusion));
 
     DumpFusionState(*input_fusion,
                     absl::StrCat("Fused into |", input_fusion->name(),
@@ -529,7 +529,7 @@ absl::StatusOr<bool> MultiOutputFusion::RunImpl(
   bool changed = false;
   for (auto* computation : GetFusibleComputations(*module, execution_threads)) {
     computation_ = computation;
-    TF_ASSIGN_OR_RETURN(bool computation_changed, DoMultiOutputFusion());
+    TF_XLA_ASSIGN_OR_RETURN(bool computation_changed, DoMultiOutputFusion());
     changed |= computation_changed;
   }
   return changed;

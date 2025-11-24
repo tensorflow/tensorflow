@@ -358,13 +358,13 @@ DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32(HloInstruction* lhs,
       << "Algorithm field set to BF16_BF16_F32, but the rhs isn't F32 or BF16.";
   if (lhs->shape().element_type() == PrimitiveType::BF16 &&
       rhs->shape().element_type() == PrimitiveType::BF16) {
-    TF_ASSIGN_OR_RETURN(auto result_bf16,
+    TF_XLA_ASSIGN_OR_RETURN(auto result_bf16,
                         MakeBinaryHlo(HloOpcode::kMultiply, lhs, rhs));
     return UpcastToF32(result_bf16);
   }
   auto lhs_bf16 = RoundToBF16(lhs);
   auto rhs_bf16 = RoundToBF16(rhs);
-  TF_ASSIGN_OR_RETURN(auto result_bf16,
+  TF_XLA_ASSIGN_OR_RETURN(auto result_bf16,
                       MakeBinaryHlo(HloOpcode::kMultiply, lhs_bf16, rhs_bf16));
   return UpcastToF32(result_bf16);
 }
@@ -379,9 +379,9 @@ DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X3(HloInstruction* lhs,
 
   auto [lhs_high_bf16, lhs_low_bf16] = Split2xToBF16(lhs);
   auto [rhs_high_bf16, rhs_low_bf16] = Split2xToBF16(rhs);
-  TF_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_bf16, rhs_high_bf16));
-  TF_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_bf16, rhs_low_bf16));
-  TF_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_bf16, rhs_high_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_bf16, rhs_high_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_bf16, rhs_low_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_bf16, rhs_high_bf16));
   auto* low_sum = SumToF32(low_high, high_low);
   auto* low = ReplaceNaNWithZeros(low_sum);
   auto* result = SumToF32(low, high_high);
@@ -398,12 +398,12 @@ DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X6(HloInstruction* lhs,
 
   auto [lhs_high_bf16, lhs_mid_bf16, lhs_low_bf16] = Split3xToBF16(lhs);
   auto [rhs_high_bf16, rhs_mid_bf16, rhs_low_bf16] = Split3xToBF16(rhs);
-  TF_ASSIGN_OR_RETURN(auto* mid_mid, Mult(lhs_mid_bf16, rhs_mid_bf16));
-  TF_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_bf16, rhs_low_bf16));
-  TF_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_bf16, rhs_high_bf16));
-  TF_ASSIGN_OR_RETURN(auto* high_mid, Mult(lhs_high_bf16, rhs_mid_bf16));
-  TF_ASSIGN_OR_RETURN(auto* mid_high, Mult(lhs_mid_bf16, rhs_high_bf16));
-  TF_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_bf16, rhs_high_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* mid_mid, Mult(lhs_mid_bf16, rhs_mid_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_bf16, rhs_low_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_bf16, rhs_high_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* high_mid, Mult(lhs_high_bf16, rhs_mid_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* mid_high, Mult(lhs_mid_bf16, rhs_high_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_bf16, rhs_high_bf16));
 
   HloInstruction* result = nullptr;
   result = SumToF32(mid_mid, high_low);
@@ -425,15 +425,15 @@ DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X9(HloInstruction* lhs,
 
   auto [lhs_high_bf16, lhs_mid_bf16, lhs_low_bf16] = Split3xToBF16(lhs);
   auto [rhs_high_bf16, rhs_mid_bf16, rhs_low_bf16] = Split3xToBF16(rhs);
-  TF_ASSIGN_OR_RETURN(auto* low_low, Mult(lhs_low_bf16, rhs_low_bf16));
-  TF_ASSIGN_OR_RETURN(auto* low_mid, Mult(lhs_low_bf16, rhs_mid_bf16));
-  TF_ASSIGN_OR_RETURN(auto* mid_low, Mult(lhs_mid_bf16, rhs_low_bf16));
-  TF_ASSIGN_OR_RETURN(auto* mid_mid, Mult(lhs_mid_bf16, rhs_mid_bf16));
-  TF_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_bf16, rhs_low_bf16));
-  TF_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_bf16, rhs_high_bf16));
-  TF_ASSIGN_OR_RETURN(auto* high_mid, Mult(lhs_high_bf16, rhs_mid_bf16));
-  TF_ASSIGN_OR_RETURN(auto* mid_high, Mult(lhs_mid_bf16, rhs_high_bf16));
-  TF_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_bf16, rhs_high_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* low_low, Mult(lhs_low_bf16, rhs_low_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* low_mid, Mult(lhs_low_bf16, rhs_mid_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* mid_low, Mult(lhs_mid_bf16, rhs_low_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* mid_mid, Mult(lhs_mid_bf16, rhs_mid_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_bf16, rhs_low_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_bf16, rhs_high_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* high_mid, Mult(lhs_high_bf16, rhs_mid_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* mid_high, Mult(lhs_mid_bf16, rhs_high_bf16));
+  TF_XLA_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_bf16, rhs_high_bf16));
 
   HloInstruction* result = nullptr;
   result = SumToF32(low_low, low_mid);
@@ -457,7 +457,7 @@ DotAlgorithmRewriter::MakeMultiplyForTF32TF32F32(HloInstruction* lhs,
       << "Algorithm field set to TF32_TF32_F32_X3, but the rhs is not F32.";
   auto lhs_tf32 = Truncate(lhs, kMaskTF32);
   auto rhs_tf32 = Truncate(rhs, kMaskTF32);
-  TF_ASSIGN_OR_RETURN(auto* result, Mult(lhs_tf32, rhs_tf32));
+  TF_XLA_ASSIGN_OR_RETURN(auto* result, Mult(lhs_tf32, rhs_tf32));
   return result;
 }
 
@@ -470,9 +470,9 @@ DotAlgorithmRewriter::MakeMultiplyForTF32TF32F32X3(HloInstruction* lhs,
       << "Algorithm field set to TF32_TF32_F32_X3, but the rhs is not F32.";
   auto [lhs_high_tf32, lhs_low_tf32] = Split2xToTF32(lhs);
   auto [rhs_high_tf32, rhs_low_tf32] = Split2xToTF32(rhs);
-  TF_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_tf32, rhs_high_tf32));
-  TF_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_tf32, rhs_low_tf32));
-  TF_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_tf32, rhs_high_tf32));
+  TF_XLA_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_tf32, rhs_high_tf32));
+  TF_XLA_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_tf32, rhs_low_tf32));
+  TF_XLA_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_tf32, rhs_high_tf32));
   auto* low_sum = SumToF32(low_high, high_low);
   auto* low = ReplaceNaNWithZeros(low_sum);
   auto* result = SumToF32(low, high_high);

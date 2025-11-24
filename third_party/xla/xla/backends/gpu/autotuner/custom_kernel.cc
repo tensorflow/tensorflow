@@ -79,7 +79,7 @@ absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
   }
 
   // Load custom kernels that can implement a fusion computation.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<CustomKernel> kernels,
       custom_kernel_fusion->LoadKernels(
           device_description,
@@ -93,7 +93,7 @@ CustomKernelBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<CustomKernel> kernels,
       LoadKernels(&instr, stream_executor()->GetDeviceDescription()));
 
@@ -137,13 +137,13 @@ absl::Status CustomKernelBackend::ApplyConfig(HloInstruction& instr,
         "Failed to unpack CustomKernelBackendConfig from Any.");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  TF_XLA_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       instr.backend_config<GpuBackendConfig>());
   FusionBackendConfig* backend_config =
       gpu_config.mutable_fusion_backend_config();
   backend_config->mutable_custom_fusion_config()->set_kernel_index(
       custom_kernel_config.kernel_index());
-  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  TF_XLA_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
 
   return absl::OkStatus();
 }

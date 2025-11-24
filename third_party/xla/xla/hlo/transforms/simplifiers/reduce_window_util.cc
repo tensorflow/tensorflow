@@ -119,8 +119,8 @@ absl::Status Replace1DReduceWindowWithReshape(
     CHECK_EQ(final_reshapes.size(), 1);
     result = final_reshapes[0];
   }
-  TF_RETURN_IF_ERROR(reduce_window->ReplaceAllUsesWith(result));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(reduce_window->ReplaceAllUsesWith(result));
+  TF_XLA_RETURN_IF_ERROR(
       new_reduce_window->parent()->RemoveInstruction(reduce_window));
 
   return absl::OkStatus();

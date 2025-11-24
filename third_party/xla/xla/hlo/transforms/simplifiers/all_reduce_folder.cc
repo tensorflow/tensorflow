@@ -215,9 +215,9 @@ absl::StatusOr<bool> AllReduceFolder::RunImpl(
               CollectiveDeviceList(*new_replica_groups),
               /*constrain_layout=*/false, channel_id,
               ar0->use_global_device_ids()));
-      TF_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(new_ar));
-      TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
-      TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
+      TF_XLA_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(new_ar));
+      TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
+      TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
       changed = true;
     }
   }

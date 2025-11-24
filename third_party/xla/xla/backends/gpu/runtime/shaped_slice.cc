@@ -31,16 +31,16 @@ absl::StatusOr<ShapedSlice> ShapedSlice::FromProto(
     const ShapedSliceProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
   ShapedSlice shaped_slice;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       shaped_slice.slice,
       BufferAllocation::Slice::FromProto(proto.slice(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(shaped_slice.shape, Shape::FromProto(proto.shape()));
+  TF_XLA_ASSIGN_OR_RETURN(shaped_slice.shape, Shape::FromProto(proto.shape()));
   return shaped_slice;
 }
 
 absl::StatusOr<ShapedSliceProto> ShapedSlice::ToProto() const {
   ShapedSliceProto proto;
-  TF_ASSIGN_OR_RETURN(*proto.mutable_slice(), slice.ToProto());
+  TF_XLA_ASSIGN_OR_RETURN(*proto.mutable_slice(), slice.ToProto());
   *proto.mutable_shape() = shape.ToProto();
   return proto;
 }
@@ -49,7 +49,7 @@ absl::StatusOr<NullableShapedSlice> NullableShapedSlice::FromProto(
     const NullableShapedSliceProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
   if (proto.has_shaped_slice()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         ShapedSlice shaped_slice,
         ShapedSlice::FromProto(proto.shaped_slice(), buffer_allocations));
     return NullableShapedSlice(std::move(shaped_slice));
@@ -60,7 +60,7 @@ absl::StatusOr<NullableShapedSlice> NullableShapedSlice::FromProto(
 absl::StatusOr<NullableShapedSliceProto> NullableShapedSlice::ToProto() const {
   NullableShapedSliceProto proto;
   if (has_value()) {
-    TF_ASSIGN_OR_RETURN(*proto.mutable_shaped_slice(), value().ToProto());
+    TF_XLA_ASSIGN_OR_RETURN(*proto.mutable_shaped_slice(), value().ToProto());
   }
   return proto;
 }

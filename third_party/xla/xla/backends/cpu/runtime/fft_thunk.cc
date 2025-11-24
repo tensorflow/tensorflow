@@ -167,10 +167,10 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> FftThunk::Execute(
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(input_shape_.layout()));
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(output_shape_.layout()));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase input_data,
       params.buffer_allocations->GetDeviceAddress(input_buffer_));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase output_data,
       params.buffer_allocations->GetDeviceAddress(output_buffer_));
 

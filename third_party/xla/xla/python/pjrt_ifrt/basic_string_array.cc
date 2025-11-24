@@ -174,7 +174,7 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
     return absl::FailedPreconditionError("Array has already been deleted");
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto shapes_and_shadings,
       sharding_->Disassemble(shape_, single_device_shard_semantics));
   const int num_shards = shapes_and_shadings.size();
@@ -248,7 +248,7 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
   std::vector<ArrayRef> arrays;
   arrays.reserve(num_shards);
   for (int i = 0; i < num_shards; ++i) {
-    TF_ASSIGN_OR_RETURN(auto array,
+    TF_XLA_ASSIGN_OR_RETURN(auto array,
                         BasicStringArray::Create(
                             client_, std::move(shapes_and_shadings[i].first),
                             std::move(shapes_and_shadings[i].second),
@@ -306,7 +306,7 @@ absl::StatusOr<ArrayRef> BasicStringArray::Copy(
     return absl::FailedPreconditionError("Array has already been deleted");
   }
 
-  TF_ASSIGN_OR_RETURN(auto new_sharding, sharding().WithDeviceAssignment(
+  TF_XLA_ASSIGN_OR_RETURN(auto new_sharding, sharding().WithDeviceAssignment(
                                              std::move(devices), memory_kind));
   if (new_sharding->devices()->size() != sharding_->devices()->size()) {
     return absl::InvalidArgumentError(absl::StrCat(

@@ -2584,7 +2584,7 @@ absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   for (int i = 0; i < count; ++i) {
     auto emplace_result = operand_indices.emplace(operand(i), i);
     if (!emplace_result.second) {
-      TF_RETURN_IF_ERROR(fused_parameter(i)->ReplaceAllUsesWith(
+      TF_XLA_RETURN_IF_ERROR(fused_parameter(i)->ReplaceAllUsesWith(
           fused_parameter(emplace_result.first->second)));
       operands_to_remove.push_back(i);
     }
@@ -2592,7 +2592,7 @@ absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   if (operands_to_remove.empty()) {
     return absl::OkStatus();
   }
-  TF_RETURN_IF_ERROR(fused_instructions_computation()
+  TF_XLA_RETURN_IF_ERROR(fused_instructions_computation()
                          ->RemoveUnusedParametersFromFusedComputation());
   RemoveOperandsAtAscendingIndices(operands_to_remove);
   return absl::OkStatus();
