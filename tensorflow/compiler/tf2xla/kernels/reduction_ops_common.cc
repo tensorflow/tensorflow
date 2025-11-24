@@ -16,6 +16,7 @@ limitations under the License.
 // XLA-specific reduction Ops.
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"

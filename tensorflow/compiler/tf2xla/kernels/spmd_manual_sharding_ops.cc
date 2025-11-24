@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"

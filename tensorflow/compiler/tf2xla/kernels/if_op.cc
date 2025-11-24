@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/if_op.h"
 
+#include <string>
 #include <vector>
 
 #include "absl/log/log.h"
