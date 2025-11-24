@@ -600,7 +600,8 @@ bool HloComputation::IsSafelyRemovable(
     const HloInstruction* instruction, bool ignore_control_dependency,
     std::optional<
         absl::FunctionRef<std::vector<HloInstruction*>(const HloComputation*)>>
-        computation_callers) const {
+        computation_callers,
+    bool remove_dead_param_from_entry) const {
   // If the instruction has control predecessors or successors then we cannot
   // remove the instruction without violating ordering constraints (added, for
   // example, to avert interference due to buffer aliasing).
@@ -613,8 +614,11 @@ bool HloComputation::IsSafelyRemovable(
     if (instruction->parent() == nullptr) {
       return true;
     }
-    // Entry computation parameters can never be removed.
-    if (instruction->parent()->IsEntryComputation()) {
+    // Entry computation parameters can never be removed unless explicitly
+    // specified. Then user needs to update the entry computation layout
+    // accordingly.
+    if (instruction->parent()->IsEntryComputation() &&
+        !remove_dead_param_from_entry) {
       return false;
     }
     // We generally want to be using the call graph to determine who the caller
@@ -629,11 +633,10 @@ bool HloComputation::IsSafelyRemovable(
     }
     std::vector<HloInstruction*> callers =
         (*computation_callers)(instruction->parent());
-    if (callers.empty()) {
+    if (callers.empty() && !instruction->parent()->IsEntryComputation()) {
       return false;
     }
-    for (HloInstruction* caller :
-         (*computation_callers)(instruction->parent())) {
+    for (HloInstruction* caller : callers) {
       if (caller->opcode() != HloOpcode::kFusion &&
           caller->opcode() != HloOpcode::kCall &&
           caller->opcode() != HloOpcode::kAsyncStart) {
@@ -666,12 +669,14 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
     bool ignore_control_dependencies,
     std::optional<
         absl::FunctionRef<std::vector<HloInstruction*>(const HloComputation*)>>
-        computation_callers) {
+        computation_callers,
+    bool remove_dead_parameters_from_entry_computation) {
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->IsDead());
   TF_RET_CHECK(IsSafelyRemovable(instruction, ignore_control_dependencies,
-                                 computation_callers))
+                                 computation_callers,
+                                 remove_dead_parameters_from_entry_computation))
       << "Cannot remove instruction: " << instruction->ToString();
   // Remember the parent, in case we lose all references to it, in order to
   // clean up the callers.
@@ -686,7 +691,8 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
 
     if (removed.contains(item) || !item->IsDead() ||
         !IsSafelyRemovable(item, ignore_control_dependencies,
-                           computation_callers) ||
+                           computation_callers,
+                           remove_dead_parameters_from_entry_computation) ||
         (item->HasSideEffect() && item != instruction)) {
       continue;
     }
@@ -731,8 +737,11 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       callers = {FusionInstruction()};
     }
   }
+  const bool is_entry_computation = parent != nullptr &&
+                                    parent->parent() != nullptr &&
+                                    parent->IsEntryComputation();
   // Only attempt to remove parameters if we can fixup the caller.
-  if (callers.empty()) {
+  if (callers.empty() && !is_entry_computation) {
     return absl::OkStatus();
   }
   for (HloInstruction* param : parameters_to_be_removed) {
