@@ -62,7 +62,7 @@ bool GemmFusionAutotunerImpl::AddLibConfigs(
 
   bool is_cudnn_fusion = IsGpuFusionKind(fusion, kCuDnnFusionKind);
   bool is_supported_triton_dot_fusion =
-      IsGpuFusionKind(fusion, kTritonGemmFusionKind) &&
+      IsGpuFusionKind(fusion, kTritonFusionKind) &&
       dnn_version.major_version() >= 9 &&
       algorithm_util::IsSupportedByCudnn(dot->precision_config().algorithm()) &&
       ((cc.IsAtLeastAmpere() &&

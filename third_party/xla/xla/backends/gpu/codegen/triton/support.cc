@@ -294,8 +294,7 @@ bool IsInTritonNestedGemmFusion(const HloInstruction& hlo) {
   if (!hlo.parent()->IsFusionComputation()) {
     return false;
   }
-  return IsGpuFusionKind(*hlo.parent()->FusionInstruction(),
-                         kTritonNestedGemmFusionKind);
+  return IsGpuFusionKind(*hlo.parent()->FusionInstruction(), kTritonFusionKind);
 }
 
 absl::Status CheckSupportedCheckDotDimensions(const HloDotInstruction& dot) {
@@ -527,10 +526,10 @@ CodegenDecision IsTritonSupportedFusion(
   }
   if (const std::string& kind =
           backend_config.value().fusion_backend_config().kind();
-      kind != kTritonNestedGemmFusionKind) {
+      kind != kTritonFusionKind) {
     return CodegenDecision::Forbid(
         absl::StrCat("Expected ", hlo.ToString(), " with fusion backend kind ",
-                     kTritonNestedGemmFusionKind, ", got ", kind));
+                     kTritonFusionKind, ", got ", kind));
   }
   const HloInstruction* user = hlo.users().front();
   switch (user->opcode()) {
@@ -781,7 +780,7 @@ bool IsTritonFusedComputation(const HloComputation& computation) {
          fusion->fusion_kind() == HloInstruction::FusionKind::kCustom &&
          fusion->backend_config<gpu::GpuBackendConfig>()
                  ->fusion_backend_config()
-                 .kind() == kTritonGemmFusionKind;
+                 .kind() == kTritonFusionKind;
 }
 
 }  // namespace gpu

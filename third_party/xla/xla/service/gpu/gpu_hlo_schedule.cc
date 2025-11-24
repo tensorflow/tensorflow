@@ -549,7 +549,7 @@ LegalizeSchedulingAnnotations::Config SchedulingAnnotationsConfig() {
       return true;
     }
     if (hlo->opcode() == HloOpcode::kFusion) {
-      return IsGpuFusionKind(*hlo, kTritonGemmFusionKind);
+      return IsGpuFusionKind(*hlo, kTritonFusionKind);
     }
     return false;
   };

@@ -175,7 +175,7 @@ absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
 
-  backend_config.set_kind(kTritonGemmFusionKind);
+  backend_config.set_kind(kTritonFusionKind);
   *backend_config.mutable_triton_gemm_config() = triton_config_proto;
   TF_RETURN_IF_ERROR(instr.set_backend_config(gpu_config));
 
@@ -226,7 +226,7 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
   }
   const FusionBackendConfig& backend_config =
       gpu_config->fusion_backend_config();
-  return backend_config.kind() == kTritonGemmFusionKind ||
+  return backend_config.kind() == kTritonFusionKind ||
          backend_config.kind() == kCuDnnFusionKind ||
          backend_config.kind() == kCustomFusionKind;
 }

@@ -199,7 +199,7 @@ class GemmFusionCollector : public ConstDfsHloVisitorWithDefault {
                         hlo->backend_config<GpuBackendConfig>());
     const FusionBackendConfig& backend_config =
         gpu_config.fusion_backend_config();
-    if (backend_config.kind() != kTritonGemmFusionKind &&
+    if (backend_config.kind() != kTritonFusionKind &&
         backend_config.kind() != kCuDnnFusionKind &&
         backend_config.kind() != kCustomFusionKind) {
       return absl::OkStatus();
@@ -594,7 +594,7 @@ bool IsScaledDotFusion(const HloInstruction* fusion_instr) {
   if (fusion_instr->fusion_kind() != HloInstruction::FusionKind::kCustom) {
     return false;
   }
-  return IsGpuFusionKind(*fusion_instr, kTritonGemmFusionKind) &&
+  return IsGpuFusionKind(*fusion_instr, kTritonFusionKind) &&
          hlo_query::GetFirstInstructionWithOpcode(
              *fusion_instr->fused_instructions_computation(),
              HloOpcode::kScaledDot) != nullptr;
@@ -698,7 +698,7 @@ absl::Status GemmFusionAutotunerRewriterVisitor::HandleFusion(
       *gpu_config.mutable_fusion_backend_config();
 
   // Only autotune Triton, cuDNN, and custom kernel fusions.
-  if (fusion_backend_config.kind() != kTritonGemmFusionKind &&
+  if (fusion_backend_config.kind() != kTritonFusionKind &&
       fusion_backend_config.kind() != kCuDnnFusionKind &&
       fusion_backend_config.kind() != kCustomFusionKind) {
     return absl::OkStatus();
@@ -921,7 +921,7 @@ GemmFusionAutotunerImpl::GenerateDotConfigs(const HloFusionInstruction& fusion,
   // Go through all the instructions in the fusion body try to match them to
   // a custom kernel fusion pattern.
   if ((IsGpuFusionKind(fusion, kCustomFusionKind) ||
-       IsGpuFusionKind(fusion, kTritonGemmFusionKind)) &&
+       IsGpuFusionKind(fusion, kTritonFusionKind)) &&
       IsAutotuningEnabled() && !config_.IsDeviceless()) {
     std::vector<BackendConfig> custom_kernel_fusion_configs =
         GenerateCustomKernelFusionConfigs(fusion,
@@ -1710,7 +1710,7 @@ absl::StatusOr<bool> GemmFusionAutotuner::RunViaNewInfra(
     auto gpu_config = instruction.backend_config<GpuBackendConfig>();
     const FusionBackendConfig& backend_config =
         gpu_config->fusion_backend_config();
-    if (backend_config.kind() == kTritonGemmFusionKind ||
+    if (backend_config.kind() == kTritonFusionKind ||
         backend_config.kind() == kCuDnnFusionKind) {
       return true;
     }

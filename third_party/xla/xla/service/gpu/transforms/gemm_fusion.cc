@@ -860,7 +860,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
                         dot_fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
-    backend_config.set_kind(kTritonGemmFusionKind);
+    backend_config.set_kind(kTritonFusionKind);
     TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
 
     if (fusion_output->IsRoot()) {
@@ -953,7 +953,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
                         fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
-    backend_config.set_kind(kTritonGemmFusionKind);
+    backend_config.set_kind(kTritonFusionKind);
     TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(scaled_dot, fusion));
     MarkAsChanged();
