@@ -24,6 +24,7 @@ limitations under the License.
 #include <random>
 #include <utility>
 
+#include "absl/random/bit_gen_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -82,7 +83,7 @@ bool NeedsInitValue(const HloUse& use) {
 
 // Generate random values that are constrained to the input_shape minus the
 // output_shape so as not to produce wrapping slices, for instance.
-Literal MakeRandomIndex(int64_t index_bound, std::minstd_rand0* engine) {
+Literal MakeRandomIndex(int64_t index_bound, absl::BitGenRef* engine) {
   std::uniform_int_distribution<int32_t> generator(0, index_bound);
   return LiteralUtil::CreateR0<int32_t>(generator(*engine));
 }
@@ -199,7 +200,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
 absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
     const absl::Span<HloInstruction* const> constrained_uses,
     const HloInstruction& param, const Shape& param_shape,
-    std::minstd_rand0* engine, bool use_large_range,
+    absl::BitGenRef* engine, bool use_large_range,
     std::optional<int64_t> max_bits_of_precision) {
   int64_t index_bound = INT64_MAX;
   bool no_duplicates = false;
@@ -311,7 +312,7 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
 // special case literal must be created, or if we can generate fake data.
 absl::StatusOr<Literal> MakeConstrainedArgument(
     const HloDataflowAnalysis& dataflow, const HloInstruction& param,
-    const Shape& param_shape, std::minstd_rand0* engine, bool use_large_range,
+    const Shape& param_shape, absl::BitGenRef* engine, bool use_large_range,
     bool treat_gte_as_data_formatting,
     std::optional<int64_t> max_bits_of_precision) {
   const auto constrained_uses =
@@ -326,25 +327,23 @@ absl::StatusOr<Literal> MakeConstrainedArgument(
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random, bool use_large_range,
     bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision, std::minstd_rand0* engine) {
+    std::optional<int64_t> max_bits_of_precision, absl::BitGenRef* engine) {
   if (!pseudo_random) {
     return MakeFakeArguments(module, nullptr, use_large_range,
                              treat_gte_as_data_formatting,
                              max_bits_of_precision);
   }
+  std::minstd_rand0 engine_storage;
+  absl::BitGenRef engine_ref(engine_storage);
   if (engine == nullptr) {
-    auto new_engine =
-        pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
-    return MakeFakeArguments(module, new_engine.get(), use_large_range,
-                             treat_gte_as_data_formatting,
-                             max_bits_of_precision);
+    engine = &engine_ref;
   }
   return MakeFakeArguments(module, engine, use_large_range,
                            treat_gte_as_data_formatting, max_bits_of_precision);
 }
 
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
-    const HloModule* module, std::minstd_rand0* engine, bool use_large_range,
+    const HloModule* module, absl::BitGenRef* engine, bool use_large_range,
     bool treat_gte_as_data_formatting,
     std::optional<int64_t> max_bits_of_precision) {
   TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
