@@ -491,6 +491,60 @@ absl::Status CommandBufferCmdExecutor::Record(
   } else {
     auto* create = std::get_if<CommandBufferCmd::RecordCreate>(&record_action);
     CHECK(create);
+
+    if (VLOG_IS_ON(5) &&
+        command_buffer->mode() == se::CommandBuffer::Mode::kPrimary) {
+      int64_t input_count = 0;
+      int64_t output_count = 0;
+      int64_t input_temp_count = 0;
+      int64_t output_temp_count = 0;
+      int64_t input_output_count = 0;
+      int64_t input_temp_output_count = 0;
+
+      for (const auto& cmd : commands_) {
+        bool has_input = false;
+        bool has_output = false;
+        bool has_temp = false;
+
+        for (const auto& buffer : cmd->buffers()) {
+          if (buffer.HasDefinedContentsOnInput()) {
+            has_input = true;
+          }
+          if (buffer.HasDefinedContentsOnOutput()) {
+            has_output = true;
+          }
+          if (!buffer.HasDefinedContentsOnInput() &&
+              !buffer.HasDefinedContentsOnOutput()) {
+            has_temp = true;
+          }
+        }
+
+        if (has_input && !has_output && !has_temp) input_count++;
+        if (!has_input && has_output && !has_temp) output_count++;
+        if (has_input && !has_output && has_temp) input_temp_count++;
+        if (!has_input && has_output && has_temp) output_temp_count++;
+        if (has_input && has_output && !has_temp) input_output_count++;
+        if (has_input && has_output && has_temp) input_temp_output_count++;
+      }
+
+      VLOG(5) << "CommandBufferCmdExecutor allocation summary:\n"
+              << "  Total commands                                 : "
+              << commands_.size() << "\n"
+              << "  ------------------------------------------------\n"
+              << "  Commands consuming input buffer                : "
+              << input_count << "\n"
+              << "  Commands consuming output buffer               : "
+              << output_count << "\n"
+              << "  Commands consuming input, temp buffers         : "
+              << input_temp_count << "\n"
+              << "  Commands consuming output, temp buffers        : "
+              << output_temp_count << "\n"
+              << "  Commands consuming input, output buffers       : "
+              << input_output_count << "\n"
+              << "  Commands consuming input, temp, output buffers : "
+              << input_temp_output_count;
+    }
+
     TF_RETURN_IF_ERROR(RecordCreate(execute_params, record_params,
                                     command_buffer, create->dependencies)
                            .status());
