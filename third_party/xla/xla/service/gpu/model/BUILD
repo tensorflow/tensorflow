@@ -589,6 +589,7 @@ cc_library(
     hdrs = [
         "block_level_parameters.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = ["//xla/service/gpu:backend_configs_cc"],
 )
 
