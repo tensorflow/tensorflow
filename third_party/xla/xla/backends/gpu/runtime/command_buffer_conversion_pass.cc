@@ -149,7 +149,6 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kSend:
       return DebugOptions::COLLECTIVES;
     case Thunk::kCuDnn:
-    case Thunk::kConvolution:
       return DebugOptions::CUDNN;
     case Thunk::kCustomCall:
       return DebugOptions::CUSTOM_CALL;

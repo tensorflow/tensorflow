@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
-#include "xla/backends/gpu/runtime/convolution_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
@@ -151,58 +150,6 @@ std::unique_ptr<GemmThunk> CreateGemmThunk(const BufferAllocation& alloc1) {
   BufferAllocation::Slice slice1(&alloc1, 0, 16 * 4);
   return std::make_unique<GemmThunk>(Thunk::ThunkInfo(), config.value(), slice1,
                                      slice1, slice1, slice1, true);
-}
-
-std::unique_ptr<ConvolutionThunk> CreateConvolutionThunk(
-    const BufferAllocation& alloc) {
-  std::vector<BufferAllocation::Slice> operand_slices, result_slices;
-  for (int i = 0, num = 3; i < num; i++) {
-    operand_slices.emplace_back(&alloc, i * 16, 16);
-    result_slices.emplace_back(&alloc, (i + num) * 16, 16);
-  }
-
-  ConvolutionDimensionNumbers dnums;
-  dnums.set_input_batch_dimension(0);
-  dnums.set_input_feature_dimension(1);
-  dnums.add_input_spatial_dimensions(2);
-  dnums.add_input_spatial_dimensions(3);
-  dnums.set_kernel_input_feature_dimension(0);
-  dnums.set_kernel_output_feature_dimension(1);
-  dnums.add_kernel_spatial_dimensions(2);
-  dnums.add_kernel_spatial_dimensions(3);
-  dnums.set_output_batch_dimension(0);
-  dnums.set_output_feature_dimension(1);
-  dnums.add_output_spatial_dimensions(2);
-  dnums.add_output_spatial_dimensions(3);
-
-  Window window;
-  const auto dim0 = window.add_dimensions();
-  const auto dim1 = window.add_dimensions();
-  dim0->set_size(4);
-  dim1->set_size(4);
-  dim0->set_base_dilation(1);
-  dim1->set_base_dilation(1);
-  dim0->set_stride(1);
-  dim1->set_stride(1);
-  dim0->set_window_dilation(3);
-  dim1->set_window_dilation(2);
-
-  GpuConvDescriptor desc{
-      .kind = CudnnConvKind::kForward,
-      .backend_config = CudnnConvBackendConfig{},
-      .operand0_shape = ShapeUtil::MakeShape(F32, {60, 38, 17, 13}),
-      .operand1_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {38, 10, 4, 4},
-                                                            {3, 2, 0, 1}),
-      .result_shape = ShapeUtil::MakeShapeWithType<float>({64, 64, 64, 13}),
-      .scratch_size = 128 * 1024,
-      .window = window,
-      .dnums = dnums,
-      .feature_group_count = 1};
-  auto thunk =
-      ConvolutionThunk::Create(Thunk::ThunkInfo(), desc, operand_slices,
-                               result_slices, result_slices.back());
-  TF_CHECK_OK(thunk.status());
-  return std::move(thunk).value();
 }
 
 std::unique_ptr<CollectiveDoneThunk> CreateAllGatherDoneThunk(
@@ -366,48 +313,6 @@ TEST(CommandBufferConversionPassTest, PartiallyConvertsToCommandBufferThunk) {
   const auto& thunks_in_command_buffer1 =
       command_buffer_thunk1->thunks()->thunks();
   EXPECT_THAT(thunks_in_command_buffer1, ThunkKindsAre(Thunk::kCopy));
-}
-
-TEST(CommandBufferConversionPassTest, ConvertConvolutionAndGemmThunks) {
-  CommandBufferConversionPass pass{"test"};
-
-  std::vector<std::unique_ptr<Thunk>> thunks;
-
-  // Create a {CopyThunk, GemmThunk, ConvolutionThunk}
-  BufferAllocation alloc0(0, 1024, 0);
-  BufferAllocation alloc1(1, 2048, 0);
-  BufferAllocation alloc2(2, 2048, 0);
-  thunks.push_back(CreateCopyThunk(alloc0));
-  thunks.push_back(CreateGemmThunk(alloc1));
-  thunks.push_back(CreateConvolutionThunk(alloc0));
-
-  auto root_thunk =
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
-  DebugOptions debug_options;
-
-  // Enable only FUSION, which means GemmThunk should not be converted.
-  debug_options.clear_xla_gpu_enable_command_buffer();
-  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
-  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
-  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
-
-  se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
-  FakeErrorAllocator allocator;
-
-  ASSERT_EQ(root_thunk->thunks().size(), 3);
-
-  ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, /*hlo_module=*/nullptr,
-                       device_info, allocator),
-              IsOkAndHolds(true));
-
-  ASSERT_EQ(root_thunk->thunks().size(), 1);
-
-  const auto* command_buffer_thunk =
-      static_cast<const CommandBufferThunk*>(root_thunk->thunks()[0].get());
-  const auto& thunks_in_command_buffer =
-      command_buffer_thunk->thunks()->thunks();
-  EXPECT_THAT(thunks_in_command_buffer,
-              ThunkKindsAre(Thunk::kCopy, Thunk::kGemm, Thunk::kConvolution));
 }
 
 TEST(CommandBufferConversionPassTest, ConvertsAsyncPairToCommandBuffer) {

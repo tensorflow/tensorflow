@@ -234,22 +234,18 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
     return true;
   }
 
-  if (config.enabled_commands.contains(DebugOptions::CUDNN)) {
-    if (IsCustomCallToBlockScaledDot(*hlo)) {
-      VLOG(3) << "Recording BlockScaledDot, target "
-              << hlo->custom_call_target() << " into command buffer.";
-      return true;
-    }
-    if (IsCustomCallTofMHA(*hlo)) {
-      VLOG(3) << "Recording FusedMHA, target " << hlo->custom_call_target()
-              << " into command buffer.";
-      return true;
-    }
-    if (IsCustomCallToDnnConvolution(*hlo)) {
-      VLOG(3) << "Recording convolution, target " << hlo->custom_call_target()
-              << " into command buffer.";
-      return true;
-    }
+  if (config.enabled_commands.contains(DebugOptions::CUDNN) &&
+      IsCustomCallToBlockScaledDot(*hlo)) {
+    VLOG(3) << "Recording BlockScaledDot, target " << hlo->custom_call_target()
+            << " into command buffer.";
+    return true;
+  }
+
+  if (config.enabled_commands.contains(DebugOptions::CUDNN) &&
+      IsCustomCallTofMHA(*hlo)) {
+    VLOG(3) << "Recording FusedMHA, target " << hlo->custom_call_target()
+            << " into command buffer.";
+    return true;
   }
 
   if (!config.enabled_commands.contains(DebugOptions::CUSTOM_CALL)) {
@@ -394,9 +390,7 @@ CommandBufferScheduling::CollectCommandBufferSequences(
   int64_t num_commands_in_current_seq = 0;
 
   // Adds `current_seq` to `sequences` if it has enough commands in it.
-  auto collect_current_seq = [&](HloInstruction* instr) {
-    VLOG(1) << "Stopped at: " << (instr ? instr->ToString() : "<end>")
-            << " #commands: " << num_commands_in_current_seq;
+  auto collect_current_seq = [&]() {
     if (num_commands_in_current_seq >= std::max(1, min_num_commands)) {
       RemoveTrailingNoOps(current_seq);
       sequences.push_back(std::move(current_seq));
@@ -547,11 +541,11 @@ CommandBufferScheduling::CollectCommandBufferSequences(
 
     // If we didn't find the next command, collect the current sequence and
     // start a new one.
-    collect_current_seq(inst);
+    collect_current_seq();
   }
 
   // Don't forget to collect the final command sequence.
-  collect_current_seq(nullptr);
+  collect_current_seq();
   return sequences;
 }
 
