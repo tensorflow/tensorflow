@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/AffineExpr.h"
@@ -50,6 +52,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -111,16 +114,6 @@ std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
                                    const std::string& suggested_name) {
   return ir_emitter_context.name_uniquer()->GetUniqueName(
       llvm_ir::SanitizeFunctionName(suggested_name));
-}
-
-absl::StatusOr<llvm::Function*> BuildKernelPrototype(
-    llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
-    const std::string& impl_fn_name, const std::string& unique_kernel_name,
-    const emitters::KernelArguments& arguments,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
-  return BuildKernelPrototypeFromUniqueName(
-      llvm_module, gpu_device_info, impl_fn_name, unique_kernel_name, arguments,
-      launch_dimensions, builder);
 }
 
 absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
@@ -189,6 +182,64 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
                                                          "nvvm.grid_constant"));
     }
   }
+  return kernel;
+}
+
+absl::StatusOr<llvm::Function*> BuildKernelPrototype(
+    llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
+    const std::string& impl_fn_name, const std::string& unique_kernel_name,
+    const emitters::KernelArguments& arguments,
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
+  return BuildKernelPrototypeFromUniqueName(
+      llvm_module, gpu_device_info, impl_fn_name, unique_kernel_name, arguments,
+      launch_dimensions, builder);
+}
+
+// Triton's kernel ABI expects additional scratchpad global memory for
+// TMA and profiling information.
+// For now it is only used for on-device creation of TMA descriptors, which
+// we do not use yet, so we are just replacing this argument with a null
+// pointer.
+// TODO: b/381242007 - Allocate a proper buffer if we want to use
+// device-side TMA APIs.
+absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
+    IrEmitterContext& ir_emitter_context,
+    const std::string& sanitized_kernel_name,
+    LaunchDimensions& launch_dimensions,
+    const emitters::KernelArguments& kernel_arguments) {
+  llvm::Function* impl_fn =
+      ir_emitter_context.llvm_module()->getFunction(sanitized_kernel_name);
+  TF_RET_CHECK(impl_fn);
+  impl_fn->setName(ir_emitter_context.name_uniquer()->GetUniqueName(
+      sanitized_kernel_name + "_impl"));
+
+  llvm::IRBuilder builder(ir_emitter_context.llvm_module()->getContext());
+
+  TF_ASSIGN_OR_RETURN(llvm::Function * kernel,
+                      BuildKernelPrototypeFromUniqueName(
+                          ir_emitter_context.llvm_module(),
+                          ir_emitter_context.gpu_device_info(),
+                          impl_fn->getName().str(), sanitized_kernel_name,
+                          kernel_arguments, launch_dimensions, &builder));
+
+  // Move function body into kernel prototype.
+  llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
+  prototype_func->splice(prototype_func->begin(), impl_fn);
+  for (const auto& [impl_fn_arg, kernel_arg] :
+       llvm::zip(impl_fn->args(), kernel->args())) {
+    impl_fn_arg.replaceAllUsesWith(&kernel_arg);
+  }
+  CHECK_EQ(impl_fn->arg_size(), kernel->arg_size() + 2);
+
+  auto tma_scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 2);
+  tma_scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
+      llvm::cast<llvm::PointerType>(tma_scratchpad_arg->getType())));
+  auto profiling_scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 1);
+  profiling_scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
+      llvm::cast<llvm::PointerType>(profiling_scratchpad_arg->getType())));
+
+  impl_fn->eraseFromParent();
+
   return kernel;
 }
 

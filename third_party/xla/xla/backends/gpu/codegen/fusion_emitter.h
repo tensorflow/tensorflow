@@ -105,11 +105,11 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototype(
     const emitters::KernelArguments& arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
-absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
-    llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
-    const std::string& impl_fn_name, const std::string& unique_kernel_name,
-    const emitters::KernelArguments& arguments,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
+absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
+    IrEmitterContext& ir_emitter_context,
+    const std::string& sanitized_kernel_name,
+    LaunchDimensions& launch_dimensions,
+    const emitters::KernelArguments& arguments);
 
 // Compute the kernel name. The opcode string may contain "-" which cannot be
 // in a PTX function name, so sanitize the name before uniquifying it.

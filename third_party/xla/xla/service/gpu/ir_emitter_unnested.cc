@@ -1500,59 +1500,14 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
             call.num_warps *
             ir_emitter_context_->gpu_device_info().threads_per_warp()));
 
-    std::string sanitized_kernel_name =
-        GetSanitizedUniqueName(*ir_emitter_context_, kernel_name);
-
     if (emit_kernels) {
-      llvm::Function* impl_fn =
-          ir_emitter_context_->llvm_module()->getFunction(kernel_name);
-      TF_RET_CHECK(impl_fn);
-      impl_fn->setName(
-          GetSanitizedUniqueName(*ir_emitter_context_, kernel_name + "_impl"));
-
-      llvm::IRBuilder builder(ir_emitter_context_->llvm_module()->getContext());
-
-      TF_ASSIGN_OR_RETURN(llvm::Function * kernel,
-                          BuildKernelPrototypeFromUniqueName(
-                              ir_emitter_context_->llvm_module(),
-                              ir_emitter_context_->gpu_device_info(),
-                              impl_fn->getName().str(), sanitized_kernel_name,
-                              kernel_arguments, launch_dimensions, &builder));
-
-      // Move function body into kernel prototype.
-      llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
-      prototype_func->splice(prototype_func->begin(), impl_fn);
-      for (const auto& [impl_fn_arg, kernel_arg] :
-           llvm::zip(impl_fn->args(), kernel->args())) {
-        impl_fn_arg.replaceAllUsesWith(&kernel_arg);
-      }
-      // Triton's kernel ABI expects additional scratchpad global memory for TMA
-      // and profiling information. For now it is only used for on-device
-      // creation of TMA descriptors, which we do not use yet, so we are just
-      // replacing this argument with a null pointer.
-      // TODO: b/381242007 - Allocate a proper buffer if we want to use
-      // device-side TMA APIs.
-      CHECK_EQ(impl_fn->arg_size(), kernel->arg_size() + 2);
-      auto tma_scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 2);
-      tma_scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
-          llvm::cast<llvm::PointerType>(tma_scratchpad_arg->getType())));
-      auto profiling_scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 1);
-      profiling_scratchpad_arg->replaceAllUsesWith(
-          llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(
-              profiling_scratchpad_arg->getType())));
-
-      impl_fn->eraseFromParent();
-
-      for (auto& arg : prototype_func->args()) {
-        // Remove the alignment and aliasing attributes to avoid
-        // recompiling the kernel for each alignment/aliasing
-        // combination.
-        arg.removeAttr(llvm::Attribute::Alignment);
-        arg.removeAttr(llvm::Attribute::NoAlias);
-      }
+      TF_RETURN_IF_ERROR(
+          RemoveUnusedTritonAbiArguments(*ir_emitter_context_, kernel_name,
+                                         launch_dimensions, kernel_arguments)
+              .status());
     }
 
-    return {{sanitized_kernel_name, launch_dimensions, result.cluster_dim,
+    return {{kernel_name, launch_dimensions, result.cluster_dim,
              result.shmem_bytes}};
   };
 
