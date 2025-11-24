@@ -1530,7 +1530,6 @@ class DefaultSchedulerCore : public SchedulerCore {
     bool has_pressure_change = false;
     bool has_estimated_connected_send_ready_time = false;
     bool has_resource_constrained = false;
-    bool unused = false;
 
     int64_t pressure_change_first;
     int64_t pressure_change_second;

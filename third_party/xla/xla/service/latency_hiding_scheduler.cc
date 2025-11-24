@@ -1307,7 +1307,7 @@ class ReadySetLt {
 
     std::pair<int64_t, int64_t> a_increase = {0, 0};
     std::pair<int64_t, int64_t> b_increase = {0, 0};
-    bool computed_memory_increases = true;
+    bool computed_memory_increases = false;
     if (config_has_memory_limit_ &&
         sched_state_.memory_pressure_tracker->memory_usage() >
             (config_memory_limit_ / 2)) {
@@ -1665,9 +1665,7 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
                         early_target_scheduling_rule_};
     // Construct a schedule candidate for caching.
     ScheduleCandidate ready_chosen;
-    ScheduleCandidate ready_chosen_orig;
     bool ready_chosen_valid = false;
-    ScheduleCandidate ready_candidate_orig;
     auto chosen_it = sched_state.ready_set.end();
 
     // Try to pick nodes from the ready set first that are the ones that cause
@@ -1744,10 +1742,6 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
         continue;
       }
 
-      if (ABSL_PREDICT_FALSE(vlog_2)) {
-        ready_chosen_orig = ready_chosen;
-        ready_candidate_orig = ready_candidate;
-      }
       const char* reason;
       bool new_candidate_selected =
           ready_lt.MaybeUpdate(ready_candidate, ready_chosen, &reason);
@@ -1761,20 +1755,18 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
             };
         VLOG(2) << "Choosing from ready ("
                 << (new_candidate_selected
-                        ? ready_candidate_orig.node->GetInstr().name()
-                        : ready_chosen_orig.node->GetInstr().name())
+                        ? ready_candidate.node->GetInstr().name()
+                        : ready_chosen.node->GetInstr().name())
                 << ") vs ("
                 << (new_candidate_selected
-                        ? ready_chosen_orig.node->GetInstr().name()
-                        : ready_candidate_orig.node->GetInstr().name())
+                        ? ready_chosen.node->GetInstr().name()
+                        : ready_candidate.node->GetInstr().name())
                 << ") Reason: " << reason << " mem pressure chosen "
-                << print_pressure_change(new_candidate_selected
-                                             ? ready_candidate_orig
-                                             : ready_chosen_orig)
+                << print_pressure_change(
+                       new_candidate_selected ? ready_candidate : ready_chosen)
                 << " mem pressure other "
-                << print_pressure_change(new_candidate_selected
-                                             ? ready_chosen_orig
-                                             : ready_candidate_orig);
+                << print_pressure_change(
+                       new_candidate_selected ? ready_chosen : ready_candidate);
       }
 
       if (new_candidate_selected) {
