@@ -17,6 +17,15 @@ service ProfilerService {
   rpc Terminate(TerminateRequest) returns (TerminateResponse) {}
   // Collects profiling data and returns user-friendly metrics.
   rpc Monitor(MonitorRequest) returns (MonitorResponse) {}
+  // Starts a continuous profiling session.
+  rpc ContinuousProfiling(ProfileRequest)
+      returns (ContinuousProfilingResponse) {
+    option deadline = 300;
+  }
+  // Gets a snapshot of an ongoing profiling session.
+  rpc GetSnapShot(GetSnapShotRequest) returns (ProfileResponse) {
+    option deadline = 300;
+  }
 }
 
 message ToolRequestOptions {
@@ -98,6 +107,13 @@ message TerminateRequest {
 }
 
 message TerminateResponse {}
+
+message GetSnapShotRequest {
+  // The session_id of the continuous profiling session.
+  string session_id = 1;
+}
+
+message ContinuousProfilingResponse {}
 
 // Next-ID: 4
 message MonitorRequest {

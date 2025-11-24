@@ -19,11 +19,14 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/env_time.h"
@@ -44,6 +47,8 @@ namespace tsl {
 namespace profiler {
 namespace {
 
+using tensorflow::ContinuousProfilingResponse;
+using tensorflow::GetSnapShotRequest;
 using tensorflow::MonitorRequest;
 using tensorflow::MonitorResponse;
 using tensorflow::ProfileRequest;
@@ -89,6 +94,10 @@ absl::Status CollectData(const ProfileRequest& request,
 
 class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
  public:
+  struct ContinuousSession {
+    tensorflow::ProfileRequest request;
+    std::unique_ptr<ProfilerSession> profiler;
+  };
   ::grpc::Status Monitor(::grpc::ServerContext* ctx, const MonitorRequest* req,
                          MonitorResponse* response) override {
     return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "unimplemented.");
@@ -131,6 +140,69 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
     return ::grpc::Status::OK;
   }
 
+  ::grpc::Status ContinuousProfiling(
+      ::grpc::ServerContext* ctx, const ProfileRequest* req,
+      ContinuousProfilingResponse* response) override {
+    absl::MutexLock lock(&mutex_);
+    if (continuous_profiling_sessions_.contains(req->session_id())) {
+      return ::grpc::Status(
+          ::grpc::StatusCode::ALREADY_EXISTS,
+          "A profiling session with the same ID is already running.");
+    }
+    std::unique_ptr<ProfilerSession> profiler =
+        ProfilerSession::Create(req->opts());
+    absl::Status status = profiler->Status();
+    if (!status.ok()) {
+      return ::grpc::Status(::grpc::StatusCode::INTERNAL,
+                            std::string(status.message()));
+    }
+    continuous_profiling_sessions_[req->session_id()] = {*req,
+                                                         std::move(profiler)};
+    return ::grpc::Status::OK;
+  }
+
+  ::grpc::Status GetSnapShot(::grpc::ServerContext* ctx,
+                             const GetSnapShotRequest* req,
+                             ProfileResponse* response) override {
+    ContinuousSession session;
+    {
+      absl::MutexLock lock(&mutex_);
+      auto it = continuous_profiling_sessions_.find(req->session_id());
+      if (it == continuous_profiling_sessions_.end()) {
+        return ::grpc::Status(
+            ::grpc::StatusCode::NOT_FOUND,
+            "No continuous profiling session found with the given ID.");
+      }
+      session = std::move(it->second);
+      continuous_profiling_sessions_.erase(it);
+    }
+
+    // Ensure emit_xspace is true to get data back in the response for the
+    // client.
+    session.request.set_emit_xspace(true);
+    absl::Status status =
+        CollectData(session.request, session.profiler.get(), response);
+    if (!status.ok()) {
+      return ::grpc::Status(::grpc::StatusCode::INTERNAL,
+                            std::string(status.message()));
+    }
+
+    // Restart profiling.
+    {
+      absl::MutexLock lock(&mutex_);
+      std::unique_ptr<ProfilerSession> new_profiler =
+          ProfilerSession::Create(session.request.opts());
+      absl::Status new_status = new_profiler->Status();
+      if (!new_status.ok()) {
+        return ::grpc::Status(::grpc::StatusCode::INTERNAL,
+                              std::string(new_status.message()));
+      }
+      continuous_profiling_sessions_[req->session_id()] = {
+          session.request, std::move(new_profiler)};
+    }
+    return ::grpc::Status::OK;
+  }
+
   ::grpc::Status Terminate(::grpc::ServerContext* ctx,
                            const TerminateRequest* req,
                            TerminateResponse* response) override {
@@ -149,6 +221,8 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
   absl::Mutex mutex_;
   absl::flat_hash_map<std::string, bool> stop_signals_per_session_
       ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<std::string, ContinuousSession>
+      continuous_profiling_sessions_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace
