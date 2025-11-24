@@ -16,7 +16,6 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -42,11 +41,13 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -56,24 +57,15 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/platform_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/integrations/device_mem_allocator.h"
-#include "xla/stream_executor/integrations/stream_executor_allocator.h"
-#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/tests/collective_ops_e2e_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/framework/allocator.h"
-#include "xla/tsl/framework/bfc_allocator.h"
-#include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -89,170 +81,12 @@ namespace op = ::xla::testing::opcode_matchers;
 namespace m = ::xla::match;
 using ::testing::NotNull;
 
-// Makes a DeviceAssignment device#i to replica_id #i.
-DeviceAssignment MakeDeviceAssn(int64_t num_replicas) {
-  DeviceAssignment assn(/*replica_count=*/num_replicas,
-                        /*computation_count=*/1);
-  for (int64_t i = 0; i < num_replicas; ++i) {
-    assn(i, 0) = i;
-  }
-  return assn;
-}
-
-std::unique_ptr<tsl::BFCAllocator> CreateAllocator(se::StreamExecutor* executor,
-                                                   int64_t device_ordinal,
-                                                   bool is_collective,
-                                                   size_t memory_size) {
-  std::string name_suffix = is_collective ? "_collectives_bfc" : "_bfc";
-  tsl::BFCAllocator::Options opts;
-  opts.allow_growth = false;
-  std::unique_ptr<tsl::SubAllocator> device_mem_allocator;
-  if (is_collective) {
-    device_mem_allocator = std::make_unique<se::StreamExecutorAllocator>(
-        executor->CreateMemoryAllocator(se::MemoryType::kCollective).value(),
-        /*memory_type=*/stream_executor::MemoryType::kCollective,
-        device_ordinal);
-  } else {
-    device_mem_allocator = std::make_unique<se::DeviceMemAllocator>(
-        executor, tsl::PlatformDeviceId(device_ordinal));
-  }
-  return std::make_unique<tsl::BFCAllocator>(
-      std::move(device_mem_allocator), memory_size,
-      absl::StrCat("GPU_", device_ordinal, name_suffix), opts);
-}
-
-template <typename Type>
-Type CheckStatus(absl::StatusOr<Type> result) {
-  CHECK_OK(result);
-  return *result;
-}
-
 bool IsAsync(const HloInstruction* inst) {
   return !inst->backend_config<gpu::GpuBackendConfig>()
               .value()
               .collective_backend_config()
               .is_sync();
 }
-
-class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
- public:
-  CollectiveOpsE2ETestBase() {
-    se::Platform* platform = CheckStatus(PlatformUtil::GetPlatform("GPU"));
-    se::Platform* reference_platform =
-        CheckStatus(PlatformUtil::GetPlatform("GPU"));
-
-    std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
-    constexpr int64_t kGB = 1024LL * 1024LL * 1024LL;
-    size_t common_buffers_size = 8 * kGB;   // 8GB
-    size_t collectives_buffers_size = kGB;  // 1GB
-    for (int64_t i = 0; i < platform->VisibleDeviceCount(); ++i) {
-      se::StreamExecutor* executor =
-          CheckStatus(platform->ExecutorForDevice(i));
-      // Common memory allocator for device i.
-      allocators.emplace_back(
-          CreateAllocator(executor, i, /*is_collective=*/false,
-                          common_buffers_size),
-          nullptr, 0, i, platform);
-
-      // Collectives and symmetric memory allocator for device i.
-      allocators.emplace_back(
-          CreateAllocator(executor, i, /*is_collective=*/true,
-                          collectives_buffers_size),
-          nullptr, (int)gpu::MemorySpaceColor::kCollective, i, platform);
-    }
-
-    hlo_runner_ = std::make_unique<HloRunner>(
-        platform, /*intra_op_parallelism_threads=*/0,
-        std::make_unique<se::MultiDeviceAdapter>(platform,
-                                                 std::move(allocators)));
-    reference_hlo_runner_ = std::make_unique<HloRunner>(
-        reference_platform, /*intra_op_parallelism_threads=*/0);
-  }
-
-  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
-      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
-      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
-      const int64_t num_replicas, const bool run_hlo_passes,
-      DeviceAssignment* const device_assignment) {
-    // TODO(b/441865120): Use designated initializers this once XLA moves to
-    // C++20.
-    HloRunnerInterface::ReplicatedExecuteOptions options;
-    options.num_replicas = num_replicas;
-    options.run_hlo_passes = run_hlo_passes;
-    options.use_threads = true;
-
-    return hlo_runner_->ExecuteReplicated(
-        std::move(executable_provider), std::move(argument_count_provider),
-        std::move(argument_provider), std::move(options), device_assignment);
-  }
-
-  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::unique_ptr<HloModule> module,
-      const absl::Span<const Literal* const> arguments,
-      const int64_t num_replicas, DeviceAssignment* const device_assignment,
-      const bool run_hlo_passes, const bool use_threads) {
-    // TODO(b/441865120): Use designated initializers this once XLA moves to
-    // C++20.
-    HloRunnerInterface::ReplicatedExecuteOptions options;
-    options.num_replicas = num_replicas;
-    options.arguments = {arguments.begin(), arguments.end()};
-    options.run_hlo_passes = run_hlo_passes;
-    options.use_threads = use_threads;
-
-    return hlo_runner_->ExecuteReplicated(std::move(module), std::move(options),
-                                          device_assignment);
-  }
-
-  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::unique_ptr<HloModule> module,
-      const std::vector<std::vector<Literal*>> arguments,
-      DeviceAssignment* const device_assignment, const int64_t num_replicas,
-      const bool run_hlo_passes) {
-    CHECK(num_replicas > 0 && "expect at least one replica");
-    CHECK(num_replicas == arguments.size() &&
-          "expect arguments for each replica");
-    int64_t argument_count = arguments.front().size();
-    TF_ASSIGN_OR_RETURN(
-        const std::unique_ptr<OpaqueExecutable> executable,
-        hlo_runner_->CreateExecutable(std::move(module), run_hlo_passes));
-    return ExecuteReplicated(
-        /*executable_provider=*/[&](int64_t) { return executable.get(); },
-        /*argument_count_provider=*/[&](int64_t) { return argument_count; },
-        /*argument_provider=*/
-        [&](int64_t replica_idx, int64_t argument_idx) -> const Literal* {
-          return arguments[replica_idx][argument_idx];
-        },
-        num_replicas, /*run_hlo_passes=*/run_hlo_passes,
-        /*device_assignment=*/device_assignment);
-  }
-
-  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      OpaqueExecutable* executable, int64_t num_replicas) {
-    DeviceAssignment device_assignment = MakeDeviceAssn(num_replicas);
-    return ExecuteReplicated(
-        /*executable_provider*/ [&](int64_t) { return executable; },
-        /*argument_count_provider*/ [](int64_t) { return 0; },
-        /*argument_provider*/ [](int64_t, int64_t) { return nullptr; },
-        num_replicas, /*run_hlo_passes=*/false, &device_assignment);
-  }
-
-  const se::GpuComputeCapability& Capability() {
-    return hlo_runner_->backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
-  }
-
-  bool IsHopperAndHigher() {
-    return Capability().IsCuda() &&
-           Capability().cuda_compute_capability()->IsAtLeastHopper();
-  }
-
- protected:
-  std::unique_ptr<HloRunner> hlo_runner_;
-  std::unique_ptr<HloRunner> reference_hlo_runner_;
-};
 
 class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
  public:
@@ -305,63 +139,6 @@ class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
  private:
   static constexpr const char* kF8E4M3DatatypePlaceholder{"<<F8E4M3>>"};
   static constexpr const char* kF8E5M2DatatypePlaceholder{"<<F8E5M2>>"};
-};
-
-// E2E tests for collective ops. These will generally verify some HLO transform
-// for collectives (for example, sync -> async conversion) and correct
-// execution of the transformed HLO.
-
-// E2E test for collectives with flags set. Has constructor arguments specifying
-// whether to enable/disable async collectives, and to set the memcpy_local_p2p
-// flag. Subclasses pass in constructor arguments based on GetParam().
-class CollectiveOpsWithFlagsBase : public CollectiveOpsE2ETestBase {
- public:
-  CollectiveOpsWithFlagsBase(bool enable_async, bool enable_p2p_memcpy)
-      : enable_async_(enable_async), enable_p2p_memcpy_(enable_p2p_memcpy) {
-    VLOG(1) << "Running with " << num_devices_ << " devices";
-    num_devices_ = hlo_runner_->backend().device_count();
-  }
-
- protected:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-
-    // Disable autotuning which is unnecessary.
-    debug_options.set_xla_gpu_autotune_level(0);
-
-    // Enable or disable all async collectives based on test parameter.
-    if (!enable_async_) {
-      for (auto option :
-           {DebugOptions::NOOP, DebugOptions::ALLREDUCE,
-            DebugOptions::ALLGATHER, DebugOptions::REDUCESCATTER,
-            DebugOptions::COLLECTIVEBROADCAST, DebugOptions::ALLTOALL,
-            DebugOptions::COLLECTIVEPERMUTE, DebugOptions::RAGGEDALLTOALL}) {
-        debug_options.add_xla_gpu_disable_async_collectives(option);
-      }
-    }
-    debug_options.add_xla_disable_hlo_passes(
-        "gpu-convert-async-collectives-to-sync");
-    if (enable_p2p_memcpy_) {
-      debug_options.set_xla_gpu_use_memcpy_local_p2p(true);
-    }
-    return debug_options;
-  }
-
-  absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
-      absl::string_view hlo_string, int64_t num_replicas) {
-    HloModuleConfig config =
-        GetModuleConfigForTest(/*replica_count=*/num_replicas);
-
-    TF_ASSIGN_OR_RETURN(auto module,
-                        ParseAndReturnVerifiedModule(hlo_string, config));
-    return hlo_runner_->CreateExecutable(std::move(module),
-                                         /*run_hlo_passes=*/true);
-  }
-
-  const bool enable_async_;
-  const bool enable_p2p_memcpy_;
-  int64_t num_devices_;
 };
 
 class AsyncCollectiveOps : public CollectiveOpsWithFlagsBase,
