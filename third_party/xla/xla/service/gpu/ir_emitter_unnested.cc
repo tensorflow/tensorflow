@@ -148,6 +148,7 @@ limitations under the License.
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -273,8 +274,10 @@ absl::Status IrEmitterUnnested::EmitConstant(
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       GetAllocationSliceForHlo(instr, {}));
 
-  ir_emitter_context_->emit_constant(num_elements, element_bytes, global_name,
-                                     slice.index(), std::move(content), &b_);
+  GpuExecutable::ConstantInfo info = AppendGlobalConstant(
+      ir_emitter_context_->llvm_module_constants(), num_elements, element_bytes,
+      global_name, slice.index(), std::move(content), &b_);
+  ir_emitter_context_->constants().push_back(std::move(info));
   return absl::OkStatus();
 }
 
@@ -1870,8 +1873,9 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
                              : standard_num_iterations_in_sort_dim,
         tile_size, kUnrollFactor,
         [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
-          return CallNestedComputation(&b_, *ir_emitter_context_, *comparator,
-                                       operands, output);
+          return CallNestedComputation(&b_, *ir_emitter_context_,
+                                       ir_emitter_context_->llvm_module(),
+                                       *comparator, operands, output);
         });
   };
   std::vector<int64_t> xor_masks;
