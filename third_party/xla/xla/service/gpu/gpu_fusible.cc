@@ -50,10 +50,24 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+bool ContainsTransposeWithSmallMostMinorDim(const HloFusionAdaptor& fusion,
+                                            int64_t unroll_factor) {
+  return HloAnyOf(fusion, [unroll_factor](HloInstructionAdaptor instr) {
+    if (instr.opcode() != HloOpcode::kTranspose) {
+      return false;
+    }
+    const HloInstruction& transpose = instr.instruction();
+    // We can assume that TransposeDimensionGrouper pass has run, so no need
+    // to try to combine adjacent dimensions.
+    return transpose.shape().dimensions().back() < unroll_factor;
+  });
+}
 
 bool HasAnyTiledTransposeRoot(const HloComputation& computation) {
   return absl::c_any_of(GetFusionRoots(computation),
@@ -83,6 +97,61 @@ int ComputeMaxUnrollFactor(int64_t num_elements, int64_t max_unroll) {
 }
 
 }  // namespace
+
+int64_t MaxUnrollFactor(const HloFusionAnalysis* analysis) {
+  if (analysis == nullptr) {
+    return 4;
+  }
+
+  // On Blackwell we would like to increase the maximum unroll factor to 8, as
+  // we need more vectorization for full performance.
+  // However we need to check additional conditions:
+  //   - Unrolling is potentially bad for fusions with reductions, where one
+  //     thread will handle the full reduction dimension, so more unrolling
+  //     can hurt parallelism.
+  //   - Unrolling is potentially bad for fusions with many outputs, as that
+  //     might increase register pressure. A thread needs to compute all the
+  //     outputs first before it can write them due to potential in-place
+  //     buffers. More unrolling will increase the number of values that need
+  //     to be computed before writing.
+  //   - Unrolling is potentially bad for transposes if the most minor
+  //     dimension of transpose is smaller than the unroll factor. This could
+  //     potentially be checked with indexing analysis as well, but it is
+  //     tricky to get the conditions right when bad or unknown indexing
+  //     should block more unrolling or not. For now, let's keep it simple and
+  //     only check for transpose.
+
+  // For now, don't allow any multi-output fusions. However register pressure
+  // also does not only depend on the number of outputs, so we might hit it
+  // also for single fusions, or there could be multi-output fusions that
+  // don't face register pressure. This part of the heuristic may need
+  // improvements.
+  constexpr int kMaxNumOutputsForFullUnrolling = 1;
+  // On PTX level, we can vectorize with v4.b32, but not with v8.b32. So
+  // higher unroll factor does not make sense with 32 bit or more.
+  constexpr int kMaxBitsToVectorizeWithVectorSize4 = 32;
+  DebugOptions debug_options = analysis->fusion_root(0)
+                                   .instruction()
+                                   .GetModule()
+                                   ->config()
+                                   .debug_options();
+  if (analysis->device_info().cuda_compute_capability().IsBlackwell() &&
+      analysis->emitter_fusion_kind() ==
+          HloFusionAnalysis::EmitterFusionKind::kLoop &&
+      analysis->input_output_info().smallest_output_dtype_bits <
+          kMaxBitsToVectorizeWithVectorSize4 &&
+      analysis->fusion_root_count() <= kMaxNumOutputsForFullUnrolling &&
+      debug_options.xla_gpu_experimental_allow_unroll_factor_eight() &&
+      !HloAnyOf(
+          analysis->fusion(),
+          [](HloInstructionAdaptor node) {
+            return node.opcode() == HloOpcode::kReduce;
+          }) &&
+      !ContainsTransposeWithSmallMostMinorDim(analysis->fusion(), 8)) {
+    return 8;
+  }
+  return 4;
+}
 
 bool IsPhysicallyTransposing(const HloInstruction& instr) {
   if (instr.opcode() == HloOpcode::kFusion) {
@@ -930,21 +999,6 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   return ComputeLoopFusionConfig(analysis, GetElementShape(analysis));
 }
 
-namespace {
-bool ContainsTransposeWithSmallMostMinorDim(const HloFusionAdaptor& fusion,
-                                            int64_t unroll_factor) {
-  return HloAnyOf(fusion, [unroll_factor](HloInstructionAdaptor instr) {
-    if (instr.opcode() != HloOpcode::kTranspose) {
-      return false;
-    }
-    const HloInstruction& transpose = instr.instruction();
-    // We can assume that TransposeDimensionGrouper pass has run, so no need
-    // to try to combine adjacent dimensions.
-    return transpose.shape().dimensions().back() < unroll_factor;
-  });
-}
-}  // namespace
-
 LaunchDimensionsConfig ComputeLoopFusionConfig(
     const HloFusionAnalysis& analysis, const Shape& element_shape) {
   int unroll_factor = 1;
@@ -959,56 +1013,8 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
                           analysis.device_info().core_count();
   if (num_elements >= n_threads_max &&
       !MayCausePerformanceDropIfUnrolled(analysis.fusion())) {
-    int64_t max_unroll = MaxUnrollFactor();
-    // On Blackwell we would like to increase the maximum unroll factor to 8, as
-    // we need more vectorization for full performance.
-    // However we need to check additional conditions:
-    //   - Unrolling is potentially bad for fusions with reductions, where one
-    //     thread will handle the full reduction dimension, so more unrolling
-    //     can hurt parallelism.
-    //   - Unrolling is potentially bad for fusions with many outputs, as that
-    //     might increase register pressure. A thread needs to compute all the
-    //     outputs first before it can write them due to potential in-place
-    //     buffers. More unrolling will increase the number of values that need
-    //     to be computed before writing.
-    //   - Unrolling is potentially bad for transposes if the most minor
-    //     dimension of transpose is smaller than the unroll factor. This could
-    //     potentially be checked with indexing analysis as well, but it is
-    //     tricky to get the conditions right when bad or unknown indexing
-    //     should block more unrolling or not. For now, let's keep it simple and
-    //     only check for transpose.
-
-    // For now, don't allow any multi-output fusions. However register pressure
-    // also does not only depend on the number of outputs, so we might hit it
-    // also for single fusions, or there could be multi-output fusions that
-    // don't face register pressure. This part of the heuristic may need
-    // improvements.
-    constexpr int kMaxNumOutputsForFullUnrolling = 1;
-    // On PTX level, we can vectorize with v4.b32, but not with v8.b32. So
-    // higher unroll factor does not make sense with 32 bit or more.
-    constexpr int kMaxBitsToVectorizeWithVectorSize4 = 32;
-    if (analysis.device_info().cuda_compute_capability().IsBlackwell() &&
-        analysis.emitter_fusion_kind() ==
-            HloFusionAnalysis::EmitterFusionKind::kLoop &&
-        analysis.input_output_info().smallest_output_dtype_bits <
-            kMaxBitsToVectorizeWithVectorSize4 &&
-        analysis.fusion_root_count() <= kMaxNumOutputsForFullUnrolling &&
-        analysis.fusion_root(0)
-            .instruction()
-            .GetModule()
-            ->config()
-            .debug_options()
-            .xla_gpu_experimental_allow_unroll_factor_eight() &&
-        !HloAnyOf(
-            analysis.fusion(),
-            [](HloInstructionAdaptor node) {
-              return node.opcode() == HloOpcode::kReduce;
-            }) &&
-        !ContainsTransposeWithSmallMostMinorDim(analysis.fusion(),
-                                                max_unroll * 2)) {
-      max_unroll *= 2;
-    }
-    unroll_factor = ComputeMaxUnrollFactor(num_elements, max_unroll);
+    unroll_factor =
+        ComputeMaxUnrollFactor(num_elements, MaxUnrollFactor(&analysis));
   }
   // CHECK that unroll_factor is a power-of-2, as needed by the logic below.
   CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));
