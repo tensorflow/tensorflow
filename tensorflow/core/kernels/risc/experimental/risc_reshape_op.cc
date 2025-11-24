@@ -33,7 +33,7 @@ class RiscReshapeOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(
-    Name("RiscReshape").Device(DEVICE_CPU).TypeConstraint<int32>("Tshape"),
+    Name("RiscReshape").Device(DEVICE_CPU).TypeConstraint<int32_t>("Tshape"),
     RiscReshapeOp);
 REGISTER_KERNEL_BUILDER(
     Name("RiscReshape").Device(DEVICE_CPU).TypeConstraint<int64_t>("Tshape"),

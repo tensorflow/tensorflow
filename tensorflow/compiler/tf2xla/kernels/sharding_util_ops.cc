@@ -101,8 +101,8 @@ absl::Status GetAndValidateAttributes(OpKernelConstruction* ctx,
   return absl::OkStatus();
 }
 
-std::vector<int64_t> GetSliceIndices(absl::Span<const int64> num_partitions,
-                                     absl::Span<const int64> slice_shape,
+std::vector<int64_t> GetSliceIndices(absl::Span<const int64_t> num_partitions,
+                                     absl::Span<const int64_t> slice_shape,
                                      const int index) {
   DCHECK_EQ(num_partitions.size(), slice_shape.size());
 
@@ -213,7 +213,7 @@ class XlaSplitNDBaseOp : public XlaOpKernel {
       // Calculate paddings necessary for slice instead of padding input and
       // slicing subsequently to reduce temporary memory allocation.
       for (int dim = 0; dim < rank; ++dim) {
-        const int64 dim_size = input_shape.dim_size(dim);
+        const int64_t dim_size = input_shape.dim_size(dim);
         if (slice_start_indices[dim] >= dim_size) {
           // Complete padding.
           slice_start_indices[dim] = dim_size;
@@ -387,9 +387,9 @@ class XlaConcatNDBaseOp : public XlaOpKernel {
 
       std::vector<xla::XlaOp> update_slice_start_indices;
       update_slice_start_indices.reserve(rank);
-      for (int64 start_index : slice_start_indices) {
+      for (int64_t start_index : slice_start_indices) {
         update_slice_start_indices.push_back(
-            xla::ConstantR0<int32>(ctx->builder(), start_index));
+            xla::ConstantR0<int32_t>(ctx->builder(), start_index));
       }
       output = xla::DynamicUpdateSlice(output, input_slice,
                                        update_slice_start_indices);

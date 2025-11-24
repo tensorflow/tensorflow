@@ -39,6 +39,7 @@ cc_library(
     srcs = ["export_named_computations.cc"],
     hdrs = ["export_named_computations.h"],
     deps = [
+        "//xla/mlir_hlo",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/log:check",
@@ -57,7 +58,6 @@ cc_library(
     srcs = ["import_func_calls.cc"],
     hdrs = ["import_func_calls.h"],
     deps = [
-        "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",

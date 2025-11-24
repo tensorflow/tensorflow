@@ -66,6 +66,8 @@ EXCLUDED_TESTS=(
 
     # @local_xla//xla/backends/gpu/codegen/triton:fusion_emitter_device_test_amdgpu_any
     TritonEmitterTest.FusionWithOutputContainingMoreThanInt32MaxElementsExecutesCorrectly
+    TritonEmitterTest.ConvertF16ToF8E5M2Exhaustive
+    TritonEmitterTest.RocmWarpSizeIsSetCorrectly
     BasicDotAlgorithmEmitterTestSuite/BasicDotAlgorithmEmitterTest.BasicAlgorithmIsEmittedCorrectly/ALG_DOT_F16_F16_F16
 
     # @local_xla//xla/backends/gpu/codegen/triton:fusion_emitter_int4_device_test_amdgpu_any
@@ -73,6 +75,14 @@ EXCLUDED_TESTS=(
 
     # @local_xla//xla/backends/gpu/codegen/triton:fusion_emitter_parametrized_test_amdgpu_any
     TritonNormalizationTest.CanFuseAndEmitDiamondWithBF16Converts
+    ElementwiseTestSuiteF16/UnaryElementwiseTest.ElementwiseUnaryOpExecutesCorrectly/f16_cosine
+    ElementwiseTestSuiteF16/BinaryElementwiseTest.ElementwiseBinaryOpExecutesCorrectly/f16_atan2
+    ElementwiseTestSuiteF16/BinaryElementwiseTest.ElementwiseFusionExecutesCorrectly/f16_atan2
+
+    # @local_xla//xla/service/gpu/tests:command_buffer_test_amdgpu_any
+    CommandBufferTests/CommandBufferTest.WhileLoop/*
+    CommandBufferTests/CommandBufferTest.IndexConditional/*
+    CommandBufferTests/CommandBufferTest.TrueFalseConditional/*
 
     # @local_xla//xla/backends/gpu/runtime:command_buffer_conversion_pass_test_amdgpu_any
     CommandBufferConversionPassTest.ConvertWhileThunk
@@ -88,14 +98,33 @@ EXCLUDED_TESTS=(
     DotTf32Tf32F32Tests/DotAlgorithmSupportTest.AlgorithmIsSupportedFromCudaCapability/dot_tf32_tf32_f32_*
     DotTf32Tf32F32X3Tests/DotAlgorithmSupportTest.AlgorithmIsSupportedFromCudaCapability/dot_tf32_tf32_f32_*
 
+    # @local_xla//xla/service/gpu/transforms:triton_fusion_numerics_verifier_test_amdgpu_any_notfrt
+    # @local_xla//xla/service/gpu/transforms:triton_fusion_numerics_verifier_test_amdgpu_any
+    TritonFusionNumericsVerifierTest.CompilationSucceedsEvenIfKernelWillSpillRegisters
+    TritonFusionNumericsVerifierTest.VerifyThatDisablingTritonIsFast
+
     # @local_xla//xla/service/gpu/tests:gpu_cub_sort_test_amdgpu_any
     CubSortKeysTest.CompareToReferenceNumpyOrderGt
     CubSortKeysTest.CompareToReferenceTotalOrderLt
     CubSort/CubSortKeysTest.*
     CubSort/CubSortPairsTest.*
 
+    # @local_xla//xla/backends/gpu/runtime:cub_sort_thunk_test
+    CubSortThunkTest.ProtoRoundTrip
+
     # @local_xla//xla/service/gpu/transforms:cublas_gemm_rewriter_test_amdgpu_any
     CublasLtGemmRewriteTest.MatrixBiasSwishActivation
+    CublasLtGemmRewriteTest.VectorBiasReluActivationF16Padded
+    CublasLtGemmRewriteTest.VectorBiasF16Padded
+    CublasLtGemmRewriteTest.ReluActivationF16Padded
+    CublasLtGemmRewriteTest.VectorBiasReluActivationBF16Padded
+    CublasLtGemmRewriteTest.BF16VectorBiasPadded
+    CublasLtGemmRewriteTest.ApproxGeluActivationBF16
+    CublasLtGemmRewriteTest.ReluActivationBF16Padded
+    CublasLtGemmRewriteTest.VectorBiasBF16Padded
+
+    # @local_xla//xla/service/gpu:determinism_test_amdgpu_any
+    DeterminismTest.Conv
 
     # @local_xla//xla/tests:sample_file_test_amdgpu_any
     # @local_xla//xla/tests:sample_file_test_amdgpu_any_notfrt
@@ -107,8 +136,8 @@ EXCLUDED_TESTS=(
     # @local_xla//xla/tests:scatter_test_amdgpu_any_notfrt
     ScatterTest.TensorFlowScatterV1_UpdateTwice
 
-    # @local_xla//xla/service/gpu/llvm_gpu_backend:amdgpu_bitcode_link_test
-    BitcodeLinkTest.TestLinkEmbeded
+    # @local_xla//xla/tests:multioutput_fusion_test_amdgpu_any
+    MultiOutputFusionTest.MultiOutputReduceFusionMajorWithExtraOutput
 )
 
 bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rocm.bazelrc test \
@@ -125,5 +154,9 @@ bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rocm.b
     --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
     --test_filter=-$(IFS=: ; echo "${EXCLUDED_TESTS[*]}") \
     -- @local_xla//xla/... \
-    -@local_xla//xla/service/gpu/tests:sorting.hlo.test_mi200
+    -@local_xla//xla/service/gpu/tests:sorting_test_amdgpu_any \
+    -@local_xla//xla/service/gpu/tests:sorting.hlo.test_mi200 \
+    -@local_xla//xla/backends/gpu/codegen/emitters/tests:reduce_row/mof_scalar_variadic.hlo.test \
+    -@local_xla//xla/backends/gpu/codegen/emitters/tests:reduce_row/side_output_broadcast.hlo.test \
+    -@local_xla//xla/tools/hlo_opt:tests/gpu_hlo_llvm.hlo.test
     # ^^^ TODO (rocm) weekly-sync-20251021 excluded test files

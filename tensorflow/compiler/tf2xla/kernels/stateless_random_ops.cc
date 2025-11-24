@@ -76,7 +76,7 @@ xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype) {
     // `BitcastConvertType(ConvertElementType(u32, U16), BF16)`, to avoid the
     // unclear `ConvertElementType(f32, BF16)` behavior.
     xla::XlaOp output = xla::BitcastConvertType(input, xla::U32) &
-                        xla::ConstantR0<uint32>(builder, 0xFFFF0000);
+                        xla::ConstantR0<uint32_t>(builder, 0xFFFF0000);
     return xla::ConvertElementType(xla::BitcastConvertType(output, xla::F32),
                                    xla::BF16);
   } else {
@@ -184,7 +184,7 @@ class StatelessRandomUniformOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
-  string device_type_string_;
+  std::string device_type_string_;
 
   StatelessRandomUniformOp(const StatelessRandomUniformOp&) = delete;
   void operator=(const StatelessRandomUniformOp&) = delete;
@@ -240,7 +240,7 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
-  string device_type_string_;
+  std::string device_type_string_;
 
   StatelessRandomUniformIntOp(const StatelessRandomUniformIntOp&) = delete;
   void operator=(const StatelessRandomUniformIntOp&) = delete;
@@ -283,7 +283,7 @@ class StatelessRandomUniformFullIntOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
-  string device_type_string_;
+  std::string device_type_string_;
 
   StatelessRandomUniformFullIntOp(const StatelessRandomUniformFullIntOp&) =
       delete;
@@ -336,7 +336,7 @@ class StatelessRandomNormalOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
-  string device_type_string_;
+  std::string device_type_string_;
 
   StatelessRandomNormalOp(const StatelessRandomNormalOp&) = delete;
   void operator=(const StatelessRandomNormalOp&) = delete;
@@ -384,7 +384,7 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
-  string device_type_string_;
+  std::string device_type_string_;
 
   StatelessTruncatedNormalOp(const StatelessTruncatedNormalOp&) = delete;
   void operator=(const StatelessTruncatedNormalOp&) = delete;
@@ -449,7 +449,7 @@ class StatelessParameterizedTruncatedNormalOp : public XlaOpKernel {
 
  private:
   DataType dtype_;
-  string device_type_string_;
+  std::string device_type_string_;
 
   StatelessParameterizedTruncatedNormalOp(
       const StatelessParameterizedTruncatedNormalOp&) = delete;

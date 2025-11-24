@@ -379,29 +379,11 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   }
 
   // Handle inputs.
-  if (options.arguments_are_tupled) {
-    if (!parameter_is_tupled_arguments_) {
-      return InvalidArgument(
-          "Arguments may only be supplied as a tuple when the executable was"
-          "compiled with a single tupled parameter");
-    }
-    if (argument_handles.size() != 1) {
-      return InvalidArgument(
-          "Option arguments_are_tupled was true but %d buffers were passed to"
-          "execution",
-          argument_handles.size());
-    }
-  }
-
   // SPMD sharding produces a single executable for multiple partitions.
   int executable_idx = executables_.size() > 1 ? partition : 0;
 
   TF_ASSIGN_OR_RETURN(std::vector<Shape> output_shapes, GetOutputShapes());
   const Shape& result_shape = output_shapes[executable_idx];
-  if (!options.untuple_result && result_shape.IsTuple()) {
-    return InvalidArgument(
-        "Tuple results must be untupled using ExecuteOptions::untuple_result.");
-  }
 
   // `scheduled_event` indicates whether gpu computation is dispatched to the
   // stream and whether there was an error.
@@ -426,6 +408,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   // the single definition event.
   std::vector<tsl::RCReference<tsl::AsyncValue>> prepare_input_deps;
   std::vector<tsl::RCReference<tsl::AsyncValue>> input_deps;
+  std::vector<tsl::RCReference<tsl::AsyncValue>> ready_deps;
   input_deps.reserve(argument_handles.size() + 1);
 
   absl::Span<int const> donated_params =
@@ -511,6 +494,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                 << definition_event.GetAsyncValue();
         input_deps.push_back(definition_event.CopyRCRef());
       }
+      ready_deps.push_back(tracked_buffer->ready_event().CopyRCRef());
     }
   }
 
@@ -532,9 +516,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   std::vector<tsl::AsyncValueRef<GpuDeviceMemory>> output_buffers;
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
   auto gpu_executable = executables_[executable_idx];
-  bool untuple_result = options.untuple_result;
   bool result_is_tuple = result_shape.IsTuple();
-  if (options.untuple_result && result_shape.IsTuple()) {
+  if (result_shape.IsTuple()) {
     output_buffers.reserve(result_shape.tuple_shapes().size());
     outputs.reserve(output_buffers.size());
     for (int i = 0; i < result_shape.tuple_shapes().size(); ++i) {
@@ -603,12 +586,13 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       [replica, partition, device, launch_id(options.launch_id),
        output_buffers(output_buffers), complete_event(complete_event.CopyRef()),
        scheduled_event(scheduled_event.CopyRef()),
-       untuple_result(untuple_result), result_is_tuple(result_is_tuple),
+       result_is_tuple(result_is_tuple),
        donation_transactions(std::move(donation_transactions)),
        parameter_shapes(on_device_executable_parameter_shapes_[executable_idx]),
        gpu_executable(std::move(gpu_executable)),
        device_assignment(device_assignment), executable_name(name()),
        ffi_context(ffi_context), inputs_avs(CopyAsyncValues(input_deps)),
+       ready_deps(std::move(ready_deps)),
        execution_profile(options.execution_profile),
        send_device_memory(std::move(send_device_memory)),
        recv_device_memory(std::move(recv_device_memory)),
@@ -755,7 +739,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
 
         ExecutionOutput& execution_output = result_buffer_or_status.value();
         ScopedShapedBuffer output = execution_output.ConsumeResult();
-        if (untuple_result && result_is_tuple) {
+        if (result_is_tuple) {
           for (int i = 0; i < output_buffers.size(); ++i) {
             ScopedShapedBuffer tuple_buffer = output.TakeSubTree({i});
             stream_executor::DeviceMemoryBase* elem =
@@ -795,6 +779,28 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           return;
         }
 
+        // Propagate errors (if any) from dependencies.
+        absl::Status ready_deps_status;
+        for (const tsl::RCReference<tsl::AsyncValue>& ready : ready_deps) {
+          tsl::BlockUntilReady(ready.get());
+          if (!ready->IsError()) {
+            continue;
+          }
+          absl::Status err = ready->GetError();
+          LOG(ERROR) << "Computation has failed dependency: " << err;
+          if (ready_deps_status.ok()) {
+            ready_deps_status = err;
+          } else {
+            ready_deps_status = absl::Status(
+                err.code(),
+                absl::StrCat(ready_deps_status.message(), "; ", err.message()));
+          }
+        }
+        if (!ready_deps_status.ok()) {
+          complete_event.SetError(ready_deps_status);
+          return;
+        }
+
         // If any collective is stale, then the collective may have aborted.
         // Note that NCCL doesn't provide a way to *know* if the collective was
         // aborted, but we conservatively assume it was.
@@ -825,7 +831,6 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        execute_fn(std::move(execute_fn)), input_deps(std::move(input_deps)),
        parameter_shapes(on_device_executable_parameter_shapes_[executable_idx]),
        parameter_is_tupled_arguments(parameter_is_tupled_arguments_),
-       arguments_are_tupled(options.arguments_are_tupled),
        input_buffer_sizes_in_bytes(
            input_buffer_sizes_in_bytes_[executable_idx])]() mutable {
         tsl::profiler::TraceMeConsumer activity(
@@ -866,7 +871,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         }
 
         std::vector<ExecutionInput> inputs;
-        if (parameter_is_tupled_arguments && !arguments_are_tupled) {
+        if (parameter_is_tupled_arguments) {
           inputs.emplace_back(
               ShapeTree<MaybeOwningDeviceMemory>(&parameter_shapes->front()));
           ExecutionInput& input = inputs.back();

@@ -228,7 +228,6 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   // thread pool if we need to run multiple executions in parallel.
   ExecuteOptions execute_options;
   execute_options.execution_mode = ExecuteOptions::ExecutionMode::kSynchronous;
-  execute_options.untuple_result = true;
 
   std::vector<std::vector<PjRtBuffer*>> execution_args_ptrs(
       benchmark_options.num_executions);

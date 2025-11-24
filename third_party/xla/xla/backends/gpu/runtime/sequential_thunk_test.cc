@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -154,6 +156,37 @@ TEST(SequentialThunkTest, ToString) {
             "  001: kGemm\t\n"
             "  002: kGemm\t\n"
             "  003: kGemm\t\n");
+}
+
+TEST(SequentialThunkTest, TransformAllNestedThunks) {
+  auto make_info = [](uint64_t id) {
+    Thunk::ThunkInfo info;
+    info.thunk_id = ThunkId(id);
+    return info;
+  };
+  ThunkSequence thunks;
+  thunks.push_back(
+      std::make_unique<DummyThunk>(Thunk::Kind::kGemm, make_info(1)));
+  thunks.push_back(
+      std::make_unique<DummyThunk>(Thunk::Kind::kGemm, make_info(2)));
+  thunks.push_back(
+      std::make_unique<DummyThunk>(Thunk::Kind::kGemm, make_info(3)));
+  SequentialThunk sequential_thunk(Thunk::ThunkInfo(), std::move(thunks));
+
+  TF_EXPECT_OK(sequential_thunk.TransformAllNestedThunks(
+      [&](std::unique_ptr<Thunk> thunk) -> std::unique_ptr<Thunk> {
+        return std::make_unique<DummyThunk>(
+            Thunk::Kind::kCopy,
+            make_info(thunk->thunk_info().thunk_id.value() + 10));
+      }));
+
+  EXPECT_EQ(sequential_thunk.thunks().size(), 3);
+  EXPECT_EQ(sequential_thunk.thunks()[0]->kind(), Thunk::Kind::kCopy);
+  EXPECT_EQ(sequential_thunk.thunks()[0]->thunk_info().thunk_id, ThunkId(11));
+  EXPECT_EQ(sequential_thunk.thunks()[1]->kind(), Thunk::Kind::kCopy);
+  EXPECT_EQ(sequential_thunk.thunks()[1]->thunk_info().thunk_id, ThunkId(12));
+  EXPECT_EQ(sequential_thunk.thunks()[2]->kind(), Thunk::Kind::kCopy);
+  EXPECT_EQ(sequential_thunk.thunks()[2]->thunk_info().thunk_id, ThunkId(13));
 }
 
 }  // namespace

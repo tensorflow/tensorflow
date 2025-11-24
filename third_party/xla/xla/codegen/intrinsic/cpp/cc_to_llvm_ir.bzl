@@ -6,6 +6,7 @@ CPU features on the host platform.
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain", "use_cc_toolchain")
 load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
+load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 
 visibility(DEFAULT_LOAD_VISIBILITY)

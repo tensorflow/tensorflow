@@ -28,20 +28,20 @@ DebugCallbackRegistry* DebugCallbackRegistry::singleton() {
   return instance_;
 }
 
-void DebugCallbackRegistry::RegisterCallback(const string& key,
+void DebugCallbackRegistry::RegisterCallback(const std::string& key,
                                              EventCallback callback) {
   mutex_lock lock(mu_);
   keyed_callback_[key] = std::move(callback);
 }
 
 DebugCallbackRegistry::EventCallback* DebugCallbackRegistry::GetCallback(
-    const string& key) {
+    const std::string& key) {
   mutex_lock lock(mu_);
   auto iter = keyed_callback_.find(key);
   return iter == keyed_callback_.end() ? nullptr : &iter->second;
 }
 
-void DebugCallbackRegistry::UnregisterCallback(const string& key) {
+void DebugCallbackRegistry::UnregisterCallback(const std::string& key) {
   mutex_lock lock(mu_);
   keyed_callback_.erase(key);
 }

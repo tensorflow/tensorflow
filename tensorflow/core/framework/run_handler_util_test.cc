@@ -37,7 +37,7 @@ void VerifySchedulingRanges(int num_active_requests, int num_threads,
 
   ComputeInterOpSchedulingRanges(num_active_requests, num_threads,
                                  min_threads_per_request, &start, &end);
-  string range_str = "";
+  std::string range_str = "";
   for (int i = 0; i < num_active_requests; ++i) {
     if (i > 0) range_str += " ";
     range_str += strings::StrCat("[", start[i], ", ", end[i], ")");
@@ -107,7 +107,7 @@ TEST(RunHandlerUtilTest, TestComputeInterOpStealingRanges) {
   for (int i = 0; i < num_inter_op_threads; ++i) {
     int expected_start = stealing_ranges[i / 6][0];
     int expected_end = stealing_ranges[i / 6][1];
-    string message =
+    std::string message =
         strings::StrCat("Stealing range of thread ", i, " should be [",
                         expected_start, ", ", expected_end, "]");
     ASSERT_EQ(start_vec[i], expected_start) << message;

@@ -87,6 +87,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/backends/cpu/codegen/builtin_definition_generator.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
 #include "xla/backends/cpu/codegen/execution_engine.h"
@@ -103,10 +104,8 @@ limitations under the License.
 #include "xla/backends/cpu/transforms/library_rewriter.h"
 #include "xla/backends/cpu/transforms/xnn_graph_fusion.h"
 #include "xla/backends/cpu/xnn_support.h"
-#include "xla/cpu_function_runtime.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
-#include "xla/hlo/analysis/indexed_array_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -188,7 +187,6 @@ limitations under the License.
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/metrics.h"
 #include "xla/service/cpu/parallel_task_assignment.h"
-#include "xla/service/cpu/runtime_symbol_generator.h"
 #include "xla/service/cpu/small_while_loop_hoisting_pass.h"
 #include "xla/service/cpu/thunk_emitter.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
@@ -257,6 +255,10 @@ limitations under the License.
 #include "xla/service/cpu/onednn_float_support.h"
 #include "xla/service/cpu/onednn_ops_rewriter.h"
 #endif  // XLA_ONEDNN
+
+#ifdef XLA_YNNPACK
+#include "xla/backends/cpu/ynn_support.h"
+#endif  // XLA_YNNPACK
 
 namespace xla {
 namespace {
@@ -502,10 +504,25 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
       !absl::c_contains(module->config()
                             .debug_options()
                             .xla_cpu_experimental_xnn_fusion_type(),
+                        DebugOptions::LIBRARY_FUSION_TYPE_REDUCE) &&
+      !absl::c_contains(module->config()
+                            .debug_options()
+                            .xla_cpu_experimental_ynn_fusion_type(),
                         DebugOptions::LIBRARY_FUSION_TYPE_REDUCE)) {
-    // Needs to happen after algebraic simplifier.
     pipeline->AddPass<TreeReductionRewriter>();
   }
+
+#ifdef XLA_YNNPACK
+  if (absl::c_contains(module->config()
+                           .debug_options()
+                           .xla_cpu_experimental_ynn_fusion_type(),
+                       DebugOptions::LIBRARY_FUSION_TYPE_REDUCE)) {
+    pipeline->AddPass<TreeReductionRewriter>(
+        /*reduce_window_size=*/32, [](const HloInstruction* hlo) {
+          return !IsReduceOpOffloadedToYnn(hlo);
+        });
+  }
+#endif
 
   // BatchNormExpander can create zero-sized ops, so zero-sized HLO
   // elimination has to come after that pass.
@@ -528,6 +545,49 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
   pipeline->AddPass<ConditionalSimplifier>();
 
   return pipeline;
+}
+
+auto LibrarySupportsDot(HloModule* module,
+                        TargetMachineFeatures* target_machine_features) {
+  // TODO(b/406806134): Stop calling XNNPACK from regular Dot thunks. All XNN
+  // Dots should be wrapped in an `__xnn_fusion` fusion region and processed in
+  // `XnnFusionThunk`.
+  const bool xnnpack_enabled =
+      module->config().debug_options().xla_cpu_use_xnnpack();
+  const auto xnn_graph_fusion_mode =
+      module->config()
+          .debug_options()
+          .xla_cpu_experimental_xnn_graph_fusion_mode();
+  const bool xnnpack_use_cost_model =
+      xnn_graph_fusion_mode !=
+      DebugOptions::XNN_GRAPH_FUSION_MODE_BYPASS_COST_MODEL;
+  const bool xnnpack_dot_enabled =
+      xnnpack_enabled &&
+      xnn_graph_fusion_mode != DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED;
+  const bool ynnpack_dot_enabled = absl::c_linear_search(
+      module->config().debug_options().xla_cpu_experimental_ynn_fusion_type(),
+      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  return [=](const HloInstruction& instr) {
+#ifdef XLA_YNNPACK
+    if (ynnpack_dot_enabled &&
+        IsDotSupportedByYnn(instr.dot_dimension_numbers(),
+                            instr.operand(0)->shape(),
+                            instr.operand(1)->shape(), instr.shape())
+            .value_or(false)) {
+      return true;
+    }
+#endif  // XLA_YNNPACK
+
+    if (xnnpack_dot_enabled &&
+        IsDotSupportedByXnn(instr.dot_dimension_numbers(),
+                            instr.operand(0)->shape(),
+                            instr.operand(1)->shape(), instr.shape(),
+                            target_machine_features, xnnpack_use_cost_model)
+            .value_or(false)) {
+      return true;
+    }
+    return false;
+  };
 }
 
 }  // namespace
@@ -570,10 +630,14 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         /*update_domain=*/false,
         /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
         /*uniquify_channel_ids=*/false,
-        /*should_inline=*/
-        [](const xla::CallGraph& call_graph, xla::HloInstruction* instruction) {
-          return absl::StrContains(instruction->to_apply()->name(),
-                                   sdy::kInlineableManualComputationFuncName);
+        /*override_policy=*/
+        [](const xla::CallGraph& call_graph,
+           const xla::HloInstruction* instruction) {
+          if (absl::StrContains(instruction->to_apply()->name(),
+                                sdy::kInlineableManualComputationFuncName)) {
+            return CallInliner::InlineOverridePolicy::kAllowInline;
+          }
+          return CallInliner::InlineOverridePolicy::kProhibitInline;
         });
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(module).status());
   } else {
@@ -608,36 +672,30 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
   pipeline.AddPass<ResultCaster>();
 
-  // If XNNPACK is enabled, we only need to upcast dots that XnnDotThunk does
-  // not support. `upcaster_filter` returns false if the instruction shouldn't
-  // be processed.
-  // TODO(b/406806134): Stop calling XNNPACK from regular Dot thunks. All XNN
-  // Dots should be wrapped in an `__xnn_fusion` fusion region and processed in
-  // `XnnFusionThunk`.
-  bool xnnpack_enabled = module->config().debug_options().xla_cpu_use_xnnpack();
+  auto library_supports_dot =
+      LibrarySupportsDot(module, target_machine_features);
+
   auto call_library_for_dot = [&](const HloInstruction& instr) {
-    if (!xnnpack_enabled) return false;
-    DotImplementationStrategy strategy = GetDotImplementationStrategy(
+    if (instr.opcode() != HloOpcode::kDot) {
+      return false;
+    }
+
+    auto dot_strategy = GetDotImplementationStrategy(
         module->config(), instr, *target_machine_features,
         /*allow_runtime_calls=*/true);
-    return strategy == DotImplementationStrategy::kEigen;
+    if (dot_strategy != DotImplementationStrategy::kEigen) {
+      // We aren't going to call a library for this dot.
+      return false;
+    }
+
+    return library_supports_dot(instr);
   };
+
+  // If YNNPACK is enabled, we only need to upcast dots that YnnDotThunk does
+  // not support. `upcaster_filter` returns false if the instruction shouldn't
+  // be processed.
   HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
-    if (instr->opcode() != HloOpcode::kDot) {
-      return true;
-    }
-    if (!call_library_for_dot(*instr)) {
-      return true;
-    }
-    bool use_cost_model = module->config()
-                              .debug_options()
-                              .xla_cpu_experimental_xnn_graph_fusion_mode() !=
-                          DebugOptions::XNN_GRAPH_FUSION_MODE_BYPASS_COST_MODEL;
-    return !IsDotSupportedByXnn(instr->dot_dimension_numbers(),
-                                instr->operand(0)->shape(),
-                                instr->operand(1)->shape(), instr->shape(),
-                                target_machine_features, use_cost_model)
-                .value_or(false);
+    return !call_library_for_dot(*instr);
   };
 
   // xla::cpu::GetDotImplementationStrategy (used by call_library_for_dot)
@@ -701,11 +759,13 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Convert BF16 and F8 operations to F32 and F16 respectively so that the CPU
   // backend can support BF16/F8 operations without directly implementing a
   // BF16/F8 lowering for most ops.
-  CpuFloatSupport bf16_support(BF16, call_library_for_dot,
-                               target_machine_features);
+  CpuFloatSupport bf16_support(BF16, call_library_for_dot);
 #ifdef XLA_ONEDNN
+  bool use_onednn_graph =
+      module->config().debug_options().xla_cpu_use_onednn() &&
+      IsOneDnnCompatible(is_aot_compile);
   OneDnnFloatSupport onednn_bf16_support(BF16);
-  if (use_onednn_custom_call) {
+  if (use_onednn_custom_call || use_onednn_graph) {
     pipeline.AddPass<FloatNormalization>(&onednn_bf16_support);
   } else {
     pipeline.AddPass<FloatNormalization>(&bf16_support);
@@ -827,7 +887,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64_t) {
     return sort->operand(0)->shape().element_type() == F32;
   });
-  pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
   pipeline.AddPass<TransposeFolding>(
       [&](const HloInstruction& dot, int64_t operand) -> absl::StatusOr<bool> {
         if (DotImplementationCanHandleTranspose(dot, *target_machine_features,
@@ -930,14 +989,20 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // XNNPACK ops availability checks depend on the layout information,
   // so until another solution is developed the passes creating XNNPACK fusions
   // have to run after layout assignment.
+  const bool use_ynnpack = absl::c_linear_search(
+      debug_options.xla_cpu_experimental_ynn_fusion_type(),
+      DebugOptions::LIBRARY_FUSION_TYPE_REDUCE);
   LibraryRewriterOptions options = {
       /*use_onednn=*/debug_options.xla_cpu_use_onednn(),
       /*use_xnnpack=*/debug_options.xla_cpu_use_xnnpack(),
+      /*use_ynnpack=*/use_ynnpack,
       /*onednn_fusion_types=*/
       &debug_options.xla_cpu_experimental_onednn_fusion_type(),
       /*xnn_fusion_types=*/
-      &debug_options.xla_cpu_experimental_xnn_fusion_type()};
-  if (options.use_onednn || options.use_xnnpack) {
+      &debug_options.xla_cpu_experimental_xnn_fusion_type(),
+      /*ynn_fusion_types=*/
+      &debug_options.xla_cpu_experimental_ynn_fusion_type()};
+  if (options.use_onednn || options.use_xnnpack || options.use_ynnpack) {
     HloPassPipeline lib_pipeline("dot-library-passes");
     lib_pipeline.AddPass<DotDecomposer>();
     lib_pipeline.AddPass<LibraryRewriter>(target_machine_features, options);
@@ -1630,7 +1695,7 @@ CpuCompiler::CompileCpuExecutable(
   // Definition generator to link with XLA:CPU host runtime symbols.
   ExecutionEngine::DefinitionGenerator definition_generator =
       [](const llvm::DataLayout& data_layout) {
-        return std::make_unique<RuntimeSymbolGenerator>(data_layout);
+        return std::make_unique<BuiltinDefinitionGenerator>(data_layout);
       };
 
   std::unique_ptr<LlvmMultipleModuleCompiler> llvm_module_compiler;
@@ -1941,13 +2006,32 @@ CpuCompiler::CompileCpuExecutable(
   TF_ASSIGN_OR_RETURN(std::vector<ConstantAllocation> constants,
                       CreateConstantAllocations(*assignment));
 
+  TargetMachineOptionsProto target_machine_options_proto;
+  target_machine_options_proto.set_triple(
+      target_machine->getTargetTriple().getTriple());
+  target_machine_options_proto.set_cpu(target_machine->getTargetCPU());
+
+  // TODO(basioli): Target machine features are returning an empty string at the
+  // moment so for now we are using the host CPU features. This should be
+  // updated to use the target machine features of the target we are actually
+  // compiling for as we might want to support cross-compilation.
+  auto host_machine_features = llvm::sys::getHostCPUFeatures();
+  std::vector<absl::string_view> enabled_features;
+  for (const auto& feature : host_machine_features) {
+    if (feature.getValue()) {
+      enabled_features.push_back(feature.getKey());
+    }
+  }
+  target_machine_options_proto.set_features(
+      absl::StrJoin(enabled_features, ","));
+
   TF_ASSIGN_OR_RETURN(
       auto cpu_executable,
-      CpuExecutable::Create(std::move(function_library), std::move(assignment),
-                            std::move(module), std::move(thunks),
-                            std::move(constants),
-                            std::move(hlo_profile_printer_data),
-                            std::move(hlo_profile_index_map)));
+      CpuExecutable::Create(
+          std::move(function_library), std::move(assignment), std::move(module),
+          std::move(thunks), std::move(constants),
+          std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map),
+          std::move(target_machine_options_proto)));
 
   // Save object files to be able to export them to AOT compilation
   // result.
@@ -2184,7 +2268,8 @@ CpuCompiler::CompileAheadOfTimeThunks(
       cpu_executable->module_name(), std::move(obj_files),
       cpu_executable->get_compiled_symbols_proto(), thunk_sequence,
       std::move(*cpu_executable).consume_function_library(),
-      std::move(executable_hlo_profile_printer_data));
+      std::move(executable_hlo_profile_printer_data),
+      cpu_executable->target_machine_options());
 }
 
 se::Platform::Id CpuCompiler::PlatformId() const {
@@ -2234,7 +2319,8 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
       cpu_executable->module_name(), std::move(obj_files),
       std::move(compiled_symbols_proto), *thunk_sequence,
       std::move(function_library),
-      std::move(executable_hlo_profile_printer_data));
+      std::move(executable_hlo_profile_printer_data),
+      cpu_executable->target_machine_options());
 }
 
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>

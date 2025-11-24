@@ -13,7 +13,7 @@ py_strict_library(
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct:templates",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -39,7 +39,7 @@ py_strict_library(
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/pyct:parser",
         "//tensorflow/python/autograph/pyct:templates",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -65,7 +65,7 @@ py_strict_library(
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/pyct:parser",
         "//tensorflow/python/autograph/pyct:templates",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -80,7 +80,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:qual_names",
         "//tensorflow/python/autograph/pyct:templates",
         "//tensorflow/python/autograph/utils:ag_logging",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -93,7 +93,7 @@ py_strict_library(
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/util:tf_inspect",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -105,7 +105,7 @@ py_strict_library(
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:templates",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -127,7 +127,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct/static_analysis:liveness",
         "//tensorflow/python/autograph/pyct/static_analysis:reaching_definitions",
         "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -143,7 +143,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:templates",
         "//tensorflow/python/autograph/pyct/static_analysis:activity",
         "//tensorflow/python/autograph/pyct/static_analysis:annos",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -160,7 +160,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:templates",
         "//tensorflow/python/autograph/pyct/static_analysis:activity",
         "//tensorflow/python/autograph/pyct/static_analysis:annos",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -176,7 +176,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:templates",
         "//tensorflow/python/autograph/pyct/static_analysis:activity",
         "//tensorflow/python/autograph/pyct/static_analysis:annos",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -187,7 +187,7 @@ py_strict_library(
     deps = [
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/pyct:templates",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 

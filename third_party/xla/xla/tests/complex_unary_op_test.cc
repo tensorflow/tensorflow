@@ -40,6 +40,14 @@ class ComplexUnaryOpTest
     : public ClientLibraryTestRunnerMixin<
           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
+  // Disable constant folding to ensure we test the actual backend
+  // implementation. Otherwise, constant folding pre-computes results using
+  // HloEvaluator's reference implementation (std c++), not the backend under
+  // test.
+  void SetUp() override {
+    ClientLibraryTestRunnerMixin::SetUp();
+    mutable_debug_options()->add_xla_disable_hlo_passes("constant_folding");
+  }
   template <typename T, size_t index, typename... Types>
   std::vector<T> get_column(const std::vector<std::tuple<Types...>>& table) {
     std::vector<T> column;

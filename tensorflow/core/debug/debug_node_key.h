@@ -27,28 +27,29 @@ struct DebugNodeKey {
   static const char* const kMetadataFilePrefix;
   static const char* const kDeviceTag;
 
-  DebugNodeKey(const string& device_name, const string& node_name,
-               int32_t output_slot, const string& debug_op,
-               const string& io_of_node = "", bool is_input = false,
+  DebugNodeKey(const std::string& device_name, const std::string& node_name,
+               int32_t output_slot, const std::string& debug_op,
+               const std::string& io_of_node = "", bool is_input = false,
                int32_t io_index = -1);
 
   // Converts a device name string to a device path string.
   // E.g., /job:localhost/replica:0/task:0/cpu:0 will be converted to
   //   ,job_localhost,replica_0,task_0,cpu_0.
-  static const string DeviceNameToDevicePath(const string& device_name);
+  static const std::string DeviceNameToDevicePath(
+      const std::string& device_name);
 
   bool operator==(const DebugNodeKey& other) const;
   bool operator!=(const DebugNodeKey& other) const;
 
-  const string device_name;
-  const string node_name;
-  const int32 output_slot;
-  const string debug_op;
-  const string debug_node_name;
-  const string device_path;
-  const string io_of_node;
+  const std::string device_name;
+  const std::string node_name;
+  const int32_t output_slot;
+  const std::string debug_op;
+  const std::string debug_node_name;
+  const std::string device_path;
+  const std::string io_of_node;
   const bool is_input;
-  const int32 io_index;
+  const int32_t io_index;
 };
 
 }  // namespace tensorflow

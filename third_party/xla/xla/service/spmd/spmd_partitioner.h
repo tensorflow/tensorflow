@@ -158,8 +158,6 @@ class SpmdBuilder : public HloComputation::Builder {
     instructions_[hlo];
   }
 
-  HloInstruction* visiting_hlo() const { return visiting_hlo_; }
-
   // Wrapper of queries to broadcast_dims_.
   std::optional<const absl::flat_hash_set<int64_t>*> BroadcastDimsForCreatedHlo(
       const HloInstruction* hlo) {
@@ -316,10 +314,6 @@ class SpmdPartitioner : public HloModulePass {
         options_(std::move(options)),
         collective_ops_creator_(std::move(collective_ops_creator)) {}
   absl::string_view name() const override { return "spmd-partitioning"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Transforms the given computation with SPMD instructions, replacing it with
   // a new computation.
@@ -370,13 +364,17 @@ class SpmdPartitioner : public HloModulePass {
   }
 
   // Update module's parameter and output sharding information, based on the
-  // sharding information of the module's parameters and outptuts.
+  // sharding information of the module's parameters and outputs.
   static void RecordInputsOutputsSharding(HloModule* module);
 
   int64_t num_partitions() const { return num_partitions_; }
   int64_t num_replicas() const { return num_replicas_; }
 
  protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
   // This is the internal implementation for AllGatherShards(), returns a pair
   // of hlo instructions whose first element is the result of the all-gather
   // shard(which might not be the all-gather itself and it could go through
@@ -443,7 +441,6 @@ class SpmdPartitioner : public HloModulePass {
 
   SpmdPartitionerOptions options_;
   SPMDCollectiveOpsCreator collective_ops_creator_;
-  std::vector<std::vector<int64_t>> device_groups_;
   absl::flat_hash_set<absl::string_view> execution_threads_;
 };
 
@@ -722,6 +719,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   absl::Status DefaultAction(HloInstruction* hlo) override;
 
+  // go/keep-sorted start
   absl::Status HandleAllReduce(HloInstruction* hlo) override;
   absl::Status HandleBitcastConvert(HloInstruction* hlo) override;
   absl::Status HandleBroadcast(HloInstruction* hlo) override;
@@ -760,6 +758,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleTriangularSolve(HloInstruction* hlo) override;
   absl::Status HandleTuple(HloInstruction* hlo) override;
   absl::Status HandleWhile(HloInstruction* hlo) override;
+  // go/keep-sorted end
 
   // Implementation of dot partitioning given DotGeneralDimsMapping.
   template <typename CreateShardedFunctor>
@@ -796,15 +795,19 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   void SetPartitionedHlo(const HloInstruction* hlo,
                          PartitionedHlo&& partitioned_hlo);
 
-  // Convenient wrapper that creates PartitionedHlo from the result of the func
-  // and maps it to the given original hlo.
-  void SetPartitionedHlo(const HloInstruction* hlo,
-                         absl::FunctionRef<HloInstruction*()> func) {
-    HloInstruction* new_hlo = func();
+  // Convenient wrapper that creates PartitionedHlo from `new_hlo`.
+  void SetPartitionedHlo(const HloInstruction* hlo, HloInstruction* new_hlo) {
     new_hlo->set_sharding(hlo->sharding());
     SetPartitionedHlo(
         hlo, PartitionedHlo(new_hlo, hlo->shape(), MakePartitioningState()));
     changed_ = true;
+  }
+
+  // Convenient wrapper that creates PartitionedHlo from the result of the func
+  // and maps it to the given original hlo.
+  void SetPartitionedHlo(const HloInstruction* hlo,
+                         absl::FunctionRef<HloInstruction*()> func) {
+    return SetPartitionedHlo(hlo, func());
   }
 
   int64_t NewChannel() { return (*next_channel_id_)++; }

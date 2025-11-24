@@ -222,7 +222,8 @@ static constexpr uintptr_t kInstructionTypeMask = 0b111;
 // HLO is pure (mostly).  It has no concept of mutable state.  Instead, data
 // values are produced by one HLO and flow into consumers across dependency
 // edges.
-class HloInstruction {
+// Alignment must be explicitly specified due to ARM 32 platforms.
+class alignas(kInstructionTypeMask + 1) HloInstruction {
  public:
   // A fusion node computes the same value a call to its fusion computation
   // would compute.  However, the choice of fusion kind dictates codegen
@@ -2036,6 +2037,16 @@ class HloInstruction {
     return proto;
   }
 
+  // Applies a function `fn` to the underlying backend config proto. The
+  // function receives a mutable pointer to a proto of type `ConfigProto`.
+  //
+  // If the proto is not already parsed, it will return an error.
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::Status MutateBackendConfig(
+      const std::function<absl::Status(ConfigProto*)>& fn) {
+    return backend_config_.ApplyFnOnProto(fn);
+  }
+
   absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
     backend_config_ = BackendConfigWrapper(proto);
     return absl::OkStatus();
@@ -2456,7 +2467,7 @@ class HloInstruction {
   std::shared_ptr<OriginalValue> original_value() const;
   void set_original_value(std::shared_ptr<OriginalValue> original_value);
 
-  // Copy original value from the input instruction if the source and
+  // Copies original value from the input instruction if the source and
   // destination shapes are compatible. This performs a deep copy if clone is
   // set to true. Otherwise, it performs a shallow copy. Print a warning if the
   // shapes are not compatible and issue_warning is set to true.
@@ -2464,8 +2475,8 @@ class HloInstruction {
                          bool issue_warning = false);
 
  protected:
-  // Internal constructor for a given opcode/shape, other fields must be filled
-  // by factory methods.
+  // Internal constructor for a given opcode/shape, other fields must be
+  // filled by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
 
   void RemoveAllOperands() { operands_.clear(); }

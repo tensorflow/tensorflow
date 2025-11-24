@@ -46,13 +46,13 @@ class StatsAggregator {
 
   // Add the given `values` to the histogram with the given `name`. Each
   // element of `values` will be treated as a separate sample in the histogram.
-  virtual void AddToHistogram(const string& name,
+  virtual void AddToHistogram(const std::string& name,
                               absl::Span<const double> values,
                               int64_t global_step) = 0;
 
   // TODO(shivaniagrawal): consistency in double and float usage.
   // Add the given `value` as Scalar with the given `name`.
-  virtual void AddScalar(const string& name, float value,
+  virtual void AddScalar(const std::string& name, float value,
                          int64_t global_step) = 0;
 
   // Stores a protocol buffer representation of the aggregator state in the
@@ -64,8 +64,8 @@ class StatsAggregator {
       SummaryWriterInterface* summary_writer) = 0;
 
   // Increment the `label` cell of metrics mapped with `name` by given `value`.
-  virtual void IncrementCounter(const string& name, const string& label,
-                                int64_t val) = 0;
+  virtual void IncrementCounter(const std::string& name,
+                                const std::string& label, int64_t val) = 0;
 };
 
 // A `StatsAggregatorResource` wraps a sharable `StatsAggregator` as a resource
@@ -86,7 +86,7 @@ class StatsAggregatorResource : public ResourceBase {
     return stats_aggregator_;
   }
 
-  string DebugString() const override { return "StatsAggregatorResource"; }
+  std::string DebugString() const override { return "StatsAggregatorResource"; }
 
  private:
   const std::shared_ptr<StatsAggregator> stats_aggregator_;

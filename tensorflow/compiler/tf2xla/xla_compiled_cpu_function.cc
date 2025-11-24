@@ -34,7 +34,7 @@ namespace tensorflow {
 
 namespace {
 
-int32 GetResultIndex(const int32* result_index_table, int32 num_results) {
+int32_t GetResultIndex(const int32_t* result_index_table, int32_t num_results) {
   auto it =
       std::min_element(result_index_table, result_index_table + num_results);
 
@@ -150,7 +150,7 @@ int LookupNameIndex(absl::string_view name, const char** names) {
 
 }  // namespace
 
-int XlaCompiledCpuFunction::LookupArgIndex(const string& name) const {
+int XlaCompiledCpuFunction::LookupArgIndex(const std::string& name) const {
   return LookupNameIndex(name, arg_names_);
 }
 
@@ -162,7 +162,7 @@ int XlaCompiledCpuFunction::LookupVariableIndex(absl::string_view name) const {
   return num_args_ - num_variables_ + index;
 }
 
-int XlaCompiledCpuFunction::LookupResultIndex(const string& name) const {
+int XlaCompiledCpuFunction::LookupResultIndex(const std::string& name) const {
   return LookupNameIndex(name, result_names_);
 }
 

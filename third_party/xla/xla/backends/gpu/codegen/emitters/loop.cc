@@ -107,17 +107,17 @@ WorkDimensions LoopFusion::GetWorkDimensions() const {
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoopFusion::CreateMLIRModule(
-    SymbolicExprContext& symbolic_expr_context,
-    const HloFusionInstruction& fusion, const std::string& entry_function_name,
+    mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+    const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
+  SymbolicExprContext symbolic_expr_context(&mlir_context);
   emitters::LoopFusionKernelEmitter emitter(
       symbolic_expr_context, fusion, analysis_.fusion_spec(), buffer_assignment,
       GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,
       BackendKind::kGpu);
 
   TF_ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
-  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
-  return std::move(source).ReleaseStorage().module;
+  return std::move(kernel_definition).TakeSource().TakeModule();
 }
 
 absl::Status LoopFusion::EmitEntryFunction(

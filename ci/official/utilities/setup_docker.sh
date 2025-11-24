@@ -51,7 +51,7 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
     echo "GCE_METADATA_HOST=$IP_ADDR" >> $env_file
   fi
 
-  docker run $TFCI_DOCKER_ARGS --name tf-$TFCI_PYTHON_VERSION -w "$WORKING_DIR" -itd --rm \
+  docker run $TFCI_DOCKER_ARGS --name tf-$TFCI_PYTHON_VERSION-$TFCI_DOCKER_CONTAINER_POSTFIX -w "$WORKING_DIR" -itd --rm \
       -v "$TFCI_GIT_DIR:$WORKING_DIR" \
       --env-file "$env_file" \
       "$TFCI_DOCKER_IMAGE" \
@@ -65,4 +65,4 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
   fi
 
 fi
-tfrun() { docker exec tf-$TFCI_PYTHON_VERSION "$@"; }
+tfrun() { docker exec tf-$TFCI_PYTHON_VERSION-$TFCI_DOCKER_CONTAINER_POSTFIX "$@"; }

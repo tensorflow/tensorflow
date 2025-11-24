@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/functional/function_ref.h"
@@ -125,6 +126,17 @@ void SequentialThunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
   }
 }
 
+absl::Status SequentialThunk::TransformAllNestedThunks(
+    absl::FunctionRef<
+        absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
+        fn) {
+  for (std::unique_ptr<Thunk>& thunk : thunks_) {
+    TF_RETURN_IF_ERROR(thunk->TransformAllNestedThunks(fn));
+    TF_ASSIGN_OR_RETURN(thunk, fn(std::move(thunk)));
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<ThunkProto> SequentialThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
@@ -152,5 +164,19 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> SequentialThunk::FromProto(
   return std::make_unique<SequentialThunk>(std::move(thunk_info),
                                            std::move(thunk_sequence));
 }
+
+std::unique_ptr<SequentialThunk> SequentialThunk::FromThunk(
+    std::unique_ptr<Thunk> thunk) {
+  if (thunk->kind() == Thunk::kSequential) {
+    return std::unique_ptr<SequentialThunk>(
+        static_cast<SequentialThunk*>(thunk.release()));
+  }
+
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  thunks.push_back(std::move(thunk));
+  return std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
+                                           std::move(thunks));
+}
+
 }  // namespace gpu
 }  // namespace xla

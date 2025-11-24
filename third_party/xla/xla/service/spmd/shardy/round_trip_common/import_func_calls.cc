@@ -25,7 +25,6 @@ limitations under the License.
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Threading.h"
 #include "mlir/Analysis/CallGraph.h"
@@ -46,7 +45,6 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
-#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
@@ -64,15 +62,6 @@ using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::NamedComputationOp;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
-
-bool isInlineableCallOp(CallOp callOp) {
-  if (hasFrontendAttr(callOp, kXlaBackendConfigAttr)) {
-    return false;
-  }
-  auto inlineableAttr =
-      tryGetFrontendAttr<mlir::BoolAttr>(callOp, kXlaInlineableAttr);
-  return !inlineableAttr || inlineableAttr->getValue();
-}
 
 // Returns the first non-maximal mesh on the argument shardings, if there is
 // one. Otherwise returns `std::nullopt`.
@@ -130,11 +119,10 @@ void importCallOp(
   rewriter.setInsertionPoint(callOp);
   TensorShardingPerValueAttr callOpResultShardings =
       mlir::sdy::getShardingPerValue(callOp);
-  auto namedCompOp = rewriter.create<NamedComputationOp>(
-      callOp->getLoc(), callOp->getResultTypes(), calleeName,
+  auto namedCompOp = NamedComputationOp::create(
+      rewriter, callOp->getLoc(), callOp->getResultTypes(), calleeName,
       callOp.getOperands(),
-      /*inShardings=*/
-      getFuncArgShardings(callOp, funcOp, symbolTable),
+      /*inShardings=*/getFuncArgShardings(callOp, funcOp, symbolTable),
       // TODO(b/439018088): Take func result shardings if call op result
       // shardings are empty.
       /*outShardings=*/
@@ -187,7 +175,9 @@ class ImportFuncCallsPass
     mlir::CallGraph callGraph(moduleOp);
     llvm::ReversePostOrderTraversal<const mlir::CallGraph*> rpo(&callGraph);
     for (mlir::CallGraphNode* node : llvm::reverse(rpo)) {
-      if (node->isExternal()) continue;
+      if (node->isExternal()) {
+        continue;
+      }
       node->getCallableRegion()->walk([&](CallOp op) {
         importCallOp(op, calleeNameToMovedRegion, rewriter, symbolTable);
       });

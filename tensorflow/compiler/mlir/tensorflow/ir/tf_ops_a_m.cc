@@ -3003,14 +3003,14 @@ void GeneratorDatasetRegionOp::getRegionInvocationBounds(
 }
 
 OperandRange GeneratorDatasetRegionOp::getEntrySuccessorOperands(
-    RegionBranchPoint point) {
+    RegionSuccessor successor) {
   auto end = this->getOperation()->operand_end();
-  if (point.isParent()) {
+  if (successor.isParent()) {
     // The op itself doesn't branch back to itself.
     return ::mlir::OperandRange(end, end);
-  } else if (point.getRegionOrNull() == &getInit()) {
+  } else if (successor.getSuccessor() == &getInit()) {
     return getInitFuncOtherArgs();
-  } else if (point.getRegionOrNull() == &getNext()) {
+  } else if (successor.getSuccessor() == &getNext()) {
     return getNextFuncOtherArgs();
   } else /* finalize region */ {
     return getFinalizeFuncOtherArgs();
@@ -3024,13 +3024,15 @@ void GeneratorDatasetRegionOp::getSuccessorRegions(
     // The op itself branches to `init` first.
     regions.push_back(
         RegionSuccessor(&getInit(), getInit().front().getArguments()));
-  } else if (point.getRegionOrNull() == &getInit()) {
+  } else if (point.getTerminatorPredecessorOrNull()->getParentRegion() ==
+             &getInit()) {
     // `init` branches to `next`, passing along the arguments given to `init`'s
     // yield. Said arguments precede the "other args".
     n = getInitFuncOtherArgs().size();
     regions.push_back(RegionSuccessor(
         &getNext(), getNext().front().getArguments().drop_back(n)));
-  } else if (point.getRegionOrNull() == &getNext()) {
+  } else if (point.getTerminatorPredecessorOrNull()->getParentRegion() ==
+             &getNext()) {
     // `next` branches to itself, or to `finalize`, passing all arguments given
     // to `next`s yield.
 
@@ -3045,7 +3047,8 @@ void GeneratorDatasetRegionOp::getSuccessorRegions(
         &getFinalize(), getFinalize().front().getArguments().slice(0, num)));
   } else {
     // `finalize` branches back to the op itself, not passing any arguments.
-    regions.push_back(RegionSuccessor());
+    regions.push_back(RegionSuccessor(
+        point.getTerminatorPredecessorOrNull()->getParentRegion()));
   }
 }
 
@@ -3261,11 +3264,12 @@ void IfRegionOp::getRegionInvocationBounds(
   invocationBounds.assign(2, {0, 1});
 }
 
-OperandRange IfRegionOp::getEntrySuccessorOperands(RegionBranchPoint point) {
+OperandRange IfRegionOp::getEntrySuccessorOperands(RegionSuccessor successor) {
   // IfRegionOp currently only allows one op (the condition), so there are no
   // remaining operands for the successor.
-  assert((point.isParent() ||
-          (point == (*this)->getRegion(0) || point == (*this)->getRegion(1))) &&
+  assert((successor.isParent() ||
+          (successor.getSuccessor() == &(*this)->getRegion(0) ||
+           successor.getSuccessor() == &(*this)->getRegion(1))) &&
          "Invalid IfRegionOp region index.");
   auto end = this->getOperation()->operand_end();
   return ::mlir::OperandRange(end, end);
@@ -3275,16 +3279,20 @@ void IfRegionOp::getSuccessorRegions(
     RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
   if (!point.isParent()) {
     // The `then` and the `else` region branch back to the parent operation.
-    regions.push_back(RegionSuccessor(getResults()));
+    regions.push_back(
+        RegionSuccessor(point.getTerminatorPredecessorOrNull(), getResults()));
     return;
   } else {
     // The parent can branch to either `then` or `else`.
-    regions.push_back(RegionSuccessor(&getThenBranch()));
+    regions.push_back(
+        RegionSuccessor(&getThenBranch(), getThenBranch().getArguments()));
     Region* elseRegion = &this->getElseBranch();
     if (!elseRegion->empty())
-      regions.push_back(RegionSuccessor(elseRegion));
+      regions.push_back(
+          RegionSuccessor(elseRegion, elseRegion->getArguments()));
     else
-      regions.push_back(RegionSuccessor());
+      regions.push_back(RegionSuccessor(
+          point.getTerminatorPredecessorOrNull()->getParentRegion()));
   }
 }
 

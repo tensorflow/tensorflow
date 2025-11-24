@@ -162,7 +162,9 @@ mlir::LogicalResult EntryFuncOp::verify() {
       "entry function arguments should be of the form (arg: memref..., "
       "tile_id: index)";
 
-  for (mlir::Type arg_types : getArgumentTypes().drop_back()) {
+  // + 1 for the tile id.
+  const int64_t num_opaque_args = getNumOpaqueArgs() + 1;
+  for (mlir::Type arg_types : getArgumentTypes().drop_back(num_opaque_args)) {
     if (!mlir::isa<mlir::MemRefType>(arg_types)) {
       return emitOpError() << argument_error;
     }
@@ -195,5 +197,49 @@ mlir::TypedValue<mlir::RankedTensorType> InsertTileOp::getTile() {
 }
 
 mlir::LogicalResult InsertTileOp::verify() { return VerifyBufferOp(*this); }
+
+llvm::SmallVector<int64_t> MaskOp::getMaskedDimensions() {
+  llvm::SmallVector<int64_t> masked_dimensions;
+
+  int64_t idx = 0;
+  for (const auto [bound_size, tensor_size] :
+       llvm::zip(getBounds(), getType().getShape())) {
+    if (bound_size < tensor_size) {
+      masked_dimensions.push_back(idx);
+    }
+    ++idx;
+  }
+
+  return masked_dimensions;
+}
+
+mlir::LogicalResult MaskOp::verify() {
+  mlir::ArrayRef<int64_t> tensor_shape = getType().getShape();
+  mlir::ArrayRef<int64_t> bounds = getBounds();
+
+  if (tensor_shape.size() != bounds.size()) {
+    return emitOpError() << "tensor rank: " << tensor_shape.size()
+                         << " does not match mask bounds rank: "
+                         << bounds.size();
+  }
+
+  for (const auto [bound_size, tensor_size] : llvm::zip(bounds, tensor_shape)) {
+    if (bound_size > tensor_size) {
+      return emitOpError()
+             << "mask bound not less than or equal to the tensor size";
+    }
+  }
+
+  return mlir::success();
+}
+
+mlir::OpFoldResult MaskOp::fold(FoldAdaptor) {
+  if (getMaskedDimensions().empty()) {
+    // If none of the dimensions are masked then the op is a nop.
+    return getSource();
+  }
+
+  return {};
+}
 
 }  // namespace xla::xtile

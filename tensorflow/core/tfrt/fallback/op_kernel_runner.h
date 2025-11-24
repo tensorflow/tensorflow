@@ -129,9 +129,13 @@ class OpKernelRunner {
 
  private:
   explicit OpKernelRunner(
-      absl::string_view op_name, tensorflow::Device* device,
+      tensorflow::Device* device,
       tensorflow::FunctionLibraryRuntime* function_library_runtime,
       std::unique_ptr<OpKernel> op_kernel);
+
+  std::unique_ptr<OpKernel> op_kernel_;
+  absl::Span<const AllocatorAttributes> input_alloc_attrs_;
+  absl::Span<const AllocatorAttributes> output_alloc_attrs_;
 
   struct Info {
     tensorflow::Device* device = nullptr;
@@ -141,13 +145,7 @@ class OpKernelRunner {
     absl::InlinedVector<AllocatorAttributes, 4UL> input_alloc_attrs;
     absl::InlinedVector<AllocatorAttributes, 1UL> output_alloc_attrs;
   };
-
-  std::unique_ptr<OpKernel> op_kernel_;
-  absl::Span<const AllocatorAttributes> input_alloc_attrs_;
   std::unique_ptr<Info> info_;
-  absl::Span<const AllocatorAttributes> output_alloc_attrs_;
-
-  std::string op_name_;
 };
 
 // OpKernelRunState keeps the states needed for per-kernel execution.

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/MathExtras.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -237,7 +237,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
 
 }  // anonymous namespace
 
-absl::StatusOr<bool> FusionBlockLevelRewriter::Run(
+absl::StatusOr<bool> FusionBlockLevelRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(

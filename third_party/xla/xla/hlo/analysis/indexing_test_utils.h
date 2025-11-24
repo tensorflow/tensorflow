@@ -31,10 +31,10 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 
@@ -81,16 +81,15 @@ class IndexingTestBase : public HloHardwareIndependentTestBase {
       bool use_physical_layout = false);
 
   mlir::MLIRContext mlir_context_;
-  gpu::SymbolicExprContext symbolic_expr_context_;
+  SymbolicExprContext symbolic_expr_context_;
   std::unique_ptr<VerifiedHloModule> module_;
 };
 
 mlir::AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
-                               gpu::SymbolicExprContext* symbolic_expr_context);
+                               SymbolicExprContext* symbolic_expr_context);
 
-mlir::AffineExpr ParseAffineExpr(
-    absl::string_view serialized_affine_expr,
-    gpu::SymbolicExprContext* symbolic_expr_context);
+mlir::AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
+                                 SymbolicExprContext* symbolic_expr_context);
 
 // Safely evaluates the given expression, returning nullopt if the result is
 // undefined (due to undefined behavior, e.g. division by zero or overflow).

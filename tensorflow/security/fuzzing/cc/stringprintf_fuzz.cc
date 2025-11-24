@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "fuzztest/fuzztest.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/stringprintf.h"
 
 // This is a fuzzer for tensorflow::strings::Printf
@@ -27,9 +28,11 @@ void FuzzTest(const std::vector<std::string> ss) {
   const std::string all = ss[0] + ss[1] + ss[2];
 
   int n[4] = {-1, -1, -1, -1};
-  const std::string ret =
-      tensorflow::strings::Printf("%n%s%n%s%n%s%n", &n[0], ss[0].c_str(), &n[1],
-                                  ss[1].c_str(), &n[2], ss[2].c_str(), &n[3]);
+  const std::string ret = tensorflow::strings::Printf(
+      "%n%s%n%s%n%s%n", absl::FormatCountCapture(&n[0]), ss[0].c_str(),
+      absl::FormatCountCapture(&n[1]), ss[1].c_str(),
+      absl::FormatCountCapture(&n[2]), ss[2].c_str(),
+      absl::FormatCountCapture(&n[3]));
 
   int size_so_far = 0;
   for (int i = 0; i < 3; i++) {

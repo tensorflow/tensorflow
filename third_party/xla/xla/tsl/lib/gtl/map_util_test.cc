@@ -25,7 +25,7 @@ limitations under the License.
 namespace tsl {
 
 TEST(MapUtil, Find) {
-  typedef std::map<string, string> Map;
+  typedef std::map<std::string, std::string> Map;
   Map m;
 
   // Check that I can use a type that's implicitly convertible to the
@@ -39,7 +39,7 @@ TEST(MapUtil, Find) {
 }
 
 TEST(MapUtil, LookupOrInsert) {
-  typedef std::map<string, string> Map;
+  typedef std::map<std::string, std::string> Map;
   Map m;
 
   // Check that I can use a type that's implicitly convertible to the

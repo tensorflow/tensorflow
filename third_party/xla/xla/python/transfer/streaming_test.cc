@@ -242,5 +242,29 @@ TEST(InvalidAllocator, InvalidAlignedAlloc) {
   ASSERT_FALSE(alloc2_or.ok());
 }
 
+class SelfResettingPullTableEntry : public PullTable::Entry {
+ public:
+  explicit SelfResettingPullTableEntry(std::shared_ptr<PullTable> table)
+      : table_(std::move(table)) {}
+
+  bool Handle(tsl::RCReference<ConnectionState> state,
+              const SocketTransferPullRequest& req,
+              size_t base_req_id) override {
+    table_->Reset();
+    return true;
+  }
+
+ private:
+  std::shared_ptr<PullTable> table_;
+};
+
+TEST(PullTable, PullTableRace) {
+  auto table = std::make_shared<PullTable>();
+  table->AwaitPull(6, tsl::MakeRef<SelfResettingPullTableEntry>(table));
+  SocketTransferPullRequest req;
+  req.set_uuid(6);
+  table->Handle({}, req, 0);
+}
+
 }  // namespace
 }  // namespace aux

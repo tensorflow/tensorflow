@@ -236,7 +236,7 @@ absl::StatusOr<xla::HloSharding> ReadHloSharding(
     JAX_CustomCallPartitioner_string data) {
   xla::OpSharding proto;
   if (data.size > std::numeric_limits<int>::max() ||
-      !proto.ParseFromArray(data.data, data.size)) {
+      !proto.ParseFromString(absl::string_view(data.data, data.size))) {
     return absl::InternalError(
         "custom_call_sharding.cc: error parsing OpShardingProto");
   }
@@ -246,7 +246,7 @@ absl::StatusOr<xla::HloSharding> ReadHloSharding(
 absl::StatusOr<xla::Shape> ReadHloShape(JAX_CustomCallPartitioner_string data) {
   xla::ShapeProto proto;
   if (data.size > std::numeric_limits<int>::max() ||
-      !proto.ParseFromArray(data.data, data.size)) {
+      !proto.ParseFromString(absl::string_view(data.data, data.size))) {
     return absl::InternalError(
         "custom_call_sharding.cc: error parsing xla::Shape");
   }

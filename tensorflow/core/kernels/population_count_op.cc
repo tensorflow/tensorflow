@@ -18,9 +18,10 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include <bitset>
-
 #include "tensorflow/core/kernels/population_count_op.h"
+
+#include <bitset>
+#include <limits>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
@@ -114,9 +115,10 @@ struct PopulationCount<CPUDevice, T> {
     // (bitset.count() -> output).  The .count() itself is relatively cheap.
     const double total_cost = (Eigen::TensorOpCost::CastCost<T, uint8>() +
                                Eigen::TensorOpCost::CastCost<int64_t, uint8>());
-    const int64_t shard_cost = (total_cost >= static_cast<double>(kint64max))
-                                   ? kint64max
-                                   : static_cast<int64_t>(total_cost);
+    const int64_t shard_cost =
+        (total_cost >= static_cast<double>(std::numeric_limits<int64_t>::max()))
+            ? std::numeric_limits<int64_t>::max()
+            : static_cast<int64_t>(total_cost);
 
     auto worker_threads = *(c->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, total_shards,

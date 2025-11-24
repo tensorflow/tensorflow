@@ -66,7 +66,8 @@ class FakeDevice : public Device {
 
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
-  static std::unique_ptr<Device> Make(const string& name, const string& type) {
+  static std::unique_ptr<Device> Make(const std::string& name,
+                                      const std::string& type) {
     DeviceAttributes device_attributes;
     device_attributes.set_name(name);
     device_attributes.set_device_type(DeviceType(type).type());
@@ -100,7 +101,7 @@ absl::Status IncreaseDynamismForAutoJit(const Scope& s,
 
   // Scope::ToGraph seems to drop assigned devices, probably because it goes
   // through a GraphDef.  So explicitly maintain the device assignment.
-  std::unordered_map<string, string> assigned_device_names;
+  std::unordered_map<std::string, std::string> assigned_device_names;
   for (Node* n : s.graph()->nodes()) {
     assigned_device_names[n->name()] = n->assigned_device_name();
   }
@@ -149,7 +150,7 @@ TEST(SliceToDynamicSliceRewriteTest, Basic) {
                    Inputs(m_slice_size_0, Const(static_cast<int64_t>(500)),
                           Const(zero_32))));
 
-  std::vector<string> compile_time_constant_inputs;
+  std::vector<std::string> compile_time_constant_inputs;
   compile_time_constant_inputs.push_back("size");
   auto m_dynamic_slice = NodeWith(
       Op("Slice"), AssignedDevice(kDeviceName),

@@ -203,7 +203,7 @@ class ScaleAndTranslateGradTest : public ::testing::Test {
 
   template <typename T>
   void MakeOp(const Tensor& x_data, const Input& y_shape, Input scale,
-              Input translation, const string& kernel_type, bool antialias,
+              Input translation, const std::string& kernel_type, bool antialias,
               Output* x, Output* y) {
     *x = Const<T>(scope_, x_data);
     *y = ScaleAndTranslate(scope_, *x, y_shape, scale, translation,
@@ -216,7 +216,7 @@ class ScaleAndTranslateGradTest : public ::testing::Test {
   template <typename X_T, typename Y_T, typename JAC_T>
   void TestScaleAndTranslate(const TensorShape x_shape, const int out_height,
                              const int out_width, Input scale,
-                             Input translation, const string& kernel_type,
+                             Input translation, const std::string& kernel_type,
                              bool antialias) {
     Tensor x_data = MakeData<X_T>(x_shape);
     Output x, y;

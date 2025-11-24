@@ -47,7 +47,7 @@ class StubDevice : public DeviceBase {
 // Stub resource for testing resource op kernel.
 class StubResource : public ResourceBase {
  public:
-  string DebugString() const override { return ""; }
+  std::string DebugString() const override { return ""; }
   int code;
 };
 
@@ -84,8 +84,8 @@ REGISTER_KERNEL_BUILDER(Name("StubResourceOp").Device(DEVICE_CPU),
 
 class ResourceOpKernelTest : public ::testing::Test {
  protected:
-  std::unique_ptr<StubResourceOpKernel> CreateOp(int code,
-                                                 const string& shared_name) {
+  std::unique_ptr<StubResourceOpKernel> CreateOp(
+      int code, const std::string& shared_name) {
     static std::atomic<int64_t> count(0);
     NodeDef node_def;
     TF_CHECK_OK(NodeDefBuilder(absl::StrCat("test-node", count.fetch_add(1)),
@@ -137,7 +137,7 @@ TEST_F(ResourceOpKernelTest, PrivateResource) {
   // TODO(gonnet): This test is brittle since it assumes that the
   // ResourceManager is untouched and thus the private resource name starts
   // with "_0_".
-  const string key = "_0_" + op->name();
+  const std::string key = "_0_" + op->name();
 
   StubResource* resource;
   TF_ASSERT_OK(
@@ -155,7 +155,7 @@ TEST_F(ResourceOpKernelTest, PrivateResource) {
 }
 
 TEST_F(ResourceOpKernelTest, SharedResource) {
-  const string shared_name = "shared_stub";
+  const std::string shared_name = "shared_stub";
   const int code = -201;
   auto op = CreateOp(code, shared_name);
   ASSERT_NE(op, nullptr);
@@ -199,7 +199,7 @@ TEST_F(ResourceOpKernelTest, VerifyResource) {
 }
 
 TEST_F(ResourceOpKernelTest, ContainerClearedBetweenRuns) {
-  const string shared_name = "shared_stub";
+  const std::string shared_name = "shared_stub";
   const int code = -201;
   auto op = CreateOp(code, shared_name);
   ASSERT_NE(op, nullptr);

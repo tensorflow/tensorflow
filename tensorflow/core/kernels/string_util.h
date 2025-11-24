@@ -33,14 +33,15 @@ enum class CharUnit { BYTE, UTF8_CHAR };
 inline bool IsTrailByte(char x) { return static_cast<signed char>(x) < -0x40; }
 
 // Sets `encoding` based on `str`.
-absl::Status ParseUnicodeEncoding(const string& str, UnicodeEncoding* encoding);
+absl::Status ParseUnicodeEncoding(const std::string& str,
+                                  UnicodeEncoding* encoding);
 
 // Sets `unit` value based on `str`.
-absl::Status ParseCharUnit(const string& str, CharUnit* unit);
+absl::Status ParseCharUnit(const std::string& str, CharUnit* unit);
 
 // Returns the number of Unicode characters in a UTF-8 string.
 // Result may be incorrect if the input string is not valid UTF-8.
-int32 UTF8StrLen(const string& str);
+int32_t UTF8StrLen(const std::string& str);
 
 // Get the next UTF8 character position starting at the given position and
 // skipping the given number of characters. Position is a byte offset, and

@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -33,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
@@ -86,6 +85,13 @@ class TritonTest : public GpuCodegenTest {
     }
   }
 
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    // This is a legacy test, we are testing the old emitter.
+    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
+    return debug_options;
+  }
+
  protected:
   const stream_executor::DeviceDescription& device_desc() {
     return backend().default_stream_executor()->GetDeviceDescription();
@@ -104,7 +110,6 @@ class TritonGemmTest : public TritonTest {
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);
     // Always rewrite Gemms with Triton regardless of size.
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
-    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
     return debug_options;
   }
 
@@ -468,9 +473,10 @@ ENTRY e {
 )";
   TF_EXPECT_OK(CreateTritonIrAndFileCheckForDot(this, kHloText,
                                                 "triton_gemm_computation", R"(
+CHECK: %[[CST:.*]] = arith.constant dense<0>
 CHECK: %[[LOAD:.*]] = tt.load %{{.*}} {{.*}} : !tt.ptr<tensor<16x16xi8>>
-CHECK: %[[TRUNCI:.*]] = arith.trunci %[[LOAD]] : tensor<16x16xi8> to tensor<16x16xi1>
-CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
+CHECK: %[[CMPI:.*]] = arith.cmpi ne, %[[LOAD]], %[[CST]] : tensor<16x16xi8>
+CHECK: %{{.*}} = arith.andi %[[CMPI]], %{{.*}} : tensor<16x16xi1>
 )"));
 }
 
@@ -1559,7 +1565,9 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
 }
 
-TEST_F(TritonGemmTest, DynamicSliceIsSupportedInLhsEndToEnd) {
+// Dynamic slice is not supported by the generic Triton emitter yet and disabled
+// in the triton gemm fusion pass.
+TEST_F(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInLhsEndToEnd) {
   // The select is used to restrict the start index to values that make sense.
   // If it was constant, then the dynamic-slice would be optimized to slice. It
   // is not strictly needed, because we also support clamping the indices.

@@ -293,6 +293,20 @@ Future<> NvshmemCommunicator::AllReduce(
           dest_ptr, count);
       break;
     }
+    case PrimitiveType::PRED:
+    case PrimitiveType::U8: {
+      CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
+          uint8, uint8_t, NVSHMEM_TEAM_SHARED,
+          se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
+          dest_ptr, count);
+      break;
+    }
+    case PrimitiveType::S8: {
+      CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
+          int8, int8_t, NVSHMEM_TEAM_SHARED, se::gpu::AsGpuStreamValue(stream),
+          reduction_kind, source_ptr, dest_ptr, count);
+      break;
+    }
     default:
       return absl::InternalError("Invalid Nvshmem reduction type.");
   }

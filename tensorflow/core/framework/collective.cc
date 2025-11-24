@@ -32,11 +32,11 @@ struct RegistrationInfo {
   // what is effectively a static instance of the collective implementation.
   // During param resolution of collective ops we return this static instance.
   // The actual op execution gets a fresh instance using `factory`.
-  RegistrationInfo(const string& n, CollectiveRegistry::Factory f)
+  RegistrationInfo(const std::string& n, CollectiveRegistry::Factory f)
       : name(n),
         factory(std::move(f)),
         param_resolver_instance(this->factory()) {}
-  string name;
+  std::string name;
   CollectiveRegistry::Factory factory;
   CollectiveImplementationInterface* param_resolver_instance;
 };
@@ -48,13 +48,13 @@ std::vector<RegistrationInfo>* MutableCollectiveRegistry() {
 }
 }  // namespace
 
-string CollGroupRuntimeDetails::ToString() const {
+std::string CollGroupRuntimeDetails::ToString() const {
   return absl::StrCat("CollGroupRuntimeDetails {communicator_key=",
                       absl::CEscape(communicator_key), "}");
 }
 
-string CollGroupParams::ToString() const {
-  string v = strings::StrCat(
+std::string CollGroupParams::ToString() const {
+  std::string v = strings::StrCat(
       "CollGroupParams {group_key=", group_key, " group_size=", group_size,
       " device_type=", device_type.type_string(), " num_tasks=", num_tasks,
       " runtime_details=", runtime_details.ToString(), " devices {");
@@ -94,8 +94,8 @@ CollInstanceParams& CollInstanceParams::operator=(
   return *this;
 }
 
-string CollInstanceParams::ToString() const {
-  string v =
+std::string CollInstanceParams::ToString() const {
+  std::string v =
       strings::StrCat("CollInstanceParams { instance_key=", instance_key,
                       " type=", type, " data_type=", DataTypeString(data_type),
                       " shape=", shape.DebugString(), " devices {");
@@ -134,8 +134,9 @@ string CollInstanceParams::ToString() const {
   return v;
 }
 
-string CollectiveParams::ToString() const {
-  string v = absl::StrCat("CollectiveParams ", name, " {", group.ToString());
+std::string CollectiveParams::ToString() const {
+  std::string v =
+      absl::StrCat("CollectiveParams ", name, " {", group.ToString());
   absl::StrAppend(&v, " ", instance.ToString());
   strings::StrAppend(&v, " default_rank=", default_rank,
                      " is_source=", is_source, " source_rank=", source_rank,
@@ -156,7 +157,7 @@ CollectiveContext::CollectiveContext(
     CollectiveExecutor* col_exec, NcclCommunicatorInterface* nccl_communicator,
     const DeviceMgr* dev_mgr, OpKernelContext* ctx,
     OpKernelContext::Params* op_params, const CollectiveParams* col_params,
-    const string& exec_key, int64_t step_id, const Tensor* input,
+    const std::string& exec_key, int64_t step_id, const Tensor* input,
     Tensor* output)
     : col_exec(col_exec),
       nccl_communicator(nccl_communicator),
@@ -177,14 +178,14 @@ int64_t CollectiveExecutor::kInvalidId = -1;
 
 /*static*/
 absl::Status CollectiveRegistry::Lookup(
-    const string& collective_name,
+    const std::string& collective_name,
     CollectiveImplementationInterface** implementation) {
   return LookupHelper(collective_name, implementation, false);
 }
 
 /*static*/
 absl::Status CollectiveRegistry::LookupParamResolverInstance(
-    const string& collective_name,
+    const std::string& collective_name,
     CollectiveImplementationInterface** implementation) {
   return LookupHelper(collective_name, implementation, true);
 }
@@ -198,7 +199,7 @@ void CollectiveRegistry::GetAll(
 }
 
 /*static*/
-absl::Status CollectiveRegistry::Register(const string& collective_name,
+absl::Status CollectiveRegistry::Register(const std::string& collective_name,
                                           Factory factory) {
   std::vector<RegistrationInfo>* registry = MutableCollectiveRegistry();
   for (const RegistrationInfo& reg_info : *registry) {
@@ -212,7 +213,7 @@ absl::Status CollectiveRegistry::Register(const string& collective_name,
 
 /*static*/
 absl::Status CollectiveRegistry::LookupHelper(
-    const string& collective_name,
+    const std::string& collective_name,
     CollectiveImplementationInterface** implementation, bool param_resolver) {
   std::vector<RegistrationInfo>* registry = MutableCollectiveRegistry();
   for (const RegistrationInfo& reg_info : *registry) {

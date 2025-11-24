@@ -53,10 +53,10 @@ class HloDCE : public HloModulePass {
       bool remove_cross_partition_collective_ops = false,
       CallGraph* call_graph = nullptr);
 
+ protected:
   // Run the pass on the given module. Returns whether the module was changed
   // (instructions were removed).
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

@@ -51,6 +51,7 @@ load("//third_party/spdlog:workspace.bzl", spdlog = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
+load("//third_party/transformer_engine:workspace.bzl", transformer_engine = "repo")
 load("//third_party/triton:workspace.bzl", triton = "repo")
 load("//third_party/uv:workspace.bzl", uv = "repo")
 load("//third_party/xnnpack:workspace.bzl", xnnpack = "repo")
@@ -100,6 +101,7 @@ def _initialize_third_party():
     spdlog()
     stablehlo()
     tensorrt()
+    transformer_engine()
     triton()
     uv()
     xnnpack()
@@ -160,9 +162,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "42155cfc084bf1f80e9ef486470f949502ea8d1b845b2f1bebd58978a1b540aa",
-        strip_prefix = "kleidiai-8ca226712975f24f13f71d04cda039a0ee9f9e2f",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/8ca226712975f24f13f71d04cda039a0ee9f9e2f.zip"),
+        sha256 = "ecd433a4f7446f7f02a04e458989de8253f19187aa85e3b81b19e0b60f0bf859",
+        strip_prefix = "kleidiai-d7770c89632329a9914ef1a90289917597639cbe",
+        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/d7770c89632329a9914ef1a90289917597639cbe.zip"),
     )
 
     tf_http_archive(

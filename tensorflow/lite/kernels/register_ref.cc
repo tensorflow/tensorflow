@@ -280,7 +280,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              Register_EMBEDDING_LOOKUP_SPARSE());
   AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED_REF(),
              /* min_version */ 1,
-             /* max_version */ 11);
+             /* max_version */ 14);
   AddBuiltin(BuiltinOperator_LSH_PROJECTION, Register_LSH_PROJECTION());
   AddBuiltin(BuiltinOperator_HASHTABLE_LOOKUP, Register_HASHTABLE_LOOKUP());
   AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX_REF(),
@@ -380,7 +380,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 8);
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 6);
+             /* max_version = */ 7);
   AddBuiltin(BuiltinOperator_PRELU, Register_PRELU_REF());
   AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM_REF(),
              /* min_version = */ 1,
@@ -415,7 +415,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_SELECT_V2, Register_SELECT_V2());
   AddBuiltin(BuiltinOperator_SLICE, Register_SLICE_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 5);
+             /* max_version = */ 7);
   AddBuiltin(BuiltinOperator_SIN, Register_SIN());
   AddBuiltin(BuiltinOperator_COS, Register_COS());
   AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSECONV_REF(),

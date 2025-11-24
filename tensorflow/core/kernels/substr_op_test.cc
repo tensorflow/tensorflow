@@ -136,9 +136,9 @@ Graph* SetupSubstrGraph(const Tensor& input, const int32_t pos,
                         const int32_t len, const char* const unit) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor position(DT_INT32, TensorShape({}));
-  position.flat<int32>().setConstant(pos);
+  position.flat<int32_t>().setConstant(pos);
   Tensor length(DT_INT32, TensorShape({}));
-  length.flat<int32>().setConstant(len);
+  length.flat<int32_t>().setConstant(len);
 
   TF_CHECK_OK(NodeBuilder("substr_op", "Substr")
                   .Input(test::graph::Constant(g, input))

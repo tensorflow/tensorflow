@@ -16,9 +16,14 @@ limitations under the License.
 #ifndef XLA_HLO_IR_NAMED_SHARDING_H_
 #define XLA_HLO_IR_NAMED_SHARDING_H_
 
+#include <cstdint>
+#include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -26,12 +31,83 @@ namespace xla {
 // C++ representation for corresponding `OpSharding::NamedSharding` proto so
 // same documentation applies.
 class NamedSharding {
-  struct DimensionSharding {
-    std::vector<AxisRef> axes;
-    bool is_closed;
+ public:
+  class DimensionSharding {
+   public:
+    bool operator==(const DimensionSharding& other) const {
+      return axes_ == other.axes_ && is_closed_ == other.is_closed_;
+    }
+
+    explicit DimensionSharding(std::vector<AxisRef> axes, bool is_closed)
+        : axes_(std::move(axes)), is_closed_(is_closed) {}
+
+    absl::Span<const AxisRef> axes() const { return axes_; }
+
+   private:
+    std::vector<AxisRef> axes_;
+    bool is_closed_;
   };
 
-  std::vector<NamedSharding> tuple_shardings_;
+  // Shardings using mesh with similar device assignment should compare equal
+  bool operator==(const NamedSharding& other) const {
+    return mesh_.DeviceAssignmentEquals(other.mesh_) &&
+           dim_shardings_ == other.dim_shardings_ &&
+           replicated_axes_ == other.replicated_axes_ &&
+           unreduced_axes_ == other.unreduced_axes_;
+  }
+
+  bool operator!=(const NamedSharding& other) const {
+    return !(*this == other);
+  }
+
+  // TODO(b/456212087): Add validation checks
+  explicit NamedSharding(Mesh mesh,
+                         absl::Span<const DimensionSharding> dim_shardings = {},
+                         absl::Span<const AxisRef> replicated_axes = {},
+                         absl::Span<const AxisRef> unreduced_axes = {},
+                         absl::Span<const OpMetadata> metadata = {})
+      : mesh_(std::move(mesh)),
+        dim_shardings_(dim_shardings.begin(), dim_shardings.end()),
+        replicated_axes_(replicated_axes.begin(), replicated_axes.end()),
+        unreduced_axes_(unreduced_axes.begin(), unreduced_axes.end()),
+        metadata_(metadata.begin(), metadata.end()) {}
+
+ private:
+  friend class HloSharding;
+
+  // Creates a sharding with empty mesh and no sharding axes depicting it is
+  // replicated across all devices.
+  static NamedSharding Replicate(absl::Span<const OpMetadata> metadata = {}) {
+    return NamedSharding(/*mesh=*/Mesh(), /*dim_shardings=*/{},
+                         /*replicated_axes=*/{},
+                         /*unreduced_axes=*/{}, metadata);
+  }
+
+  static NamedSharding MaximalSharding(
+      int64_t device_id, absl::Span<const OpMetadata> metadata = {}) {
+    return NamedSharding(Mesh(device_id), /*dim_shardings=*/{},
+                         /*replicated_axes=*/{},
+                         /*unreduced_axes=*/{}, metadata);
+  }
+
+  bool IsReplicated() const {
+    return !IsMaximal() &&
+           absl::c_all_of(dim_shardings_, [](const DimensionSharding& s) {
+             return s.axes().empty();
+           });
+  }
+
+  bool IsMaximal() const { return mesh_.IsMaximal(); }
+
+  // Returns true if the tile size is the same as the input size.
+  //
+  // This checks for both replicated and maximal sharding, as in both cases tile
+  // size is same as input size.
+  bool IsTileMaximal() const { return IsReplicated() || IsMaximal(); }
+
+  const TileAssignment& device_assignment() const {
+    return mesh_.device_assignment();
+  }
 
   Mesh mesh_;
   std::vector<DimensionSharding> dim_shardings_;

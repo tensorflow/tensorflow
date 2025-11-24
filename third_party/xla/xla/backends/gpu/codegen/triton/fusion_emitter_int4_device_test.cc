@@ -29,12 +29,12 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -107,6 +107,7 @@ class TritonTest : public GpuCodegenTest {
             .mutable_debug_options()
             .mutable_xla_gpu_unsupported_generic_triton_emitter_features();
     emitter_opts->Add(DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
+    emitter_opts->Add(DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM);
     emitter_opts->Add(
         DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION);
     emitter_opts->Add(

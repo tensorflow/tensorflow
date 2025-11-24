@@ -32,7 +32,7 @@ cc_library(
         "//xla/backends/profiler/gpu:cupti_collector",
         "//xla/backends/profiler/gpu:cupti_tracer",
         "//xla/stream_executor:platform",
-        "//xla/stream_executor/cuda:cuda_platform",
+        "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/platform:platform_object_registry",
         "//xla/tsl/profiler/utils:time_utils",
         "@com_google_absl//absl/status:statusor",

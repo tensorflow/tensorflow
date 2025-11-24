@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "dnnl.hpp"  // NOLINT: for DNNL_MAX_NDIMS
 #include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "xla/backends/cpu/runtime/dot_lib.h"
+#include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
@@ -84,9 +84,9 @@ absl::StatusOr<bool> IsOneDnnDotSupported(
   }
 
   // NOLINTNEXTLINE: Use dnnl.hpp for DNNL_MAX_NDIMS for now.
-  if (lhs_shape.dimensions_size() > DNNL_MAX_NDIMS ||
-      rhs_shape.dimensions_size() > DNNL_MAX_NDIMS ||
-      lhs_shape.dimensions_size() != rhs_shape.dimensions_size()) {
+  if (lhs_shape.dimensions().size() > DNNL_MAX_NDIMS ||
+      rhs_shape.dimensions().size() > DNNL_MAX_NDIMS ||
+      lhs_shape.dimensions().size() != rhs_shape.dimensions().size()) {
     return false;
   }
 

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 
@@ -49,22 +50,32 @@ int GetCuDnnPlanCount(const HloInstruction& hlo,
 }
 
 bool GemmFusionAutotunerImpl::AddLibConfigs(
-    const HloFusionInstruction& fusion, const HloDotInstruction* dot,
+    const HloFusionInstruction& fusion, const HloInstruction* dot,
     std::vector<BackendConfig>& configs) {
   // Add cuDNN plans, if available.
-  auto cc = std::get<se::CudaComputeCapability>(GetComputeCapability());
-  bool is_cudnn_enabled =
-      !config_.IsDeviceless() &&
-      GetDnnVersionInfoOrDefault(config_.GetExecutor()).major_version() >= 9 &&
+  stream_executor::CudaComputeCapability cc =
+      *GetComputeCapability().cuda_compute_capability();
+  auto dnn_version = GetDnnVersionInfoOrDefault(
+      !config_.IsDeviceless() ? config_.GetExecutor() : nullptr);
+
+  bool is_cudnn_fusion = IsGpuFusionKind(fusion, kCuDnnFusionKind);
+  bool is_supported_triton_dot_fusion =
+      IsGpuFusionKind(fusion, kTritonGemmFusionKind) &&
+      dnn_version.major_version() >= 9 &&
+      algorithm_util::IsSupportedByCudnn(dot->precision_config().algorithm()) &&
       ((cc.IsAtLeastAmpere() &&
         debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 1) ||
        (cc.IsAtLeastBlackwell() &&
         debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 0));
-  if ((IsGpuFusionKind(fusion, kCuDnnFusionKind) && IsAutotuningEnabled()) ||
-      (IsGpuFusionKind(fusion, kTritonGemmFusionKind) && is_cudnn_enabled &&
-       algorithm_util::IsSupportedByCudnn(
-           dot->precision_config().algorithm()) &&
-       IsAutotuningEnabled())) {
+  bool is_supported_triton_scaled_dot_fusion =
+      IsGpuFusionKind(fusion, kTritonScaledDotFusionKind) &&
+      dnn_version >= kCudnnSupportsBlockScaledDot &&
+      CudnnScaledDotHelper::IsSupported(Cast<HloScaledDotInstruction>(dot)) &&
+      cc.IsAtLeastBlackwell();
+
+  if (IsAutotuningEnabled() &&
+      (is_cudnn_fusion || is_supported_triton_dot_fusion ||
+       is_supported_triton_scaled_dot_fusion)) {
     const int plan_count = GetCuDnnPlanCount(fusion, config_);
     for (int plan_id = 0; plan_id < plan_count; ++plan_id) {
       configs.push_back(CuDnnConfig{plan_id});
@@ -81,8 +92,8 @@ bool GemmFusionAutotunerImpl::AddLibConfigs(
 
 std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     const {
-  auto compute_capability =
-      std::get<se::CudaComputeCapability>(GetComputeCapability());
+  stream_executor::CudaComputeCapability compute_capability =
+      *GetComputeCapability().cuda_compute_capability();
   std::vector<TritonGemmConfig> configs;
 
   if (compute_capability.IsAtLeastBlackwell()) {
@@ -93,12 +104,11 @@ std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     configs = *kDefaultCudaConfigs;
   }
 
+  // Hopper+ devices support TMA. Add TMA parameterized configs.
   if (!debug_options_.xla_gpu_experimental_enable_triton_tma() ||
       !compute_capability.IsAtLeastHopper()) {
     return configs;
   }
-
-  // Hopper+ devices support TMA. Add TMA parameterized configs.
   std::vector<TritonGemmConfig> tma_parameterized_configs;
   for (auto& config : configs) {
     config.is_tma_allowed = false;
@@ -107,7 +117,25 @@ std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     config.is_tma_allowed = true;
     tma_parameterized_configs.push_back(config);
   }
-  return tma_parameterized_configs;
+
+  // TODO(b/449668102): Currently only supporting warp specialization on
+  // Blackwell+. Potentially extend support to Hopper.
+  if (!compute_capability.IsAtLeastBlackwell()) {
+    return tma_parameterized_configs;
+  }
+  std::vector<TritonGemmConfig> warp_specialized_configs;
+  for (auto& config : tma_parameterized_configs) {
+    config.is_warp_specialization_allowed = false;
+    warp_specialized_configs.push_back(config);
+
+    if (config.is_tma_allowed && config.num_warps <= 16 &&
+        config.num_warps % 4 == 0) {
+      config.is_warp_specialization_allowed = true;
+      warp_specialized_configs.push_back(config);
+    }
+  }
+
+  return warp_specialized_configs;
 }
 
 }  // namespace gpu

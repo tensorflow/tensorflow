@@ -219,8 +219,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
 
  public:
   void SetUp() override {
-    thunk_sequence_serdes_ =
-        std::make_unique<T>(&buffer_allocations_.GetUnderlyingVector());
+    thunk_sequence_serdes_ = std::make_unique<T>(
+        nullptr, &buffer_allocations_.GetUnderlyingVector());
   }
 
  protected:

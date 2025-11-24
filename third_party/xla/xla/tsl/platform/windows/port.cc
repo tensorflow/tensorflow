@@ -16,6 +16,8 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <new>
 #ifdef TF_USE_SNAPPY
 #include "snappy.h"
 #endif
@@ -186,13 +188,14 @@ int NumHyperthreadsPerCore() {
 namespace tsl {
 namespace port {
 
-void* AlignedMalloc(size_t size, int minimum_alignment) {
-  return _aligned_malloc(size, minimum_alignment);
+void* AlignedMalloc(size_t size, std::align_val_t minimum_alignment) {
+  return _aligned_malloc(size, static_cast<size_t>(minimum_alignment));
 }
 
 void AlignedFree(void* aligned_memory) { _aligned_free(aligned_memory); }
 
-void AlignedSizedFree(void* aligned_memory, size_t alignment, size_t size) {
+void AlignedSizedFree(void* aligned_memory, size_t size,
+                      std::align_val_t alignment) {
   (void)alignment;
   (void)size;
 

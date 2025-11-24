@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
@@ -121,20 +122,41 @@ class PjRtTopologyDescription {
     return absl::UnimplementedError("ProcessCount is unsupported.");
   }
 
+  // Returns the number of chips per process.
+  virtual absl::StatusOr<int> ChipsPerProcess() const {
+    return absl::UnimplementedError("ChipsPerProcess is unsupported.");
+  }
+
   // Returns the number of chips.
   virtual absl::StatusOr<int> ChipCount() const {
-    return absl::UnimplementedError("ChipCount is unsupported.");
+    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    return process_count * chips_per_process;
   }
 
   // Returns the total number of cores of the default type.
   virtual absl::StatusOr<int> CoreCountOfDefaultType() const {
-    return absl::UnimplementedError("CoreCountOfDefaultType is unsupported.");
+    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    TF_ASSIGN_OR_RETURN(int cores_per_process,
+                        CoreCountOfDefaultTypePerProcess());
+    return process_count * cores_per_process;
+  }
+
+  // As above, but returns the number of logical devices per host.
+  virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerProcess()
+      const {
+    TF_ASSIGN_OR_RETURN(int logical_devices_per_chip,
+                        LogicalDeviceCountOfDefaultTypePerChip());
+    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    return chips_per_process * logical_devices_per_chip;
   }
 
   // Returns the total number of logical devices of the default type.
   virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const {
-    return absl::UnimplementedError(
-        "LogicalDeviceCountOfDefaultType is unsupported.");
+    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    TF_ASSIGN_OR_RETURN(int logical_devices_per_process,
+                        LogicalDeviceCountOfDefaultTypePerProcess());
+    return process_count * logical_devices_per_process;
   }
 
   // Returns the number of logical devices of the default type per chip.
@@ -145,14 +167,56 @@ class PjRtTopologyDescription {
 
   // Returns the number of cores of the default type per process.
   virtual absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const {
-    return absl::UnimplementedError(
-        "CoreCountOfDefaultTypePerProcess is unsupported.");
+    TF_ASSIGN_OR_RETURN(int cores_per_chip, CoreCountOfDefaultTypePerChip());
+    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    return cores_per_chip * chips_per_process;
   }
 
   // Returns the number of cores per chip for the default type.
   virtual absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const {
     return absl::UnimplementedError(
         "CoreCountOfDefaultTypePerChip is unsupported.");
+  }
+
+  // Returns the ids for all processes.
+  virtual absl::StatusOr<PjRtIdContainer<PjRtProcessId>> ProcessIds() const {
+    return absl::UnimplementedError("ProcessIds is unsupported.");
+  }
+
+  // Returns the ids for all the logical devices on a specific process.
+  virtual absl::StatusOr<PjRtIdContainer<PjRtGlobalDeviceId>>
+  LogicalDeviceOfDefaultTypeIdsOnProcess(PjRtProcessId process_id) const {
+    return absl::UnimplementedError(
+        "LogicalDeviceOfDefaultTypeIdsOnProcess is unsupported.");
+  }
+
+  // Returns the process ID and the index of the chip within that process for a
+  // given chip.
+  virtual absl::StatusOr<std::pair<PjRtProcessId, int>>
+  ProcessIdAndIndexOnProcessForChip(PjRtGlobalChipId chip_id) const {
+    return absl::UnimplementedError(
+        "ProcessIdAndIndexOnProcessForChip is unsupported.");
+  }
+
+  // Returns the process ID and the index on process for a logical device.
+  virtual absl::StatusOr<std::pair<PjRtProcessId, int>>
+  ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+      xla::PjRtGlobalDeviceId device_id) const {
+    return absl::UnimplementedError(
+        "ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType is "
+        "unsupported.");
+  }
+
+  // Returns the coordinates of a process given its ID.
+  virtual absl::StatusOr<PjRtDeviceDimensions> ProcessCoordFromId(
+      PjRtProcessId process_id) const {
+    return absl::UnimplementedError("ProcessCoordForId is unsupported.");
+  }
+
+  // Returns the chip ID for a given chip coordinate.
+  virtual absl::StatusOr<PjRtGlobalChipId> ChipIdFromCoord(
+      const PjRtDeviceDimensions& chip) const {
+    return absl::UnimplementedError("IdForChip is unsupported.");
   }
 
   // Returns a unique integer ID for the logical device of the default type on
@@ -173,18 +237,21 @@ class PjRtTopologyDescription {
   }
 
   // Returns the bounds of the chips within a single host.
-  virtual absl::StatusOr<PjRtDeviceDimensions> ChipsPerHostBounds() const {
-    return absl::UnimplementedError("GetChipsPerHostBounds is unsupported.");
+  // The product of all dimensions should equal to ChipsPerProcess().
+  virtual absl::StatusOr<PjRtDeviceDimensions> ChipsPerProcessBounds() const {
+    return absl::UnimplementedError("GetChipsPerProcessBounds is unsupported.");
   }
 
   // Returns the total bounds of all chips in the topology.
+  // The product of all dimensions should equal to ChipCount().
   virtual absl::StatusOr<PjRtDeviceDimensions> ChipBounds() const {
     return absl::UnimplementedError("ChipBounds is unsupported.");
   }
 
   // Returns the total bounds of all hosts in the topology.
-  virtual absl::StatusOr<PjRtDeviceDimensions> HostBounds() const {
-    return absl::UnimplementedError("HostBounds is unsupported.");
+  // The product of all dimensions should equal to ProcessCount().
+  virtual absl::StatusOr<PjRtDeviceDimensions> ProcessBounds() const {
+    return absl::UnimplementedError("ProcessBounds is unsupported.");
   }
 
   // Serializes the topology for use in cache keys. (No guarantees on
@@ -217,20 +284,19 @@ class PjRtTopologyDescription {
   }
 };
 
-// Returns true if it's TPU topology.
-inline bool IsTpuTopology(const PjRtTopologyDescription& topology_description) {
-  return topology_description.platform_id() == xla::TpuId();
+// Returns true if it's TPU id.
+inline bool IsTpuId(PjRtPlatformId platform_id) {
+  return platform_id == xla::TpuId();
 }
 
-// Returns true if it's GPU topology.
-inline bool IsGpuTopology(const PjRtTopologyDescription& topology_description) {
-  return topology_description.platform_id() == xla::CudaId() ||
-         topology_description.platform_id() == xla::RocmId();
+// Returns true if it's GPU id.
+inline bool IsGpuId(PjRtPlatformId platform_id) {
+  return platform_id == xla::CudaId() || platform_id == xla::RocmId();
 }
 
-// Returns true if it's CPU topology.
-inline bool IsCpuTopology(const PjRtTopologyDescription& topology_description) {
-  return topology_description.platform_id() == xla::CpuId();
+// Returns true if it's CPU id.
+inline bool IsCpuId(PjRtPlatformId platform_id) {
+  return platform_id == xla::CpuId();
 }
 
 // Abstract interface that all registered compilers must implement.

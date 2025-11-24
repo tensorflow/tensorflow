@@ -40,8 +40,11 @@ cc_library(
         "//xla:autotune_results_proto_cc",
         "//xla:autotuning_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/service:dump",
         "//xla/service:executable",
         "//xla/service:shaped_buffer",
+        "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -61,7 +64,6 @@ cc_library(
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -79,6 +81,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:executable",
         "//xla/service:shaped_buffer",
         "//xla/service/gpu:backend_configs_cc",
@@ -86,6 +89,7 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "//xla/tsl/testing:temporary_directory",
         "//xla/tsl/util/proto:proto_matchers",
         "//xla/tsl/util/proto:proto_utils",
         "@com_google_absl//absl/status",
@@ -93,13 +97,12 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:any_cc_proto",
         "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -129,6 +132,9 @@ cc_library(
         ":autotuner_cache_proto_cc",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

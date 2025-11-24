@@ -53,6 +53,8 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   static absl::StatusOr<std::unique_ptr<CudaCommandBuffer>> Create(
       Mode mode, StreamExecutor* executor, CudaContext* cuda_context);
 
+  std::string ToString() const override;
+
   ~CudaCommandBuffer() override;
 
  private:

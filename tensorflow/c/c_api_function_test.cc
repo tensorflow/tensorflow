@@ -1171,7 +1171,7 @@ TEST_F(CApiFunctionTest, InvalidOutputTensor_BadNodePtr) {
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
   EXPECT_EQ(string("Node is null\n\tEncountered while processing output 0 "
                    "from function 'MyFunc'"),
-            string(TF_Message(s_)));
+            std::string(TF_Message(s_)));
 }
 
 TEST_F(CApiFunctionTest, NodeMissingInput) {

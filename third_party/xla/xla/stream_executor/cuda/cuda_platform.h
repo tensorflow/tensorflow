@@ -25,19 +25,13 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
-namespace cuda {
-// Opaque and unique identifier for the CUDA platform plugin.
-// This is needed so that plugins can refer to/identify this platform without
-// instantiating a CudaPlatform object.
-extern const Platform::Id kCudaPlatformId;
-}  // namespace cuda
-
 namespace gpu {
 // Cuda-specific platform plugin, registered as a singleton value via module
 // initializer.
 class CudaPlatform : public Platform {
  public:
   CudaPlatform();
+  ~CudaPlatform() override;
 
   // Platform interface implementation:
   // Returns the same value as kCudaPlatform above.

@@ -5,6 +5,9 @@ id
 urllib3
 requests
 
+# For XLA
+pyyaml
+
 # For JAX
 build ~= 1.2.2
 # uv is faster than pip for installing Python packages.

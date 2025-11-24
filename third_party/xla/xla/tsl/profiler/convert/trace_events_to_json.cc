@@ -34,7 +34,7 @@ namespace {
 
 // Converts the given time from picoseconds to microseconds and then to a string
 // using maximum precision.
-inline std::string PicosToMicrosString(uint64 ps) {
+inline std::string PicosToMicrosString(uint64_t ps) {
   return MaxPrecision(PicoToMicro(ps));
 }
 
@@ -58,7 +58,7 @@ std::vector<const typename Map::value_type*> SortByKey(const Map& m) {
   return pairs;
 }
 
-inline void AddDeviceMetadata(uint32 device_id, const Device& device,
+inline void AddDeviceMetadata(uint32_t device_id, const Device& device,
                               std::string* json) {
   if (!device.name().empty()) {
     absl::StrAppend(json, R"({"ph":"M","pid":)", device_id,
@@ -70,21 +70,21 @@ inline void AddDeviceMetadata(uint32 device_id, const Device& device,
                   device_id, "}},");
 }
 
-inline void AddResourceMetadata(uint32 device_id, uint32 resource_id,
+inline void AddResourceMetadata(uint32_t device_id, uint32_t resource_id,
                                 const Resource& resource, std::string* json) {
   if (!resource.name().empty()) {
     absl::StrAppend(json, R"({"ph":"M","pid":)", device_id, R"(,"tid":)",
                     resource_id, R"(,"name":"thread_name","args":{"name":)",
                     JsonString(resource.name()), "}},");
   }
-  uint32 sort_index =
+  uint32_t sort_index =
       resource.sort_index() ? resource.sort_index() : resource_id;
   absl::StrAppend(json, R"({"ph":"M","pid":)", device_id, R"(,"tid":)",
                   resource_id, R"(,"name":"thread_sort_index")",
                   R"(,"args":{"sort_index":)", sort_index, "}},");
 }
 
-inline void AddTraceEvent(const TraceEvent& event, string* json) {
+inline void AddTraceEvent(const TraceEvent& event, std::string* json) {
   auto duration_ps = std::max(event.duration_ps(), protobuf_uint64{1});
   absl::StrAppend(json, R"({"ph":"X","pid":)", event.device_id(), R"(,"tid":)",
                   event.resource_id(), R"(,"ts":)",
@@ -110,11 +110,11 @@ std::string TraceContainerToJson(const TraceContainer& container) {
       R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true},)"
       R"("traceEvents":[)";
   for (const auto* id_and_device : SortByKey(container.trace().devices())) {
-    uint32 device_id = id_and_device->first;
+    uint32_t device_id = id_and_device->first;
     const Device& device = id_and_device->second;
     AddDeviceMetadata(device_id, device, &json);
     for (const auto* id_and_resource : SortByKey(device.resources())) {
-      uint32 resource_id = id_and_resource->first;
+      uint32_t resource_id = id_and_resource->first;
       const Resource& resource = id_and_resource->second;
       AddResourceMetadata(device_id, resource_id, resource, &json);
     }

@@ -102,7 +102,6 @@ cc_library(
         "//xla/service:platform_util",
         "//xla/service/gpu:alias_info",
         "//xla/service/gpu:compile_module_to_llvm_ir",
-        "//xla/service/gpu:executable_proto_cc",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_hlo_schedule",
         "//xla/service/gpu:gpu_spmd_pipeline",
@@ -247,7 +246,7 @@ lit_test_suite(
     hermetic_cuda_data_dir = "%S/../../../../../cuda_nvcc",
     tags_override = {
         "tests/gpu_hlo_ptx.hlo": ["cuda-only"],
-        "tests/gpu_hlo_llvm.hlo": ["cuda-only"], #TODO(rocm): weekly sync 25-07-14
+        "tests/gpu_hlo_llvm.hlo": [],
     },
     tools = [
         "//xla/tools:hlo-opt",

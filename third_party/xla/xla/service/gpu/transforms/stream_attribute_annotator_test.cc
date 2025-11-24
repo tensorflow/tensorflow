@@ -159,6 +159,28 @@ TEST_F(StreamAttributeAnnotatorTest, GTEUserIsAnnotated) {
   EXPECT_EQ(gpu_config.wait_on_operation_queues()[0], 1);
 }
 
+TEST_F(StreamAttributeAnnotatorTest, GTENoUserIsHandled) {
+  constexpr absl::string_view kHloString = R"(
+  HloModule ModuleWithAsync
+
+  ENTRY entry {
+    p1_32 = f32[16,32] parameter(0)
+    p2_32 = f32[32,16] parameter(1)
+
+    custom-call.3 = (f32[16,16], s8[1028]{0}) custom-call(p1_32, p2_32), custom_call_target="__cublas$gemm", backend_config={"operation_queue_id":"1","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT","grad_x":false,"grad_y":false}}
+    ROOT get-tuple-element.24 = f32[16,16] get-tuple-element(custom-call.3), index=0
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  StreamAttributeAnnotator attr_annotator{device_description()};
+  bool changed;
+  TF_ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 TEST_F(StreamAttributeAnnotatorTest, FusionIsAnnotated) {
   constexpr absl::string_view kHloString = R"(
   HloModule ModuleWithFusion

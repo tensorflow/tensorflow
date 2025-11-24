@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -29,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -230,7 +230,7 @@ std::optional<llvm::SmallDenseMap<char, int64_t>> EquationToMap(
     llvm::StringRef equation) {
   llvm::SmallDenseMap<char, int64_t> map;
   for (int64_t i = 0; i < equation.size(); ++i) {
-    if (!std::isalpha(equation[i])) {
+    if (!llvm::isAlpha(equation[i])) {
       // Unsupported character in the equation.
       return std::nullopt;
     }
@@ -263,7 +263,7 @@ std::optional<llvm::SetVector<char>> GetAvailableLabels(
   const int lhs_size = lhs.size();
   for (int i = 0; i < lhs_size; ++i) {
     const char label = lhs[i];
-    if (std::isalpha(label)) {
+    if (llvm::isAlpha(label)) {
       labels.remove(label);
       ++lhs_count;
     } else if (label == '.') {
@@ -280,7 +280,7 @@ std::optional<llvm::SetVector<char>> GetAvailableLabels(
   const int rhs_size = rhs.size();
   for (int i = 0; i < rhs_size; ++i) {
     const char label = rhs[i];
-    if (std::isalpha(label)) {
+    if (llvm::isAlpha(label)) {
       labels.remove(label);
       ++rhs_count;
     } else if (label == '.') {
@@ -318,7 +318,7 @@ std::tuple<std::string, std::string, std::string> FlattenEllipsis(
   std::string new_lhs;
   for (int i = 0; i < lhs.size(); ++i) {
     const char label = lhs[i];
-    if (std::isalpha(label)) {
+    if (llvm::isAlpha(label)) {
       new_lhs.push_back(label);
     } else {
       // Encounter ellipsis: generate unnamed labels then insert to the new
@@ -333,7 +333,7 @@ std::tuple<std::string, std::string, std::string> FlattenEllipsis(
   std::string new_rhs, new_rhs_labels;
   for (int i = 0; i < rhs.size(); ++i) {
     const char label = rhs[i];
-    if (std::isalpha(label)) {
+    if (llvm::isAlpha(label)) {
       new_rhs.push_back(label);
     } else {
       // Encounter ellipsis: generate unnamed labels then insert to the new
@@ -352,7 +352,7 @@ std::tuple<std::string, std::string, std::string> FlattenEllipsis(
   std::string new_output;
   for (int i = 0; i < out.size(); ++i) {
     const char label = out[i];
-    if (std::isalpha(label)) {
+    if (llvm::isAlpha(label)) {
       new_output.push_back(label);
     } else {
       // Encounter ellipsis: we will just insert the generated labels to the new

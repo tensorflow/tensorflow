@@ -1,11 +1,15 @@
 """Wrapper around proto libraries used inside the XLA codebase."""
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//lib:dicts.bzl", "dicts")
+load("@bazel_skylib//lib:paths.bzl", "paths")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
+load("//xla:py_strict.bzl", "py_strict_test")
 load(
     "//xla/tsl:package_groups.bzl",
     "DEFAULT_LOAD_VISIBILITY",
@@ -20,6 +24,7 @@ load(
     "tf_exec_properties",
 )
 load("//xla/tsl/platform/default:build_config.bzl", "strict_cc_test")
+load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_XLA_USERS)
 
@@ -110,4 +115,83 @@ def xla_bzl_library(name = "xla_bzl_library"):
             "//xla/tsl/platform/default:cuda_build_defs_bzl",
             "@bazel_skylib//:bzl_library",
         ],
+    )
+
+def _symlink_dynamic_libs_rule_impl(ctx):
+    runfiles = ctx.runfiles()
+    runfiles_symlinks = {}
+    for dep in ctx.attr.deps:
+        linker_inputs = dep[CcInfo].linking_context.linker_inputs.to_list()
+        for linker_input in linker_inputs:
+            if len(linker_input.libraries) == 0:
+                continue
+            lib = linker_input.libraries[0].dynamic_library
+            if not lib:
+                continue
+            lib_path = paths.join(ctx.attr.lib_dir, lib.basename)
+            runfiles_symlinks[lib_path] = lib
+    return [
+        DefaultInfo(runfiles = ctx.runfiles(
+            symlinks = runfiles_symlinks,
+        ).merge(runfiles)),
+    ]
+
+_symlink_dynamic_libs_rule = rule(
+    implementation = _symlink_dynamic_libs_rule_impl,
+    attrs = {
+        "deps": attr.label_list(allow_empty = True),
+        "lib_dir": attr.string(mandatory = True),
+    },
+    doc = "Symlinks all dynamic libraries for `deps` into a single `lib_dir` directory.",
+)
+
+def xla_py_strict_test(name, deps = None, data = None, env = None, need_cuda_libs = False, **kwargs):
+    """A wrapper around py_strict_test that adds XLA-specific dependencies.
+
+    Args:
+      name: The name of the test.
+      deps: The dependencies of the test.
+      data: The data dependencies of the test.
+      env: The environment variables to set for the test.
+      need_cuda_libs: Whether to add CUDA libraries as data dependencies.
+      **kwargs: Other arguments to pass to the test.
+    """
+    deps = deps or []
+    data = data or []
+    env = env or {}
+
+    if need_cuda_libs:
+        library_target = "_{}_libs".format(name)
+        lib_dir = paths.join(
+            native.package_name(),
+            library_target,
+        )
+
+        # If the python tests needs to have CUDA libraries as data dependencies, we symlink
+        # them into a directory inside the runfiles directory that the test can access and add
+        # that directory to the LD_LIBRARY_PATH and CUDA_HOME environment variables.
+        _symlink_dynamic_libs_rule(
+            name = library_target,
+            lib_dir = lib_dir,
+            deps = if_cuda_is_configured(
+                [
+                    "//xla/stream_executor/cuda:all_runtime",
+                ],
+            ),
+            testonly = True,
+            visibility = ["//visibility:private"],
+        )
+
+        data = data + [library_target]
+        env = dicts.add(env, {
+            "CUDA_HOME": lib_dir,
+            "LD_LIBRARY_PATH": lib_dir,
+        })
+
+    py_strict_test(
+        name = name,
+        deps = deps + xla_py_test_deps(),
+        data = data,
+        env = env,
+        **kwargs
     )

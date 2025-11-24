@@ -26,7 +26,7 @@ NamespaceRenderer::NamespaceRenderer(RendererContext context)
     : Renderer(context) {}
 
 void NamespaceRenderer::Open() {
-  for (const string& ns : context_.cpp_config.namespaces) {
+  for (const std::string& ns : context_.cpp_config.namespaces) {
     CodeLine("namespace " + ns + " {");
   }
 }

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/java/src/gen/cc/op_specs.h"
 
-#include <cctype>
 #include <map>
 #include <sstream>
 #include <string>
@@ -23,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/strip.h"
@@ -188,7 +188,7 @@ string SnakeToCamelCase(const string& str, bool upper = false) {
     if (c == '_') {
       cap = true;
     } else if (cap) {
-      result += toupper(c);
+      result += absl::ascii_toupper(c);
       cap = false;
     } else {
       result += c;

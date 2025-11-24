@@ -539,6 +539,7 @@ cc_library(
         ":passes_inc_gen",
         ":unfold_splat_constant_pass",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:case",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:conv",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:custom_call",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:dot_general",

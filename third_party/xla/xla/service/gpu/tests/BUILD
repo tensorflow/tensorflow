@@ -167,10 +167,12 @@ xla_test(
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
+        "//xla/tests:test_utils",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -236,7 +238,6 @@ xla_test(
         "gpu_too_many_blocks_test.cc",
     ],
     backends = ["gpu"],
-    #tags = ["cuda-only",], #(TODO)(rocm): weekly sync 24-11-05
     deps = [
         ":gpu_codegen_test",
         "//xla/hlo/ir:hlo",
@@ -599,7 +600,7 @@ xla_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    tags = ["cuda-only"],
+    shard_count = 15,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -629,6 +630,7 @@ lit_test_suite_for_gpus(
             "offload_scan_output.hlo",
             "pad_to_static.hlo",
             "reduce_fold_zero_add.hlo",
+            "reduce-precision.hlo",
             "rng_get_and_update_state.hlo",
             "single_instruction.hlo",
             "slice_to_dynamic.hlo",
@@ -689,6 +691,7 @@ lit_test_suite_for_gpus(
 #         "@llvm-project//mlir:FuncExtensions",
 #         "@llvm-project//mlir:LLVMIRTransforms",
 #         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+#         "@llvm-project//mlir:MemRefDialect",
 #         "@llvm-project//mlir:MlirOptLib",
 #         "@llvm-project//mlir:Pass",
 #         "@llvm-project//mlir:RegisterAllExtensions",  # buildcleaner: keep
@@ -857,6 +860,7 @@ xla_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],

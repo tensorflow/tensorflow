@@ -35,10 +35,10 @@ namespace tensorflow {
 // Parses the command line flag strings to the specification of nodes in
 // the Graph.
 absl::Status ParseOutputArrayInfo(absl::string_view array_names,
-                                  std::vector<string>* outputs);
+                                  std::vector<std::string>* outputs);
 
-absl::Status ParseOutputArrayInfo(const std::vector<string>& output_names,
-                                  std::vector<string>* outputs);
+absl::Status ParseOutputArrayInfo(const std::vector<std::string>& output_names,
+                                  std::vector<std::string>* outputs);
 
 // Parses the command line flag strings to the specification of nodes in
 // the Graph. `data_types` input string can be empty since the flag is optional.
@@ -48,8 +48,8 @@ absl::Status ParseInputArrayInfo(absl::string_view array_names,
                                  GraphImportConfig::InputArrays* inputs);
 
 absl::Status ParseInputArrayInfo(
-    const std::vector<string>& node_names,
-    const std::vector<string>& node_dtypes,
+    const std::vector<std::string>& node_names,
+    const std::vector<std::string>& node_dtypes,
     const std::vector<std::optional<std::vector<int>>>& node_shapes,
     GraphImportConfig::InputArrays* inputs);
 

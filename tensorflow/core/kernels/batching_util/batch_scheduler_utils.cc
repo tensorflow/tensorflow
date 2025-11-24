@@ -26,7 +26,7 @@ namespace tensorflow {
 namespace serving {
 
 int GetNextAllowedBatchSize(int batch_size,
-                            const std::vector<int32>& allowed_batch_sizes,
+                            const std::vector<int32_t>& allowed_batch_sizes,
                             bool disable_padding) {
   if (disable_padding || allowed_batch_sizes.empty()) {
     return batch_size;
@@ -44,9 +44,9 @@ int GetNextAllowedBatchSize(int batch_size,
   return batch_size;
 }
 
-int32 GetPrevAllowedBatchSize(int batch_size,
-                              const std::vector<int32>& allowed_batch_sizes,
-                              bool disable_padding) {
+int32_t GetPrevAllowedBatchSize(int batch_size,
+                                const std::vector<int32_t>& allowed_batch_sizes,
+                                bool disable_padding) {
   if (disable_padding || allowed_batch_sizes.empty()) {
     return batch_size;
   }

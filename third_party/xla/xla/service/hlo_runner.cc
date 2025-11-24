@@ -16,14 +16,13 @@ limitations under the License.
 #include "xla/service/hlo_runner.h"
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -481,12 +480,12 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
-    std::function<absl::StatusOr<std::vector<ScopedShapedBuffer>>(
+    absl::AnyInvocable<absl::StatusOr<std::vector<ScopedShapedBuffer>>(
         const std::vector<ServiceExecutableRunOptions>&,
         const std::vector<absl::Span<const ShapedBuffer* const>>&)>
         execution_helper,
-    std::function<int64_t(int64_t)> argument_count_provider,
-    std::function<const Literal*(int64_t, int64_t)> argument_provider,
+    absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+    absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
     const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
   std::vector<std::unique_ptr<se::Stream>> streams;
@@ -671,9 +670,9 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
-    std::function<OpaqueExecutable*(int64_t)> executable_provider,
-    std::function<int64_t(int64_t)> argument_count_provider,
-    std::function<const Literal*(int64_t, int64_t)> argument_provider,
+    absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+    absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+    absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
     const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
   DeviceAssignment computation_device_assignment;
@@ -725,7 +724,8 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
         }
         return results;
       },
-      argument_count_provider, argument_provider, options, device_assignment);
+      std::move(argument_count_provider), std::move(argument_provider), options,
+      device_assignment);
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(

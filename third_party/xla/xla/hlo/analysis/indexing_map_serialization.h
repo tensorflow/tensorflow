@@ -26,13 +26,13 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 
 // Parses the given string into an IndexingMap.
 std::optional<IndexingMap> ParseIndexingMap(
-    llvm::StringRef input, gpu::SymbolicExprContext* symbolic_expr_context);
+    llvm::StringRef input, SymbolicExprContext* symbolic_expr_context);
 
 // Prints AffineExpr using the default (d0, d1, ..., s0, s1, ...) variable
 // names.

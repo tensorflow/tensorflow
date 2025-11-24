@@ -215,8 +215,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
             math_ops.cos, x, expected=np.cos(x), rtol=tol, atol=1e-5
         )
 
-  @test.disable_with_predicate(
-      pred=test.is_built_with_rocm, skip_message="Test fails on ROCm.") #TODO(rocm): weekly sync 24-11-05 
   def testSigmoidNumericalStability(self):
     for dtype in self.float_types:
       if dtype != np.float16:

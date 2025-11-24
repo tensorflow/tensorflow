@@ -28,8 +28,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -37,14 +35,11 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
-#include "absl/types/span.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
-#include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
@@ -52,31 +47,30 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
-#include "mlir/IR/Diagnostics.h"
 #include "mlir/Support/LLVM.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
-#include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
 #include "xla/core/host_offloading/host_compute_asyncifier.h"
 #include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
@@ -89,6 +83,7 @@ limitations under the License.
 #include "xla/hlo/transforms/collectives/collectives_schedule_linearizer.h"
 #include "xla/hlo/transforms/convert_memory_placement_to_internal_annotations.h"
 #include "xla/hlo/transforms/expanders/bitcast_dtypes_expander.h"
+#include "xla/hlo/transforms/expanders/cholesky_expander.h"
 #include "xla/hlo/transforms/expanders/comparison_expander.h"
 #include "xla/hlo/transforms/expanders/convolution_4d_expander.h"
 #include "xla/hlo/transforms/expanders/convolution_pred_expander.h"
@@ -140,8 +135,8 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/zero_sized_hlo_elimination.h"
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
-#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/maybe_owning.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/all_reduce_reassociate.h"
 #include "xla/service/all_reduce_simplifier.h"
@@ -150,7 +145,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_inliner.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_permute_decomposer.h"
 #include "xla/service/collective_pipeliner.h"
 #include "xla/service/collective_pipeliner_utils.h"
@@ -173,12 +167,12 @@ limitations under the License.
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/fusion_dispatch_pipeline.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
@@ -188,10 +182,10 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_unnested.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
+#include "xla/service/gpu/legacy_gpu_aot_compilation_result.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/model/collective_ptable_stats_collection.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/matmul_ptable_stats_collection.h"
@@ -212,7 +206,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collectives/all_reduce_splitter.h"
 #include "xla/service/gpu/transforms/collectives/collective_backend_assigner.h"
 #include "xla/service/gpu/transforms/collectives/collective_combiner_annotator.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/transforms/collectives/collective_permute_cycle_decomposer.h"
 #include "xla/service/gpu/transforms/collectives/collective_pipelining_analyzer.h"
 #include "xla/service/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
@@ -366,199 +359,15 @@ DeviceOrDevicelessConfig GetDeviceConfig(
     return DeviceOrDevicelessConfig{
         DeviceConfig{stream_exec, options.device_allocator}};
   }
-  se::DeviceDescription device_description =
-      gpu_target_config.device_description;
-  device_description.set_dnn_version(
-      {static_cast<unsigned>(
-           gpu_target_config.dnn_version_info.major_version()),
-       static_cast<unsigned>(
-           gpu_target_config.dnn_version_info.minor_version()),
-       static_cast<unsigned>(gpu_target_config.dnn_version_info.patch())});
-  return DeviceOrDevicelessConfig{DevicelessConfig{device_description}};
+  return DeviceOrDevicelessConfig{
+      DevicelessConfig{gpu_target_config.device_description}};
 }
 
 se::GpuComputeCapability GetGpuVersion(const se::StreamExecutor* stream_exec) {
   return stream_exec->GetDeviceDescription().gpu_compute_capability();
 }
 
-class GpuThunkAotCompilationResult : public AotCompilationResult {
- public:
-  static absl::StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>>
-  FromModule(const HloModule* hlo_module,
-             const BufferAssignment* buffer_assignment,
-             absl::string_view asm_text, absl::Span<const uint8_t> binary,
-             const BinaryMap& dnn_compiled_graphs, int pointer_size) {
-    tsl::profiler::TraceMe traceme("ResultFromModule");
-    CompilationResultProto proto;
-    *proto.mutable_hlo_module_with_config() = hlo_module->ToProtoWithConfig();
-    *proto.mutable_buffer_assignment() = buffer_assignment->ToProto();
-    proto.set_asm_text(asm_text);
-    proto.set_binary(binary.data(), binary.size());
-    proto.mutable_dnn_compiled_graphs()->insert(dnn_compiled_graphs.cbegin(),
-                                                dnn_compiled_graphs.cend());
-    return std::unique_ptr<GpuThunkAotCompilationResult>(
-        new GpuThunkAotCompilationResult(hlo_module->Clone(), std::move(proto),
-                                         pointer_size));
-  }
-
-  static absl::StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>>
-  FromString(const std::string& serialized, int pointer_size) {
-    tsl::profiler::TraceMe traceme("ResultFromString");
-    CompilationResultProto proto;
-    if (!proto.ParseFromString(serialized)) {
-      return Internal(
-          "Failed to parse serialized GpuThunkAotCompilationResult.");
-    }
-
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloModule> module,
-        HloModule::CreateFromProtoWithConfig(proto.hlo_module_with_config()));
-    return std::unique_ptr<GpuThunkAotCompilationResult>(
-        new GpuThunkAotCompilationResult(std::move(module), std::move(proto),
-                                         pointer_size));
-  }
-
-  absl::StatusOr<std::string> SerializeAsString() const override {
-    return proto_.SerializeAsString();
-  }
-
-  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, const se::StreamExecutor* stream_exec) &&
-      override;
-
-  const HloModule* optimized_module() const override { return module_.get(); }
-  std::unique_ptr<HloModule> consume_optimized_module() override {
-    return std::move(module_);
-  }
-
-  absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
-      const override;
-
- private:
-  GpuThunkAotCompilationResult(std::unique_ptr<HloModule> module,
-                               CompilationResultProto proto, int pointer_size)
-      : module_(std::move(module)),
-        proto_(std::move(proto)),
-        pointer_size_(pointer_size) {}
-
-  std::unique_ptr<HloModule> module_;
-  CompilationResultProto proto_;
-  int pointer_size_;
-};
-
-}  // end anonymous namespace
-
-absl::StatusOr<std::unique_ptr<BufferAssignment>>
-GpuThunkAotCompilationResult::buffer_assignment() const {
-  auto buffer_size_bytes_function =
-      [pointer_size = pointer_size_](const BufferValue& buffer) {
-        return gpu::ShapeSizeBytesFunction(pointer_size)(buffer.shape());
-      };
-
-  // Recreate BufferAssignment from proto.
-  // Technically, we should pass the proper GpuAliasInfo, but the FromProto()
-  // method does not actually make use of the MayAlias function. And for now, we
-  // don't have backend-specific MustAlias rules.
-  // TODO(b/424109294): This needs to be fixed when we implement
-  // backend-specific MustAlias rules.
-  AliasInfo alias_info;
-  return BufferAssignment::FromProto(proto_.buffer_assignment(), module_.get(),
-                                     buffer_size_bytes_function, &alias_info);
-}
-
-absl::StatusOr<std::unique_ptr<Executable>>
-GpuThunkAotCompilationResult::LoadExecutable(
-    Compiler* compiler, const se::StreamExecutor* stream_exec) && {
-  tsl::profiler::TraceMe traceme("LoadExecutable");
-  // Recreate HloModule+HloModuleConfig from proto.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProtoWithConfig(proto_.hlo_module_with_config()));
-
-  ExecutionStreamAssignment execution_stream_assignment(hlo_module.get());
-
-  std::vector<uint8_t> binary(proto_.binary().begin(), proto_.binary().end());
-
-  // Build the executable, which should be a thunk sequence.
-  TF_ASSIGN_OR_RETURN(
-      se::Platform * platform,
-      se::PlatformManager::PlatformWithId(compiler->PlatformId()));
-  std::string platform_name = platform->Name();
-  const se::DeviceDescription& gpu_device_info =
-      stream_exec->GetDeviceDescription();
-  llvm::LLVMContext llvm_context;
-  auto* gpu_compiler = dynamic_cast<GpuCompiler*>(compiler);
-  if (gpu_compiler == nullptr) {
-    return Internal("Compiler is not a GpuCompiler.");
-  }
-  auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
-  llvm_module->setTargetTriple(llvm::Triple(gpu_compiler->target_triple()));
-  llvm_module->setDataLayout(gpu_compiler->data_layout());
-
-  // Recreate BufferAssignment from proto.
-  std::unique_ptr<GpuAliasInfo> alias_info =
-      gpu_compiler->GetAliasInfo(gpu_device_info);
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<BufferAssignment> buffer_assignment,
-      BufferAssignment::FromProto(proto_.buffer_assignment(), hlo_module.get(),
-                                  compiler->BufferSizeBytesFunction(),
-                                  alias_info.get()));
-
-  IrEmitterContext ir_emitter_context(
-      hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
-      platform_name, gpu_device_info, gpu_compiler->symbolic_expr_context(),
-      llvm_module.get(),
-      /*llvm_module_constants=*/nullptr,
-      /*emit_kernels=*/false);
-
-  absl::string_view cache_file_path =
-      hlo_module->config().debug_options().xla_gpu_kernel_cache_file();
-  if (!cache_file_path.empty() &&
-      hlo_module->config()
-          .debug_options()
-          .xla_gpu_enable_llvm_module_compilation_parallelism()) {
-    TF_RETURN_IF_ERROR(LoadCache(ir_emitter_context, cache_file_path));
-  }
-
-  auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
-  TF_RETURN_IF_ERROR(
-      ir_emitter->EmitHloComputation(hlo_module->entry_computation()));
-
-  // Get all other fields required by GpuExecutable.
-  std::vector<GpuExecutable::ConstantInfo> constants =
-      std::move(ir_emitter_context.constants());
-  TF_ASSIGN_OR_RETURN(auto output_info,
-                      GetOutputInfo(*hlo_module, *buffer_assignment));
-  ProgramShape program_shape =
-      hlo_module->entry_computation_layout().ComputeProgramShape();
-  *program_shape.mutable_result() = hlo_module->result_shape();
-  DebugOptions debug_options = hlo_module->config().debug_options();
-  std::string hlo_module_name = hlo_module->name();
-
-  {
-    tsl::profiler::TraceMe traceme("CreateGpuExecutable");
-    std::unique_ptr<GpuAliasInfo> alias_info =
-        gpu_compiler->GetAliasInfo(gpu_device_info);
-    return GpuExecutable::Create(GpuExecutable::Params{
-        /*asm_text=*/proto_.asm_text(),
-        /*binary=*/binary,
-        /*dnn_compiled_graphs=*/
-        BinaryMap(proto_.dnn_compiled_graphs().cbegin(),
-                  proto_.dnn_compiled_graphs().cend()),
-        /*executable=*/ir_emitter->ConsumeThunkSequence(),
-        /*constants=*/std::move(constants),
-        /*output_info=*/std::move(output_info),
-        /*module_name=*/std::move(hlo_module_name),
-        /*program_shape=*/std::move(program_shape),
-        /*mlir_allocations=*/std::nullopt,
-        /*buffer_assignment=*/std::move(buffer_assignment),
-        /*alias_info=*/std::move(alias_info),
-        /*debug_options=*/std::move(debug_options),
-        /*device_description=*/gpu_device_info,
-        /*debug_module=*/std::move(hlo_module),
-        /*enable_debug_info_manager=*/true});
-  }
-}
+}  // namespace
 
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
                          const char* target_triple, const char* data_layout)
@@ -570,8 +379,8 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
 
 namespace {
 // Adds the HloVerifier for GPU to the given pipeline.
-void AddHloVerifier(HloPassPipeline* pipeline,
-                    HloVerifierOpts&& opts = {}, bool debug_only = false) {
+void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
+                    bool debug_only = false) {
   opts.verify_no_collective_deadlocks = true;
   std::unique_ptr<TargetVerifierMetadata> verifier_metadata =
       std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
@@ -746,7 +555,7 @@ absl::Status RunOptimizationPasses(
   HloPassPipeline pipeline("optimization");
   AddHloVerifier(&pipeline);
   if (debug_options.xla_detect_unstable_reductions() !=
-      DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_NONE) {
+      DebugOptions::DETECTION_MODE_NONE) {
     pipeline.AddPass<UnstableReductionDetector>();
   }
   pipeline.AddPass<RaggedDotRewriter>();
@@ -812,6 +621,9 @@ absl::Status RunOptimizationPasses(
 
   // Rewrite select-and-scatter as a scatter and a reduce-window.
   pipeline.AddPass<SelectAndScatterExpander>();
+
+  // Rewrite Cholesky.
+  pipeline.AddPass<CholeskyExpander>();
 
   if (RequireDeterminism(hlo_module->config())) {
     // Scatter can be indeterministic if indices are not unique or a non
@@ -982,7 +794,7 @@ absl::Status RunCollectiveOptimizationPasses(
 
   if (debug_options.xla_gpu_experimental_enable_nvshmem()) {
     collectives_pipeline.AddPass<CollectiveBackendAssigner>(
-        gpu_version, num_visible_devices_per_process);
+        gpu_version, num_visible_devices_per_process, options.slice_size);
   }
 
   if (debug_options.xla_gpu_unsupported_enable_ragged_all_to_all_decomposer()) {
@@ -1484,6 +1296,7 @@ AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
   }
 
   switch (mode) {
+    case AlgebraicSimplifierMode::kAfterSimplifyFPConversions:
     case AlgebraicSimplifierMode::kPostFusionSimplification:
     case AlgebraicSimplifierMode::kLayoutNormalization:
     case AlgebraicSimplifierMode::kPostLayoutAssignment:
@@ -1941,7 +1754,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
         pipeline.AddPass<HloPassPipeline>(
             "remove-no-op-reduce-precision-algebraic-simplifier");
     AlgebraicSimplifierOptions options = GetAlgebraicSimplifierOptions(
-        AlgebraicSimplifierMode::kPostFusionSimplification, debug_options,
+        AlgebraicSimplifierMode::kAfterSimplifyFPConversions, debug_options,
         gpu_target_config.platform_name == "ROCM");
     remove_no_op_reduce_precision_pipeline
         .AddPass<HloPassFix<GpuAlgebraicSimplifier>>(options, gpu_version);
@@ -2018,6 +1831,11 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
+  // TODO rename slice_size to partition_size in CompileOptions
+  if (options.slice_size > 0) {
+    module->mutable_config().set_partition_size(options.slice_size);
+  }
+
   const DebugOptions debug_opts = module->config().debug_options();
   TF_RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_opts));
   bool is_deviceless = options.target_config.has_value() ||
@@ -2097,9 +1915,9 @@ bool ShouldAddCopyForCollectiveMemorySpace(const HloValue* value) {
            .xla_gpu_experimental_enable_nccl_symmetric_buffers()) {
     return false;
   }
-  // Add copy if a potential collective-memmory-spaced op directly consumes from
+  // Add copy if a potential collective-memory-spaced op directly consumes from
   // module input or a constant as they are allocated by bfc ahead of time and
-  // the alignment might not match collective memory space's requiment.
+  // the alignment might not match collective memory space's requirement.
   if (absl::c_linear_search(
           module->entry_computation()->parameter_instructions(), inst) ||
       (inst->opcode() == HloOpcode::kConstant)) {
@@ -2653,6 +2471,40 @@ GpuCompiler::CompileToBackendResult(
                                    std::move(compile_module_results)};
 }
 
+static absl::Status DumpGpuExecutableIfEnabled(
+    const GpuExecutable& gpu_executable,
+    const Compiler::CompileOptions& compile_options,
+    const DebugOptions& debug_options) {
+  // If we were to dump the GPU executable for autotuning, we would end up
+  // creating lots of tiny executables that aren't event useful for customers.
+  if (compile_options.is_autotuning_compilation) {
+    return absl::OkStatus();
+  }
+  if (!debug_options.has_xla_dump_to() ||
+      !debug_options.xla_gpu_experimental_dump_gpu_executable()) {
+    return absl::OkStatus();
+  }
+
+  TF_ASSIGN_OR_RETURN(GpuExecutableProto gpu_executable_proto,
+                      gpu_executable.ToProto());
+  std::string serialized_proto = gpu_executable_proto.SerializeAsString();
+  if (serialized_proto.empty()) {
+    return absl::InternalError("Failed to serialize GPU executable proto");
+  }
+
+  ExecutableAndOptionsProto dump_proto;
+  *dump_proto.mutable_serialized_executable() = std::move(serialized_proto);
+  constexpr absl::string_view kDumpFilename = "gpu_executable";
+  if (gpu_executable.has_module()) {
+    DumpPerModuleProtobufToFile(gpu_executable.module(), dump_proto,
+                                debug_options, kDumpFilename);
+  } else {
+    DumpProtobufToFile(dump_proto, debug_options, kDumpFilename);
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
@@ -2741,7 +2593,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
   const GpuAliasInfo* alias_info_ptr = alias_info.get();
   TF_ASSIGN_OR_RETURN(
-      auto gpu_executable,
+      std::unique_ptr<GpuExecutable> gpu_executable,
       GpuExecutable::Create(GpuExecutable::Params{
           /*asm_text=*/(options.is_autotuning_compilation &&
                         !res.backend_result.binary.empty())
@@ -2763,12 +2615,15 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*buffer_assignment=*/
           std::move(res.compile_module_results.buffer_assignment),
           /*alias_info=*/std::move(alias_info),
-          /*debug_options=*/std::move(debug_opts),
+          /*debug_options=*/debug_opts,
           /*device_description=*/gpu_device_info,
           /*debug_module=*/options.is_autotuning_compilation
               ? std::unique_ptr<HloModule>()
               : std::move(module),
           /*enable_debug_info_manager=*/!options.is_autotuning_compilation}));
+
+  TF_RETURN_IF_ERROR(
+      DumpGpuExecutableIfEnabled(*gpu_executable, options, debug_opts));
 
   if (embed_ir_in_executable) {
     std::string ir_module_string_before_opt =
@@ -2835,7 +2690,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   // Create GpuThunkAotCompilationResult if thunk runtime is enabled.
   TF_ASSIGN_OR_RETURN(
       results.emplace_back(),
-      GpuThunkAotCompilationResult::FromModule(
+      LegacyGpuAotCompilationResult::FromModule(
           optimized_module.get(),
           res.compile_module_results.buffer_assignment.get(),
           res.backend_result.asm_text, res.backend_result.binary,
@@ -2852,9 +2707,11 @@ HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {
 absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
     Executable* executable) const {
   auto* gpu_executable = tensorflow::down_cast<GpuExecutable*>(executable);
-  if (!gpu_executable) return Internal("GpuExecutable is null");
+  if (!gpu_executable) {
+    return Internal("GpuExecutable is null");
+  }
 
-  return GpuThunkAotCompilationResult::FromModule(
+  return LegacyGpuAotCompilationResult::FromModule(
       &gpu_executable->module(), gpu_executable->buffer_assignment(),
       gpu_executable->text(), gpu_executable->binary(),
       gpu_executable->dnn_compiled_graphs(), pointer_size_);
@@ -3093,8 +2950,104 @@ absl::Status GpuCompiler::SerializeAutotuneResultsToFile(
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>
 GpuCompiler::LoadAotCompilationResult(
     const std::string& serialized_aot_result) {
-  return GpuThunkAotCompilationResult::FromString(serialized_aot_result,
-                                                  pointer_size_);
+  return LegacyGpuAotCompilationResult::FromString(serialized_aot_result,
+                                                   pointer_size_);
+}
+
+absl::StatusOr<std::unique_ptr<Executable>>
+GpuCompiler::LoadExecutableFromAotResult(
+    const AotCompilationResult& aot_result,
+    const se::StreamExecutor& stream_exec) {
+  tsl::profiler::TraceMe traceme("LoadExecutableFromAotResult");
+
+  const auto* gpu_aot_result =
+      dynamic_cast<const LegacyGpuAotCompilationResult*>(&aot_result);
+  if (gpu_aot_result == nullptr) {
+    return Internal(
+        "AotCompilationResult is not a GpuThunkAotCompilationResult.");
+  }
+  const GpuExecutableProto& proto = gpu_aot_result->GetGpuExecutableProto();
+
+  // Recreate HloModule+HloModuleConfig from proto.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProtoWithConfig(proto.hlo_module_with_config()));
+
+  ExecutionStreamAssignment execution_stream_assignment(hlo_module.get());
+
+  std::vector<uint8_t> binary(proto.binary().begin(), proto.binary().end());
+
+  // Build the executable, which should be a thunk sequence.
+  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                      se::PlatformManager::PlatformWithId(PlatformId()));
+  std::string platform_name = platform->Name();
+
+  const se::DeviceDescription& gpu_device_info =
+      stream_exec.GetDeviceDescription();
+  llvm::LLVMContext llvm_context;
+
+  auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
+  llvm_module->setTargetTriple(llvm::Triple(target_triple()));
+  llvm_module->setDataLayout(data_layout());
+
+  // Recreate BufferAssignment from proto.
+  std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<BufferAssignment> buffer_assignment,
+      BufferAssignment::FromProto(proto.buffer_assignment(), hlo_module.get(),
+                                  BufferSizeBytesFunction(), alias_info.get()));
+
+  IrEmitterContext ir_emitter_context(
+      hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
+      platform_name, gpu_device_info, mlir_context(), llvm_module.get(),
+      /*llvm_module_constants=*/nullptr, /*emit_kernels=*/false);
+
+  absl::string_view cache_file_path =
+      hlo_module->config().debug_options().xla_gpu_kernel_cache_file();
+  if (!cache_file_path.empty() &&
+      hlo_module->config()
+          .debug_options()
+          .xla_gpu_enable_llvm_module_compilation_parallelism()) {
+    TF_RETURN_IF_ERROR(LoadCache(ir_emitter_context, cache_file_path));
+  }
+
+  auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
+  TF_RETURN_IF_ERROR(
+      ir_emitter->EmitHloComputation(hlo_module->entry_computation()));
+
+  // Get all other fields required by GpuExecutable.
+  std::vector<GpuExecutable::ConstantInfo> constants =
+      std::move(ir_emitter_context.constants());
+  TF_ASSIGN_OR_RETURN(auto output_info,
+                      GetOutputInfo(*hlo_module, *buffer_assignment));
+  ProgramShape program_shape =
+      hlo_module->entry_computation_layout().ComputeProgramShape();
+  *program_shape.mutable_result() = hlo_module->result_shape();
+  DebugOptions debug_options = hlo_module->config().debug_options();
+  std::string hlo_module_name = hlo_module->name();
+
+  {
+    tsl::profiler::TraceMe traceme("CreateGpuExecutable");
+    std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
+    return GpuExecutable::Create(GpuExecutable::Params{
+        /*asm_text=*/proto.asm_text(),
+        /*binary=*/binary,
+        /*dnn_compiled_graphs=*/
+        BinaryMap(proto.dnn_compiled_graphs().cbegin(),
+                  proto.dnn_compiled_graphs().cend()),
+        /*executable=*/ir_emitter->ConsumeThunkSequence(),
+        /*constants=*/std::move(constants),
+        /*output_info=*/std::move(output_info),
+        /*module_name=*/std::move(hlo_module_name),
+        /*program_shape=*/std::move(program_shape),
+        /*mlir_allocations=*/std::nullopt,
+        /*buffer_assignment=*/std::move(buffer_assignment),
+        /*alias_info=*/std::move(alias_info),
+        /*debug_options=*/std::move(debug_options),
+        /*device_description=*/gpu_device_info,
+        /*debug_module=*/std::move(hlo_module),
+        /*enable_debug_info_manager=*/true});
+  }
 }
 
 }  // namespace gpu

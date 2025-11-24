@@ -25,20 +25,22 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
 namespace {
 
 using ::testing::Pointee;
 using ::testing::Property;
+using ::testing::SizeIs;
 using ::tsl::proto_testing::EqualsProto;
 using Kind = Thunk::Kind;
 
@@ -286,6 +288,30 @@ TEST(ConditionalThunkTest, ToString) {
             "branch_1:\n"
             "  000: kGemm\t\n"
             "  000: kGemm\t\n");
+}
+
+TEST(ConditionalThunkTest, TransformAllNestedThunks) {
+  BufferAllocation::Slice slice;
+  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
+  branch_thunks.push_back(
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence()));
+  branch_thunks.push_back(
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence()));
+  auto conditional_thunk = std::make_unique<ConditionalThunk>(
+      Thunk::ThunkInfo(), slice, std::move(branch_thunks),
+      /*branch_index_is_bool=*/false);
+
+  TF_EXPECT_OK(conditional_thunk->TransformAllNestedThunks([](auto) {
+    return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());
+  }));
+
+  EXPECT_THAT(conditional_thunk->branch_thunks(), SizeIs(2));
+  EXPECT_THAT(conditional_thunk->branch_thunks()[0]->thunks(), SizeIs(1));
+  EXPECT_THAT(conditional_thunk->branch_thunks()[0]->thunks()[0]->kind(),
+              Kind::kCustomCall);
+  EXPECT_THAT(conditional_thunk->branch_thunks()[1]->thunks(), SizeIs(1));
+  EXPECT_THAT(conditional_thunk->branch_thunks()[1]->thunks()[0]->kind(),
+              Kind::kCustomCall);
 }
 
 }  // namespace

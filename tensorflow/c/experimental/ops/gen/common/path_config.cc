@@ -24,9 +24,10 @@ limitations under the License.
 namespace tensorflow {
 namespace generator {
 
-PathConfig::PathConfig(const string& output_dir, const string& source_dir,
-                       const string& api_dir_list,
-                       const std::vector<string> op_names)
+PathConfig::PathConfig(const std::string& output_dir,
+                       const std::string& source_dir,
+                       const std::string& api_dir_list,
+                       const std::vector<std::string> op_names)
     : output_path(output_dir), op_names(op_names) {
   api_dirs = str_util::Split(api_dir_list, ",", str_util::SkipEmpty());
 
@@ -39,7 +40,7 @@ PathConfig::PathConfig(const string& output_dir, const string& source_dir,
   tf_root_dir = "tensorflow";
 
   // Prefix, e.g. "third_party" given root_dir "third_party/tensorflow/...."
-  std::vector<string> source_path_components =
+  std::vector<std::string> source_path_components =
       tensorflow::str_util::Split(source_dir, "/");
   auto source_tfroot_pos = std::find(source_path_components.begin(),
                                      source_path_components.end(), tf_root_dir);
@@ -51,7 +52,7 @@ PathConfig::PathConfig(const string& output_dir, const string& source_dir,
   }
 
   // TF subdir, e.g. "c/ops" given output_dir "blah/blah/tensorflow/c/ops"
-  std::vector<string> output_path_components =
+  std::vector<std::string> output_path_components =
       tensorflow::str_util::Split(output_dir, "/");
   auto output_tfroot_pos = std::find(output_path_components.begin(),
                                      output_path_components.end(), tf_root_dir);

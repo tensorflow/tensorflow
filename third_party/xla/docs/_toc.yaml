@@ -29,6 +29,10 @@ toc:
     path: /xla/determinism
   - title: Emitters
     path: /xla/emitters
+  - title: Error Codes
+    path: /xla/error_codes
+  - title: Errors Overview
+    path: /xla/errors_overview
   - title: Hermetic CUDA overview
     path: /xla/hermetic_cuda
   - title: Indexing Analysis

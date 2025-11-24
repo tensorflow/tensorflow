@@ -33,6 +33,7 @@ tf_cc_fuzz_test(
     deps = [
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -144,6 +145,7 @@ tf_cc_fuzz_test(
     tags = ["no_oss"],
     deps = [
         "//tensorflow/core/platform:stringprintf",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

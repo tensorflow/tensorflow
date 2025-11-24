@@ -26,6 +26,7 @@
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "google/protobuf/text_format.h"
 #include "xla/layout_util.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/basic_device_list.h"

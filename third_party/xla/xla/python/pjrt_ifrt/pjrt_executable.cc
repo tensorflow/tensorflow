@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/type_registry.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/layout.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
@@ -714,7 +714,6 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   }
 
   xla::ExecuteOptions opts;
-  opts.untuple_result = true;
   opts.launch_id = options.launch_id;
   opts.use_major_to_minor_data_layout_for_callbacks = true;
   opts.non_donatable_input_indices = options.non_donatable_input_indices;

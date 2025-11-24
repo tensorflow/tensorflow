@@ -45,6 +45,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Transforms/LocationSnapshot.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/text_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -64,7 +66,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
@@ -1176,6 +1177,8 @@ void DumpHloUnoptimizedSnapshotIfEnabled(
       return;
     }
     tsl::WritableFileCopyingOutputStream output_stream(file.get());
+    // TODO - b/457711066: Add missing include once capybara can re-write the
+    // dependency correctly.
     tsl::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output_stream);
     if (!SerializeHloUnoptimizedSnapshot(hlo_snapshot, &adaptor).ok()) {
       LOG(ERROR) << "Failed to serialize HLO unoptimized snapshot proto";

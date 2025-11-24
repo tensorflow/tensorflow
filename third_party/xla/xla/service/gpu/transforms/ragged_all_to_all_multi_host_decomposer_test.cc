@@ -62,7 +62,7 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: all-gather{{.*}}, replica_groups={{[{]}}{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}{{[}]}}
-    // CHECK-COUNT-4: all-to-all{{.*}}, replica_groups={{[{]}}{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}{{[}]}}
+    // CHECK: all-to-all{{.*}}, replica_groups={{[{]}}{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}{{[}]}}
     // CHECK: ragged-all-to-all{{.*}}, replica_groups={{[{]}}{0,1,2,3,4,5,6,7},{8,9,10,11,12,13,14,15}{{[}]}}
   )"));
 }
@@ -96,7 +96,7 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: all-gather{{.*}}, replica_groups={{[{]}}{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}{{[}]}}
-    // CHECK-COUNT-4: all-to-all{{.*}}, replica_groups={{[{]}}{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}{{[}]}}
+    // CHECK: all-to-all{{.*}}, replica_groups={{[{]}}{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}{{[}]}}
     // CHECK: ragged-all-to-all{{.*}}, replica_groups={{[{]}}{0,1,2,3,4,5,6,7},{8,9,10,11,12,13,14,15}{{[}]}}
   )"));
 }
@@ -122,6 +122,40 @@ ENTRY main {
       /*fast_interconnect_slice_size=*/8);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(RaggedAllToAllDecomposerTest, CombineRaggedAllToAllIsDecomposed) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule module, replica_count=16
+
+ENTRY main {
+  input = bf16[4096,128] parameter(0)
+  output = bf16[256,128] parameter(1)
+  input_offsets = s64[16] parameter(2)
+  send_sizes = s64[16] parameter(3)
+  output_offsets = s64[16] parameter(4)
+  recv_sizes = s64[16] parameter(5)
+  ROOT ra2a = bf16[256,128] ragged-all-to-all(input, output, input_offsets,
+    send_sizes, output_offsets, recv_sizes),
+    replica_groups={{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}}
+}
+)"));
+
+  RaggedAllToAllMultiHostDecomposer decomposer(
+      /*fast_interconnect_slice_size=*/8);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+
+  EXPECT_TRUE(changed);
+  TF_EXPECT_OK(VerifyHloModule(module.get(), true, true));
+  TF_EXPECT_OK(HloDCE().Run(module.get()));
+  TF_EXPECT_OK(HloCSE(true).Run(module.get()));
+
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    // CHECK: ragged-all-to-all{{.*}}, replica_groups={{[{]}}{0,1,2,3,4,5,6,7},{8,9,10,11,12,13,14,15}{{[}]}}
+    // CHECK: all-to-all{{.*}}, replica_groups={{[{]}}{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}{{[}]}}
+    // CHECK: all-to-all{{.*}}, replica_groups={{[{]}}{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}{{[}]}}
+    // CHECK: ragged-all-to-all{{.*}}, replica_groups={{[{]}}{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15}{{[}]}}
+  )"));
 }
 
 TEST_F(RaggedAllToAllDecomposerTest, MultipleReplicaGroupsAreSupported) {
@@ -152,7 +186,7 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: all-gather{{.*}}, replica_groups={{[{]}}{0,8},{2,10},{4,12},{6,14},{1,9},{3,11},{5,13},{7,15}{{[}]}}
-    // CHECK-COUNT-4: all-to-all{{.*}}, replica_groups={{[{]}}{0,8},{2,10},{4,12},{6,14},{1,9},{3,11},{5,13},{7,15}{{[}]}}
+    // CHECK: all-to-all{{.*}}, replica_groups={{[{]}}{0,8},{2,10},{4,12},{6,14},{1,9},{3,11},{5,13},{7,15}{{[}]}}
     // CHECK: ragged-all-to-all{{.*}}, replica_groups={{[{]}}{0,2,4,6},{8,10,12,14},{1,3,5,7},{9,11,13,15}{{[}]}}
   )"));
 }

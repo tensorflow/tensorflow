@@ -154,7 +154,7 @@ class DotSearchSpaceTest : public DefaultDeviceDotSearchSpaceTest {
     device_description_.set_threads_per_warp(32);
     device_description_.set_shared_memory_per_block_optin(227 * 1024);
     device_description_.set_gpu_compute_capability(
-        se::CudaComputeCapability::H100Family());
+        se::CudaComputeCapability::H100Accelerated());
   }
 };
 

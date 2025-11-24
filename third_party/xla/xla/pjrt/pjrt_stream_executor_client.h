@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/transpose.h"
@@ -84,13 +83,13 @@ struct PjRtStreamExecutorExecutionInput {
   // Donation is not complete until ReleaseDeviceMemory() is called on the
   // TrackedDeviceBuffer that provides buf.
   bool is_donated;
-  tsl::RCReference<RawSEDeviceMemory> buf;
+  tsl::AsyncValueRef<RawSEDeviceMemory> buf;
 };
 
 struct PjRtStreamExecutorExecutionOutput {
-  ShapeTree<tsl::RCReference<RawSEDeviceMemory>> result;
+  ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>> result;
   // Donated inputs which must be freed.
-  std::vector<tsl::RCReference<RawSEDeviceMemory>> to_be_released;
+  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
   // For PjRtStreamExecutorClient implementations that
   // use OwningDeviceMemory for donated inputs.
   std::vector<se::OwningDeviceMemory> se_to_be_released;
@@ -399,6 +398,10 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
           definition_device_events,
       bool raw_buffer_is_mutable) override;
 
+  absl::StatusOr<std::pair<tsl::RCReference<CommonPjRtRawBuffer>,
+                           PjRtFulfillAliasRawBufferCallback>>
+  CreateRawBufferChannel(PjRtMemorySpace* memory_space) override;
+
   absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> LinearizeInto(
       const LiteralSlice& literal, const xla::Shape& device_shape,
       HostBufferSemantics host_buffer_semantics,
@@ -421,37 +424,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
                          const CommonPjRtRawBuffer& raw_buffer);
 
  protected:
-  friend class PjRtStreamExecutorBuffer;
   friend class PjRtStreamExecutorRawBuffer;
-
-  virtual void CopyToRemoteDevice(PjRtBuffer* buffer,
-                                  absl::string_view serialized_descriptor,
-                                  PjRtBuffer::RemoteSendCallback on_done) {
-    on_done(Unimplemented("Cross host sends not implemented."),
-            /*sends_were_enqueued=*/false);
-  }
-
-  virtual Future<> CopyRawSubBufferToHost(PjRtBuffer* buffer, Future<void*> dst,
-                                          int64_t offset,
-                                          int64_t transfer_size) {
-    return Future<>(Unimplemented("Raw copies to host not implemented."));
-  }
-
-  virtual tsl::RCReference<PjRtDeviceEvent> CopyRawHostToDevice(
-      LocalDeviceState* local_device,
-      tsl::RCReference<RawSEDeviceMemory> device_buffer, const void* src,
-      int64_t offset, int64_t transfer_size) {
-    return CreateErrorDeviceEvent(
-        Unimplemented("Raw copies h2d not implemented."));
-  }
-
-  virtual tsl::RCReference<PjRtDeviceEvent> CopyRawDeviceToHost(
-      LocalDeviceState* local_device,
-      tsl::RCReference<RawSEDeviceMemory> device_buffer, void* dst,
-      int64_t offset, int64_t transfer_size) {
-    return CreateErrorDeviceEvent(
-        Unimplemented("Raw copies d2h not implemented."));
-  }
 
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
   // `options` in-place.
@@ -554,144 +527,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 // xla::DeviceAssignment.
 absl::StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<PjRtDevice*>> devices);
-
-class PjRtStreamExecutorBuffer : public CommonPjRtBufferImpl {
- public:
-  class ScopedHold : public CommonPjRtBuffer::ScopedHold {
-   public:
-    // Converts the hold into a usage event. Only valid for holds of type
-    // kUsage.
-    //
-    //   usage_stream:   the stream that the buffer was used on.
-    //   event:          an event that has been recorded on usage_stream after
-    //                   the buffer was used.
-    //   reference_held: true if and only if the caller has caused a
-    //                   reference to this->buffer() to stay live until after
-    //                   the host is sure that the usage (transfer or execution)
-    //                   has completed.
-    void ConvertUsageHold(se::Stream* usage_stream,
-                          BufferSequencingEventRef event, bool reference_held);
-
-    TrackedDeviceBuffer* buffer() const {
-      return static_cast<TrackedDeviceBuffer*>(
-          CommonPjRtBuffer::ScopedHold::buffer());
-    }
-    TrackedDeviceBuffer* operator->() const { return buffer(); }
-    const TrackedDeviceBuffer& operator*() const { return *buffer(); }
-
-    PjRtStreamExecutorBuffer* parent() const {
-      return static_cast<PjRtStreamExecutorBuffer*>(
-          CommonPjRtBuffer::ScopedHold::parent());
-    }
-
-   private:
-    using CommonPjRtBuffer::ScopedHold::ScopedHold;
-    friend class PjRtStreamExecutorBuffer;
-    friend class PjRtStreamExecutorClient;
-  };
-  PjRtStreamExecutorBuffer(Shape on_device_shape,
-                           std::unique_ptr<TrackedDeviceBuffer> device_buffer,
-                           PjRtClient* client, PjRtDevice* device,
-                           PjRtMemorySpace* memory_space);
-  ~PjRtStreamExecutorBuffer() override;
-
-  PjRtStreamExecutorBuffer(const PjRtStreamExecutorBuffer&) = delete;
-  PjRtStreamExecutorBuffer(PjRtStreamExecutorBuffer&&) = delete;
-  PjRtStreamExecutorBuffer& operator=(const PjRtStreamExecutorBuffer&) = delete;
-  PjRtStreamExecutorBuffer& operator=(PjRtStreamExecutorBuffer&&) = delete;
-
-  // Drops the buffer's reference to its associated device memory, leaving the
-  // buffer in an invalid state. The memory will be freed lazily when all async
-  // operations using the buffer have completed, according to the allocation
-  // semantics of the underlying platform. Delete may briefly block if another
-  // thread is in the process of enqueuing an operation on this buffer, but it
-  // will never block for a stream operation to complete. If an external
-  // framework holds a reference to the TrackedDeviceBuffer via
-  // GetBufferWithExternalReference, the memory will not be freed until the
-  // external framework drops the reference.
-  void Delete() override;
-
-  // Returns a hold on the TrackedDeviceBuffer holding the device
-  // buffers. See comment on ScopedHold.
-  ScopedHold GetBufferWithHold(ScopedHold::Type type);
-  ScopedHold GetBufferWithUsageHold() {
-    return GetBufferWithHold(ScopedHold::kUsage);
-  }
-  ScopedHold GetBufferWithExternalReference() {
-    return GetBufferWithHold(ScopedHold::kExternalReference);
-  }
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
-      PjRtMemorySpace* dst_memory_space) override;
-
-  Future<> GetReadyFuture() override;
-
-  // Similar to Delete, drops the buffer's reference to its associated device
-  // memory, leaving the buffer in an invalid state, but returns the
-  // TrackedDeviceBuffer rather than freeing the device memory, so that another
-  // framework can take ownership of it.
-  //
-  // When called with wait_for_operations_to_complete=false, the buffer returned
-  // from Release should be dropped on the compute stream, since the only events
-  // that Release doesn't wait for are events defined on the compute stream.
-  //
-  // If wait_for_operations_to_complete=true, the host will block until any
-  // potentially outstanding asynchronous operations have completed before
-  // returning, in which case it is safe to read or mutate the returned buffer.
-  // If the buffer was shared via an external reference it is the client's
-  // responsibility that accesses via that reference do not interfere with
-  // accesses via the buffer returned from Release.
-  absl::StatusOr<tsl::RCReference<RawSEDeviceMemory>> Release(
-      bool wait_for_operations_to_complete);
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
-      Future<> dependency) override;
-
- private:
-  friend class PjRtClient;
-
-  TrackedDeviceBuffer* device_buffer() const
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return static_cast<TrackedDeviceBuffer*>(CommonPjRtBuffer::device_buffer());
-  }
-
-  // Drops a usage hold and calls device_buffer_->AddUsageEvent. Does a sanity
-  // check that buffer==device_buffer_ or device_buffer_==nullptr. Called after
-  // device_buffer_ was successfully enqueued on a stream.
-  void ConvertUsageHold(TrackedDeviceBuffer* buffer, se::Stream* usage_stream,
-                        BufferSequencingEventRef event, bool reference_held);
-
-  absl::StatusOr<
-      std::pair<std::unique_ptr<PjRtBuffer>, BufferSequencingEventRef>>
-  CopyToDeviceHelper(PjRtDevice* dst_device, LocalDeviceState* dst_local_device,
-                     PjRtMemorySpace* dst_memory_space,
-                     LocalDeviceState* transfer_local_device,
-                     LocalDeviceState* src_local_device,
-                     se::Stream* transfer_stream,
-                     const TrackedDeviceBuffer& src_device_buffer);
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceMemorySpace(
-      PjRtDevice* dst_device, PjRtMemorySpace* dst_memory_space = nullptr);
-};
-
-// Allocates the device buffers for a buffer that will be used as the
-// destination of a copy, either from the host or another device. copy_stream
-// may be nullptr, e.g., when allocating a buffer for a cross-host copy. If the
-// buffer is a tuple then the tuple tables are allocated, and all necessary
-// synchronization for them is dealt with, before the buffer is returned.
-//
-// It is safe to delete the returned PjRtBuffer without further
-// synchronization if an error occurs before the buffer is used.
-//
-// The caller may optionally provide a definition event to be recorded in
-// the buffer.
-// TODO(phawkins): replace on_host_shape here with on_device_shape.
-absl::StatusOr<std::unique_ptr<PjRtStreamExecutorBuffer>>
-AllocateDestinationBuffer(const Shape& on_host_shape, PjRtDevice* device,
-                          LocalDeviceState* local_device,
-                          se::Stream* copy_stream, bool is_uninitialized_create,
-                          PjRtStreamExecutorClient* client,
-                          BufferSequencingEventRef definition_event = nullptr,
-                          PjRtMemorySpace* memory_space = nullptr);
 
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by
 // the build options).
@@ -838,26 +673,24 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       int device_ordinal, const ExecuteOptions& options,
       absl::Span<const Shape> executable_parameter_shapes,
       absl::Span<PjRtBuffer* const> argument_handles,
-      absl::Span<const PjRtStreamExecutorBuffer::ScopedHold> device_buffers,
+      absl::Span<const CommonPjRtBuffer::ScopedHold> device_buffers,
       absl::flat_hash_set<BufferSequencingEvent*>& events) const;
 
-  absl::StatusOr<ShapeTree<tsl::RCReference<RawSEDeviceMemory>>>
+  absl::StatusOr<ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>>>
   EnqueueExecution(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, int executable_idx, const RunId& run_id,
       const ExecuteOptions& options, PjRtDevice* device,
-      std::vector<PjRtStreamExecutorBuffer::ScopedHold>* device_buffers,
+      std::vector<CommonPjRtBuffer::ScopedHold>* device_buffers,
       std::shared_ptr<DeviceAssignment> device_assignment,
       std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks) const;
 
   virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeOutputBuffers(
       int device_ordinal, const ExecuteOptions& options,
-      ShapeTree<tsl::RCReference<RawSEDeviceMemory>> result_buffer,
+      ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>> result_buffer,
       BufferSequencingEventRef definition_event, PjRtDevice* device,
-      std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks,
-      std::vector<tsl::RCReference<RawSEDeviceMemory>>& buffers_to_release)
-      const;
+      std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks) const;
 
   absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,

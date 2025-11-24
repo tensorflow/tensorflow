@@ -236,14 +236,14 @@ class ExtractOutsideCompilationForFunctionTest : public ::testing::Test {
   }
 
   absl::Status ExtractOutsideCompilationTest(
-      const string &xla_cluster_attr_name,
-      const string &outside_compilation_attr_name,
-      const string &xla_cluster_name, const NameAttrList &func_name_attrs,
-      const string &new_func_name, const string &host_graph_func_name,
-      const std::map<string, int> &host_compute_core,
-      FunctionLibraryDefinition *fld,
-      std::vector<string> *shape_inference_graphs,
-      bool *has_outside_compilation) {
+      const std::string& xla_cluster_attr_name,
+      const std::string& outside_compilation_attr_name,
+      const std::string& xla_cluster_name, const NameAttrList& func_name_attrs,
+      const std::string& new_func_name, const std::string& host_graph_func_name,
+      const std::map<std::string, int>& host_compute_core,
+      FunctionLibraryDefinition* fld,
+      std::vector<std::string>* shape_inference_graphs,
+      bool* has_outside_compilation) {
     OptimizerOptions opts;
     pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
@@ -288,9 +288,9 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, Basic) {
   }
   FunctionLibraryDefinition fld(OpRegistry::Global(), fdl);
 
-  protobuf::Map<string, tensorflow::AttrValue> attrs;
-  std::map<string, int> host_compute_core = {{"0", 1}, {"1", 0}};
-  std::vector<string> shape_inference_graphs;
+  protobuf::Map<std::string, tensorflow::AttrValue> attrs;
+  std::map<std::string, int> host_compute_core = {{"0", 1}, {"1", 0}};
+  std::vector<std::string> shape_inference_graphs;
   bool has_outside_compilation;
   NameAttrList name_attrs;
   name_attrs.set_name("cluster");
@@ -342,7 +342,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, Basic) {
   std::unique_ptr<FunctionBody> host_fbody;
   AttrValue device_ordinal_temp_value;
   device_ordinal_temp_value.set_i(0);
-  protobuf::Map<string, AttrValue> host_func_attrs;
+  protobuf::Map<std::string, AttrValue> host_func_attrs;
   host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
   TF_CHECK_OK(FunctionDefToBodyHelper(
       *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld, &host_fbody));
@@ -406,9 +406,9 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, NoHostGraph) {
   }
   FunctionLibraryDefinition fld(OpRegistry::Global(), fdl);
 
-  protobuf::Map<string, tensorflow::AttrValue> attrs;
-  std::map<string, int> host_compute_core = {{"0", 1}, {"1", 0}};
-  std::vector<string> shape_inference_graphs;
+  protobuf::Map<std::string, tensorflow::AttrValue> attrs;
+  std::map<std::string, int> host_compute_core = {{"0", 1}, {"1", 0}};
+  std::vector<std::string> shape_inference_graphs;
   bool has_outside_compilation;
   NameAttrList name_attrs;
   name_attrs.set_name("cluster");
@@ -481,9 +481,9 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
   }
   FunctionLibraryDefinition fld(OpRegistry::Global(), fdl);
 
-  protobuf::Map<string, tensorflow::AttrValue> attrs;
-  std::map<string, int> host_compute_core;
-  std::vector<string> shape_inference_graphs;
+  protobuf::Map<std::string, tensorflow::AttrValue> attrs;
+  std::map<std::string, int> host_compute_core;
+  std::vector<std::string> shape_inference_graphs;
   bool has_outside_compilation;
   NameAttrList name_attrs;
   name_attrs.set_name("cluster");
@@ -498,7 +498,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
     std::unique_ptr<FunctionBody> host_fbody;
     AttrValue device_ordinal_temp_value;
     device_ordinal_temp_value.set_i(0);
-    protobuf::Map<string, AttrValue> host_func_attrs;
+    protobuf::Map<std::string, AttrValue> host_func_attrs;
     host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
     TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
                                         AttrSlice(&host_func_attrs), &fld,
@@ -568,7 +568,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
     // _xla_token_input_nodes.
     Node *if_node = node_name_index["if"];
     EXPECT_NE(if_node, nullptr);
-    std::vector<string> token_inputs;
+    std::vector<std::string> token_inputs;
     TF_CHECK_OK(
         GetNodeAttr(if_node->def(), "_xla_token_input_nodes", &token_inputs));
     EXPECT_THAT(token_inputs, ::testing::ElementsAre("send_oc_if_pred_if"));
@@ -631,9 +631,9 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
   }
   FunctionLibraryDefinition fld(OpRegistry::Global(), fdl);
 
-  protobuf::Map<string, tensorflow::AttrValue> attrs;
-  std::map<string, int> host_compute_core;
-  std::vector<string> shape_inference_graphs;
+  protobuf::Map<std::string, tensorflow::AttrValue> attrs;
+  std::map<std::string, int> host_compute_core;
+  std::vector<std::string> shape_inference_graphs;
   bool has_outside_compilation;
   NameAttrList name_attrs;
   name_attrs.set_name("cluster");
@@ -648,7 +648,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
     std::unique_ptr<FunctionBody> host_fbody;
     AttrValue device_ordinal_temp_value;
     device_ordinal_temp_value.set_i(0);
-    protobuf::Map<string, AttrValue> host_func_attrs;
+    protobuf::Map<std::string, AttrValue> host_func_attrs;
     host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
     TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
                                         AttrSlice(&host_func_attrs), &fld,
@@ -767,9 +767,9 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInFunction) {
     TF_CHECK_OK(fld.AddFunctionDef(*xla_fdef));
   }
 
-  protobuf::Map<string, tensorflow::AttrValue> attrs;
-  std::map<string, int> host_compute_core;
-  std::vector<string> shape_inference_graphs;
+  protobuf::Map<std::string, tensorflow::AttrValue> attrs;
+  std::map<std::string, int> host_compute_core;
+  std::vector<std::string> shape_inference_graphs;
   bool has_outside_compilation;
   NameAttrList name_attrs;
   name_attrs.set_name("cluster");
@@ -784,7 +784,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInFunction) {
     std::unique_ptr<FunctionBody> host_fbody;
     AttrValue device_ordinal_temp_value;
     device_ordinal_temp_value.set_i(0);
-    protobuf::Map<string, AttrValue> host_func_attrs;
+    protobuf::Map<std::string, AttrValue> host_func_attrs;
     host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
     TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
                                         AttrSlice(&host_func_attrs), &fld,
@@ -873,9 +873,9 @@ TEST_F(ExtractOutsideCompilationForFunctionTest,
   }
   FunctionLibraryDefinition fld(OpRegistry::Global(), fdl);
 
-  protobuf::Map<string, tensorflow::AttrValue> attrs;
-  std::map<string, int> host_compute_core = {{"0", 1}, {"1", 0}};
-  std::vector<string> shape_inference_graphs;
+  protobuf::Map<std::string, tensorflow::AttrValue> attrs;
+  std::map<std::string, int> host_compute_core = {{"0", 1}, {"1", 0}};
+  std::vector<std::string> shape_inference_graphs;
   bool has_outside_compilation;
   NameAttrList name_attrs;
   name_attrs.set_name("cluster");
@@ -898,14 +898,15 @@ TEST_F(ExtractOutsideCompilationForFunctionTest,
   EXPECT_NE(host_compute_1, nullptr);
 
   // Check XlaHostCompute nodes' "_xla_token_input_nodes" attr.
-  std::vector<string> token_input_nodes;
+  std::vector<std::string> token_input_nodes;
   TF_CHECK_OK(GetNodeAttr(AttrSlice(host_compute_0->attrs()),
                           "_xla_token_input_nodes", &token_input_nodes));
 
-  std::vector<string> expected_token_input_nodes_0({"_xla_token_arg_node"});
+  std::vector<std::string> expected_token_input_nodes_0(
+      {"_xla_token_arg_node"});
   EXPECT_EQ(token_input_nodes, expected_token_input_nodes_0);
   token_input_nodes.clear();
-  std::vector<string> expected_token_input_nodes_1(
+  std::vector<std::string> expected_token_input_nodes_1(
       {"_xla_token_arg_node", "outside_compilation_0_host_compute"});
   TF_CHECK_OK(GetNodeAttr(AttrSlice(host_compute_1->attrs()),
                           "_xla_token_input_nodes", &token_input_nodes));
@@ -955,9 +956,9 @@ TEST_F(ExtractOutsideCompilationForFunctionTest,
   }
   FunctionLibraryDefinition fld(OpRegistry::Global(), fdl);
 
-  protobuf::Map<string, tensorflow::AttrValue> attrs;
-  std::map<string, int> host_compute_core = {{"0", 1}, {"1", 0}};
-  std::vector<string> shape_inference_graphs;
+  protobuf::Map<std::string, tensorflow::AttrValue> attrs;
+  std::map<std::string, int> host_compute_core = {{"0", 1}, {"1", 0}};
+  std::vector<std::string> shape_inference_graphs;
   bool has_outside_compilation;
   NameAttrList name_attrs;
   name_attrs.set_name("cluster");
@@ -980,14 +981,15 @@ TEST_F(ExtractOutsideCompilationForFunctionTest,
   EXPECT_NE(host_compute_1, nullptr);
 
   // Check XlaHostCompute nodes' "_xla_token_input_nodes" attr.
-  std::vector<string> token_input_nodes;
+  std::vector<std::string> token_input_nodes;
   TF_CHECK_OK(GetNodeAttr(AttrSlice(host_compute_0->attrs()),
                           "_xla_token_input_nodes", &token_input_nodes));
 
-  std::vector<string> expected_token_input_nodes_0({"_xla_token_arg_node"});
+  std::vector<std::string> expected_token_input_nodes_0(
+      {"_xla_token_arg_node"});
   EXPECT_EQ(token_input_nodes, expected_token_input_nodes_0);
   token_input_nodes.clear();
-  std::vector<string> expected_token_input_nodes_1(
+  std::vector<std::string> expected_token_input_nodes_1(
       {"_xla_token_arg_node", "outside_compilation_0_host_compute"});
   TF_CHECK_OK(GetNodeAttr(AttrSlice(host_compute_1->attrs()),
                           "_xla_token_input_nodes", &token_input_nodes));

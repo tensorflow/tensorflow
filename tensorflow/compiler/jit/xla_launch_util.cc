@@ -45,11 +45,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/client/local_client.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/service/executable.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
@@ -809,8 +809,6 @@ xla::ExecuteOptions GetPjRtExecuteOptions(
     const DeviceType& device_type,
     absl::flat_hash_set<int> non_donatable_input_indices) {
   xla::ExecuteOptions options;
-  options.arguments_are_tupled = false;
-  options.untuple_result = true;
   // Hardcode run id to always be one: TF distributed strategy
   // differentiates between subsequent runs using dependency edges. This
   // is safe, as only TF dist-strat can produce distributed ops, and we

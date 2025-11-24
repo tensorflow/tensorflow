@@ -85,8 +85,8 @@ absl::Status BuildXlaOps(const Scope& s, const FunctionDefLibrary& fdef_lib,
   return absl::OkStatus();
 }
 
-absl::Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
-                                   const string& node_name,
+absl::Status MakeXlaCompiledKernel(Graph* graph, const std::string& callee_name,
+                                   const std::string& node_name,
                                    int num_constant_args, int num_resource_args,
                                    Node** result) {
   NodeDef call_node;
@@ -99,14 +99,16 @@ absl::Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
   return absl::OkStatus();
 }
 
-absl::Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
-                                   const string& node_name, Node** result) {
+absl::Status MakeXlaCompiledKernel(Graph* graph, const std::string& callee_name,
+                                   const std::string& node_name,
+                                   Node** result) {
   return MakeXlaCompiledKernel(graph, callee_name, node_name,
                                /*num_constant_args=*/0, /*num_resource_args=*/0,
                                result);
 }
 
-Node* MakeWrite(const Scope& scope, Output value_to_write, const string& id) {
+Node* MakeWrite(const Scope& scope, Output value_to_write,
+                const std::string& id) {
   Output var_handle = ops::VarHandleOp(scope.WithOpName("Var_" + id), DT_FLOAT,
                                        TensorShape({}));
   ops::AssignVariableOp assign_op(scope.WithOpName("Assignee_" + id),
@@ -114,12 +116,13 @@ Node* MakeWrite(const Scope& scope, Output value_to_write, const string& id) {
   return assign_op.operation.node();
 }
 
-Node* MakeWrite(const Scope& scope, const string& id) {
+Node* MakeWrite(const Scope& scope, const std::string& id) {
   return MakeWrite(
       scope, ops::Const(scope.WithOpName("ValueToAssign" + id), 1.0f), id);
 }
 
-FunctionDefLibrary CreateFunctionDefLibWithConstFunction(const string& name) {
+FunctionDefLibrary CreateFunctionDefLibWithConstFunction(
+    const std::string& name) {
   FunctionDefLibrary fdef_lib;
   FunctionDef func = FunctionDefHelper::Create(
       /*function_name=*/name, /*in_def=*/{}, /*out_def=*/{"out: float"},

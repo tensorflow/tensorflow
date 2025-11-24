@@ -42,8 +42,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/runtime/buffer_use.h"
@@ -997,13 +999,13 @@ class CuDnnCmd : public TracedCommandBufferCmd {
 class CustomCallCmd : public CommandBufferCmd {
  public:
   using CustomCallTarget = CustomCallThunk::CustomCallTarget;
-  using AttributesMap = CustomCallThunk::AttributesMap;
+  using AttributesMap = ffi::AttributesMap;
 
   // This is a legacy custom call API that is discouraged, and will be
   // deprecated once XLA:FFI mechanism is ready.
   CustomCallCmd(std::string target_name, CustomCallTarget call_target,
-                std::vector<std::optional<ShapedSlice>> operands,
-                std::vector<std::optional<ShapedSlice>> results,
+                std::vector<NullableShapedSlice> operands,
+                std::vector<NullableShapedSlice> results,
                 absl::string_view opaque)
       : CommandBufferCmd(CommandBufferCmdType::kCustomCallCmd),
         target_name_(std::move(target_name)),
@@ -1013,8 +1015,8 @@ class CustomCallCmd : public CommandBufferCmd {
         results_(std::move(results)) {}
 
   CustomCallCmd(std::string target_name, XLA_FFI_Handler* handler,
-                std::vector<std::optional<ShapedSlice>> operands,
-                std::vector<std::optional<ShapedSlice>> results,
+                std::vector<NullableShapedSlice> operands,
+                std::vector<NullableShapedSlice> results,
                 ffi::CallFrame call_frame,
                 const HloComputation* called_computation)
       : CommandBufferCmd(CommandBufferCmdType::kCustomCallCmd),
@@ -1066,8 +1068,8 @@ class CustomCallCmd : public CommandBufferCmd {
 
   const HloComputation* called_computation_;
 
-  std::vector<std::optional<ShapedSlice>> operands_;
-  std::vector<std::optional<ShapedSlice>> results_;
+  std::vector<NullableShapedSlice> operands_;
+  std::vector<NullableShapedSlice> results_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -1224,7 +1226,7 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
   DynamicSliceFusionCmd(
       CommandBufferCmdExecutor embedded_commands,
       std::vector<std::optional<BufferAllocation::Slice>> arguments,
-      std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_,
+      std::vector<BufferAllocation> fake_allocations,
       std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>>
           offsets,
       std::vector<std::optional<Shape>> orig_shapes,
@@ -1259,7 +1261,7 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
  private:
   CommandBufferCmdExecutor embedded_commands_;
   std::vector<DynamicSliceThunk::SliceDef> slices_;
-  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_;
+  std::vector<BufferAllocation> fake_allocations_;
 
   // Pinned host memory for transferring offset values from device to host.
   absl::Mutex mutex_;

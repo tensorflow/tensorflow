@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tsl {
 
-void ClockCycleProfiler::DumpStatistics(const string& tag) {
+void ClockCycleProfiler::DumpStatistics(const std::string& tag) {
   CHECK(!IsStarted());
   const double average_clock_cycle = GetAverageClockCycle();
   const double count = GetCount();

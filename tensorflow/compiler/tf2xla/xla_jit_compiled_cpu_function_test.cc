@@ -182,18 +182,18 @@ TEST(XlaJitCompiledCpuFunction, Sum) {
   ASSERT_EQ(function.num_results(), 1);
 
   // Run the function and check results.
-  *static_cast<int32*>(function.arg_data(0)) = 10;
-  *static_cast<int32*>(function.arg_data(1)) = 32;
+  *static_cast<int32_t*>(function.arg_data(0)) = 10;
+  *static_cast<int32_t*>(function.arg_data(1)) = 32;
   EXPECT_TRUE(function.Run());
   EXPECT_EQ(function.error_msg(), "");
-  EXPECT_EQ(*static_cast<int32*>(function.result_data(0)), 42);
+  EXPECT_EQ(*static_cast<int32_t*>(function.result_data(0)), 42);
 
   // Run the function again.
-  *static_cast<int32*>(function.arg_data(0)) = 100;
-  *static_cast<int32*>(function.arg_data(1)) = 320;
+  *static_cast<int32_t*>(function.arg_data(0)) = 100;
+  *static_cast<int32_t*>(function.arg_data(1)) = 320;
   EXPECT_TRUE(function.Run());
   EXPECT_EQ(function.error_msg(), "");
-  EXPECT_EQ(*static_cast<int32*>(function.result_data(0)), 420);
+  EXPECT_EQ(*static_cast<int32_t*>(function.result_data(0)), 420);
 
   // Check name to index lookups.
   EXPECT_TRUE(function.HasNameIndices());
@@ -268,20 +268,20 @@ TEST(XlaJitCompiledCpuFunction, SumVariable) {
   ASSERT_EQ(function.num_results(), 2);
 
   // Run the function and check results.
-  *static_cast<int32*>(function.arg_data(0)) = 10;
-  *static_cast<int32*>(function.arg_data(1)) = 32;
+  *static_cast<int32_t*>(function.arg_data(0)) = 10;
+  *static_cast<int32_t*>(function.arg_data(1)) = 32;
   EXPECT_TRUE(function.Run());
   EXPECT_EQ(function.error_msg(), "");
-  EXPECT_EQ(*static_cast<int32*>(function.result_data(0)), 10);
-  EXPECT_EQ(*static_cast<int32*>(function.result_data(1)), 42);
+  EXPECT_EQ(*static_cast<int32_t*>(function.result_data(0)), 10);
+  EXPECT_EQ(*static_cast<int32_t*>(function.result_data(1)), 42);
 
   // Run the function again.
-  *static_cast<int32*>(function.arg_data(0)) = 100;
-  *static_cast<int32*>(function.arg_data(1)) = 320;
+  *static_cast<int32_t*>(function.arg_data(0)) = 100;
+  *static_cast<int32_t*>(function.arg_data(1)) = 320;
   EXPECT_TRUE(function.Run());
   EXPECT_EQ(function.error_msg(), "");
-  EXPECT_EQ(*static_cast<int32*>(function.result_data(0)), 100);
-  EXPECT_EQ(*static_cast<int32*>(function.result_data(1)), 420);
+  EXPECT_EQ(*static_cast<int32_t*>(function.result_data(0)), 100);
+  EXPECT_EQ(*static_cast<int32_t*>(function.result_data(1)), 420);
 
   // Check name to index lookups.
   EXPECT_TRUE(function.HasNameIndices());
@@ -325,7 +325,7 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
 
     int VisibleDeviceCount() const override { return 0; }
 
-    const string& Name() const override { return name_; }
+    const std::string& Name() const override { return name_; }
 
     absl::StatusOr<std::unique_ptr<se::DeviceDescription>> DescriptionForDevice(
         int ordinal) const override {
@@ -338,7 +338,7 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
     }
 
    private:
-    string name_;
+    std::string name_;
   };
 
   TF_EXPECT_OK(

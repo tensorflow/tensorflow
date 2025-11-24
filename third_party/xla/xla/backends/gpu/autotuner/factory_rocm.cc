@@ -23,8 +23,8 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/triton.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/service/compiler.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -45,10 +45,22 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
   return backends;
 }
 
+std::vector<std::unique_ptr<CodegenBackend>> GetFissionBackendsForROCm(
+    stream_executor::StreamExecutor* stream_executor,
+    const DebugOptions* debug_options, Compiler* compiler,
+    const Compiler::TargetConfig* target_config,
+    SymbolicExprContext* symbolic_expr_context) {
+  return {};
+}
+
 STREAM_EXECUTOR_REGISTER_OBJECT_STATICALLY(GetCodegenBackendsROCmRegistration,
                                            GetCodegenBackends,
                                            se::rocm::kROCmPlatformId,
                                            GetCodegenBackendsForROCm);
+STREAM_EXECUTOR_REGISTER_OBJECT_STATICALLY(GetFissionBackendsROCmRegistration,
+                                           GetFissionBackends,
+                                           se::rocm::kROCmPlatformId,
+                                           GetFissionBackendsForROCm);
 
 }  // namespace gpu
 }  // namespace xla

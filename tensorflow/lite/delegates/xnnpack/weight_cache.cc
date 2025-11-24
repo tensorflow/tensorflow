@@ -144,7 +144,11 @@ bool WeightCacheBuilder::Start(const char* path, const FileDescriptor& fd) {
 }
 
 bool WeightCacheBuilder::StartBuildStep() {
-  XNNPACK_RETURN_CHECK(IsStarted());
+  XNNPACK_RETURN_CHECK(IsStarted(),
+                       "Trying to start a build step in an invalid builder.")
+  XNNPACK_RETURN_CHECK(!is_build_step_.exchange(true),
+                       "Failed to start build step: already started. This may "
+                       "be a concurrency issue.");
 
   // Reload flatbuffer data.
   XNNPackCacheHeader header;
@@ -169,7 +173,6 @@ bool WeightCacheBuilder::StartBuildStep() {
   build_segment_start_ = fd_.SetPos(header.buffer_list_offset);
   XNNPACK_RETURN_CHECK(build_segment_start_ != -1);
 
-  is_build_step_ = true;
   return true;
 }
 
@@ -216,14 +219,12 @@ BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
 }
 
 bool WeightCacheBuilder::StopBuildStep() {
-  if (!is_build_step_) {
-    return true;
-  }
-  XNNPACK_RETURN_CHECK(fd_.IsValid(),
-                       "cache file ('%s') is not open for writing: %s.",
-                       file_path_.c_str(), strerror(errno));
+  XNNPACK_RETURN_CHECK(is_build_step_,
+                       "Attempting to stop a non existing build step. This may "
+                       "be a concurrency issue.");
+  XNNPACK_RETURN_CHECK(fd_.IsValid(), "cache file ('%s') is not open.",
+                       file_path_.c_str());
 
-  is_build_step_ = false;
   if (fd_.GetPos() == build_segment_start_ && first_write_done_) {
     // Nothing was written to the file, we can exit early.
     return true;
@@ -271,6 +272,7 @@ bool WeightCacheBuilder::StopBuildStep() {
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
                   "XNNPack weight cache: written to '%s'.", file_path_.c_str());
   first_write_done_ = true;
+  is_build_step_ = false;
   return true;
 }
 
@@ -600,10 +602,11 @@ size_t MMapWeightCacheProvider::LookUpOrInsert(
 void* MMapWeightCacheProvider::OffsetToAddr(const size_t offset) {
   // While the cache is being built, the buffer could grow and need to be
   // reallocated so we cannot ensure pointer stability.
-  XNNPACK_ABORT_CHECK(
-      !IsBuilding(),
-      "Cannot get the address of a buffer in a cache during a building step.");
-  return offset_to_addr_[offset];
+  auto it = offset_to_addr_.find(offset);
+  XNNPACK_ABORT_CHECK(it != offset_to_addr_.end(),
+                      "Cannot get the address of a buffer in a cache before "
+                      "the build step that introduces it has finished.");
+  return it->second;
 }
 
 void MMapWeightCacheProvider::Release() {

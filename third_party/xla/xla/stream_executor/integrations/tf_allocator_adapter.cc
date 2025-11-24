@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/logging.h"
+#include "tsl/platform/numbers.h"
 
 namespace stream_executor {
 
@@ -95,7 +96,8 @@ absl::Status MemoryAllocationError(uint64_t size, bool is_host_mem) {
 
   absl::Status status = absl::ResourceExhaustedError(
       absl::StrCat("Out of ", (is_host_mem ? "host " : ""),
-                   "memory while trying to allocate ", size, " bytes.",
+                   "memory while trying to allocate ",
+                   tsl::strings::HumanReadableNumBytes(size), ".",
                    (is_host_mem ? kHostMemoryExplanation : "")));
   status.SetPayload(kMemoryAllocationErrorPayloadKey, absl::Cord());
   return status;

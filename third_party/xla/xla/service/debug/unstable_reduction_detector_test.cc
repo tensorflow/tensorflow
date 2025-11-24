@@ -62,6 +62,22 @@ static constexpr absl::string_view kUnstableReductionNoMetadataHloModule = R"(
   }
 )";
 
+static constexpr absl::string_view kNoOpUnstableReductionHloModule = R"(
+  red {
+      p0 = bf16[] parameter(0)
+      p1 = bf16[] parameter(1)
+      ROOT red = bf16[] add(p0, p1)
+  }
+
+  ENTRY main {
+      p0 = bf16[1] parameter(0)
+      init = bf16[] constant(1.0)
+      ROOT red = bf16[] reduce(p0, init),
+          to_apply=red,
+          dimensions={0}
+  }
+)";
+
 using ::absl::LogSeverity;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
@@ -73,8 +89,7 @@ TEST(UnstableReductionDetectorTest, FailOnUnstableReductions) {
       auto module, ParseAndReturnUnverifiedModule(kUnstableReductionHloModule));
   module->mutable_config()
       .mutable_debug_options()
-      .set_xla_detect_unstable_reductions(
-          DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_FAIL);
+      .set_xla_detect_unstable_reductions(DebugOptions::DETECTION_MODE_FAIL);
   UnstableReductionDetector detector;
   ::absl::ScopedMockLog log;
   EXPECT_CALL(
@@ -101,8 +116,7 @@ TEST(UnstableReductionDetectorTest, WarningOnUnstableReduction) {
       auto module, ParseAndReturnUnverifiedModule(kUnstableReductionHloModule));
   module->mutable_config()
       .mutable_debug_options()
-      .set_xla_detect_unstable_reductions(
-          DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_WARNING);
+      .set_xla_detect_unstable_reductions(DebugOptions::DETECTION_MODE_WARNING);
   UnstableReductionDetector detector;
   ::absl::ScopedMockLog log;
   EXPECT_CALL(log, Log(LogSeverity::kWarning, _,
@@ -123,8 +137,7 @@ TEST(UnstableReductionDetectorTest, FailOnUnstableReductionNoMetadata) {
       ParseAndReturnUnverifiedModule(kUnstableReductionNoMetadataHloModule));
   module->mutable_config()
       .mutable_debug_options()
-      .set_xla_detect_unstable_reductions(
-          DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_FAIL);
+      .set_xla_detect_unstable_reductions(DebugOptions::DETECTION_MODE_FAIL);
   UnstableReductionDetector detector;
   ::absl::ScopedMockLog log;
   EXPECT_CALL(log, Log(LogSeverity::kWarning, _,
@@ -143,14 +156,29 @@ TEST(UnstableReductionDetectorTest, DoNothingOnUnstableReduction) {
       auto module, ParseAndReturnUnverifiedModule(kUnstableReductionHloModule));
   module->mutable_config()
       .mutable_debug_options()
-      .set_xla_detect_unstable_reductions(
-          DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_NONE);
+      .set_xla_detect_unstable_reductions(DebugOptions::DETECTION_MODE_NONE);
   ::absl::ScopedMockLog log;
   EXPECT_CALL(log, Log(LogSeverity::kWarning, _, _)).Times(0);
   UnstableReductionDetector detector;
   log.StartCapturingLogs();
   EXPECT_THAT(detector.Run(module.get(), /*execution_threads=*/{}),
               IsOkAndHolds(false));
+}
+
+TEST(UnstableReductionDetectorTest, NoOpUnstableReduction) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                           kNoOpUnstableReductionHloModule));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_detect_unstable_reductions(DebugOptions::DETECTION_MODE_WARNING);
+  UnstableReductionDetector detector;
+  ::absl::ScopedMockLog log;
+  EXPECT_CALL(log, Log(LogSeverity::kWarning, _, _)).Times(0);
+  EXPECT_CALL(log, Log(LogSeverity::kError, _, _)).Times(0);
+  log.StartCapturingLogs();
+  EXPECT_THAT(detector.Run(module.get(), /*execution_threads=*/{}),
+              IsOkAndHolds(false));
+  log.StopCapturingLogs();
 }
 
 }  // namespace

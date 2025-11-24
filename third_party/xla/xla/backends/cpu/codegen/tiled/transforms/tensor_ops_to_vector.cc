@@ -57,8 +57,7 @@ struct LowerFromElements
     mlir::Value vector_from_elements =
         rewriter.create<mlir::vector::FromElementsOp>(op.getLoc(), vector_type,
                                                       op->getOperands());
-    rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
-        op, op.getType(), vector_from_elements);
+    rewriter.replaceOp(op, WriteVectorToTensor(rewriter, vector_from_elements));
     return mlir::success();
   }
 };
@@ -69,7 +68,7 @@ struct LowerExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::tensor::ExtractOp op,
       mlir::PatternRewriter& rewriter) const override {
-    mlir::Value vector_input = CastToVector(rewriter, op.getTensor());
+    mlir::Value vector_input = ReadTensorToVector(rewriter, op.getTensor());
     llvm::SmallVector<mlir::OpFoldResult> indices(op.getIndices());
     rewriter.replaceOpWithNewOp<mlir::vector::ExtractOp>(op, vector_input,
                                                          indices);

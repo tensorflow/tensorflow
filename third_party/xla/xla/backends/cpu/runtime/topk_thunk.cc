@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/topk_lib.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/runtime_topk.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
@@ -62,10 +62,11 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> TopKThunk::Execute(
       se::DeviceMemoryBase indices,
       params.buffer_allocations->GetDeviceAddress(indices_buffer_));
 
-  __xla_cpu_runtime_TopKF32(batch_size_, input_size_, k_,
-                            reinterpret_cast<const float*>(values.opaque()),
-                            reinterpret_cast<float*>(output.opaque()),
-                            reinterpret_cast<int32_t*>(indices.opaque()));
+  internal::TopK<float>(batch_size_, input_size_, k_,
+                        static_cast<const float*>(values.opaque()),
+                        static_cast<float*>(output.opaque()),
+                        static_cast<int32_t*>(indices.opaque()));
+
   return OkExecuteEvent();
 }
 

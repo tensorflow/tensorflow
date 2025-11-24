@@ -17,6 +17,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -64,20 +66,21 @@ class RaggedGatherOpBase : public OpKernel {
                                                 &params_nested_splits_in));
     OP_REQUIRES(
         context, params_nested_splits_in.size() > 0,
-        errors::InvalidArgument("params_nested_splits must be non empty"));
+        absl::InvalidArgumentError("params_nested_splits must be non empty"));
 
     const Tensor& params_dense_values_in =
         context->input(params_nested_splits_in.size());
     const Tensor& indices_in =
         context->input(params_nested_splits_in.size() + 1);
 
-    OP_REQUIRES(context, params_nested_splits_in[0].dims() > 0,
-                errors::InvalidArgument("Split tensors must not be scalars"));
+    OP_REQUIRES(
+        context, params_nested_splits_in[0].dims() > 0,
+        absl::InvalidArgumentError("Split tensors must not be scalars"));
     SPLITS_TYPE num_params = params_nested_splits_in[0].dim_size(0) - 1;
     OP_REQUIRES_OK(context, ValidateIndices(indices_in, num_params));
 
     OP_REQUIRES(context, params_dense_values_in.dims() > 0,
-                errors::InvalidArgument("params.rank must be nonzero"));
+                absl::InvalidArgumentError("params.rank must be nonzero"));
     SPLITS_TYPE num_params_dense_values = params_dense_values_in.dim_size(0);
 
     // Calculate the `splits`, and store the value slices that we need to
@@ -106,9 +109,9 @@ class RaggedGatherOpBase : public OpKernel {
     for (SPLITS_TYPE i = 0; i < indices.size(); ++i) {
       SPLITS_TYPE index = indices(i);
       if (index < 0 || index >= num_params) {
-        return errors::InvalidArgument(
-            "indices", SliceDebugString(indices_in.shape(), i), " = ", index,
-            " is not in [0, ", num_params, ")");
+        return absl::InvalidArgumentError(
+            absl::StrCat("indices", SliceDebugString(indices_in.shape(), i),
+                         " = ", index, " is not in [0, ", num_params, ")"));
       }
     }
     return absl::OkStatus();
@@ -201,18 +204,18 @@ class RaggedGatherOpBase : public OpKernel {
                                    ? num_params_dense_values
                                    : params_nested_splits[dim + 1].size();
       if (splits.size() == 0) {
-        return errors::InvalidArgument("Ragged splits may not be empty");
+        return absl::InvalidArgumentError("Ragged splits may not be empty");
       }
       if (splits(0) < 0) {
-        return errors::InvalidArgument("Ragged splits must be non-negative");
+        return absl::InvalidArgumentError("Ragged splits must be non-negative");
       }
       if (splits(splits.size() - 1) > last_split) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Ragged splits must not point past values");
       }
       for (int i = 1; i < splits.size(); ++i) {
         if (splits(i - 1) > splits(i)) {
-          return errors::InvalidArgument("Ragged splits must be sorted");
+          return absl::InvalidArgumentError("Ragged splits must be sorted");
         }
       }
     }

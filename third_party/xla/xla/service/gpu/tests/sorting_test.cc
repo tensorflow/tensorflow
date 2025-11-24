@@ -59,12 +59,17 @@ ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY test {
-p0 = $0[32]{0} parameter(0)
-ROOT sort = $0[32]{0} sort(p0), dimensions={0}, is_stable=true,
+p0 = $0[132000]{0} parameter(0)
+ROOT sort = $0[132000]{0} sort(p0), dimensions={0}, is_stable=false,
 to_apply=compare
 })";
   std::string hlo = absl::Substitute(
       kHloTemplate, primitive_util::LowercasePrimitiveTypeName(GetParam()));
+  // We expect that all types except PRED and F8 types are rewritten to a custom
+  // call.
+  if (GetParam() != PRED && !primitive_util::IsF8Type(GetParam())) {
+    MatchOptimizedHlo(hlo, "CHECK: custom-call");
+  }
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
 }
 

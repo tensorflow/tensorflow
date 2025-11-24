@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -43,7 +42,10 @@ namespace xla::gpu {
 
 namespace {
 
-using ::stream_executor::gpu::AllReduceStrategy;
+using se::gpu::AllReduceStrategy;
+static constexpr int64_t kMaxOneShotAllReduceSizeBytes = 256 * 1024;  // 256 KB
+static constexpr int64_t kMaxTwoShotAllReduceSizeBytes =
+    2 * 1024 * 1024;  // 2 MB
 
 template <typename T, ReductionKind kReductionKindV>
 class TagRegistry {
@@ -58,6 +60,7 @@ class TagRegistry {
  public:
   static constexpr auto kOneShot = Impl<AllReduceStrategy::kOneShot>{};
   static constexpr auto kTwoShot = Impl<AllReduceStrategy::kTwoShot>{};
+  static constexpr auto kMultimem = Impl<AllReduceStrategy::kMultimem>{};
 };
 
 // Static set of supported kernel tags.
@@ -174,6 +177,28 @@ bool IsElementReductionSupported(PrimitiveType element_type,
 
 }  // namespace
 
+AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
+                                       bool is_multimem_enabled) {
+  if (input_size_bytes > kMaxOneShotAllReduceSizeBytes) {
+    return AllReduceStrategy::kTwoShot;
+  }
+  if (is_multimem_enabled) {
+    return AllReduceStrategy::kMultimem;
+  }
+  return AllReduceStrategy::kOneShot;
+}
+
+int64_t GetMaxSupportedAllReduceSizeBytes(AllReduceStrategy strategy) {
+  switch (strategy) {
+    case AllReduceStrategy::kOneShot:
+      return kMaxOneShotAllReduceSizeBytes;
+    case AllReduceStrategy::kTwoShot:
+      return kMaxTwoShotAllReduceSizeBytes;
+    case AllReduceStrategy::kMultimem:
+      return kMaxTwoShotAllReduceSizeBytes;
+  }
+}
+
 LaunchDimensions AllReduceLaunchDimensions(int64_t elements, int64_t num_ranks,
                                            AllReduceStrategy strategy) {
   int64_t threads_per_block;
@@ -197,7 +222,8 @@ bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
     return false;
   }
   const int64_t alignment_requirement =
-      all_reduce_strategy == AllReduceStrategy::kOneShot
+      all_reduce_strategy == AllReduceStrategy::kOneShot ||
+              all_reduce_strategy == AllReduceStrategy::kMultimem
           ? se::gpu::kNumElementsPerThread
           : se::gpu::kNumElementsPerThread * num_ranks;
 
@@ -247,6 +273,8 @@ absl::Status RunAllReduceKernel(
         return launch_kernel_impl(tag_registry.kOneShot);
       case AllReduceStrategy::kTwoShot:
         return launch_kernel_impl(tag_registry.kTwoShot);
+      case AllReduceStrategy::kMultimem:
+        return launch_kernel_impl(tag_registry.kMultimem);
     }
   };
 

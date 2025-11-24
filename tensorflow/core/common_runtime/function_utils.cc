@@ -36,7 +36,7 @@ struct Endpoint {
   int index;
 
   // Returns the string name represents this endpoint.
-  string name() const {
+  std::string name() const {
     if (index == 0) {
       return node->name();
     } else {
@@ -285,7 +285,7 @@ bool IsFunctionCall(const FunctionLibraryDefinition& lib_def,
   return node.IsFunctionCall();
 }
 
-string NewName(const Node* n, bool pretty) {
+std::string NewName(const Node* n, bool pretty) {
   if (pretty) {
     return absl::StrCat(n->type_string(), n->id());
   } else {
@@ -347,7 +347,7 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
         ndef->add_input("unknown");
         continue;
       }
-      const string srcname = NewName(e->src(), pretty);
+      const std::string srcname = NewName(e->src(), pretty);
       if (!e->src()->IsOp()) {
       } else if (e->IsControlEdge()) {
         ndef->add_input(absl::StrCat("^", srcname));
@@ -360,7 +360,7 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
   });
 }
 
-string DebugString(const Graph* g) {
+std::string DebugString(const Graph* g) {
   GraphDef gdef;
   ToGraphDef(g, &gdef);
   return DebugString(gdef);

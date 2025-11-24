@@ -298,7 +298,6 @@ tf_cuda_library(
         ],
         "//conditions:default": [
             ":env",
-            ":logging",
             ":tf_status",
             ":tf_tensor",
             "//tensorflow/c/experimental/filesystem:modular_filesystem",
@@ -323,18 +322,6 @@ tf_cuda_library(
         ],
     }),
     alwayslink = 1,
-)
-
-cc_library(
-    name = "logging",
-    srcs = ["logging.cc"],
-    hdrs = ["logging.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":c_api_macros",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:stringprintf",
-    ],
 )
 
 tf_cuda_library(

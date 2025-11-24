@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/executable_metadata.pb.h"
@@ -147,12 +148,7 @@ struct CompileOptions {
 
 struct LoadOptions {
   // Origin of the subslice of the target topology to run computation on.
-  struct ComputationOrigin {
-    int x = 0;
-    int y = 0;
-    int z = 0;
-  };
-  std::optional<ComputationOrigin> computation_origin;
+  std::optional<xla::PjRtDeviceDimensions> computation_origin;
 
   // multi_slice_config to associate with the executable during load of a multi
   // slice operation.
@@ -222,7 +218,8 @@ struct ExecuteOptions {
   // If true, the client must pass a single PjRtBuffer which contains all of
   // the arguments as a single XLA tuple, otherwise each argument must be
   // passed in its own PjRtBuffer. May only be true if the executable was
-  // compiled with parameter_is_tupled_arguments==true.
+  // compiled with parameter_is_tupled_arguments==true. This field is
+  // deprecated.
   bool arguments_are_tupled = false;
   // TODO(b/430587318): Remove this deprecated field.
   bool untuple_result = true;

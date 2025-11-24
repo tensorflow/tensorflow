@@ -138,6 +138,42 @@ bool MaybeConv1dToConv2d(HloInstruction* conv) {
   return false;
 }
 
+bool LooksLikeForwardConvolution(const HloInstruction* conv) {
+  const ConvolutionDimensionNumbers& dnums =
+      conv->convolution_dimension_numbers();
+  const Shape& lhs_shape = conv->operand(0)->shape();
+  const Shape& rhs_shape = conv->operand(1)->shape();
+  const Shape& result_shape = conv->shape();
+
+  // Compare batch and output feature counts. Backward-filter convolutions swap
+  // these, so matching values are a strong signal that this is a forward
+  // convolution, even if it has dilation.
+  int64_t lhs_batches = lhs_shape.dimensions(dnums.input_batch_dimension());
+  int64_t result_batches =
+      result_shape.dimensions(dnums.output_batch_dimension());
+  if (lhs_batches != result_batches) {
+    return false;
+  }
+
+  int64_t rhs_output_features =
+      rhs_shape.dimensions(dnums.kernel_output_feature_dimension());
+  int64_t result_output_features =
+      result_shape.dimensions(dnums.output_feature_dimension());
+  if (rhs_output_features != result_output_features) {
+    return false;
+  }
+
+  for (int i = 0; i < dnums.kernel_spatial_dimensions_size(); ++i) {
+    int64_t kdim = rhs_shape.dimensions(dnums.kernel_spatial_dimensions(i));
+    int64_t odim = result_shape.dimensions(dnums.output_spatial_dimensions(i));
+    if (kdim > odim) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool CanImplementAsGpuForwardConv(HloInstruction* conv) {
   const ConvolutionDimensionNumbers& dnums =
       conv->convolution_dimension_numbers();
@@ -191,6 +227,12 @@ ConvolutionMatch MatchBackwardFilter(HloInstruction* conv) {
   //              Convolution
   //                 conv
   CHECK_EQ(HloOpcode::kConvolution, conv->opcode());
+  if (LooksLikeForwardConvolution(conv)) {
+    VLOG(1) << "Convolution " << conv->ToString()
+            << " looks like a forward convolution; skipping backward filter "
+               "rewrite.";
+    return std::nullopt;
+  }
 
   // Step 2: match paddings and dimension numbers of the forward convolution.
   const ConvolutionDimensionNumbers& conv_dnums =
@@ -859,10 +901,10 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
 }
 }  // namespace
 
-absl::StatusOr<bool> ConvRewriter::Run(
+absl::StatusOr<bool> ConvRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(2, "ConvRewriter::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "ConvRewriter::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
@@ -871,7 +913,7 @@ absl::StatusOr<bool> ConvRewriter::Run(
         RunOnComputation(computation, compute_capability_, dnn_version_));
     changed |= result;
   }
-  XLA_VLOG_LINES(2, "ConvRewriter::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "ConvRewriter::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

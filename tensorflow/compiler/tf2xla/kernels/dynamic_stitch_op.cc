@@ -145,8 +145,8 @@ class DynamicStitchOp : public XlaOpKernel {
 
     // Construct the reverse mapping, for each index, of which slice of which
     // input it comes from.
-    std::vector<int32> src_input_vector(number_of_indices);
-    std::vector<int32> src_slice_vector(number_of_indices);
+    std::vector<int32_t> src_input_vector(number_of_indices);
+    std::vector<int32_t> src_slice_vector(number_of_indices);
     std::vector<bool> src_index_used(number_of_indices);
     int index_used_count = 0;
     for (int input_num = 0; input_num < indices.size(); input_num++) {

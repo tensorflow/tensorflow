@@ -54,7 +54,7 @@ info. It does not have any negative impact on performance. */
 namespace tensorflow {
 
 ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
-                                   const string& name, Bytes memory_limit,
+                                   const std::string& name, Bytes memory_limit,
                                    const DeviceLocality& locality,
                                    Allocator* allocator)
     : LocalDevice(options, Device::BuildDeviceAttributes(

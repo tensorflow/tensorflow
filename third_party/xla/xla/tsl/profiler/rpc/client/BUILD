@@ -63,6 +63,7 @@ cc_library(
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler/rpc:__pkg__",
         "//learning/pathways/util/platform:__subpackages__",
+        "//third_party/pathways/util/platform:__subpackages__",
     ]),
     deps = [
         "//xla/tsl/lib/io:zlib_compression_options",

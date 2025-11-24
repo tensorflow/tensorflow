@@ -54,9 +54,8 @@ message OneDnnFusionConfig {
     SWISH = 12;
   }
   repeated FusionKind ops = 1;
-  // To avoid protobuf failures for specific decimal values,
-  // the original float value alpha is type-casted to int32.
-  repeated int32 alpha_typecast = 2;
+  reserved 2;  // was alpha_typecast
+  repeated float alpha = 3;
 }
 
 message OneDnnTensorLayoutProto {

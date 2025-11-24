@@ -45,7 +45,7 @@ py_strict_library(
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform:tf_logging",
-        "@pypi_requests//:pkg",
+        "@pypi//requests",
         "@six_archive//:six",
     ],
 )
@@ -133,7 +133,7 @@ tf_py_strict_test(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:server_lib",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_dill//:pkg",  # build_cleaner: keep
+        "@pypi//dill",  # build_cleaner: keep
     ],
 )
 

@@ -606,11 +606,11 @@ static bool InstructionCallsChannelInstructions(
   return false;
 }
 
-absl::StatusOr<bool> ConditionalSimplifier::Run(
+absl::StatusOr<bool> ConditionalSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
-      3, "ConditionalSimplifier::Run(), before:\n" + module->ToString());
+      3, "ConditionalSimplifier::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
 
   // Gather all the conditional ops in our module. We do this ahead of time so
@@ -674,8 +674,8 @@ absl::StatusOr<bool> ConditionalSimplifier::Run(
     changed |= result;
   }
 
-  XLA_VLOG_LINES(3,
-                 "ConditionalSimplifier::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(
+      3, "ConditionalSimplifier::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

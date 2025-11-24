@@ -28,6 +28,7 @@ cc_library(
     hdrs = glob([
         "*.h",
     ]),
+    copts = ["-no-canonical-prefixes"],
 )
 
 alias(

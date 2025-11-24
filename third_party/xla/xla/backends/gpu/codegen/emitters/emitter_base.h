@@ -38,13 +38,13 @@ limitations under the License.
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -59,17 +59,15 @@ class EmitterBase : public KernelFusionInterface {
   // Visible for testing. `buffer_assignment` is optional for testing (assigns
   // a different buffer to each tensor).
   absl::StatusOr<std::unique_ptr<llvm::Module>> CreateLLVMModule(
-      SymbolicExprContext& symbolic_expr_context,
-      llvm::LLVMContext& llvm_context, const se::DeviceDescription& device,
-      const HloFusionInstruction& fusion,
+      mlir::MLIRContext& mlir_context, llvm::LLVMContext& llvm_context,
+      const se::DeviceDescription& device, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
       const BufferAssignment* buffer_assignment) const;
 
   // Visible for testing. `buffer_assignment` is optional for testing (assigns
   // a different buffer to each tensor).
   virtual absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
-      SymbolicExprContext& symbolic_expr_context,
-      const HloFusionInstruction& fusion,
+      mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
       const BufferAssignment* buffer_assignment) const;
 

@@ -178,8 +178,7 @@ tuple_value: {
 
 StructuredValue ParseStructuredValue(absl::string_view text_proto) {
   StructuredValue value;
-  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(string(text_proto),
-                                                          &value));
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(text_proto, &value));
   return value;
 }
 

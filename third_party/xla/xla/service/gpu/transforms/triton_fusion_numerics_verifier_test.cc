@@ -25,12 +25,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -145,10 +145,6 @@ TEST_P(TritonFusionNumericsVerifierTest, VerifyExactSoftmaxFusionNumerics) {
 }
 
 TEST_P(TritonFusionNumericsVerifierTest, VerifyNestedGemmNumerics) {
-  if (IsRocm()) {
-    GTEST_SKIP() << "Test currently failing on ROCm"; //TODO(rocm): weekly sync 25-07-14
-  }
-  
   constexpr absl::string_view kNestedGemmFusionHloText = R"(
 flhs {
   ROOT flhs.p0 = $0[16,16] parameter(0)
@@ -375,10 +371,6 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
 // spill. Verify that the numerics verifier still runs on those kernels.
 TEST_F(TritonFusionNumericsVerifierTest,
        CompilationSucceedsEvenIfKernelWillSpillRegisters) {
-  if (IsRocm()) {
-    GTEST_SKIP() << "Test currently failing on ROCm"; //TODO(rocm): weekly sync 25-07-14
-  }
-
   auto module = Module(R"(
 HloModule m
 
@@ -491,9 +483,6 @@ TEST_F(TritonFusionNumericsVerifierTest, VerifyThatDisablingTritonIsFast) {
   // compiled without Triton and without rerunning the fusion pass, the
   // resulting kernel is extremely slow and the test will timeout. This test
   // ensures that the fusion pass is rerun.
-  if (IsRocm()) {
-    GTEST_SKIP() << "Test currently failing on ROCm"; //TODO(rocm): weekly sync 25-07-14
-  }
   absl::string_view hlo_text = R"(
 max {
   p0 = f32[] parameter(0)

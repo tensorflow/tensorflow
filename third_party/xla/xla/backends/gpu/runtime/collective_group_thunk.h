@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
@@ -45,6 +45,11 @@ class CollectiveGroupThunk : public Thunk {
   absl::Status Initialize(const InitializeParams& params) override;
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
   void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
+  absl::Status TransformAllNestedThunks(
+      absl::FunctionRef<
+          absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
+          fn) override;
+
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
     return async_events_;
   }

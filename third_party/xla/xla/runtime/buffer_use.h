@@ -17,11 +17,14 @@ limitations under the License.
 #define XLA_RUNTIME_BUFFER_USE_H_
 
 #include <cstdint>
+#include <optional>
 #include <tuple>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape.h"
 
 namespace xla {
 
@@ -31,6 +34,8 @@ namespace xla {
 //   conflicts. Synchronization primitives are specific to the target backend.
 // - Determine whether a buffer has defined contents before/after we execute a
 //   thunk. This is used to detect non-deterministic behavior via checksumming.
+// - We also use shape to know how the bytes in the slice are reinterpreted by
+//   thunks. Shape can be used by rewriters in ThunkPassPipeline.
 class BufferUse {
  public:
   enum class MemoryAccess {
@@ -63,26 +68,51 @@ class BufferUse {
                       : ContentValidity::kDefinedOnOutput) {}
 
   BufferUse(BufferAllocation::Slice slice, MemoryAccess access,
-            ContentValidity content_validity)
+            ContentValidity content_validity,
+            std::optional<Shape> shape = std::nullopt)
       : slice_(slice), access_(access), content_validity_(content_validity) {}
 
+  ABSL_DEPRECATED("Please provide shape as well.")
   static BufferUse Read(BufferAllocation::Slice slice) {
     return BufferUse(slice, MemoryAccess::kRead,
                      ContentValidity::kDefinedOnInputAndOutput);
   }
 
+  ABSL_DEPRECATED("Please provide shape as well.")
   static BufferUse Write(BufferAllocation::Slice slice) {
     return BufferUse(slice, MemoryAccess::kWrite,
                      ContentValidity::kDefinedOnOutput);
   }
 
+  ABSL_DEPRECATED("Please provide shape as well.")
   static BufferUse Scratch(BufferAllocation::Slice slice) {
     return BufferUse(slice, MemoryAccess::kWrite, ContentValidity::kUndefined);
   }
 
+  ABSL_DEPRECATED("Please provide shape as well.")
   static BufferUse Consume(BufferAllocation::Slice slice) {
     return BufferUse(slice, MemoryAccess::kWrite,
                      ContentValidity::kDefinedOnInput);
+  }
+
+  static BufferUse Read(BufferAllocation::Slice slice, Shape shape) {
+    return BufferUse(slice, MemoryAccess::kRead,
+                     ContentValidity::kDefinedOnInputAndOutput, shape);
+  }
+
+  static BufferUse Write(BufferAllocation::Slice slice, Shape shape) {
+    return BufferUse(slice, MemoryAccess::kWrite,
+                     ContentValidity::kDefinedOnOutput, shape);
+  }
+
+  static BufferUse Scratch(BufferAllocation::Slice slice, Shape shape) {
+    return BufferUse(slice, MemoryAccess::kWrite, ContentValidity::kUndefined,
+                     shape);
+  }
+
+  static BufferUse Consume(BufferAllocation::Slice slice, Shape shape) {
+    return BufferUse(slice, MemoryAccess::kWrite,
+                     ContentValidity::kDefinedOnInput, shape);
   }
 
   // Returns true if the buffer contains initialized data when thunk starts
@@ -146,6 +176,7 @@ class BufferUse {
 
  private:
   BufferAllocation::Slice slice_;
+  std::optional<Shape> shape_;
   MemoryAccess access_;
   ContentValidity content_validity_;
 };

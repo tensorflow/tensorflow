@@ -63,7 +63,7 @@ class CpuVectorizationTest
     auto spec = info.param;
 
     std::string opcode(HloOpcodeString(spec.opcode));
-    opcode[0] = toupper(opcode[0]);
+    opcode[0] = absl::ascii_toupper(opcode[0]);
 
     std::string triple{spec.triple.data(), spec.triple.size()};
     if (triple == kTriple_x86_64) {
@@ -256,7 +256,7 @@ class JitVectorizationTest
   static std::string Name(
       const ::testing::TestParamInfo<JitVectorizationTestSpec>& info) {
     std::string op_name(HloOpcodeString(info.param.opcode));
-    op_name[0] = toupper(op_name[0]);
+    op_name[0] = absl::ascii_toupper(op_name[0]);
     return absl::StrCat(op_name, "_max_", info.param.max_isa);
   }
 

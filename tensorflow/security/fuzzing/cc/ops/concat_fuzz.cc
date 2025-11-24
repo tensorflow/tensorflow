@@ -28,7 +28,7 @@ namespace tensorflow {
 namespace fuzzing {
 
 // Creates FuzzConcat class that wraps a single operation node session.
-class FuzzConcat : public FuzzSession<Tensor, Tensor, int32> {
+class FuzzConcat : public FuzzSession<Tensor, Tensor, int32_t> {
   void BuildGraph(const Scope& scope) override {
     auto value1 =
         tensorflow::ops::Placeholder(scope.WithOpName("value1"), DT_INT32);
@@ -43,7 +43,7 @@ class FuzzConcat : public FuzzSession<Tensor, Tensor, int32> {
                             axis);
   }
   void FuzzImpl(const Tensor& value1, const Tensor& value2,
-                const int32& axis) final {
+                const int32_t& axis) final {
     Tensor axis_tensor(DT_INT32, {});
     axis_tensor.scalar<int32_t>()() = axis;
     absl::Status s = RunInputsWithStatus(
@@ -66,7 +66,7 @@ FUZZ_TEST_F(FuzzConcat, Fuzz)
                                                     /*dim_lower_bound=*/0,
                                                     /*dim_upper_bound=*/10),
                                                 fuzztest::Just(DT_INT32)),
-                 fuzztest::InRange<int32>(0, 6));
+                 fuzztest::InRange<int32_t>(0, 6));
 
 }  // end namespace fuzzing
 }  // end namespace tensorflow

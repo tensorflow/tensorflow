@@ -55,8 +55,8 @@ KernelDefBuilder& KernelDefBuilder::AttrConstraint<int64_t>(
 }
 
 template <>
-KernelDefBuilder& KernelDefBuilder::AttrConstraint<string>(
-    const char* attr_name, absl::Span<const string> allowed) {
+KernelDefBuilder& KernelDefBuilder::AttrConstraint<std::string>(
+    const char* attr_name, absl::Span<const std::string> allowed) {
   auto* constraint = kernel_def_->add_constraint();
   constraint->set_name(attr_name);
   auto* allowed_values = constraint->mutable_allowed_values()->mutable_list();
@@ -67,11 +67,11 @@ KernelDefBuilder& KernelDefBuilder::AttrConstraint<string>(
 }
 
 template <>
-KernelDefBuilder& KernelDefBuilder::AttrConstraint<string>(
-    const char* attr_name, string allowed) {
-  return AttrConstraint(
-      attr_name,
-      absl::Span<const string>(std::initializer_list<string>({allowed})));
+KernelDefBuilder& KernelDefBuilder::AttrConstraint<std::string>(
+    const char* attr_name, std::string allowed) {
+  return AttrConstraint(attr_name,
+                        absl::Span<const std::string>(
+                            std::initializer_list<std::string>({allowed})));
 }
 
 template <>

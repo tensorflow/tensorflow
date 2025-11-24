@@ -23,8 +23,13 @@ namespace deallocation {
 SmallVector<RegionEdge> getSuccessorRegions(RegionBranchOpInterface op,
                                             RegionBranchPoint point) {
   SmallVector<RegionEdge> edges;
-  if (Region* region = point.getRegionOrNull()) {
-    if (region->empty()) {
+  auto* parentRegion =
+      point.getTerminatorPredecessorOrNull()
+          ? point.getTerminatorPredecessorOrNull()->getParentRegion()
+          : nullptr;
+
+  if (parentRegion) {
+    if (parentRegion->empty()) {
       return edges;
     }
   }
@@ -35,9 +40,8 @@ SmallVector<RegionEdge> getSuccessorRegions(RegionBranchOpInterface op,
   for (const auto& successor : successors) {
     auto& edge = edges.emplace_back();
     edge.predecessorRegionPoint = point;
-    auto* region = point.getRegionOrNull();
-    edge.predecessorOp =
-        region ? region->front().getTerminator() : op.getOperation();
+    edge.predecessorOp = parentRegion ? parentRegion->front().getTerminator()
+                                      : op.getOperation();
     edge.predecessorOperandIndex = edge.predecessorOp->getNumOperands() -
                                    successor.getSuccessorInputs().size();
 
@@ -46,7 +50,9 @@ SmallVector<RegionEdge> getSuccessorRegions(RegionBranchOpInterface op,
       edge.successorOpOrRegion = op.getOperation();
       edge.successorValueIndex = 0;
     } else {
-      edge.successorRegionPoint = successor.getSuccessor();
+      edge.successorRegionPoint =
+          RegionBranchPoint(cast<RegionBranchTerminatorOpInterface>(
+              successor.getSuccessor()->front().getTerminator()));
       edge.successorOpOrRegion = successor.getSuccessor();
       edge.successorValueIndex = llvm::isa<scf::ForOp>(op) ? 1 : 0;
     }
@@ -68,7 +74,8 @@ SmallVector<RegionEdge> getPredecessorRegions(RegionBranchOpInterface op,
   };
   checkPredecessor(point.parent());
   for (Region& region : op->getRegions()) {
-    checkPredecessor(region);
+    checkPredecessor(RegionBranchPoint(cast<RegionBranchTerminatorOpInterface>(
+        region.front().getTerminator())));
   }
   return result;
 }

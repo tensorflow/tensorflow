@@ -148,6 +148,11 @@ TfLiteStatus ParseDequantize(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseDiv(const Operator* op, ErrorReporter* error_reporter,
                       BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseDynamicUpdateSlice(const Operator* op,
+                                     ErrorReporter* error_reporter,
+                                     BuiltinDataAllocator* allocator,
+                                     void** builtin_data);
+
 TfLiteStatus ParseElu(const Operator* op, ErrorReporter* error_reporter,
                       BuiltinDataAllocator* allocator, void** builtin_data);
 

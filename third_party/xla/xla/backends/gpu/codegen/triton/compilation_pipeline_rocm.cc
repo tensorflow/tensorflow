@@ -81,10 +81,10 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createCanonicalizerPass());
 
   if (rocm_cc.has_amd_matrix_instr()) {
-    pm->addPass(mlir::createTritonAMDGPUStreamPipeline(
-        {num_stages, /*global_prefetch=*/0, /*local_prefetch=*/0,
-         /*use_async_copy=*/false, /*use_block_pingpong=*/false}));
     // TODO(ROCm) Modify when corresponding run time flags are introduced.
+    pm->addPass(mlir::createTritonAMDGPUScheduleLoops({num_stages}));
+    pm->addPass(mlir::createTritonAMDGPUPipeline(
+        {/*useAsyncCopy=*/false, /*usePingpong=*/false}));
     if (/*use_async_copy=*/false) {  // Not enabled by default.
       pm->addPass(mlir::createTritonAMDGPUCoalesceAsyncCopy());
     }
@@ -123,6 +123,10 @@ static void MakeLLIR(mlir::OpPassManager* pm,
                      const stream_executor::RocmComputeCapability& rocm_cc,
                      int num_stages) {
   const int custom_lds_size = 0;
+  // The `createTritonGPUAllocateWarpGroups` pass is not implemented in the
+  // upstream Triton, but is necessary for `ExtractThreadDims` in emitter
+  // helpers. It adds the `ttg.total-num-warps` attribute.
+  pm->addPass(mt::gpu::createTritonGPUAllocateWarpGroups());
   pm->addPass(mlir::triton::AMD::createOptimizeLDSUsagePass(
       rocm_cc.gfx_version(), custom_lds_size));
   pm->addPass(mlir::createSCFToControlFlowPass());

@@ -430,7 +430,7 @@ absl::Status MakeShape(const Tensor& shape, TensorShape* out) {
         shape.shape().DebugString());
   }
   if (shape.dtype() == DataType::DT_INT32) {
-    auto vec = shape.flat<int32>();
+    auto vec = shape.flat<int32_t>();
     return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
   } else if (shape.dtype() == DataType::DT_INT64) {
     auto vec = shape.flat<int64_t>();

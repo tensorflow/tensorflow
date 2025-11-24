@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -493,7 +494,7 @@ bool MatchesAnyVersion(absl::string_view op_prefix,
     return true;
   }
   size_t index = op_to_match.length() - 1;
-  while (isdigit(op_to_match[index])) {
+  while (absl::ascii_isdigit(op_to_match[index])) {
     index--;
   }
   return (op_to_match[index] == 'V') && (op_prefix.length() == index);

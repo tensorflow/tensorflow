@@ -449,7 +449,8 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
 
       // Add any TensorArray gradients touched by the body to the enclosing
       // graph.
-      for (const string& grad_source : update.tensor_array_gradients_accessed) {
+      for (const std::string& grad_source :
+           update.tensor_array_gradients_accessed) {
         VLOG(4) << "TensorArray " << resource->name() << " accessed gradient "
                 << grad_source;
         XlaResource* gradient;
@@ -553,7 +554,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       // Set token input for this "while" op.
       std::vector<xla::XlaOp> token_inputs;
       token_inputs.reserve(token_input_nodes_.size());
-      for (const string& node_name : token_input_nodes_) {
+      for (const std::string& node_name : token_input_nodes_) {
         auto token_or = compiler->GetNodeToken(node_name);
         OP_REQUIRES_OK(ctx, token_or.status());
         token_inputs.push_back(token_or.value());
@@ -590,7 +591,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
           } else {
             int32_t dim_size = shape.dimensions(0);
             dynamic_dims.push_back(
-                xla::ConstantR0<int32>(ctx->builder(), dim_size));
+                xla::ConstantR0<int32_t>(ctx->builder(), dim_size));
           }
 
           // Set dynamic dimension size to 0 for element value. Inside the while

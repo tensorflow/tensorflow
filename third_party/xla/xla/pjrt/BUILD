@@ -28,7 +28,7 @@ package_group(
         "//third_party/gxlang/...",
         "//third_party/openxla_pjrt_plugin/...",
         "//third_party/py/jax/...",
-        "//third_party/torch_tpu/...",
+        "//third_party/py/torch_tpu/...",
     ],
 )
 
@@ -101,13 +101,12 @@ cc_library(
     srcs = ["abstract_tracked_device_buffer.cc"],
     hdrs = ["abstract_tracked_device_buffer.h"],
     visibility = [
-        "//third_party/torch_tpu/pjrt:__pkg__",
+        "//third_party/py/torch_tpu/pjrt:__pkg__",
         "//xla:internal",
     ],
     deps = [
         ":device_event",
         ":pjrt_client",
-        ":pjrt_future",
         ":raw_buffer",
         "//xla:future",
         "//xla:util",
@@ -136,7 +135,7 @@ cc_library(
     ],
     visibility = internal_visibility([
         ":friends",
-        "//third_party/torch_tpu:__pkg__",
+        "//third_party/py/torch_tpu:__pkg__",
     ]),
     deps = [
         ":abstract_tracked_device_buffer",
@@ -144,7 +143,6 @@ cc_library(
         ":device_event",
         ":host_callback",
         ":pjrt_client",
-        ":pjrt_future",
         ":raw_buffer",
         "//xla:future",
         "//xla:literal",
@@ -181,7 +179,6 @@ xla_cc_test(
     deps = [
         ":pjrt_client",
         ":pjrt_common",
-        ":pjrt_future",
         ":pjrt_stream_executor_client",
         "//xla:literal",
         "//xla:literal_util",
@@ -194,6 +191,7 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/service:cpu_plugin",
         "//xla/stream_executor:device_memory_allocator",
+        "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -295,7 +293,6 @@ cc_library(
         ":pjrt_compiler",
         ":pjrt_device_description",
         ":pjrt_executable",
-        ":pjrt_future",
         ":pjrt_layout",
         ":scoped_async_tracking_event",
         ":utils",
@@ -310,6 +307,7 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_cost_analysis",
         "//xla/tsl/framework:allocator",
+        "//xla/tsl/lib/gtl:int_type",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
@@ -353,6 +351,7 @@ cc_library(
     deps = [
         ":pjrt_client",
         ":pjrt_compiler",
+        "//xla:literal",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:alignment",
@@ -361,6 +360,7 @@ cc_library(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test",
         "//xla/tests:literal_test_util",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
@@ -404,6 +404,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         ":pjrt_common",
+        ":pjrt_device_dimensions",
         ":pjrt_layout",
         "//xla:debug_options_flags",
         "//xla:shape_util",
@@ -481,6 +482,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/pjrt/proto:pjrt_partial_program_proto_cc",
         "//xla/pjrt/proto:topology_description_proto_cc",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -524,6 +526,7 @@ cc_library(
     deps = [
         "//xla/pjrt/proto:pjrt_value_type_proto_cc",
         "//xla/tsl/lib/gtl:int_type",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -676,7 +679,6 @@ cc_library(
         ":pjrt_common",
         ":pjrt_compiler",
         ":pjrt_executable",
-        ":pjrt_future",
         ":pjrt_stream_executor_device_description",
         ":raw_buffer",
         ":semaphore",
@@ -760,7 +762,6 @@ xla_cc_test(
         ":local_device_state",
         ":pjrt_client",
         ":pjrt_executable",
-        ":pjrt_future",
         ":pjrt_stream_executor_client",
         "//xla:future",
         "//xla:literal",
@@ -892,6 +893,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tpu_constants",
+    hdrs = ["tpu_constants.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 # Transitional forwarding target. Use pjrt/plugin/xla_cpu:xla_cpu_pjrt_client instead.
 cc_library(
     name = "tfrt_cpu_pjrt_client",
@@ -1002,7 +1012,6 @@ cc_library(
         ":pjrt_common",
         ":pjrt_compiler",
         ":pjrt_executable",
-        ":pjrt_future",
         "//xla:future",
         "//xla:literal",
         "//xla:shape_util",
@@ -1053,7 +1062,6 @@ cc_library(
     deps = [
         ":pjrt_client",
         ":pjrt_executable",
-        ":pjrt_future",
         "//xla:future",
         "//xla:shape_util",
         "//xla/ffi:ffi_api",
@@ -1190,7 +1198,6 @@ cc_library(
     hdrs = ["device_event.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
-        ":pjrt_future",
         "//xla:future",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
@@ -1210,7 +1217,6 @@ cc_library(
         ":async_work_runner",
         ":device_event",
         ":pjrt_client",
-        ":pjrt_future",
         "//xla:future",
         "//xla:literal",
         "//xla:shape_util",

@@ -38,6 +38,10 @@ struct AddI32Kernel {
                                  DeviceMemory<int32_t>>;
 };
 
+struct IncrementBy5I32KernelWithCustomArgsPacking {
+  using KernelType = TypedKernel<DeviceMemory<int32_t>>;
+};
+
 struct MulI32Kernel {
   using KernelType = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
                                  DeviceMemory<int32_t>>;

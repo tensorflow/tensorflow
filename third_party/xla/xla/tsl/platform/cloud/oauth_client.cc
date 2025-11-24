@@ -210,7 +210,7 @@ absl::Status OAuthClient::GetTokenFromServiceAccountJson(
 
   const uint64 request_timestamp_sec = env_->NowSeconds();
 
-  string encoded_claim, encoded_header;
+  std::string encoded_claim, encoded_header;
   TF_RETURN_IF_ERROR(EncodeJwtHeader(private_key_id, &encoded_header));
   TF_RETURN_IF_ERROR(EncodeJwtClaim(client_email, scope, oauth_server_uri,
                                     request_timestamp_sec, &encoded_claim));

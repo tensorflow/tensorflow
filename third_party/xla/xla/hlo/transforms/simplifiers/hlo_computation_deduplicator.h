@@ -36,8 +36,8 @@ class HloComputationDeduplicator : public HloModulePass {
       : mark_fusion_duplications_(mark_fusion_duplications) {}
   absl::string_view name() const override { return "computation-deduplicator"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

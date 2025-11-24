@@ -158,7 +158,7 @@ absl::flat_hash_map<absl::string_view, const NodeDef*> NameToNode(
   return name_to_node;
 }
 
-NodeDef* GetMutableNode(const string& node_name, MutableGraphView* graph) {
+NodeDef* GetMutableNode(const std::string& node_name, MutableGraphView* graph) {
   int index = graph_utils::FindGraphNodeWithName(node_name, *graph->graph());
   DCHECK_NE(index, -1) << "Failed to find node " << node_name
                        << " in the optimized graph.";
@@ -167,7 +167,7 @@ NodeDef* GetMutableNode(const string& node_name, MutableGraphView* graph) {
 
 // Converts a ParallelInterleaveDataset or ParallelMapDataset to the equivalent
 // non-parallel version, to make it deterministic.
-absl::Status ConvertMapOrInterleave(const string& node_name,
+absl::Status ConvertMapOrInterleave(const std::string& node_name,
                                     MutableGraphView* graph) {
   NodeDef* node = GetMutableNode(node_name, graph);
 
@@ -257,7 +257,7 @@ absl::flat_hash_set<absl::string_view> GetAllTransitiveDependencies(
 // separate Map and MapAndBatch ops. All the nondeterministic nodes and their
 // dependencies are moved to the Map node.
 absl::Status SplitMap(
-    const FunctionLibraryDefinition& library, const string& map_node_name,
+    const FunctionLibraryDefinition& library, const std::string& map_node_name,
     MutableGraphView* graph,
     const absl::flat_hash_set<absl::string_view>& nondeterministic_nodes) {
   NodeDef* map_node = GetMutableNode(map_node_name, graph);
@@ -344,7 +344,7 @@ absl::Status SplitMap(
   NodeDef* second_map_node_ptr;
   {
     NodeDef second_map_node;
-    string node_name =
+    std::string node_name =
         map_node->op() == kMapAndBatchOp ? "map_and_batch" : "parallel_map";
     graph_utils::SetUniqueGraphNodeName(
         absl::StrCat("make_deterministic_parallel_", node_name, "/",
@@ -384,7 +384,8 @@ absl::Status SplitMap(
 
 // Converts a ParallalBatch dataset to a Batch dataset, to make it
 // deterministic.
-absl::Status ConvertBatch(const string& node_name, MutableGraphView* graph) {
+absl::Status ConvertBatch(const std::string& node_name,
+                          MutableGraphView* graph) {
   NodeDef* node = GetMutableNode(node_name, graph);
   node->set_op(kBatchV2Op);
   std::string num_parallel_calls_input = node->input(2);
@@ -398,7 +399,7 @@ absl::Status ConvertBatch(const string& node_name, MutableGraphView* graph) {
 // deterministic. Caller should delete the MapAndBatch node afterwards.
 // TODO(reedwm): Handle 'metadata' attribute. Currently the Map node and Batch
 // node will have an empty 'metadata' attribute.
-absl::Status ConvertMapAndBatch(const string& node_name,
+absl::Status ConvertMapAndBatch(const std::string& node_name,
                                 MutableGraphView* graph) {
   int index = graph_utils::FindGraphNodeWithName(node_name, *graph->graph());
   DCHECK_NE(index, -1) << "Failed to find node " << node_name
@@ -479,7 +480,8 @@ absl::Status ConvertMapAndBatch(const string& node_name,
 
 // Change the buffer_size of a Prefetch node to zero, effectively disabling it,
 // to make it deterministic.
-absl::Status ConvertPrefetch(const string& node_name, MutableGraphView* graph) {
+absl::Status ConvertPrefetch(const std::string& node_name,
+                             MutableGraphView* graph) {
   NodeDef* node = GetMutableNode(node_name, graph);
   constexpr int buffer_size_index = 1;
   node->add_input(absl::StrCat("^", node->input(buffer_size_index)));
@@ -548,7 +550,7 @@ bool FunctionMayIntroduceNondeterminism(
 bool FunctionMayIntroduceNondeterminism(
     const FunctionLibraryDefinition& library, const std::string& function_name,
     NondeterminismType nondeterminism_type) {
-  absl::flat_hash_set<string> functions_processed;
+  absl::flat_hash_set<std::string> functions_processed;
   return FunctionMayIntroduceNondeterminism(library, function_name,
                                             nondeterminism_type,
                                             &functions_processed, nullptr);
@@ -652,7 +654,7 @@ bool GraphMayHaveAsyncNondeterminism(const FunctionLibraryDefinition& library,
       return true;
     }
   }
-  for (const string& function_name : library.ListFunctionNames()) {
+  for (const std::string& function_name : library.ListFunctionNames()) {
     const FunctionDef* function_def = library.Find(function_name);
     CHECK(function_def);  // Crash Ok
     for (const NodeDef& node : function_def->node_def()) {
@@ -673,7 +675,7 @@ absl::Status MakeDeterministic::OptimizeAndCollectStats(
   MutableGraphView graph(output);
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());
-  absl::flat_hash_set<string> nodes_to_delete;
+  absl::flat_hash_set<std::string> nodes_to_delete;
   bool remove_async_nodes =
       GraphMayHaveAsyncNondeterminism(function_library, item.graph);
 

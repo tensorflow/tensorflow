@@ -277,7 +277,8 @@ class XlaCompiler {
   // Compiles a tensorflow::Graph into an xla::XlaComputation.
   // Similar to CompileFunction, but takes a Graph as input rather than a
   // function.
-  absl::Status CompileGraph(const CompileOptions& options, string const& name,
+  absl::Status CompileGraph(const CompileOptions& options,
+                            const std::string& name,
                             std::unique_ptr<Graph> graph,
                             absl::Span<const Argument> args,
                             CompilationResult* result);
@@ -295,31 +296,32 @@ class XlaCompiler {
   // Channel handles can be used to communicate between different
   // computations. Computations that communicate should be compiled with the
   // same XlaCompiler.
-  absl::Status GetChannelHandle(const string& key, xla::ChannelHandle* channel);
+  absl::Status GetChannelHandle(const std::string& key,
+                                xla::ChannelHandle* channel);
 
   // Retrieves the host-to-device channel handle associated with `key`.
   // Allocates a new channel handle if none exists.
-  absl::Status GetHostToDeviceChannelHandle(const string& key,
+  absl::Status GetHostToDeviceChannelHandle(const std::string& key,
                                             xla::ChannelHandle* channel);
 
   // Retrieves the device-to-host channel handle associated with `key`.
   // Allocates a new channel handle if none exists.
-  absl::Status GetDeviceToHostChannelHandle(const string& key,
+  absl::Status GetDeviceToHostChannelHandle(const std::string& key,
                                             xla::ChannelHandle* channel);
 
   // Sets the shapes and types for the device to host transfer associated with
   // 'key'.
-  absl::Status SetDeviceToHostMetadata(const string& key,
+  absl::Status SetDeviceToHostMetadata(const std::string& key,
                                        absl::Span<const DataType> types,
                                        absl::Span<const TensorShape> shapes);
 
   // Gets the shapes the device to host transfer associated with 'key'.
-  absl::Status GetDeviceToHostShapes(const string& key,
+  absl::Status GetDeviceToHostShapes(const std::string& key,
                                      std::vector<TensorShape>* shapes) const;
 
   // Sets the shapes and types for the host to device transfer associated with
   // 'key'.
-  absl::Status SetHostToDeviceMetadata(const string& key,
+  absl::Status SetHostToDeviceMetadata(const std::string& key,
                                        absl::Span<const DataType> types,
                                        absl::Span<const TensorShape> shapes);
 
@@ -334,10 +336,10 @@ class XlaCompiler {
   // 'host_compute_name' can be any string the client wishes to use to identify
   // a given HostCompute Op as long as the names are unique within the
   // compilation.
-  absl::Status GetHostComputeControlDependency(const string& host_compute_name,
-                                               xla::XlaOp* handle);
-  absl::Status SetHostComputeControlDependency(const string& host_compute_name,
-                                               xla::XlaOp handle);
+  absl::Status GetHostComputeControlDependency(
+      const std::string& host_compute_name, xla::XlaOp* handle);
+  absl::Status SetHostComputeControlDependency(
+      const std::string& host_compute_name, xla::XlaOp handle);
 
   const Options& options() const { return options_; }
   xla::Client* client() const { return options_.client; }
@@ -345,8 +347,8 @@ class XlaCompiler {
 
   void PushNodeTokenMapping();
   absl::Status PopNodeTokenMapping();
-  absl::Status SetNodeToken(const string& node_name, xla::XlaOp op);
-  absl::StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
+  absl::Status SetNodeToken(const std::string& node_name, xla::XlaOp op);
+  absl::StatusOr<xla::XlaOp> GetNodeToken(const std::string& node_name);
 
   // Sets the function body `fbody` to the one registered as `function`.
   absl::Status FindFunctionBody(const NameAttrList& function,
@@ -405,20 +407,22 @@ class XlaCompiler {
   FunctionLibraryRuntime* flib_runtime_;        // owned by pflr_.
 
   struct SignatureHash {
-    uint64 operator()(
-        const std::pair<string, std::vector<Argument>>& signature) const;
+    uint64_t operator()(
+        const std::pair<std::string, std::vector<Argument>>& signature) const;
   };
 
-  std::unordered_map<std::pair<string, std::vector<Argument>>,
+  std::unordered_map<std::pair<std::string, std::vector<Argument>>,
                      CompilationResult, SignatureHash>
       cache_;
 
-  std::unordered_map<string, xla::ChannelHandle> channels_;
+  std::unordered_map<std::string, xla::ChannelHandle> channels_;
 
-  std::unordered_map<string, tf2xla::HostTransferMetadata> host_compute_sends_;
-  std::unordered_map<string, tf2xla::HostTransferMetadata> host_compute_recvs_;
+  std::unordered_map<std::string, tf2xla::HostTransferMetadata>
+      host_compute_sends_;
+  std::unordered_map<std::string, tf2xla::HostTransferMetadata>
+      host_compute_recvs_;
 
-  std::unordered_map<string, xla::XlaOp> host_compute_control_output_;
+  std::unordered_map<std::string, xla::XlaOp> host_compute_control_output_;
 
   // This is used to store <node name, token output> mapping. Side-effecting
   // ops call SetNodeToken() to record its token output, so later side-effecting
@@ -427,7 +431,7 @@ class XlaCompiler {
   // It's a stack because we need a mapping like this for each level of nested
   // CompileGraph() call. In CompileGraph(), we will push a new mapping to the
   // stack, and pop the mapping before returning.
-  std::stack<std::map<string, xla::XlaOp>> node_token_mapping_stack_;
+  std::stack<std::map<std::string, xla::XlaOp>> node_token_mapping_stack_;
 
   XlaCompiler(const XlaCompiler&) = delete;
   void operator=(const XlaCompiler&) = delete;

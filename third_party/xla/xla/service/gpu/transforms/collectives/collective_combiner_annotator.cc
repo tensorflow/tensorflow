@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
 #include "xla/stream_executor/device_description.h"
@@ -124,7 +124,7 @@ int64_t MaxAvailableMemory(const HloModule& module,
 
 }  // namespace
 
-absl::StatusOr<bool> CollectiveCombinerAnnotator::Run(
+absl::StatusOr<bool> CollectiveCombinerAnnotator::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(

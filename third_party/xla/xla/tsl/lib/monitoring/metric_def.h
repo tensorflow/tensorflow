@@ -127,7 +127,7 @@ class AbstractMetricDef {
 
   absl::string_view description() const { return description_; }
 
-  const std::vector<string>& label_descriptions() const {
+  const std::vector<std::string>& label_descriptions() const {
     return label_descriptions_;
   }
 
@@ -138,19 +138,19 @@ class AbstractMetricDef {
   AbstractMetricDef(const MetricKind kind, const ValueType value_type,
                     const absl::string_view name,
                     const absl::string_view description,
-                    const std::vector<string>& label_descriptions)
+                    const std::vector<std::string>& label_descriptions)
       : kind_(kind),
         value_type_(value_type),
         name_(name),
         description_(description),
-        label_descriptions_(std::vector<string>(label_descriptions.begin(),
-                                                label_descriptions.end())) {}
+        label_descriptions_(std::vector<std::string>(
+            label_descriptions.begin(), label_descriptions.end())) {}
 
   const MetricKind kind_;
   const ValueType value_type_;
-  const string name_;
-  const string description_;
-  const std::vector<string> label_descriptions_;
+  const std::string name_;
+  const std::string description_;
+  const std::vector<std::string> label_descriptions_;
 };
 
 // Metric definition.

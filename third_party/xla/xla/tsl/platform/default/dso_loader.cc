@@ -25,7 +25,9 @@ limitations under the License.
 #include "third_party/gpus/cuda/cuda_config.h"
 #include "third_party/nccl/nccl_config.h"
 #include "third_party/nvshmem/nvshmem_config.h"
+#if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
+#endif
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/load_library.h"
 #include "tsl/platform/path.h"
@@ -136,7 +138,7 @@ absl::StatusOr<void*> GetDsoHandle(const std::string& name,
                               "'; dlerror: ", status.message());
 #if !defined(PLATFORM_WINDOWS)
   if (const char* ld_library_path = getenv("LD_LIBRARY_PATH")) {
-    message += absl::StrCat("; LD_LIBRARY_PATH: ", ld_library_path);
+    absl::StrAppend(&message, "; LD_LIBRARY_PATH: ", ld_library_path);
   }
 #endif
   VLOG(1) << message;

@@ -73,7 +73,7 @@ std::optional<ReduceScatterCombiner::GroupKey> CustomCombinerKey(
 
 }  // namespace
 
-absl::StatusOr<bool> GpuReduceScatterCombiner::Run(
+absl::StatusOr<bool> GpuReduceScatterCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Combiner threshold is specified. Running parent pass code.

@@ -28,10 +28,10 @@ limitations under the License.
 namespace tsl {
 namespace table {
 
-void BlockHandle::EncodeTo(string* dst) const {
+void BlockHandle::EncodeTo(std::string* dst) const {
   // Sanity check that all fields have been set
-  assert(offset_ != ~static_cast<uint64>(0));
-  assert(size_ != ~static_cast<uint64>(0));
+  assert(offset_ != ~static_cast<uint64_t>(0));
+  assert(size_ != ~static_cast<uint64_t>(0));
   core::PutVarint64(dst, offset_);
   core::PutVarint64(dst, size_);
 }
@@ -44,24 +44,24 @@ absl::Status BlockHandle::DecodeFrom(absl::string_view* input) {
   }
 }
 
-void Footer::EncodeTo(string* dst) const {
+void Footer::EncodeTo(std::string* dst) const {
 #ifndef NDEBUG
   const size_t original_size = dst->size();
 #endif
   metaindex_handle_.EncodeTo(dst);
   index_handle_.EncodeTo(dst);
   dst->resize(2 * BlockHandle::kMaxEncodedLength);  // Padding
-  core::PutFixed32(dst, static_cast<uint32>(kTableMagicNumber & 0xffffffffu));
-  core::PutFixed32(dst, static_cast<uint32>(kTableMagicNumber >> 32));
+  core::PutFixed32(dst, static_cast<uint32_t>(kTableMagicNumber & 0xffffffffu));
+  core::PutFixed32(dst, static_cast<uint32_t>(kTableMagicNumber >> 32));
   assert(dst->size() == original_size + kEncodedLength);
 }
 
 absl::Status Footer::DecodeFrom(absl::string_view* input) {
   const char* magic_ptr = input->data() + kEncodedLength - 8;
-  const uint32 magic_lo = core::DecodeFixed32(magic_ptr);
-  const uint32 magic_hi = core::DecodeFixed32(magic_ptr + 4);
-  const uint64 magic =
-      ((static_cast<uint64>(magic_hi) << 32) | (static_cast<uint64>(magic_lo)));
+  const uint32_t magic_lo = core::DecodeFixed32(magic_ptr);
+  const uint32_t magic_hi = core::DecodeFixed32(magic_ptr + 4);
+  const uint64_t magic = ((static_cast<uint64_t>(magic_hi) << 32) |
+                          (static_cast<uint64_t>(magic_lo)));
   if (magic != kTableMagicNumber) {
     return errors::DataLoss("not an sstable (bad magic number)");
   }
@@ -110,8 +110,8 @@ absl::Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
   // This checksum verification is optional.  We leave it on for now
   const bool verify_checksum = true;
   if (verify_checksum) {
-    const uint32 crc = crc32c::Unmask(core::DecodeFixed32(data + n + 1));
-    const uint32 actual = crc32c::Value(data, n + 1);
+    const uint32_t crc = crc32c::Unmask(core::DecodeFixed32(data + n + 1));
+    const uint32_t actual = crc32c::Value(data, n + 1);
     if (actual != crc) {
       delete[] buf;
       s = errors::DataLoss("block checksum mismatch");

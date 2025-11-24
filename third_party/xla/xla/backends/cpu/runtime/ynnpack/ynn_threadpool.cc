@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
 
-#include <cstdint>
+#include <cassert>
 
 #include "ynnpack/include/ynnpack.h"
-#include "absl/base/optimization.h"
-#include "absl/status/statusor.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "xla/backends/cpu/runtime/ynnpack/slinky_threadpool.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 
 #define EIGEN_USE_THREADS
@@ -28,29 +29,12 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static int32_t NumThreads(void* pool) {
-  if (ABSL_PREDICT_FALSE(pool == nullptr)) {
-    return 0;
-  }
-  return reinterpret_cast<Eigen::ThreadPoolInterface*>(pool)->NumThreads();
-}
-
-static void Schedule(void* pool, void* context, void (*task)(void* context)) {
-  if (ABSL_PREDICT_FALSE(pool == nullptr)) {
-    (*task)(context);
-  }
-  reinterpret_cast<Eigen::ThreadPoolInterface*>(pool)->Schedule(
-      [task, context]() { (*task)(context); });
-}
-
-// An adaptor from Eigen::ThreadPoolInterface to xnn_threadpool_t.
-static constexpr ynn_scheduler kYnnScheduler = {&NumThreads, &Schedule};
-
 absl::StatusOr<YnnThreadpool> CreateYnnThreadpool(
     Eigen::ThreadPoolInterface* threadpool) {
   return CreateYnnThreadpool([&](ynn_threadpool_t* ynn_threadpool) {
-    return ynn_create_threadpool(&kYnnScheduler, threadpool, /*flags=*/1,
-                                 ynn_threadpool);
+    *ynn_threadpool =
+        reinterpret_cast<ynn_threadpool_t>(new SlinkyThreadPool(threadpool));
+    return ynn_status_success;
   });
 }
 

@@ -63,14 +63,12 @@ limitations under the License.
 namespace xla::ffi {
 
 // Type tags to bind parameters passed via execution context to FFI handler.
-struct Stream {};               // binds `se::Stream*`
-struct DeviceOrdinal {};        // binds `int32_t` with device ordinal
-struct Allocator {};            // binds `se::DeviceMemoryAllocator*`
-struct ScratchAllocator {};     // binds `se::OwningScratchAllocator`
-struct CalledComputation {};    // binds `HloComputation*`
-struct IntraOpThreadPool {};    // binds `const Eigen::ThreadPoolDevice*`
-struct FfiApi {};               // binds `const XLA_FFI_Api*`
-struct FfiExecutionContext {};  // binds `XLA_FFI_ExecutionContext*`
+struct Stream {};             // binds `se::Stream*`
+struct DeviceOrdinal {};      // binds `int32_t` with device ordinal
+struct Allocator {};          // binds `se::DeviceMemoryAllocator*`
+struct ScratchAllocator {};   // binds `se::OwningScratchAllocator`
+struct CalledComputation {};  // binds `HloComputation*`
+struct IntraOpThreadPool {};  // binds `const Eigen::ThreadPoolDevice*`
 
 template <typename T>
 struct PlatformStream {};  // binds a platform stream, e.g. `cudaStream_t`
@@ -252,6 +250,20 @@ struct ArgBinding<Buffer<dtype, rank>> {
 };
 
 //===----------------------------------------------------------------------===//
+// Results binding
+//===----------------------------------------------------------------------===//
+
+template <>
+struct RetBinding<Result<AnyBuffer>> {
+  using Ret = AnyBuffer;
+};
+
+template <PrimitiveType dtype, size_t rank>
+struct RetBinding<Result<Buffer<dtype, rank>>> {
+  using Ret = Buffer<dtype, rank>;
+};
+
+//===----------------------------------------------------------------------===//
 // Arguments decoding
 //===----------------------------------------------------------------------===//
 
@@ -428,7 +440,7 @@ struct AttrDecoding<absl::string_view> {
   static std::optional<absl::string_view> Decode(XLA_FFI_AttrType type,
                                                  void* attr,
                                                  DiagnosticEngine& diagnostic) {
-    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_STRING)) {
+    if (ABSL_PREDICT_FALSE(type != XLA_FFI_AttrType_STRING)) {
       return diagnostic.Emit("Wrong attribute type: expected ")
              << XLA_FFI_AttrType_STRING << " but got " << type;
     }
@@ -472,8 +484,8 @@ class Dictionary : public internal::DictionaryBase {
   template <typename T>
   absl::StatusOr<T> get(absl::string_view name) const {
     DiagnosticEngine diagnostic;
-    std::optional<T> value = internal::DictionaryBase::get<T>(name, diagnostic);
-    if (!value.has_value()) {
+    auto value = internal::DictionaryBase::get<T>(name, diagnostic);
+    if (ABSL_PREDICT_FALSE(!value.has_value())) {
       return Internal("%s", diagnostic.Result());
     }
     return *value;
@@ -496,11 +508,43 @@ struct AttrDecoding<Dictionary> {
   using Type = Dictionary;
   static std::optional<Dictionary> Decode(XLA_FFI_AttrType type, void* attr,
                                           DiagnosticEngine& diagnostic) {
-    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_DICTIONARY)) {
+    if (ABSL_PREDICT_FALSE(type != XLA_FFI_AttrType_DICTIONARY)) {
       return diagnostic.Emit("Wrong attribute type: expected ")
              << XLA_FFI_AttrType_DICTIONARY << " but got " << type;
     }
     return Dictionary(reinterpret_cast<XLA_FFI_Attrs*>(attr));
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing context.
+//===----------------------------------------------------------------------===//
+
+class Context : public internal::ContextBase {
+ public:
+  using internal::ContextBase::ContextBase;
+
+  template <typename T>
+  absl::StatusOr<typename CtxDecoding<T>::Type> get() const {
+    DiagnosticEngine diagnostic;
+    auto value = internal::ContextBase::get<T>(diagnostic);
+    if (ABSL_PREDICT_FALSE(!value.has_value())) {
+      return Internal("%s", diagnostic.Result());
+    }
+    return *value;
+  }
+};
+
+// Context decoding for catch-all `Context` type.
+template <>
+struct CtxDecoding<Context> {
+  using Type = Context;
+
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<Context> Decode(const XLA_FFI_Api* api,
+                                       XLA_FFI_ExecutionContext* ctx,
+                                       DiagnosticEngine&) {
+    return Context(api, ctx);
   }
 };
 
@@ -587,28 +631,6 @@ struct CtxDecoding<IntraOpThreadPool> {
     void* intra_op_thread_pool =
         api->internal_api->XLA_FFI_INTERNAL_IntraOpThreadPool_Get(ctx);
     return reinterpret_cast<Type>(intra_op_thread_pool);
-  }
-};
-
-template <>
-struct CtxDecoding<FfiApi> {
-  using Type = const XLA_FFI_Api*;
-
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
-    return api;
-  }
-};
-
-template <>
-struct CtxDecoding<FfiExecutionContext> {
-  using Type = XLA_FFI_ExecutionContext*;
-
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
-    return ctx;
   }
 };
 

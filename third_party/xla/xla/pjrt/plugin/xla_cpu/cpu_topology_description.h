@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
@@ -80,16 +81,12 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
   // correctly report process count.
   absl::StatusOr<int> ProcessCount() const override { return 1; }
 
-  absl::StatusOr<int> CoreCountOfDefaultType() const override {
+  absl::StatusOr<int> ChipsPerProcess() const override {
     return cpu_topology_.number_of_devices();
   }
 
-  absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const override {
-    return cpu_topology_.number_of_devices();
-  }
-
-  absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override {
-    return cpu_topology_.number_of_devices();
+  absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerChip() const override {
+    return 1;
   }
 
   absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override {

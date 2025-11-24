@@ -68,6 +68,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -318,8 +319,8 @@ cc_library(
 )
 
 cc_library(
-    name = "numeric_options",
-    hdrs = ["numeric_options.h"],
+    name = "engine_options",
+    hdrs = ["engine_options.h"],
 )
 
 cc_library(
@@ -345,7 +346,7 @@ cc_library(
         ":blas_proto_cc",
         ":data_type",
         ":device_memory",
-        ":numeric_options",
+        ":engine_options",
         ":scratch_allocator",
         ":stream",
         "//xla/tsl/protobuf:dnn_proto_cc",
@@ -366,7 +367,7 @@ cc_library(
         ":data_type",
         ":device_description_proto_cc",
         ":device_memory",
-        ":numeric_options",
+        ":engine_options",
         ":scratch_allocator",
         ":stream",
         "//xla:util",
@@ -545,12 +546,53 @@ cc_library(
 )
 
 cc_library(
+    name = "kernel_symbol_registry",
+    srcs = ["kernel_symbol_registry.cc"],
+    hdrs = ["kernel_symbol_registry.h"],
+    deps = [
+        ":platform",
+        ":platform_manager",
+        "//xla/stream_executor/platform:initialize",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "kernel_symbol_registry_test",
+    srcs = ["kernel_symbol_registry_test.cc"],
+    deps = [
+        ":kernel_symbol_registry",
+        "//xla/stream_executor/cuda:cuda_platform_id",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
     name = "kernel_spec",
     srcs = ["kernel_spec.cc"],
     hdrs = ["kernel_spec.h"],
     deps = [
         ":kernel",
+        ":kernel_args",
+        ":kernel_argument_packing_spec",
         ":kernel_spec_proto_cc",
+        ":kernel_symbol_registry",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -562,31 +604,92 @@ cc_library(
 tf_proto_library(
     name = "kernel_spec_proto",
     srcs = ["kernel_spec.proto"],
+    protodeps = [":kernel_argument_packing_spec_proto"],
 )
 
 xla_cc_test(
     name = "kernel_spec_test",
     srcs = ["kernel_spec_test.cc"],
     deps = [
+        ":kernel_argument_packing_spec",
         ":kernel_spec",
         ":kernel_spec_proto_cc",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:safe_reinterpret_cast",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "kernel_metadata",
+    hdrs = ["kernel_metadata.h"],
+)
+
+xla_cc_test(
+    name = "kernel_metadata_test",
+    srcs = ["kernel_metadata_test.cc"],
+    deps = [
+        ":kernel_metadata",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "kernel_argument_packing_spec",
+    srcs = ["kernel_argument_packing_spec.cc"],
+    hdrs = ["kernel_argument_packing_spec.h"],
+    deps = [
+        ":device_memory",
+        ":kernel_args_packed_vector",
+        ":kernel_argument_packing_spec_proto_cc",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_proto_library(
+    name = "kernel_argument_packing_spec_proto",
+    srcs = ["kernel_argument_packing_spec.proto"],
+)
+
+xla_cc_test(
+    name = "kernel_argument_packing_spec_test",
+    srcs = ["kernel_argument_packing_spec_test.cc"],
+    deps = [
+        ":device_memory",
+        ":kernel_args_packed_vector",
+        ":kernel_argument_packing_spec",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:safe_reinterpret_cast",
+        "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
 cc_library(
     name = "kernel",
-    srcs = ["kernel.cc"],
     hdrs = ["kernel.h"],
     deps = [
         ":device_memory",
+        ":kernel_args",
+        ":kernel_argument_packing_spec",
+        ":kernel_metadata",
         ":launch_dim",
         ":stream",
         "@com_google_absl//absl/base:core_headers",
@@ -613,6 +716,26 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "kernel_args_packed_vector",
+    hdrs = ["kernel_args_packed_vector.h"],
+    deps = [
+        ":kernel_args",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "kernel_args_packed_vector_test",
+    srcs = ["kernel_args_packed_vector_test.cc"],
+    deps = [
+        ":kernel_args_packed_vector",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -836,15 +959,31 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
-    name = "kernel_test",
-    srcs = ["kernel_test.cc"],
+cc_library(
+    name = "kernel_args",
+    hdrs = ["kernel_args.h"],
     deps = [
         ":device_memory",
-        ":kernel",
-        ":platform",
-        ":platform_manager",
-        ":stream_executor_h",
+        ":kernel_metadata",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:overload",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/meta:type_traits",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "kernel_args_test",
+    srcs = ["kernel_args_test.cc"],
+    deps = [
+        ":device_memory",
+        ":kernel_args",
+        ":kernel_metadata",
         "//xla/stream_executor/host:host_platform",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
@@ -927,6 +1066,9 @@ xla_cc_test(
     deps = [
         ":device_description",
         ":semantic_version",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

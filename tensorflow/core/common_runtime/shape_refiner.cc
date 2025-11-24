@@ -162,7 +162,7 @@ absl::Status ShapeRefiner::InferShapesForFunction(
     const FunctionDef* function_def, AttrSlice attributes,
     InferenceContext* outer_context) {
   const Graph* graph;
-  const string& fname = function_def->signature().name();
+  const std::string& fname = function_def->signature().name();
   auto it = functions_.find(fname);
   if (it != functions_.end()) {
     graph = it->second.get();
@@ -170,7 +170,7 @@ absl::Status ShapeRefiner::InferShapesForFunction(
     InstantiationResult result;
     TF_RETURN_IF_ERROR(InstantiateFunction(
         *function_def, attributes,
-        [this](const string& op, const OpDef** sig) {
+        [this](const std::string& op, const OpDef** sig) {
           return this->function_library_->LookUpOpDef(op, sig);
         },
         &result));
@@ -476,7 +476,7 @@ absl::Status ShapeRefiner::EvaluateConstantIntScalarEdge(
           scalar.NumElements());
     }
     if (scalar.dtype() == DT_INT32) {
-      *result = scalar.scalar<int32>()();
+      *result = scalar.scalar<int32_t>()();
     } else {
       if (scalar.dtype() != DT_INT64) {
         return errors::InvalidArgument(
@@ -515,7 +515,7 @@ absl::Status ShapeRefiner::ConstantPartialShape(
           "of '-1' is required to represent an unknown shape.");
     }
     if (t.dims() == 0) {
-      if (t.dtype() == DT_INT32 && t.scalar<int32>()() == -1) {
+      if (t.dtype() == DT_INT32 && t.scalar<int32_t>()() == -1) {
         *result = target_context->UnknownShape();
         return absl::OkStatus();
       } else if (t.dtype() == DT_INT64 && t.scalar<int64_t>()() == -1) {
@@ -531,7 +531,7 @@ absl::Status ShapeRefiner::ConstantPartialShape(
 
   TF_RETURN_IF_ERROR(src_context->WithRank(src_shape, 1, &src_shape));
 
-  const string& src_op = input_edge->src()->type_string();
+  const std::string& src_op = input_edge->src()->type_string();
   if (src_context->Value(src_context->Dim(src_shape, 0)) == 0) {
     // Source tensor is a vector of length 0, so the shape it
     // represents is as scalar.

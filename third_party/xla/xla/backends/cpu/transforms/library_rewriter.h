@@ -39,6 +39,10 @@ limitations under the License.
 #include "xla/backends/cpu/transforms/onednn_matcher.h"
 #endif  // XLA_ONEDNN_USE_GRAPH_API
 
+#ifdef XLA_YNNPACK
+#include "xla/backends/cpu/transforms/ynn_matcher.h"
+#endif
+
 namespace xla::cpu {
 
 enum class FusionDirection {
@@ -50,8 +54,10 @@ enum class FusionDirection {
 struct LibraryRewriterOptions {
   bool use_onednn = false;
   bool use_xnnpack = false;
+  bool use_ynnpack = false;
   const tsl::protobuf::RepeatedField<int>* onednn_fusion_types = nullptr;
   const tsl::protobuf::RepeatedField<int>* xnn_fusion_types = nullptr;
+  const tsl::protobuf::RepeatedField<int>* ynn_fusion_types = nullptr;
 };
 
 // Rewrites suitable Dot operations into library fusions.
@@ -74,6 +80,14 @@ class LibraryRewriter : public HloModulePass {
       libs_.push_back(std::make_unique<XnnMatcher>(target_machine_features_,
                                                    options_.xnn_fusion_types));
     }
+#ifdef XLA_YNNPACK
+    if (options_.use_ynnpack && options_.ynn_fusion_types != nullptr &&
+        !options_.ynn_fusion_types->empty()) {
+      libs_.push_back(std::make_unique<YnnMatcher>(target_machine_features_,
+                                                   options_.ynn_fusion_types));
+    }
+#endif  // XLA_YNNPACK
+
     for (std::unique_ptr<LibraryMatcher>& lib : libs_) {
       supported_ops_.merge(lib->SupportedOps());
     }
@@ -116,13 +130,12 @@ class LibraryRewriter : public HloModulePass {
   // Finds and creates fusions in the given computation.
   absl::StatusOr<bool> ProcessComputation(HloComputation* computation);
 
-  // Runs the pass.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+  absl::string_view name() const override { return "dot-library-rewriter"; }
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
-  absl::string_view name() const override { return "dot-library-rewriter"; }
 
  private:
   const TargetMachineFeatures* target_machine_features_;

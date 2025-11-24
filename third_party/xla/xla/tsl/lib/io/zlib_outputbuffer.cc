@@ -68,7 +68,7 @@ absl::Status ZlibOutputBuffer::Init() {
   return absl::OkStatus();
 }
 
-int32 ZlibOutputBuffer::AvailableInputSpace() const {
+int32_t ZlibOutputBuffer::AvailableInputSpace() const {
   return input_buffer_capacity_ - z_stream_->avail_in;
 }
 
@@ -130,7 +130,7 @@ absl::Status ZlibOutputBuffer::DeflateBuffered(int flush_mode) {
 }
 
 absl::Status ZlibOutputBuffer::FlushOutputBufferToFile() {
-  uint32 bytes_to_write = output_buffer_capacity_ - z_stream_->avail_out;
+  uint32_t bytes_to_write = output_buffer_capacity_ - z_stream_->avail_out;
   if (bytes_to_write > 0) {
     absl::Status s = file_->Append(absl::string_view(
         reinterpret_cast<char*>(z_stream_output_.get()), bytes_to_write));
@@ -231,7 +231,8 @@ absl::Status ZlibOutputBuffer::Deflate(int flush) {
       (error == Z_STREAM_END && flush == Z_FINISH)) {
     return absl::OkStatus();
   }
-  string error_string = absl::StrCat("deflate() failed with error ", error);
+  std::string error_string =
+      absl::StrCat("deflate() failed with error ", error);
   if (z_stream_->msg != nullptr) {
     absl::StrAppend(&error_string, ": ", z_stream_->msg);
   }

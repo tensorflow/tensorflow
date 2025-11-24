@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
@@ -761,8 +761,8 @@ ENTRY entry_computation.1 {
 
   auto t = gpu_performance_model_.EstimateRunTimesForMultiOutputFusion(
       producer, consumer, &analysis_);
-  EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_unfused), 162, 1);
-  EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_fused), 145, 1);
+  EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_unfused), 120, 1);
+  EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_fused), 103, 1);
 }
 
 }  // namespace

@@ -155,13 +155,13 @@ void RegisterScalarSummaryOpKernel() {
 TF_ATTRIBUTE_UNUSED bool IsScalarSummaryOpKernelRegistered = []() {
   if (SHOULD_REGISTER_OP_KERNEL("ScalarSummary")) {
     RegisterScalarSummaryOpKernel<int64_t>();
-    RegisterScalarSummaryOpKernel<tensorflow::uint64>();
-    RegisterScalarSummaryOpKernel<tensorflow::int32>();
-    RegisterScalarSummaryOpKernel<tensorflow::uint32>();
-    RegisterScalarSummaryOpKernel<tensorflow::uint16>();
-    RegisterScalarSummaryOpKernel<tensorflow::int16>();
-    RegisterScalarSummaryOpKernel<tensorflow::int8>();
-    RegisterScalarSummaryOpKernel<tensorflow::uint8>();
+    RegisterScalarSummaryOpKernel<uint64_t>();
+    RegisterScalarSummaryOpKernel<int32_t>();
+    RegisterScalarSummaryOpKernel<uint32_t>();
+    RegisterScalarSummaryOpKernel<uint16_t>();
+    RegisterScalarSummaryOpKernel<int16_t>();
+    RegisterScalarSummaryOpKernel<int8_t>();
+    RegisterScalarSummaryOpKernel<uint8_t>();
     RegisterScalarSummaryOpKernel<Eigen::half>();
     RegisterScalarSummaryOpKernel<tensorflow::bfloat16>();
     RegisterScalarSummaryOpKernel<float>();

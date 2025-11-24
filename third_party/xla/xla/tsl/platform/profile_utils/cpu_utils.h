@@ -48,14 +48,14 @@ class CpuUtils {
   // Constant for invalid frequency.
   // This value is returned when the frequency is not obtained somehow.
   static constexpr int64_t INVALID_FREQUENCY = -1;
-  static constexpr uint64 DUMMY_CYCLE_CLOCK = 1;
+  static constexpr uint64_t DUMMY_CYCLE_CLOCK = 1;
 
   // Return current clock cycle. This function is designed to
   // minimize the overhead to get clock and maximize the accuracy of
   // time for profile.
   // This returns unsigned int because there is no guarantee that rdtsc
   // is less than 2 ^ 61.
-  static inline uint64 GetCurrentClockCycle() {
+  static inline uint64_t GetCurrentClockCycle() {
 #if defined(__ANDROID__)
     return GetCpuUtilsHelperSingletonInstance().GetCurrentClockCycle();
 // ----------------------------------------------------------------
@@ -158,7 +158,7 @@ class CpuUtils {
    public:
     DefaultCpuUtilsHelper() = default;
     void ResetClockCycle() final {}
-    uint64 GetCurrentClockCycle() final { return DUMMY_CYCLE_CLOCK; }
+    uint64_t GetCurrentClockCycle() final { return DUMMY_CYCLE_CLOCK; }
     void EnableClockCycleProfiling() final {}
     void DisableClockCycleProfiling() final {}
     int64_t CalculateCpuFrequency() final { return INVALID_FREQUENCY; }

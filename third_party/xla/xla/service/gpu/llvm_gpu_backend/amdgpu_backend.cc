@@ -194,7 +194,8 @@ void HsacoCache::Add(const std::string& ir, uint64_t hash,
 // TargetMachine for the AMDGPU target.
 absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
     llvm::Module* module, llvm::TargetMachine* target_machine,
-    const DebugOptions& debug_options) {
+    const DebugOptions& debug_options,
+    llvm_ir::LLVMCommandLineOptionsLock& llvm_lock) {
   auto* env = tsl::Env::Default();
   std::vector<std::string> tempdir_vector;
   env->GetLocalTempDirectories(&tempdir_vector);
@@ -258,8 +259,6 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
 
   if (debug_options.xla_gpu_use_inprocess_lld()) {
 #ifdef HAS_SUPPORT_FOR_LLD_AS_A_LIBRARY
-    static absl::Mutex lld_mu(absl::kConstInit);
-
     std::array<const char*, 7> args{
         "ld.lld",           "--threads=1",       "-shared",
         "--no-undefined",   isabin_path.c_str(), "-o",
@@ -270,7 +269,7 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
     llvm::raw_string_ostream os(error_message);
     lld::Result result;
     {
-      absl::MutexLock lock(&lld_mu);
+      llvm_lock.UpgradeToExclusiveAccessToRawLLVMCommandLine();
       result =
           lld::lldMain(args, llvm::nulls(), os, {{lld::Gnu, &lld::elf::link}});
     }
@@ -640,7 +639,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
 
     // Lower optimized LLVM module to HSA code object.
     TF_ASSIGN_OR_RETURN(
-        hsaco, EmitModuleToHsaco(module, target_machine.get(), debug_options));
+        hsaco, EmitModuleToHsaco(module, target_machine.get(), debug_options, llvm_lock));
     HsacoCache::Add(str, hash, gcn_arch_name, hsaco);
   }
   return hsaco;

@@ -16,16 +16,6 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_FUTURE_H_
 #define XLA_PJRT_PJRT_FUTURE_H_
 
-#include "absl/base/macros.h"
 #include "xla/future.h"
-
-namespace xla {
-
-template <typename T = void>
-using PjRtFuture ABSL_DEPRECATE_AND_INLINE() = ::xla::Future<T>;
-
-using PjRtFutureHelpers ABSL_DEPRECATE_AND_INLINE() = ::xla::FutureHelpers;
-
-}  // namespace xla
 
 #endif  // XLA_PJRT_PJRT_FUTURE_H_

@@ -305,10 +305,15 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
 
 absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
     std::unique_ptr<xla::ifrt::IfrtIRProgram> ifrt_ir_program,
-    std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
+    std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> ifrt_ir_compile_options,
     xla::ifrt::Client* client,
     std::shared_ptr<xla::ifrt::AtomProgramCompiler> atom_program_compiler) {
   TraceMe traceme([]() { return "ProgramCompiler::CompileForInterpreter"; });
+
+  // Sharing the compile options with the passes and when pipeline is done add
+  // it to the CompiledIfrtIrProgram.
+  std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options =
+      std::move(ifrt_ir_compile_options);
 
   std::vector<xla::ifrt::Device*> devices;
   devices.reserve(compile_options->device_assignments.size());
@@ -394,8 +399,7 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
     }
     TF_RETURN_IF_ERROR(xla::ifrt::createOutlinedAtomProgramsToCompiledPipeline(
         pm, std::move(atom_program_compiler), compile_pipeline_options,
-        std::move(compile_options), atom_executable_map,
-        std::move(bound_executable_map)));
+        compile_options, atom_executable_map, std::move(bound_executable_map)));
 
     {
       TraceMe traceme(
@@ -444,6 +448,7 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
       /*donatable_input_indices=*/std::move(donatable_input_indices),
       /*program=*/std::move(ifrt_ir_program),
       /*device_assignments=*/std::move(device_assignments),
+      /*compile_options=*/compile_options,
   };
 }
 

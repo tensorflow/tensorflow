@@ -452,7 +452,9 @@ bool simplifyLoopDeallocs(Block& block) {
 
     getAliases(RegionBranchPoint::parent());
     for (auto& region : rbi->getRegions()) {
-      getAliases(region);
+      if (region.empty()) continue;
+      getAliases(RegionBranchPoint(cast<RegionBranchTerminatorOpInterface>(
+          region.front().getTerminator())));
     }
 
     for (auto it = eq.begin(), e = eq.end(); it != e; ++it) {

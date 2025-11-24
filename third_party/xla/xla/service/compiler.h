@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "google/protobuf/message.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
-#include "tsl/platform/protobuf.h"
 
 namespace mlir {
 class DialectRegistry;
@@ -352,6 +352,13 @@ class Compiler {
   virtual absl::StatusOr<std::unique_ptr<Executable>> DeserializeExecutable(
       const absl::string_view serialized) const {
     return Unimplemented("DeserializeExecutable unimplemented");
+  }
+
+  // Creates an `Executable` based on the given `aot_result`.
+  virtual absl::StatusOr<std::unique_ptr<Executable>>
+  LoadExecutableFromAotResult(const AotCompilationResult& aot_result,
+                              const se::StreamExecutor& stream_exec) {
+    return Unimplemented("LoadExecutableFromAotResult unimplemented");
   }
 
  private:

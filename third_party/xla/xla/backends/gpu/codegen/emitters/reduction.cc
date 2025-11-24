@@ -57,13 +57,13 @@ limitations under the License.
 #include "xla/codegen/emitters/utils.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
@@ -195,9 +195,9 @@ PerThreadOutputs ReductionFusion::EmitterState::EmitPerThreadElements(
   const auto& reductions = owner.reduction_heroes_[group_id];
   absl::flat_hash_map<const HloInstruction*, int> iter_arg_starts;
 
-  for (const auto& [reduction, init] : inits) {
+  for (const HloInstruction* reduction : reductions) {
     iter_arg_starts[reduction] = iter_arg_inits.size();
-    iter_arg_inits.append(init);
+    iter_arg_inits.append(inits.find(reduction)->second);
   }
 
   auto body_builder = [&](ImplicitLocOpBuilder& nested_b,

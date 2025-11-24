@@ -342,7 +342,7 @@ TypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx) {
       };
 }
 
-TypeInferenceFn FunctionCall(const string& func_attr_name) {
+TypeInferenceFn FunctionCall(const std::string& func_attr_name) {
   return [func_attr_name](const TypeRefVector& input_types,
                           const FunctionTypeInferrer& infer_function_rets)
              -> absl::StatusOr<FullTypeDef> {

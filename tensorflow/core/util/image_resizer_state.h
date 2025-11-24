@@ -100,12 +100,12 @@ struct ImageResizerState {
     OP_REQUIRES(
         context,
         FastBoundsCheck(input_shape.dim_size(1),
-                        std::numeric_limits<int32>::max()) &&
+                        std::numeric_limits<int32_t>::max()) &&
             FastBoundsCheck(input_shape.dim_size(2),
-                            std::numeric_limits<int32>::max()),
+                            std::numeric_limits<int32_t>::max()),
         errors::InvalidArgument("input sizes must be between 0 and max int32"));
-    in_height = static_cast<int32>(input_shape.dim_size(1));
-    in_width = static_cast<int32>(input_shape.dim_size(2));
+    in_height = static_cast<int32_t>(input_shape.dim_size(1));
+    in_width = static_cast<int32_t>(input_shape.dim_size(2));
 
     // Verify the output tensor's shape.
     const Tensor& shape_t = context->input(1);
@@ -117,7 +117,7 @@ struct ImageResizerState {
                                         shape_t.shape().DebugString()));
 
     // Verify and assign `out_height` and `out_width`.
-    auto Svec = shape_t.vec<int32>();
+    auto Svec = shape_t.vec<int32_t>();
     out_height = internal::SubtleMustCopy(Svec(0));
     out_width = internal::SubtleMustCopy(Svec(1));
     OP_REQUIRES(context, out_height > 0 && out_width > 0,
@@ -222,8 +222,9 @@ struct ImageResizerGradientState {
 
     OP_REQUIRES(
         context,
-        FastBoundsCheck(original_height, std::numeric_limits<int32>::max()) &&
-            FastBoundsCheck(original_width, std::numeric_limits<int32>::max()),
+        FastBoundsCheck(original_height, std::numeric_limits<int32_t>::max()) &&
+            FastBoundsCheck(original_width,
+                            std::numeric_limits<int32_t>::max()),
         errors::InvalidArgument(
             "original sizes must be between 0 and max int32"));
 

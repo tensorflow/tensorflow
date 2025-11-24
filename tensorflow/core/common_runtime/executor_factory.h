@@ -36,12 +36,13 @@ class ExecutorFactory {
                                    std::unique_ptr<Executor>* out_executor) = 0;
   virtual ~ExecutorFactory() {}
 
-  static void Register(const string& executor_type, ExecutorFactory* factory);
-  static absl::Status GetFactory(const string& executor_type,
+  static void Register(const std::string& executor_type,
+                       ExecutorFactory* factory);
+  static absl::Status GetFactory(const std::string& executor_type,
                                  ExecutorFactory** out_factory);
 };
 
-absl::Status NewExecutor(const string& executor_type,
+absl::Status NewExecutor(const std::string& executor_type,
                          const LocalExecutorParams& params, const Graph& graph,
                          std::unique_ptr<Executor>* out_executor);
 

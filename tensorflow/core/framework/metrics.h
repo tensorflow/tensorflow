@@ -39,24 +39,24 @@ enum class GraphOptimizationSource {
 // Records when a data-fetching tf.data operation is executed.
 //
 // The `name` argument identifies the operation type (e.g. "ToSingleElementOp").
-void RecordTFDataFetchOp(const string& name);
+void RecordTFDataFetchOp(const std::string& name);
 
 // Records that a tf.data.Dataset executed by the program used autotuning.
 //
 // The `name` argument identifies the Dataset type (e.g. "ParallelMap").
-void RecordTFDataAutotune(const string& name);
+void RecordTFDataAutotune(const std::string& name);
 
 // Returns a counter that can be used to record the number of bytes produced by
 // a tf.data.Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "Batch" or "Map").
-monitoring::CounterCell* GetTFDataBytesConsumedCounter(const string& name);
+monitoring::CounterCell* GetTFDataBytesConsumedCounter(const std::string& name);
 
 // Returns a counter that can be used to record the number of bytes produced by
 // a tf.data.Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "Batch" or "Map").
-monitoring::CounterCell* GetTFDataBytesProducedCounter(const string& name);
+monitoring::CounterCell* GetTFDataBytesProducedCounter(const std::string& name);
 
 // Returns a counter than can be used to record the number of bytes read from
 // the filesystem by a tf.data.Dataset source.
@@ -64,43 +64,43 @@ monitoring::CounterCell* GetTFDataBytesProducedCounter(const string& name);
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
 //
 // TODO(jsimsa): Remove this now that we have GetTFDataBytesConsumedCounter?
-monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name);
+monitoring::CounterCell* GetTFDataBytesReadCounter(const std::string& name);
 
 // Returns a counter than can be used to record the number of elements produced
 // by a tf.data.Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "Batch" or "Map").
-monitoring::CounterCell* GetTFDataElementsCounter(const string& name);
+monitoring::CounterCell* GetTFDataElementsCounter(const std::string& name);
 
 // Returns a gauge than can be used to record the performance model information.
 //
 // The `id` argument represents the (unique) model ID.
 monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
-    const string& id);
+    const std::string& id);
 
 // Records the number of bytes fetched from tf.data.Dataset iterator.
 void RecordTFDataBytesFetched(int64_t num_bytes);
 
 // Records the number of times a tf.data experiment was applied.
-void RecordTFDataExperiment(const string& name);
+void RecordTFDataExperiment(const std::string& name);
 
 // Records the number of times a tf.data experiment could have been applied.
-void RecordTFDataExperimentLive(const string& name);
+void RecordTFDataExperimentLive(const std::string& name);
 
 // Records the number of times a tf.data experiment was opted into.
-void RecordTFDataExperimentOptIn(const string& experiment_name);
+void RecordTFDataExperimentOptIn(const std::string& experiment_name);
 
 // Records the number of times a tf.data experiment was opted out of.
-void RecordTFDataExperimentOptOut(const string& experiment_name);
+void RecordTFDataExperimentOptOut(const std::string& experiment_name);
 
 // Records the time (in microseconds) spent generating an element and
 // transferring it over the network for the given protocol.
-void RecordTFDataServiceGetElementDuration(const string& data_transfer_protocol,
-                                           uint64 duration_us);
+void RecordTFDataServiceGetElementDuration(
+    const std::string& data_transfer_protocol, uint64_t duration_us);
 
 // Records the time (in microseconds) spent in a single invocation of
 // `ItertatorResource::GetNext()`.
-void RecordTFDataGetNextDuration(uint64 duration_us);
+void RecordTFDataGetNextDuration(uint64_t duration_us);
 
 // Records the histogram of ratios of tf.data autotune algorithm used RAM over
 // the ram budget.
@@ -115,7 +115,7 @@ void RecordTFDataAutotuneMaxBufferBudgetRatio(const double ratio);
 //
 // The `name` argument identifies the Dataset graph fingerprint,
 // created using GraphHash().
-void RecordTFDataFingerprint(const string& name);
+void RecordTFDataFingerprint(const std::string& name);
 
 // Records the event of a tf.data service pipeline getting a runtime
 // compression decision.
@@ -123,26 +123,26 @@ void RecordTFDataServiceRuntimeCompressionDecision(bool compression_decision);
 
 // Records the event of a tf.data service pipeline making the compression
 // related action.
-void RecordTFDataServiceCompressionAction(const string& action);
+void RecordTFDataServiceCompressionAction(const std::string& action);
 
 // Records the time (in microseconds) during which `IteratorResource` was busy
 // processing at least one `GetNext()` request.
-void RecordTFDataIteratorBusy(uint64 duration_us);
+void RecordTFDataIteratorBusy(uint64_t duration_us);
 
 // Records the time (in microseconds) between `IteratorResource` receiving the
 // first `GetNext()` request and responding to the last `GetNext()` request.
-void RecordTFDataIteratorLifetime(uint64 duration_us);
+void RecordTFDataIteratorLifetime(uint64_t duration_us);
 
 // Records the time histogram (in microseconds) between `IteratorResource`
 // responding to a `GetNext()` request and receiving the next `GetNext()`
 // request.
-void RecordTFDataIteratorGap(uint64 duration_us);
+void RecordTFDataIteratorGap(uint64_t duration_us);
 
 // Records the number of independent graph changes resulting from the
 // application of a tf.data optimization.
 //
 // The `name` argument identifies the optimization (e.g. "noop_elimination").
-void RecordTFDataOptimization(const string& name, int64_t num_changes);
+void RecordTFDataOptimization(const std::string& name, int64_t num_changes);
 
 // Records that a tf.data service worker has been created.
 void RecordTFDataServiceWorkerCreated();
@@ -160,21 +160,21 @@ void RecordTFDataServiceClientIterators(
 // `data_transfer_protocol` to get data from the worker server and whether or
 // not the user explicitly specified the protocol.
 void RecordTFDataServiceDataTransferProtocolUsed(
-    const string& data_transfer_protocol, bool user_specified);
+    const std::string& data_transfer_protocol, bool user_specified);
 
 // Records that a tf.data service worker client fell back to gRPC rather than
 // use `data_transfer_protocol` because of an error of type `code` with message
 // `error_message`.
 void RecordTFDataServiceDataTransferProtocolFallback(
-    const string& data_transfer_protocol, error::Code code,
-    const string& error_message);
+    const std::string& data_transfer_protocol, error::Code code,
+    const std::string& error_message);
 
 // Records that a tf.data service worker client got an error of non-retriable
 // type `code` with message `error_message` when trying to transfer data over
 // `data_transfer_protocol`.
 void RecordTFDataServiceDataTransferProtocolError(
-    const string& data_transfer_protocol, error::Code code,
-    const string& error_message);
+    const std::string& data_transfer_protocol, error::Code code,
+    const std::string& error_message);
 
 // Records tf.data service cross-trainer cache queries.
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
@@ -195,7 +195,7 @@ void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers);
 // Records the file name read by a tf.data Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
-void RecordTFDataFilename(const string& name, const string& filename);
+void RecordTFDataFilename(const std::string& name, const std::string& filename);
 
 // Records the total attempts made by file logger.
 void RecordTFDataFileLoggerAttempts();
@@ -203,7 +203,7 @@ void RecordTFDataFileLoggerAttempts();
 // Records an error of type `code` with message `error_message` encountered by
 // file logger.
 void RecordTFDataFileLoggerErrors(error::Code code,
-                                  const string& error_message);
+                                  const std::string& error_message);
 
 // Records the total number of files attempted to be logged by file logger.
 void RecordTFDataFileLoggerAttemptedNumFiles(size_t num_files);
@@ -212,15 +212,15 @@ void RecordTFDataFileLoggerAttemptedNumFiles(size_t num_files);
 // `code` with message `error_message` during logging by file logger with this
 // error code.
 void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files, error::Code code,
-                                          const string& error_message);
+                                          const std::string& error_message);
 
 // Records statistics of tf.data auto sharding.
 //
 // The `id` is a unique identifier of the input pipeline. The `policy`
 // identifies the auto-sharding policy used, the `num_workers` identifies the
 // number of workers, and `num_replicas` identifies the number of replicas.
-void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
-                           int64 num_workers, int64 num_replicas);
+void RecordTFDataAutoShard(const std::string& id, data::AutoShardPolicy policy,
+                           int64_t num_workers, int64_t num_replicas);
 
 // Records statistics of whether we can rewrite batch size in tf.data auto
 // sharding.
@@ -229,26 +229,27 @@ void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
 // indicates whether the input pipeline is eligible for the rewrite. The
 // `ineligible_reason` is the reason if the input pipeline is ineligible.
 void RecordTFDataAutoShardRewriteBatchSize(
-    bool eligible, const std::vector<string>& ineligible_reason);
+    bool eligible, const std::vector<std::string>& ineligible_reason);
 
 // Records the number of times each tf.data autotuning algorithm stopping
 // criterion is met.
-void RecordTFDataAutotuneStoppingCriteria(const string& name);
+void RecordTFDataAutotuneStoppingCriteria(const std::string& name);
 
 // Records the number of times this event occured, for debugging.
-void RecordTFDataDebug(const string& event);
+void RecordTFDataDebug(const std::string& event);
 
 // Records the number of times an error of this type occurred with this status
 // code.
-void RecordTFDataError(const string& error_type, const string& error_code);
+void RecordTFDataError(const std::string& error_type,
+                       const std::string& error_code);
 
 // Records the framework type used to build the tf.data.Dataset.
 void RecordTFDataFrameworkType(const std::string& framework_type);
 
 // Records the number of times tf.data file logger encountered an error of this
 // type occurred with this status code.
-void RecordTFDataFileLoggerError(const string& error_type,
-                                 const string& error_code);
+void RecordTFDataFileLoggerError(const std::string& error_type,
+                                 const std::string& error_code);
 
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);
@@ -266,14 +267,14 @@ void RecordGraphOutputTensors(const size_t size);
 // Records the number of cores requested by graphs with XLA SPMD enabled.
 void RecordTPUXlaSpmdCoresPerReplica(int64_t cores_per_replica);
 
-void UpdateGraphExecTime(const uint64 running_time_usecs);
-void UpdateGraphPendingQueueLength(uint64 len);
+void UpdateGraphExecTime(const uint64_t running_time_usecs);
+void UpdateGraphPendingQueueLength(uint64_t len);
 
 // Records that one output of an op of type `op_name` was unused.
-void RecordUnusedOutput(const string& op_name);
+void RecordUnusedOutput(const std::string& op_name);
 
 // Records the pipeline processing time in microseconds
-void RecordPipelineProcessingTime(const string& id,
+void RecordPipelineProcessingTime(const std::string& id,
                                   double pipeline_processing_time_usec);
 
 // Increments the count of binaries loaded from the persistent cache.
@@ -295,17 +296,17 @@ void UpdateAotBefMlirLoadCount();
 // When executing eagerly, this will not record any activity.
 //
 // TODO(jtkeeling): Should we record building/optimizing tf.functions?
-void UpdateGraphBuildTime(const uint64 running_time_usecs);
+void UpdateGraphBuildTime(const uint64_t running_time_usecs);
 
 // Updates the metric stored for time spent optimizing function graphs.
-void UpdateFunctionGraphOptimizationTime(const uint64 running_time_usecs);
+void UpdateFunctionGraphOptimizationTime(const uint64_t running_time_usecs);
 
 // Updates the metric stored for time saved by caching graph optimization.
-void UpdateFunctionGraphOptimizationSavingTime(uint64 saving_time_usec,
+void UpdateFunctionGraphOptimizationSavingTime(uint64_t saving_time_usec,
                                                GraphOptimizationSource source);
 
 // Retrieves the total time saved by the graph optimization caching.
-uint64 GetFunctionGraphOptimizationSavingTimeUsecs(
+uint64_t GetFunctionGraphOptimizationSavingTimeUsecs(
     GraphOptimizationSource source);
 
 // Increments the hit count for the graph optimization cache.
@@ -463,10 +464,10 @@ class ScopedCounter final {
 
   // Returns duration of the current interval in case the timer has started.
   // Returns nullopt otherwise.
-  std::optional<uint64> DurationMicroSec() const {
-    return started_ ? std::optional<uint64>(accumulated_time_ +
-                                            Env::Default()->NowMicros() -
-                                            start_time_)
+  std::optional<uint64_t> DurationMicroSec() const {
+    return started_ ? std::optional<uint64_t>(accumulated_time_ +
+                                              Env::Default()->NowMicros() -
+                                              start_time_)
                     : std::nullopt;
   }
 
@@ -492,7 +493,7 @@ class ScopedCounter final {
  private:
   template <std::size_t... S>
   void ReportInternal(std::index_sequence<S...>) {
-    uint64 time_interval = Env::Default()->NowMicros() - start_time_;
+    uint64_t time_interval = Env::Default()->NowMicros() - start_time_;
     time_interval += accumulated_time_;
     if (time_interval > 0) {
       counter_->GetCell(labels_[S]...)->IncrementBy(time_interval);
@@ -508,8 +509,8 @@ class ScopedCounter final {
   monitoring::Counter<NumLabels>* counter_;
   std::array<std::string, NumLabels> labels_;
   bool started_{false};
-  uint64 start_time_;
-  uint64 accumulated_time_;
+  uint64_t start_time_;
+  uint64_t accumulated_time_;
 };
 
 // Returns a counter used to capture timing metrics for graph optimization
@@ -517,32 +518,33 @@ class ScopedCounter final {
 monitoring::Counter<2>* GetGraphOptimizationCounter();
 
 // Updates metrics for time to distribute variables to all TPU hosts.
-void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs);
+void UpdateTpuVariableDistributionTime(const uint64_t distribution_time_usecs);
 
 // Updates the metrics stored about time XLA spents compiling graphs.
-void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
+void UpdateXlaCompilationTime(const uint64_t compilation_time_usecs);
 
 // Increments (by 1) a simple integer counter that is exposed for testing.
-void IncrementTestCounter(const string& name, const string& label);
+void IncrementTestCounter(const std::string& name, const std::string& label);
 
 // Read-only access to a counter for testing.
-const monitoring::CounterCell* TestCounter(const string& name,
-                                           const string& label);
+const monitoring::CounterCell* TestCounter(const std::string& name,
+                                           const std::string& label);
 
 // Read-only wrapper for a TestCounter to track increments between calls.
 class TestDelta {
  public:
-  TestDelta(const string& name, const string& label);
+  TestDelta(const std::string& name, const std::string& label);
   void Reset();
-  int64 Get();
+  int64_t Get();
 
  private:
   const monitoring::CounterCell* cell_;
-  int64 last_value_;
+  int64_t last_value_;
 };
-void UpdateTpuErrorCounter(const string& op, const string& error_type);
-void UpdateEagerClientErrorCounter(const string& error_source,
-                                   const string& error_type);
+void UpdateTpuErrorCounter(const std::string& op,
+                           const std::string& error_type);
+void UpdateEagerClientErrorCounter(const std::string& error_source,
+                                   const std::string& error_type);
 
 }  // namespace metrics
 }  // namespace tensorflow

@@ -192,7 +192,7 @@ SubByteCollectiveNormalizationVisitor::ProcessCollectiveInstruction(
 
 }  // namespace
 
-absl::StatusOr<bool> SubByteCollectiveNormalization::Run(
+absl::StatusOr<bool> SubByteCollectiveNormalization::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   SubByteCollectiveNormalizationVisitor visitor;

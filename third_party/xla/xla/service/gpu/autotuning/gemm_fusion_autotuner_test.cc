@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/transforms/gemm_fusion.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/hlo_module_config.h"
@@ -197,13 +197,13 @@ class StatelessAutotunerTest : public HloTestBase {
       SymbolicExprContext* symbolic_expr_context) {
     const HloFusionInstruction& fusion = *Cast<HloFusionInstruction>(
         module.entry_computation()->root_instruction());
-    if (!isRocm()) {
-      auto cu_compute_capability =
-          std::get<se::CudaComputeCapability>(compute_capability);
+    if (GpuComputeComp().IsCuda()) {
+      auto* cu_compute_capability =
+          compute_capability.cuda_compute_capability();
       se::GpuDeviceInfoProto deviceless_proto;
       auto ccc = deviceless_proto.mutable_cuda_compute_capability();
-      ccc->set_major(cu_compute_capability.major);
-      ccc->set_minor(cu_compute_capability.minor);
+      ccc->set_major(cu_compute_capability->major);
+      ccc->set_minor(cu_compute_capability->minor);
     }
 
     DeviceConfig test_config{backend().default_stream_executor(),
@@ -235,10 +235,6 @@ class StatelessAutotunerTest : public HloTestBase {
         .default_stream_executor()
         ->GetDeviceDescription()
         .gpu_compute_capability();
-  }
-
-  bool isRocm() {
-    return std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp());
   }
 
   // Returns the config for the current device.
@@ -321,7 +317,7 @@ TEST_F(StatelessAutotunerTest, CublasFallbackForBf16Bf16F32Algorithm) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto configs,
                           GetPossibleMatmulAutotuneConfigs(*module));
-  if (!isRocm()) {
+  if (!GpuComputeComp().IsRocm()) {
     switch (GetCudaComputeCapability().major) {
       case se::CudaComputeCapability::kAmpere:
         EXPECT_TRUE(hasCublasConfig(configs))
@@ -361,8 +357,8 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
   }
 
   stream_executor::GpuComputeCapability CudaAmpereOrRocm() {
-    if (isRocm()) {
-      return GetRocmComputeCapability();
+    if (GpuComputeComp().IsRocm()) {
+      return GpuComputeComp();
     } else {
       return stream_executor::GpuComputeCapability{
           stream_executor::CudaComputeCapability{
@@ -427,7 +423,8 @@ GetPossibleMatmulAutotuneTritonConfigs(
   TF_ASSIGN_OR_RETURN(se::DeviceDescription device_description,
                       se::DeviceDescription::FromProto(
                           se::GpuDeviceInfoProto::default_instance()));
-  device_description.set_gpu_compute_capability(compute_capability);
+  device_description.set_gpu_compute_capability(
+      se::GpuComputeCapability{compute_capability});
   // Using H100 numbers as the most relevant example here.
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#features-and-technical-specifications-technical-specifications-per-compute-capability
   // https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/#nvidia_h100_gpu_architecture_in-depth
@@ -446,7 +443,7 @@ GetPossibleMatmulAutotuneTritonConfigs(
 }
 
 TEST_F(GemmFusionAutotunerTest, AmpereUsesMoreThanTwoStages) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
@@ -625,26 +622,38 @@ ENTRY e {
 
 // TODO(b/344770374): Make this test not fragile.
 TEST_F(GemmFusionAutotunerTest, DoNotRunAutotuningKernelSpillingRegisters) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHloText = R"(
 HloModule m
 
+lhs_computation {
+  %p0 = s8[12288,1536] parameter(0)
+  ROOT %convert = f16[12288,1536] convert(%p0)
+}
+
+rhs_computation {
+  %p1 = s8[4,12288] parameter(0)
+  ROOT %convert = f16[4,12288] convert(%p1)
+}
+
 %triton_gemm_dot {
-  %p1 = s8[4,12288]{1,0} parameter(1)
-  %p0 = s8[12288,1536]{1,0} parameter(0)
-  %convert.p0 = f16[12288,1536]{1,0} convert(s8[12288,1536]{1,0} %p0)
-  %convert.p1 = f16[4,12288]{1,0} convert(s8[4,12288]{1,0} %p1)
-  %dot = f16[4,1536]{1,0} dot(f16[4,12288]{1,0} %convert.p1, f16[12288,1536]{1,0} %convert.p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT %convert = s8[4,1536]{1,0} convert(f16[4,1536]{1,0} %dot)
+  %p0 = s8[12288,1536] parameter(0)
+  %p1 = s8[4,12288] parameter(1)
+  %lhs = f16[12288,1536] fusion(%p0), kind=kCustom, calls=lhs_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["256","16"]}]}}}
+  %rhs = f16[4,12288] fusion(%p1), kind=kCustom, calls=rhs_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","256"]}]}}}
+  %dot = f16[4,1536] dot(%rhs, %lhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT %convert = s8[4,1536] convert(%dot)
 }
 
 ENTRY %e {
-  %get-tuple-element.7020 = s8[12288,1536]{1,0} parameter(0)
-  %convert = s8[4,12288]{1,0} parameter(1)
-  ROOT %triton = s8[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %get-tuple-element.7020, s8[4,12288]{1,0} %convert), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}}}
+  %p0 = s8[12288,1536] parameter(0)
+  %convert = s8[4,12288] parameter(1)
+  ROOT %triton = s8[4,1536] fusion(%p0, %convert), kind=kCustom, calls=%triton_gemm_dot,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"output_tiles":[{"sizes":["256","256"]}],"num_stages":"1","num_warps":"16","num_ctas":"1"}}}
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -677,20 +686,32 @@ TEST_F(GemmFusionAutotunerTest,
   const std::string kHloText = R"(
 HloModule m
 
+rhs_computation {
+  %p0 = s8[12288,1536] parameter(0)
+  ROOT %convert = f16[12288,1536] convert(%p0)
+}
+
+lhs_computation {
+  %p1 = s8[4,12288] parameter(0)
+  ROOT %convert = f16[4,12288] convert(%p1)
+}
+
 %triton_gemm_dot {
-  %p1 = s8[4,12288]{1,0} parameter(1)
-  %p0 = s8[12288,1536]{1,0} parameter(0)
-  %convert.p0 = f16[12288,1536]{1,0} convert(s8[12288,1536]{1,0} %p0)
-  %convert.p1 = f16[4,12288]{1,0} convert(s8[4,12288]{1,0} %p1)
-  %dot = f16[4,1536]{1,0} dot(f16[4,12288]{1,0} %convert.p1, f16[12288,1536]{1,0} %convert.p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT %convert = s8[4,1536]{1,0} convert(f16[4,1536]{1,0} %dot)
+  %p0 = s8[12288,1536] parameter(0)
+  %p1 = s8[4,12288] parameter(1)
+  %rhs = f16[12288,1536] fusion(%p0), kind=kCustom, calls=rhs_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["256","16"]}]}}}
+  %lhs = f16[4,12288] fusion(%p1), kind=kCustom, calls=lhs_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","256"]}]}}}
+  %dot = f16[4,1536] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT %convert = s8[4,1536] convert(%dot)
 }
 
 ENTRY %e {
-  %get-tuple-element.7020 = s8[12288,1536]{1,0} parameter(0)
-  %convert = s8[4,12288]{1,0} parameter(1)
-  ROOT %triton = s8[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %get-tuple-element.7020, s8[4,12288]{1,0} %convert), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}}}
+  %p0 = s8[12288,1536] parameter(0)
+  %p1 = s8[4,12288] parameter(1)
+  ROOT %triton = s8[4,1536] fusion(%p0, %p1), kind=kCustom, calls=%triton_gemm_dot,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"output_tiles":[{"sizes":["256","256"]}],"num_stages":"1","num_warps":"16","num_ctas":"1"}}}
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -717,18 +738,30 @@ TEST_F(GemmFusionAutotunerTest, RunAutotuningKernelNotSpillingRegisters) {
   const std::string kHloText = R"(
 HloModule m
 
+rhs_computation {
+  %p0 = s8[12288,1536] parameter(0)
+  ROOT %convert = f16[12288,1536] convert(%p0)
+}
+
+lhs_computation {
+  ROOT %p1 = f16[4,12288] parameter(0)
+}
+
 %triton_gemm_dot {
-  %p1 = f16[4,12288]{1,0} parameter(1)
-  %p0 = s8[12288,1536]{1,0} parameter(0)
-  %convert.10406 = f16[12288,1536]{1,0} convert(s8[12288,1536]{1,0} %p0)
-  ROOT %dot = f16[4,1536]{1,0} dot(f16[4,12288]{1,0} %p1, f16[12288,1536]{1,0} %convert.10406), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %p0 = s8[12288,1536] parameter(0)
+  %p1 = f16[4,12288] parameter(1)
+  %rhs = f16[12288,1536] fusion(%p0), kind=kCustom, calls=rhs_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","16"]}]}}}
+  %lhs = f16[4,12288] fusion(%p1), kind=kCustom, calls=lhs_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","32"]}]}}}
+  ROOT %dot = f16[4,1536] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 ENTRY %e {
-  %p0 = s8[12288,1536]{1,0} parameter(0)
-  %p1 = f16[4,12288]{1,0} parameter(1)
-  ROOT %triton_dot = f16[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %p0, f16[4,12288]{1,0} %p1), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"16","block_n":"32","block_k":"16","split_k":"1","num_stages":"1","num_warps":"2","num_ctas":"1"}}}
+  %p0 = s8[12288,1536] parameter(0)
+  %p1 = f16[4,12288] parameter(1)
+  ROOT %triton_dot = f16[4,1536] fusion(%p0, %p1), kind=kCustom, calls=%triton_gemm_dot,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"output_tiles":[{"sizes":["16","32"]}],"num_stages":"1","num_warps":"2","num_ctas":"1"}}}
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -808,11 +841,10 @@ ENTRY main {
 
   TF_EXPECT_OK(HloTestBase::RunHloPass(&pipeline, module.get()));
   const bool is_at_least_hopper =
-      std::holds_alternative<se::CudaComputeCapability>(
-          autotune_config.GetGpuComputeCapability()) &&
-      std::get<se::CudaComputeCapability>(
-          autotune_config.GetGpuComputeCapability())
-          .IsAtLeastHopper();
+      autotune_config.GetGpuComputeCapability().IsCuda() &&
+      autotune_config.GetGpuComputeCapability()
+          .cuda_compute_capability()
+          ->IsAtLeastHopper();
   TF_ASSERT_OK_AND_ASSIGN(
       bool filecheck_matches,
       RunFileCheck(module->ToString(), is_at_least_hopper
@@ -822,8 +854,9 @@ ENTRY main {
 }
 
 TEST_F(GemmFusionAutotunerDumpTest, DumpingWorks) {
-  if (isRocm() || GetDebugOptionsForTest()
-                      .xla_gpu_experimental_disable_binary_libraries()) {
+  if (GpuComputeComp().IsRocm() ||
+      GetDebugOptionsForTest()
+          .xla_gpu_experimental_disable_binary_libraries()) {
     GTEST_SKIP() << "Not supported on ROCm or with binary libraries disabled.";
   }
   HloModuleConfig config;
@@ -891,8 +924,9 @@ CHECK: cublas
 }
 
 TEST_F(GemmFusionAutotunerTest, AutotuneCuDnnFusion) {
-  if (isRocm() || GetDebugOptionsForTest()
-                      .xla_gpu_experimental_disable_binary_libraries()) {
+  if (GpuComputeComp().IsRocm() ||
+      GetDebugOptionsForTest()
+          .xla_gpu_experimental_disable_binary_libraries()) {
     GTEST_SKIP() << "Not supported on ROCm or with binary libraries disabled.";
   }
   const std::string kHlo = R"(
@@ -916,48 +950,43 @@ ENTRY e {
 )");
 }
 
-// TODO(b/281489442): Write a testcase called
-// `SkipConfigsProducingDeviantResults` or similar.
-
-// TODO(b/393299275): remove when the legacy GEMM emitter is removed.
-class GemmFusionAutotunerLevelLegacyEmitterTest
-    : public StatelessAutotunerTest,
-      public ::testing::WithParamInterface<int> {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        StatelessAutotunerTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_autotune_level(GetParam());
-    debug_options.set_xla_gpu_cublas_fallback(false);
-    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
-    return debug_options;
+TEST_F(GemmFusionAutotunerTest, AutotuneScaledDotCuDnnFusion) {
+  if (GpuComputeComp().IsRocm() ||
+      GetDebugOptionsForTest()
+          .xla_gpu_experimental_disable_binary_libraries()) {
+    GTEST_SKIP() << "Not supported on ROCm or with binary libraries disabled.";
   }
-};
-
-TEST_P(GemmFusionAutotunerLevelLegacyEmitterTest,
-       AllAutotuningLevelsWorkCorrectly) {
-  const std::string kHloText = R"(
-HloModule m
-
-ENTRY e {
-  p0 = pred[64,10] parameter(0)
-  p0c = f32[64,10] convert(p0)
-  p1 = f32[10,128] parameter(1)
-  ROOT r = f32[64,128] dot(p0c, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: kind=kCustom
-; CHECK-SAME: __triton_gemm
-      )");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  if (!GetCudaComputeCapability().IsAtLeastBlackwell()) {
+    GTEST_SKIP() << "Not supported on pre-Blackwell GPUs.";
+  }
+  const std::string kHlo = R"(
+fusion1 {
+  %lhs = f8e4m3fn[4,192,224] parameter(0)
+  %rhs = f8e4m3fn[4,256,224] parameter(1)
+  %lhs_scale = f8e8m0fnu[4,192,7] parameter(2)
+  %rhs_scale = f8e8m0fnu[4,256,7] parameter(3)
+  ROOT %result = f32[4,192,256] scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_batch_dims={0}, rhs_batch_dims={0},
+      lhs_contracting_dims={2}, rhs_contracting_dims={2}
 }
 
-INSTANTIATE_TEST_SUITE_P(GemmFusionAutotunerLevelSweep,
-                         GemmFusionAutotunerLevelLegacyEmitterTest,
-                         ::testing::Range(0, 5));
+ENTRY e {
+  %lhs = f8e4m3fn[4,192,224] parameter(0)
+  %rhs = f8e4m3fn[4,256,224] parameter(1)
+  %lhs_scale = f8e8m0fnu[4,192,7] parameter(2)
+  %rhs_scale = f8e8m0fnu[4,256,7] parameter(3)
+  ROOT _ = f32[4,192,256] fusion(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      kind=kCustom, calls=fusion1,
+      backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})";
+
+  CheckTritonAutotuning(kHlo, R"(
+// CHECK: "plan_id":
+)");
+}
+
+// TODO(b/281489442): Write a testcase called
+// `SkipConfigsProducingDeviantResults` or similar.
 
 class GemmFusionAutotunerLevelTest : public StatelessAutotunerTest,
                                      public ::testing::WithParamInterface<int> {
@@ -967,10 +996,6 @@ class GemmFusionAutotunerLevelTest : public StatelessAutotunerTest,
         StatelessAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(GetParam());
     debug_options.set_xla_gpu_cublas_fallback(false);
-    // TODO(b/393299275): remove when the flag is enabled by default.
-    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
     return debug_options;
   }
 };
@@ -1202,7 +1227,7 @@ ENTRY entry {
 }
 
 TEST_F(GemmFusionAutotunerTest, CreatesCustomKernelFusionConfigs) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHlo = R"(
@@ -1241,7 +1266,7 @@ TEST_F(GemmFusionAutotunerTest, CreatesCustomKernelFusionConfigs) {
 }
 
 TEST_F(GemmFusionAutotunerTest, GeneratesTwoConfigsForUpcastGemmWithPrologue) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHlo = R"(
@@ -1273,8 +1298,9 @@ TEST_F(GemmFusionAutotunerTest, GeneratesTwoConfigsForUpcastGemmWithPrologue) {
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
-          *module, compute_capability, GetToolkitVersion(),
-          GetDebugOptionsForTest(), &symbolic_expr_context_));
+          *module, se::GpuComputeCapability{compute_capability},
+          GetToolkitVersion(), GetDebugOptionsForTest(),
+          &symbolic_expr_context_));
   EXPECT_EQ(
       2, std::count_if(
              configs.begin(), configs.end(),
@@ -1287,7 +1313,7 @@ TEST_F(GemmFusionAutotunerTest, GeneratesTwoConfigsForUpcastGemmWithPrologue) {
 TEST_F(GemmFusionAutotunerTest, GeneratesOneConfigForUpcastGemmWithPrologue) {
   // Same as GeneratesTwoConfigsForUpcastGemmWithPrologue, but with contracting
   // dimension size = 128 which is not supported by the SplitK kernel.
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHlo = R"(
@@ -1319,8 +1345,9 @@ TEST_F(GemmFusionAutotunerTest, GeneratesOneConfigForUpcastGemmWithPrologue) {
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
-          *module, compute_capability, GetToolkitVersion(),
-          GetDebugOptionsForTest(), &symbolic_expr_context_));
+          *module, se::GpuComputeCapability{compute_capability},
+          GetToolkitVersion(), GetDebugOptionsForTest(),
+          &symbolic_expr_context_));
   EXPECT_EQ(
       1, std::count_if(
              configs.begin(), configs.end(),
@@ -1332,7 +1359,7 @@ TEST_F(GemmFusionAutotunerTest, GeneratesOneConfigForUpcastGemmWithPrologue) {
 
 TEST_F(GemmFusionAutotunerTest,
        GeneratesConfigForUpcastGemmWithPrologueAndEpilogue) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHlo = R"(
@@ -1368,8 +1395,9 @@ TEST_F(GemmFusionAutotunerTest,
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
-          *module, compute_capability, GetToolkitVersion(),
-          GetDebugOptionsForTest(), &symbolic_expr_context_));
+          *module, se::GpuComputeCapability{compute_capability},
+          GetToolkitVersion(), GetDebugOptionsForTest(),
+          &symbolic_expr_context_));
   EXPECT_EQ(
       2, std::count_if(
              configs.begin(), configs.end(),
@@ -1486,7 +1514,7 @@ class GemmFusionShardedAutotunerTest : public GemmFusionAutotunerTest {
 TEST_F(
     GemmFusionShardedAutotunerTest,
     AutotuningSucceedsWhenKeyValueStoreAlreadyContainsAutotuningResultsForTheInputModule) {  // NOLINT(whitespace/line_length)
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHlo = R"(
@@ -1545,7 +1573,7 @@ TEST_F(
 TEST_F(
     GemmFusionShardedAutotunerTest,
     AutotuningStoresDifferentResultsForTheSameFusionInDifferentModules) {  // NOLINT(whitespace/line_length)
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHlo1 = R"(
@@ -1626,7 +1654,7 @@ TEST_F(
 }
 
 TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
   const std::string kHlo = R"(
@@ -1711,7 +1739,7 @@ ENTRY e {
 }
 
 TEST_F(GemmFusionAutotunerTest, VerifyHopperConfigsAreDifferentFromBlackwell) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
 
@@ -1752,7 +1780,7 @@ TEST_F(GemmFusionAutotunerTest, VerifyHopperConfigsAreDifferentFromBlackwell) {
 }
 
 TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsAreGenerated) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
 
@@ -1781,7 +1809,7 @@ TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsAreGenerated) {
 }
 
 TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsHaveCuBlasFallback) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
 
@@ -1829,7 +1857,7 @@ class GemmFusionAutotunerEnableTma : public GemmFusionAutotunerTest {
 
 TEST_F(GemmFusionAutotunerEnableTma,
        TmaConfigsAreGeneratedOnlyForHopperAndWorkCorrectly) {
-  if (isRocm()) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
 
@@ -1883,9 +1911,8 @@ TEST_F(GemmFusionAutotunerEnableTma,
                             ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
 }
 
-TEST_F(GemmFusionAutotunerEnableTma,
-       TmaConfigsGeneratedAndRunCorrectlyForDotsOfBroadcasts) {
-  if (isRocm()) {
+TEST_F(GemmFusionAutotunerEnableTma, TmaRunCorrectlyForDotsOfBroadcasts) {
+  if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
 
@@ -1907,15 +1934,6 @@ TEST_F(GemmFusionAutotunerEnableTma,
           se::CudaComputeCapability(se::CudaComputeCapability::kHopper, 0),
           GetToolkitVersion(), GetDebugOptionsForTest(),
           &symbolic_expr_context_));
-
-  auto is_disallowed_tma_config = [](const TritonGemmConfig& c) {
-    return c.num_stages > 2 && c.is_tma_allowed;
-  };
-  auto is_allowed_tma_config = [](const TritonGemmConfig& c) {
-    return c.num_stages <= 2 && c.is_tma_allowed;
-  };
-  EXPECT_FALSE(absl::c_any_of(hopper_configs, is_disallowed_tma_config));
-  EXPECT_TRUE(absl::c_any_of(hopper_configs, is_allowed_tma_config));
 
   EXPECT_TRUE(RunAndCompare(std::move(module),
                             ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));

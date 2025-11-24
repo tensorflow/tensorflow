@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -105,15 +106,28 @@ NcclCollectives::GetCliqueIdCallback(const CliqueIdCallback* clique_id_callback,
   return local_callback;
 }
 
-static ncclConfig_t AsNcclConfig(const GpuCollectives::Config& config) {
+static absl::StatusOr<ncclConfig_t> AsNcclConfig(
+    const GpuCollectives::Config& config,
+    const se::StreamExecutor* stream_executor) {
   ncclConfig_t comm_config = NCCL_CONFIG_INITIALIZER;
   comm_config.blocking = config.blocking_communicators ? 1 : 0;
 #if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION > 50700
   comm_config.splitShare = config.split_share;
 #endif
+  int nccl_version;
+  XLA_NCCL_RETURN_IF_ERROR(ncclGetVersion(&nccl_version));
   if (config.max_nchannels > 0) {
     VLOG(1) << "Maximum number of channels is set to: " << comm_config.maxCTAs;
     comm_config.maxCTAs = config.max_nchannels;
+  } else if (stream_executor->GetDeviceDescription()
+                 .cuda_compute_capability()
+                 .IsBlackwell() &&
+             nccl_version >= NCCL_VERSION(2, 28, 0)) {
+    // Future NCCL versions will reduce the default max number of channels on
+    // Blackwell to 16. We need to manually set it to 32 here to avoid surprise
+    // perf regressions.
+    VLOG(1) << "Setting max number of channels to 32 on Blackwell.";
+    comm_config.maxCTAs = 32;
   }
   return comm_config;
 }
@@ -130,10 +144,10 @@ static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
-                                     const std::optional<CliqueIds>& clique_ids,
-                                     absl::Span<const DeviceRank> ranks,
-                                     const Collectives::Config& config) {
+NcclCollectives::CreateCommunicatorsWithCancel(
+    const CliqueKey& clique_key, const std::optional<CliqueIds>& clique_ids,
+    absl::Span<const DeviceRank> ranks, const Collectives::Config& config,
+    std::atomic_bool* cancel) {
   // Validate clique ids. With the NCCL backend, we rely on the host to exchange
   // unique clique ids.
   if (!clique_ids.has_value() || clique_ids->data().empty()) {
@@ -154,7 +168,6 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
         "async_execution is false. Non-blocking communicators require "
         "asynchronous execution.");
   }
-  ncclConfig_t comm_config = AsNcclConfig(gpu_config);
 
   // make_comm returns a new ncclComm_t.
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
@@ -165,6 +178,10 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
     auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
     auto activate_context = device->stream_executor()->Activate();
+
+    TF_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
+                        AsNcclConfig(gpu_config, device->stream_executor()));
+
     TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(clique_ids->at(0)));
     ncclComm_t comm;
     XLA_NCCL_RETURN_IF_ERROR(
@@ -184,7 +201,7 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
       pool.Schedule([&, i]() {
         absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
             NcclCommunicator::Create(std::bind(make_comm, i),
-                                     gpu_config.async_execution);
+                                     gpu_config.async_execution, cancel);
         if (!comm.ok()) {
           absl::call_once(once, [&] { status = comm.status(); });
           return;
@@ -198,10 +215,10 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
-                                    int32_t color,
-                                    absl::Span<const RankId> keys,
-                                    const Collectives::Config& config) {
+NcclCollectives::SplitCommunicatorsWithCancel(
+    absl::Span<const Communicator* const> comms, int32_t color,
+    absl::Span<const RankId> keys, const Collectives::Config& config,
+    absl::Span<const DeviceRank> ranks, std::atomic_bool* cancel) {
   auto rank_formatter = [](std::string* str, RankId rank) {
     absl::StrAppend(str, rank.value());
   };
@@ -218,10 +235,15 @@ NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
 
   const auto& gpu_config =
       tsl::down_cast<const GpuCollectives::Config&>(config);
-  ncclConfig_t comm_config = AsNcclConfig(gpu_config);
 
 #if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
+    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    TF_RET_CHECK(device != nullptr);
+
+    TF_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
+                        AsNcclConfig(gpu_config, device->stream_executor()));
+
     VLOG(1) << "Split NCCL communicator " << comms[i] << " with color " << color
             << " and key " << keys[i];
     ncclComm_t split_comm;
@@ -240,7 +262,7 @@ NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
       pool.Schedule([&, i]() {
         absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
             NcclCommunicator::Create(std::bind(make_comm, i),
-                                     gpu_config.async_execution);
+                                     gpu_config.async_execution, cancel);
         if (!comm.ok()) {
           absl::call_once(once, [&] { status = comm.status(); });
           return;

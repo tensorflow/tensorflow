@@ -341,7 +341,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
   };
   HloInstruction* rotated0 = rotate_with_padding(amount);
   if (right_padding == 0) {
-    SetPartitionedHlo(hlo, [&] { return rotated0; });
+    SetPartitionedHlo(hlo, rotated0);
     return absl::OkStatus();
   }
 
@@ -374,10 +374,9 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
   HloInstruction* pred = b_.AddInstruction(HloInstruction::CreateCompare(
       ShapeUtil::ChangeElementType(iota->shape(), PRED), iota,
       selection_boundary, Comparison::Direction::kLt));
-  SetPartitionedHlo(hlo, [&] {
-    return b_.AddInstruction(HloInstruction::CreateTernary(
-        rotated0->shape(), HloOpcode::kSelect, pred, rotated1, rotated0));
-  });
+  SetPartitionedHlo(hlo, b_.AddInstruction(HloInstruction::CreateTernary(
+                             rotated0->shape(), HloOpcode::kSelect, pred,
+                             rotated1, rotated0)));
   return absl::OkStatus();
 }
 
@@ -405,7 +404,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
         input->shape(), MakePartitionedShape(hlo->shape(), hlo->sharding())));
     auto copy = b_.AddInstruction(
         HloInstruction::CreateUnary(input->shape(), HloOpcode::kCopy, input));
-    SetPartitionedHlo(hlo, [&] { return copy; });
+    SetPartitionedHlo(hlo, copy);
     return absl::OkStatus();
   }
   if (hlo->custom_call_target() == "SPMDShardToFullShape") {
@@ -416,7 +415,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
         HloInstruction::CreateUnary(input->shape(), HloOpcode::kCopy, input));
     CHECK(ShapeUtil::Compatible(
         copy->shape(), MakePartitionedShape(hlo->shape(), hlo->sharding())));
-    SetPartitionedHlo(hlo, [&] { return copy; });
+    SetPartitionedHlo(hlo, copy);
     return absl::OkStatus();
   }
 

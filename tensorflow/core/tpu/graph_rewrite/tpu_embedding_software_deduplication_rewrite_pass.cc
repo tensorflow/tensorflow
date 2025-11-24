@@ -51,7 +51,7 @@ namespace {
 // Check the number of outputs for RecvActivationsNode or for number of inputs
 // For SendGradientsNode.
 absl::Status CheckNumInputsOrOutputs(
-    const int32 num_input_or_outputs, const std::string& attribute_name,
+    const int32_t num_input_or_outputs, const std::string& attribute_name,
     const std::string& node_name,
     const tpu::TPUEmbeddingConfiguration& tpu_embedding_config) {
   if (tpu_embedding_config.feature_descriptor_size() == 0 &&
@@ -129,7 +129,7 @@ absl::StatusOr<NodeDef> MakeRecvActivationsNodeDef(
         "Malformed config attribute in the RecvTPUEmbeddingActivations node.");
   }
 
-  int32 num_outputs;
+  int32_t num_outputs;
   TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(old_activations_node_def),
                                  "num_outputs", &num_outputs));
 
@@ -185,7 +185,7 @@ absl::StatusOr<NodeDef> MakeSendGradientsNodeDef(
         "Malformed config attribute in the SendTPUEmbeddingGradients node.");
   }
 
-  int32 num_inputs;
+  int32_t num_inputs;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(AttrSlice(old_gradients_node_def), "N", &num_inputs));
 
@@ -193,7 +193,7 @@ absl::StatusOr<NodeDef> MakeSendGradientsNodeDef(
                                              "SendTPUEmbeddingGradients",
                                              tpu_embedding_config));
 
-  int32 dynamic_inputs_tag_count = 0;
+  int32_t dynamic_inputs_tag_count = 0;
   if (!GetNodeAttr(AttrSlice(old_gradients_node_def), "NN",
                    &dynamic_inputs_tag_count)
            .ok()) {
@@ -209,7 +209,7 @@ absl::StatusOr<NodeDef> MakeSendGradientsNodeDef(
         status_or_dynamic_inputs_tag_count.status().message());
   }
 
-  const int32 expected_dynamic_inputs_tag_count =
+  const int32_t expected_dynamic_inputs_tag_count =
       status_or_dynamic_inputs_tag_count.value();
 
   if (dynamic_inputs_tag_count != expected_dynamic_inputs_tag_count) {
@@ -221,7 +221,7 @@ absl::StatusOr<NodeDef> MakeSendGradientsNodeDef(
   }
 
   if (data_inputs.size() !=
-      static_cast<uint64>(num_inputs + dynamic_inputs_tag_count)) {
+      static_cast<uint64_t>(num_inputs + dynamic_inputs_tag_count)) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "Mismatch in the number of inputs for SendTPUEmbeddingGradients node, "
         "expected: %d, actual: %d",

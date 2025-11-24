@@ -54,10 +54,6 @@ class ExecutionState {
   // already set, or if type id is not supported as a state.
   absl::Status Set(TypeId type_id, void* state);
 
-  // Sets opaque state with a given type id and custom deleter. Returns an error
-  // if state is already set, or if type id is not supported as a state.
-  absl::Status Set(TypeId type_id, void* state, void (*deleter)(void*));
-
   // Returns opaque state of the given type id. If set state type id does not
   // match the requested one, returns an error.
   absl::StatusOr<void*> Get(TypeId type_id) const;

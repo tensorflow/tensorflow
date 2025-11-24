@@ -43,7 +43,7 @@ int GetTotal(const NameRangeMap& name_map) {
 // to DEVICE_MEMORY except those args in host_memory_args.  Removes
 // elements of host_memory_args that were used.
 void MemoryTypesHelper(const NameRangeMap& name_map,
-                       std::vector<string>* host_memory_args,
+                       std::vector<std::string>* host_memory_args,
                        MemoryTypeVector* memory_types) {
   // Update args that have been marked as in "HOST_MEMORY".
   size_t keep = 0;
@@ -62,10 +62,10 @@ void MemoryTypesHelper(const NameRangeMap& name_map,
   host_memory_args->resize(keep);
 }
 
-bool IsFunctionCallOp(const string& op_type) {
+bool IsFunctionCallOp(const std::string& op_type) {
   return op_type == "SymbolicGradient" || op_type == "PartitionedCall" ||
          op_type == "StatefulPartitionedCall" || op_type == "While" ||
-         op_type == "StatelessWhile" || op_type == "If" || 
+         op_type == "StatelessWhile" || op_type == "If" ||
          op_type == "StatelessIf";
 }
 
@@ -110,11 +110,11 @@ absl::Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   bool is_fn = IsFunctionCallOp(ndef.op());
   bool has_kernel_def = status.ok() && !is_fn;
   auto host_memory_required = [&](const DataType& dt) {
-    bool int32_on_device = 
+    bool int32_on_device =
         has_kernel_def || device_type.type_string() == "TPU" || has_xla_compile;
     return DataTypeAlwaysOnHost(dt) || (dt == DT_INT32 && !int32_on_device);
   };
-  
+
   //  Edge cases:
   //  1. If[Tcond=DT_BOOL, Tin=[DT_FLOAT,DT_INT32], Tout=[DT_FLOAT,DT_INT32]]
   //     * Tcond marked HostMemory by kernel_def
@@ -146,17 +146,16 @@ absl::Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
       out_mtypes->resize(GetTotal(out_names), DEVICE_MEMORY);
     }
 
-    // Fills in host memory types based on the kernel def
-    if(kdef != nullptr) {  // can this ever be false?
-      const auto& from_proto = kdef->host_memory_arg();
-      std::vector<string> host_memory_args(from_proto.begin(), from_proto.end());
-      MemoryTypesHelper(inp_names, &host_memory_args, inp_mtypes);
-      MemoryTypesHelper(out_names, &host_memory_args, out_mtypes);
-      if (!host_memory_args.empty()) {
-        return errors::InvalidArgument(
-            "HostMemory args '", absl::StrJoin(host_memory_args, "', '"),
-            "' not found in OpDef: ", SummarizeOpDef(*op_def));
-      }
+    // Fills in host memory types based on the kernel def.
+    const auto& from_proto = kdef->host_memory_arg();
+    std::vector<std::string> host_memory_args(from_proto.begin(),
+                                              from_proto.end());
+    MemoryTypesHelper(inp_names, &host_memory_args, inp_mtypes);
+    MemoryTypesHelper(out_names, &host_memory_args, out_mtypes);
+    if (!host_memory_args.empty()) {
+      return errors::InvalidArgument(
+          "HostMemory args '", absl::StrJoin(host_memory_args, "', '"),
+          "' not found in OpDef: ", SummarizeOpDef(*op_def));
     }
   } else {
     inp_mtypes->resize(inp_dtypes.size(), DEVICE_MEMORY);
@@ -177,7 +176,7 @@ absl::Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
     }
   }
 
-  std::vector<int32> hostmem_attr;
+  std::vector<int32_t> hostmem_attr;
   if (TryGetNodeAttr(ndef, "_input_hostmem", &hostmem_attr)) {
     for (int32_t i : hostmem_attr) {
       if (0 <= i && i < inp_mtypes->size()) {

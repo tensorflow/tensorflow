@@ -33,6 +33,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/debug_options_flags.h"
+#include "xla/service/dump.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
@@ -569,15 +571,12 @@ absl::Status GpuCommandBuffer::Finalize() {
   TF_RETURN_IF_ERROR(PrepareFinalization());
 
   // Maybe dump created GPU graph to a dot file for debugging.
-  if (state_ == State::kCreate && VLOG_IS_ON(10)) {
-    std::string path = tsl::io::GetTempFilename(/*extension=*/"dot");
-    TF_RETURN_IF_ERROR(WriteGraphToDotFile(path));
-    if (VLOG_IS_ON(100)) {
-      std::string dot_file_contents;
-      TF_RETURN_IF_ERROR(
-          tsl::ReadFileToString(tsl::Env::Default(), path, &dot_file_contents));
-      VLOG(100) << "Contents of " << path << " is:\n" << dot_file_contents;
-    }
+  if (state_ == State::kCreate &&
+      (VLOG_IS_ON(10) || (VLOG_IS_ON(9) && mode_ == Mode::kPrimary))) {
+    xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+    std::string contents = ToString();
+    std::string filename = absl::StrFormat("gpu_command_buffer_%p.dot", this);
+    xla::DumpToFileInDir(debug_options, filename, contents);
   }
 
   size_t num_commands = commands_.size();

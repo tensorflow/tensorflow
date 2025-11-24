@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/codegen/ir_emission_utils.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape.h"
 
 namespace xla {
@@ -78,8 +78,7 @@ bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
 }
 
 std::unique_ptr<FusionInterface> GetFusionEmitter(
-    const FusionInfo& fusion_info,
-    gpu::SymbolicExprContext* symbolic_expr_context) {
+    const FusionInfo& fusion_info, SymbolicExprContext* symbolic_expr_context) {
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
 

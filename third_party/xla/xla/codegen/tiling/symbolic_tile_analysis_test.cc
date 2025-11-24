@@ -45,6 +45,8 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -52,7 +54,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -64,6 +65,7 @@ namespace {
 
 using absl_testing::IsOkAndHolds;
 using detail::GetFlatTilingsForInputSpace;
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::ExplainMatchResult;
 using ::testing::IsEmpty;
@@ -103,7 +105,7 @@ absl::flat_hash_map<int64_t, const TiledHloInstruction*> GetParametersTiling(
   absl::flat_hash_map<int64_t, const TiledHloInstruction*> result;
   for (const auto& instruction : tiled_hlo_computation->instructions()) {
     const HloParameterInstruction* parameter =
-        dynamic_cast<const HloParameterInstruction*>(instruction->hlo());
+        DynCast<const HloParameterInstruction>(instruction->hlo());
     if (!parameter) {
       continue;
     }
@@ -193,7 +195,7 @@ class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
   mlir::MLIRContext mlir_context_;
   TiledHloScheduleBuilder default_schedule_builder_ =
       CreateMajorToMinorTiledHloSchedule;
-  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
+  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(SymbolicTileAnalysisTest, SimpleNormalizationDiamondIsSupported) {
@@ -1645,8 +1647,8 @@ ENTRY e {
   EXPECT_EQ(dynamic_slice->hlo()->opcode(), HloOpcode::kDynamicSlice);
   const TiledHloInstruction* p0 = dynamic_slice->operand(0);
   EXPECT_THAT(*p0, MatchTiledHloInstruction(
-                       /*tile_sizes=*/{2, 8, 2},
-                       /*tile_strides=*/{1, 1, 1},
+                       /*tile_sizes=*/{1, 8, 2},
+                       /*tile_strides=*/{0, 1, 1},
                        /*tile_offsets_indexing=*/R"(
     (pid_0){rt0} -> (rt0, 0, 0), domain: pid_0 in [0, 0], rt0 in [0, 3]
   )"));
@@ -2292,7 +2294,8 @@ ENTRY main {
                   ::testing::HasSubstr("not divisible by tile size")));
 }
 
-TEST_F(SymbolicTileAnalysisTest, TrivialDimensionParametersArePreserved) {
+TEST_F(SymbolicTileAnalysisTest,
+       TrivialNonBatchDotDimensionParametersArePreserved) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 lhs {
@@ -2367,6 +2370,76 @@ ENTRY main {
                   /*tile_offsets_indexing=*/
                   "(pid_0) -> (0, (pid_0 mod 4) * 32), domain: "
                   "pid_0 in [0, 35]"));
+}
+
+TEST_F(SymbolicTileAnalysisTest,
+       TrivialBatchDotDimensionParametersAreEliminated) {
+  // Note: the batch dot dimension parameters are only eliminated if contracting
+  // and non-contracting dimensions do not contain trivial dimensions.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+lhs {
+  ROOT p0 = f32[1,137,115] parameter(0)
+}
+
+rhs {
+  p0 = f32[1,2,115] parameter(0)
+  ROOT root = f32[1,2,115] convert(p0)
+}
+
+dot {
+  p0 = f32[1,137,115] parameter(0)
+  p1 = f32[1,2,115] parameter(1)
+
+  lhs = f32[1,137,115] fusion(p0),
+    kind=kCustom, calls=lhs, backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1","16","32"]}]}}}
+  rhs = f32[1,2,115] fusion(p1),
+    kind=kCustom, calls=rhs, backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1","16","32"]}]}}}
+
+  ROOT dot = f32[1,137,2] dot(lhs, rhs),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={2}
+}
+
+ENTRY main {
+  p0 = f32[1,137,115] parameter(0)
+  p1 = f32[1,2,115] parameter(1)
+  ROOT fusion = f32[1,137,2] fusion(p0, p1),
+    kind=kCustom, calls=dot
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  const HloInstruction* dot_hlo =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+  Tiling tiling(Tiling::TileMapping{{dot_hlo, {32, 1, 16, 16}}});
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              tiling, default_schedule_builder_,
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+
+  const TiledHloInstruction* dot = tiled_hlo_computation.GetRoots().front();
+  ASSERT_EQ(dot->hlo()->opcode(), HloOpcode::kDot);
+
+  const TiledHloFusionInstruction* lhs_fusion =
+      static_cast<const TiledHloFusionInstruction*>(dot->operand(0));
+  const TiledHloFusionInstruction* rhs_fusion =
+      static_cast<const TiledHloFusionInstruction*>(dot->operand(1));
+
+  // We recognize that the batch dimension has been simplified away by the fact
+  // that the stride in the relevant dimension is 0.
+  EXPECT_THAT(
+      lhs_fusion->called_computation()->GetRoots().front()->tile_strides(),
+      ElementsAre(0, 1, 1));
+  EXPECT_THAT(
+      rhs_fusion->called_computation()->GetRoots().front()->tile_strides(),
+      ElementsAre(0, 1, 1));
 }
 
 TEST_F(SymbolicTileAnalysisTest,

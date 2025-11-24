@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/service/computation_placer.h"
@@ -377,6 +376,17 @@ class PjRtCApiClient : public PjRtClient {
                               PjRtDevice* device,
                               PjRtCrossHostRecvNotifier notifier) override;
 
+  absl::StatusOr<std::vector<Future<>>> CrossHostSendBuffers(
+      absl::Span<PjRtBuffer* const> buffers,
+      absl::Span<const PjRtGlobalDeviceId> dst_global_device_ids,
+      std::vector<CrossHostTransferKey> transfer_keys) override;
+
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  CrossHostReceiveBuffers(
+      xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
+      absl::Span<const PjRtGlobalDeviceId> src_global_device_ids,
+      std::vector<CrossHostTransferKey> transfer_keys) override;
+
   absl::Status DmaMap(void* data, size_t size) override;
 
   absl::Status DmaUnmap(void* data) override;
@@ -590,6 +600,9 @@ class PjRtCApiExecutable : public PjRtExecutable {
   absl::StatusOr<std::vector<std::vector<DimensionVector>>>
   GetOutputDimensions() const override;
 
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetOutputLayouts() const override;
+
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override;
 
@@ -669,6 +682,11 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<DimensionVector>>>
   GetOutputDimensions() const override {
     return executable_->GetOutputDimensions();
+  }
+
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetOutputLayouts() const override {
+    return executable_->GetOutputLayouts();
   }
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>

@@ -33,10 +33,10 @@ FunctionHandleCache::~FunctionHandleCache() {
 }
 
 absl::Status FunctionHandleCache::Instantiate(
-    const string& function_name, AttrSlice attrs,
+    const std::string& function_name, AttrSlice attrs,
     FunctionLibraryRuntime::InstantiateOptions options,
     FunctionLibraryRuntime::Handle* handle) {
-  string key = Canonicalize(function_name, attrs, options);
+  std::string key = Canonicalize(function_name, attrs, options);
   FunctionLibraryRuntime::Handle h;
   {
     tf_shared_lock l(mu_);

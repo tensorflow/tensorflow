@@ -27,9 +27,9 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/custom_kernel.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
@@ -64,6 +64,11 @@ class FissionBackend : public GpuCodegenBackend {
 
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
+
+ private:
+  bool IsSupported(const HloInstruction& instr) override {
+    return instr.opcode() == HloOpcode::kFusion;
+  }
 
   CublasBackend cublas_backend_;
   CublasLtBackend cublaslt_backend_;

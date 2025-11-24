@@ -36,21 +36,21 @@ class SummaryWriterInterface : public ResourceBase {
 
   // These are called in the OpKernel::Compute methods for the summary ops.
   virtual absl::Status WriteTensor(int64_t global_step, Tensor t,
-                                   const string& tag,
-                                   const string& serialized_metadata) = 0;
+                                   const std::string& tag,
+                                   const std::string& serialized_metadata) = 0;
 
   virtual absl::Status WriteScalar(int64_t global_step, Tensor t,
-                                   const string& tag) = 0;
+                                   const std::string& tag) = 0;
 
   virtual absl::Status WriteHistogram(int64_t global_step, Tensor t,
-                                      const string& tag) = 0;
+                                      const std::string& tag) = 0;
 
   virtual absl::Status WriteImage(int64_t global_step, Tensor t,
-                                  const string& tag, int max_images,
+                                  const std::string& tag, int max_images,
                                   Tensor bad_color) = 0;
 
   virtual absl::Status WriteAudio(int64_t global_step, Tensor t,
-                                  const string& tag, int max_outputs_,
+                                  const std::string& tag, int max_outputs_,
                                   float sample_rate) = 0;
 
   virtual absl::Status WriteGraph(int64_t global_step,

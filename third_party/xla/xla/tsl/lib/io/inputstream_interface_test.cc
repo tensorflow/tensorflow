@@ -25,7 +25,7 @@ namespace {
 
 class TestStringStream : public InputStreamInterface {
  public:
-  explicit TestStringStream(const string& content) : content_(content) {}
+  explicit TestStringStream(const std::string& content) : content_(content) {}
 
   absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) override {
     result->clear();
@@ -45,7 +45,7 @@ class TestStringStream : public InputStreamInterface {
   }
 
  private:
-  string content_;
+  std::string content_;
   int64_t pos_ = 0;
 };
 

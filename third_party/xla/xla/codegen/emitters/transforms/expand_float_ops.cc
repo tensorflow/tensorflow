@@ -505,6 +505,11 @@ struct RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
   mlir::LogicalResult matchAndRewrite(
       ma::TruncFOp op, mlir::PatternRewriter& rewriter) const override {
     using FloatValue = mlir::TypedValue<mlir::FloatType>;
+
+    if (!op.getType().isFloat()) {
+      return rewriter.notifyMatchFailure(op, "not a scalar float");
+    }
+
     auto src = mlir::cast<FloatValue>(op.getOperand());
     auto dst_ty = mlir::cast<mlir::FloatType>(op.getType());
     if (dst_ty.getWidth() > 8) {
@@ -523,6 +528,11 @@ struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
   mlir::LogicalResult matchAndRewrite(
       ma::ExtFOp op, mlir::PatternRewriter& rewriter) const override {
     using FloatValue = mlir::TypedValue<mlir::FloatType>;
+
+    if (!op.getType().isFloat()) {
+      return rewriter.notifyMatchFailure(op, "not a scalar float");
+    }
+
     auto src = mlir::cast<FloatValue>(op.getOperand());
     auto dst_ty = mlir::cast<mlir::FloatType>(op.getType());
     if (src.getType().getWidth() > 8) {
@@ -541,6 +551,10 @@ struct RewriteF8Cst : public mlir::OpRewritePattern<ma::CmpFOp> {
 
   mlir::LogicalResult matchAndRewrite(
       ma::CmpFOp op, mlir::PatternRewriter& rewriter) const override {
+    if (!op.getLhs().getType().isFloat()) {
+      return rewriter.notifyMatchFailure(op, "not a scalar cmpf");
+    }
+
     using FloatValue = mlir::TypedValue<mlir::FloatType>;
     auto lhs = mlir::cast<FloatValue>(op.getLhs());
     auto rhs = mlir::cast<FloatValue>(op.getRhs());
@@ -584,7 +598,10 @@ struct RewriteAbsFPattern : public mlir::OpRewritePattern<mlir::math::AbsFOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::math::AbsFOp op, mlir::PatternRewriter& rewriter) const override {
     using FloatValue = mlir::TypedValue<mlir::FloatType>;
-    auto src = mlir::cast<FloatValue>(op.getOperand());
+    auto src = mlir::dyn_cast<FloatValue>(op.getOperand());
+    if (!src) {
+      return rewriter.notifyMatchFailure(op, "not a scalar float");
+    }
     // LowerGpuOpsToNVVMOps has a lowering for abs that doesn't work with bf16.
     // Once that's removed, remove the code for BF16 here.
     if (src.getType().getWidth() > 8 && !src.getType().isBF16()) {
@@ -615,7 +632,7 @@ struct RewriteIToFpPattern : public mlir::OpRewritePattern<Op> {
 
   mlir::LogicalResult matchAndRewrite(
       Op op, mlir::PatternRewriter& rewriter) const override {
-    if (op.getType().getIntOrFloatBitWidth() > 8) {
+    if (!op.getType().isFloat() || op.getType().getIntOrFloatBitWidth() > 8) {
       return rewriter.notifyMatchFailure(op, "not an f8 (or less) itofp");
     }
     Value to_float =
@@ -631,7 +648,8 @@ struct RewriteFpToIPattern : public mlir::OpRewritePattern<Op> {
 
   mlir::LogicalResult matchAndRewrite(
       Op op, mlir::PatternRewriter& rewriter) const override {
-    if (op.getIn().getType().getIntOrFloatBitWidth() > 8) {
+    if (!op.getIn().getType().isFloat() ||
+        op.getIn().getType().getIntOrFloatBitWidth() > 8) {
       return rewriter.notifyMatchFailure(op, "not an f8 (or less) fptoi");
     }
     Value to_f32 = rewriter.create<ma::ExtFOp>(

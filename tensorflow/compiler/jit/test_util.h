@@ -44,7 +44,7 @@ namespace tensorflow {
 // `expected_shapes` entries.
 absl::Status ShapeAnnotationsMatch(
     const Graph& graph, const GraphShapeInfo& shape_info,
-    std::map<string, std::vector<PartialTensorShape>> expected_shapes);
+    std::map<std::string, std::vector<PartialTensorShape>> expected_shapes);
 
 // A helper object to create GraphOptimizationPassOptions.
 struct GraphOptimizationPassWrapper {
@@ -74,7 +74,7 @@ class DeviceSetup {
   void AddDevicesAndSetUp(
       const std::vector<std::string>& device_names,
       const std::optional<FunctionDef>& fdef = std::nullopt);
-  Device* GetDevice(const string& device_name);
+  Device* GetDevice(const std::string& device_name);
   FunctionLibraryRuntime* flr() { return flr_; }
 
  private:

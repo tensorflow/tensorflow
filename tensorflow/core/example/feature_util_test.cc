@@ -455,9 +455,9 @@ TEST(AppendFeatureValuesTest, StringValuesUsingInitializerList) {
 TEST(AppendFeatureValuesTest, StringVariablesUsingInitializerList) {
   Example example;
 
-  string string1("FOO");
-  string string2("BAR");
-  string string3("BAZ");
+  std::string string1("FOO");
+  std::string string2("BAR");
+  std::string string3("BAZ");
 
   AppendFeatureValues({string1, string2, string3}, "tag", &example);
 

@@ -214,7 +214,7 @@ absl::StatusOr<std::unique_ptr<Graph>> BuildConstOpGraphWithOutputShapes() {
   std::initializer_list<int64_t> dims = {2, 3, 4, 5};
   Tensor tensor(data_type, TensorShape(dims));
   for (int i = 0; i < 2 * 3 * 4 * 5; ++i) {
-    tensor.flat<int32>()(i) = i;
+    tensor.flat<int32_t>()(i) = i;
   }
 
   NodeDef node;

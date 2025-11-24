@@ -17,13 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_HLO_RUNNER_H_
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <vector>
 
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -188,9 +188,9 @@ class HloRunner : public HloRunnerInterface {
   // Note that this call ignores `ReplicatedExecutionOptions::run_hlo_passes`,
   // since we've already compiled the `Executable`.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::function<OpaqueExecutable*(int64_t)> executable_provider,
-      std::function<int64_t(int64_t)> argument_count_provider,
-      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) override;
 
@@ -264,12 +264,12 @@ class HloRunner : public HloRunnerInterface {
 
   // Common implementation code for ExecuteReplicated() above.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicatedImpl(
-      std::function<absl::StatusOr<std::vector<ScopedShapedBuffer>>(
+      absl::AnyInvocable<absl::StatusOr<std::vector<ScopedShapedBuffer>>(
           const std::vector<ServiceExecutableRunOptions>&,
           const std::vector<absl::Span<const ShapedBuffer* const>>&)>
           execution_helper,
-      std::function<int64_t(int64_t)> argument_count_provider,
-      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment);
 

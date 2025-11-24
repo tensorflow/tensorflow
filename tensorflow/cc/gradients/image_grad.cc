@@ -95,7 +95,7 @@ absl::Status ScaleAndTranslateGradHelper(const Scope& scope,
                                          const Operation& op,
                                          const std::vector<Output>& grad_inputs,
                                          std::vector<Output>* grad_outputs) {
-  string kernel_type;
+  std::string kernel_type;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "kernel_type", &kernel_type));
   bool antialias;
@@ -117,7 +117,7 @@ absl::Status CropAndResizeGradHelper(const Scope& scope, const Operation& op,
                                      const std::vector<Output>& grad_inputs,
                                      std::vector<Output>* grad_outputs) {
   DataType input_type;
-  string method;
+  std::string method;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "method", &method));
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "T", &input_type));
   auto image_shape = Shape(scope, op.input(0));

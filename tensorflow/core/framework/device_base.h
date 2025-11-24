@@ -269,7 +269,7 @@ class DeviceBase {
   // device memory tagged with an earlier freed-at count is really unencumbered
   // by pending uses.  For this to be useful the device memory allocator must
   // be tagging deallocated memory chunks using the same counter.
-  virtual uint64 SafeAllocFrontier(uint64 old_value) { return 0; }
+  virtual uint64_t SafeAllocFrontier(uint64_t old_value) { return 0; }
 
   // Copies `input_tensor` to `output_tensor`, where both tensors are on this
   // device. This function assumes that `output_tensor` has already been

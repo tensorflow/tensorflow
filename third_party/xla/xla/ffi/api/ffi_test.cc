@@ -23,18 +23,22 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
@@ -47,7 +51,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -57,6 +60,15 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::ffi {
+
+using xla::ffi::internal::ArgTag;
+using xla::ffi::internal::NumTagged;
+using xla::ffi::internal::RetTag;
+
+// Compile-time test for the template metaprogramming for counting tags.
+static_assert(NumTagged<ArgTag, RetTag<int32_t>>::value == 0);
+static_assert(NumTagged<ArgTag, ArgTag<int32_t>>::value == 1);
+static_assert(NumTagged<ArgTag, ArgTag<int32_t>, RetTag<int32_t>>::value == 1);
 
 enum class Int32BasedEnum : int32_t {
   kOne = 1,
@@ -115,8 +127,8 @@ XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(
 
 namespace xla::ffi {
 
+using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 TEST(FfiTest, DataTypeEnumValue) {
   // Verify that xla::PrimitiveType and xla::ffi::DataType use the same
@@ -464,13 +476,39 @@ TEST(FfiTest, RunId) {
   TF_ASSERT_OK(status);
 }
 
+TEST(FfiTest, RunIdViaContext) {
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Ctx().To([&](Context ctx) {
+    ErrorOr<RunId> run_id = ctx.get<RunId>();
+    EXPECT_TRUE(run_id.has_value());
+    EXPECT_EQ(run_id->run_id, 42);
+    return Error::Success();
+  });
+
+  CallOptions options;
+  options.run_id = xla::RunId{42};
+
+  auto status = Call(*handler, call_frame, options);
+
+  TF_ASSERT_OK(status);
+}
+
 TEST(FfiTest, DeviceOrdinal) {
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
-  auto handler =
-      Ffi::Bind().Ctx<DeviceOrdinal>().To([&](int32_t device_ordinal) {
+  auto handler = Ffi::Bind().Ctx<DeviceOrdinal>().Ctx().To(
+      [&](int32_t device_ordinal, Context ctx) {
+        // Get device ordinal from the argument.
         EXPECT_EQ(device_ordinal, 42);
+
+        // Get device ordinal from the context.
+        ErrorOr<int32_t> device_ordinal_or_error = ctx.get<DeviceOrdinal>();
+        EXPECT_TRUE(device_ordinal_or_error.has_value());
+        EXPECT_EQ(*device_ordinal_or_error, 42);
+
         return Error::Success();
       });
 
@@ -550,9 +588,8 @@ TEST(FfiTest, MissingBufferArgument) {
       [](auto) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
-  EXPECT_THAT(status,
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                                     HasSubstr("Wrong number of arguments")));
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("Wrong number of arguments")));
 }
 
 TEST(FfiTest, WrongRankBufferArgument) {
@@ -568,9 +605,8 @@ TEST(FfiTest, WrongRankBufferArgument) {
   auto status = Call(*handler, call_frame);
 
   EXPECT_THAT(status,
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  HasSubstr("Wrong buffer rank: expected 1 but got 2")));
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Wrong buffer rank: expected 1 but got 2")));
 }
 
 TEST(FfiTest, WrongTypeBufferArgument) {
@@ -585,10 +621,10 @@ TEST(FfiTest, WrongTypeBufferArgument) {
       [](auto) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
-  EXPECT_THAT(status,
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
+  EXPECT_THAT(
+      status,
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
 }
 
 TEST(FfiTest, WrongNumberOfArguments) {
@@ -604,9 +640,8 @@ TEST(FfiTest, WrongNumberOfArguments) {
       Ffi::Bind().Attr<int>("foo").To([](int foo) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
-  EXPECT_THAT(status,
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                                     HasSubstr("Wrong number of attributes")));
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("Wrong number of attributes")));
   EXPECT_THAT(status.message(), HasSubstr("foo"));
   EXPECT_THAT(status.message(), HasSubstr("bar"));
 }
@@ -639,6 +674,9 @@ TEST(FfiTest, RemainingArgs) {
   auto fn = [&](RemainingArgs args) {
     EXPECT_EQ(args.size(), 1);
 
+    EXPECT_TRUE(args.isa<AnyBuffer>(0));
+    EXPECT_FALSE(args.isa<BufferR2<F64>>(0));
+
     ErrorOr<AnyBuffer> arg0 = args.get<AnyBuffer>(0);
     ErrorOr<AnyBuffer> arg1 = args.get<AnyBuffer>(1);
 
@@ -665,6 +703,9 @@ TEST(FfiTest, RemainingRets) {
 
   auto fn = [&](Result<AnyBuffer> ret, RemainingRets rets) {
     EXPECT_EQ(rets.size(), 1);
+
+    EXPECT_TRUE(rets.isa<AnyBuffer>(0));
+    EXPECT_FALSE(rets.isa<BufferR2<F64>>(0));
 
     ErrorOr<Result<AnyBuffer>> ret0 = rets.get<AnyBuffer>(0);
     ErrorOr<Result<AnyBuffer>> ret1 = rets.get<AnyBuffer>(1);
@@ -860,14 +901,72 @@ TEST(FfiTest, AutoBindingStructs) {
 
 TEST(FfiTest, AutoBindingDictionary) {
   auto handler = Ffi::BindTo(+[](Dictionary attrs) {
+    EXPECT_TRUE(attrs.contains("i32"));
+    EXPECT_TRUE(attrs.contains("f32"));
+
+    EXPECT_TRUE(attrs.contains<int32_t>("i32"));
+    EXPECT_TRUE(attrs.contains<float>("f32"));
+    EXPECT_FALSE(attrs.contains<int64_t>("i32"));
+    EXPECT_FALSE(attrs.contains<int64_t>("f32"));
+
     EXPECT_EQ(*attrs.get<int32_t>("i32"), 42);
     EXPECT_EQ(*attrs.get<float>("f32"), 42.0f);
+
+    auto it = attrs.begin();
+    EXPECT_EQ(*it, "f32");
+    EXPECT_TRUE(attrs.isa<float>(it));
+    EXPECT_EQ(*attrs.get<float>(it), 42.0f);
+
+    EXPECT_EQ(*++it, "i32");
+    EXPECT_TRUE(attrs.isa<int32_t>(it));
+    EXPECT_EQ(*attrs.get<int32_t>(it), 42);
+
+    EXPECT_EQ(++it, attrs.end());
+
     return Error::Success();
   });
 
   CallFrameBuilder::AttributesBuilder attrs;
   attrs.Insert("i32", 42);
   attrs.Insert("f32", 42.0f);
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, VariantAttrDecoding) {
+  using Integral = std::variant<int8_t, int16_t, int32_t, int64_t>;
+
+  auto to_string = absl::Overload{
+      [](int8_t i) { return absl::StrCat("i8: ", i); },
+      [](int16_t i) { return absl::StrCat("i16: ", i); },
+      [](int32_t i) { return absl::StrCat("i32: ", i); },
+      [](int64_t i) { return absl::StrCat("i64: ", i); },
+  };
+
+  auto handler = Ffi::BindTo([&](Dictionary attrs) {
+    EXPECT_TRUE(attrs.contains<Integral>("i32"));
+    EXPECT_TRUE(attrs.contains<Integral>("i64"));
+
+    Integral i32 = *attrs.get<Integral>("i32");
+    EXPECT_EQ(i32.index(), 2);
+
+    Integral i64 = *attrs.get<Integral>("i64");
+    EXPECT_EQ(i64.index(), 3);
+
+    EXPECT_EQ(std::visit(to_string, i32), "i32: 42");
+    EXPECT_EQ(std::visit(to_string, i64), "i64: 42");
+
+    return Error::Success();
+  });
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", int32_t{42});
+  attrs.Insert("i64", int64_t{42});
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
@@ -992,10 +1091,10 @@ TEST(FfiTest, AttrsAsDictionary) {
 }
 
 TEST(FfiTest, DictionaryAttr) {
-  CallFrameBuilder::AttributesMap dict0;
+  AttributesMap dict0;
   dict0.try_emplace("i32", 42);
 
-  CallFrameBuilder::AttributesMap dict1;
+  AttributesMap dict1;
   dict1.try_emplace("f32", 42.0f);
 
   CallFrameBuilder::AttributesBuilder attrs;
@@ -1039,7 +1138,7 @@ TEST(FfiTest, DictionaryAttr) {
 }
 
 TEST(FfiTest, StructAttr) {
-  CallFrameBuilder::AttributesMap dict;
+  AttributesMap dict;
   dict.try_emplace("i32", 42);
   dict.try_emplace("f32", 42.0f);
 
@@ -1152,7 +1251,7 @@ TEST(FfiTest, EnumAttr) {
 }
 
 TEST(FfiTest, WrongEnumAttrType) {
-  CallFrameBuilder::AttributesMap dict;
+  AttributesMap dict;
   dict.try_emplace("i32", 42);
 
   CallFrameBuilder::AttributesBuilder attrs;
@@ -1202,14 +1301,20 @@ struct MyDataWithExplicitTypeId {
 
 // Rely on XLA to assign unique type id for the type.
 TypeId MyDataWithAutoTypeId::id = XLA_FFI_UNKNOWN_TYPE_ID;
+static constexpr auto kMyDataWithAutoTypeIdTypeInfo =
+    MakeTypeInfo<MyDataWithAutoTypeId>();
+
 XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_auto", &MyDataWithAutoTypeId::id,
-                      TypeInfo<MyDataWithAutoTypeId>());
+                      &kMyDataWithAutoTypeIdTypeInfo);
 
 // Provide explicit type id and rely on XLA to check that it's unique.
 TypeId MyDataWithExplicitTypeId::id = {42};
+static constexpr auto kMyDataWithExplicitTypeIdTypeInfo =
+    MakeTypeInfo<MyDataWithExplicitTypeId>();
+
 XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_explicit",
                       &MyDataWithExplicitTypeId::id,
-                      TypeInfo<MyDataWithExplicitTypeId>());
+                      &kMyDataWithExplicitTypeIdTypeInfo);
 
 TEST(FfiTest, UserData) {
   MyDataWithAutoTypeId data0{"foo"};
@@ -1248,14 +1353,16 @@ TEST(FfiTest, UserData) {
 
 struct MyState {
   static TypeId id;
+  static TypeInfo info;
 
   explicit MyState(int32_t value) : value(value) {}
   int32_t value;
 };
 
 TypeId MyState::id = {};  // zero-initialize type id
-XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "state", &MyState::id,
-                      TypeInfo<MyState>());
+TypeInfo MyState::info = MakeTypeInfo<MyState>();
+
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "state", &MyState::id, &MyState::info);
 
 TEST(FfiTest, StatefulHandler) {
   ExecutionState execution_state;
@@ -1346,13 +1453,6 @@ TEST(FfiTest, ScratchAllocatorUnimplemented) {
       CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
   auto status = Call(*handler, call_frame);
   TF_ASSERT_OK(status);
-}
-
-TEST(FfiTest, BindFfiInternals) {
-  (void)Ffi::Bind().Ctx<FfiApi>().Ctx<FfiExecutionContext>().To(
-      +[](const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx) {
-        return Error::Success();
-      });
 }
 
 TEST(FfiTest, ThreadPool) {
@@ -1735,5 +1835,34 @@ static void BM_EnumAttrsFunctionWrapper(benchmark::State& state) {
 BENCHMARK(BM_EnumAttrs);
 BENCHMARK(BM_EnumAttrsFunction);
 BENCHMARK(BM_EnumAttrsFunctionWrapper);
+
+//===----------------------------------------------------------------------===//
+// BM_VariantAttr
+//===----------------------------------------------------------------------===//
+
+void BM_VariantAttr(benchmark::State& state) {
+  using Integral = std::variant<int8_t, int16_t, int32_t, int64_t>;
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", int32_t{0});
+  attrs.Insert("i64", int64_t{0});
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Attr<Integral>("i32").Attr<Integral>("i64").To(
+      [](Integral i32, Integral i64) {
+        benchmark::DoNotOptimize(i32);
+        benchmark::DoNotOptimize(i64);
+        return Error::Success();
+      });
+
+  for (auto _ : state) {
+    CHECK_OK(Call(*handler, call_frame));
+  }
+}
+
+BENCHMARK(BM_VariantAttr);
 
 }  // namespace xla::ffi

@@ -122,7 +122,7 @@ TEST(TensorUtil, DeepCopy) {
 
 TEST(TensorUtil, DeepCopySlice) {
   Tensor x(DT_INT32, TensorShape({10}));
-  x.flat<int32>().setConstant(1);
+  x.flat<int32_t>().setConstant(1);
 
   // Slice 'x' -- y still refers to the same buffer.
   Tensor y = x.Slice(2, 6);
@@ -131,7 +131,7 @@ TEST(TensorUtil, DeepCopySlice) {
   Tensor z = tensor::DeepCopy(y);
 
   // Set x to be different.
-  x.flat<int32>().setConstant(2);
+  x.flat<int32_t>().setConstant(2);
 
   EXPECT_EQ(TensorShape({10}), x.shape());
   EXPECT_EQ(TensorShape({4}), y.shape());
@@ -142,11 +142,11 @@ TEST(TensorUtil, DeepCopySlice) {
 
   // x and y should now all be '2', but z should be '1'.
   for (int i = 0; i < 10; ++i) {
-    EXPECT_EQ(2, x.flat<int32>()(i));
+    EXPECT_EQ(2, x.flat<int32_t>()(i));
   }
   for (int i = 0; i < 4; ++i) {
-    EXPECT_EQ(2, y.unaligned_flat<int32>()(i));
-    EXPECT_EQ(1, z.flat<int32>()(i));
+    EXPECT_EQ(2, y.unaligned_flat<int32_t>()(i));
+    EXPECT_EQ(1, z.flat<int32_t>()(i));
   }
 }
 
@@ -223,7 +223,7 @@ TEST(TensorUtil, Concat) {
     Tensor tensor(DT_INT32, TensorShape({size, 2}));
     for (int i = offset; i < offset + size; ++i) {
       for (int j = 0; j < 2; ++j) {
-        tensor.matrix<int32>()(i - offset, j) = 2 * i + j;
+        tensor.matrix<int32_t>()(i - offset, j) = 2 * i + j;
       }
     }
     to_concat.push_back(tensor);
@@ -236,7 +236,7 @@ TEST(TensorUtil, Concat) {
   ASSERT_EQ(TensorShape({total_size, 2}), concated.shape());
   for (int i = 0; i < total_size; ++i) {
     for (int j = 0; j < 2; ++j) {
-      EXPECT_EQ(2 * i + j, concated.matrix<int32>()(i, j));
+      EXPECT_EQ(2 * i + j, concated.matrix<int32_t>()(i, j));
     }
   }
 }
@@ -296,9 +296,9 @@ TEST(TensorUtil, ConcatSplitStrings) {
 
 TEST(TensorProtoUtil, CreateTensorProtoSpan_string) {
   // Don't use vector to trigger Span version.
-  string s[2] = {"a", "b"};
+  std::string s[2] = {"a", "b"};
   std::vector<size_t> shape{1, 2};
-  auto proto = tensor::CreateTensorProtoSpan<string>(s, shape);
+  auto proto = tensor::CreateTensorProtoSpan<std::string>(s, shape);
   TensorProto expected_tensor_proto;
   expected_tensor_proto.set_dtype(DT_STRING);
   expected_tensor_proto.mutable_tensor_shape()->add_dim()->set_size(1);
@@ -310,9 +310,9 @@ TEST(TensorProtoUtil, CreateTensorProtoSpan_string) {
 
 TEST(TensorProtoUtil, CreateTensorProtoSpan_int32) {
   // Don't use vector to trigger Span version.
-  int32 s[2] = {123, 456};
+  int32_t s[2] = {123, 456};
   std::vector<size_t> shape{1, 2};
-  auto proto = tensor::CreateTensorProtoSpan<int32>(s, shape);
+  auto proto = tensor::CreateTensorProtoSpan<int32_t>(s, shape);
   TensorProto expected_tensor_proto;
   expected_tensor_proto.set_dtype(DT_INT32);
   expected_tensor_proto.mutable_tensor_shape()->add_dim()->set_size(1);
@@ -323,7 +323,7 @@ TEST(TensorProtoUtil, CreateTensorProtoSpan_int32) {
 }
 
 TEST(TensorProtoUtil, CreatesStringTensorProto) {
-  std::vector<string> values{"a", "b", "c"};
+  std::vector<std::string> values{"a", "b", "c"};
   std::vector<size_t> shape{1, 3};
 
   auto proto = tensor::CreateTensorProto(values, shape);
@@ -347,7 +347,7 @@ TEST(TensorProtoUtil, CreatesStringTensorProto) {
 }
 
 TEST(TensorProtoUtil, CreatesInt32TensorProto) {
-  std::vector<int32> values{1, 2};
+  std::vector<int32_t> values{1, 2};
   std::vector<size_t> shape{2};
 
   auto proto = tensor::CreateTensorProto(values, shape);
@@ -387,7 +387,7 @@ TEST(TensorProtoUtil, CreatesInt64TensorProto) {
 }
 
 TEST(TensorProtoUtil, CreatesUInt32TensorProto) {
-  std::vector<uint32> values{1, 2};
+  std::vector<uint32_t> values{1, 2};
   std::vector<size_t> shape{2};
 
   auto proto = tensor::CreateTensorProto(values, shape);
@@ -407,7 +407,7 @@ TEST(TensorProtoUtil, CreatesUInt32TensorProto) {
 }
 
 TEST(TensorProtoUtil, CreatesUInt64TensorProto) {
-  std::vector<uint64> values{1, 2};
+  std::vector<uint64_t> values{1, 2};
   std::vector<size_t> shape{2};
 
   auto proto = tensor::CreateTensorProto(values, shape);
@@ -495,7 +495,7 @@ TEST(TensorProtoUtil, CompressTensorProtoInPlaceTooSmall) {
       tensor::CreateTensorProto(std::vector<int>(kLength), {kLength});
   EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   tensor_proto =
-      tensor::CreateTensorProto(std::vector<uint8>(kLength), {kLength});
+      tensor::CreateTensorProto(std::vector<uint8_t>(kLength), {kLength});
   EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   tensor_proto =
       tensor::CreateTensorProto(std::vector<bool>(kLength), {kLength});
@@ -523,10 +523,10 @@ TEST(TensorProtoUtil, CompressTensorProtoInPlaceAllEqual) {
             0);
 
   tensor_proto =
-      tensor::CreateTensorProto(std::vector<uint8>(kLength), {kLength});
+      tensor::CreateTensorProto(std::vector<uint8_t>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
-  EXPECT_EQ(tensor::internal::TensorProtoHelper<uint8>::NumValues(tensor_proto),
-            0);
+  EXPECT_EQ(
+      tensor::internal::TensorProtoHelper<uint8_t>::NumValues(tensor_proto), 0);
   tensor_proto =
       tensor::CreateTensorProto(std::vector<bool>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
@@ -645,14 +645,14 @@ TEST(TensorProtoUtil, CompressTensorProtoConstantTail) {
       ConstantTailTest<double>(kLength, tail_length, as_field);
       ConstantTailTest<complex64>(kLength, tail_length, as_field);
       ConstantTailTest<complex128>(kLength, tail_length, as_field);
-      ConstantTailTest<int32>(kLength, tail_length, as_field);
-      ConstantTailTest<uint32>(kLength, tail_length, as_field);
+      ConstantTailTest<int32_t>(kLength, tail_length, as_field);
+      ConstantTailTest<uint32_t>(kLength, tail_length, as_field);
       ConstantTailTest<int64_t>(kLength, tail_length, as_field);
-      ConstantTailTest<uint64>(kLength, tail_length, as_field);
-      ConstantTailTest<int8>(kLength, tail_length, as_field);
-      ConstantTailTest<uint8>(kLength, tail_length, as_field);
-      ConstantTailTest<int16>(kLength, tail_length, as_field);
-      ConstantTailTest<uint16>(kLength, tail_length, as_field);
+      ConstantTailTest<uint64_t>(kLength, tail_length, as_field);
+      ConstantTailTest<int8_t>(kLength, tail_length, as_field);
+      ConstantTailTest<uint8_t>(kLength, tail_length, as_field);
+      ConstantTailTest<int16_t>(kLength, tail_length, as_field);
+      ConstantTailTest<uint16_t>(kLength, tail_length, as_field);
       ConstantTailTest<Eigen::half>(kLength, tail_length, as_field);
       ConstantTailTest<bfloat16>(kLength, tail_length, as_field);
     }

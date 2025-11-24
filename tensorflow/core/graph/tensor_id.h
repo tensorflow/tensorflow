@@ -57,7 +57,6 @@ struct TensorId : public std::pair<absl::string_view, int> {
   };
 };
 
-TensorId ParseTensorName(const string& name);
 TensorId ParseTensorName(absl::string_view name);
 
 bool IsTensorIdControl(const TensorId& tensor_id);

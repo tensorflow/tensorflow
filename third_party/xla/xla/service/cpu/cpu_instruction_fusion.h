@@ -35,15 +35,6 @@ class CpuInstructionFusion : public InstructionFusion {
       : InstructionFusion(CpuInstructionFusion::IsExpensive, may_duplicate) {}
   ~CpuInstructionFusion() override = default;
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
-    fusion_node_evaluations_.clear();
-    ComputeInstructionsToSkip(module, execution_threads);
-    return InstructionFusion::Run(module, execution_threads);
-  }
-
   // Returns the threshold for a constant to be considered a large constant.
   static constexpr int64_t GetLargeConstantThresholdBytes() {
     constexpr int64_t kLargeConstantThresholdBytes = 10000;
@@ -55,6 +46,14 @@ class CpuInstructionFusion : public InstructionFusion {
                             int64_t operand_index) override;
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
+
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
+    fusion_node_evaluations_.clear();
+    ComputeInstructionsToSkip(module, execution_threads);
+    return InstructionFusion::RunImpl(module, execution_threads);
+  }
 
  private:
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,

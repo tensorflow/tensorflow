@@ -219,6 +219,33 @@ static absl::Status EnsureExecutableOutputDimensionsPopulated(
   return absl::OkStatus();
 }
 
+static absl::Status PopulateExecutableOutputLayouts(
+    PJRT_Executable* executable) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::shared_ptr<const xla::PjRtLayout>> cpp_out_layouts,
+      executable->get()->GetOutputLayouts());
+  executable->out_layouts.reserve(cpp_out_layouts.size());
+  executable->out_layouts_pointers.reserve(cpp_out_layouts.size());
+  for (std::shared_ptr<const xla::PjRtLayout>& layout : cpp_out_layouts) {
+    executable->out_layouts.push_back(
+        PJRT_Layouts_MemoryLayout{std::move(layout)});
+  }
+  for (PJRT_Layouts_MemoryLayout& layout : executable->out_layouts) {
+    executable->out_layouts_pointers.push_back(&layout);
+  }
+  return absl::OkStatus();
+}
+
+static absl::Status EnsureExecutableOutputLayoutsPopulated(
+    PJRT_Executable* executable) {
+  absl::MutexLock lock(executable->mutex);
+  if (!executable->out_layouts_ran) {
+    TF_RETURN_IF_ERROR(PopulateExecutableOutputLayouts(executable));
+    executable->out_layouts_ran = true;
+  }
+  return absl::OkStatus();
+}
+
 static absl::Status PopulateExecutableOutputMemoryKinds(
     PJRT_Executable* executable) {
   TF_ASSIGN_OR_RETURN(
@@ -806,7 +833,7 @@ absl::StatusOr<xla::CompileOptions> ParseCompileOptions(
     absl::string_view options_str) {
   xla::CompileOptionsProto options_proto;
   // Open source ParseFromString doesn't support string_view.
-  if (!options_proto.ParseFromArray(options_str.data(), options_str.size())) {
+  if (!options_proto.ParseFromString(options_str)) {
     return tsl::errors::InvalidArgument(
         "PJRT_Client_Compile: failed to deserialize CompileOptionsProto");
   }
@@ -833,7 +860,7 @@ ParsePjrtProgram(std::optional<mlir::MLIRContext>& context,
   } else if (format_str == pjrt::kHloFormat) {
     xla::HloModuleProto module_proto;
     // Open source ParseFromString doesn't support string_view.
-    if (!module_proto.ParseFromArray(module_str.data(), module_str.size())) {
+    if (!module_proto.ParseFromString(module_str)) {
       return tsl::errors::InvalidArgument(
           "PJRT_Client_Compile: failed to deserialize HloModuleProto");
     }
@@ -1790,8 +1817,6 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     options.call_location = std::string(args->options->call_location);
   }
   options.strict_shape_checking = true;
-  options.arguments_are_tupled = false;
-  options.untuple_result = true;
   options.context = args->options->context
                         ? args->options->context->execute_context.get()
                         : nullptr;
@@ -2549,8 +2574,8 @@ PJRT_Error* PJRT_TopologyDescription_Deserialize(
       PJRT_TopologyDescription_Attributes_Args_STRUCT_SIZE, args->struct_size));
 
   xla::PjRtTopologyDescriptionProto proto;
-  if (!proto.ParseFromArray(args->serialized_topology,
-                            args->serialized_topology_size)) {
+  if (!proto.ParseFromString(absl::string_view(
+          args->serialized_topology, args->serialized_topology_size))) {
     return new PJRT_Error{xla::InvalidArgument(
         "Failed to parse PjRtTopologyDescriptionProto at the C API level, "
         "from binary string of size: %d",
@@ -2689,6 +2714,19 @@ PJRT_Error* PJRT_Layouts_PJRT_Topology_GetDefaultLayout(
 
   auto pjrt_xla_layout = std::make_shared<xla::PjRtLayout>(xla_layout);
   args->layout = new PJRT_Layouts_MemoryLayout{std::move(pjrt_xla_layout)};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Layouts_PJRT_Executable_GetOutputLayouts(
+    PJRT_Layouts_PJRT_Executable_GetOutputLayouts_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Layouts_PJRT_Executable_GetOutputLayouts_Args",
+      PJRT_Layouts_PJRT_Executable_GetOutputLayouts_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_RETURN_IF_ERROR(
+      EnsureExecutableOutputLayoutsPopulated(args->executable));
+  args->num_outputs = args->executable->out_layouts_pointers.size();
+  args->layouts = args->executable->out_layouts_pointers.data();
   return nullptr;
 }
 
@@ -3106,6 +3144,8 @@ PJRT_Layouts_Extension CreateLayoutsExtension(PJRT_Extension_Base* next) {
       pjrt::PJRT_Layouts_PJRT_Buffer_MemoryLayout,
       /*PJRT_Layouts_PJRT_Topology_GetDefaultLayout=*/
       &PJRT_Layouts_PJRT_Topology_GetDefaultLayout,
+      /*PJRT_Layouts_PJRT_Executable_GetOutputLayouts=*/
+      &PJRT_Layouts_PJRT_Executable_GetOutputLayouts,
   };
 }
 

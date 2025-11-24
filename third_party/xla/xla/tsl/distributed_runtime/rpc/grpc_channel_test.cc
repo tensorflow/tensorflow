@@ -344,9 +344,9 @@ TEST(GrpcChannelTest, SparseHostPorts) {
   {
     std::vector<string> workers;
     cc->ListWorkersInJob("mnist", &workers);
-    EXPECT_EQ(std::vector<string>({"/job:mnist/replica:0/task:0",
-                                   "/job:mnist/replica:0/task:3",
-                                   "/job:mnist/replica:0/task:4"}),
+    EXPECT_EQ(std::vector<std::string>({"/job:mnist/replica:0/task:0",
+                                        "/job:mnist/replica:0/task:3",
+                                        "/job:mnist/replica:0/task:4"}),
               workers);
   }
 

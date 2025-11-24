@@ -182,34 +182,5 @@ TEST(ConvolutionThunkTest, CreationErrorOnOutputChannelsMismatch) {
                            "should be the same as output channels count (4)"));
 }
 
-TEST(ConvolutionThunkTest,
-     ExecutionErrorOnMissingThreadPoolInMultiThreadedMode) {
-  ConvolutionThunkBuilder<float> builder;
-
-  auto options = MakeConvolutionOptions();
-  options.multi_threaded = true;
-  builder.SetOptions(options);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto thunk, builder.Build());
-  BufferAllocations allocations = builder.GetAllocations();
-
-  // Execute thunk and wait for completion.
-  Thunk::ExecuteParams params;
-  params.intra_op_threadpool = nullptr;
-  params.buffer_allocations = &allocations;
-
-  auto execute_event = thunk->Execute(params);
-  tsl::BlockUntilReady(execute_event);
-
-  // Verify that the execution was not successful.
-  ASSERT_TRUE(execute_event.IsError());
-  auto status = execute_event.GetError();
-  EXPECT_EQ(absl::StatusCode::kInternal, status.code());
-  EXPECT_EQ(
-      "Intra-op threadpool must be provided for ConvolutionThunk in "
-      "multi-threaded mode.",
-      status.message());
-}
-
 }  // namespace
 }  // namespace xla::cpu

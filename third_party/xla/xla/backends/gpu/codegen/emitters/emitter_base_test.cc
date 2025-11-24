@@ -38,13 +38,13 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -92,7 +92,6 @@ class EmitterBaseTest : public HloHardwareIndependentTestBase {
   }
 
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
 };
@@ -113,7 +112,7 @@ TEST_F(EmitterBaseTest, CreateMlirModule) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto mlir_module,
       emitter.CreateMLIRModule(
-          symbolic_expr_context_,
+          mlir_context_,
           *Cast<HloFusionInstruction>(
               module->entry_computation()->root_instruction()),
           "fusion",
@@ -144,7 +143,7 @@ TEST_F(EmitterBaseTest, CreateLLVMModule) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto llvm_module,
       emitter.CreateLLVMModule(
-          symbolic_expr_context_, llvm_context, device_info_,
+          mlir_context_, llvm_context, device_info_,
           *Cast<HloFusionInstruction>(
               module->entry_computation()->root_instruction()),
           "fusion",

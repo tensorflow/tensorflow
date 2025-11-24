@@ -38,11 +38,13 @@ using ::tsl::testing::IsOkAndHolds;
 
 class CollectiveBackendAssignerTest : public HloHardwareIndependentTestBase {
  protected:
-  absl::StatusOr<bool> RunCollectiveBackendAssigner(HloModule* module) {
+  absl::StatusOr<bool> RunCollectiveBackendAssigner(HloModule* module,
+                                                    int num_devices_per_host,
+                                                    int64_t slice_size = 0) {
     se::GpuComputeCapability gpu_version = se::CudaComputeCapability(8, 0);
-    return RunHloPass(
-        CollectiveBackendAssigner(gpu_version, /*num_devices_per_host=*/1),
-        module);
+    return RunHloPass(CollectiveBackendAssigner(
+                          gpu_version, num_devices_per_host, slice_size),
+                      module);
   }
 
   absl::StatusOr<CollectiveBackendConfig_CollectiveBackend>
@@ -70,7 +72,9 @@ TEST_F(CollectiveBackendAssignerTest, SmallAllReduceUsesNvshmem) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()),
+
+  EXPECT_THAT(RunCollectiveBackendAssigner(
+                  module.get(), /*num_devices_per_host=*/1, /*slice_size=*/0),
               absl_testing::IsOkAndHolds(true));
 
   const HloInstruction* all_reduce =
@@ -96,7 +100,9 @@ TEST_F(CollectiveBackendAssignerTest, LargeAllReduceUsesDefault) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()),
+
+  EXPECT_THAT(RunCollectiveBackendAssigner(
+                  module.get(), /*num_devices_per_host=*/1, /*slice_size=*/0),
               absl_testing::IsOkAndHolds(false));
 
   const HloInstruction* all_reduce =
@@ -117,7 +123,9 @@ TEST_F(CollectiveBackendAssignerTest, SmallCollectivePermuteUsesNvshmem) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()),
+
+  EXPECT_THAT(RunCollectiveBackendAssigner(
+                  module.get(), /*num_devices_per_host=*/1, /*slice_size=*/0),
               absl_testing::IsOkAndHolds(true));
 
   const HloInstruction* permute =
@@ -138,13 +146,106 @@ TEST_F(CollectiveBackendAssignerTest, LargeCollectivePermuteUsesNvshmem) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_THAT(RunCollectiveBackendAssigner(module.get()),
+
+  EXPECT_THAT(RunCollectiveBackendAssigner(
+                  module.get(), /*num_devices_per_host=*/1, /*slice_size=*/0),
               absl_testing::IsOkAndHolds(true));
 
   const HloInstruction* permute =
       module->entry_computation()->root_instruction();
   EXPECT_THAT(GetCollectiveBackendConfig(permute),
               absl_testing::IsOkAndHolds(CollectiveBackendConfig::NVSHMEM));
+}
+
+TEST_F(CollectiveBackendAssignerTest, IntraNvlinkDomainUsesNvshmem) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      p0 = f32[1024,1024] parameter(0)
+      ROOT result = f32[1024,1024] all-reduce(p0), to_apply=add, replica_groups={{0,1}}, channel_id=5
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  module->mutable_config().set_num_partitions(2);
+  module->mutable_config().set_replica_count(2);
+
+  EXPECT_THAT(RunCollectiveBackendAssigner(
+                  module.get(), /*num_devices_per_host=*/2, /*slice_size=*/4),
+              absl_testing::IsOkAndHolds(true));
+
+  const HloInstruction* all_reduce =
+      module->entry_computation()->root_instruction();
+  EXPECT_THAT(GetCollectiveBackendConfig(all_reduce),
+              absl_testing::IsOkAndHolds(CollectiveBackendConfig::NVSHMEM));
+}
+
+TEST_F(CollectiveBackendAssignerTest,
+       IntraNvlinkDomainLargeAllReduceUsesDefault) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      p0 = f32[8192,8192] parameter(0)
+      ROOT result = f32[8192,8192] all-reduce(p0), to_apply=add, replica_groups={{0,1}}, channel_id=8
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  module->mutable_config().set_num_partitions(2);
+  module->mutable_config().set_replica_count(2);
+
+  EXPECT_THAT(RunCollectiveBackendAssigner(
+                  module.get(), /*num_devices_per_host=*/2, /*slice_size=*/4),
+              absl_testing::IsOkAndHolds(false));
+
+  const HloInstruction* all_reduce =
+      module->entry_computation()->root_instruction();
+  EXPECT_THAT(GetCollectiveBackendConfig(all_reduce),
+              absl_testing::IsOkAndHolds(CollectiveBackendConfig::DEFAULT));
+}
+
+TEST_F(CollectiveBackendAssignerTest, NonIntraNvlinkDomainUsesDefault) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      p0 = f32[1024,1024] parameter(0)
+      ROOT result = f32[1024,1024] all-reduce(p0), to_apply=add, channel_id=13
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  module->mutable_config().set_num_partitions(1);
+  module->mutable_config().set_replica_count(4);
+
+  EXPECT_THAT(RunCollectiveBackendAssigner(
+                  module.get(), /*num_devices_per_host=*/2, /*slice_size=*/2),
+              absl_testing::IsOkAndHolds(false));
+
+  const HloInstruction* all_reduce =
+      module->entry_computation()->root_instruction();
+  EXPECT_THAT(GetCollectiveBackendConfig(all_reduce),
+              absl_testing::IsOkAndHolds(CollectiveBackendConfig::DEFAULT));
 }
 
 }  // namespace

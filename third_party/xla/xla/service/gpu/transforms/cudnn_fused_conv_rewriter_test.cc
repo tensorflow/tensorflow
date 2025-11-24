@@ -78,11 +78,11 @@ static const std::initializer_list<absl::string_view> kf16f32{"f16", "f32"};
 class CudnnFusedConvRewriterHloTest : public HloTestBase {
  public:
   bool IsCuda() const {
-    return std::holds_alternative<se::CudaComputeCapability>(
-        backend()
-            .default_stream_executor()
-            ->GetDeviceDescription()
-            .gpu_compute_capability());
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability()
+        .IsCuda();
   }
   se::CudaComputeCapability GetCudaComputeCapability() const {
     return backend()
@@ -119,11 +119,11 @@ class CudnnFusedConvRewriterHloTest : public HloTestBase {
 class CudnnFusedConvRewriterTest : public GpuCodegenTest {
  public:
   bool IsCuda() const {
-    return std::holds_alternative<se::CudaComputeCapability>(
-        backend()
-            .default_stream_executor()
-            ->GetDeviceDescription()
-            .gpu_compute_capability());
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability()
+        .IsCuda();
   }
   se::CudaComputeCapability GetCudaComputeCapability() const {
     return backend()

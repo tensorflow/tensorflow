@@ -369,7 +369,7 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
           if (on_device_shape.layout() != literal_layout) {
             absl::InlinedVector<int64_t, 4> byte_strides(
                 on_device_shape.dimensions().size());
-            absl::Status s = ShapeUtil::ByteStrides(
+            absl::Status s = ShapeUtil::UnpackedByteStrides(
                 on_device_shape, absl::MakeSpan(byte_strides));
             if (!s.ok()) {
               promise.Set(s);
@@ -460,6 +460,13 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
 
             auto d2h_stream = device->d2h_stream();
 
+            // If we do not have a CudaEvent, we need to fall back to the host
+            // event to check readiness.
+            // TODO: Remove this once cuda events are always set/not nullptr.
+            if (device_buffer->GetCudaEvent() == nullptr) {
+              tsl::BlockUntilReady(device_buffer->ready_event());
+            }
+
             absl::Status cuda_event_wait_status =
                 WaitForEventOnStream(d2h_stream, device_buffer->GetCudaEvent());
             if (!cuda_event_wait_status.ok()) {
@@ -483,6 +490,12 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
               VLOG(3) << "stream BlockHostUntilDoneWithHostCallback failed: "
                       << status;
               promise.Set(status);
+              return;
+            }
+
+            tsl::BlockUntilReady(device_buffer->ready_event());
+            if (device_buffer->ready_event().IsError()) {
+              promise.Set(device_buffer->ready_event().GetError());
               return;
             }
           }
@@ -739,8 +752,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
     Literal* literal_pointer = literal.get();
     absl::InlinedVector<int64_t, 4> byte_strides(
         literal->shape().dimensions().size());
-    TF_RETURN_IF_ERROR(
-        ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
+    TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+        literal->shape(), absl::MakeSpan(byte_strides)));
     return dst_device->client()->BufferFromHostBuffer(
         literal_pointer->untyped_data(),
         literal_pointer->shape().element_type(),

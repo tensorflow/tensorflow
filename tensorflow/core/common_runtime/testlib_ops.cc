@@ -46,7 +46,7 @@ class ErrorOp : public OpKernel {
   }
 
  private:
-  string errmsg_;
+  std::string errmsg_;
   bool log_error_ = false;
 };
 REGISTER_KERNEL_BUILDER(Name("Error").Device(DEVICE_CPU), ErrorOp);

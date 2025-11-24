@@ -60,7 +60,7 @@ limitations under the License.
 
 namespace xla::cpu {
 
-using AttributesMap = ffi::CallFrameBuilder::AttributesMap;
+using AttributesMap = ffi::AttributesMap;
 
 static absl::StatusOr<AttributesMap> ParseAttributes(
     absl::string_view backend_config) {

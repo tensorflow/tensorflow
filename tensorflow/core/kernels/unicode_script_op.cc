@@ -26,13 +26,13 @@ class UnicodeScriptOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor* input_tensor;
     OP_REQUIRES_OK(context, context->input("input", &input_tensor));
-    const auto& input_flat = input_tensor->flat<int32>();
+    const auto& input_flat = input_tensor->flat<int32_t>();
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output("output", input_tensor->shape(),
                                             &output_tensor));
-    auto output_flat = output_tensor->flat<int32>();
+    auto output_flat = output_tensor->flat<int32_t>();
 
     icu::ErrorCode status;
     for (int i = 0; i < input_flat.size(); i++) {

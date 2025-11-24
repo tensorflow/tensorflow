@@ -48,9 +48,9 @@ namespace tensorflow {
 class PluggableDevice : public LocalDevice {
  public:
   PluggableDevice(const SessionOptions& options, const std::string& name,
-                  const string& device_type, const string& platform_name,
-                  Bytes memory_limit, const DeviceLocality& locality,
-                  TfDeviceId tf_device_id,
+                  const std::string& device_type,
+                  const std::string& platform_name, Bytes memory_limit,
+                  const DeviceLocality& locality, TfDeviceId tf_device_id,
                   const std::string& physical_device_desc,
                   Allocator* device_allocator, Allocator* cpu_allocator,
                   bool sync_every_op);
@@ -99,7 +99,7 @@ class PluggableDevice : public LocalDevice {
   // TODO(penpornk): Investigate renaming `GpuDeviceInfo` to `DeviceInfo`.
   DeviceBase::AcceleratorDeviceInfo* pluggable_device_info_ = nullptr;
   TfDeviceId tf_device_id_;
-  const string platform_name_;
+  const std::string platform_name_;
   const bool sync_every_op_ = false;
   EventMgr* em_ = nullptr;
   std::unique_ptr<thread::ThreadPool> thread_pool_;

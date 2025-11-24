@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 
 namespace xla {
 
@@ -162,7 +161,7 @@ static int GetMutexId(
 void TfPjRtClient::TrackBuffer(TfPjRtBuffer* buffer) {
   int mutex_id = GetMutexId(buffer, mutex_id_from_device_id_);
   {
-    absl::MutexLock lock(&alive_buffers_[mutex_id].mu);
+    absl::MutexLock lock(alive_buffers_[mutex_id].mu);
     alive_buffers_[mutex_id].alive_buffers.insert(buffer);
   }
 }
@@ -173,7 +172,7 @@ void TfPjRtClient::UntrackBuffer(const TfPjRtBuffer* buffer) {
   }
   int mutex_id = GetMutexId(buffer, mutex_id_from_device_id_);
   {
-    absl::MutexLock lock(&alive_buffers_[mutex_id].mu);
+    absl::MutexLock lock(alive_buffers_[mutex_id].mu);
     alive_buffers_[mutex_id].alive_buffers.erase(buffer);
   }
 }
@@ -181,7 +180,7 @@ void TfPjRtClient::UntrackBuffer(const TfPjRtBuffer* buffer) {
 void TfPjRtClient::DestroyWrappedBuffersAndClient() {
   int num_mutexes = alive_buffers_.size();
   for (int i = 0; i < num_mutexes; ++i) {
-    absl::MutexLock lock(&alive_buffers_[i].mu);
+    absl::MutexLock lock(alive_buffers_[i].mu);
     for (auto* buffer : alive_buffers_[i].alive_buffers) {
       buffer->DestroyWrappedBuffer();
     }

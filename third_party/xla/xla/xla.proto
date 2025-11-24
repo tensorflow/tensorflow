@@ -26,6 +26,24 @@ message CompilationEnvironmentsProto {
   repeated google.protobuf.Any environments = 1;
 }
 
+// A [first; last] range of integers, inclusive on both ends.
+message IntRangeInclusive {
+  int64 first = 1;
+  int64 last = 2;
+}
+
+// Set of filters for limiting the thunk buffer debug instrumentation to
+// specific thunks. Only meaningful in combination with either
+// `xla_gpu_experimental_enable_checksum_tracing_on_thunks` or
+// `xla_gpu_experimental_enable_checksum_validation_on_thunks`.
+message ThunkBufferDebugFilter {
+  // If set, only thunk IDs matching one or more of the ranges will be included.
+  repeated IntRangeInclusive thunk_id_ranges = 1;
+  // If set, only thunks with profile annotations matching one or more of the
+  // regexes will be included.
+  repeated string profile_annotation_regexes = 2;
+}
+
 // Debugging options for XLA. These options may change at any time - there are
 // no guarantees about backward or forward compatibility for these fields with
 // the exception of few stable GPU feature flags (see `GetFlagStatus` in
@@ -155,6 +173,7 @@ message DebugOptions {
     LIBRARY_FUSION_TYPE_DOT = 1;  // Dot and any eltwise ops around it.
     LIBRARY_FUSION_TYPE_ELTWISE = 2;
     LIBRARY_FUSION_TYPE_REDUCE = 3;
+    LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT = 4;
   }
 
   enum XnnGraphFusionMode {
@@ -202,17 +221,26 @@ message DebugOptions {
   // below!
   optional bool xla_cpu_enable_fast_min_max = 140;
 
+  // When xla_enable_platform_dependent_math is true, we allow operations to use
+  // calculations that produce different results depending on the current
+  // machine.
+  optional bool xla_cpu_enable_platform_dependent_math = 425;
+
   // Call oneDNN custom call thunks in the CPU backend
   optional bool xla_cpu_experimental_onednn_custom_call = 412;
 
-  // Stores the fusion types enabled for oneDNN in DotLibraryRewriter pass.
+  // Stores the fusion types enabled for oneDNN in LibraryRewriter pass.
   repeated LibraryFusionType xla_cpu_experimental_onednn_fusion_type = 399;
 
-  // Stores the fusion types enabled for XNNPACK in DotLibraryRewriter pass.
+  // Stores the fusion types enabled for XNNPACK in LibraryRewriter pass.
   repeated LibraryFusionType xla_cpu_experimental_xnn_fusion_type = 400;
 
   // Controls XnnGraphFusion HLO pass.
   optional XnnGraphFusionMode xla_cpu_experimental_xnn_graph_fusion_mode = 365;
+
+  // Stores the fusion types enabled for YNNPACK in LibraryRewriter pass or
+  // for individual operations.
+  repeated LibraryFusionType xla_cpu_experimental_ynn_fusion_type = 422;
 
   // When xla_cpu_enable_fast_math is true then this controls whether we forbid
   // to use the reciprocal of an argument instead of division. Ignored when
@@ -323,11 +351,19 @@ message DebugOptions {
     reserved 2;  // Was PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER
   }
 
+  // Limits the thunk buffer debug instrumentation to specific thunks.
+  optional ThunkBufferDebugFilter
+      xla_gpu_experimental_thunk_buffer_debug_filter = 424;
+
   // If true, every time an HLO module is run, we will dump an
   // HloUnoptimizedSnapshot (essentially, a serialized unoptimizedmodule plus
   // its inputs) to the --xla_dump_to directory. This flag is currently
   // supported on XLA:GPU and XLA:CPU.
   optional bool xla_dump_hlo_unoptimized_snapshots = 405;
+
+  // Enable communication optimization patterns specified in Enzyme. More
+  // details in http://shortn/_jXJ2VFoyMN.
+  optional bool xla_enable_enzyme_comms_opt = 429;
 
   // Denylist for cuDNN convolutions.
   optional string xla_gpu_algorithm_denylist_path = 128;
@@ -426,6 +462,11 @@ message DebugOptions {
   optional string xla_gpu_cuda_data_dir = 61;
 
   // Let GEMM fusion autotuning probe cuDNN as a backend.
+  //
+  // CAUTION:
+  // * HLO dot precision (e.g. `algorithm=dot_bf16_bf16_f32`) is ignored.
+  // * `tf32` matmuls are enabled unconditionally.
+  //
   // Current levels:
   // 0: Disabled.
   // 1: Enabled on Blackwell+ GPUs.
@@ -458,6 +499,8 @@ message DebugOptions {
   // compilation, possibly multiple times per process. This only works on CUDA.
   optional string xla_gpu_dump_autotune_results_to = 222;
 
+  // The flag is being generalized to dump all autotuned instructions as we
+  // combine the autotuner passes into a single pass.
   optional bool xla_gpu_dump_autotuned_gemm_fusions = 232;
 
   // Whether to dump llvm ir when compiling to ptx.
@@ -582,6 +625,12 @@ message DebugOptions {
 
   optional bool xla_gpu_exhaustive_tiling_search = 219;
 
+  // If true, allows unroll factor 8 on Blackwell architectures. This is also
+  // guarded with a heuristic, but the heuristic is not perfect, so enabling
+  // this flag can cause both performance improvements and performance
+  // regressions.
+  optional bool xla_gpu_experimental_allow_unroll_factor_eight = 430;
+
   // Specifies the behavior of per kernel autotuning cache.
   optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
@@ -599,6 +648,15 @@ message DebugOptions {
 
   // Dump FDO profiles in a binary format to a separate file.
   optional bool xla_gpu_experimental_dump_fdo_profiles = 338;
+
+  // Dump the serialized GPU executables to 'gpu_executable' suffixed
+  // files in the directory specified by `xla_dump_to`.
+  // No-op if `xla_dump_to` isn't set, or during autotuning compilations.
+  //
+  // The dumped files are serialized `xla.ExecutableAndOptionsProto` messages,
+  // which contain the binary serialized `xla.gpu.GpuExecutableProto`, in the
+  // `serialized_executable` field.
+  optional bool xla_gpu_experimental_dump_gpu_executable = 427;
 
   // Enable windowed einsum(collective matmul) rewrite for all-to-all + gemm
   // This feature is still experimental and effective only
@@ -949,6 +1007,7 @@ message DebugOptions {
   reserved 385;  // xla_gpu_experimental_enable_dynamic_dot_search_space
   reserved "xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms";
   reserved 367;
+  reserved 423;  // xla_gpu_experimental_enable_checksum_tracing_on_thunks
 
   //--------------------------------------------------------------------------//
   // XLA:TPU options.
@@ -1260,13 +1319,19 @@ message DebugOptions {
   // Maximum number of buffers to print when debugging buffer assignment.
   optional int64 xla_debug_buffer_assignment_show_max = 251;
 
-  enum UnstableReductionDetectionMode {
-    UNSTABLE_REDUCTION_DETECTION_MODE_NONE = 0;
-    UNSTABLE_REDUCTION_DETECTION_MODE_WARNING = 1;
-    UNSTABLE_REDUCTION_DETECTION_MODE_FAIL = 2;
+  enum DetectionMode {
+    DETECTION_MODE_NONE = 0;
+    DETECTION_MODE_WARNING = 1;
+    DETECTION_MODE_FAIL = 2;
   }
   // Whether to enable checks for unstable reductions in computations.
-  optional UnstableReductionDetectionMode xla_detect_unstable_reductions = 403;
+  optional DetectionMode xla_detect_unstable_reductions = 403;
+
+  // Whether to enable checks for NaN values in computations.
+  optional DetectionMode xla_gpu_detect_nan = 426;
+
+  // Whether to enable checks for Inf values in computations.
+  optional DetectionMode xla_gpu_detect_inf = 428;
 
   reserved 275;  // was xla_gpu_enable_mlir_emitters
   reserved 281;  // was xla_gpu_max_mlir_kernels
@@ -1361,7 +1426,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 422
+  // Next id: 431
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1579,7 +1644,7 @@ message ExecutionOptions {
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 42.
+// Next id: 43.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -1644,6 +1709,8 @@ message HloModuleConfigProto {
   bool use_shardy_partitioner = 34;
   ShardingConfigProto sharding_config = 38;
   ScheduleConfigProto schedule_config = 41;
+  // Number of devices in a fast-interconnect domain.
+  int64 partition_size = 42;
 }
 
 message HloModuleProtoWithConfig {

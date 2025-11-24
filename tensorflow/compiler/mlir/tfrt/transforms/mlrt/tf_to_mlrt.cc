@@ -906,10 +906,6 @@ void CreateFallbackInitializationFunction(
       builder.create<tf_mlrt::CreateOp>(
           func_op.getLoc(), /*resultTypes=*/mlir::TypeRange{},
           /*operands=*/mlir::ValueRange{}, op->getAttrs());
-    } else {
-      // TODO: b/381849919 - Remove this log once the bug is fixed.
-      LOG_FIRST_N(WARNING, 100)
-          << "Skip creation of fallback kernel for op index " << op_index;
     }
   }
 

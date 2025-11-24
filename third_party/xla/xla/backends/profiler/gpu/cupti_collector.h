@@ -24,6 +24,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -42,8 +44,6 @@ struct CuptiTracerCollectorOptions {
   uint64_t max_annotation_strings = 1024 * 1024;
   // Number of GPUs involved.
   uint32_t num_gpus;
-  // Whether to dump the graph nope mapping.
-  bool dump_graph_nope_mapping = false;
 };
 // This struct will be used to store the PM Sampling data.
 // Same as CUDA 12.6.2 extras/CUPTI/samples/pm_sampling/pm_sampling.h
@@ -132,6 +132,9 @@ class CuptiTraceCollector {
   CuptiTracerCollectorOptions options_;
   // map of child_scope_id -> parent_scope_id
   ScopeRangeIdTree scope_range_id_tree_;
+  // <graph_id, graph_node_id> to annotation string during creation of the node.
+  absl::flat_hash_map<std::pair<uint32_t, uint64_t>, absl::string_view>
+      graph_node_annotations_ = {};
 
  private:
   AnnotationMap annotation_map_;

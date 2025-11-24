@@ -315,7 +315,7 @@ TEST(ArrayOpsTest, Fill_ShapeFn) {
   INFER_OK(op, "[?];?", "?");
   INFER_OK(op, "[4];?", "[?,?,?,?]");
 
-  Tensor in_t = test::AsTensor<int32>({1, 2, 3, 4});
+  Tensor in_t = test::AsTensor<int32_t>({1, 2, 3, 4});
   op.input_tensors[0] = &in_t;
   INFER_OK(op, "[4];?", "[1,2,3,4]");
 }
@@ -695,14 +695,14 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
 
   // Expand at front of tensor.
   for (int32_t idx : {0, -4}) {
-    dim_t = test::AsScalar<int32>(idx);
+    dim_t = test::AsScalar<int32_t>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[1,d0_0,d0_1,d0_2]");
   }
 
   // Expand at middle of tensor.
   for (int32_t idx : {1, -3}) {
-    dim_t = test::AsScalar<int32>(idx);
+    dim_t = test::AsScalar<int32_t>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,1,d0_1,d0_2]");
 
@@ -712,7 +712,7 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
     INFER_OK(op, "[5,?,7];?", "[d0_0,1,d0_1,d0_2]");
   }
   for (int32_t idx : {2, -2}) {
-    dim_t = test::AsScalar<int32>(idx);
+    dim_t = test::AsScalar<int32_t>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,1,d0_2]");
 
@@ -724,7 +724,7 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
 
   for (int32_t idx : {3, -1}) {
     // Expand at the end.
-    dim_t = test::AsScalar<int32>(idx);
+    dim_t = test::AsScalar<int32_t>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,d0_2,1]");
 
@@ -735,31 +735,31 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
   }
   for (int32_t idx : {4, -5}) {
     // Invalid idx.
-    dim_t = test::AsScalar<int32>(idx);
+    dim_t = test::AsScalar<int32_t>(idx);
     INFER_ERROR("not in the interval [-4, 3]", op, "[5,?,7];?");
     dim_t = test::AsScalar<int64_t>(idx);
     INFER_ERROR("not in the interval [-4, 3]", op, "[5,?,7];?");
   }
 
   // Expand using an input vector tensor.
-  std::vector<int32> dims;
+  std::vector<int32_t> dims;
   dims.push_back(0);
-  dim_t = test::AsTensor<int32>(dims);
+  dim_t = test::AsTensor<int32_t>(dims);
   INFER_OK(op, "?;?", "?");
   INFER_OK(op, "[5,?,7];?", "[1,d0_0,d0_1,d0_2]");
 
   // Expand using too many input elements.
   dims.push_back(1);
-  dim_t = test::AsTensor<int32>(dims);
+  dim_t = test::AsTensor<int32_t>(dims);
   INFER_ERROR("'dim' input must be a tensor with a single", op, "?;?");
   INFER_ERROR("'dim' input must be a tensor with a single", op, "[5,6,7];?");
 
   // Examples from ExpandDims doc.
-  dim_t = test::AsScalar<int32>(0);
+  dim_t = test::AsScalar<int32_t>(0);
   INFER_OK(op, "[2];[]", "[1,d0_0]");
-  dim_t = test::AsScalar<int32>(1);
+  dim_t = test::AsScalar<int32_t>(1);
   INFER_OK(op, "[2];[]", "[d0_0,1]");
-  dim_t = test::AsScalar<int32>(-1);
+  dim_t = test::AsScalar<int32_t>(-1);
   INFER_OK(op, "[2];[]", "[d0_0,1]");
 }
 
@@ -966,7 +966,7 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   INFER_OK(op, "[4];[?]", "?");
 
   // All dimensions provided.
-  Tensor new_shape = test::AsTensor<int32>({1, 2, 3});
+  Tensor new_shape = test::AsTensor<int32_t>({1, 2, 3});
   op.input_tensors[1] = &new_shape;
   INFER_OK(op, "?;[3]", "[1,2,3]");
   INFER_OK(op, "[?];[3]", "[1,2,3]");
@@ -978,39 +978,39 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
 
   // Unknown dimensions.
   // Flatten:
-  new_shape = test::AsTensor<int32>({-1});
+  new_shape = test::AsTensor<int32_t>({-1});
   INFER_OK(op, "?;[1]", "[?]");
   INFER_OK(op, "[?];[1]", "[d0_0]");
   INFER_OK(op, "[2,2];[1]", "[4]");
   // The first dimension is inferred:
-  new_shape = test::AsTensor<int32>({2, -1});
+  new_shape = test::AsTensor<int32_t>({2, -1});
   INFER_OK(op, "[3,4];[2]", "[2,6]");
   // The total number of elements must be evenly divisible by the known
   // dimensions.
   INFER_ERROR("Dimension size must be evenly divisible by 2 but is 7", op,
               "[7];[2]");
   // Multiple missing dimensions cannot be inferred.
-  new_shape = test::AsTensor<int32>({-1, -1, 2});
+  new_shape = test::AsTensor<int32_t>({-1, -1, 2});
   INFER_OK(op, "[8];[3]", "[?,?,2]");
   INFER_OK(op, "?;[3]", "[?,?,2]");
 
   // Symbolic shape propagation
-  new_shape = test::AsTensor<int32>({-1, 2, 3});
+  new_shape = test::AsTensor<int32_t>({-1, 2, 3});
   INFER_OK(op, "[?,2,3];[3]", "[d0_0,2,3]");
 
   // Reshaping to a scalar.
-  new_shape = test::AsTensor<int32>({});
+  new_shape = test::AsTensor<int32_t>({});
   INFER_OK(op, "[1];[0]", "[]");
   INFER_ERROR(
       "Cannot reshape a tensor with 2 elements to shape [] (1 elements)", op,
       "[1,2];[0]");
 
   // Reshaping a tensor with no elements.
-  new_shape = test::AsTensor<int32>({-1});
+  new_shape = test::AsTensor<int32_t>({-1});
   INFER_OK(op, "[0];[1]", "[0]");
-  new_shape = test::AsTensor<int32>({-1, 6});
+  new_shape = test::AsTensor<int32_t>({-1, 6});
   INFER_OK(op, "[0,2];[1]", "[0,6]");
-  new_shape = test::AsTensor<int32>({0, -1});
+  new_shape = test::AsTensor<int32_t>({0, -1});
   INFER_OK(op, "[0,2];[1]", "[0,?]");
 }
 
@@ -1024,7 +1024,7 @@ TEST(ArrayOpsTest, QuantizedReshape_ShapeFn) {
   INFER_OK(op, "[?];?;?;?", "?;[];[]");
   INFER_OK(op, "[?];[?];?;?", "?;[];[]");
   INFER_OK(op, "[4];[?];?;?", "?;[];[]");
-  Tensor new_shape = test::AsTensor<int32>({1, 2, 3});
+  Tensor new_shape = test::AsTensor<int32_t>({1, 2, 3});
   op.input_tensors[1] = &new_shape;
   INFER_OK(op, "[?];[3];?;?", "[1,2,3];[];[]");
   INFER_OK(op, "[6];[3];?;?", "[1,2,3];[];[]");
@@ -1096,23 +1096,23 @@ TEST(ArrayOpsTest, Transpose_ShapeFn) {
   INFER_OK(op, "[?];?", "[?]");
   INFER_OK(op, "[?,?];[2]", "[?,?]");
   INFER_ERROR("Dimension must be 3 but is 2", op, "[1,2,3];[2]");
-  Tensor perm = test::AsTensor<int32>({0});
+  Tensor perm = test::AsTensor<int32_t>({0});
   op.input_tensors[1] = &perm;
   INFER_OK(op, "[?];[?]", "[d0_0]");
-  perm = test::AsTensor<int32>({1, 0});
+  perm = test::AsTensor<int32_t>({1, 0});
   INFER_OK(op, "?;[2]", "[?,?]");
   INFER_OK(op, "[?,?];[2]", "[d0_1,d0_0]");
   INFER_OK(op, "[1,?];[2]", "[d0_1,d0_0]");
   INFER_OK(op, "?;[0]", "in0");
 
   // Invalid arguments.
-  perm = test::AsTensor<int32>({1, 2});
+  perm = test::AsTensor<int32_t>({1, 2});
   INFER_ERROR("perm dim 2 is out of range of input rank 2", op, "[1,2];[2]");
-  perm = test::AsTensor<int32>({0});
+  perm = test::AsTensor<int32_t>({0});
   INFER_ERROR("Dimension must be 2 but is 1", op, "[1,2];[1]");
 
   // Larger valid cases.
-  perm = test::AsTensor<int32>({1, 0, 3, 4, 2});
+  perm = test::AsTensor<int32_t>({1, 0, 3, 4, 2});
   INFER_OK(op, "[0,1,2,3,4];[5]", "[d0_1,d0_0,d0_3,d0_4,d0_2]");
   INFER_OK(op, "[0,?,2,3,4];[5]", "[d0_1,d0_0,d0_3,d0_4,d0_2]");
 }
@@ -1163,7 +1163,7 @@ TEST(ArrayOpsTest, Bitcast_ShapeFn) {
 TEST(ArrayOpsTest, Squeeze_ShapeFn) {
   ShapeInferenceTestOp op("Squeeze");
 
-  auto rebuild_node_def = [&op](const std::vector<int32>& squeeze_dims) {
+  auto rebuild_node_def = [&op](const std::vector<int32_t>& squeeze_dims) {
     TF_ASSERT_OK(NodeDefBuilder("test", "Squeeze")
                      .Input("input", 0, DT_FLOAT)
                      .Attr("squeeze_dims", squeeze_dims)
@@ -1257,10 +1257,10 @@ TEST(ArrayOpsTest, Split_ShapeFn) {
   INFER_OK(op, "?;[1,4]", "[?,?];[?,?]");
 
   // split_dim is known.
-  Tensor split_dim = test::AsTensor<int32>({1, 2});
+  Tensor split_dim = test::AsTensor<int32_t>({1, 2});
   op.input_tensors[0] = &split_dim;
   INFER_ERROR("Input must be scalar but has rank 1", op, "[?];[?,?]");
-  split_dim = test::AsScalar<int32>(1);
+  split_dim = test::AsScalar<int32_t>(1);
   INFER_OK(op, "?;?", "?;?");
   INFER_OK(op, "?;[?,?]", "[d1_0,?];[d1_0,?]");
   INFER_OK(op, "?;[1,4]", "[d1_0,2];[d1_0,2]");
@@ -1269,21 +1269,21 @@ TEST(ArrayOpsTest, Split_ShapeFn) {
               "?;[1,5]");
 
   // split_dim too large.
-  split_dim = test::AsScalar<int32>(3);
+  split_dim = test::AsScalar<int32_t>(3);
   INFER_ERROR(
       "Dimension size, given by scalar input 3 must be in range [-3, 3)", op,
       "?;[1,4,8]");
 
   // Negative split_dim.
-  split_dim = test::AsScalar<int32>(-1);
+  split_dim = test::AsScalar<int32_t>(-1);
   INFER_OK(op, "?;?", "?;?");
   INFER_OK(op, "?;[?,?]", "[d1_0,?];[d1_0,?]");
   INFER_OK(op, "?;[1,?]", "[d1_0,?];[d1_0,?]");
   INFER_OK(op, "?;[1,4]", "[d1_0,2];[d1_0,2]");
   INFER_OK(op, "?;[1,4,8]", "[d1_0,d1_1,4];[d1_0,d1_1,4]");
-  split_dim = test::AsScalar<int32>(-2);
+  split_dim = test::AsScalar<int32_t>(-2);
   INFER_OK(op, "?;[1,4,8]", "[d1_0,2,d1_2];[d1_0,2,d1_2]");
-  split_dim = test::AsScalar<int32>(-4);
+  split_dim = test::AsScalar<int32_t>(-4);
   INFER_ERROR(
       "Dimension size, given by scalar input -4 must be in range [-3, 3)", op,
       "?;[1,4,8]");
@@ -1312,7 +1312,7 @@ TEST(ArrayOpsTest, Tile_ShapeFn) {
   INFER_OK(op, "?;[4]", "[?,?,?,?]");
 
   // Test a tile of a 4D input.
-  Tensor multiples = test::AsTensor<int32>({2, 3, 4, 5});
+  Tensor multiples = test::AsTensor<int32_t>({2, 3, 4, 5});
   op.input_tensors[1] = &multiples;
   INFER_OK(op, "[2,3,1,4];[4]", "[4,9,4,20]");
   // Test 64-bit tensor type
@@ -1362,12 +1362,12 @@ TEST(ArrayOpsTest, OneHot_ShapeFn) {
   INFER_OK(op, "?;[];?;?", "?");
 
   // Depth must be scalar.
-  Tensor depth = test::AsTensor<int32>({1, 2});
+  Tensor depth = test::AsTensor<int32_t>({1, 2});
   op.input_tensors[1] = &depth;
   INFER_ERROR("Input must be scalar but has rank 1", op, "?;[2];?;?");
 
   // Full information is available.
-  depth = test::AsScalar<int32>(2);
+  depth = test::AsScalar<int32_t>(2);
   INFER_OK(op, "[1,3,4];[];?;?", "[d0_0,2,d0_1,d0_2]");
   set_axis(-1);
   INFER_OK(op, "[1,3,4];[];?;?", "[d0_0,d0_1,d0_2,2]");
@@ -1375,9 +1375,10 @@ TEST(ArrayOpsTest, OneHot_ShapeFn) {
 
 TEST(ArrayOpsTest, ExtractImagePatchesShapeTest) {
   ShapeInferenceTestOp op("ExtractImagePatches");
-  auto set_op = [&op](const std::vector<int32>& ksizes,
-                      const std::vector<int32>& strides,
-                      const std::vector<int32>& rates, const string& padding) {
+  auto set_op = [&op](const std::vector<int32_t>& ksizes,
+                      const std::vector<int32_t>& strides,
+                      const std::vector<int32_t>& rates,
+                      const std::string& padding) {
     TF_ASSERT_OK(NodeDefBuilder("test", "ExtractImagePatches")
                      .Input("input", 0, DT_FLOAT)
                      .Attr("ksizes", ksizes)
@@ -1453,20 +1454,20 @@ TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
   INFER_ERROR("rank", op, "[1,10,10,3];[4]");
   INFER_ERROR("3 and 2", op, "[1,10,10,3];[2,3]");
 
-  Tensor paddings = test::AsTensor<int32>({4, 2, 2, 4}, {{2, 2}});
+  Tensor paddings = test::AsTensor<int32_t>({4, 2, 2, 4}, {{2, 2}});
   op.input_tensors[1] = &paddings;
   INFER_OK(op, "[1,10,10,3];[2,2]", "[4,8,8,d0_3]");
   paddings = test::AsTensor<int64_t>({4, 2, 2, 4}, {{2, 2}});
   INFER_OK(op, "[1,10,10,3];[2,2]", "[4,8,8,d0_3]");
 
   // Bad paddings values
-  paddings = test::AsTensor<int32>({1, 2, 3, 4}, {{2, 2}});
+  paddings = test::AsTensor<int32_t>({1, 2, 3, 4}, {{2, 2}});
   op.input_tensors[1] = &paddings;
   INFER_ERROR("Dimension size must be evenly divisible by 2 but is 13", op,
               "[1,10,10,3];[2,2]");
 
   // Negative paddings
-  paddings = test::AsTensor<int32>({1, -2, 3, 4}, {{2, 2}});
+  paddings = test::AsTensor<int32_t>({1, -2, 3, 4}, {{2, 2}});
   op.input_tensors[1] = &paddings;
   INFER_ERROR("cannot be negative", op, "[1,10,10,3];[2,2]");
 }
@@ -1491,13 +1492,13 @@ TEST(ArrayOpsTest, SpaceToBatchND_ShapeFn) {
 
   {
     // Dimensions are partially known, block_shape known.
-    Tensor block_shape = test::AsTensor<int32>({2, 3});
+    Tensor block_shape = test::AsTensor<int32_t>({2, 3});
     op.input_tensors[1] = &block_shape;
     INFER_OK(op, "[3,?,?,2];[2];?", "[18,?,?,d0_3]");
 
     // Dimensions are partially known, block_shape and paddings known.
     {
-      Tensor paddings = test::AsTensor<int32>({1, 1, 0, 1}, {{2, 2}});
+      Tensor paddings = test::AsTensor<int32_t>({1, 1, 0, 1}, {{2, 2}});
       op.input_tensors[2] = &paddings;
       INFER_OK(op, "[3,?,2,2];[2];[2,2]", "[18,?,1,d0_3]");
       op.input_tensors[2] = nullptr;
@@ -1505,7 +1506,7 @@ TEST(ArrayOpsTest, SpaceToBatchND_ShapeFn) {
 
     // Dimensions are fully known, block_shape and paddings are known.
     {
-      Tensor paddings = test::AsTensor<int32>({1, 1, 0, 0}, {{2, 2}});
+      Tensor paddings = test::AsTensor<int32_t>({1, 1, 0, 0}, {{2, 2}});
       op.input_tensors[2] = &paddings;
       INFER_OK(op, "[3,2,3,2];[2];[2,2]", "[18,2,1,d0_3]");
       op.input_tensors[2] = nullptr;
@@ -1518,16 +1519,16 @@ TEST(ArrayOpsTest, SpaceToBatchND_ShapeFn) {
   INFER_ERROR("block_shape must have known size", op, "?;[?];?");
 
   {
-    Tensor block_shape = test::AsTensor<int32>({0, 2});
+    Tensor block_shape = test::AsTensor<int32_t>({0, 2});
     op.input_tensors[1] = &block_shape;
     INFER_ERROR("block_shape must be positive", op, "[1,2,2];[2];[2,2]");
     op.input_tensors[1] = nullptr;
   }
 
   {
-    Tensor block_shape = test::AsTensor<int32>({1, 1});
+    Tensor block_shape = test::AsTensor<int32_t>({1, 1});
     op.input_tensors[1] = &block_shape;
-    Tensor paddings = test::AsTensor<int32>({0, -1, 0, 0}, {{2, 2}});
+    Tensor paddings = test::AsTensor<int32_t>({0, -1, 0, 0}, {{2, 2}});
     op.input_tensors[2] = &paddings;
     INFER_ERROR("paddings cannot be negative", op, "[1,2,2];[2];[2,2]");
     op.input_tensors[1] = nullptr;
@@ -1535,9 +1536,9 @@ TEST(ArrayOpsTest, SpaceToBatchND_ShapeFn) {
   }
 
   {
-    Tensor block_shape = test::AsTensor<int32>({3, 3});
+    Tensor block_shape = test::AsTensor<int32_t>({3, 3});
     op.input_tensors[1] = &block_shape;
-    Tensor paddings = test::AsTensor<int32>({0, 0, 0, 0}, {{2, 2}});
+    Tensor paddings = test::AsTensor<int32_t>({0, 0, 0, 0}, {{2, 2}});
     op.input_tensors[2] = &paddings;
     INFER_ERROR("divisible", op, "[1,2,3,1];[2];[2,2]");
     op.input_tensors[1] = nullptr;
@@ -1545,9 +1546,9 @@ TEST(ArrayOpsTest, SpaceToBatchND_ShapeFn) {
   }
 
   {
-    Tensor block_shape = test::AsTensor<int32>({});
+    Tensor block_shape = test::AsTensor<int32_t>({});
     op.input_tensors[1] = &block_shape;
-    Tensor paddings = test::AsTensor<int32>({});
+    Tensor paddings = test::AsTensor<int32_t>({});
     op.input_tensors[2] = &paddings;
     INFER_OK(op, "?;[0];[0,2]", "?");
     op.input_tensors[1] = nullptr;
@@ -1586,17 +1587,17 @@ TEST(ArrayOpsTest, BatchToSpace_ShapeFn) {
   INFER_OK(op, "[4,8,8,3];[2,2]", "[1,10,10,d0_3]");
 
   // Bad croppings values
-  croppings = test::AsTensor<int32>({100, 2, 3, 4}, {{2, 2}});
+  croppings = test::AsTensor<int32_t>({100, 2, 3, 4}, {{2, 2}});
   op.input_tensors[1] = &croppings;
   INFER_ERROR("Negative dimension size caused by subtracting", op,
               "[4,8,8,3];[2,2]");
-  croppings = test::AsTensor<int32>({1, 2, 3, 400}, {{2, 2}});
+  croppings = test::AsTensor<int32_t>({1, 2, 3, 400}, {{2, 2}});
   op.input_tensors[1] = &croppings;
   INFER_ERROR("Negative dimension size caused by subtracting", op,
               "[4,8,8,3];[2,2]");
 
   // Negative paddings
-  croppings = test::AsTensor<int32>({1, -2, 3, 4}, {{2, 2}});
+  croppings = test::AsTensor<int32_t>({1, -2, 3, 4}, {{2, 2}});
   op.input_tensors[1] = &croppings;
   INFER_ERROR("cannot be negative", op, "[4,8,8,3];[2,2]");
 }
@@ -1618,7 +1619,7 @@ TEST(ArrayOpsTest, BatchToSpaceND_ShapeFn) {
 
   {
     // Dimensions are partially known, block_shape known.
-    Tensor block_shape = test::AsTensor<int32>({2, 3});
+    Tensor block_shape = test::AsTensor<int32_t>({2, 3});
     op.input_tensors[1] = &block_shape;
     INFER_OK(op, "[?,?,?,2];[2];?", "[?,?,?,d0_3]");
 
@@ -1626,7 +1627,7 @@ TEST(ArrayOpsTest, BatchToSpaceND_ShapeFn) {
 
     // Dimensions are partially known, block_shape and crops known.
     {
-      Tensor crops = test::AsTensor<int32>({1, 1, 0, 1}, {{2, 2}});
+      Tensor crops = test::AsTensor<int32_t>({1, 1, 0, 1}, {{2, 2}});
       op.input_tensors[2] = &crops;
       INFER_OK(op, "[18,?,2,2];[2];[2,2]", "[3,?,5,d0_3]");
       op.input_tensors[2] = nullptr;
@@ -1634,7 +1635,7 @@ TEST(ArrayOpsTest, BatchToSpaceND_ShapeFn) {
 
     // Dimensions are fully known, block_shape and crops are known.
     {
-      Tensor crops = test::AsTensor<int32>({1, 1, 0, 0}, {{2, 2}});
+      Tensor crops = test::AsTensor<int32_t>({1, 1, 0, 0}, {{2, 2}});
       op.input_tensors[2] = &crops;
       INFER_OK(op, "[18,2,1,2];[2];[2,2]", "[3,2,3,d0_3]");
       op.input_tensors[2] = nullptr;
@@ -1649,16 +1650,16 @@ TEST(ArrayOpsTest, BatchToSpaceND_ShapeFn) {
   INFER_ERROR("rank", op, "[2,2,3];[3];[3,2]");
 
   {
-    Tensor block_shape = test::AsTensor<int32>({0, 2});
+    Tensor block_shape = test::AsTensor<int32_t>({0, 2});
     op.input_tensors[1] = &block_shape;
     INFER_ERROR("block_shape must be positive", op, "[1,2,2];[2];[2,2]");
     op.input_tensors[1] = nullptr;
   }
 
   {
-    Tensor block_shape = test::AsTensor<int32>({1, 1});
+    Tensor block_shape = test::AsTensor<int32_t>({1, 1});
     op.input_tensors[1] = &block_shape;
-    Tensor paddings = test::AsTensor<int32>({0, -1, 0, 0}, {{2, 2}});
+    Tensor paddings = test::AsTensor<int32_t>({0, -1, 0, 0}, {{2, 2}});
     op.input_tensors[2] = &paddings;
     INFER_ERROR("crops cannot be negative", op, "[1,2,2];[2];[2,2]");
     op.input_tensors[1] = nullptr;
@@ -1667,9 +1668,9 @@ TEST(ArrayOpsTest, BatchToSpaceND_ShapeFn) {
 
   // The amount to crop exceeds the padded size.
   {
-    Tensor block_shape = test::AsTensor<int32>({2, 2});
+    Tensor block_shape = test::AsTensor<int32_t>({2, 2});
     op.input_tensors[1] = &block_shape;
-    Tensor crops = test::AsTensor<int32>({3, 2, 0, 0}, {{2, 2}});
+    Tensor crops = test::AsTensor<int32_t>({3, 2, 0, 0}, {{2, 2}});
     op.input_tensors[2] = &crops;
     INFER_ERROR("Negative", op, "[4,2,3,1];[2];[2,2]");
     op.input_tensors[1] = nullptr;
@@ -1678,7 +1679,7 @@ TEST(ArrayOpsTest, BatchToSpaceND_ShapeFn) {
 
   // The batch size is not divisible by the product of the block_shape.
   {
-    Tensor block_shape = test::AsTensor<int32>({2, 3});
+    Tensor block_shape = test::AsTensor<int32_t>({2, 3});
     op.input_tensors[1] = &block_shape;
     INFER_ERROR("divisible", op, "[3,1,1,1];[2];[2,2]");
     op.input_tensors[1] = nullptr;
@@ -1755,22 +1756,22 @@ TEST(ArrayOpsTest, Slice_ShapeFn) {
 
   // Tests with known values.
   op.input_tensors.resize(3);
-  Tensor begin = test::AsTensor<int32>({0, 1, 2, 1});
-  Tensor sizes = test::AsTensor<int32>({1, 2, 1, 3});
+  Tensor begin = test::AsTensor<int32_t>({0, 1, 2, 1});
+  Tensor sizes = test::AsTensor<int32_t>({1, 2, 1, 3});
   op.input_tensors[1] = &begin;
   op.input_tensors[2] = &sizes;
   INFER_OK(op, "[2,3,4,5];[4];[4]", "[1,2,1,3]");
 
   // -1 in sizes means "get the rest"
-  sizes = test::AsTensor<int32>({-1, -1, 1, -1});
+  sizes = test::AsTensor<int32_t>({-1, -1, 1, -1});
   INFER_OK(op, "[2,3,4,5];[4];[4]", "[d0_0,2,1,4]");
 
-  begin = test::AsTensor<int32>({0, 1, 2, 6});
-  sizes = test::AsTensor<int32>({-1, -1, -1, -1});
+  begin = test::AsTensor<int32_t>({0, 1, 2, 6});
+  sizes = test::AsTensor<int32_t>({-1, -1, -1, -1});
   INFER_ERROR("Negative dimension size", op, "[2,3,4,5];[4];[4]");
 
-  begin = test::AsTensor<int32>({0, 1, 2, 5});
-  sizes = test::AsTensor<int32>({-1, -1, -1, -2});
+  begin = test::AsTensor<int32_t>({0, 1, 2, 5});
+  sizes = test::AsTensor<int32_t>({-1, -1, -1, -2});
   INFER_ERROR("cannot be < -1", op, "[2,3,4,5];[4];[4]");
 }
 
@@ -1784,7 +1785,7 @@ TEST(ArrayOpsTest, StridedSlice_ShapeFn) {
                    .Attr("shrink_axis_mask", 1)
                    .Finalize(&op.node_def));
   op.input_tensors.resize(4);
-  Tensor strides = test::AsTensor<int32>({1});
+  Tensor strides = test::AsTensor<int32_t>({1});
   op.input_tensors[3] = &strides;
   // Slicing on the 0-th dimension.
   INFER_OK(op, "[2,3,4,5];[1];[1];[1]", "[3,4,5]");
@@ -1799,7 +1800,7 @@ TEST(ArrayOpsTest, StridedSliceGrad_ShapeFn) {
   INFER_OK(op, "[?];?;?;?;?", "?");
   INFER_OK(op, "[4];?;?;?;?", "[?,?,?,?]");
 
-  Tensor in_t = test::AsTensor<int32>({1, 2, 3, 4});
+  Tensor in_t = test::AsTensor<int32_t>({1, 2, 3, 4});
   op.input_tensors[0] = &in_t;
   INFER_OK(op, "[4];?;?;?;?", "[1,2,3,4]");
 }

@@ -76,7 +76,7 @@ py_strict_library(
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:dtypes",
-        "@pypi_packaging//:pkg",
+        "@pypi//packaging",
     ],
 )
 

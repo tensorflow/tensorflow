@@ -311,6 +311,8 @@ class CommandBuffer {
   // Returns command buffer state.
   virtual State state() const = 0;
 
+  virtual std::string ToString() const = 0;
+
   //--------------------------------------------------------------------------//
   // Command buffer tracing API
   //--------------------------------------------------------------------------//

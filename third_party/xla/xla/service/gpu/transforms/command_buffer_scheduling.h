@@ -85,11 +85,6 @@ class CommandBufferScheduling : public HloModulePass {
     return "command-buffer-scheduling";
   }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   static std::vector<HloInstructionSequence> CollectCommandBufferSequences(
       HloInstructionSequence schedule, const CommandBufferConfig& config,
       int32_t min_num_commands = 1);
@@ -120,6 +115,11 @@ class CommandBufferScheduling : public HloModulePass {
   static absl::StatusOr<HloComputation*> RewriteCommandBuffer(
       HloComputation* parent, const HloInstructionSequence& seq,
       CommandBuffer command_buffer);
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   se::DeviceDescription device_description_;

@@ -397,7 +397,9 @@ absl::StatusOr<HloInstructionProfile> HloOpProfiler::MeasureClockCyclesPerOp(
 
   // Longer chains are too slow to compile.
   constexpr int kMinOpChainLength = 16;
-  constexpr int kMaxOpChainLength = 8192;
+  // If you get "too fast to measure" errors on faster GPUs, try increasing
+  // kMaxOpChainLength.
+  constexpr int kMaxOpChainLength = 16 * 1024;
 
   absl::Duration duration = absl::ZeroDuration();
   int chain_length = kMinOpChainLength;

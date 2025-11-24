@@ -39,13 +39,13 @@ class IdentityNOpTest : public OpsTestBase {
 
 TEST_F(IdentityNOpTest, Int32DoubleSuccess_6) {
   TF_ASSERT_OK(Init(DT_INT32, DT_DOUBLE));
-  AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
+  AddInputFromArray<int32_t>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
   AddInputFromArray<double>(TensorShape({6}),
                             {7.3, 8.3, 9.3, 10.3, 11.3, 12.3});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected0(allocator(), DT_INT32, TensorShape({6}));
-  test::FillValues<int32>(&expected0, {1, 2, 3, 4, 5, 6});
-  test::ExpectTensorEqual<int32>(expected0, *GetOutput(0));
+  test::FillValues<int32_t>(&expected0, {1, 2, 3, 4, 5, 6});
+  test::ExpectTensorEqual<int32_t>(expected0, *GetOutput(0));
   Tensor expected1(allocator(), DT_DOUBLE, TensorShape({6}));
   test::FillValues<double>(&expected1, {7.3, 8.3, 9.3, 10.3, 11.3, 12.3});
   test::ExpectTensorEqual<double>(expected1, *GetOutput(1));
@@ -53,27 +53,27 @@ TEST_F(IdentityNOpTest, Int32DoubleSuccess_6) {
 
 TEST_F(IdentityNOpTest, Int32Success_2_3) {
   TF_ASSERT_OK(Init(DT_INT32, DT_INT32));
-  AddInputFromArray<int32>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6});
-  AddInputFromArray<int32>(TensorShape({2, 3}), {7, 8, 9, 10, 11, 12});
+  AddInputFromArray<int32_t>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6});
+  AddInputFromArray<int32_t>(TensorShape({2, 3}), {7, 8, 9, 10, 11, 12});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_INT32, TensorShape({2, 3}));
-  test::FillValues<int32>(&expected, {1, 2, 3, 4, 5, 6});
-  test::ExpectTensorEqual<int32>(expected, *GetOutput(0));
-  test::FillValues<int32>(&expected, {7, 8, 9, 10, 11, 12});
-  test::ExpectTensorEqual<int32>(expected, *GetOutput(1));
+  test::FillValues<int32_t>(&expected, {1, 2, 3, 4, 5, 6});
+  test::ExpectTensorEqual<int32_t>(expected, *GetOutput(0));
+  test::FillValues<int32_t>(&expected, {7, 8, 9, 10, 11, 12});
+  test::ExpectTensorEqual<int32_t>(expected, *GetOutput(1));
 }
 
 TEST_F(IdentityNOpTest, StringInt32Success) {
   TF_ASSERT_OK(Init(DT_STRING, DT_INT32));
   AddInputFromArray<tstring>(TensorShape({6}), {"A", "b", "C", "d", "E", "f"});
-  AddInputFromArray<int32>(TensorShape({8}), {1, 3, 5, 7, 9, 11, 13, 15});
+  AddInputFromArray<int32_t>(TensorShape({8}), {1, 3, 5, 7, 9, 11, 13, 15});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected0(allocator(), DT_STRING, TensorShape({6}));
   test::FillValues<tstring>(&expected0, {"A", "b", "C", "d", "E", "f"});
   test::ExpectTensorEqual<tstring>(expected0, *GetOutput(0));
   Tensor expected1(allocator(), DT_INT32, TensorShape({8}));
-  test::FillValues<int32>(&expected1, {1, 3, 5, 7, 9, 11, 13, 15});
-  test::ExpectTensorEqual<int32>(expected1, *GetOutput(1));
+  test::FillValues<int32_t>(&expected1, {1, 3, 5, 7, 9, 11, 13, 15});
+  test::ExpectTensorEqual<int32_t>(expected1, *GetOutput(1));
 }
 
 }  // namespace

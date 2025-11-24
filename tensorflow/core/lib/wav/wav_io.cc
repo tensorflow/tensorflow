@@ -21,6 +21,7 @@ limitations under the License.
 #include <string.h>
 
 #include <algorithm>
+#include <cstdint>
 
 #include "absl/base/casts.h"
 #include "tensorflow/core/lib/core/coding.h"
@@ -74,8 +75,9 @@ constexpr char kDataChunkId[] = "data";
 
 inline int16 FloatToInt16Sample(float data) {
   constexpr float kMultiplier = 1.0f * (1 << 15);
-  return std::min<float>(std::max<float>(roundf(data * kMultiplier), kint16min),
-                         kint16max);
+  return std::min<float>(std::max<float>(roundf(data * kMultiplier),
+                                         std::numeric_limits<int16_t>::min()),
+                         std::numeric_limits<int16_t>::max());
 }
 
 inline float Int16SampleToFloat(int16_t data) {
@@ -156,11 +158,12 @@ absl::Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
   if (wav_string == nullptr) {
     return errors::InvalidArgument("wav_string is null");
   }
-  if (sample_rate == 0 || sample_rate > kuint32max) {
+  if (sample_rate == 0 || sample_rate > std::numeric_limits<uint32_t>::max()) {
     return errors::InvalidArgument("sample_rate must be in (0, 2^32), got: ",
                                    sample_rate);
   }
-  if (num_channels == 0 || num_channels > kuint16max) {
+  if (num_channels == 0 ||
+      num_channels > std::numeric_limits<uint16_t>::max()) {
     return errors::InvalidArgument("num_channels must be in (0, 2^16), got: ",
                                    num_channels);
   }
@@ -172,8 +175,8 @@ absl::Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
   const size_t bytes_per_frame = kBytesPerSample * num_channels;
 
   // WAV represents the length of the file as a uint32 so file_size cannot
-  // exceed kuint32max.
-  if (file_size > kuint32max) {
+  // exceed std::numeric_limits<uint32_t>::max().
+  if (file_size > std::numeric_limits<uint32_t>::max()) {
     return errors::InvalidArgument(
         "Provided channels and frames cannot be encoded as a WAV.");
   }

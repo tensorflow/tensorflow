@@ -36,7 +36,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/pjrt/pjrt_future.h"
+#include "xla/future.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -322,7 +322,9 @@ void PullTable::Handle(tsl::RCReference<ConnectionState> state,
   if (entry->Handle(std::move(state), req, base_req_id)) {
     absl::MutexLock l(mu_);
     auto it = entries_.find(req.uuid());
-    entries_.erase(it);
+    if (it != entries_.end()) {
+      entries_.erase(it);
+    }
   }
 }
 

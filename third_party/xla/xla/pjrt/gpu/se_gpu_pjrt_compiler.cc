@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
-#include "xla/service/gpu/executable.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"

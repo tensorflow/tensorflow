@@ -67,7 +67,7 @@ XlaContext::XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder,
   }
 }
 
-string XlaContext::DebugString() const { return "XLA JIT context"; }
+std::string XlaContext::DebugString() const { return "XLA JIT context"; }
 
 void XlaContext::SetRetval(int index, const XlaExpression& expression) {
   const int64_t retvals_size = retvals_.size();
@@ -84,7 +84,7 @@ XlaResource* XlaContext::AddResource(std::unique_ptr<XlaResource> resource) {
 
 const xla::XlaComputation* XlaContext::GetOrCreateMax(const DataType type) {
   return LookupOrCreate(type, &max_func_, [type] {
-    const string type_string = DataTypeString(type);
+    const std::string type_string = DataTypeString(type);
     VLOG(1) << "Building Max() for " << type_string;
     xla::XlaBuilder b("max<" + type_string + ">");
     xla::PrimitiveType xla_type;
@@ -100,7 +100,7 @@ const xla::XlaComputation* XlaContext::GetOrCreateMax(const DataType type) {
 
 const xla::XlaComputation* XlaContext::GetOrCreateMin(const DataType type) {
   return LookupOrCreate(type, &min_func_, [type] {
-    const string type_string = DataTypeString(type);
+    const std::string type_string = DataTypeString(type);
     VLOG(1) << "Building Min() for " << type_string;
     xla::XlaBuilder b("min<" + type_string + ">");
     xla::PrimitiveType xla_type;
@@ -116,7 +116,7 @@ const xla::XlaComputation* XlaContext::GetOrCreateMin(const DataType type) {
 
 const xla::XlaComputation* XlaContext::GetOrCreateAdd(const DataType type) {
   return LookupOrCreate(type, &add_func_, [type] {
-    const string type_string = DataTypeString(type);
+    const std::string type_string = DataTypeString(type);
     VLOG(1) << "Building Add() for " << type_string;
     xla::XlaBuilder b("add<" + type_string + ">");
     xla::PrimitiveType xla_type;
@@ -133,7 +133,7 @@ const xla::XlaComputation* XlaContext::GetOrCreateAdd(const DataType type) {
 const xla::XlaComputation* XlaContext::GetOrCreateLogAddExp(
     const DataType type) {
   return LookupOrCreate(type, &log_add_exp_func_, [type] {
-    const string type_string = DataTypeString(type);
+    const std::string type_string = DataTypeString(type);
     VLOG(1) << "Building LogAddExp() for " << type_string;
     xla::XlaBuilder b("log_add_exp<" + type_string + ">");
     xla::PrimitiveType xla_type;
@@ -154,7 +154,7 @@ const xla::XlaComputation* XlaContext::GetOrCreateLogAddExp(
 
 const xla::XlaComputation* XlaContext::GetOrCreateMul(const DataType type) {
   return LookupOrCreate(type, &mul_func_, [type] {
-    const string type_string = DataTypeString(type);
+    const std::string type_string = DataTypeString(type);
     VLOG(1) << "Building Mul() for " << type_string;
     xla::XlaBuilder b("mul<" + type_string + ">");
     xla::PrimitiveType xla_type;

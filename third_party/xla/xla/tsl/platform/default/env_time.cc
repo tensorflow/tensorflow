@@ -21,11 +21,11 @@ limitations under the License.
 namespace tsl {
 
 /* static */
-uint64 EnvTime::NowNanos() {
+uint64_t EnvTime::NowNanos() {
   struct timespec ts;
   clock_gettime(CLOCK_REALTIME, &ts);
-  return (static_cast<uint64>(ts.tv_sec) * kSecondsToNanos +
-          static_cast<uint64>(ts.tv_nsec));
+  return (static_cast<uint64_t>(ts.tv_sec) * kSecondsToNanos +
+          static_cast<uint64_t>(ts.tv_nsec));
 }
 
 }  // namespace tsl

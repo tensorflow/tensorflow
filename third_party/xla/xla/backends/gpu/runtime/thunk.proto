@@ -19,11 +19,14 @@ package xla.gpu;
 
 import "xla/backends/gpu/runtime/convolution_filter_thunk.proto";
 import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
+import "xla/backends/gpu/runtime/shaped_slice.proto";
 import "xla/core/host_offloading/host_offloading_executable.proto";
+import "xla/ffi/attribute_map.proto";
 import "xla/service/buffer_assignment.proto";
 import "xla/service/gpu/gpu_conv_runner.proto";
 import "xla/service/gpu/gpu_norm_runner.proto";
 import "xla/service/gpu/launch_dimensions.proto";
+import "xla/service/hlo.proto";
 import "xla/stream_executor/gpu/gpu_blas_lt.proto";
 import "xla/stream_executor/gpu/tma_metadata.proto";
 import "xla/stream_executor/launch_dim.proto";
@@ -117,16 +120,6 @@ message TriangularSolveThunkProto {
   int64 b_batch_stride = 10;
 }
 
-message CholeskyThunkProto {
-  xla.CholeskyOptions options = 1;
-  xla.buffer_assignment.BufferAllocationSliceProto a_buffer = 2;
-  xla.buffer_assignment.BufferAllocationSliceProto workspace_buffer = 3;
-  xla.buffer_assignment.BufferAllocationSliceProto info_buffer = 4;
-  xla.PrimitiveType type = 5;
-  int64 batch_size = 6;
-  int64 n = 7;
-}
-
 message ReplicaIdThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
 }
@@ -142,9 +135,34 @@ message CudnnThunkProto {
   optional int64 sdpa_dropout_seed = 3;
 }
 
-message ShapedSliceProto {
-  xla.buffer_assignment.BufferAllocationSliceProto slice = 1;
-  xla.ShapeProto shape = 2;
+message HostSendThunkProto {
+  xla.ShapeProto shape = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto buffer = 2;
+  int64 channel_id = 3;
+  map<string, string> frontend_attrs = 4;
+  optional int64 device_constraint = 5;
+  uint64 async_events_unique_id = 6;
+}
+
+message HostSendDoneThunkProto {
+  int64 channel_id = 1;
+  optional int64 device_constraint = 2;
+  uint64 async_events_unique_id = 3;
+}
+
+message HostRecvThunkProto {
+  xla.ShapeProto shape = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto buffer = 2;
+  int64 channel_id = 3;
+  map<string, string> frontend_attrs = 4;
+  optional int64 device_constraint = 5;
+  uint64 async_events_unique_id = 6;
+}
+
+message HostRecvDoneThunkProto {
+  int64 channel_id = 1;
+  optional int64 device_constraint = 2;
+  uint64 async_events_unique_id = 3;
 }
 
 message HostExecuteStartThunkProto {
@@ -167,6 +185,7 @@ message DynamicSliceThunkProto {
   repeated OptionalInt64Proto offset_byte_sizes = 6;
   optional OffsetAsFunctionOfIndvarModulesMetadataProto
       offset_as_function_of_indvar_modules_metadata = 7;
+  repeated BufferAllocationProto fake_allocations = 8;
 }
 
 message MemzeroThunkProto {
@@ -213,6 +232,16 @@ message CublasLtMatmulThunkProto {
   optional xla.buffer_assignment.BufferAllocationSliceProto workspace = 16;
 }
 
+message CubSortThunkProto {
+  xla.PrimitiveType type = 1;
+  optional xla.PrimitiveType value_type = 3;
+  repeated xla.buffer_assignment.BufferAllocationSliceProto operands = 4;
+  repeated xla.buffer_assignment.BufferAllocationSliceProto results = 5;
+  xla.buffer_assignment.BufferAllocationSliceProto scratch = 6;
+  bool descending = 7;
+  int64 batch_size = 8;
+}
+
 message NormThunkProto {
   GpuNormDescriptorProto norm_descriptor = 1;
   xla.buffer_assignment.BufferAllocationSliceProto x = 2;
@@ -250,6 +279,18 @@ message FftThunkProto {
   xla.ShapeProto output_shape = 6;
 }
 
+message CustomCallThunkProto {
+  string target_name = 1;
+  repeated NullableShapedSliceProto operands = 2;
+  repeated NullableShapedSliceProto results = 3;
+  string opaque = 4;
+  CustomCallApiVersion api_version = 5;
+  xla.ffi.AttributesMapProto attributes = 6;
+  // The name of the called computation. It needs to match the HloCompuation in
+  // the HloModule that is used to deserialize the thunk.
+  optional string called_computation = 7;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -280,8 +321,13 @@ message ThunkProto {
     ConvolutionThunkProto convolution_thunk = 25;
     ConvolutionReorderThunkProto convolution_reorder_thunk = 26;
     FftThunkProto fft_thunk = 27;
-    CholeskyThunkProto cholesky_thunk = 28;
-    Memset32BitValueThunkProto memset32bit_value_thunk = 29;
+    Memset32BitValueThunkProto memset32bit_value_thunk = 28;
+    CustomCallThunkProto custom_call_thunk = 30;
+    CubSortThunkProto cub_sort_thunk = 31;
+    HostSendThunkProto host_send_thunk = 32;
+    HostSendDoneThunkProto host_send_done_thunk = 33;
+    HostRecvThunkProto host_recv_thunk = 34;
+    HostRecvDoneThunkProto host_recv_done_thunk = 35;
   }
 }
 

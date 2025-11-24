@@ -29,13 +29,14 @@ namespace tensorflow {
 // Forward declare protos so their symbols can be removed from .so exports
 class OpDef;
 
-inline string Spaces(int n) { return string(n, ' '); }
+inline std::string Spaces(int n) { return std::string(n, ' '); }
 
 // Wrap prefix + str to be at most width characters, indenting every line
 // after the first by prefix.size() spaces.  Intended use case is something
 // like prefix = "  Foo(" and str is a list of arguments (terminated by a ")").
 // TODO(josh11b): Option to wrap on ", " instead of " " when possible.
-string WordWrap(absl::string_view prefix, absl::string_view str, int width);
+std::string WordWrap(absl::string_view prefix, absl::string_view str,
+                     int width);
 
 // Looks for an "=" at the beginning of *description.  If found, strips it off
 // (and any following spaces) from *description and return true.  Otherwise
@@ -43,9 +44,9 @@ string WordWrap(absl::string_view prefix, absl::string_view str, int width);
 bool ConsumeEquals(absl::string_view* description);
 
 // Convert text-serialized protobufs to/from multiline format.
-string PBTxtToMultiline(absl::string_view pbtxt,
-                        const std::vector<string>& multi_line_fields);
-string PBTxtFromMultiline(absl::string_view multiline_pbtxt);
+std::string PBTxtToMultiline(absl::string_view pbtxt,
+                             const std::vector<std::string>& multi_line_fields);
+std::string PBTxtFromMultiline(absl::string_view multiline_pbtxt);
 
 // Takes a list of files with ApiDefs text protos, and allows you to
 // look up the specific ApiDef for any given op.
@@ -62,20 +63,21 @@ class ApiDefMap {
   // definitions take precedence.
   // ApiDefs loaded from files must contain a subset of ops defined
   // in the OpList passed to the constructor.
-  absl::Status LoadFileList(Env* env, const std::vector<string>& filenames);
+  absl::Status LoadFileList(Env* env,
+                            const std::vector<std::string>& filenames);
 
   // Load a single file. Api definitions are merged if the same
   // op definition is loaded multiple times. Later-loaded
   // definitions take precedence.
   // ApiDefs loaded from file must contain a subset of ops defined
   // in the OpList passed to the constructor.
-  absl::Status LoadFile(Env* env, const string& filename);
+  absl::Status LoadFile(Env* env, const std::string& filename);
 
   // Load ApiDefs from string containing ApiDefs text proto.
   // api_def_file_contents is expected to be in "multiline format".
   // ApiDefs must contain a subset of ops defined in OpsList
   // passed to the constructor.
-  absl::Status LoadApiDef(const string& api_def_file_contents);
+  absl::Status LoadApiDef(const std::string& api_def_file_contents);
 
   // Updates ApiDef docs. For example, if ApiDef renames an argument
   // or attribute, applies these renames to descriptions as well.
@@ -89,10 +91,10 @@ class ApiDefMap {
   // Note: Returned ApiDef pointer should stay valid even after calling
   // Load* functions defined above. Subsequent calls to Load* might modify
   // returned ApiDef contents, but should never remove the ApiDef itself.
-  const ApiDef* GetApiDef(const string& name) const;
+  const ApiDef* GetApiDef(const std::string& name) const;
 
  private:
-  std::unordered_map<string, ApiDef> map_;
+  std::unordered_map<std::string, ApiDef> map_;
 };
 
 }  // namespace tensorflow

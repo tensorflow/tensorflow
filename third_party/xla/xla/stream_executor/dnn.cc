@@ -40,7 +40,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
@@ -144,7 +144,7 @@ absl::Status DnnSupport::GetConvolveRunners(
     DeviceMemoryBase /*output_data*/,
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
     bool /*use_fallback*/, ScratchAllocator* /*scratch_allocator*/,
-    const NumericOptions& /*numeric_options*/,
+    const EngineOptions& /*engine_options*/,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* /*exec_plans*/) {
   return absl::UnimplementedError("GetConvolveRunners not implemented.");
 }
@@ -167,7 +167,7 @@ absl::Status DnnSupport::GetGraphConvolveRunners(
     const dnn::FilterDescriptor& /*filter_descriptor*/,
     const dnn::BatchDescriptor& /*output_descriptor*/,
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
-    bool /*use_fallback*/, const NumericOptions& /*numeric_options*/,
+    bool /*use_fallback*/, const EngineOptions& /*engine_options*/,
     std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* /*exec_plans*/,
     std::string /*serialized_graph*/) {
   return absl::UnimplementedError("GetGraphConvolveRunners not implemented.");
@@ -195,7 +195,7 @@ absl::Status DnnSupport::GetFusedConvolveRunners(
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    dnn::ActivationMode activation_mode, const NumericOptions& numeric_options,
+    dnn::ActivationMode activation_mode, const EngineOptions& engine_options,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
   return absl::UnimplementedError("GetFusedConvolveRunners not implemented.");
 }
@@ -205,7 +205,7 @@ absl::Status DnnSupport::GetFusedMatmulRunners(
     dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
     uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
     dnn::ActivationMode activation_mode, bool use_fallback,
-    const NumericOptions& numeric_options,
+    const EngineOptions& engine_options,
     std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
         out_exec_plans) {
   return absl::UnimplementedError("GetFusedMatmulRunners not implemented.");
@@ -265,7 +265,7 @@ bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
 absl::Status DnnSupport::DoPoolForward(
     DataType element_type, Stream* stream,
     const dnn::PoolingDescriptor& pooling_dimensions,
-    const NumericOptions& numeric_options,
+    const EngineOptions& engine_options,
     const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
     const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
     ScratchAllocator* workspace_allocator) {
@@ -278,7 +278,7 @@ absl::Status DnnSupport::DoPoolForward(
 absl::Status DnnSupport::DoPoolBackward(
     DataType element_type, Stream* stream,
     const dnn::PoolingDescriptor& pooling_dimensions,
-    const NumericOptions& numeric_options,
+    const EngineOptions& engine_options,
     const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
     const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
     DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,

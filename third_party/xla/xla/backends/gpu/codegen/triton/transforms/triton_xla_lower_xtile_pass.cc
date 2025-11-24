@@ -63,14 +63,18 @@ namespace ma = ::mlir::arith;
 
 // Get the new arg types of the lowered function by translating memrefs to the
 // corresponding pointer types.
-llvm::SmallVector<mlir::Type> GetPtrArgTypes(mlir::ValueRange args) {
+llvm::SmallVector<mlir::Type> GetTransformedArgTypes(
+    ::xla::xtile::EntryFuncOp& entry_op) {
   llvm::SmallVector<mlir::Type> arg_types;
-  arg_types.reserve(args.size());
-  for (auto arg : args) {
+  // Tile id is not carried over hence -1.
+  arg_types.reserve(entry_op.getNumArguments() - 1U);
+  for (const auto& arg : entry_op.getBufferArgs()) {
     mlir::MemRefType memref_type = mlir::cast<mlir::MemRefType>(arg.getType());
     arg_types.push_back(
         ::xla::gpu::triton::GetGlobalPointerType(memref_type.getElementType()));
   }
+  mlir::TypeRange opaque_args(entry_op.getOpaqueArgs());
+  arg_types.append(opaque_args.begin(), opaque_args.end());
   return arg_types;
 }
 
@@ -136,16 +140,17 @@ MemrefToPtrOp CreateMemrefToPtr(mlir::OpBuilder& builder,
 class XTileEntryToTriton
     : public mlir::OpRewritePattern<::xla::xtile::EntryFuncOp> {
  public:
-  XTileEntryToTriton(mlir::MLIRContext* context, mlir::ModuleOp& module)
-      : OpRewritePattern(context), module_(module) {}
+  using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
       ::xla::xtile::EntryFuncOp entry_op,
       mlir::PatternRewriter& rewriter) const override {
-    mlir::ImplicitLocOpBuilder builder(module_->getLoc(), module_);
-    builder.setInsertionPointToStart(module_.getBody());
+    mlir::ModuleOp module = entry_op->getParentOfType<mlir::ModuleOp>();
+    mlir::ImplicitLocOpBuilder builder(module->getLoc(), module);
+    builder.setInsertionPointToStart(module.getBody());
 
-    auto new_arg_types = GetPtrArgTypes(entry_op.getBufferArgs());
+    const int64_t num_buffer_args = entry_op.getBufferArgs().size();
+    auto new_arg_types = GetTransformedArgTypes(entry_op);
     auto new_func_op = builder.create<mlir::func::FuncOp>(
         entry_op.getName(), builder.getFunctionType(new_arg_types, {}));
 
@@ -163,17 +168,15 @@ class XTileEntryToTriton
 
     BlockArgument tile_id_arg = old_args.back();
 
-    // TODO(b/389955087): we can decide whether to sign extend by
-    // understanding if we need 64 bits to encode indices or if 32 bits are
-    // enough. For now, just use 64 bits to avoid issues.
     auto pid = builder.create<ttir::GetProgramIdOp>(ttir::ProgramIDDim::X);
-    Value pid_i64 = builder.create<ma::ExtSIOp>(builder.getI64Type(), pid);
     Value pid_idx =
-        builder.create<ma::IndexCastOp>(builder.getIndexType(), pid_i64);
+        builder.create<ma::IndexCastOp>(builder.getIndexType(), pid);
     rewriter.replaceAllUsesWith(tile_id_arg, pid_idx);
 
-    // Handle memeref arguments.
-    for (auto [old_arg, new_arg] : llvm::zip(old_args, new_args)) {
+    // Handle memref arguments.
+    for (auto [old_arg, new_arg] :
+         llvm::zip(old_args,
+                   mlir::ValueRange(new_args).take_front(num_buffer_args))) {
       mlir::MemRefType memref_type =
           mlir::cast<mlir::MemRefType>(old_arg.getType());
 
@@ -182,6 +185,13 @@ class XTileEntryToTriton
 
       // Replace all uses of the old argument with the result of the cast.
       rewriter.replaceAllUsesWith(old_arg, memref_cast);
+    }
+    // For opaque arguments, we can simply replace all uses with the new
+    // argument.
+    for (auto [old_arg, new_arg] :
+         llvm::zip(mlir::ValueRange(old_args).drop_front(num_buffer_args),
+                   mlir::ValueRange(new_args).drop_front(num_buffer_args))) {
+      rewriter.replaceAllUsesWith(old_arg, new_arg);
     }
 
     entry_block.eraseArguments(0, old_args.size());
@@ -194,9 +204,6 @@ class XTileEntryToTriton
     rewriter.eraseOp(entry_op);
     return success();
   }
-
- private:
-  mlir::ModuleOp& module_;
 };
 
 // Rewrite a xtile extract to a triton_xla extract.
@@ -214,13 +221,13 @@ class XTileExtractToTriton
     mlir::Value memref_to_ptr =
         CreateMemrefToPtr(rewriter, extract_op.getSource());
 
-    if (extract_op.getType().getRank() == 0) {
+    if (result_type.getRank() == 0) {
       mlir::Value scalar_value = rewriter.create<ttir::LoadOp>(
           extract_op->getLoc(), memref_to_ptr, ttir::CacheModifier::NONE,
           ttir::EvictionPolicy::NORMAL, /*isVolatile=*/false);
 
       rewriter.replaceOpWithNewOp<mlir::tensor::FromElementsOp>(
-          extract_op, extract_op.getType(), scalar_value);
+          extract_op, result_type, scalar_value);
       return mlir::success();
     }
 
@@ -257,8 +264,8 @@ class XTileInsertToTriton
         CreateMemrefToPtr(rewriter, insert_op.getDestination());
 
     if (insert_op.getSource().getType().getRank() == 0) {
-      mlir::Value scalar_value = rewriter.create<mlir::tensor::ExtractOp>(
-          insert_op.getLoc(), insert_op.getSource());
+      mlir::Value scalar_value = mlir::tensor::ExtractOp::create(
+          rewriter, insert_op.getLoc(), insert_op.getSource());
 
       rewriter.replaceOpWithNewOp<ttir::StoreOp>(
           insert_op, memref_to_ptr, scalar_value, /*mask=*/nullptr);
@@ -283,6 +290,25 @@ class XTileInsertToTriton
   }
 };
 
+class FoldIntoMemrefToPtr : public mlir::OpRewritePattern<MemrefToPtrOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      MemrefToPtrOp op, mlir::PatternRewriter& rewriter) const override {
+    // As a transpose doesn't add any offset we can simply fold it into the
+    // memref_to_ptr.
+    auto transpose = op.getSrc().getDefiningOp<mlir::memref::TransposeOp>();
+    if (!transpose) {
+      return mlir::failure();
+    }
+
+    rewriter.replaceOpWithNewOp<MemrefToPtrOp>(op, op.getType(),
+                                               transpose.getIn());
+    return mlir::success();
+  }
+};
+
 class TritonXLALowerXTilePass
     : public impl::TritonXLALowerXTilePassBase<TritonXLALowerXTilePass> {
  public:
@@ -294,8 +320,8 @@ class TritonXLALowerXTilePass
 
     mlir::RewritePatternSet patterns(context);
 
-    patterns.add<XTileEntryToTriton>(context, module);
-    patterns.add<XTileExtractToTriton, XTileInsertToTriton>(context);
+    patterns.add<XTileEntryToTriton, XTileExtractToTriton, XTileInsertToTriton,
+                 FoldIntoMemrefToPtr>(context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();

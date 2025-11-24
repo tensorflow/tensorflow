@@ -188,7 +188,7 @@ class UnaryVariantOpRegistry {
   // iterators).  In other words, one may safely point a StringPiece to
   // a value in the set without that StringPiece being invalidated by
   // future insertions.
-  static std::unordered_set<string>* PersistentStringStorage();
+  static std::unordered_set<std::string>* PersistentStringStorage();
 
  private:
   struct TypeIndexHash {

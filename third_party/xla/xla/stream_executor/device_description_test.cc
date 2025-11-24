@@ -16,11 +16,16 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
 namespace {
+using absl_testing::IsOkAndHolds;
 
 TEST(DeviceDescription, DefaultConstruction) {
   DeviceDescription desc;
@@ -114,6 +119,17 @@ TEST(RocmComputeCapability, Accessors) {
   EXPECT_TRUE(RocmComputeCapability{"gfx1200"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1100"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1103"}.has_hipblaslt());
+}
+
+TEST(GpuComputeCapability, ProtoConversion) {
+  EXPECT_THAT(
+      GpuComputeCapability::FromProto(
+          GpuComputeCapability(CudaComputeCapability::Volta()).ToProto()),
+      IsOkAndHolds(GpuComputeCapability(CudaComputeCapability::Volta())));
+  EXPECT_THAT(
+      GpuComputeCapability::FromProto(
+          GpuComputeCapability(RocmComputeCapability("gfx900")).ToProto()),
+      IsOkAndHolds(GpuComputeCapability(RocmComputeCapability("gfx900"))));
 }
 
 }  // namespace
