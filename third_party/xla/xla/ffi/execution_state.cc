@@ -116,10 +116,8 @@ absl::StatusOr<ExecutionState> ExecutionState::FromProto(
         proto.type_name());
   }
 
-  TF_ASSIGN_OR_RETURN(void* opaque_state,
-                      type_info.deserializer(proto.state()));
-
-  TF_RETURN_IF_ERROR(state.Set(type_id, type_info, opaque_state));
+  TF_ASSIGN_OR_RETURN(auto opaque_state, type_info.deserializer(proto.state()));
+  TF_RETURN_IF_ERROR(state.Set(type_id, type_info, opaque_state.release()));
   return state;
 }
 

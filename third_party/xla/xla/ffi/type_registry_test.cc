@@ -17,18 +17,41 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
+#include <memory>
+#include <string>
+#include <type_traits>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::ffi {
-namespace {
 
+// Define a custom type with `TypeSerDes` specialization to test that TypeInfo
+// is properly generated for such types.
+struct MyString {
+  std::string data;
+};
+
+template <>
+struct TypeRegistry::SerDes<MyString> : public std::true_type {
+  static absl::StatusOr<std::string> Serialize(const MyString& type) {
+    return type.data;
+  }
+  static absl::StatusOr<std::unique_ptr<MyString>> Deserialize(
+      absl::string_view data) {
+    auto type = std::make_unique<MyString>();
+    type->data = std::string(data);
+    return type;
+  }
+};
+
+namespace {
 using ::testing::HasSubstr;
 
 TEST(TypeRegistryTest, RegisterExternalTypeId) {
@@ -85,6 +108,19 @@ TEST(TypeRegistryTest, InternalTypeInfo) {
 
   TypeRegistry::TypeInfo type_info = TypeRegistry::GetTypeInfo<int32_t>();
   type_info.deleter(ptr);
+}
+
+TEST(TypeRegistryTest, SerializableType) {
+  MyString str = {"foo"};
+
+  TypeRegistry::TypeInfo type_info = TypeRegistry::GetTypeInfo<MyString>();
+  ASSERT_NE(type_info.serializer, nullptr);
+  ASSERT_NE(type_info.deserializer, nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized, TypeRegistry::Serialize(str));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MyString> deserialized,
+                          TypeRegistry::Deserialize<MyString>(serialized));
+  EXPECT_EQ(deserialized->data, "foo");
 }
 
 }  // namespace

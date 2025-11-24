@@ -977,6 +977,8 @@ absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
       cpu_executable_->GetAllocations());
   TF_ASSIGN_OR_RETURN(memory_stats.peak_memory_in_bytes,
                       ComputePeakMemory(proto));
+  memory_stats.total_allocation_bytes =
+      ComputeTotalAllocationBytes(proto, /*memory_color=*/0);
   return memory_stats;
 }
 
