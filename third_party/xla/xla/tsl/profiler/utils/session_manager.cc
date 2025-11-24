@@ -223,7 +223,7 @@ absl::Status ValidateHostPortPair(absl::string_view host_port) {
   uint32_t port;
   std::vector<absl::string_view> parts = absl::StrSplit(host_port, ':');
   // Must be host:port, port must be a number, host must not contain a '/',
-  // host also must not be empty.
+  // host also must not be empty and no-op if it is empty.
   if (parts.size() != 2 || !absl::SimpleAtoi(parts[1], &port) ||
       absl::StrContains(parts[0], "/") || parts[0].empty()) {
     return tsl::errors::InvalidArgument("Could not interpret \"", host_port,
