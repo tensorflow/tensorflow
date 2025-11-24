@@ -233,6 +233,16 @@ EmitCollectiveKernelThunk(IrEmitterContext* ir_emitter_context,
           .xla_gpu_unsupported_use_all_reduce_one_shot_kernel());
 }
 
+std::unique_ptr<llvm::Module> CreateLocalLLVMModule(
+    const std::string& module_name, llvm::Module* global_llvm_module) {
+  auto llvm_module = std::make_unique<llvm::Module>(
+      module_name, global_llvm_module->getContext());
+  llvm_module->setTargetTriple(
+      llvm::Triple(global_llvm_module->getTargetTriple()));
+  llvm_module->setDataLayout(global_llvm_module->getDataLayout());
+  return llvm_module;
+}
+
 }  // namespace
 
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
@@ -352,16 +362,18 @@ void IrEmitterUnnested::CreateStore(llvm::Value* data, llvm::Value* address,
 // end)} Output = {static array, dynamic_dim0, dynamic_dim1}
 absl::Status IrEmitterUnnested::EmitPadToStatic(
     const HloCustomCallInstruction* instr) {
-  int unroll_factor = 1;
   std::string ir_name = std::string(instr->name());
+  auto local_llvm_module =
+      CreateLocalLLVMModule(ir_name, ir_emitter_context_->llvm_module());
+
+  constexpr int kUnrollFactor = 1;
   const Shape& input_shape = instr->operand(0)->shape();
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      input_shape, ir_emitter_context_->gpu_device_info(), {unroll_factor});
-  TF_ASSIGN_OR_RETURN(
-      std::vector<llvm_ir::IrArray> ir_arrays,
-      BuildKernelThunkForNonFusionOp(ir_emitter_context_->llvm_module(), instr,
-                                     launch_dimensions));
+      input_shape, ir_emitter_context_->gpu_device_info(), {kUnrollFactor});
+  TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
+                      BuildKernelThunkForNonFusionOp(local_llvm_module.get(),
+                                                     instr, launch_dimensions));
 
   const llvm_ir::IrArray& source_array = ir_arrays[0];
   const llvm_ir::IrArray& output_array = ir_arrays[1];
@@ -473,8 +485,11 @@ absl::Status IrEmitterUnnested::EmitPadToStatic(
   const Shape& data_shape = instr->shape().tuple_shapes(0);
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
                                          launch_dimensions, &b_,
-                                         {unroll_factor})
+                                         {kUnrollFactor})
                          .EmitLoop(ir_name, index_ty));
+  CHECK(!llvm::Linker::linkModules(*ir_emitter_context_->llvm_module(),
+                                   std::move(local_llvm_module),
+                                   llvm::Linker::Flags::OverrideFromSrc));
   return absl::OkStatus();
 }
 
@@ -482,20 +497,21 @@ absl::Status IrEmitterUnnested::EmitPadToStatic(
 // end)} Output = {static array, dynamic_dim0, dynamic_dim1}
 absl::Status IrEmitterUnnested::EmitSliceToDynamic(
     const HloCustomCallInstruction* instr) {
-  // TODO(jurahul): Create an op to represent SliceToDynamic.
-  int unroll_factor = 1;
   std::string ir_name = std::string(instr->name());
+  auto local_llvm_module =
+      CreateLocalLLVMModule(ir_name, ir_emitter_context_->llvm_module());
 
+  // TODO(jurahul): Create an op to represent SliceToDynamic.
+  constexpr int kUnrollFactor = 1;
   const Shape& input_shape = instr->operand(0)->shape();
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      input_shape, ir_emitter_context_->gpu_device_info(), {unroll_factor});
+      input_shape, ir_emitter_context_->gpu_device_info(), {kUnrollFactor});
   llvm::Type* index_ty =
       GetIndexTypeForKernel(instr, launch_dimensions.launch_bound(), &b_);
-  TF_ASSIGN_OR_RETURN(
-      std::vector<llvm_ir::IrArray> ir_arrays,
-      BuildKernelThunkForNonFusionOp(ir_emitter_context_->llvm_module(), instr,
-                                     launch_dimensions));
+  TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
+                      BuildKernelThunkForNonFusionOp(local_llvm_module.get(),
+                                                     instr, launch_dimensions));
 
   const Shape& data_shape = ShapeUtil::MakeStaticShape(instr->shape());
   TF_RET_CHECK(data_shape.IsArray());
@@ -596,8 +612,11 @@ absl::Status IrEmitterUnnested::EmitSliceToDynamic(
 
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
                                          launch_dimensions, &b_,
-                                         {unroll_factor})
+                                         {kUnrollFactor})
                          .EmitLoop(ir_name, index_ty));
+  CHECK(!llvm::Linker::linkModules(*ir_emitter_context_->llvm_module(),
+                                   std::move(local_llvm_module),
+                                   llvm::Linker::Flags::OverrideFromSrc));
   return absl::OkStatus();
 }
 
