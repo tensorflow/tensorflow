@@ -146,6 +146,16 @@ static int CpuDeviceCount() {
   return GetDebugOptionsFromFlags().xla_force_host_platform_device_count();
 }
 
+namespace cpu {
+
+PjRtPlatformId PlatformId() { return tsl::Fingerprint64(CpuName()); }
+
+absl::string_view PlatformName() { return CpuName(); }
+
+absl::string_view PlatformVersion() { return CpuName(); }
+
+}  // namespace cpu
+
 namespace {
 
 // A custom memory allocator function passed via the CPU client options.
@@ -192,23 +202,50 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
   int cpu_device_count = options.cpu_device_count.value_or(CpuDeviceCount());
   size_t num_threads = std::max(DefaultThreadPoolSize(), cpu_device_count);
 
-  std::vector<std::unique_ptr<PjRtCpuDevice>> devices;
-  for (int i = 0; i < cpu_device_count; ++i) {
-    auto device = std::make_unique<PjRtCpuDevice>(
-        options.process_id, /*local_device_id=*/i,
-        options.max_inflight_computations_per_device);
-    devices.push_back(std::move(device));
-  }
-
   std::unique_ptr<CpuDeviceMemory::Allocator> allocator =
       options.allocator ? std::make_unique<CustomAllocator>(options.allocator)
                         : CpuDeviceMemory::MakeDefaultAllocator();
+
+  std::unique_ptr<CpuTopologyDescription> topology = nullptr;
+  if (!options.topology) {
+    std::vector<CpuTopology::CpuDevice> cpu_topology_devices;
+    cpu_topology_devices.reserve(cpu_device_count);
+    for (int i = 0; i < cpu_device_count; ++i) {
+      cpu_topology_devices.push_back(
+          CpuTopology::CpuDevice{options.process_id, i});
+    }
+
+    topology = std::make_unique<CpuTopologyDescription>(
+        cpu::PlatformId(), cpu::PlatformName(), cpu::PlatformVersion(),
+        cpu_topology_devices,
+        cpu::DetectMachineAttributes(
+            cpu::CpuFeatureFromString(
+                GetDebugOptionsFromFlags().xla_cpu_max_isa()))
+            .features);
+  } else {
+    topology = std::make_unique<CpuTopologyDescription>(*options.topology);
+    if (topology->cpu_topology().number_of_devices() != cpu_device_count) {
+      return InvalidArgument(
+          "Number of devices in topology (%d) does not match "
+          "cpu_device_count (%d)",
+          topology->cpu_topology().number_of_devices(), cpu_device_count);
+    }
+  }
+
+  std::vector<std::unique_ptr<PjRtCpuDevice>> devices;
+  devices.reserve(topology->cpu_topology().number_of_devices());
+  for (const auto& topology_device : topology->cpu_topology().devices()) {
+    auto device = std::make_unique<PjRtCpuDevice>(
+        topology_device.process_id, topology_device.local_device_id,
+        options.max_inflight_computations_per_device);
+    devices.push_back(std::move(device));
+  }
 
   return std::unique_ptr<PjRtClient>(new PjRtCpuClient(
       options.process_id, std::move(devices), std::move(allocator),
       std::move(options.collectives), num_threads, options.asynchronous,
       std::move(options.customize_hlo_module_config),
-      options.max_transpose_threads));
+      options.max_transpose_threads, std::move(topology)));
 }
 
 // An upper bound on the number of threads to use for intra-op parallelism. It
@@ -226,26 +263,13 @@ static tsl::ThreadOptions GetThreadOptions() {
   return thread_options;
 }
 
-// Returns the CPU devices from the given PjRtCpuDevices.
-// Precondition: `devices` doesn't contain nullptr.
-static std::vector<CpuTopology::CpuDevice> GetCpuDevices(
-    absl::Span<const std::unique_ptr<PjRtCpuDevice>> devices) {
-  std::vector<CpuTopology::CpuDevice> cpu_devices;
-  cpu_devices.reserve(devices.size());
-  for (const auto& device : devices) {
-    cpu_devices.push_back(CpuTopology::CpuDevice{
-        device->process_index(), device->local_hardware_id().value()});
-  }
-  return cpu_devices;
-}
-
 PjRtCpuClient::PjRtCpuClient(
     int process_index, std::vector<std::unique_ptr<PjRtCpuDevice>> devices,
     std::shared_ptr<CpuDeviceMemory::Allocator> allocator,
     std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
     bool asynchronous,
     std::function<void(HloModuleConfig&)> customize_hlo_module_config,
-    int max_transpose_threads)
+    int max_transpose_threads, std::unique_ptr<CpuTopologyDescription> topology)
     : process_index_(process_index),
       owned_devices_(std::move(devices)),
       computation_placer_(std::make_unique<ComputationPlacer>()),
@@ -254,12 +278,7 @@ PjRtCpuClient::PjRtCpuClient(
           tsl::MakeAvailableAsyncValueRef<CpuEvent>()),
       transpose_cache_(1024),
       collectives_(std::move(collectives)),
-      topology_(platform_id(), platform_name(), platform_version(),
-                GetCpuDevices(owned_devices_),
-                cpu::DetectMachineAttributes(
-                    cpu::CpuFeatureFromString(
-                        GetDebugOptionsFromFlags().xla_cpu_max_isa()))
-                    .features),
+      topology_(std::move(topology)),
       asynchronous_(asynchronous),
       customize_hlo_module_config_(std::move(customize_hlo_module_config)),
       eigen_intraop_pool_(new tsl::thread::ThreadPool(
@@ -606,7 +625,7 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
-  TF_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module, topology_));
+  TF_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module, *topology_));
 
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
@@ -817,7 +836,7 @@ PjRtCpuClient::CompileInternal(
     // Overwrite the features with the machine attributes from the topology.
 
     TF_RETURN_IF_ERROR(target_machine_options.SetFeatures(
-        absl::StrJoin(topology_.cpu_topology().machine_attributes(), ",")));
+        absl::StrJoin(topology_->cpu_topology().machine_attributes(), ",")));
 
     compile_options.cpu_target_config.emplace(target_machine_options);
 
