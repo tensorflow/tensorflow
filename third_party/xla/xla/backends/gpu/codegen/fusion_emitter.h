@@ -45,6 +45,7 @@ namespace xla {
 namespace gpu {
 
 struct FusionEmissionResult {
+  std::unique_ptr<llvm::Module> module;
   std::vector<std::unique_ptr<Thunk>> thunks;
 };
 

@@ -1577,6 +1577,13 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
       ir_emitter_context_->mlir_context());
   TF_ASSIGN_OR_RETURN(auto result, emitter->Emit(*ir_emitter_context_, *instr));
 
+  // Use override flag because libdevice functions can be present in both.
+  if (result.module) {
+    TF_RET_CHECK(!llvm::Linker::linkModules(
+        *ir_emitter_context_->llvm_module(), std::move(result.module),
+        llvm::Linker::Flags::OverrideFromSrc));
+  }
+
   const ExecutionStreamAssignment& stream_assignment =
       ir_emitter_context_->execution_stream_assignment();
   for (std::unique_ptr<Thunk>& thunk : result.thunks) {

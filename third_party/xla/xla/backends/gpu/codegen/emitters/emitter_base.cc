@@ -270,19 +270,19 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
                                      GetDefaultBufferAlignment(), &fusion));
   auto launch_dims = launch_dimensions();
   mlir::MLIRContext& mlir_context = *ir_emitter_context.mlir_context();
+  std::unique_ptr<llvm::Module> module;
   auto [status_or_entry, cached] =
       ir_emitter_context.kernel_cache().GetWithStatus(
           fusion.fused_instructions_computation(), args.args(),
           /*discriminator=*/"",
           [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
-            std::string kernel_name =
-                ir_emitter_context.name_uniquer()->GetUniqueName(
-                    llvm_ir::SanitizeFunctionName(std::string(fusion.name())));
+            std::string kernel_name = GetSanitizedUniqueName(
+                ir_emitter_context, std::string{fusion.name()});
             if (ir_emitter_context.emit_kernels()) {
               mlir_context.appendDialectRegistry(GetDialectRegistry());
               mlir_context.loadAllAvailableDialects();
               TF_ASSIGN_OR_RETURN(
-                  auto module,
+                  module,
                   CreateLLVMModule(
                       mlir_context,
                       ir_emitter_context.llvm_module()->getContext(),
@@ -300,12 +300,6 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
               TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
                   ir_emitter_context.gpu_device_info(), launch_dims,
                   kernel_func, module.get()));
-
-              // Use override flag because libdevice functions can be present in
-              // both.
-              CHECK(!llvm::Linker::linkModules(
-                  *target, std::move(module),
-                  llvm::Linker::Flags::OverrideFromSrc));
             } else {
               VLOG(3) << "Skipped kernel compilation.";
             }
@@ -321,6 +315,7 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
   }
 
   FusionEmissionResult result;
+  result.module = std::move(module);
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           &fusion, ir_emitter_context.GetNextThunkId()),
