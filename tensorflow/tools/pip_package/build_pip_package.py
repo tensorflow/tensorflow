@@ -204,6 +204,9 @@ def prepare_srcs(
   path_to_replace = {
       "external/local_xla/": "tensorflow/compiler",
       "external/local_tsl/": "tensorflow",
+      "external/sysroot_linux_aarch64_glibc_2_27/usr/lib/aarch64-linux-gnu/": (
+          "tensorflow/vendored_libs"
+      ),
   }
 
   deps_mapping_dict = {}
@@ -274,6 +277,7 @@ def prepare_wheel_srcs(
 
   # Every directory that contains a .py file gets an empty __init__.py file.
   create_init_files(os.path.join(srcs_dir, "tensorflow"))
+  create_init_files(os.path.join(srcs_dir, "tensorflow/vendored_libs"))
 
   # move MANIFEST and THIRD_PARTY_NOTICES to the root
   shutil.move(
@@ -288,6 +292,8 @@ def prepare_wheel_srcs(
   )
 
   update_xla_tsl_imports(os.path.join(srcs_dir, "tensorflow"))
+
+  patch_so_with_vendor_libs(srcs_dir)
 
   # Means the wheel is built with pywrap rules
   if dests:
@@ -353,6 +359,19 @@ def patch_so(srcs_dir: str) -> None:
     )
     subprocess.run(
         ["patchelf", "--shrink-rpath", "{}/{}".format(srcs_dir, file)],
+        check=True,
+    )
+
+
+def patch_so_with_vendor_libs(srcs_dir: str) -> None:
+  to_patch = {
+      "tensorflow/libtensorflow_cc.so.2": "$ORIGIN/vendored_libs",
+      "tensorflow/libtensorflow_framework.so.2": "$ORIGIN/vendored_libs",
+  }
+
+  for file, rpath in to_patch.items():
+    subprocess.run(
+        ["patchelf", "--add-rpath", rpath, "{}/{}".format(srcs_dir, file)],
         check=True,
     )
 

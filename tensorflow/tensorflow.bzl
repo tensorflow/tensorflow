@@ -504,6 +504,18 @@ def tf_copts_exec(
         allow_exceptions,
     ) + if_cuda_exec(["-DGOOGLE_CUDA=1"]) + if_tensorrt_exec(["-DGOOGLE_TENSORRT=1"])
 
+def tf_openmp_deps():
+    # OpenMP requires explicit dependencies when using Hermetic C++ because the
+    # -nodefaultlibs flag prevents the automatic inclusion when -fopenmp is passed.
+    return if_oss(
+        select({
+            "@local_xla//xla/tsl/mkl:hermetic_build_with_mkl_lnx_openmp": [
+                "@rules_ml_toolchain//cc/sysroots:openmp",
+            ],
+            "//conditions:default": [],
+        }),
+    )
+
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
     return select({
@@ -1869,7 +1881,9 @@ def tf_cc_test_mkl(
                     "-lm",
                 ],
             }) + _rpath_linkopts(src_to_test_name(src)) + tf_openmp_lopts(),
-            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(["@local_xla//xla/tsl/mkl:intel_binary_blob"]),
+            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + tf_openmp_deps() + if_mkl_ml(
+                ["@local_xla//xla/tsl/mkl:intel_binary_blob"],
+            ),
             data = data + tf_binary_dynamic_kernel_dsos(),
             exec_properties = tf_exec_properties({"tags": tags}),
             linkstatic = linkstatic,
@@ -2118,7 +2132,7 @@ def tf_mkl_kernel_library(
         prefix = None,
         srcs = None,
         hdrs = None,
-        deps = None,
+        deps = tf_openmp_deps(),
         alwayslink = 1,
         # Adding an explicit `-fexceptions` because `allow_exceptions = True`
         # in `tf_copts` doesn't work internally.

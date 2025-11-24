@@ -36,6 +36,21 @@ config_setting(
 )
 
 config_setting(
+    name = "hermetic_build_with_mkl_lnx_openmp",
+    constraint_values = [
+        "@platforms//os:linux",
+    ],
+    define_values = {
+        "build_with_mkl": "true",
+        "build_with_openmp": "true",
+    },
+    flag_values = {
+        "@rules_ml_toolchain//common:enable_hermetic_cc": "True",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "build_with_mkl_windows_openmp",
     constraint_values = [
         "@platforms//os:windows",
@@ -51,6 +66,17 @@ config_setting(
     name = "build_with_mkl_aarch64",
     define_values = {
         "build_with_mkl_aarch64": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "hermetic_build_with_mkl_aarch64",
+    define_values = {
+        "build_with_mkl_aarch64": "true",
+    },
+    flag_values = {
+        "@rules_ml_toolchain//common:enable_hermetic_cc": "True",
     },
     visibility = ["//visibility:public"],
 )
